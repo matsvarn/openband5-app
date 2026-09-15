@@ -1,4 +1,12 @@
-# Openstrap Edge
+# OpenBand 5
+
+A subscription-free app for WHOOP 5.0. This is Mats's independent, iPhone-first fork of OpenStrap.
+
+Start with [the project direction](OPENBAND5.md), [the source audit](docs/openband5/AUDIT.md), and [the development setup](docs/openband5/DEVELOPMENT.md). The upstream documentation below describes the inherited application and its releases, not a verified OpenBand 5 release.
+
+---
+
+## Inherited OpenStrap Edge documentation
 
 An app that makes your wearable useful without its subscription. Pairs over Bluetooth, computes everything on your phone, iOS and Android. WHOOP 4/5/MG get full support today; see [Supports](#supports) for what else it talks to.
 

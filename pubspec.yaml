@@ -1,5 +1,5 @@
 name: openstrap_edge
-description: "Open-source, local-first fitness tracking companion for WHOOP 4.0 hardware. Not affiliated with WHOOP, Inc."
+description: "OpenBand 5: a subscription-free, local-first app for WHOOP 5.0. An independent OpenStrap fork, not affiliated with WHOOP."
 publish_to: 'none'
 # NOTE: bumping this also requires manually bumping MARKETING_VERSION/
 # CURRENT_PROJECT_VERSION for the OpenStrapWidget(Extension) and "OpenStrapWatch
@@ -49,7 +49,7 @@ dependencies:
   # heads where possible — a deleted branch can orphan a PR-branch SHA.
   openstrap_protocol:
     git:
-      url: https://github.com/OpenStrap/protocol.git
+      url: https://github.com/matsvarn/openband5-protocol.git
       # protocol PR #27 head. main deliberately stays on a pre-gen5 SHA so the
       # multiband surface doesn't ride in as a side effect of unrelated work —
       # that is the right call THERE. This is the branch that wants it.
@@ -251,7 +251,7 @@ dependencies:
       ref: fe1464db98b84ac4d3ce6175d54ada11356d6c62
   openstrap_analytics:
     git:
-      url: https://github.com/OpenStrap/analytics.git
+      url: https://github.com/matsvarn/openband5-analytics.git
       # analytics main @ #34 merge. Two hops in one: #32 (the HR-onset bypass
       # for low-limb-swing cardio) had already merged and this pin was still
       # sitting on its PR-branch head, and #34 lands the sleep-stager rewrite.

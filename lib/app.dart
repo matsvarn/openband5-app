@@ -123,7 +123,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
     final theme = context.watch<ThemeController>();
     final locale = context.watch<LocaleController>();
     return MaterialApp(
-      title: 'OpenStrap',
+      title: 'OpenBand 5',
       debugShowCheckedModeBanner: false,
       // The palette is the design system's, the CHOICE is still the user's.
       theme: buildTheme(Brightness.light),
