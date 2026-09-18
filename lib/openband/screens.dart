@@ -128,50 +128,65 @@ class OpenBandOverview extends StatelessWidget {
                 ),
               if (day != null) ...[
                 OBCard(
-                  padding: const EdgeInsets.fromLTRB(10, 12, 10, 8),
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                   child: Column(
                     children: [
-                      _AdaptiveValues(
-                        children: [
-                          MetricRing(
-                            label: 'Schlaf',
-                            value: obDuration(day.sleep.duration.value),
-                            color: p.sleep,
-                            night: day.sleep,
-                            onTap: sleep,
-                          ),
-                          MetricRing(
-                            label: 'Erholung',
-                            value: obNumber(day.recovery.value),
-                            color: p.recovery,
-                            fraction: day.recovery.value == null
-                                ? null
-                                : day.recovery.value! / 100,
-                            onTap: () => showMetric(
-                              context,
-                              'Erholung',
-                              day.recovery,
-                              '/ 100',
-                              day.day,
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: p.well,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: _AdaptiveValues(
+                          children: [
+                            MetricRing(
+                              label: 'Schlaf',
+                              value: obDuration(day.sleep.duration.value),
+                              unit: _sleepDelta(day.sleep.duration),
+                              color: p.sleep,
+                              tint: p.sleepTint,
+                              night: day.sleep,
+                              onTap: sleep,
                             ),
-                          ),
-                          MetricRing(
-                            label: 'Belastung',
-                            value: obNumber(day.strain.value, digits: 1),
-                            unit: '/ 21',
-                            color: p.strain,
-                            fraction: day.strain.value == null
-                                ? null
-                                : day.strain.value! / 21,
-                            onTap: () => showMetric(
-                              context,
-                              'Belastung',
-                              day.strain,
-                              '/ 21',
-                              day.day,
+                            MetricRing(
+                              label: 'Erholung',
+                              value: obNumber(day.recovery.value),
+                              unit: day.recovery.value == null
+                                  ? null
+                                  : 'von 100',
+                              color: p.recovery,
+                              tint: p.recoveryTint,
+                              fraction: day.recovery.value == null
+                                  ? null
+                                  : day.recovery.value! / 100,
+                              onTap: () => showMetric(
+                                context,
+                                'Erholung',
+                                day.recovery,
+                                '/ 100',
+                                day.day,
+                              ),
                             ),
-                          ),
-                        ],
+                            MetricRing(
+                              label: 'Belastung',
+                              value: obNumber(day.strain.value, digits: 1),
+                              unit: 'von 21',
+                              color: p.strain,
+                              tint: p.strainTint,
+                              fraction: day.strain.value == null
+                                  ? null
+                                  : day.strain.value! / 21,
+                              onTap: () => showMetric(
+                                context,
+                                'Belastung',
+                                day.strain,
+                                '/ 21',
+                                day.day,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 6),
                       InkWell(
@@ -181,8 +196,21 @@ class OpenBandOverview extends StatelessWidget {
                           constraints: const BoxConstraints(minHeight: 44),
                           child: Row(
                             children: [
-                              Icon(LucideIcons.moon, size: 17, color: p.sleep),
-                              const SizedBox(width: 7),
+                              Container(
+                                width: 36,
+                                height: 36,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: p.sleepTint,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  LucideIcons.moon,
+                                  size: 18,
+                                  color: p.sleep,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   (day.sleep.unobservedMinutes ?? 0) > 0
@@ -192,7 +220,7 @@ class OpenBandOverview extends StatelessWidget {
                                                 MetricReadiness.available
                                       ? 'Schlaf ansehen'
                                       : _nightLabel(day.sleep),
-                                  style: p.text(13, weight: FontWeight.w500),
+                                  style: p.text(15, weight: FontWeight.w600),
                                 ),
                               ),
                               if (day.sleep.duration.value != null &&
@@ -401,6 +429,13 @@ String _nightLabel(SleepNight night) => switch (night.duration.readiness) {
         : 'Nacht erfasst',
 };
 
+String? _sleepDelta(DayMetric duration) {
+  final v = duration.value, b = duration.baseline;
+  if (v == null || b == null) return null;
+  final d = (v - b).round();
+  return d == 0 ? 'wie Basis' : '${d > 0 ? '+' : '−'}${obGapMinutes(d.abs())}';
+}
+
 class _AdaptiveValues extends StatelessWidget {
   final List<Widget> children;
   const _AdaptiveValues({required this.children});
@@ -487,18 +522,30 @@ class OBMetricCard extends StatelessWidget {
                     children: [
                       Text(
                         obNumber(value),
-                        style: p.text(34, weight: FontWeight.w800, display: true),
+                        style: p.text(
+                          34,
+                          weight: FontWeight.w800,
+                          display: true,
+                        ),
                       ),
                       const SizedBox(width: 4),
                       Text(
                         unit,
-                        style: p.text(14, weight: FontWeight.w500, color: p.muted),
+                        style: p.text(
+                          14,
+                          weight: FontWeight.w500,
+                          color: p.muted,
+                        ),
                       ),
                     ],
                   ),
                   Text(
                     status,
-                    style: p.text(13, weight: FontWeight.w600, color: statusColor),
+                    style: p.text(
+                      13,
+                      weight: FontWeight.w600,
+                      color: statusColor,
+                    ),
                   ),
                 ],
               ),
