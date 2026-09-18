@@ -1,5 +1,5 @@
 // GENERATED from docs/openband5/design/tokens.json
-// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash 16b6f8c2).
+// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash 908ca522).
 // Do not edit; run tool/gen_alp_tokens.py.
 import 'dart:ui';
 
@@ -92,6 +92,20 @@ abstract final class AlpColor {
   static const Color foodTint = Color(0xFFEEE9FB);
   /// Alpin: gestrichelte Lücke, keine Daten.
   static const Color gap = Color(0xFFC9D2E0);
+  /// Alpin dunkel: Enzian, Ernährung / Fett.
+  static const Color darkFood = Color(0xFFB6A0F2);
+  /// Alpin dunkel: Ernährung-Spur.
+  static const Color darkFoodTint = Color(0xFF2B2442);
+  /// Alpin dunkel: gestrichelte Lücke, keine Daten, Chevrons.
+  static const Color darkGap = Color(0xFF3C475C);
+  /// Alpin dunkel: Warntext.
+  static const Color darkWarning = Color(0xFFF2C36B);
+  /// Alpin dunkel: Warnfläche.
+  static const Color darkWarningTint = Color(0xFF3A2F17);
+  /// Alpin dunkel: Fehlertext.
+  static const Color darkDanger = Color(0xFFFF7A88);
+  /// Alpin dunkel: Fehlerfläche.
+  static const Color darkDangerTint = Color(0xFF3E1F26);
 }
 
 abstract final class AlpText {
