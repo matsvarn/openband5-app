@@ -641,6 +641,7 @@ flutter:
     - docs/openband5/assets/fixtures/day-summary.json
     - docs/openband5/assets/fixtures/sleep-detail.json
     - docs/openband5/assets/fixtures/additional-flows.json
+    - assets/icons/sport/
     - assets/images/
     - assets/images/2.0x/
     - assets/images/3.0x/

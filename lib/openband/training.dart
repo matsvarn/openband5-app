@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -121,31 +122,57 @@ class OpenBandTraining extends StatelessWidget {
   );
 }
 
-({String label, IconData icon}) obSport(String type) => switch (type) {
-  'running' ||
-  'treadmill' ||
-  'sprinting' => (label: 'Laufen', icon: LucideIcons.footprints),
-  'walking' || 'dog_walking' => (label: 'Gehen', icon: LucideIcons.footprints),
-  'hiking' => (label: 'Wandern', icon: LucideIcons.mountainSnow),
+({String label, String icon}) obSport(String type) => switch (type) {
+  'running' || 'treadmill' || 'sprinting' => (label: 'Laufen', icon: 'run'),
+  'walking' || 'dog_walking' => (label: 'Gehen', icon: 'walk'),
+  'hiking' => (label: 'Wandern', icon: 'trekking'),
   'cycling' ||
   'indoor_bike' ||
-  'mountain_biking' => (label: 'Rad', icon: LucideIcons.bike),
-  'swimming' => (label: 'Schwimmen', icon: LucideIcons.waves),
-  'rowing' || 'kayaking' => (label: 'Rudern', icon: LucideIcons.sailboat),
+  'mountain_biking' => (label: 'Rad', icon: 'bike'),
+  'swimming' => (label: 'Schwimmen', icon: 'swimming'),
+  'rowing' || 'kayaking' => (label: 'Rudern', icon: 'kayak'),
   'weight_training' ||
   'powerlifting' ||
   'kettlebell' ||
   'functional' ||
-  'crossfit' => (label: 'Kraft', icon: LucideIcons.dumbbell),
+  'crossfit' => (label: 'Kraft', icon: 'barbell'),
   'hiit' ||
   'track_intervals' ||
-  'jump_rope' => (label: 'Intervalle', icon: LucideIcons.timer),
-  'yoga' ||
-  'pilates' ||
-  'tai_chi' => (label: 'Yoga', icon: LucideIcons.flower2),
-  'breathwork' || 'meditation' => (label: 'Atmen', icon: LucideIcons.wind),
-  _ => (label: 'Aktivität', icon: LucideIcons.activity),
+  'jump_rope' => (label: 'Intervalle', icon: 'jump-rope'),
+  'yoga' || 'pilates' || 'tai_chi' => (label: 'Yoga', icon: 'yoga'),
+  'football' => (label: 'Fußball', icon: 'ball-football'),
+  'tennis' => (label: 'Tennis', icon: 'ball-tennis'),
+  'basketball' => (label: 'Basketball', icon: 'ball-basketball'),
+  'volleyball' => (label: 'Volleyball', icon: 'ball-volleyball'),
+  'golf' => (label: 'Golf', icon: 'golf'),
+  'boxing' || 'martial_arts' => (label: 'Kampfsport', icon: 'karate'),
+  'climbing' => (label: 'Klettern', icon: 'mountain'),
+  'skiing' => (label: 'Ski', icon: 'ski-jumping'),
+  'skating' => (label: 'Eislaufen', icon: 'ice-skating'),
+  'horse_riding' => (label: 'Reiten', icon: 'horse'),
+  _ => (label: 'Aktivität', icon: 'stretching'),
 };
+
+/// Tabler outline glyph from assets/icons/sport (MIT, 3.46.0), same 24-grid
+/// and 2 px stroke as Lucide; `currentColor` is replaced by [color].
+class OBSportIcon extends StatelessWidget {
+  final String name;
+  final double size;
+  final Color color;
+  const OBSportIcon(
+    this.name, {
+    super.key,
+    this.size = 20,
+    required this.color,
+  });
+  @override
+  Widget build(BuildContext context) => SvgPicture.asset(
+    'assets/icons/sport/$name.svg',
+    width: size,
+    height: size,
+    colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+  );
+}
 
 class OBQuickStart extends StatelessWidget {
   final ValueChanged<String>? onStart;
@@ -153,72 +180,79 @@ class OBQuickStart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    Widget tile(
-      String label,
-      IconData icon,
-      Color fg,
-      Color bg,
-      String? type,
-    ) => Expanded(
-      child: Semantics(
-        button: true,
-        label: type == null ? 'Weitere Aktivitäten' : '$label starten',
-        child: InkWell(
-          onTap: onStart == null ? null : () => onStart!(type ?? ''),
-          borderRadius: BorderRadius.circular(AlpRadius.row),
-          child: ExcludeSemantics(
-            child: Container(
-              height: 96,
-              decoration: BoxDecoration(
-                color: p.card,
-                borderRadius: BorderRadius.circular(AlpRadius.row),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                spacing: 8,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(icon, size: 20, color: fg),
+    Widget tile(String label, Widget icon, Color fg, Color bg, String? type) =>
+        Expanded(
+          child: Semantics(
+            button: true,
+            label: type == null ? 'Weitere Aktivitäten' : '$label starten',
+            child: InkWell(
+              onTap: onStart == null ? null : () => onStart!(type ?? ''),
+              borderRadius: BorderRadius.circular(AlpRadius.row),
+              child: ExcludeSemantics(
+                child: Container(
+                  height: 96,
+                  decoration: BoxDecoration(
+                    color: p.card,
+                    borderRadius: BorderRadius.circular(AlpRadius.row),
                   ),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: p.text(13, weight: FontWeight.w600),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    spacing: 8,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: icon,
+                      ),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: p.text(13, weight: FontWeight.w600),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        );
     return Row(
       spacing: 8,
       children: [
         tile(
           'Kraft',
-          LucideIcons.dumbbell,
+          OBSportIcon('barbell', color: p.strain),
           p.strain,
           p.strainTint,
           'weight_training',
         ),
         tile(
           'Laufen',
-          LucideIcons.footprints,
+          OBSportIcon('run', color: p.strain),
           p.strain,
           p.strainTint,
           'running',
         ),
-        tile('Rad', LucideIcons.bike, p.strain, p.strainTint, 'cycling'),
-        tile('Mehr', LucideIcons.plus, p.ink, p.well, null),
+        tile(
+          'Rad',
+          OBSportIcon('bike', color: p.strain),
+          p.strain,
+          p.strainTint,
+          'cycling',
+        ),
+        tile(
+          'Mehr',
+          Icon(LucideIcons.plus, size: 20, color: p.ink),
+          p.ink,
+          p.well,
+          null,
+        ),
       ],
     );
   }
@@ -375,7 +409,7 @@ class _SessionRow extends StatelessWidget {
                 color: p.strainTint,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(sport.icon, size: 18, color: p.strain),
+              child: OBSportIcon(sport.icon, size: 18, color: p.strain),
             ),
             const SizedBox(width: 12),
             Expanded(
