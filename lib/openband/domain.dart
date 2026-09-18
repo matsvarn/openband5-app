@@ -185,8 +185,27 @@ enum MetricKey {
   const MetricKey(this.series);
 }
 
+class TrainingSession {
+  final String id, day, type;
+  final DateTime start;
+  final int? durationMin;
+  final double? strain, kcal;
+  final bool live;
+  const TrainingSession({
+    required this.id,
+    required this.day,
+    required this.type,
+    required this.start,
+    this.durationMin,
+    this.strain,
+    this.kcal,
+    this.live = false,
+  });
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<List<TrainingSession>> readSessions(String endDay, int days);
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,
     String endDay,

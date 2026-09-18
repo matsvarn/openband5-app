@@ -164,6 +164,38 @@ class LocalOpenBandRepository implements OpenBandRepository {
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
   @override
+  Future<List<TrainingSession>> readSessions(String endDay, int days) async {
+    _requireDay(endDay);
+    final window = openBandDaysEnding(endDay, days);
+    final first = DateTime.parse(window.first);
+    final end = DateTime.parse(endDay);
+    final fromTs =
+        DateTime(first.year, first.month, first.day).millisecondsSinceEpoch ~/
+        1000;
+    final toTs =
+        DateTime(end.year, end.month, end.day + 1).millisecondsSinceEpoch ~/
+            1000 -
+        1;
+    final rows = await LocalDb.sessionsInRange(fromTs, toTs);
+    return [
+      for (final r in rows)
+        if (r['start_ts'] case final int startTs)
+          TrainingSession(
+            id: r['id'] as String,
+            day: dayLabelOf(
+              DateTime.fromMillisecondsSinceEpoch(startTs * 1000),
+            ),
+            type: r['type'] as String,
+            start: DateTime.fromMillisecondsSinceEpoch(startTs * 1000),
+            durationMin: (r['duration_min'] as num?)?.toInt(),
+            strain: (r['strain'] as num?)?.toDouble(),
+            kcal: (r['calories'] as num?)?.toDouble(),
+            live: r['status'] == 'live',
+          ),
+    ];
+  }
+
+  @override
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,
     String endDay,

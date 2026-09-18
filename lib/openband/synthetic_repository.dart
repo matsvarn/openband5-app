@@ -121,6 +121,33 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<List<TrainingSession>> readSessions(String endDay, int days) async {
+    final window = openBandDaysEnding(endDay, days).toSet();
+    // B20 synthetic period: 9.–15.09. = 32 + 45 + 25 minutes, comparison
+    // week 35 + 43. Only the run carries strain/energy (run-detail fixture).
+    final all = [
+      (-13, 'cycling', '17:40', 35, null, null),
+      (-9, 'weight_training', '18:05', 43, null, null),
+      (-3, 'cycling', '17:32', 32, null, null),
+      (-2, 'weight_training', '18:10', 45, null, null),
+      (-1, 'running', '17:20', 25, 5.8716, 327.2537),
+    ];
+    return [
+      for (final (offset, type, time, minutes, strain, kcal) in all.reversed)
+        if (_shift(_day, offset) case final day when window.contains(day))
+          TrainingSession(
+            id: 'synthetic-$day-$type',
+            day: day,
+            type: type,
+            start: _at(day, time),
+            durationMin: minutes,
+            strain: strain,
+            kcal: kcal,
+          ),
+    ];
+  }
+
+  @override
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,
     String endDay,
