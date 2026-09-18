@@ -6,6 +6,7 @@ import 'controller.dart';
 import 'day_picker.dart';
 import 'domain.dart';
 import 'daily_activity.dart';
+import 'health.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
 
@@ -478,16 +479,10 @@ class OBMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final value = metric.value, baseline = metric.baseline;
-    final (status, statusColor) = switch ((value, baseline)) {
-      (_, null) => ('Basis noch offen', p.muted),
-      (null, _) => ('—', p.muted),
-      (final v, final b) when (v! - b!).abs() < .5 => ('im Bereich', p.muted),
-      (final v, final b) => (
-        '${v! >= b! ? '+' : '−'}${obNumber((v - b).abs())} ${v >= b ? 'über' : 'unter'} Basis',
-        p.smallText(color),
-      ),
-    };
+    final status = obMetricStatus(metric.value, metric.baseline);
+    final statusColor = status.endsWith('Basis') && metric.value != null
+        ? p.smallText(color)
+        : p.muted;
     return InkWell(
       onTap: () => showMetric(context, label, metric, unit, day),
       borderRadius: BorderRadius.circular(AlpRadius.card),
@@ -521,7 +516,7 @@ class OBMetricCard extends StatelessWidget {
                     textBaseline: TextBaseline.alphabetic,
                     children: [
                       Text(
-                        obNumber(value),
+                        obNumber(metric.value),
                         style: p.text(
                           34,
                           weight: FontWeight.w800,

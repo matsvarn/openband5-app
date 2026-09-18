@@ -1,5 +1,6 @@
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/theme.dart';
 
 enum SyntheticScenario {
   complete,
@@ -117,6 +118,35 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       default:
         return _baseBand;
     }
+  }
+
+  @override
+  Future<List<MetricPoint>> readMetricHistory(
+    MetricKey key,
+    String endDay,
+    int nights,
+  ) async {
+    final recovery = Map<String, dynamic>.from(_summary['recovery'] as Map);
+    final todayKnown =
+        scenario != SyntheticScenario.missing &&
+        scenario != SyntheticScenario.processing;
+    final source = switch (key) {
+      MetricKey.hrv => {
+        ..._hrvByDay,
+        if (todayKnown) _day: (recovery['hrv_ms'] as num).toDouble(),
+      },
+      MetricKey.restingHr => {
+        ..._rhrByDay,
+        if (todayKnown) _day: (recovery['rhr_bpm'] as num).toDouble(),
+      },
+      MetricKey.recovery => {
+        if (todayKnown) _day: (recovery['score'] as num).toDouble(),
+      },
+    };
+    return [
+      for (final d in openBandDaysEnding(endDay, nights))
+        MetricPoint(d, source[d]),
+    ];
   }
 
   @override

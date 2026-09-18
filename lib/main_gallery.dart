@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
+import 'openband/health.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'openband/theme.dart';
@@ -154,6 +155,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               controller.refresh();
             },
           )
+        : domain == ShellDomain.wellness
+        ? OpenBandHealth(controller: controller)
         : Center(child: Text('${domain.label} · nächstes Arbeitspaket')),
   );
 

@@ -244,6 +244,14 @@ String obNumber(num? value, {int digits = 0}) => value == null
       ).format(value);
 String obDate(String day) =>
     DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(day));
+List<String> openBandDaysEnding(String endDay, int nights) {
+  final end = DateTime.parse(endDay);
+  return [
+    for (var i = nights - 1; i >= 0; i--)
+      dayLabelOf(DateTime(end.year, end.month, end.day - i)),
+  ];
+}
+
 String obDayTitle(String day) => day == todayLabel()
     ? 'Heute'
     : DateFormat('EEE, d. MMM', 'de_DE').format(DateTime.parse(day));

@@ -6,6 +6,7 @@ import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../state/app_state.dart';
 import 'domain.dart';
+import 'theme.dart';
 import 'time.dart';
 
 /// SQLite-backed boundary for the first OpenBand daily/sleep-correction flow.
@@ -162,6 +163,22 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
+  @override
+  Future<List<MetricPoint>> readMetricHistory(
+    MetricKey key,
+    String endDay,
+    int nights,
+  ) async {
+    _requireDay(endDay);
+    final days = openBandDaysEnding(endDay, nights);
+    final rows = await LocalDb.metricSeries(key.series);
+    final byDay = {
+      for (final r in rows)
+        r['date'] as String: (r['value'] as num?)?.toDouble(),
+    };
+    return [for (final d in days) MetricPoint(d, byDay[d])];
+  }
+
   Future<BandSnapshot> readBand() async {
     final battery = await LocalDb.latestBandBatterySample(
       deviceId: LocalDb.kPrimaryDeviceId,

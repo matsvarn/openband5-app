@@ -170,8 +170,28 @@ class OpenBandDay {
 
 /// Save returns only after the correction and its pending job are durable.
 /// Calculation is a separate operation. A failure must retain that correction.
+class MetricPoint {
+  final String day;
+  final double? value;
+  const MetricPoint(this.day, this.value);
+}
+
+enum MetricKey {
+  hrv('rmssd'),
+  restingHr('rhr'),
+  recovery('readiness');
+
+  final String series;
+  const MetricKey(this.series);
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<List<MetricPoint>> readMetricHistory(
+    MetricKey key,
+    String endDay,
+    int nights,
+  );
   Future<Set<String>> sleepDays();
   Future<SleepDraft?> readDraft(String day);
   Future<void> saveDraft(SleepDraft draft);
