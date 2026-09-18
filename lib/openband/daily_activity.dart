@@ -174,7 +174,7 @@ class StepsCard extends StatelessWidget {
                     _chip(
                       context,
                       kcal,
-                      p.deep,
+                      p.stageDeep,
                       () => _details(context, intake: true),
                     ),
                     _chip(

@@ -2,23 +2,42 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'alp_tokens.dart';
+
 class OB {
   final bool dark;
   const OB(this.dark);
   factory OB.of(BuildContext context) =>
       OB(Theme.of(context).brightness == Brightness.dark);
-  Color get canvas => Color(dark ? 0xFF101318 : 0xFFF5F6F9);
-  Color get card => Color(dark ? 0xFF1C2027 : 0xFFFFFFFF);
-  Color get ink => Color(dark ? 0xFFF0F2F6 : 0xFF243149);
-  Color get muted => Color(dark ? 0xFFAFB8C8 : 0xFF58657A);
-  Color get line => Color(dark ? 0xFF343B47 : 0xFFE6EAF0);
-  Color get action => Color(dark ? 0xFF9DBDFA : 0xFF285CCB);
-  Color get sleep => Color(dark ? 0xFFA8BFF0 : 0xFF617FCE);
-  Color get recovery => Color(dark ? 0xFF89B6A5 : 0xFF388A77);
-  Color get strain => Color(dark ? 0xFFE3B76C : 0xFFB77E26);
-  Color get pulse => Color(dark ? 0xFFE597AE : 0xFFB54F72);
-  Color get rem => Color(dark ? 0xFF839DCC : 0xFFACBDE9);
-  Color get deep => Color(dark ? 0xFFC5AEDF : 0xFF7865AD);
+  Color _pick(Color light, Color darkColor) => dark ? darkColor : light;
+  Color get canvas => _pick(AlpColor.well, AlpColor.darkCanvas);
+  Color get card => _pick(AlpColor.canvas, AlpColor.darkCard);
+  Color get well => _pick(AlpColor.well, AlpColor.darkWell);
+  Color get ink => _pick(AlpColor.ink, AlpColor.darkInk);
+  Color get muted => _pick(AlpColor.muted, AlpColor.darkMuted);
+  Color get line => _pick(AlpColor.line, AlpColor.darkLine);
+  Color get action => _pick(AlpColor.action, AlpColor.darkAction);
+  Color get sleep => _pick(AlpColor.sleep, AlpColor.darkSleep);
+  Color get sleepTint => _pick(AlpColor.sleepTint, AlpColor.darkSleepTint);
+  Color get recovery => _pick(AlpColor.recovery, AlpColor.darkRecovery);
+  Color get recoveryTint =>
+      _pick(AlpColor.recoveryTint, AlpColor.darkRecoveryTint);
+  Color get strain => _pick(AlpColor.strain, AlpColor.darkStrain);
+  Color get strainTint => _pick(AlpColor.strainTint, AlpColor.darkStrainTint);
+  Color get pulse => _pick(AlpColor.pulse, AlpColor.darkPulse);
+  Color get pulseTint => _pick(AlpColor.pulseTint, AlpColor.darkPulseTint);
+  Color get food => _pick(AlpColor.food, AlpColor.darkFood);
+  Color get foodTint => _pick(AlpColor.foodTint, AlpColor.darkFoodTint);
+  Color get gap => _pick(AlpColor.gap, AlpColor.darkGap);
+  Color get warning => _pick(AlpColor.warning, AlpColor.darkWarning);
+  Color get warningTint =>
+      _pick(AlpColor.warningTint, AlpColor.darkWarningTint);
+  Color get danger => _pick(AlpColor.danger, AlpColor.darkDanger);
+  Color get dangerTint => _pick(AlpColor.dangerTint, AlpColor.darkDangerTint);
+  Color get stageDeep => _pick(AlpColor.stageDeep, AlpColor.darkStageDeep);
+  Color get stageLight => _pick(AlpColor.stageLight, AlpColor.darkStageLight);
+  Color get stageRem => _pick(AlpColor.stageRem, AlpColor.darkStageRem);
+  Color get wake => _pick(AlpColor.wake, AlpColor.darkWake);
   Color get sleepText => dark ? sleep : const Color(0xFF4F68AE);
   Color get recoveryText => dark ? recovery : const Color(0xFF2D7463);
   Color get strainText => dark ? strain : const Color(0xFF926018);
@@ -26,13 +45,14 @@ class OB {
     double size, {
     FontWeight weight = FontWeight.w400,
     Color? color,
+    bool display = false,
   }) => TextStyle(
-    fontFamily: 'Inter',
+    fontFamily: display ? AlpFont.display : AlpFont.sans,
     fontSize: size,
-    height: size >= 24 ? 1.12 : 1.36,
+    height: display ? 1.08 : (size >= 24 ? 1.12 : 1.36),
     fontWeight: weight,
     color: color ?? ink,
-    letterSpacing: size >= 24 ? -.8 : 0,
+    letterSpacing: display ? -.03 * size : (size >= 24 ? -.8 : 0),
     fontFeatures: const [FontFeature.tabularFigures()],
   );
 }
@@ -42,7 +62,7 @@ ThemeData openBandTheme(Brightness brightness) {
   final base = ThemeData(
     brightness: brightness,
     useMaterial3: true,
-    fontFamily: 'Inter',
+    fontFamily: AlpFont.sans,
     colorScheme: ColorScheme.fromSeed(
       seedColor: p.action,
       brightness: brightness,
@@ -71,7 +91,7 @@ ThemeData openBandTheme(Brightness brightness) {
       backgroundColor: p.card,
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AlpRadius.card)),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -80,7 +100,7 @@ ThemeData openBandTheme(Brightness brightness) {
         foregroundColor: p.dark ? p.canvas : Colors.white,
         minimumSize: const Size(44, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AlpRadius.row)),
         textStyle: p.text(15, weight: FontWeight.w600),
       ),
     ),
@@ -228,7 +248,7 @@ class OBCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
       color: OB.of(context).card,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AlpRadius.card),
     ),
     padding: padding,
     child: child,
@@ -251,7 +271,7 @@ class OBAction extends StatelessWidget {
     child: secondary
         ? FilledButton.tonal(
             style: FilledButton.styleFrom(
-              backgroundColor: OB.of(context).action.withValues(alpha: .06),
+              backgroundColor: OB.of(context).card,
               foregroundColor: OB.of(context).action,
             ),
             onPressed: onPressed,

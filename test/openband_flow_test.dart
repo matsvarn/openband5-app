@@ -25,6 +25,17 @@ void main() {
         ),
       );
     await loader.load();
+    final display = FontLoader('Inter Tight')
+      ..addFont(
+        Future.value(
+          ByteData.sublistView(
+            File(
+              'assets/fonts/InterTight/InterTight[wght].ttf',
+            ).readAsBytesSync(),
+          ),
+        ),
+      );
+    await display.load();
     final icons = FontLoader('packages/lucide_icons_flutter/Lucide')
       ..addFont(
         rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'alp_tokens.dart';
 import 'charts.dart';
 import 'controller.dart';
 import 'day_picker.dart';
@@ -265,20 +266,22 @@ class OpenBandOverview extends StatelessWidget {
                   ),
                 _AdaptiveValues(
                   children: [
-                    MetricCard(
+                    OBMetricCard(
                       label: 'HRV',
                       metric: day.hrv,
                       unit: 'ms',
                       icon: LucideIcons.activity,
                       color: p.recovery,
+                      tint: p.recoveryTint,
                       day: day.day,
                     ),
-                    MetricCard(
+                    OBMetricCard(
                       label: 'Ruhepuls',
                       metric: day.restingHr,
                       unit: '/min',
                       icon: LucideIcons.heart,
                       color: p.pulse,
+                      tint: p.pulseTint,
                       day: day.day,
                     ),
                   ],
@@ -411,64 +414,86 @@ class _AdaptiveValues extends StatelessWidget {
         );
 }
 
-class MetricCard extends StatelessWidget {
+class OBMetricCard extends StatelessWidget {
   final String label, unit, day;
   final DayMetric metric;
   final IconData icon;
-  final Color color;
-  const MetricCard({
+  final Color color, tint;
+  const OBMetricCard({
     super.key,
     required this.label,
     required this.unit,
     required this.metric,
     required this.icon,
     required this.color,
+    required this.tint,
     required this.day,
   });
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    final value = metric.value, baseline = metric.baseline;
+    final (status, statusColor) = switch ((value, baseline)) {
+      (_, null) => ('Basis noch offen', p.muted),
+      (null, _) => ('—', p.muted),
+      (final v, final b) when (v! - b!).abs() < .5 => ('im Bereich', p.muted),
+      (final v, final b) => (
+        '${v! >= b! ? '+' : '−'}${obNumber((v - b).abs())} ${v >= b ? 'über' : 'unter'} Basis',
+        color,
+      ),
+    };
     return InkWell(
       onTap: () => showMetric(context, label, metric, unit, day),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(AlpRadius.card),
       child: OBCard(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(icon, size: 16, color: color),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: p.text(13, weight: FontWeight.w500),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                spacing: 6,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, size: 16, color: color),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: p.text(
+                            13,
+                            weight: FontWeight.w600,
+                            color: p.muted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        obNumber(value),
+                        style: p.text(34, weight: FontWeight.w800, display: true),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        unit,
+                        style: p.text(14, weight: FontWeight.w500, color: p.muted),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    status,
+                    style: p.text(13, weight: FontWeight.w600, color: statusColor),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 6),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.end,
-              spacing: 4,
-              children: [
-                Text(
-                  obNumber(metric.value),
-                  style: p.text(27, weight: FontWeight.w600),
-                ),
-                Text(unit, style: p.text(12, color: p.muted)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            BaselineMark(metric: metric, color: color),
-            const SizedBox(height: 4),
-            Text(
-              metric.baseline == null
-                  ? 'Basis noch offen'
-                  : 'Basis ${obNumber(metric.baseline)}${metric.value == null ? '' : ' · ${metric.value! >= metric.baseline! ? '+' : '−'}${obNumber((metric.value! - metric.baseline!).abs())} $unit'}',
-              style: p.text(12, color: p.muted),
-            ),
+            const SizedBox(width: 10),
+            OBRangePill(metric: metric, color: color, tint: tint),
           ],
         ),
       ),
@@ -728,7 +753,7 @@ class OpenBandSleep extends StatelessWidget {
                                     color: switch (part.$1) {
                                       NightStage.rem ||
                                       NightStage.light => p.sleepText,
-                                      NightStage.deep => p.deep,
+                                      NightStage.deep => p.stageDeep,
                                       NightStage.awake => p.strainText,
                                     },
                                   ),
@@ -749,20 +774,22 @@ class OpenBandSleep extends StatelessWidget {
                   CorrectionBanner(controller: controller),
                 _AdaptiveValues(
                   children: [
-                    MetricCard(
+                    OBMetricCard(
                       label: 'Ruhepuls',
                       unit: '/min',
                       metric: day.restingHr,
                       icon: LucideIcons.heart,
                       color: p.pulse,
+                      tint: p.pulseTint,
                       day: day.day,
                     ),
-                    MetricCard(
+                    OBMetricCard(
                       label: 'HRV',
                       unit: 'ms',
                       metric: day.hrv,
                       icon: LucideIcons.activity,
                       color: p.recovery,
+                      tint: p.recoveryTint,
                       day: day.day,
                     ),
                   ],

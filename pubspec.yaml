@@ -659,6 +659,9 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter/Inter.ttf
+    - family: Inter Tight
+      fonts:
+        - asset: assets/fonts/InterTight/InterTight[wght].ttf
     - family: Barlow Condensed
       fonts:
         - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf

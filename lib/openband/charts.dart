@@ -13,9 +13,9 @@ String stageName(NightStage? stage) => switch (stage) {
 };
 Color stageColor(OB p, NightStage? stage) => switch (stage) {
   NightStage.awake => p.strain,
-  NightStage.rem => p.rem,
+  NightStage.rem => p.stageRem,
   NightStage.light => p.sleep,
-  NightStage.deep => p.deep,
+  NightStage.deep => p.stageDeep,
   null => p.line,
 };
 
@@ -132,9 +132,9 @@ class _RingPainter extends CustomPainter {
       if (bed == null || bed <= 0) return;
       var start = -math.pi / 2;
       for (final part in [
-        (n.remMinutes, p.rem),
+        (n.remMinutes, p.stageRem),
         (n.lightMinutes, p.sleep),
-        (n.deepMinutes, p.deep),
+        (n.deepMinutes, p.stageDeep),
         (n.awakeMinutes, p.strain),
       ]) {
         if (part.$1 == null) continue;
@@ -426,25 +426,30 @@ class _NightPainter extends CustomPainter {
       old.selectedWake != selectedWake;
 }
 
-class BaselineMark extends StatelessWidget {
+class OBRangePill extends StatelessWidget {
   final DayMetric metric;
-  final Color color;
-  const BaselineMark({super.key, required this.metric, required this.color});
+  final Color color, tint;
+  const OBRangePill({
+    super.key,
+    required this.metric,
+    required this.color,
+    required this.tint,
+  });
   @override
   Widget build(BuildContext context) {
-    if (metric.value == null || metric.baseline == null) {
-      return const SizedBox(height: 22);
-    }
+    final p = OB.of(context);
     return ExcludeSemantics(
       child: SizedBox(
-        height: 22,
-        width: double.infinity,
+        width: 14,
+        height: 88,
         child: CustomPaint(
-          painter: _BaselinePainter(
-            metric.value!,
-            metric.baseline!,
+          painter: _RangePillPainter(
+            metric.value,
+            metric.baseline,
             color,
-            OB.of(context).line,
+            tint,
+            p.well,
+            p.card,
           ),
         ),
       ),
@@ -452,42 +457,48 @@ class BaselineMark extends StatelessWidget {
   }
 }
 
-class _BaselinePainter extends CustomPainter {
-  final double value, baseline;
-  final Color color, line;
-  _BaselinePainter(this.value, this.baseline, this.color, this.line);
+class _RangePillPainter extends CustomPainter {
+  final double? value, baseline;
+  final Color color, tint, track, ring;
+  _RangePillPainter(
+    this.value,
+    this.baseline,
+    this.color,
+    this.tint,
+    this.track,
+    this.ring,
+  );
   @override
   void paint(Canvas canvas, Size size) {
-    final mid = size.width / 2;
-    canvas.drawLine(
-      const Offset(3, 11),
-      Offset(size.width - 3, 11),
-      Paint()
-        ..color = line
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round,
+    final r = Radius.circular(size.width / 2);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, r),
+      Paint()..color = track,
     );
-    canvas.drawLine(
-      Offset(mid, 4),
-      Offset(mid, 18),
-      Paint()
-        ..color = const Color(0xFF9AA8BB)
-        ..strokeWidth = 2,
+    if (baseline == null) return;
+    final mid = size.height / 2;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, mid - 12, size.width, 24),
+        r,
+      ),
+      Paint()..color = tint,
     );
+    if (value == null) return;
     final relative = baseline == 0
         ? 0.0
-        : ((value - baseline) / baseline).clamp(-.4, .4);
-    canvas.drawCircle(
-      Offset(mid + relative * size.width, 11),
-      4,
-      Paint()..color = color,
-    );
+        : ((value! - baseline!) / baseline!).clamp(-.4, .4);
+    final center = Offset(size.width / 2, mid - relative * size.height / 2);
+    canvas.drawCircle(center, 6, Paint()..color = ring);
+    canvas.drawCircle(center, 4, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(covariant _BaselinePainter old) =>
+  bool shouldRepaint(covariant _RangePillPainter old) =>
       old.value != value ||
       old.baseline != baseline ||
       old.color != color ||
-      old.line != line;
+      old.tint != tint ||
+      old.track != track ||
+      old.ring != ring;
 }
