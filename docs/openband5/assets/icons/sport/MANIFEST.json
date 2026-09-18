@@ -1,0 +1,21 @@
+{
+  "source": {
+    "lucide": "../lucide (1.33.0)",
+    "custom": "sport/ (OpenBand 5, ISC, drawn on the Lucide 24-grid, 2px round strokes)"
+  },
+  "sports": {
+    "Kraft": "lucide:dumbbell",
+    "Laufen": "lucide:footprints",
+    "Rad": "lucide:bike",
+    "Schwimmen": "lucide:waves",
+    "Wandern": "lucide:mountain-snow",
+    "Intervalle": "lucide:timer",
+    "Gehen": "lucide:footprints",
+    "Yoga": "sport:yoga",
+    "Tennis": "sport:tennis",
+    "Rudern": "sport:rudern",
+    "Fußball": "sport:fussball",
+    "Atmen": "lucide:wind",
+    "Sonstiges": "lucide:activity"
+  }
+}
