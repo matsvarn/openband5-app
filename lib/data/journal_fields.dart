@@ -27,6 +27,10 @@ enum JournalFieldKind {
 
   /// Minutes.
   duration,
+
+  /// Stored 1 (yes) or 0 (no). An ABSENT row is "open", never "no" — the
+  /// distinction B29 requires; a missing answer must not read as a denial.
+  yesNo,
 }
 
 /// One day's value for one field.
@@ -93,6 +97,7 @@ class JournalFieldSpec {
   final bool custom;
 
   bool get isRating => kind == JournalFieldKind.rating;
+  bool get isYesNo => kind == JournalFieldKind.yesNo;
 
   /// Human-readable value, without the unit.
   String format(double v) {
@@ -182,6 +187,30 @@ const kJournalFields = <JournalFieldSpec>[
     max: 20,
     step: 1,
     hasTime: true,
+  ),
+  JournalFieldSpec(
+    key: 'caffeine_late',
+    label: 'Caffeine after 14:00',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
+  ),
+  JournalFieldSpec(
+    key: 'alcohol_evening',
+    label: 'Alcohol in the evening',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
+  ),
+  JournalFieldSpec(
+    key: 'read_before_bed',
+    label: 'Read before bed',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
   ),
   JournalFieldSpec(
     key: 'screens_min',

@@ -86,6 +86,7 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                       ? 'Journal konnte nicht geladen werden.'
                       : _saveError,
                   onMood: (v) => _write('mood', v),
+                  onAnswer: (key, yes) => _write(key, yes ? 1 : 0),
                   onEdit: widget.onEdit,
                 );
               },
@@ -108,6 +109,7 @@ class OBCheckinCard extends StatelessWidget {
   final bool busy;
   final String? error;
   final ValueChanged<double> onMood;
+  final void Function(String key, bool yes) onAnswer;
   final ValueChanged<String>? onEdit;
   const OBCheckinCard({
     super.key,
@@ -116,6 +118,7 @@ class OBCheckinCard extends StatelessWidget {
     required this.busy,
     this.error,
     required this.onMood,
+    required this.onAnswer,
     this.onEdit,
   });
   @override
@@ -183,32 +186,114 @@ class OBCheckinCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          for (final (key, label, icon, format) in [
-            (
-              'caffeine_mg',
-              'Koffein',
-              LucideIcons.coffee,
-              (double v) => '${obNumber(v)} mg',
-            ),
-            (
-              'alcohol_units',
-              'Alkohol',
-              LucideIcons.wine,
-              (double v) => '${obNumber(v, digits: 1)} Einh.',
-            ),
-            (
-              'screens_min',
-              'Bildschirm vor dem Schlafen',
-              LucideIcons.smartphone,
-              (double v) => obGapMinutes(v),
-            ),
+          for (final (key, label, icon) in [
+            ('caffeine_late', 'Koffein nach 14 Uhr', LucideIcons.coffee),
+            ('alcohol_evening', 'Alkohol am Abend', LucideIcons.wine),
+            ('read_before_bed', 'Gelesen', LucideIcons.bookOpen),
           ])
-            _HabitRow(
+            OBHabitRow(
               label: label,
               icon: icon,
-              value: entries[key] == null ? null : format(entries[key]!),
-              onTap: onEdit == null ? null : () => onEdit!(key),
+              answer: switch (entries[key]) {
+                null => null,
+                final v => v >= .5,
+              },
+              busy: busy,
+              onAnswer: (yes) => onAnswer(key, yes),
             ),
+          if (onEdit != null)
+            _HabitRow(
+              label: 'Weitere Angaben',
+              icon: LucideIcons.listPlus,
+              value: switch ([
+                'caffeine_mg',
+                'alcohol_units',
+                'screens_min',
+              ].where(entries.containsKey).length) {
+                0 => null,
+                final n => '$n erfasst',
+              },
+              onTap: () => onEdit!(''),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBHabitRow extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool? answer;
+  final bool busy;
+  final ValueChanged<bool> onAnswer;
+  const OBHabitRow({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.answer,
+    required this.busy,
+    required this.onAnswer,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    Widget pill(String text, bool yes) {
+      final selected = answer == yes;
+      return Semantics(
+        button: true,
+        selected: selected,
+        label: '$label: $text',
+        child: InkWell(
+          onTap: busy ? null : () => onAnswer(yes),
+          borderRadius: BorderRadius.circular(16),
+          child: ExcludeSemantics(
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? p.ink : p.well,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                text,
+                style: p.text(
+                  13,
+                  weight: FontWeight.w600,
+                  color: selected ? p.card : p.ink,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: p.line)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.well,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: p.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: p.text(15, weight: FontWeight.w500)),
+          ),
+          pill('Ja', true),
+          const SizedBox(width: 6),
+          pill('Nein', false),
         ],
       ),
     );

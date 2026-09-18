@@ -82,6 +82,11 @@ class _CustomFieldSheetState extends State<_CustomFieldSheet> {
           _max = durStep * 20;
           _unitCtrl.text = 'min';
           _hasTime = false;
+        case JournalFieldKind.yesNo:
+          _max = 1;
+          _step = 1;
+          _unitCtrl.text = '';
+          _hasTime = false;
       }
     });
   }

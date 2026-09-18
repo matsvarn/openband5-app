@@ -94,7 +94,8 @@ void main() {
     await mount(tester);
     expect(find.text('Journal'), findsOneWidget);
     expect(find.text('Noch keine Antwort'), findsOneWidget);
-    expect(find.text('—'), findsNWidgets(3));
+    expect(find.text('—'), findsOneWidget);
+    expect(find.text('Ja'), findsNWidgets(3));
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -116,12 +117,26 @@ void main() {
     );
   });
 
-  testWidgets('entries show their stored value, absence stays a dash', (
+  testWidgets('yes/no answers persist as 1/0; absence stays open', (
     tester,
   ) async {
     await repo.writeJournal('2026-09-15', 'caffeine_mg', 180);
     await mount(tester);
-    expect(find.text('180 mg'), findsOneWidget);
-    expect(find.text('—'), findsNWidgets(2));
+    expect(find.text('1 erfasst'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Koffein nach 14 Uhr: Ja'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Alkohol am Abend: Nein'));
+    await tester.pumpAndSettle();
+    final byKey = {
+      for (final e in await repo.readJournal('2026-09-15')) e.key: e.value,
+    };
+    expect(byKey['caffeine_late'], 1);
+    expect(byKey['alcohol_evening'], 0);
+    expect(byKey.containsKey('read_before_bed'), isFalse);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/journal-answered.png'),
+    );
   });
 }
