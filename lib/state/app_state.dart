@@ -177,7 +177,7 @@ class AppState extends ChangeNotifier {
   );
 
   /// Profile fed to the analytics (HRmax/calories/TRIMP personalization).
-  Profile get _profile => Profile.fromMap(user);
+  PersonalProfile get _profile => PersonalProfile.fromMap(user);
 
   DeviceState get device => engine.state;
   final DeviceAlerts _deviceAlerts = DeviceAlerts();
@@ -322,7 +322,7 @@ class AppState extends ChangeNotifier {
   static const Duration _backfillInterval = Duration(minutes: 10);
 
   // ── local profile (was server-side; now device-local) ───────────────────────
-  // CLOUD EXCISED: the user's name/sex/age/height/weight + prefs (track_cycle,
+  // CLOUD EXCISED: the user's name/sex/birth date/height/weight + prefs (track_cycle,
   // step_goal, resting_hr…) used to live on the backend behind the JWT. They are
   // now a small LOCAL map persisted in shared_preferences. This is the on-device
   // profile the analytics re-layer will read for personalization. `null` until set.
@@ -330,9 +330,8 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? user;
 
   // ── onboarding choice (new vs existing v2 user) ─────────────────────────────
-  // 'new' | 'existing' | null (not chosen yet → the welcome screen shows). Once
-  // set, the welcome screen never reappears (a returning paired user also skips
-  // it). Persisted so a relaunch mid-onboarding doesn't re-prompt.
+  // Persist the choice across relaunches; going back from first-run pairing
+  // clears it so the welcome screen can be shown again.
   static const String _kOnboard = 'onboarding_choice';
   String? _onboardChoice;
   String? get onboardChoice => _onboardChoice;
@@ -401,6 +400,13 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kOnboard, 'new');
     _onboardChoice = 'new';
+    notifyListeners();
+  }
+
+  Future<void> returnToWelcome() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kOnboard);
+    _onboardChoice = null;
     notifyListeners();
   }
 
@@ -907,9 +913,23 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> updateProfile(
     Map<String, dynamic> fields,
   ) async {
-    user = {...?user, ...fields};
+    final updated = {...?user, ...fields}..remove('age');
+    final value = updated['birth_date'];
+    if (value != null) {
+      final date = parseBirthDate(value);
+      if (date == null || ageOnDate(date, DateTime.now()) == null) {
+        throw const FormatException('Birth date must be a valid past calendar date.');
+      }
+      updated['birth_date'] = birthDateString(date);
+    }
+    final inputsChanged = jsonEncode(PersonalProfile.fromMap(user).toMap()) !=
+        jsonEncode(PersonalProfile.fromMap(updated).toMap());
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kProfile, jsonEncode(user));
+    await prefs.setString(_kProfile, jsonEncode(updated));
+    user = updated;
+    if (inputsChanged && initialized && repo != null) {
+      _deriveScheduler.requestHeavy();
+    }
     notifyListeners();
     return user!;
   }
@@ -2060,6 +2080,127 @@ class AppState extends ChangeNotifier {
   Future<void> clearSleepOverride(String date) async {
     await LocalDb.deleteSleepOverride(date);
     await _reanalyzeForOverride();
+  }
+
+  /// Strict, revision-checked recalculation for the OpenBand correction flow.
+  ///
+  /// Unlike [_reanalyzeForOverride], this never swallows an error or treats a
+  /// coalesced/empty run as success. Completion requires a fresh, complete row
+  /// for exactly [day] at the current algorithm version, while the correction
+  /// revision is still current. A failed run leaves the correction, previous
+  /// result and a durable failed job for retry after relaunch.
+  Future<void> recalculateOpenBandSleepCorrection({
+    required String day,
+    required String correctionId,
+    required int revision,
+  }) async {
+    final current = await LocalDb.openBandSleepCorrection(day);
+    if (current == null ||
+        current['correction_id'] != correctionId ||
+        (current['revision'] as num?)?.toInt() != revision) {
+      throw StateError('Sleep correction is stale.');
+    }
+    if (current['status'] == 'complete') return;
+    final claimed = await LocalDb.updateOpenBandCalculationJob(
+      dayId: day,
+      correctionId: correctionId,
+      revision: revision,
+      status: 'calculating',
+      fromStatuses: const {'pending', 'failed'},
+    );
+    if (!claimed) {
+      throw StateError(
+        'Sleep correction calculation is already running or stale.',
+      );
+    }
+
+    try {
+      final action = current['action']?.toString();
+      final override = await LocalDb.getSleepOverride(day);
+      if (action == 'override') {
+        if (override == null ||
+            override['correction_id'] != correctionId ||
+            (override['revision'] as num?)?.toInt() != revision) {
+          throw StateError('Sleep correction source is no longer current.');
+        }
+      } else if (action == 'automatic' && override != null) {
+        throw StateError('Automatic sleep source was not restored.');
+      }
+
+      final n = await _derive.runDays(
+        _profile,
+        {day},
+        force: true,
+        shouldPersist: (_) async {
+          final latest = await LocalDb.openBandSleepCorrection(day);
+          return latest?['correction_id'] == correctionId &&
+              (latest?['revision'] as num?)?.toInt() == revision;
+        },
+      );
+      if (n != 1) {
+        throw StateError(
+          n == 0
+              ? 'Selected day could not be recalculated from retained source data.'
+              : 'Recalculation did not resolve exactly the selected day.',
+        );
+      }
+      final latestCorrection = await LocalDb.openBandSleepCorrection(day);
+      if (latestCorrection?['correction_id'] != correctionId ||
+          (latestCorrection?['revision'] as num?)?.toInt() != revision) {
+        throw StateError('A newer sleep correction replaced this calculation.');
+      }
+      final result = await LocalDb.dayResult(day);
+      final requestedAt = (current['requested_at'] as num?)?.toInt() ?? 0;
+      final computedAt = (result?['computed_at'] as num?)?.toInt() ?? 0;
+      if (result == null ||
+          (result['algo_version'] as num?)?.toInt() != kAlgoVersion ||
+          result['skipped'] == 1 ||
+          result['partial'] == 1 ||
+          computedAt < requestedAt) {
+        throw StateError(
+          'Recalculation did not produce a fresh complete result.',
+        );
+      }
+      if (action == 'override') {
+        final sleep = await repo?.getDaySleep(day);
+        final expectedOnset = (override?['onset_ts'] as num?)?.toInt();
+        final expectedWake = (override?['offset_ts'] as num?)?.toInt();
+        if (sleep == null ||
+            sleep['has_sleep'] != true ||
+            (sleep['onset_ts'] as num?)?.toInt() != expectedOnset ||
+            (sleep['wake_ts'] as num?)?.toInt() != expectedWake) {
+          throw StateError(
+            'Recalculation did not apply the selected sleep bounds.',
+          );
+        }
+      }
+      final completed = await LocalDb.updateOpenBandCalculationJob(
+        dayId: day,
+        correctionId: correctionId,
+        revision: revision,
+        status: 'complete',
+        resultAlgoVersion: kAlgoVersion,
+        resultComputedAt: computedAt,
+        fromStatuses: const {'calculating'},
+      );
+      if (!completed) {
+        throw StateError('A newer sleep correction won the race.');
+      }
+      await LocalDb.refreshComputeFreshness();
+      bumpInsights();
+    } catch (e) {
+      await LocalDb.updateOpenBandCalculationJob(
+        dayId: day,
+        correctionId: correctionId,
+        revision: revision,
+        status: 'failed',
+        error: e.toString(),
+        fromStatuses: const {'calculating'},
+      );
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
   }
 
   /// Force-derive after a sleep-override change so the affected day restages from
@@ -5710,21 +5851,22 @@ class AppState extends ChangeNotifier {
     // location-denied run, and a resumed non-route session all watched the
     // screen sleep mid-set. Released unconditionally on both teardown paths.
     ScreenWake.enable();
+    final profileAtStart = _profile.forDate(start);
     activeWorkout = LiveWorkoutState(
       startTime: start,
       targetKcal: targetKcal,
       workoutId: id,
       type: type,
-      age: (user?['age'] as num?)?.round(),
+      age: profileAtStart.ageYears,
       // Score against the profile the session is performed under.
-      profile: Profile.fromMap(user),
+      profile: profileAtStart,
       // ...and against the strap performing it. Pinned at start for the same
       // reason the profile is: the link can drop mid-session, and a workout
       // that silently changed zone ceilings halfway through is worse than one
       // scored end-to-end on the band it began on. Null when nothing is
       // linked — unknown provenance, which refuses rather than assuming gen4.
       hrMax: estimatedMaxHr(
-        (user?['age'] as num?),
+        profileAtStart.ageYears,
         engine.linkDeviceFamily,
       ),
       // TS-04 — zones are banded on the MEASURED pair when both exist. The
@@ -5733,7 +5875,7 @@ class AppState extends ChangeNotifier {
       // yields the age-estimate set, which is what this session would have got
       // before TS-03 anyway.
       zoneSet: trainingZones(
-        age: (user?['age'] as num?),
+        age: profileAtStart.ageYears,
         deviceFamily: engine.linkDeviceFamily,
         observedCeilingBpm: _observedCeilingBpm,
         restingHrHistory: _rhr28,
@@ -5927,20 +6069,22 @@ class AppState extends ChangeNotifier {
           resumed = true;
           final startMs = startSec! * 1000;
           final id = row['id'] as String? ?? 'w$startMs';
+          final profileAtStart = _profile.forDate(
+              DateTime.fromMillisecondsSinceEpoch(startSec * 1000));
           activeWorkout = LiveWorkoutState(
             startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
             targetKcal: 300,
             workoutId: id,
             type: (row['type'] as String?) ?? 'other',
-            age: (user?['age'] as num?)?.round(),
-            profile: Profile.fromMap(user),
+            age: profileAtStart.ageYears,
+            profile: profileAtStart,
             // The same ceiling startWorkout pins. Without it the resumed
             // session's idle gate is null, and WorkoutIdleWatch then counts
             // ANY positive reading as active — a forgotten session idling at
             // resting heart rate would never be asked about after a restart,
             // the exact case the watch exists for.
             hrMax: estimatedMaxHr(
-              (user?['age'] as num?),
+              profileAtStart.ageYears,
               engine.linkDeviceFamily,
             ),
             restingHr: _liveRestingHr,

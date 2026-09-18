@@ -255,6 +255,26 @@ void main() {
       expect(h.archives.single.reason, 'undecodable_rec_v99');
     });
 
+    test('a gen5 v26 PIP is archived as identified-unmapped, with rec_ts', () {
+      final ts = _wallNow() - 600;
+      final inner = Uint8List(kGen5V26InnerLen);
+      inner[0] = PacketType.historicalData;
+      inner[1] = Record.r26;
+      inner[2] = 0x80;
+      final view = ByteData.sublistView(inner);
+      view.setUint32(3, 99, Endian.little);
+      view.setUint32(7, ts, Endian.little);
+
+      final h = _Ingest(band: BandProfile.gen5);
+      h.feed(inner);
+
+      expect(h.samples, isEmpty, reason: 'PIP is not a 1 Hz Sample');
+      expect(h.archives, hasLength(1));
+      expect(h.archives.single.reason, 'identified_unmapped_v26');
+      expect(h.archives.single.recTs, ts);
+      expect(h.archives.single.counter, 99);
+    });
+
     test('a gen5 v18 is not routed through the gen4 field map', () {
       // Same version byte, completely different layout. The gen5 branch claims
       // it first; these zeroed bytes are not a valid gen5 v18, so it archives

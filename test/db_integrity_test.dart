@@ -141,7 +141,7 @@ void main() {
     expect(hi, isNot(ts + 1));
   });
 
-  test('prune deletes decoded_rr by rec_ts, keeps recent beats', () async {
+  test('OpenBand retains old and recent decoded beats', () async {
     const oldTs = 1700000000; // strictly before the cutoff below
     final db = await LocalDb.instance;
     // An old beat (its owning row absent — e.g. a leftover) is still deleted by
@@ -160,12 +160,12 @@ void main() {
     final deleted = await LocalDb.pruneDecodedBeforeRecTs(oldTs + 1000);
 
     final old = await db.query('decoded_rr', where: 'rec_ts = ?', whereArgs: [oldTs]);
-    expect(old, isEmpty, reason: 'the pruned window\'s beats must be deleted');
+    expect(old, hasLength(1), reason: 'old source beats remain replayable');
     final kept = await db.query('decoded_rr', where: 'rec_ts = ?', whereArgs: [keepTs]);
     expect(kept.length, 1);
     // used to always come back 0 even when rows genuinely got pruned - none
     // of the txn.delete() counts were ever added up.
-    expect(deleted, greaterThan(0),
+    expect(deleted, 0,
         reason: 'the returned count must reflect the rows actually deleted');
   });
 

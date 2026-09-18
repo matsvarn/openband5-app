@@ -1,0 +1,643 @@
+{
+  "synthetic": true,
+  "purpose": "Separate extended design fixture for the ready journal-insight state; does not replace day-summary.json. Inputs contain independent synthetic variation, no physiological claim.",
+  "method": "scanAssociations, local analytics source, defaults, seed 92",
+  "rows": [
+    {
+      "date": "2026-05-19",
+      "reading": 0.0,
+      "sleep_min": 371.0
+    },
+    {
+      "date": "2026-05-20",
+      "reading": 0.0,
+      "sleep_min": 408.0
+    },
+    {
+      "date": "2026-05-21",
+      "reading": 1.0,
+      "sleep_min": 408.0
+    },
+    {
+      "date": "2026-05-22",
+      "reading": 0.0,
+      "sleep_min": 415.0
+    },
+    {
+      "date": "2026-05-23",
+      "reading": 0.0,
+      "sleep_min": 382.0
+    },
+    {
+      "date": "2026-05-24",
+      "reading": 1.0,
+      "sleep_min": 427.0
+    },
+    {
+      "date": "2026-05-25",
+      "reading": 1.0,
+      "sleep_min": 365.0
+    },
+    {
+      "date": "2026-05-26",
+      "reading": 0.0,
+      "sleep_min": 441.0
+    },
+    {
+      "date": "2026-05-27",
+      "reading": 0.0,
+      "sleep_min": 370.0
+    },
+    {
+      "date": "2026-05-28",
+      "reading": 1.0,
+      "sleep_min": 361.0
+    },
+    {
+      "date": "2026-05-29",
+      "reading": 1.0,
+      "sleep_min": 428.0
+    },
+    {
+      "date": "2026-05-30",
+      "reading": 1.0,
+      "sleep_min": 418.0
+    },
+    {
+      "date": "2026-05-31",
+      "reading": 0.0,
+      "sleep_min": 391.0
+    },
+    {
+      "date": "2026-06-01",
+      "reading": 1.0,
+      "sleep_min": 419.0
+    },
+    {
+      "date": "2026-06-02",
+      "reading": 1.0,
+      "sleep_min": 387.0
+    },
+    {
+      "date": "2026-06-03",
+      "reading": 0.0,
+      "sleep_min": 374.0
+    },
+    {
+      "date": "2026-06-04",
+      "reading": 0.0,
+      "sleep_min": 394.0
+    },
+    {
+      "date": "2026-06-05",
+      "reading": 1.0,
+      "sleep_min": 409.0
+    },
+    {
+      "date": "2026-06-06",
+      "reading": 0.0,
+      "sleep_min": 374.0
+    },
+    {
+      "date": "2026-06-07",
+      "reading": 1.0,
+      "sleep_min": 381.0
+    },
+    {
+      "date": "2026-06-08",
+      "reading": 1.0,
+      "sleep_min": 386.0
+    },
+    {
+      "date": "2026-06-09",
+      "reading": 0.0,
+      "sleep_min": 432.0
+    },
+    {
+      "date": "2026-06-10",
+      "reading": 1.0,
+      "sleep_min": 392.0
+    },
+    {
+      "date": "2026-06-11",
+      "reading": 0.0,
+      "sleep_min": 439.0
+    },
+    {
+      "date": "2026-06-12",
+      "reading": 0.0,
+      "sleep_min": 386.0
+    },
+    {
+      "date": "2026-06-13",
+      "reading": 0.0,
+      "sleep_min": 400.0
+    },
+    {
+      "date": "2026-06-14",
+      "reading": 0.0,
+      "sleep_min": 441.0
+    },
+    {
+      "date": "2026-06-15",
+      "reading": 1.0,
+      "sleep_min": 379.0
+    },
+    {
+      "date": "2026-06-16",
+      "reading": 1.0,
+      "sleep_min": 425.0
+    },
+    {
+      "date": "2026-06-17",
+      "reading": 1.0,
+      "sleep_min": 429.0
+    },
+    {
+      "date": "2026-06-18",
+      "reading": 1.0,
+      "sleep_min": 442.0
+    },
+    {
+      "date": "2026-06-19",
+      "reading": 0.0,
+      "sleep_min": 397.0
+    },
+    {
+      "date": "2026-06-20",
+      "reading": 1.0,
+      "sleep_min": 388.0
+    },
+    {
+      "date": "2026-06-21",
+      "reading": 0.0,
+      "sleep_min": 393.0
+    },
+    {
+      "date": "2026-06-22",
+      "reading": 0.0,
+      "sleep_min": 390.0
+    },
+    {
+      "date": "2026-06-23",
+      "reading": 1.0,
+      "sleep_min": 416.0
+    },
+    {
+      "date": "2026-06-24",
+      "reading": 1.0,
+      "sleep_min": 386.0
+    },
+    {
+      "date": "2026-06-25",
+      "reading": 1.0,
+      "sleep_min": 420.0
+    },
+    {
+      "date": "2026-06-26",
+      "reading": 0.0,
+      "sleep_min": 408.0
+    },
+    {
+      "date": "2026-06-27",
+      "reading": 0.0,
+      "sleep_min": 426.0
+    },
+    {
+      "date": "2026-06-28",
+      "reading": 1.0,
+      "sleep_min": 396.0
+    },
+    {
+      "date": "2026-06-29",
+      "reading": 1.0,
+      "sleep_min": 418.0
+    },
+    {
+      "date": "2026-06-30",
+      "reading": 0.0,
+      "sleep_min": 400.0
+    },
+    {
+      "date": "2026-07-01",
+      "reading": 0.0,
+      "sleep_min": 372.0
+    },
+    {
+      "date": "2026-07-02",
+      "reading": 0.0,
+      "sleep_min": 381.0
+    },
+    {
+      "date": "2026-07-03",
+      "reading": 1.0,
+      "sleep_min": 375.0
+    },
+    {
+      "date": "2026-07-04",
+      "reading": 1.0,
+      "sleep_min": 403.0
+    },
+    {
+      "date": "2026-07-05",
+      "reading": 1.0,
+      "sleep_min": 401.0
+    },
+    {
+      "date": "2026-07-06",
+      "reading": 0.0,
+      "sleep_min": 370.0
+    },
+    {
+      "date": "2026-07-07",
+      "reading": 0.0,
+      "sleep_min": 419.0
+    },
+    {
+      "date": "2026-07-08",
+      "reading": 1.0,
+      "sleep_min": 410.0
+    },
+    {
+      "date": "2026-07-09",
+      "reading": 0.0,
+      "sleep_min": 439.0
+    },
+    {
+      "date": "2026-07-10",
+      "reading": 0.0,
+      "sleep_min": 405.0
+    },
+    {
+      "date": "2026-07-11",
+      "reading": 0.0,
+      "sleep_min": 426.0
+    },
+    {
+      "date": "2026-07-12",
+      "reading": 0.0,
+      "sleep_min": 382.0
+    },
+    {
+      "date": "2026-07-13",
+      "reading": 0.0,
+      "sleep_min": 417.0
+    },
+    {
+      "date": "2026-07-14",
+      "reading": 1.0,
+      "sleep_min": 389.0
+    },
+    {
+      "date": "2026-07-15",
+      "reading": 1.0,
+      "sleep_min": 400.0
+    },
+    {
+      "date": "2026-07-16",
+      "reading": 1.0,
+      "sleep_min": 407.0
+    },
+    {
+      "date": "2026-07-17",
+      "reading": 0.0,
+      "sleep_min": 369.0
+    },
+    {
+      "date": "2026-07-18",
+      "reading": 0.0,
+      "sleep_min": 412.0
+    },
+    {
+      "date": "2026-07-19",
+      "reading": 0.0,
+      "sleep_min": 401.0
+    },
+    {
+      "date": "2026-07-20",
+      "reading": 1.0,
+      "sleep_min": 392.0
+    },
+    {
+      "date": "2026-07-21",
+      "reading": 1.0,
+      "sleep_min": 416.0
+    },
+    {
+      "date": "2026-07-22",
+      "reading": 1.0,
+      "sleep_min": 389.0
+    },
+    {
+      "date": "2026-07-23",
+      "reading": 0.0,
+      "sleep_min": 426.0
+    },
+    {
+      "date": "2026-07-24",
+      "reading": 1.0,
+      "sleep_min": 438.0
+    },
+    {
+      "date": "2026-07-25",
+      "reading": 0.0,
+      "sleep_min": 407.0
+    },
+    {
+      "date": "2026-07-26",
+      "reading": 0.0,
+      "sleep_min": 358.0
+    },
+    {
+      "date": "2026-07-27",
+      "reading": 1.0,
+      "sleep_min": 416.0
+    },
+    {
+      "date": "2026-07-28",
+      "reading": 0.0,
+      "sleep_min": 426.0
+    },
+    {
+      "date": "2026-07-29",
+      "reading": 1.0,
+      "sleep_min": 434.0
+    },
+    {
+      "date": "2026-07-30",
+      "reading": 0.0,
+      "sleep_min": 390.0
+    },
+    {
+      "date": "2026-07-31",
+      "reading": 0.0,
+      "sleep_min": 400.0
+    },
+    {
+      "date": "2026-08-01",
+      "reading": 1.0,
+      "sleep_min": 383.0
+    },
+    {
+      "date": "2026-08-02",
+      "reading": 1.0,
+      "sleep_min": 370.0
+    },
+    {
+      "date": "2026-08-03",
+      "reading": 1.0,
+      "sleep_min": 381.0
+    },
+    {
+      "date": "2026-08-04",
+      "reading": 0.0,
+      "sleep_min": 367.0
+    },
+    {
+      "date": "2026-08-05",
+      "reading": 0.0,
+      "sleep_min": 402.0
+    },
+    {
+      "date": "2026-08-06",
+      "reading": 0.0,
+      "sleep_min": 394.0
+    },
+    {
+      "date": "2026-08-07",
+      "reading": 1.0,
+      "sleep_min": 419.0
+    },
+    {
+      "date": "2026-08-08",
+      "reading": 0.0,
+      "sleep_min": 423.0
+    },
+    {
+      "date": "2026-08-09",
+      "reading": 0.0,
+      "sleep_min": 424.0
+    },
+    {
+      "date": "2026-08-10",
+      "reading": 1.0,
+      "sleep_min": 429.0
+    },
+    {
+      "date": "2026-08-11",
+      "reading": 1.0,
+      "sleep_min": 365.0
+    },
+    {
+      "date": "2026-08-12",
+      "reading": 0.0,
+      "sleep_min": 359.0
+    },
+    {
+      "date": "2026-08-13",
+      "reading": 0.0,
+      "sleep_min": 390.0
+    },
+    {
+      "date": "2026-08-14",
+      "reading": 0.0,
+      "sleep_min": 441.0
+    },
+    {
+      "date": "2026-08-15",
+      "reading": 1.0,
+      "sleep_min": 407.0
+    },
+    {
+      "date": "2026-08-16",
+      "reading": 0.0,
+      "sleep_min": 374.0
+    },
+    {
+      "date": "2026-08-17",
+      "reading": 0.0,
+      "sleep_min": 369.0
+    },
+    {
+      "date": "2026-08-18",
+      "reading": 0.0,
+      "sleep_min": 376.0
+    },
+    {
+      "date": "2026-08-19",
+      "reading": 1.0,
+      "sleep_min": 418.0
+    },
+    {
+      "date": "2026-08-20",
+      "reading": 1.0,
+      "sleep_min": 432.0
+    },
+    {
+      "date": "2026-08-21",
+      "reading": 0.0,
+      "sleep_min": 409.0
+    },
+    {
+      "date": "2026-08-22",
+      "reading": 0.0,
+      "sleep_min": 412.0
+    },
+    {
+      "date": "2026-08-23",
+      "reading": 0.0,
+      "sleep_min": 370.0
+    },
+    {
+      "date": "2026-08-24",
+      "reading": 0.0,
+      "sleep_min": 368.0
+    },
+    {
+      "date": "2026-08-25",
+      "reading": 1.0,
+      "sleep_min": 422.0
+    },
+    {
+      "date": "2026-08-26",
+      "reading": 0.0,
+      "sleep_min": 403.0
+    },
+    {
+      "date": "2026-08-27",
+      "reading": 0.0,
+      "sleep_min": 374.0
+    },
+    {
+      "date": "2026-08-28",
+      "reading": 0.0,
+      "sleep_min": 359.0
+    },
+    {
+      "date": "2026-08-29",
+      "reading": 1.0,
+      "sleep_min": 381.0
+    },
+    {
+      "date": "2026-08-30",
+      "reading": 1.0,
+      "sleep_min": 397.0
+    },
+    {
+      "date": "2026-08-31",
+      "reading": 0.0,
+      "sleep_min": 395.0
+    },
+    {
+      "date": "2026-09-01",
+      "reading": 1.0,
+      "sleep_min": 399.0
+    },
+    {
+      "date": "2026-09-02",
+      "reading": 0.0,
+      "sleep_min": 429.0
+    },
+    {
+      "date": "2026-09-03",
+      "reading": 0.0,
+      "sleep_min": 376.0
+    },
+    {
+      "date": "2026-09-04",
+      "reading": 0.0,
+      "sleep_min": 392.0
+    },
+    {
+      "date": "2026-09-05",
+      "reading": 1.0,
+      "sleep_min": 432.0
+    },
+    {
+      "date": "2026-09-06",
+      "reading": 1.0,
+      "sleep_min": 428.0
+    },
+    {
+      "date": "2026-09-07",
+      "reading": 1.0,
+      "sleep_min": 394.0
+    },
+    {
+      "date": "2026-09-08",
+      "reading": 1.0,
+      "sleep_min": 432.0
+    },
+    {
+      "date": "2026-09-09",
+      "reading": 1.0,
+      "sleep_min": 368.0
+    },
+    {
+      "date": "2026-09-10",
+      "reading": 1.0,
+      "sleep_min": 397.0
+    },
+    {
+      "date": "2026-09-11",
+      "reading": 0.0,
+      "sleep_min": 387.0
+    },
+    {
+      "date": "2026-09-12",
+      "reading": 0.0,
+      "sleep_min": 364.0
+    },
+    {
+      "date": "2026-09-13",
+      "reading": 0.0,
+      "sleep_min": 432.0
+    },
+    {
+      "date": "2026-09-14",
+      "reading": 1.0,
+      "sleep_min": 358.0
+    },
+    {
+      "date": "2026-09-15",
+      "reading": 1.0,
+      "sleep_min": 408.0
+    }
+  ],
+  "present": true,
+  "result": {
+    "findings": [],
+    "tested": [
+      {
+        "input": "reading",
+        "input_label": "Abends gelesen",
+        "input_unit": "",
+        "outcome": "tst_min",
+        "outcome_label": "Schlafdauer",
+        "outcome_unit": "min",
+        "lag_days": 1,
+        "rho": 0.039859,
+        "rho_raw": 0.083337,
+        "n": 119,
+        "input_coverage": 1.0,
+        "p": 0.557,
+        "q": 0.557,
+        "contrast": 3.5,
+        "low_cut": 0.0,
+        "high_cut": 1.0,
+        "n_low": 64,
+        "n_high": 55,
+        "outcome_median": 400.0,
+        "split": "tertile",
+        "caveats": [
+          "self_reported_input"
+        ],
+        "meaningful": false
+      }
+    ],
+    "refusals": [],
+    "span_days": 120,
+    "tests_run": 1,
+    "fdr_alpha": 0.1
+  }
+}

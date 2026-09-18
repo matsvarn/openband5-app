@@ -4596,12 +4596,25 @@ class BleEngine {
     int counter, {
     required String reason,
   }) {
+    int? recTs;
+    try {
+      final g = parseGen5Historical(frame.inner);
+      if (g != null && g.unix > 0) recTs = g.unix;
+    } catch (_) {}
+    if (recTs == null) {
+      recTs = LocalDb.decodeRecTs(
+        _innerHex(frame.inner),
+        fallbackSec: 0,
+      );
+      if (recTs <= 0) recTs = null;
+    }
     final archive = ArchiveRecord(
       counter: counter,
       hex: _innerHex(frame.inner),
       packetType: frame.inner.isNotEmpty ? frame.inner[0] : 0,
       capturedAt: DateTime.now().millisecondsSinceEpoch,
       reason: reason,
+      recTs: recTs,
     );
     final d = _drain;
     if (d != null) {
@@ -4798,7 +4811,7 @@ class BleEngine {
       _archiveHistoricalFrame(
         frame,
         counter,
-        reason: 'undecodable_rec_v$recType',
+        reason: archiveReasonForHistoricalVersion(recType),
       );
       return;
     }
@@ -4901,19 +4914,26 @@ class BleEngine {
         onState(state);
       }
     }
-    if (f.containsKey('charging')) {
-      state.charging = f['charging'] as bool;
-      // Carry the EVENT's own strap timestamp alongside the flag. The strap
-      // dumps its buffered event log on connect and re-sends events it has
-      // already delivered, so a chargingOn frame is not evidence that the puck
-      // went on just now — only its timestamp is. Consumers that treat the
-      // transition as live (DeviceAlerts) gate on this; see #179.
-      state.chargingTs = (f['ts_epoch'] as num?)?.toInt();
-      onState(state);
-    }
-    if (f.containsKey('on_wrist')) {
-      state.wristOn = f['on_wrist'] as bool;
-      onState(state);
+    if (f.containsKey('charging') || f.containsKey('on_wrist')) {
+      // Same reconnect-dump hazard as battery %: the strap re-serves its
+      // buffered event log on connect. April 2026 WRIST/CHARGING rows on the
+      // first WHOOP 5 pair set live wristOn with no age check. Alerts already
+      // had chargingTs; the live flags did not.
+      final eventTs = (f['ts_epoch'] as num?)?.toInt();
+      final wallNow = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final live = BatteryPolicy.acceptsEventReading(
+        eventTs == null || eventTs <= 0 ? null : eventTs,
+        wallNow,
+      );
+      if (f.containsKey('charging') && live) {
+        state.charging = f['charging'] as bool;
+        state.chargingTs = eventTs;
+        onState(state);
+      }
+      if (f.containsKey('on_wrist') && live) {
+        state.wristOn = f['on_wrist'] as bool;
+        onState(state);
+      }
     }
     if (f.containsKey('clock_epoch')) {
       _absorbClockEpoch(f['clock_epoch'] as int);

@@ -22,7 +22,7 @@ Widget _frame(Widget child) => MaterialApp(
 const _initial = {
   'name': 'Sahil',
   'sex': 'm',
-  'age': 34,
+  'birth_date': '1992-01-01',
   'height_cm': 178.0,
   'weight_kg': 72.4,
 };
@@ -60,7 +60,7 @@ void main() {
           onImport: () async => (
             'Updated weight from the store.',
             false,
-            {..._initial, 'weight_kg': 70.1, 'age': 35},
+            {..._initial, 'weight_kg': 70.1, 'birth_date': '1991-02-03'},
           ),
         ));
 
@@ -73,7 +73,7 @@ void main() {
     // What arrived is on screen, in the field it belongs to — not just in a
     // confirmation line claiming it.
     expect(find.widgetWithText(TextField, '70.1'), findsOneWidget);
-    expect(find.widgetWithText(TextField, '35'), findsOneWidget);
+    expect(find.text('02/03/1991'), findsOneWidget);
     expect(find.text('Updated weight from the store.'), findsOneWidget);
     // Same control, second verb.
     expect(find.textContaining('Refresh from '), findsOneWidget);
@@ -95,5 +95,29 @@ void main() {
     // Nothing was read, so nothing is there to refresh.
     expect(find.textContaining('Import from '), findsOneWidget);
     expect(find.textContaining('Refresh from '), findsNothing);
+  });
+
+  testWidgets('a saved birth date can be cleared explicitly', (t) async {
+    Map<String, dynamic>? saved;
+    await pump(t, EditProfileView(
+      initial: _initial,
+      onSave: (fields) async => saved = fields,
+    ));
+    expect(find.text('01/01/1992'), findsOneWidget);
+    await t.tap(find.byTooltip('Clear birth date'));
+    await t.pumpAndSettle();
+    expect(find.text('Select birth date'), findsOneWidget);
+    await t.tap(find.text('Save'));
+    expect(saved!['birth_date'], isNull);
+    expect(saved, isNot(contains('age')));
+  });
+
+  testWidgets('legacy age does not prefill an invented birthday', (t) async {
+    await pump(t, EditProfileView(
+      initial: const {'age': 34},
+      onSave: (_) async {},
+    ));
+    expect(find.text('Select birth date'), findsOneWidget);
+    expect(find.text('34'), findsNothing);
   });
 }

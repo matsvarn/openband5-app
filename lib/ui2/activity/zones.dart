@@ -80,7 +80,7 @@ class ZonesData {
   /// session yet" — is the reason. Null means nothing said why.
   final String? ceilingNote;
 
-  /// The age on file. Null is the ONE case where "Add your age in Profile" is
+  /// The age on file. Null is the ONE case where "Add your birth date in Profile" is
   /// a real instruction — the screen used to offer it unconditionally, and the
   /// measured run printed it to a user whose age was set, so following it did
   /// nothing at all.
@@ -290,7 +290,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
   Widget _zones(P p, AppLocalizations? l, ZonesData d) {
     if (d.zones.isEmpty) {
       // THE REPOSITORY'S REASON, or none. This card used to name one — no age
-      // — and offer "Add your age in Profile" as the fix, on a screen whose own
+      // — and offer "Add your birth date in Profile" as the fix, on a screen whose own
       // payload carries the age. The age was set, the button led to a filled-in
       // field, and nothing changed. It is offered now only when the age really
       // is missing, which is the only state in which it does anything.
@@ -305,7 +305,7 @@ class _ZonesDetailState extends State<ZonesDetail> {
                         'without your age there is nothing to take a percentage of.')
                 : (l?.activityZonesNoZonesDefaultBody ??
                     'Nothing recorded says why there are no zone edges yet.')),
-        fix: noAge ? (l?.activityZonesAddAgeFix ?? 'Add your age in Profile') : '',
+        fix: noAge ? (l?.activityZonesAddAgeFix ?? 'Add your birth date in Profile') : '',
         icon: LucideIcons.activity,
       );
     }

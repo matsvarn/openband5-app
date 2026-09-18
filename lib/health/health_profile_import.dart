@@ -18,6 +18,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
 
+import '../compute/profile.dart';
+
 /// What a read found. Every field is nullable: an empty health store, a denied
 /// permission and a never-recorded metric are all "we don't know", and none of
 /// them may become a number.
@@ -26,13 +28,13 @@ class HealthProfileSnapshot {
   const HealthProfileSnapshot({
     this.weightKg,
     this.heightCm,
-    this.ageYears,
+    this.birthDate,
     this.sex,
   });
 
   final double? weightKg;
   final double? heightCm;
-  final int? ageYears;
+  final DateTime? birthDate;
 
   /// 'm' | 'f', matching the local profile map. Null for unset or for a value
   /// HealthKit reports as "other" — the formulas that read this have exactly
@@ -41,14 +43,14 @@ class HealthProfileSnapshot {
   final String? sex;
 
   bool get isEmpty =>
-      weightKg == null && heightCm == null && ageYears == null && sex == null;
+      weightKg == null && heightCm == null && birthDate == null && sex == null;
 
   /// Field names that were found, for a "read your weight and height" message
   /// that says what actually happened.
   List<String> get found => [
     if (weightKg != null) 'weight',
     if (heightCm != null) 'height',
-    if (ageYears != null) 'age',
+    if (birthDate != null) 'birth date',
     if (sex != null) 'sex',
   ];
 }
@@ -58,20 +60,19 @@ class HealthProfileSnapshot {
 /// The rule differs per field, deliberately:
 ///   weight, height — the health store WINS. They change, and keeping them
 ///   current is the entire point of the feature.
-///   age, sex — only fill a GAP. Neither drifts, so a value already in the
-///   profile is a deliberate choice by the user, and overwriting it from
-///   another app's record would be presumptuous. Age is also the one the user
-///   is most likely to have entered as an approximation on purpose.
+///   birth date, sex — only fill a gap; preserve an explicitly entered value.
 ///
 /// Pure, so the policy is testable without a health store.
 Map<String, dynamic> mergeHealthProfile(
   Map<String, dynamic>? existing,
   HealthProfileSnapshot snap,
 ) {
-  final out = Map<String, dynamic>.from(existing ?? const {});
+  final out = Map<String, dynamic>.from(existing ?? const {})..remove('age');
   if (snap.weightKg != null) out['weight_kg'] = snap.weightKg;
   if (snap.heightCm != null) out['height_cm'] = snap.heightCm;
-  if (snap.ageYears != null && out['age'] == null) out['age'] = snap.ageYears;
+  if (snap.birthDate != null && parseBirthDate(out['birth_date']) == null) {
+    out['birth_date'] = birthDateString(snap.birthDate!);
+  }
   if (snap.sex != null && out['sex'] == null) out['sex'] = snap.sex;
   return out;
 }
@@ -88,7 +89,7 @@ List<String> healthProfileChanges(
   const labels = {
     'weight_kg': 'weight',
     'height_cm': 'height',
-    'age': 'age',
+    'birth_date': 'birth date',
     'sex': 'sex',
   };
   return [
@@ -198,7 +199,7 @@ class HealthProfileImporter {
     // The plugin normalises HEIGHT to METRES; the profile stores centimetres.
     final heightM = numeric(HealthDataType.HEIGHT);
 
-    int? age;
+    DateTime? birthDate;
     final dob = newest(HealthDataType.BIRTH_DATE)?.value;
     if (dob is NumericHealthValue) {
       // SECONDS, not milliseconds. The plugin's iOS side sends
@@ -211,13 +212,10 @@ class HealthProfileImporter {
       final born = DateTime.fromMillisecondsSinceEpoch(
         (dob.numericValue.toDouble() * 1000).round(),
       );
-      var years = now.year - born.year;
-      // Not yet had this year's birthday.
-      if (now.month < born.month ||
-          (now.month == born.month && now.day < born.day)) {
-        years--;
+      final date = DateTime(born.year, born.month, born.day);
+      if (!date.isAfter(DateTime(now.year, now.month, now.day))) {
+        birthDate = date;
       }
-      if (years > 0 && years < 120) age = years;
     }
 
     // HKBiologicalSex raw values: 0 notSet, 1 female, 2 male, 3 other. Only 1
@@ -239,7 +237,7 @@ class HealthProfileImporter {
       heightCm: (heightM != null && heightM > 0.5 && heightM < 2.6)
           ? heightM * 100
           : null,
-      ageYears: age,
+      birthDate: birthDate,
       sex: sex,
     );
   }

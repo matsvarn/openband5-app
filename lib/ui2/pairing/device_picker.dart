@@ -50,6 +50,9 @@ import '../profile/pair_sensor.dart' show PairSensorScreen;
 import '../profile/profile.dart' show SetRow;
 
 class DevicePickerScreen extends StatefulWidget {
+  final VoidCallback? onBack;
+  final VoidCallback? onPaired;
+
   /// Walk past pairing entirely. Non-null only at true first-run onboarding
   /// — a re-pair or add-a-sensor push always has a screen underneath to pop
   /// back to, so it needs no separate way out.
@@ -61,7 +64,13 @@ class DevicePickerScreen extends StatefulWidget {
   /// not something to offer beside a chest strap in the same list.
   final bool includeBand;
 
-  const DevicePickerScreen({super.key, this.onSkip, this.includeBand = true});
+  const DevicePickerScreen({
+    super.key,
+    this.onBack,
+    this.onPaired,
+    this.onSkip,
+    this.includeBand = true,
+  });
 
   @override
   State<DevicePickerScreen> createState() => _DevicePickerScreenState();
@@ -188,10 +197,10 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
   /// A category or brand row, tapped deliberately rather than found live.
   Future<void> _openEntry(BandEntry entry) async {
     if (entry.isFramed) {
-      await Navigator.of(context).push(MaterialPageRoute<void>(
+      final paired = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
         builder: (_) => const PairingScreen(),
       ));
-      if (mounted) await _afterPair();
+      if (mounted && paired == true) widget.onPaired?.call();
       return;
     }
     // `.where(...).firstOrNull`, never `firstWhere`: the category list comes
@@ -214,11 +223,8 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
   }
 
   Future<void> _afterPair() async {
-    // Neither sub-flow tells AppState a `device` row changed underneath it.
+    // Sensor pairing writes its device row outside AppState.
     if (mounted) await context.read<AppState>().refreshSensors();
-    // A framed pair changes `AppState.isPaired`, which nothing here watches
-    // directly — the screen that pushed us (the onboarding gate, or
-    // `RePair`'s own post-frame pop) reacts to that on its own.
   }
 
   bool _matches(String label, String sub) {
@@ -256,6 +262,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       onScan: _scan,
       onPickNearby: _pickNearby,
       onOpenEntry: _openEntry,
+      onBack: widget.onBack,
       onSkip: widget.onSkip,
     );
   }
@@ -376,6 +383,7 @@ class DevicePickerView extends StatelessWidget {
   final VoidCallback? onScan;
   final void Function(BandCandidate)? onPickNearby;
   final void Function(BandEntry)? onOpenEntry;
+  final VoidCallback? onBack;
   final VoidCallback? onSkip;
 
   const DevicePickerView({
@@ -392,6 +400,7 @@ class DevicePickerView extends StatelessWidget {
     this.onScan,
     this.onPickNearby,
     this.onOpenEntry,
+    this.onBack,
     this.onSkip,
   });
 
@@ -406,7 +415,7 @@ class DevicePickerView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(title),
+            child: NavBar(title, onBack: onBack),
           ),
           Expanded(
             child: ListView(

@@ -1612,7 +1612,17 @@ import 'substrate.dart';
 // had) in exactly the shape that kept "readiness —" live for three releases.
 // kAnalyticsPin/kProtocolPin are UNCHANGED: M5 touches no analytics or
 // protocol code.
-const int kAlgoVersion = 87;
+// 87 → 88: resolve profile age from birth date for each recorded day/workout.
+// Legacy numeric ages no longer supply calculation inputs. Sibling pins unchanged.
+// 88 → 89: generation-first raw replay. Identified Gen5 deep buffers are
+// refused instead of falling through to Gen4 R24, while Gen5 v18 maps through
+// its typed decoder. This removes fabricated replay samples; pins unchanged.
+// 89 → 90: WHOOP 5 capture package. Auto-naps that start in the nocturnal
+// band are not credited to the prior calendar day (they are the next wake
+// day's main night). HR-led sleep fallback waits until the wake morning is
+// in the substrate, so a mid-drain truncated night is not banked. Pins
+// unchanged.
+const int kAlgoVersion = 90;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -2262,7 +2272,7 @@ class DerivationEngine {
   /// [force]=true recomputes EVERY non-finalized day regardless of the cursor.
   /// Re-entrant calls are coalesced. Returns the number of days computed.
   Future<int> run(
-    Profile profile, {
+    PersonalProfile profile, {
     bool heavy = false,
     bool force = false,
     void Function(String day, int index, int total)? onDayDone,
@@ -2306,7 +2316,15 @@ class DerivationEngine {
     } catch (_) {}
 
     try {
-      final scope = await _deriveScope(heavy: heavy, force: force);
+      final profileSignature = jsonEncode(profile.toMap());
+      final profileChanged =
+          await LocalDb.getCursor('derived_profile_signature') != profileSignature;
+      if (profileChanged) {
+        heavy = true;
+        _diag['mode'] = 'profile-change';
+      }
+      final scope = await _deriveScope(
+        heavy: heavy, force: force, revisitFinalized: profileChanged);
       _diag
         ..['scope_days'] = scope.targetDays.length
         ..['scope_reason'] = scope.reason;
@@ -2327,7 +2345,7 @@ class DerivationEngine {
       };
       final todoDays = [
         for (final day in scope.targetDays)
-          if (!finalized.contains(day) || overrideDays.contains(day)) day,
+          if (profileChanged || !finalized.contains(day) || overrideDays.contains(day)) day,
       ];
       if (todoDays.isEmpty) {
         _log('derive: all days finalized — nothing to do');
@@ -2387,6 +2405,10 @@ class DerivationEngine {
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
             await _derivePreparedDay(prepared, profile, dataNowSec, history);
+            if (profileChanged) {
+              final result = await LocalDb.dayResult(dayId);
+              if (result == null || result['partial'] == 1) failures++;
+            }
             done++;
             _diag['done_days'] = done;
           } else {
@@ -2459,6 +2481,10 @@ class DerivationEngine {
           );
         }
       }
+      if (profileChanged && failures == 0 &&
+          scope.rawDays.every(scope.targetDays.contains)) {
+        await LocalDb.setCursor('derived_profile_signature', profileSignature);
+      }
       return done;
     } catch (e, st) {
       _diag['last_error'] = '$e';
@@ -2514,10 +2540,11 @@ class DerivationEngine {
   }
 
   Future<int> runDays(
-    Profile profile,
+    PersonalProfile profile,
     Set<String> days, {
     bool force = true,
     void Function(String day, int index, int total)? onDayDone,
+    Future<bool> Function(String day)? shouldPersist,
   }) async {
     if (days.isEmpty) return 0;
     if (_running) return 0;
@@ -2578,7 +2605,13 @@ class DerivationEngine {
           final prepared = await _prepareTargetDay(dayId);
           if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDay(prepared, profile, dataNowSec, history);
+            await _derivePreparedDay(
+              prepared,
+              profile,
+              dataNowSec,
+              history,
+              shouldPersist: shouldPersist,
+            );
             done++;
             _diag['done_days'] = done;
           } else {
@@ -2649,6 +2682,8 @@ class DerivationEngine {
     // diagnostics (never a correctness issue for the derived VALUES — this
     // is telemetry-only). Each day now gets its own local accumulator,
     // merged into the shared running max exactly once, below.
+    final correction = await LocalDb.openBandSleepCorrection(dayId);
+    final correctionRevision = (correction?['revision'] as num?)?.toInt() ?? 0;
     final stats = _PrepareStats();
     final candidate = await _sleepCandidateForDay(dayId, stats: stats);
     final dayStart = _localDayLabelToSec(dayId);
@@ -2711,6 +2746,7 @@ class DerivationEngine {
       _diag['max_day_raw_rows'] = stats.rows;
     }
     return candidate.toPreparedDay(
+      sleepCorrectionRevision: correctionRevision,
       daySub: daySub,
       napSub: napSub,
       sleepSub: sleepSub,
@@ -3360,6 +3396,7 @@ class DerivationEngine {
   Future<_DeriveScope> _deriveScope({
     required bool heavy,
     required bool force,
+    bool revisitFinalized = false,
   }) async {
     final rawByDay = await LocalDb.decodedRecTsMaxByDay();
     if (rawByDay.isEmpty) {
@@ -3386,7 +3423,7 @@ class DerivationEngine {
     final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
     var pending = [
       for (final day in rawDays)
-        if (!finalized.contains(day)) day,
+        if (revisitFinalized || !finalized.contains(day)) day,
     ];
 
     // decodedRecTsMaxByDay() buckets by the CURRENT device timezone, but
@@ -3529,7 +3566,7 @@ class DerivationEngine {
   /// Re-entrant calls are coalesced (shares the `_running` guard with run()).
   /// Best-effort: returns the number of days re-derived (0 on skip/empty/error).
   Future<int> rescanRecent(
-    Profile profile, {
+    PersonalProfile profile, {
     void Function(String day, int index, int total)? onDayDone,
   }) async {
     if (_running) return 0;
@@ -3700,7 +3737,7 @@ class DerivationEngine {
   /// call [finalizeImport] once after all windows.
   Future<int> deriveImportedDays(
     Substrate sub,
-    Profile profile,
+    PersonalProfile profile,
     Set<String> dates, {
     void Function(String day)? onDayDone,
   }) async {
@@ -3742,7 +3779,7 @@ class DerivationEngine {
   /// holding it here would make this method skip its own first step. The rollup
   /// and notification passes below write one artifact each (last write wins,
   /// and the artifact is version/day stamped), so they are safe to interleave.
-  Future<void> finalizeImport(Profile profile) async {
+  Future<void> finalizeImport(PersonalProfile profile) async {
     await _refreshBaselines();
     await _runCrossDay(profile);
     await _runNotifications();
@@ -3753,7 +3790,7 @@ class DerivationEngine {
   Future<void> _deriveDay(
     Substrate sub,
     PhysioDay day,
-    Profile profile,
+    PersonalProfile profile,
     int dataNowSec, {
     bool forceFinalize = false,
   }) async {
@@ -3807,11 +3844,13 @@ class DerivationEngine {
 
   Future<void> _derivePreparedDay(
     PreparedDerivationDay day,
-    Profile profile,
+    PersonalProfile personalProfile,
     int dataNowSec,
     _BaselineHistoryCache history, {
     bool forceFinalize = false,
+    Future<bool> Function(String day)? shouldPersist,
   }) async {
+    final profile = personalProfile.forDate(DateTime.parse(day.date));
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
     // Per-second 4-class stage labels (the single source): 'wake'|'light'|
@@ -4369,7 +4408,21 @@ class DerivationEngine {
     final scalars =
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
     double? sc(String k) => (scalars[k] as num?)?.toDouble();
+    // A correction may be edited while isolate work is in flight. Check its
+    // durable revision at the last possible point so an older calculation
+    // cannot replace the newer correction's previous result. A strict selected
+    // correction also never persists a partial pass: failure must retain the
+    // prior complete result, not replace it with a thinner one.
+    if (shouldPersist != null) {
+      if (!secondHalfOk || effectivePartial) {
+        throw StateError('strict derivation was partial for ${day.date}');
+      }
+      if (!await shouldPersist(day.date)) {
+        throw StateError('derivation revision is stale for ${day.date}');
+      }
+    }
     await LocalDb.putDayResult(
+      expectedSleepCorrectionRevision: day.sleepCorrectionRevision,
       dayId: day.date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),
@@ -4796,14 +4849,14 @@ class DerivationEngine {
     return builtFor is String && builtFor.isNotEmpty && builtFor == today;
   }
 
-  Future<void> _runCrossDay(Profile profile) async {
+  Future<void> _runCrossDay(PersonalProfile profile) async {
     try {
       final days = await _crossDayInputDays();
       if (days.length < 3) {
         _log('crossday: only ${days.length} usable day(s) — skip');
         return;
       }
-      final profileMap = profile.toMap();
+      final profileMap = profile.forDate(DateTime.parse(LocalDb.localDayLabelNow())).toMap();
       // Her own logged cycle starts. Read on the DB-owning isolate (sqflite),
       // passed in as plain strings so the bundle stays pure. Only `start`
       // markers — the other kinds are not what a cycle is counted from.
@@ -5347,6 +5400,11 @@ class DerivationEngine {
   ///     why a workout's average HR is written into the bundle (it was once
   ///     re-derived lazily and vanished the moment its substrate aged out).
   Future<void> _pruneOldDecoded(List<String> rawDayIds, int dataNowSec) async {
+    // OpenBand's initial correction/evaluation milestone keeps every original
+    // input. This explicit policy also prevents raw_archive v20 thinning in
+    // LocalDb; storage growth is intentionally unbounded until the user-facing
+    // archive/export policy can make deletion an informed choice.
+    if (LocalDb.retainOriginalSourceByDefault) return;
     final derivedIds = await LocalDb.dayResultIds(kAlgoVersion);
     final cutoffSec = rawPruneCutoffSec(
       dataNowSec: dataNowSec,
@@ -7416,8 +7474,17 @@ class DerivationEngine {
         if (leadingEdgeOwnedByYesterday && nap.startsAtRecordEdge) {
           return false;
         }
+        final napStart = t0 + nap.startSec;
+        // Daytime naps only. A bout that starts at/after 20:00 local is
+        // tonight's sleep, attributed to the wake day — not yesterday's nap.
+        // The first WHOOP 5 capture stored 23:45–00:51 as a 66 min nap on
+        // the pairing day, double-counting the next main night.
+        if (attributionStartSec != null &&
+            napStart >= attributionStartSec + kNocturnalNapStartSec) {
+          return false;
+        }
         if (attributionEndSec == null) return true;
-        return t0 + nap.startSec < attributionEndSec;
+        return napStart < attributionEndSec;
       }).toList();
 
       // The detector's answer is a PROPOSAL. The user's edits — a nap it

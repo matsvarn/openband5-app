@@ -1,0 +1,25 @@
+{
+  "synthetic": true,
+  "variant": "Illustrative ausreichende persönliche Historie; getrennt von day-summary.json",
+  "snapshot": "2026-09-15T07:42:00+02:00",
+  "inputs": {
+    "baselineNeedSec": 28800,
+    "sleepDebtSec": 1800,
+    "dayStrain": 1.6,
+    "napCreditSec": 0,
+    "typicalWakeMinOfDay": 420,
+    "typicalEfficiencyPct": 95
+  },
+  "outputs": {
+    "need_seconds": 30805.714285714286,
+    "bedtime_minute": 1319.548872180451,
+    "wake_minute": 420.0
+  },
+  "display": {
+    "sleep_need": "8h33",
+    "strain_bonus": "+3 Min.",
+    "bedtime": "ca. 22:00",
+    "in_bed": "ca. 9h"
+  },
+  "proof": "Dart sleepNeed/recommendedBedtime/recommendedWake executed 2026-09-16. Inputs supplied directly; no upstream OSD/debt pipeline, hardware or physiological validation."
+}

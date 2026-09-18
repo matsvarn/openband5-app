@@ -179,7 +179,7 @@ void main() {
 
       final app = AppState.forTesting();
       addTearDown(app.dispose);
-      app.user = {'age': 30};
+      app.user = {'birth_date': '${DateTime.now().year - 31}-12-31'};
       await app.debugReconcileOrphanedLiveWorkout();
 
       expect(app.activeWorkout?.hrMax, closeTo(208.0 - 0.7 * 30, 1e-9),

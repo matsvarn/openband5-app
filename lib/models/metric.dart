@@ -186,7 +186,7 @@ final _noteInput = RegExp(r'name=([a-z0-9_]+)');
 /// through to null and the card says it does not know — which is correct, and
 /// is the only safe default for a key added after this map was written.
 const _inputWhy = {
-  'age': 'Your age is not on file, and this is worked out from it.',
+  'age': 'Add your birth date in Profile to calculate your age for this recording.',
   'weight_kg': 'Your weight is not on file, and this is worked out from it.',
   'height_cm': 'Your height is not on file, and this is worked out from it.',
   'sex': 'Your sex is not on file, and the formula behind this needs it.',

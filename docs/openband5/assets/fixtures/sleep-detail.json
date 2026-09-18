@@ -1,0 +1,186 @@
+{
+  "synthetic": true,
+  "day": "2026-09-15",
+  "night": "2026-09-14/2026-09-15",
+  "timezone": "Europe/Berlin",
+  "start": "23:10",
+  "end": "06:54",
+  "phase_segments": [
+    {
+      "stage": "awake",
+      "start_min": 0,
+      "end_min": 5,
+      "minutes": 5
+    },
+    {
+      "stage": "light",
+      "start_min": 5,
+      "end_min": 60,
+      "minutes": 55
+    },
+    {
+      "stage": "deep",
+      "start_min": 60,
+      "end_min": 102,
+      "minutes": 42
+    },
+    {
+      "stage": "light",
+      "start_min": 102,
+      "end_min": 140,
+      "minutes": 38
+    },
+    {
+      "stage": "rem",
+      "start_min": 140,
+      "end_min": 170,
+      "minutes": 30
+    },
+    {
+      "stage": "light",
+      "start_min": 170,
+      "end_min": 232,
+      "minutes": 62
+    },
+    {
+      "stage": "awake",
+      "start_min": 232,
+      "end_min": 240,
+      "minutes": 8
+    },
+    {
+      "stage": "light",
+      "start_min": 240,
+      "end_min": 270,
+      "minutes": 30
+    },
+    {
+      "stage": "deep",
+      "start_min": 270,
+      "end_min": 296,
+      "minutes": 26
+    },
+    {
+      "stage": "light",
+      "start_min": 296,
+      "end_min": 332,
+      "minutes": 36
+    },
+    {
+      "stage": "rem",
+      "start_min": 332,
+      "end_min": 382,
+      "minutes": 50
+    },
+    {
+      "stage": "light",
+      "start_min": 382,
+      "end_min": 408,
+      "minutes": 26
+    },
+    {
+      "stage": "rem",
+      "start_min": 408,
+      "end_min": 451,
+      "minutes": 43
+    },
+    {
+      "stage": "awake",
+      "start_min": 451,
+      "end_min": 464,
+      "minutes": 13
+    }
+  ],
+  "totals": {
+    "bed_minutes": 464,
+    "sleep_minutes": 438,
+    "awake": 26,
+    "rem": 123,
+    "light": 247,
+    "deep": 68,
+    "sleep_efficiency_pct": 94.39655172413794
+  },
+  "sample_offsets_min": [
+    0,
+    30,
+    60,
+    90,
+    120,
+    150,
+    180,
+    210,
+    240,
+    270,
+    300,
+    330,
+    360,
+    390,
+    420,
+    464
+  ],
+  "series": {
+    "hr": [
+      62,
+      60,
+      58,
+      57,
+      55,
+      56,
+      58,
+      61,
+      56,
+      54,
+      55,
+      57,
+      54,
+      56,
+      59,
+      61
+    ],
+    "hrv": [
+      null,
+      43,
+      46,
+      null,
+      50,
+      49,
+      47,
+      null,
+      51,
+      48,
+      46,
+      49,
+      null,
+      50,
+      47,
+      null
+    ],
+    "resp": [
+      16.6,
+      16.3,
+      16.1,
+      16,
+      15.8,
+      16,
+      15.9,
+      16.2,
+      16,
+      15.7,
+      15.9,
+      16,
+      16.1,
+      15.8,
+      16.2,
+      16.3
+    ],
+    "spo2": null
+  },
+  "night_summary": {
+    "rhr_bpm": 54,
+    "hrv_ms": 48,
+    "resp_per_min": 16
+  },
+  "latency_minutes": null,
+  "latency_reason": "sleep_attempt_marker_missing",
+  "proof": "Synthetic display series expanding day-summary.json; phase arithmetic verified only. Night summary values remain the canonical provided fixture, not claimed as re-derived from these illustrative series. No device or physiological validation."
+}

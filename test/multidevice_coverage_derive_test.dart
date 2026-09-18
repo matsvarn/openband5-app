@@ -190,7 +190,7 @@ void main() {
     );
 
     final done =
-        await DerivationEngine().runDays(const Profile(), {_dayId}, force: true);
+        await DerivationEngine().runDays(const PersonalProfile(), {_dayId}, force: true);
     expect(done, 1, reason: 'the day must actually derive, not be skipped');
 
     final row = await LocalDb.dayResult(_dayId);
@@ -234,7 +234,7 @@ void main() {
         where: 'device_id = ? AND event_id IN (?, ?)',
         whereArgs: [_primary, proto.EventId.chargingOn, proto.EventId.chargingOff]);
     final done2 =
-        await DerivationEngine().runDays(const Profile(), {_dayId}, force: true);
+        await DerivationEngine().runDays(const PersonalProfile(), {_dayId}, force: true);
     expect(done2, 1);
     final row2 = await LocalDb.dayResult(_dayId);
     expect(row2!['payload_json'], row['payload_json'],
@@ -283,7 +283,7 @@ void main() {
     );
 
     final done = await DerivationEngine()
-        .runDays(const Profile(), {dayId}, force: true);
+        .runDays(const PersonalProfile(), {dayId}, force: true);
     expect(done, 1);
 
     final row = await LocalDb.dayResult(dayId);

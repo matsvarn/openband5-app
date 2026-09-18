@@ -279,6 +279,37 @@ void main() {
       );
     });
 
+    test(
+      'HR-led fallback is not banked while the wake morning is still missing',
+      () {
+        // Mid-drain shape: 22:00 → 02:30, moving wrist so van Hees finds
+        // nothing, HR dip long enough for fallback. dataEnd is 02:30 local
+        // of the wake day — before 04:00 — so fallback must wait.
+        final start = _localMidnightOf(1750000000) + 22 * 3600;
+        const n = 4 * 3600 + 30 * 60; // through 02:30
+        final days = calendarDays(_movingHrDip(start: start, n: n));
+        expect(
+          days.any((d) => d.sleepSource == 'auto_fallback'),
+          isFalse,
+          reason: 'a truncated drain is not a short night',
+        );
+      },
+    );
+
+    test(
+      'HR-led fallback still runs once the wake morning is in the slice',
+      () {
+        final start = _localMidnightOf(1750000000) + 22 * 3600;
+        const n = 12 * 3600; // through 10:00
+        final days = calendarDays(_movingHrDip(start: start, n: n));
+        expect(
+          days.any((d) => d.sleepSource == 'auto_fallback'),
+          isTrue,
+          reason: 'van Hees should fail (moving) and fallback should fire',
+        );
+      },
+    );
+
     test('the boundary: just below the floor gates, at/above it does not', () {
       final below = calendarDays(
           night(accelPresent: true, presentFraction: kMinAccelCoverageForVanHees - 0.1));
@@ -390,4 +421,37 @@ void main() {
 int _localMidnightOf(int epochSec) {
   final d = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
   return DateTime(d.year, d.month, d.day).millisecondsSinceEpoch ~/ 1000;
+}
+
+/// Moving wrist (van Hees finds nothing) with a 3 h nocturnal HR dip starting
+/// one hour after [start] — the shape HR-led fallback can propose.
+Substrate _movingHrDip({required int start, required int n}) {
+  final ts = <int>[];
+  final hr = <int>[];
+  final ax = <double>[];
+  final ay = <double>[];
+  final az = <double>[];
+  for (var i = 0; i < n; i++) {
+    ts.add(start + i);
+    final inDip = i > 3600 && i < 4 * 3600;
+    hr.add(inDip ? 50 : 78);
+    final deg = (i % 9) * 10.0;
+    final rad = deg * math.pi / 180.0;
+    ax.add(math.cos(rad));
+    ay.add(0.0);
+    az.add(math.sin(rad));
+  }
+  return Substrate(
+    tsSec: ts,
+    hr: hr,
+    rrTsMs: const [],
+    rrMs: const [],
+    ax: ax,
+    ay: ay,
+    az: az,
+    spo2Red: List<int>.filled(n, 0),
+    spo2Ir: List<int>.filled(n, 0),
+    skinTemp: List<int>.filled(n, 0),
+    skinContact: List<int>.filled(n, 0),
+  );
 }

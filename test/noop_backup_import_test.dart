@@ -181,7 +181,7 @@ void main() {
     final bak = writeBackup('backup.noopbak', dbPath);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
 
     expect(res.days, greaterThan(0));
     expect(res.lateRows, 0);
@@ -206,11 +206,11 @@ void main() {
     final bak = writeBackup('b.noopbak', dbPath);
 
     final first = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(first.steps, secs - 1);
 
     final again = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(again.steps, 0, reason: 'the span is already covered');
   }, timeout: const Timeout(Duration(minutes: 5)));
 
@@ -230,7 +230,7 @@ void main() {
         .toSet();
 
     final before = extractions();
-    await NoopImporter.importFile(bak, const Profile(), DerivationEngine());
+    await NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine());
     // Nothing extracted survives — a 260 MB backup would otherwise leave a full
     // second copy behind on the phone.
     expect(extractions().difference(before), isEmpty);
@@ -269,7 +269,7 @@ void main() {
     addTearDown(() => kNoopBackupPageRows = saved);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.rows, secs + secs * beatsPerSec,
         reason: 'every HR sample and every RR beat was read');
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -307,7 +307,7 @@ void main() {
     final bak = writeBackup('nan.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.days, greaterThan(0), reason: 'the day still imports');
 
     // The beat COUNT is what discriminates — the row's typed columns hold no
@@ -336,7 +336,7 @@ void main() {
     final bak = writeBackup('other.noopbak', path);
 
     await expectLater(
-      NoopImporter.importFile(bak, const Profile(), DerivationEngine()),
+      NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine()),
       throwsA(isA<ImportFormatException>()
           .having((e) => e.message, 'message', contains('hrSample'))),
     );
@@ -362,7 +362,7 @@ void main() {
     final bak = writeBackup('corrupt.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.days, greaterThan(0));
     expect(res.rows, 300, reason: 'the good rows import, the corrupt one does not');
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -391,7 +391,7 @@ void main() {
     final bak = writeBackup('gap.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.days, 2, reason: 'both blocks derive, 500 days apart');
   }, timeout: const Timeout(Duration(minutes: 10)));
 
@@ -423,7 +423,7 @@ void main() {
     addTearDown(() => kNoopBackupPageRows = saved);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     // EXACT: `lessThanOrEqualTo` would pass on an importer that read one row.
     // Duplication and loss are both real failure modes here — the fallback path
     // drains a whole second rather than stepping past it precisely so that the
@@ -459,7 +459,7 @@ void main() {
     final bak = writeBackup('straddle.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.rows, expected,
         reason: 'every sample is read exactly once, on exactly one day');
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -485,7 +485,7 @@ void main() {
     final bak = writeBackup('renamed.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.days, greaterThan(0),
         reason: 'the drifted table is skipped, the rest still imports');
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -513,7 +513,7 @@ void main() {
     final bak = writeBackup('nots.noopbak', path);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.days, greaterThan(0));
     expect(res.rows, 300);
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -541,7 +541,7 @@ void main() {
     final bak = writeBackup('nobpm.noopbak', path);
 
     await expectLater(
-      NoopImporter.importFile(bak, const Profile(), DerivationEngine()),
+      NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine()),
       throwsA(isA<ImportFormatException>()
           .having((e) => e.message, 'message', contains('heart rate'))),
     );
@@ -584,7 +584,7 @@ void main() {
     addTearDown(() => kNoopBackupPageRows = saved);
 
     final res = await NoopImporter.importFile(
-        bak, const Profile(), DerivationEngine());
+        bak, const PersonalProfile(), DerivationEngine());
     expect(res.rows, expected,
         reason: 'every row read exactly once, drain included');
   }, timeout: const Timeout(Duration(minutes: 5)));
@@ -599,7 +599,7 @@ void main() {
     final bak = writeBackup('empty.noopbak', path);
 
     await expectLater(
-      NoopImporter.importFile(bak, const Profile(), DerivationEngine()),
+      NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine()),
       throwsA(isA<ImportFormatException>()
           .having((e) => e.message, 'message', contains('no samples'))),
     );
@@ -645,7 +645,7 @@ void main() {
     File(dbPath).writeAsBytesSync(patched);
 
     final bak = writeBackup('stale_header.noopbak', dbPath);
-    final res = await NoopImporter.importFile(bak, const Profile(), DerivationEngine());
+    final res = await NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine());
 
     // A header lie, not row damage — every row is recovered, on every table.
     expect(res.rows, secs * 4 + (secs / 2).ceil()); // hr+gravity+skinTemp+step, rr every other second
@@ -688,7 +688,7 @@ void main() {
     File(dbPath).writeAsBytesSync(patched);
 
     final bak = writeBackup('torn_page.noopbak', dbPath);
-    final res = await NoopImporter.importFile(bak, const Profile(), DerivationEngine());
+    final res = await NoopImporter.importFile(bak, const PersonalProfile(), DerivationEngine());
 
     expect(res.corruptTables, {'hrSample'});
     // hrSample itself contributes NOTHING — gravity+skinTemp+step (3 * secs)

@@ -305,7 +305,7 @@ class ProfileHomeView extends StatelessWidget {
                   SetRow(LucideIcons.userPen, C.purple,
                       l?.profileEditProfile ?? 'Edit profile',
                       sub: l?.profileEditProfileSub ??
-                          'Sex, age, height, weight',
+                          'Sex, birth date, height, weight',
                       onTap: onEdit),
                   // THE ONLY DOOR TO THE COACH'S SETUP, and it has to be —
                   // Home's sparkles button is now gated on `coachReady`, so on

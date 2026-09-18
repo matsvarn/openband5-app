@@ -1,0 +1,111 @@
+{
+  "synthetic": true,
+  "day": "2026-09-15",
+  "timezone": "Europe/Berlin",
+  "latest_saved_local": "07:42",
+  "connection": "connected",
+  "battery_percent": 64,
+  "sleep": {
+    "night": "2026-09-14/2026-09-15",
+    "start": "23:10",
+    "end": "06:54",
+    "bed_minutes": 464,
+    "sleep_minutes": 438,
+    "awake_minutes": 26,
+    "rem_minutes": 123,
+    "light_minutes": 247,
+    "deep_minutes": 68,
+    "prior_seven_sleep_minutes": [
+      360,
+      375,
+      382,
+      390,
+      400,
+      402,
+      422
+    ],
+    "usual_q25_q75_minutes": [
+      375,
+      402
+    ]
+  },
+  "recovery": {
+    "score": 74.062276,
+    "confidence": 0.75,
+    "composite_z": 1.049208,
+    "hrv_ms": 48,
+    "rhr_bpm": 54,
+    "resp_per_min": 16,
+    "temp": null,
+    "hrv_baseline": [
+      32,
+      42,
+      36,
+      44,
+      38,
+      46,
+      34,
+      42,
+      36,
+      44,
+      38,
+      46,
+      40,
+      40
+    ],
+    "rhr_baseline": [
+      53,
+      59,
+      54,
+      58,
+      55,
+      57,
+      56,
+      56,
+      57,
+      55,
+      56,
+      55,
+      57,
+      56
+    ],
+    "resp_baseline": [
+      14,
+      18,
+      14.5,
+      17.5,
+      15,
+      17,
+      15.5,
+      16.5,
+      14,
+      18,
+      15,
+      17,
+      15.5,
+      16.5
+    ],
+    "contributions": {
+      "HRV": 0.599547,
+      "RHR": 0.449661,
+      "RR": 0
+    }
+  },
+  "steps": 1240,
+  "day_strain": 1.6,
+  "stress": {
+    "value": null,
+    "state": "no_result"
+  },
+  "nutrition": {
+    "known_kcal": 620,
+    "incomplete_entries": 1,
+    "known_macros_g": {
+      "protein": 36,
+      "carbs": 80,
+      "fat": 18
+    },
+    "water_ml": 750
+  },
+  "proof": "Recovery computed using analytics readinessComposite in the design task. Other values are synthetic display fixtures; no physiological or device validation."
+}

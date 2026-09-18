@@ -8,6 +8,7 @@ import '../data/coverage_resolver.dart';
 import 'substrate.dart';
 
 class PreparedDerivationDay {
+  final int? sleepCorrectionRevision;
   final String date;
   final int endSec;
   final double confidence;
@@ -49,6 +50,7 @@ class PreparedDerivationDay {
   final Map<InputSignal, List<String>> priority;
 
   const PreparedDerivationDay({
+    this.sleepCorrectionRevision,
     required this.date,
     required this.endSec,
     required this.confidence,
@@ -135,6 +137,13 @@ const int napBoundaryBufferSec = 3 * 3600;
 /// counted at all.
 const int napLeadingEdgeContiguitySec = 60;
 
+/// Local second-of-day at which an auto-detected bout stops being a nap.
+///
+/// Auto naps are daytime. A start at/after 20:00 local is tonight's main
+/// sleep, credited on the wake day. The first WHOOP 5 capture stored a
+/// 23:45–00:51 fragment of the next night as a 66 min nap on the pairing day.
+const int kNocturnalNapStartSec = 20 * 3600;
+
 class PreparedDerivationPayload {
   final int dataNowSec;
   final List<PreparedDerivationDay> days;
@@ -204,7 +213,8 @@ class SleepSessionCandidate {
       dayId: m['day_id']?.toString() ?? '',
       confidence: (m['confidence'] as num?)?.toDouble() ?? 0,
       flags: strs('flags'),
-      sleepJson: ((m['sleep_json'] as Map?) ?? const {}).cast<String, dynamic>(),
+      sleepJson: ((m['sleep_json'] as Map?) ?? const {})
+          .cast<String, dynamic>(),
       hypnoStages: strs('hypno_stages'),
       sleepOnsetSec: (m['sleep_onset_sec'] as num?)?.toInt() ?? 0,
       sleepOffsetSec: (m['sleep_offset_sec'] as num?)?.toInt() ?? 0,
@@ -224,12 +234,14 @@ class SleepSessionCandidate {
   );
 
   PreparedDerivationDay toPreparedDay({
+    int? sleepCorrectionRevision,
     required Substrate daySub,
     required Substrate sleepSub,
     Substrate? napSub,
     Map<InputSignal, List<OwnedSpan>> ownership = const {},
     Map<InputSignal, List<String>> priority = const {},
   }) => PreparedDerivationDay(
+    sleepCorrectionRevision: sleepCorrectionRevision,
     date: dayId,
     // `endSec` is what the engine anchors FINALIZATION on
     // (`endSec + 48 h < dataNowSec` ⇒ lock). An empty substrate used to yield
@@ -423,8 +435,12 @@ SleepSessionCandidate prepareSleepSessionCandidate(
   SleepWindowOverride? override,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
 }) {
-  final payload = prepareDerivationPayload(sub,
-      targetDay: targetDay, override: override, priorSleep: priorSleep);
+  final payload = prepareDerivationPayload(
+    sub,
+    targetDay: targetDay,
+    override: override,
+    priorSleep: priorSleep,
+  );
   if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay);
   final day = payload.days.first;
   return SleepSessionCandidate(
@@ -532,8 +548,7 @@ class _PrepareAccumulator {
     if (v is String && v.isNotEmpty) _families.add(v);
   }
 
-  String? get deviceFamily =>
-      _families.length == 1 ? _families.first : null;
+  String? get deviceFamily => _families.length == 1 ? _families.first : null;
 
   /// Defensive numeric read. The decoded-page rows come straight out of SQLite,
   /// where a column's storage class is per-VALUE, not per-column — a row written
@@ -559,12 +574,16 @@ class _PrepareAccumulator {
     skinContact.addAll(sub.skinContact);
     // decodeSubstrate fills -1 for the whole page (gen4 R24 has no counter),
     // but read it rather than assuming, so the arrays stay 1:1 with tsSec.
-    stepCount.addAll(sub.stepCount.length == sub.length
-        ? sub.stepCount
-        : List<int>.filled(sub.length, -1));
-    hrValid.addAll(sub.hrValid.length == sub.length
-        ? sub.hrValid
-        : List<int>.filled(sub.length, -1));
+    stepCount.addAll(
+      sub.stepCount.length == sub.length
+          ? sub.stepCount
+          : List<int>.filled(sub.length, -1),
+    );
+    hrValid.addAll(
+      sub.hrValid.length == sub.length
+          ? sub.hrValid
+          : List<int>.filled(sub.length, -1),
+    );
   }
 
   void addDecodedPage(
@@ -680,9 +699,11 @@ class _PrepareAccumulator {
         // out of the time base. COALESCE, never fabricate — the column is NULL
         // for every row banked before it existed and for any source with no
         // sub-second, and there the staircase is still the honest best answer.
-        rrTsMs.add(_num(beat['beat_ts_ms'])?.toDouble() ??
-            _num(beat['rr_ts_ms'])?.toDouble() ??
-            recTs * 1000.0);
+        rrTsMs.add(
+          _num(beat['beat_ts_ms'])?.toDouble() ??
+              _num(beat['rr_ts_ms'])?.toDouble() ??
+              recTs * 1000.0,
+        );
         rrMs.add(rr);
       }
     }

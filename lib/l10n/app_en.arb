@@ -172,7 +172,7 @@
   "@profileSetupTitle": {
     "description": "Profile setup screen header."
   },
-  "profileSetupBody": "Four numbers change how your data is scored. Leave any of them blank and only the metrics that need it stay unavailable.",
+  "profileSetupBody": "Your profile changes how your data is scored. Leave a field blank and the metrics that need it stay unavailable.",
   "@profileSetupBody": {
     "description": "Profile setup intro body."
   },
@@ -1356,7 +1356,7 @@
   "@profileEditProfile": {
     "description": "Row title."
   },
-  "profileEditProfileSub": "Sex, age, height, weight",
+  "profileEditProfileSub": "Sex, birth date, height, weight",
   "@profileEditProfileSub": {
     "description": "Row sub."
   },
@@ -9689,7 +9689,7 @@
   "@activityZonesNoZonesDefaultBody": {
     "description": "Fallback explanation when zone edges are missing and no reason was given"
   },
-  "activityZonesAddAgeFix": "Add your age in Profile",
+  "activityZonesAddAgeFix": "Add your birth date in Profile",
   "@activityZonesAddAgeFix": {
     "description": "Suggested fix action to add age in Profile, shown only when age truly is missing"
   },
@@ -11554,7 +11554,7 @@
   "@settingsFourFieldsBody": {
     "description": "Status card body explaining what the four profile fields affect"
   },
-  "settingsImportBlockAppleHealth": "Height, weight, birthday and sex, straight out of {store}. Height and weight are taken every time; your age and sex only fill a gap, because neither drifts and a value already here was your choice.",
+  "settingsImportBlockAppleHealth": "Height, weight, birth date and sex from {store}. Height and weight are updated each time. Birth date and sex only fill missing fields.",
   "@settingsImportBlockAppleHealth": {
     "description": "Import-block explainer text on Apple Health (birthday-capable stores)",
     "placeholders": {
@@ -12027,5 +12027,9 @@
   "devicesRequestNotSaved": "That request could not be saved. Please try again.",
   "@devicesRequestNotSaved": {
     "description": "Shown when the add-a-band restart request could not be persisted."
-  }
+  },
+  "profileBirthDateLabel": "Birth date",
+  "profileBirthDateSelect": "Select birth date",
+  "profileBirthDateClear": "Clear birth date",
+  "profileBirthDateHelp": "Your age is calculated for each recording. Leave this blank to keep age-dependent estimates unavailable."
 }

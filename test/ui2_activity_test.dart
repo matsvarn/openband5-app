@@ -813,7 +813,7 @@ void main() {
       expect(find.textContaining('10.8'), findsOneWidget);
     });
 
-    // The Zones screen offered "Add your age in Profile" on all three real
+    // The Zones screen offered "Add your birth date in Profile" on all three real
     // databases. The age was set on all three, so following it did nothing.
     testWidgets('zones never sends you after data it already has',
         (tester) async {
@@ -831,7 +831,7 @@ void main() {
       }
 
       await show(const ZonesData(age: 30));
-      expect(find.textContaining('Add your age'), findsNothing);
+      expect(find.textContaining('Add your birth date'), findsNothing);
       expect(find.textContaining('Without your age'), findsNothing);
       // Nor the claim that the (absent) zones below came off the age.
       expect(find.textContaining('zones below come off your age'), findsNothing);
@@ -841,7 +841,7 @@ void main() {
 
       // Age genuinely missing — now the button is a real promise.
       await show(const ZonesData());
-      expect(find.textContaining('Add your age in Profile'), findsOneWidget);
+      expect(find.textContaining('Add your birth date in Profile'), findsOneWidget);
 
       // The ceiling card had the same defect: it blamed a missing hard session
       // on all three real databases, where the ceiling had actually refused for

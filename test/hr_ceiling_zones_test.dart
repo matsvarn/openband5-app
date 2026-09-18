@@ -307,7 +307,7 @@ void main() {
       final dir = await databaseFactory.getDatabasesPath();
       await LocalDb.close();
       await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
-      repo = LocalRepositoryImpl(getProfileMap: () => {'age': 30});
+      repo = LocalRepositoryImpl(getProfileMap: () => {'birth_date': '${DateTime.now().year - 31}-12-31'});
     });
 
     tearDown(() async {

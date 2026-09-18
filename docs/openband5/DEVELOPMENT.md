@@ -2,6 +2,65 @@
 
 Use Flutter 3.41.6 and Dart 3.11.4. These versions match the app's checked-in CI configuration. Keep the current CocoaPods integration until a separate toolchain upgrade is justified.
 
+## Fast UI development and native review
+
+Run from `edge`, using the pinned SDK. These commands target dedicated **OpenBand Review** simulators, never the physical phone. They reuse the production OpenBand widgets with the clearly labelled synthetic repository.
+
+```sh
+# Keep this process attached; press r after a Dart edit for hot reload.
+python3 tool/ui_review.py gallery
+
+# Drive real iOS-rendered screens and export screenshots + accessibility text.
+python3 tool/ui_review.py capture
+
+# The smaller 375×812 device, including large-text states.
+python3 tool/ui_review.py capture --small
+
+# Cheap behavior and deterministic render checks before another native run.
+flutter test --no-pub test/openband_flow_test.dart
+```
+
+The runner creates/reuses an iPhone 15 Pro (393×852) or iPhone 13 mini (375×812) on the already installed iOS 26.5 runtime. The gallery supports state, light/dark and text-size changes; its default text scaling follows the OS. The workspace also includes **OpenBand 5: synthetic UI (hot reload)** for editor-driven hot reload and Flutter Inspector.
+
+`capture` uses Flutter's SDK `integration_test` package and real iOS rendering. At each checkpoint a temporary loopback-only helper asks `simctl` for the whole display, so the native keyboard and status bar are included. The helper accepts only screenshot names, runs only for this review, and closes afterward. A direct `flutter drive` invocation without the runner falls back to app-surface captures and labels that limitation in `frames.json`. It navigates through overview variants, the full calendar route and selected-night preview, correction entry/preview/save, native keyboard fields, draft keep/discard, save and calculation retries, return/restore and larger text. A 350 ms checkpoint delay lets UIKit finish its independent chrome updates after Flutter frames settle. The test entry point hides the gallery controls so captures have the product's actual viewport. No AppState, real database, Bluetooth, analytics evaluation or personal data is initialized.
+
+Each run gets its own `build/ui-review/<timestamp>/` directory with:
+
+- Native PNGs and a local `index.html` contact sheet for quick visual inspection.
+- `frames.json`: screen labels, native logical dimensions, pixel ratio, keyboard inset and accessible content.
+- `run.json`: device/runtime, duration and success/failure. A screenshot existing does not mean the test passed.
+
+Review the matching Paper screens alongside these captures. The ordinary widget golden check detects unintended changes cheaply; it does not judge whether a newly approved baseline matches Paper. Keep large/dense, missing/partial, error and scrolled states in the review as features grow.
+
+The integration driver uses the SDK's supported screenshot/test path, so it does not need the Device Hub GUI. The SDK test package adds development-only dependencies and its native integration-test plugin; protocol/analytics and other existing dependency versions remain pinned. [Flutter integration-test documentation](https://docs.flutter.dev/testing/integration-tests).
+
+### Verified on this setup, 17 September 2026
+
+- iPhone 15 Pro, 393×852: 56 full-display checkpoints passed in **128.42 s** including build and flow execution (`build/ui-review/20260917-115451/`).
+- iPhone 13 mini, 375×812: the same 25 checkpoints passed in **95.54 s** (`build/ui-review/20260917-111856/`). Scrolling to actions is exercised on the shorter display; a missed tap is a hard failure.
+- Captures include the actual iOS keyboard. The 15 Pro reported a **335-point** keyboard inset. Accessibility exports contain the displayed labels and values, not empty placeholders.
+- An actual gallery Dart edit hot-reloaded **one library in 713 ms** (46 ms compilation, 76 ms reload, 83 ms reassembly), without reinstalling. This is one measured iteration, not a performance guarantee.
+- Analysis is clean. The full macOS suite after adding the SDK test package remains **3,721 passed / 453 skipped / one unchanged Health-export platform failure**.
+
+The Flutter 3.41.6 debug launcher emits `Target native_assets required define SdkRoot but it was not provided` on this Xcode 27 setup after the build. App launch and the measured hot reload still succeed; do not treat this warning as a failed run or change SDK/native-asset settings without a reproduced failure. Existing localization warnings belong to the untranslated legacy surfaces, not the new German first flow.
+
+### Physical phone sessions
+
+Use the real phone for production data, AccessorySetupKit/Bluetooth, permission sheets, VoiceOver and other native behavior. Keep it separate from the synthetic simulator loop. An attached debug session is useful while developing; profile/release is needed for realistic relaunch/background checks.
+
+Xcode 27 can capture the connected phone directly even when Device Hub screen mirroring does not work:
+
+```sh
+xcrun devicectl device capture screenshot \
+  --device DEVICE_ID \
+  --destination "/absolute/path/outside/git/openband-review.png" \
+  --timeout 25
+```
+
+This command captures the **foreground app**, not a specified bundle. Run it only while OpenBand is visibly foreground during an agreed review session. Keep physical captures under `~/Library/Application Support/OpenBand5Lab/ui-review`, not in fixtures or committed golden files. Direct capture was exercised on the connected iPhone; this capability alone does not prove the app's current screen or Bluetooth behavior.
+
+The Device Hub automation timeout remains a limitation for direct Mac-driven exploratory phone interaction. Do not install another Xcode, change the Flutter version or add a third-party mobile automation stack until the native test/inspection path has a concrete unmet requirement.
+
 ## Open the local workspace
 
 Open `/Users/matsvarnskuhler/Projects/Personal/openstrap/openband5.code-workspace` in Cursor or VS Code. Install the recommended Dart and Flutter editor extensions when prompted. The workspace selects the installed SDK and adds it to new integrated terminals.
@@ -16,19 +75,15 @@ flutter --version
 
 The workspace root contains sibling repositories. `origin` is Mats's fork. `upstream` is OpenStrap and has a disabled push URL. Bootstrap work is preserved on `openband5/bootstrap`; `main` holds the published setup. No global shell settings were changed.
 
-## Complete Xcode setup
+## Current Xcode setup
 
-Xcode 27.0 is installed at `/Applications/Xcode.app`, but its license was unaccepted during setup. Open Xcode and review/accept the license yourself. Finish any required first-launch components, then run:
+Xcode 27.0, its license and first-launch setup are complete. CocoaPods 1.17.0 works. iOS 26.5 and 27.0 simulator runtimes are installed; the review runner selects 26.5. Signed device builds and simulator builds with Flutter 3.41.6 have passed. Xcode 27 uses Device Hub in place of the former standalone Simulator app; its GUI automation currently times out on this host.
 
 ```sh
-xcrun --sdk macosx --show-sdk-path
 xcodebuild -version
-pod --version
 flutter doctor -v
 flutter devices
 ```
-
-CocoaPods 1.17.0 is installed but also refuses to run until the Xcode license is accepted. Simulator runtimes and Xcode 27 compatibility with this pinned Flutter version remain unverified. Do not interpret installation as a successful app build.
 
 ## Configure iPhone signing
 
@@ -43,7 +98,9 @@ APP_GROUP_IDENTIFIER = group.dev.matsvarn.openband5
 APPLE_DEVELOPMENT_TEAM =
 ```
 
-Set `APPLE_DEVELOPMENT_TEAM` to your own team. Register matching app IDs and the App Group. Check the Runner, widget, and Watch targets, including HealthKit and background capabilities. Keep personal signing values in this ignored file.
+Set `APPLE_DEVELOPMENT_TEAM` to your own team. Register matching app IDs and the App Group. Check the Runner and widget targets, including HealthKit and background capabilities. Keep personal signing values in this ignored file.
+
+The iPhone build includes the app and widget. Mats has no paired Apple Watch, so Runner does not depend on or embed the inherited Watch companion. Its source and separate target remain available for future Watch work. A physical iPhone build does not require registering an Apple Watch.
 
 For the inherited full application, an Apple Developer team that can provision its App Groups and extensions is the straightforward path. A free Personal Team has limits and is not a verified substitute for this configuration. If avoiding a developer membership is required, scope a reduced app target separately before stripping entitlements or extensions. [Apple membership comparison](https://developer.apple.com/support/compare-memberships/).
 
@@ -74,7 +131,7 @@ Use the release launch configuration for normal home-screen use and overnight co
 flutter run --release -d DEVICE_ID --dart-define-from-file=.env
 ```
 
-Replace `DEVICE_ID` with the ID returned by `flutter devices`. A debug installation is not the acceptance build for background and home-screen relaunch tests.
+Replace `DEVICE_ID` with the ID returned by `flutter devices`. On a new developer team, use this device-specific command for the first signed build so Xcode can register the connected iPhone and create its development profiles. A generic `flutter build ios` can report that the team has no registered devices. A debug installation is not the acceptance build for background and home-screen relaunch tests.
 
 ## Develop across packages
 

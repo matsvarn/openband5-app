@@ -18,7 +18,7 @@ import 'package:openstrap_edge/gps/route_models.dart';
 
 /// A profile with every anchor the scored metrics need.
 Map<String, dynamic> _profile() => {
-      'age': 30,
+      'birth_date': '${DateTime.now().year - 31}-12-31',
       'weight_kg': 75.0,
       'height_cm': 180.0,
       'sex': 'm',

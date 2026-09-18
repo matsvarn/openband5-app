@@ -56,6 +56,17 @@ HealthDataPoint _point(HealthDataType type, num value, DateTime at) =>
     );
 
 void main() {
+  test('birth date survives import instead of becoming a fixed age', () {
+    final born = DateTime(1990, 9, 16);
+    final snap = HealthProfileImporter(isApple: true).snapshotFrom([
+      _point(HealthDataType.BIRTH_DATE,
+          born.millisecondsSinceEpoch / 1000, DateTime(2026, 9, 15)),
+    ], now: DateTime(2026, 9, 15));
+    final profile = mergeHealthProfile({'age': 35}, snap);
+    expect(profile['birth_date'], '1990-09-16');
+    expect(profile.containsKey('age'), isFalse);
+  });
+
   group('requested types', () {
     test('Apple asks for sex and date of birth', () {
       final t = HealthProfileImporter(isApple: true).types;
@@ -132,7 +143,7 @@ void main() {
       expect(snap.heightCm, closeTo(178, 0.001));
     });
 
-    test('turns a date of birth into an age, respecting the birthday', () {
+    test('retains birth dates on either side of a birthday', () {
       final beforeBirthday = importer.snapshotFrom([
         _point(
           HealthDataType.BIRTH_DATE,
@@ -140,7 +151,7 @@ void main() {
           DateTime(2026, 1, 1),
         ),
       ], now: now);
-      expect(beforeBirthday.ageYears, 35);
+      expect(beforeBirthday.birthDate, DateTime(1990, 12, 25));
 
       final afterBirthday = importer.snapshotFrom([
         _point(
@@ -149,7 +160,7 @@ void main() {
           DateTime(2026, 1, 1),
         ),
       ], now: now);
-      expect(afterBirthday.ageYears, 36);
+      expect(afterBirthday.birthDate, DateTime(1990, 1, 5));
     });
 
     test('maps only the two sexes the formulas have constants for', () {
@@ -199,10 +210,10 @@ void main() {
   });
 
   group('mergeHealthProfile', () {
-    const snap = HealthProfileSnapshot(
+    final snap = HealthProfileSnapshot(
       weightKg: 74,
       heightCm: 178,
-      ageYears: 36,
+      birthDate: DateTime(1990, 1, 5),
       sex: 'm',
     );
 
@@ -210,7 +221,8 @@ void main() {
       final out = mergeHealthProfile(null, snap);
       expect(out['weight_kg'], 74);
       expect(out['height_cm'], 178);
-      expect(out['age'], 36);
+      expect(out['birth_date'], '1990-01-05');
+      expect(out, isNot(contains('age')));
       expect(out['sex'], 'm');
     });
 
@@ -223,21 +235,21 @@ void main() {
       expect(out['height_cm'], 178);
     });
 
-    test('age and sex only fill a gap', () {
+    test('birth date and sex only fill a gap', () {
       // Neither drifts, so a value already there is a deliberate choice and
       // another app's record does not get to override it.
-      final out = mergeHealthProfile({'age': 40, 'sex': 'f'}, snap);
-      expect(out['age'], 40);
+      final out = mergeHealthProfile({'birth_date': '1986-01-01', 'sex': 'f'}, snap);
+      expect(out['birth_date'], '1986-01-01');
       expect(out['sex'], 'f');
     });
 
     test('an absent field never clears an existing one', () {
       final out = mergeHealthProfile(
-        {'weight_kg': 80.0, 'age': 40},
+        {'weight_kg': 80.0, 'birth_date': '1986-01-01'},
         const HealthProfileSnapshot(heightCm: 178),
       );
       expect(out['weight_kg'], 80.0);
-      expect(out['age'], 40);
+      expect(out['birth_date'], '1986-01-01');
       expect(out['height_cm'], 178);
     });
 
@@ -256,15 +268,15 @@ void main() {
   group('healthProfileChanges', () {
     test('names only what actually changes', () {
       final changes = healthProfileChanges(
-        {'weight_kg': 80.0, 'height_cm': 178.0, 'age': 40, 'sex': 'f'},
-        const HealthProfileSnapshot(
+        {'weight_kg': 80.0, 'height_cm': 178.0, 'birth_date': '1986-01-01', 'sex': 'f'},
+        HealthProfileSnapshot(
           weightKg: 74,
           heightCm: 178,
-          ageYears: 36,
+          birthDate: DateTime(1990, 1, 5),
           sex: 'm',
         ),
       );
-      // Height matches, and age/sex are already set so they are not touched.
+      // Height matches, and birth date/sex are already set so they are not touched.
       expect(changes, ['weight']);
     });
 

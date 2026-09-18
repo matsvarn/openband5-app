@@ -146,7 +146,7 @@ void main() {
         kRouteJournalCompose: ShellDomain.wellness,
         kRouteBreathing: ShellDomain.wellness,
         kRouteWorkoutSuggestion: ShellDomain.workout,
-        kRouteWater: ShellDomain.nutrition,
+        kRouteWater: ShellDomain.wellness,
       };
       routes.forEach((route, domain) {
         expect(domainForRoute(route), domain, reason: route);
@@ -302,7 +302,7 @@ void main() {
       expect(saved!['sex'], 'f');
       // The three optional fields were left blank, so they are ABSENT — not
       // zero, and not a default body.
-      expect(saved!.containsKey('age'), isFalse);
+      expect(saved!.containsKey('birth_date'), isFalse);
       expect(saved!.containsKey('height_cm'), isFalse);
       expect(saved!.containsKey('weight_kg'), isFalse);
     });
@@ -315,14 +315,21 @@ void main() {
         home: ProfileSetupView(onSave: (f) async => saved = f),
       ));
       await tester.tap(find.text('Male'));
-      await tester.enterText(find.byType(TextField).at(0), '34');
-      await tester.enterText(find.byType(TextField).at(2), '78.4');
+      await tester.tap(find.text('Select birth date'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Switch to input'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '01/02/1992');
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).at(1), '78.4');
       await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pump();
 
       expect(saved!['sex'], 'm');
-      expect(saved!['age'], 34);
+      expect(saved!['birth_date'], '1992-01-02');
+      expect(saved!, isNot(contains('age')));
       expect(saved!['weight_kg'], 78.4);
       expect(saved!.containsKey('height_cm'), isFalse);
     });
@@ -336,7 +343,7 @@ void main() {
         home: ProfileSetupView(onSave: (f) async => saved = f),
       ));
       await tester.tap(find.text('Male'));
-      await tester.enterText(find.byType(TextField).at(2), '78 kg');
+      await tester.enterText(find.byType(TextField).at(1), '78 kg');
       await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pump();

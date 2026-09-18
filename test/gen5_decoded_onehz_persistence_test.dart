@@ -157,6 +157,11 @@ void main() {
     // so the columns must be NULL rather than "valid" / "off wrist".
     expect(rows.first['on_wrist'], isNull);
     expect(rows.first['hr_valid'], isNull);
+    expect(
+      await db.query('samples', where: 'ts = ?', whereArgs: [recTs]),
+      isEmpty,
+      reason: 'gen5 1 Hz already lives in decoded_onehz; samples is R10-lite',
+    );
 
     final rr = await db.query(
       'decoded_rr',

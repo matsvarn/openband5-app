@@ -74,7 +74,7 @@ class WhoopImporter {
   static Future<WhoopImportResult> importFiles(
     List<String> paths, {
     DerivationEngine? engine,
-    Profile? profile,
+    PersonalProfile? profile,
     void Function(int done)? onProgress,
   }) async {
     var days = 0, workouts = 0, skipped = 0;
@@ -114,7 +114,7 @@ class WhoopImporter {
     List<String> csvPaths, {
     required Set<String> rawDays,
     DerivationEngine? engine,
-    Profile? profile,
+    PersonalProfile? profile,
     void Function(int done)? onProgress,
     required int days,
     required int workouts,

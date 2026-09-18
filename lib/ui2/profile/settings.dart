@@ -1,3 +1,5 @@
+import '../../compute/profile.dart';
+import 'birth_date_field.dart';
 // Settings, and editing the profile.
 //
 // Two deliberate departures from the reference design:
@@ -1261,7 +1263,7 @@ class EditProfile extends StatelessWidget {
       // a settings screen, which is a long way to go to keep a weight current
       // — and the weight is the one the calorie and BMR estimates read.
       //
-      // The merge policy (weight and height win, age and sex only fill a gap)
+      // The merge policy (weight and height win, birth date and sex only fill a gap)
       // stays in `mergeHealthProfile` and is not re-decided here. The fields
       // come back so the form shows what arrived rather than claiming it.
       onImport: () async {
@@ -1326,7 +1328,7 @@ class EditProfile extends StatelessWidget {
           for (final k in const [
             'name',
             'sex',
-            'age',
+            'birth_date',
             'height_cm',
             'weight_kg',
           ])
@@ -1372,8 +1374,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       widget.units ?? UnitsController.seed(UnitSystem.metric);
   late final _name =
       TextEditingController(text: '${widget.initial['name'] ?? ''}');
-  late final _age =
-      TextEditingController(text: _s(widget.initial['age']));
+  late DateTime? _birthDate = parseBirthDate(widget.initial['birth_date']);
   late final _height =
       TextEditingController(text: _u.heightField(widget.initial['height_cm'] as num?));
   late final _weight =
@@ -1387,8 +1388,6 @@ class _EditProfileViewState extends State<EditProfileView> {
   bool _importing = false;
   String? _importNote;
   bool _importFailed = false;
-
-  static String _s(Object? v) => v == null ? '' : '$v';
 
   @override
   void initState() {
@@ -1416,7 +1415,7 @@ class _EditProfileViewState extends State<EditProfileView> {
       final (note, failed, fields) = await job();
       if (!mounted) return;
       if (fields != null) {
-        _age.text = _s(fields['age']);
+        _birthDate = parseBirthDate(fields['birth_date']);
         _height.text = _u.heightField(fields['height_cm'] as num?);
         _weight.text = _u.weightField(fields['weight_kg'] as num?);
         _sex = (fields['sex'] as String?)?.toLowerCase() ?? _sex;
@@ -1442,7 +1441,6 @@ class _EditProfileViewState extends State<EditProfileView> {
   @override
   void dispose() {
     _name.dispose();
-    _age.dispose();
     _height.dispose();
     _weight.dispose();
     super.dispose();
@@ -1455,12 +1453,9 @@ class _EditProfileViewState extends State<EditProfileView> {
   /// parsed to null and wiped the stored weight while the screen popped as if
   /// it had saved. Blank still clears; a typo now stops the save and says so.
   void _save() {
-    final l = AppLocalizations.of(context);
-    final age = Typed.of(_age.text);
     final height = Typed.of(_height.text);
     final weight = Typed.of(_weight.text);
     final bad = [
-      if (age.bad) (l?.settingsAgeFieldLabel ?? 'Age'),
       if (height.bad) _u.heightLabel,
       if (weight.bad) _u.weightLabel,
     ];
@@ -1471,7 +1466,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     widget.onSave({
       'name': _name.text.trim().isEmpty ? null : _name.text.trim(),
       'sex': _sex,
-      'age': age.value?.round(),
+      'birth_date': _birthDate == null ? null : birthDateString(_birthDate!),
       // Typed in the units on the label, stored in metric.
       'height_cm': height.value == null ? null : _u.heightToCm(_height.text),
       'weight_kg': weight.value == null ? null : _u.weightToKg(_weight.text),
@@ -1533,8 +1528,10 @@ class _EditProfileViewState extends State<EditProfileView> {
                     ),
                 ]),
                 const SizedBox(height: S.x4),
-                _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
-                    TextInputType.number),
+                BirthDateField(
+                  value: _birthDate,
+                  onChanged: (date) => setState(() => _birthDate = date),
+                ),
                 const SizedBox(height: S.x4),
                 _text(c, _height, _u.heightLabel.toUpperCase(),
                     TextInputType.number),
@@ -1574,7 +1571,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                 ? (l?.settingsImportBlockAppleHealth(storeName) ??
                     'Height, weight, birthday and sex, straight out of '
                         '$storeName. Height and weight are taken every time; your '
-                        'age and sex only fill a gap, because neither drifts and a '
+                        'birth date and sex only fill a gap, because a '
                         'value already here was your choice.')
                 : (l?.settingsImportBlockOther(storeName) ??
                     'Height and weight, straight out of $storeName. It has no '

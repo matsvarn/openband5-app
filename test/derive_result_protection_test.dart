@@ -134,7 +134,7 @@ void main() {
     expect(await LocalDb.lastDecodedRecTs(), edgeSec);
 
     // THE reachable path: Advanced data → Select all → Re-analyze.
-    await DerivationEngine().runDays(const Profile(), {oldDay}, force: true);
+    await DerivationEngine().runDays(const PersonalProfile(), {oldDay}, force: true);
 
     final after = await readScalars(oldDay);
     expect(after, equals(before),
@@ -157,7 +157,7 @@ void main() {
     const freshDay = '2026-01-06';
     expect(await LocalDb.dayResult(freshDay), isNull, reason: 'precondition');
 
-    await DerivationEngine().runDays(const Profile(), {freshDay}, force: true);
+    await DerivationEngine().runDays(const PersonalProfile(), {freshDay}, force: true);
 
     final row = await LocalDb.dayResult(freshDay);
     if (row != null) {

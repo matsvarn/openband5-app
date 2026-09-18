@@ -679,8 +679,19 @@ Substrate decodeSubstrate(List<String> hexes) {
   final decoder = proto.FirmwareAwareR24Decoder();
   for (final hex in hexes) {
     proto.R24? r;
+    Uint8List? bytes;
     try {
-      r = decoder.decode(proto.hexToBytes(hex));
+      bytes = proto.hexToBytes(hex);
+      final gen5 = proto.parseGen5Historical(bytes);
+      if (gen5 is proto.Gen5HistorySample && gen5.unix > 0) {
+        recs.add(_Rec.gen5(gen5));
+        continue;
+      }
+      // Generation dispatch is terminal once Gen5 identifies a deep buffer.
+      // v20/v21/v26 have no 1 Hz mapping; passing their overlapping bytes to
+      // the permissive Gen4 decoder fabricates HR/accel/optical readings.
+      if (gen5 != null) continue;
+      r = decoder.decode(bytes);
     } catch (_) {
       r = null;
     }
@@ -695,7 +706,7 @@ Substrate decodeSubstrate(List<String> hexes) {
     // nothing this path can use. Same refusal as `LocalDb._decodeOneHzSample`.
     if (r != null && r.histVersion == 25) continue;
     if (r != null && r.tsEpoch > 0) {
-      recs.add(_Rec(r));
+      recs.add(_Rec.gen4(r));
       continue;
     }
     final live = proto.realtimeRr(hex);
@@ -720,9 +731,10 @@ Substrate decodeSubstrate(List<String> hexes) {
   final skinContact = List<int>.filled(n, 0);
   final rrTsMs = <double>[], rrMs = <double>[];
 
+  final stepCount = List<int>.filled(n, -1);
   for (var i = 0; i < n; i++) {
-    final r = recs[i].r;
-    tsSec[i] = r.tsEpoch;
+    final r = recs[i];
+    tsSec[i] = r.ts;
     hr[i] = plausibleHrOrNull(r.hr) ?? 0;
     if (r.accelG.length == 3) {
       ax[i] = r.accelG[0];
@@ -731,28 +743,15 @@ Substrate decodeSubstrate(List<String> hexes) {
     }
     spo2Red[i] = r.spo2RedRaw;
     spo2Ir[i] = r.spo2IrRaw;
-    // both deprecated: neither field is what its name says. still filled here so
-    // the substrate keeps round-tripping, but _daySkinTempCurve and the
-    // fit_quality diagnostic both derive from them and shouldn't — separate fix,
-    // it moves user-facing output and needs an algo version bump.
-    // ignore: deprecated_member_use
     skinTemp[i] = r.skinTempRaw;
-    // ignore: deprecated_member_use
     skinContact[i] = r.skinContact;
+    stepCount[i] = r.stepCount ?? -1;
     // RR beats: placed at their MEASURED instant (`beatTimesMs` — the record's
     // own sub-second anchor, intervals walked backwards from it), falling back
-    // to the record second only when the record carries no sub-second. Beats
-    // used to all share the record's whole second here, which says two beats
-    // 800 ms apart happened at the same millisecond. Emission ORDER is
-    // unchanged (record order, then beat order) so no interval series moves —
-    // only where the beats sit on the clock.
-    final t = r.tsEpoch * 1000.0;
-    final beatTs = beatTimesMs(r.tsEpoch, r.tsSubsec, r.rrIntervalsMs);
+    // to the record second only when the record carries no sub-second.
+    final t = r.ts * 1000.0;
+    final beatTs = beatTimesMs(r.ts, r.tsSubsec, r.rrIntervalsMs);
     for (var b = 0; b < r.rrIntervalsMs.length; b++) {
-      // A non-positive interval was already dropped here; the bound only widens
-      // that to intervals no heart produces. It drops the BEAT, not the record:
-      // `beatTimesMs` has already placed the survivors, and an interval this
-      // far out is a missed or doubled detection, not a rhythm.
       final rr = plausibleRrOrNull(r.rrIntervalsMs[b]);
       if (rr != null) {
         rrMs.add(rr);
@@ -790,10 +789,9 @@ Substrate decodeSubstrate(List<String> hexes) {
     spo2Ir: spo2Ir,
     skinTemp: skinTemp,
     skinContact: skinContact,
-    // Gen4 R24 carries no pedometer field: every second is ABSENT (-1), never
-    // a confident zero. Gen5 counters reach the substrate through the
-    // decoded_onehz loader (derive_prepare.addDecodedPage), not this path.
-    stepCount: List<int>.filled(n, -1),
+    // Gen4 has no counter (-1); a legitimately decoded Gen5 v18 carries its
+    // cumulative counter. Identified deep buffers never reach this list.
+    stepCount: stepCount,
     // Same story for the band's HR-validity flag, and this path is raw-hex
     // replay, which carries no device stamp either — so it would refuse at
     // `hrValidAt` regardless.
@@ -878,9 +876,44 @@ int? hardwareStepsFromCounter(
 }
 
 class _Rec {
-  final proto.R24 r;
   final int ts;
-  _Rec(this.r) : ts = r.tsEpoch;
+  final int hr;
+  final List<double> accelG;
+  final List<int> rrIntervalsMs;
+  final int? tsSubsec;
+  final int spo2RedRaw;
+  final int spo2IrRaw;
+  final int skinTempRaw;
+  final int skinContact;
+  final int? stepCount;
+
+  _Rec.gen4(proto.R24 r)
+      : ts = r.tsEpoch,
+        hr = r.hr,
+        accelG = r.accelG,
+        rrIntervalsMs = r.rrIntervalsMs,
+        tsSubsec = r.tsSubsec,
+        spo2RedRaw = r.spo2RedRaw,
+        spo2IrRaw = r.spo2IrRaw,
+        // These deprecated Gen4 fields are retained only to preserve the raw
+        // replay shape; no Gen5 value is substituted for them.
+        // ignore: deprecated_member_use
+        skinTempRaw = r.skinTempRaw,
+        // ignore: deprecated_member_use
+        skinContact = r.skinContact,
+        stepCount = null;
+
+  _Rec.gen5(proto.Gen5HistorySample g)
+      : ts = g.unix,
+        hr = g.heartRate,
+        accelG = g.gravityG,
+        rrIntervalsMs = List<int>.from(g.rrIntervalsMs),
+        tsSubsec = g.tsSubsec,
+        spo2RedRaw = 0,
+        spo2IrRaw = 0,
+        skinTempRaw = 0,
+        skinContact = 0,
+        stepCount = g.stepMotionCounter;
 }
 
 class _Beat {
@@ -958,6 +991,15 @@ class PhysioDay {
 /// `DerivationEngine._targetDayWindow`). One constant, two call sites — they
 /// cannot drift apart again.
 const int kNocturnalSearchLookbackSec = 12 * 3600;
+
+/// How far into the wake calendar day the nocturnal search slice must reach
+/// before HR-led sleep fallback may bank a night.
+///
+/// Mid-drain derives used to stage a 2 h `auto_fallback` window from a
+/// truncated slice (data ending ~02:47) and leave it until the next algo
+/// bump. Van Hees still runs; only the low-confidence fallback waits for
+/// morning coverage. A later pass with the rest of the night restages.
+const int kMinWakeMorningCoverageSec = 4 * 3600;
 
 /// A user-asserted sleep window for one day — manual entry (Approach 1) or a
 /// confirmation of the HR-led fallback (Approach 2). Passed into [calendarDays]
@@ -1143,10 +1185,13 @@ List<PhysioDay> calendarDays(
           s = ana.SleepSegmentation.absent;
         }
         src = 'auto';
-        if (!s.present) {
+        if (!s.present &&
+            dataEnd >= dayStart + kMinWakeMorningCoverageSec) {
           // Approach 2: accel-led detection found nothing → HR-led fallback.
           // Propose the longest sustained nocturnal HR dip, then STAGE it via the
           // forced-window path. Marked low-confidence for a "is this right?" prompt.
+          // Skipped while the search slice has not reached 04:00 of the wake
+          // day — that is a truncated drain, not a short night.
           final tsSlice = [for (var i = loS; i < hiS; i++) sub.tsSec[i]];
           final cand =
               ana.hrLedSleepWindow(hrSlice, tsSlice, hrBaseline: hrBaseline);

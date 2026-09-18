@@ -197,7 +197,7 @@ void main() {
       final csv = writeCsv('a.csv', t0: t0, seconds: secs);
 
       final res = await NoopImporter.importFile(
-          csv.path, const Profile(), DerivationEngine());
+          csv.path, const PersonalProfile(), DerivationEngine());
 
       // The whole point: steps are no longer silently dropped.
       expect(res.steps, secs - 1, reason: 'counter advanced 1/s for $secs s');
@@ -214,7 +214,7 @@ void main() {
       // RE-IMPORT must not double-count: live_coverage is an append-only SUM
       // with no uniqueness on the window.
       final res2 = await NoopImporter.importFile(
-          csv.path, const Profile(), DerivationEngine());
+          csv.path, const PersonalProfile(), DerivationEngine());
       expect(res2.steps, 0, reason: 're-import banks nothing new');
       final cov2 = await db.query('live_coverage');
       expect(cov2.length, cov.length, reason: 'no duplicate windows');
@@ -232,11 +232,11 @@ void main() {
       final long = writeCsv('ov_long.csv', t0: t0, seconds: 2400);
 
       final r1 = await NoopImporter.importFile(
-          short.path, const Profile(), DerivationEngine());
+          short.path, const PersonalProfile(), DerivationEngine());
       expect(r1.steps, 1199);
 
       final r2 = await NoopImporter.importFile(
-          long.path, const Profile(), DerivationEngine());
+          long.path, const PersonalProfile(), DerivationEngine());
       // Only the NEW tail is banked, not the whole longer span.
       expect(r2.steps, 2399 - 1199,
           reason: 'second import banks only the previously uncovered tail');
@@ -270,7 +270,7 @@ void main() {
         ..writeAsStringSync(b.toString());
 
       final r1 = await NoopImporter.importFile(
-          f.path, const Profile(), DerivationEngine());
+          f.path, const PersonalProfile(), DerivationEngine());
       expect(r1.steps, 1198);
 
       final db = await LocalDb.instance;
@@ -285,7 +285,7 @@ void main() {
           where: 'start_ts = ?', whereArgs: [cov.last['start_ts']]);
 
       final r2 = await NoopImporter.importFile(
-          f.path, const Profile(), DerivationEngine());
+          f.path, const PersonalProfile(), DerivationEngine());
       expect(r2.steps, 599, reason: 'the lost run is re-banked, and only it');
 
       final after = await db.query('live_coverage',
@@ -300,7 +300,7 @@ void main() {
       const t0 = 1785574800; // a different day, so it derives independently
       final csv = writeCsv('b.csv', t0: t0, seconds: 600);
       final res = await NoopImporter.importFile(
-          csv.path, const Profile(), DerivationEngine());
+          csv.path, const PersonalProfile(), DerivationEngine());
       expect(res.steps, 599);
       expect(res.rows, greaterThan(0));
       expect(res.lateRows, 0);
@@ -317,7 +317,7 @@ void main() {
       final f = File(p.join(tmp.path, 'c.csv'))
         ..writeAsStringSync(b.toString());
       final res = await NoopImporter.importFile(
-          f.path, const Profile(), DerivationEngine());
+          f.path, const PersonalProfile(), DerivationEngine());
       expect(res.steps, 0);
       expect(res.days, greaterThan(0));
     }, timeout: const Timeout(Duration(minutes: 5)));
@@ -347,7 +347,7 @@ void main() {
         ..writeAsStringSync(b.toString());
 
       final res = await NoopImporter.importFile(
-          f.path, const Profile(), DerivationEngine());
+          f.path, const PersonalProfile(), DerivationEngine());
       expect(res.days, greaterThan(0));
 
       // Assert on the BEAT COUNT the pipeline actually used, not on the row's
@@ -384,7 +384,7 @@ void main() {
       final f = File(p.join(tmp.path, 'd.csv'))
         ..writeAsStringSync(b.toString());
       final res = await NoopImporter.importFile(
-          f.path, const Profile(), DerivationEngine());
+          f.path, const PersonalProfile(), DerivationEngine());
       expect(res.days, greaterThan(0));
     }, timeout: const Timeout(Duration(minutes: 5)));
   });

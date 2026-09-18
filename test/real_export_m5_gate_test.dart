@@ -74,7 +74,7 @@ void main() {
     expect(dayIds, isNotEmpty);
 
     final done = await DerivationEngine()
-        .runDays(const Profile(), dayIds, force: true);
+        .runDays(const PersonalProfile(), dayIds, force: true);
     expect(done, greaterThan(0),
         reason: 'at least some of these 34 days must actually derive under '
             'the real M5 code, not merely be skipped');

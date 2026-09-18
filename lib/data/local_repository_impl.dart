@@ -38,7 +38,7 @@ import '../gps/route_math.dart' as rmath;
 class LocalRepositoryImpl extends LocalRepository {
   LocalRepositoryImpl({required this.getProfileMap, this.saveProfileFields});
 
-  /// Reads the live AppState profile map (age/weight/height/sex/step_goal…).
+  /// Reads the live AppState profile map (birth_date/weight/height/sex/step_goal…).
   final Map<String, dynamic>? Function() getProfileMap;
 
   /// Merges a patch into the stored profile and returns the new map — i.e.
@@ -2084,11 +2084,9 @@ class LocalRepositoryImpl extends LocalRepository {
     // Sessions have no avg_hr column — without this every workout looked like
     // "no data" (avg_hr == 0) even when the window is full of worn HR.
     try {
-      final age = _profileAge();
       final stats = await LocalDb.sessionHrStats(
         fromTs,
         nowSec,
-        maxHrCeiling: hrCeilingForAge(age),
         minHrFloor: kHrFloorBpm,
       );
       // Spike-suppressed max/min per session (issue #127): smooth the raw 1 Hz
@@ -2099,6 +2097,7 @@ class LocalRepositoryImpl extends LocalRepository {
         nowSec,
       );
       for (final w in workouts) {
+        final age = _profileAge(w['start_ts'] as int?);
         final s = stats[w['id']];
         final raw = rawBySession[w['id']];
         if (s != null && (s['n'] ?? 0) != 0) {
@@ -2110,7 +2109,8 @@ class LocalRepositoryImpl extends LocalRepository {
         if (smax != null) {
           w['max_hr'] = smax;
         } else if (s != null && (s['n'] ?? 0) != 0) {
-          w['max_hr'] ??= (s['max_hr'] as num).toInt();
+          final peak = (s['max_hr'] as num).toInt();
+          if (peak <= hrCeilingForAge(age)) w['max_hr'] ??= peak;
         }
         // Trough: same treatment. Raw pruned → the floor-bounded SQL min.
         final smin = raw == null ? null : smoothedMinHr(raw, age: age);
@@ -2251,16 +2251,16 @@ class LocalRepositoryImpl extends LocalRepository {
     w['hr'] = _minuteHrCurve(ts, hr);
     // Spike-suppressed trough (issue #127): a lone low PPG dropout must not
     // define the min, symmetric to the max recompute below.
-    w['min_hr'] = smoothedMinHr(hr, age: _profileAge()) ?? hr.reduce(math.min);
+    w['min_hr'] = smoothedMinHr(hr, age: _profileAge(startTs)) ?? hr.reduce(math.min);
     // Spike-suppressed peak (issue #127). RECOMPUTE from the smoothed raw —
     // do NOT floor against the stored column: the live path may already have
     // written a spiked max there, and math.max() would preserve it.
-    final peakAt = smoothedMaxHrAt(hr, age: _profileAge());
+    final peakAt = smoothedMaxHrAt(hr, age: _profileAge(startTs));
     if (peakAt != null) {
       w['max_hr'] = peakAt.$1;
       w['time_to_peak_min'] = ((ts[peakAt.$2] - startTs) / 60).round();
     }
-    w['zone_bands'] = _zoneBands(hr, deviceFamily, anchors);
+    w['zone_bands'] = _zoneBands(hr, deviceFamily, anchors, startTs);
     final drift = _hrDriftPct(ts, hr, startTs, endTs);
     if (drift != null) w['hr_drift_pct'] = drift;
     w['trace_samples'] = hr.length;
@@ -2341,8 +2341,9 @@ class LocalRepositoryImpl extends LocalRepository {
     List<int> hr,
     String? deviceFamily,
     _ZoneAnchors anchors,
+    int startTs,
   ) {
-    final set = _zoneSetFor(deviceFamily, anchors);
+    final set = _zoneSetFor(deviceFamily, anchors, startTs);
     // No age, or a strap with no calibrated ceiling ⇒ no bands.
     if (set == null) return const [];
     final secs = List<int>.filled(5, 0);
@@ -2367,9 +2368,9 @@ class LocalRepositoryImpl extends LocalRepository {
 
   /// THE zone set for a window measured by [deviceFamily] — one call so every
   /// producer of a zone split in this file bands identically.
-  ana.HeartRateZoneSet? _zoneSetFor(String? deviceFamily, _ZoneAnchors a) =>
+  ana.HeartRateZoneSet? _zoneSetFor(String? deviceFamily, _ZoneAnchors a, int startTs) =>
       trainingZones(
-        age: _profileAge(),
+        age: _profileAge(startTs),
         deviceFamily: deviceFamily,
         observedCeilingBpm: a.observedCeilingBpm,
         restingHrHistory: a.restingHrHistory,
@@ -2494,8 +2495,8 @@ class LocalRepositoryImpl extends LocalRepository {
   /// session, every import and every raw replay carries no family, and a strap
   /// we have not calibrated a ceiling for is not gen4 with a different badge.
   /// No ceiling, no zones; nothing is substituted.
-  int? _profileMaxHr(String? deviceFamily) => estimatedMaxHr(
-        (getProfileMap()?['age'] as num?),
+  int? _profileMaxHr(String? deviceFamily, int startTs) => estimatedMaxHr(
+        _profileAge(startTs),
         deviceFamily,
       )?.round();
 
@@ -2530,7 +2531,9 @@ class LocalRepositoryImpl extends LocalRepository {
 
   /// Profile age in years, or null when unset — the input to the physiological
   /// HR ceiling in the spike-suppressed max ([hrCeilingForAge]).
-  int? _profileAge() => (getProfileMap()?['age'] as num?)?.round();
+  int? _profileAge(int? atSec) => atSec == null ? null :
+      PersonalProfile.fromMap(getProfileMap())
+          .forDate(DateTime.fromMillisecondsSinceEpoch(atSec * 1000)).ageYears;
 
   @override
   Future<void> deleteWorkout(String id) async => LocalDb.deleteSession(id);
@@ -2683,7 +2686,8 @@ class LocalRepositoryImpl extends LocalRepository {
     final hrTs = [for (final e in hrRows) (e['rec_ts'] as num).toInt()];
     final hrBpm = [for (final e in hrRows) (e['hr'] as num).toInt()];
 
-    final profile = Profile.fromMap(getProfileMap());
+    final profile = PersonalProfile.fromMap(getProfileMap()).forDate(
+          DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
     // Prefer the measured nightly RHR; fall back to the user-supplied one.
     // Both are real inputs — absent both, strain stays null rather than
     // leaning on a 60 bpm stand-in.
@@ -2701,13 +2705,13 @@ class LocalRepositoryImpl extends LocalRepository {
       hrTs: hrTs,
       hrBpm: hrBpm,
       profile: profile,
-      hrMax: _profileMaxHr(deviceFamily)?.toDouble(),
+      hrMax: _profileMaxHr(deviceFamily, startTs)?.toDouble(),
       restingHr: restingHr,
       // TS-04 — the persisted `zone_min` is binned with the SAME set the detail
       // screen's `zone_bands` recomputes. `hrMax` above stays the strain and
       // calorie anchor; the two are named separately because they can now be
       // different ceilings.
-      zoneSet: _zoneSetFor(deviceFamily, await _zoneAnchors()),
+      zoneSet: _zoneSetFor(deviceFamily, await _zoneAnchors(), startTs),
     );
 
     final row = buildManualSessionRow(
@@ -2801,17 +2805,18 @@ class LocalRepositoryImpl extends LocalRepository {
         return (row: row, hrRows: hrRows, zoneMinutesRebinned: true);
       }
 
-      final profile = Profile.fromMap(getProfileMap());
+      final profile = PersonalProfile.fromMap(getProfileMap()).forDate(
+          DateTime.fromMillisecondsSinceEpoch(startTs * 1000));
       final hrBpm = [for (final e in hrRows) (e['hr'] as num).toInt()];
       final stats = computeManualSessionStats(
         hrTs: [for (final e in hrRows) (e['rec_ts'] as num).toInt()],
         hrBpm: hrBpm,
         profile: profile,
-        hrMax: _profileMaxHr(row['device_family'] as String?)?.toDouble(),
+        hrMax: _profileMaxHr(row['device_family'] as String?, startTs)?.toDouble(),
         restingHr:
             await _recentRestingHr() ?? profile.restingHrManual?.toDouble(),
         zoneSet: _zoneSetFor(
-            row['device_family'] as String?, await _zoneAnchors()),
+            row['device_family'] as String?, await _zoneAnchors(), startTs),
       );
       // The peak is smoothed inside `computeManualSessionStats` now — one
       // definition for the manual save, this re-score and the workout list
@@ -3904,7 +3909,7 @@ class LocalRepositoryImpl extends LocalRepository {
         ? ana.unknownFamilyNote(family)
         : null;
     final set = trainingZones(
-      age: _profileAge(),
+      age: _profileAge(DateTime.now().millisecondsSinceEpoch ~/ 1000),
       deviceFamily: family,
       observedCeilingBpm: ceiling?.bpm,
       restingHrHistory: rhrHistory,
@@ -3914,7 +3919,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // we have calibrated a ceiling for, there is no ceiling" and offered "Add
     // your age in Profile" — on a profile whose age IS set, because the only
     // thing actually missing was the strap stamp. Name the one that is missing.
-    final age = _profileAge();
+    final age = _profileAge(DateTime.now().millisecondsSinceEpoch ~/ 1000);
     final zonesNote = set != null
         ? null
         : age == null

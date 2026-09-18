@@ -60,7 +60,7 @@ class _Sec {
 class NoopIngest {
   NoopIngest(this._profile, this._engine, {this.onProgress});
 
-  final Profile _profile;
+  final PersonalProfile _profile;
   final DerivationEngine _engine;
   final void Function(int days)? onProgress;
 

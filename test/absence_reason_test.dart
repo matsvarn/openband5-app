@@ -52,7 +52,7 @@ void main() {
       // a user can go and fix.
       expect(whyFromNote('need_input:name=weight_kg'),
           contains('weight is not on file'));
-      expect(whyFromNote('need_input:name=age'), contains('age is not on file'));
+      expect(whyFromNote('need_input:name=age'), contains('Add your birth date in Profile'));
       expect(whyFromNote('need_input:name=wake_hr'),
           contains('No waking heart rate'));
       expect(whyFromNote('need_input:name=nn_beats,have=12,need=20'),

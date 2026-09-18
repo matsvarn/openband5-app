@@ -1,13 +1,79 @@
-// Profile — the on-device personal profile fed to the DerivationEngine.
-//
-// Sourced from AppState's local profile map (shared_preferences). Algorithms
-// that NEED a field (HRmax via Tanaka, Keytel calories, TRIMP sex constant,
-// fitness-age) read it from here; algorithms that don't simply ignore it.
-//
-// HONESTY: a missing field => the DEPENDENT metric must return null+confidence 0
-// (never a fabricated default). The engine therefore passes nullable getters and
-// only computes profile-gated metrics when the input is present.
+// Stored personal details and dated calculation inputs. Missing fields keep
+// the metrics that depend on them unavailable.
 
+/// A calendar date, not an instant. Reject normalized dates such as February 31.
+DateTime? parseBirthDate(Object? value) {
+  if (value is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+    return null;
+  }
+  final parts = value.split('-').map(int.parse).toList();
+  final date = DateTime(parts[0], parts[1], parts[2]);
+  return date.year == parts[0] && date.month == parts[1] && date.day == parts[2]
+      ? date
+      : null;
+}
+
+String birthDateString(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
+
+int? ageOnDate(DateTime? birthDate, DateTime at) {
+  if (birthDate == null) return null;
+  final date = at.toLocal();
+  var years = date.year - birthDate.year;
+  if (date.month < birthDate.month ||
+      (date.month == birthDate.month && date.day < birthDate.day)) {
+    years--;
+  }
+  return years < 0 ? null : years;
+}
+
+/// Stored personal details. A legacy numeric age cannot establish a birth date.
+class PersonalProfile {
+  final DateTime? birthDate;
+  final double? weightKg;
+  final double? heightCm;
+  final String? sex;
+  final int? restingHrManual;
+
+  const PersonalProfile({
+    this.birthDate,
+    this.weightKg,
+    this.heightCm,
+    this.sex,
+    this.restingHrManual,
+  });
+
+  factory PersonalProfile.fromMap(Map<String, dynamic>? m) => PersonalProfile(
+    birthDate: parseBirthDate(m?['birth_date']),
+    weightKg: (m?['weight_kg'] as num?)?.toDouble(),
+    heightCm: (m?['height_cm'] as num?)?.toDouble(),
+    sex: (m?['sex'] as String?)?.toLowerCase(),
+    restingHrManual: (m?['resting_hr'] as num?)?.round(),
+  );
+
+  Profile forDate(DateTime at) => Profile(
+    ageYears: ageOnDate(birthDate, at),
+    weightKg: weightKg,
+    heightCm: heightCm,
+    sex: sex,
+    restingHrManual: restingHrManual,
+  );
+
+  bool get isComplete => forDate(DateTime.now()).isComplete;
+
+  Map<String, dynamic> toMap() => {
+    if (birthDate != null) 'birth_date': birthDateString(birthDate!),
+    if (weightKg != null) 'weight_kg': weightKg,
+    if (heightCm != null) 'height_cm': heightCm,
+    if (sex != null) 'sex': sex,
+    if (restingHrManual != null) 'resting_hr': restingHrManual,
+  };
+}
+
+/// Calculation inputs resolved for a particular day or workout. Never persist
+/// this age as the user's personal profile.
 class Profile {
   final int? ageYears;
   final double? weightKg;
@@ -23,24 +89,13 @@ class Profile {
     this.restingHrManual,
   });
 
-  static Profile fromMap(Map<String, dynamic>? m) {
-    if (m == null) return const Profile();
-    return Profile(
-      ageYears: (m['age'] as num?)?.round(),
-      weightKg: (m['weight_kg'] as num?)?.toDouble(),
-      heightCm: (m['height_cm'] as num?)?.toDouble(),
-      sex: (m['sex'] as String?)?.toLowerCase(),
-      restingHrManual: (m['resting_hr'] as num?)?.round(),
-    );
-  }
-
   Map<String, dynamic> toMap() => {
-        if (ageYears != null) 'age': ageYears,
-        if (weightKg != null) 'weight_kg': weightKg,
-        if (heightCm != null) 'height_cm': heightCm,
-        if (sex != null) 'sex': sex,
-        if (restingHrManual != null) 'resting_hr': restingHrManual,
-      };
+    if (ageYears != null) 'age': ageYears,
+    if (weightKg != null) 'weight_kg': weightKg,
+    if (heightCm != null) 'height_cm': heightCm,
+    if (sex != null) 'sex': sex,
+    if (restingHrManual != null) 'resting_hr': restingHrManual,
+  };
 
   // NO `hrMaxTanaka` HERE. It was `208 − 0.7·age` inlined on the profile, which
   // made the HR ceiling a property of the ATHLETE alone — and the app then

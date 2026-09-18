@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "date": "2026-09-15",
+  "timezone": "Europe/Berlin",
+  "source": "Sensor-App (synthetisch) via Apple Health",
+  "unit": "mmol/L",
+  "start": "07:00",
+  "step_minutes": 5,
+  "values": [
+    5,
+    5.1,
+    5.2,
+    5.1,
+    5.3,
+    null,
+    null,
+    5.8,
+    6.3,
+    5.9,
+    5.6,
+    5.4,
+    5.2
+  ],
+  "latest": "08:00",
+  "imported_at": "09:40",
+  "last_query_at": "09:41",
+  "live": false
+}

@@ -247,7 +247,7 @@ void main() {
     expect(await LocalDb.foreignFamilyDates(), isEmpty);
   });
 
-  test('the 3-day prune keeps wear/charge transitions and drops the rest',
+  test('OpenBand keeps source events past the former 3-day boundary',
       () async {
     await _useFreshDb('v42_band_events_test.db');
     const old = 1000;
@@ -263,7 +263,7 @@ void main() {
 
     expect(
       await _count('SELECT COUNT(*) FROM band_events WHERE event_id = 33'),
-      0,
+      1,
     );
     expect(
       await _count(
@@ -332,7 +332,7 @@ void main() {
     },
   );
 
-  test('raw_archive thins to a 1-in-60 sample behind the retention edge',
+  test('OpenBand retains every archived record past the former thinning edge',
       () async {
     await _useFreshDb('v42_archive_thin_test.db');
     const cutoffSec = 2000000;
@@ -373,14 +373,14 @@ void main() {
 
     await LocalDb.pruneDecodedBeforeRecTs(cutoffSec);
 
-    // 600 rows at 1-in-60 ⇒ counters 0, 60, … 540.
+    // Every original remains available for replay, including undecoded v20.
     expect(
       await _count(
         "SELECT COUNT(*) FROM raw_archive WHERE reason = 'undecodable_rec_v20' "
         'AND captured_at < ?',
         [cutoffSec * 1000],
       ),
-      10,
+      600,
     );
     expect(
       await _count(
@@ -398,7 +398,7 @@ void main() {
     );
     // Idempotent: running it again takes nothing more.
     await LocalDb.pruneDecodedBeforeRecTs(cutoffSec);
-    expect(await _count('SELECT COUNT(*) FROM raw_archive'), 12);
+    expect(await _count('SELECT COUNT(*) FROM raw_archive'), 602);
   });
 
   test('band_backlog records a connect and never guesses a device', () async {

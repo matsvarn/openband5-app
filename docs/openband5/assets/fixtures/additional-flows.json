@@ -1,0 +1,276 @@
+{
+  "synthetic": true,
+  "day": "2026-09-15",
+  "timezone": "Europe/Berlin",
+  "note": "Zusätzliche, voneinander getrennte Designvarianten; keine Messungen einer Person und keine medizinischen Vorgaben.",
+  "sleep_rhythm": {
+    "wake_days": [
+      "2026-09-09",
+      "2026-09-10",
+      "2026-09-11",
+      "2026-09-12",
+      "2026-09-13",
+      "2026-09-14",
+      "2026-09-15"
+    ],
+    "axis_start_previous_day": "22:00",
+    "start_offset_minutes": [
+      145,
+      138,
+      130,
+      120,
+      118,
+      98,
+      70
+    ],
+    "end_offset_minutes": [
+      540,
+      540,
+      540,
+      540,
+      540,
+      540,
+      534
+    ],
+    "bed_minutes": [
+      395,
+      402,
+      410,
+      420,
+      422,
+      442,
+      464
+    ],
+    "sleep_minutes": [
+      375,
+      382,
+      390,
+      400,
+      402,
+      422,
+      438
+    ],
+    "awake_minutes": [
+      20,
+      20,
+      20,
+      20,
+      20,
+      20,
+      26
+    ],
+    "chronotype": null,
+    "regularity": null
+  },
+  "steps": {
+    "hour_start_local": [
+      "00:00",
+      "01:00",
+      "02:00",
+      "03:00",
+      "04:00",
+      "05:00",
+      "06:00",
+      "07:00"
+    ],
+    "counts": [
+      0,
+      0,
+      0,
+      0,
+      10,
+      20,
+      180,
+      1030
+    ],
+    "last_interval_end": "07:42",
+    "total": 1240
+  },
+  "medication": {
+    "name": "Präparat A",
+    "dose": "1 Tablette",
+    "plan_time": "08:00",
+    "reminder_enabled": false,
+    "receipt_actual_time": "09:35",
+    "separate_history": {
+      "start": "2026-09-09",
+      "end": "2026-09-15",
+      "confirmed_days": [
+        9,
+        10,
+        12,
+        13
+      ],
+      "skipped_days": [
+        11
+      ],
+      "unknown_days": [
+        14
+      ],
+      "future_slot": "2026-09-15T20:00:00+02:00",
+      "confirmed": 4,
+      "past_scheduled": 6
+    },
+    "separate_weekday_plan": {
+      "weekdays": [
+        "MO",
+        "WE",
+        "FR"
+      ],
+      "time": "08:00",
+      "next": "2026-09-16"
+    }
+  },
+  "cycle": {
+    "starts": [
+      "2026-06-01",
+      "2026-06-29",
+      "2026-07-31",
+      "2026-08-24"
+    ],
+    "lengths_days": [
+      28,
+      32,
+      24
+    ],
+    "median_days": 28,
+    "unscaled_mad_days": 4,
+    "day_number": 23,
+    "estimated_next_start_range": [
+      "2026-09-17",
+      "2026-09-25"
+    ],
+    "withhold_if_gap_over_days": 60,
+    "first_start_variant": {
+      "only_start": "2026-08-24",
+      "prediction": null
+    }
+  },
+  "breathing": {
+    "mode": "longer_exhale",
+    "inhale_seconds": 4,
+    "exhale_seconds": 6,
+    "target_seconds": 300,
+    "cycles": 30,
+    "elapsed_preview_seconds": 127,
+    "remaining_preview_seconds": 173,
+    "saved_window": [
+      "09:30",
+      "09:35"
+    ],
+    "measurement": null,
+    "early_end_seconds": 45,
+    "minimum_saved_seconds": 60,
+    "separate_resonance_variant": {
+      "breaths_per_minute": 5.5,
+      "rr_quality": "unreliable",
+      "coherence": null
+    },
+    "sweep_rates": [
+      6.5,
+      5.5,
+      4.5
+    ],
+    "sweep_segment_seconds": 120,
+    "preview_phase": "exhale",
+    "preview_phase_remaining_seconds": 3
+  },
+  "lab": {
+    "marker": "Ferritin",
+    "value": 42,
+    "unit": "ng/ml",
+    "sample_date": "2026-09-10",
+    "source": "Eigener Befund",
+    "reference_lower": 30,
+    "reference_upper": 400,
+    "note": "Synthetischer Befundbereich, keine klinische Empfehlung.",
+    "without_reference_variant": {
+      "reference_lower": null,
+      "reference_upper": null,
+      "interpretation": null
+    }
+  },
+  "sleep_correction": {
+    "start": "2026-09-14T23:25:00+02:00",
+    "end": "2026-09-15T06:54:00+02:00",
+    "bed_minutes": 449,
+    "sleep_minutes": 428,
+    "awake_minutes": 21,
+    "removed_original_awake_minutes": 5,
+    "removed_original_light_minutes": 10,
+    "above_prior_q75_minutes": 26
+  },
+  "day_stress": {
+    "window_minutes": 5,
+    "start": "07:00",
+    "end": "07:40",
+    "values": [
+      18,
+      23,
+      30,
+      null,
+      null,
+      52,
+      43,
+      35
+    ],
+    "points_at_window_end": true,
+    "gap": [
+      "07:15",
+      "07:25"
+    ],
+    "valid_minutes": 30,
+    "missing_minutes": 10,
+    "last_window": [
+      "07:35",
+      "07:40"
+    ],
+    "trend_comparison_start": "07:30",
+    "note": "Geplante versionierte Tagesmetrik B142; kein bereits validiertes Messergebnis."
+  },
+  "first_sync": {
+    "first_commit": {
+      "start": "09:12",
+      "end": "09:28",
+      "minutes": 16,
+      "committed_at": "09:29",
+      "transfer": "running"
+    },
+    "transfer_end": {
+      "start": "09:12",
+      "end": "09:40",
+      "minutes": 28,
+      "transfer": "confirmed_end",
+      "calculation": "processing"
+    }
+  },
+  "profile": {
+    "birth_date": "2000-02-18",
+    "sex_for_model": "male",
+    "height_cm": 180,
+    "undated_weight_kg": 75
+  },
+  "meals": {
+    "oats": {
+      "time": "07:00",
+      "kcal": 450,
+      "protein_g": 22,
+      "carbs_g": 60,
+      "fat_g": 14
+    },
+    "yogurt": {
+      "time": null,
+      "grams": 200,
+      "kcal": 170,
+      "protein_g": 14,
+      "carbs_g": 20,
+      "fat_g": 4,
+      "sugar_g": 8
+    },
+    "coffee": {
+      "time": null,
+      "kcal": null,
+      "caffeine_mg": null
+    }
+  }
+}

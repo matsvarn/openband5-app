@@ -68,7 +68,7 @@ String _bareWindowJson({required int onsetMs, required int offsetMs}) =>
 void main() {
   late Directory tmp;
   final repo = LocalRepositoryImpl(
-    getProfileMap: () => const <String, dynamic>{'age': 34, 'sex': 'male'},
+    getProfileMap: () => const <String, dynamic>{'birth_date': '1936-01-01', 'sex': 'male'},
   );
 
   setUpAll(() async {

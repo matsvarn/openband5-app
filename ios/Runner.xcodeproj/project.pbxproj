@@ -31,7 +31,6 @@
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		ACCE55E7000000000000B11D /* AccessorySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACCE55E7000000000000F11E /* AccessorySetup.swift */; };
 		BEEF00000000000000000002 /* BreathingLiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF00000000000000000001 /* BreathingLiveActivityBridge.swift */; };
-		FADE0001FADE0001FADE0001 /* OpenStrapWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 53962EBE2FF6EF790061A61B /* OpenStrapWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,13 +47,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5348973A2FDC19C80033A4D9;
 			remoteInfo = OpenStrapWidgetExtension;
-		};
-		FADE0003FADE0003FADE0003 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 53962EBD2FF6EF790061A61B;
-			remoteInfo = "OpenStrapWatch Watch App";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -78,17 +70,6 @@
 			files = (
 			);
 			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		FADE0002FADE0002FADE0002 /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
-			dstSubfolderSpec = 16;
-			files = (
-				FADE0001FADE0001FADE0001 /* OpenStrapWatch Watch App.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -392,7 +373,6 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				5348974F2FDC19C90033A4D9 /* Embed Foundation Extensions */,
-				FADE0002FADE0002FADE0002 /* Embed Watch Content */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				2DCD42F2BAD7B7B913EF5123 /* [CP] Embed Pods Frameworks */,
@@ -403,7 +383,6 @@
 			);
 			dependencies = (
 				5348974D2FDC19C90033A4D9 /* PBXTargetDependency */,
-				FADE0004FADE0004FADE0004 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -699,11 +678,6 @@
 			isa = PBXTargetDependency;
 			target = 5348973A2FDC19C80033A4D9 /* OpenStrapWidgetExtension */;
 			targetProxy = 5348974C2FDC19C90033A4D9 /* PBXContainerItemProxy */;
-		};
-		FADE0004FADE0004FADE0004 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 53962EBD2FF6EF790061A61B /* OpenStrapWatch Watch App */;
-			targetProxy = FADE0003FADE0003FADE0003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

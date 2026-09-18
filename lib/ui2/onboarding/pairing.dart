@@ -156,6 +156,8 @@ class _PairingScreenState extends State<PairingScreen> {
         detail: _detail,
         blocker: _blocker,
         onPair: _pair,
+        onBack: () => Navigator.of(c).pop(c.read<AppState>().isPaired),
+        onContinue: () => Navigator.of(c).pop(true),
         onSkip: widget.onSkip,
       );
 }
@@ -164,6 +166,8 @@ class PairingView extends StatelessWidget {
   final PairPhase phase;
   final String detail;
   final VoidCallback onPair;
+  final VoidCallback? onBack;
+  final VoidCallback? onContinue;
   final VoidCallback? onSkip;
 
   /// Which phone-side blocker, when [phase] is `bluetoothBlocked`.
@@ -173,6 +177,8 @@ class PairingView extends StatelessWidget {
     super.key,
     required this.phase,
     required this.onPair,
+    this.onBack,
+    this.onContinue,
     this.detail = '',
     this.blocker,
     this.onSkip,
@@ -181,6 +187,7 @@ class PairingView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final l = AppLocalizations.of(c);
     final busy = phase == PairPhase.scanning;
     // The copy for this one lives in the BLE layer, so this screen and the
     // Devices screen cannot drift into two different accounts of one state.
@@ -191,51 +198,64 @@ class PairingView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(S.x4, S.x8, S.x4, S.x8),
-          children: [
-            Icon(
-                blocked == null
-                    ? LucideIcons.bluetooth
-                    : LucideIcons.bluetoothOff,
-                size: 36,
-                color: p.on(C.blue)),
-            const SizedBox(height: S.x5),
-            Text(_title(c, phase, blocker), style: F.t1.copyWith(color: p.ink)),
-            const SizedBox(height: S.x3),
-            Text(_body(c, phase, blocker), style: F.body.copyWith(color: p.ink2)),
-            if (blocked?.fix != null) ...[
-              const SizedBox(height: S.x3),
-              Text(blocked!.fix!,
-                  style: F.body.copyWith(
-                      color: p.on(C.blue), fontWeight: FontWeight.w600)),
-            ],
-            if (busy) ...[
-              const SizedBox(height: S.x8),
-              Center(child: CircularProgressIndicator(color: p.on(C.blue))),
-            ],
-            ..._advice(c, phase, detail),
-            const SizedBox(height: S.x8),
-            BigButton(_cta(c, phase),
-                icon: LucideIcons.radio,
-                color: C.blue,
-                onTap: busy ? null : onPair),
-            if (onSkip != null && phase != PairPhase.paired) ...[
-              const SizedBox(height: S.x3),
-              // Never disabled, not even mid-scan: waiting out a scan you
-              // already know will fail is exactly the trap this exists for.
-              BigButton(AppLocalizations.of(c)?.pairingSkipForNow ?? 'Skip for now',
-                  color: C.blue, soft: true, onTap: onSkip),
-              const SizedBox(height: S.x2),
-              Text(
-                AppLocalizations.of(c)?.pairingSkipNote ??
-                    'The app opens without a band. Nothing is measured until one '
-                        'is paired.',
-                style: F.cap.copyWith(color: p.ink3),
-              ),
-            ],
-          ],
-        ),
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: S.x4),
+            child: NavBar(l?.devicePickerTitle ?? 'Connect your devices',
+                onBack: onBack),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(S.x4, S.x8, S.x4, S.x8),
+              children: [
+                Icon(
+                    blocked == null
+                        ? LucideIcons.bluetooth
+                        : LucideIcons.bluetoothOff,
+                    size: 36,
+                    color: p.on(C.blue)),
+                const SizedBox(height: S.x5),
+                Text(_title(c, phase, blocker), style: F.t1.copyWith(color: p.ink)),
+                const SizedBox(height: S.x3),
+                Text(_body(c, phase, blocker), style: F.body.copyWith(color: p.ink2)),
+                if (blocked?.fix != null) ...[
+                  const SizedBox(height: S.x3),
+                  Text(blocked!.fix!,
+                      style: F.body.copyWith(
+                          color: p.on(C.blue), fontWeight: FontWeight.w600)),
+                ],
+                if (busy) ...[
+                  const SizedBox(height: S.x8),
+                  Center(child: CircularProgressIndicator(color: p.on(C.blue))),
+                ],
+                ..._advice(c, phase, detail),
+                const SizedBox(height: S.x8),
+                BigButton(_cta(c, phase),
+                    icon: LucideIcons.radio,
+                    color: C.blue,
+                    onTap: busy
+                        ? null
+                        : phase == PairPhase.paired
+                        ? onContinue
+                        : onPair),
+                if (onSkip != null && phase != PairPhase.paired) ...[
+                  const SizedBox(height: S.x3),
+                  // Never disabled, not even mid-scan: waiting out a scan you
+                  // already know will fail is exactly the trap this exists for.
+                  BigButton(AppLocalizations.of(c)?.pairingSkipForNow ?? 'Skip for now',
+                      color: C.blue, soft: true, onTap: onSkip),
+                  const SizedBox(height: S.x2),
+                  Text(
+                    AppLocalizations.of(c)?.pairingSkipNote ??
+                        'The app opens without a band. Nothing is measured until one '
+                            'is paired.',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ]),
       ),
     );
   }

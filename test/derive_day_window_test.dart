@@ -199,7 +199,7 @@ void main() {
     final dayStart = DateTime(2026, 4, 10).millisecondsSinceEpoch ~/ 1000;
 
     Future<Map<String, double?>> deriveWith(
-      Profile profile,
+      PersonalProfile profile,
       String dayLabel,
       int localDayStart,
     ) async {
@@ -220,7 +220,7 @@ void main() {
     }
 
     test('no profile → no strain, no calories, no TDEE', () async {
-      final got = await deriveWith(const Profile(), '2026-04-10', dayStart);
+      final got = await deriveWith(const PersonalProfile(), '2026-04-10', dayStart);
       expect(got['strain'], isNull,
           reason: 'Banister TRIMP needs a real resting HR, HRmax and sex — '
               'age 30 / RHR 60 / sex m were fabricated');
@@ -240,7 +240,7 @@ void main() {
       //
       // A 1 Hz wrist stream cannot count steps: gait is sub-Nyquist there, and
       // wrist amplitude ranks arm work above walking. See kAlgoVersion v55.
-      final got = await deriveWith(const Profile(), '2026-04-11',
+      final got = await deriveWith(const PersonalProfile(), '2026-04-11',
           DateTime(2026, 4, 11).millisecondsSinceEpoch ~/ 1000);
       expect(got['steps'], isNull,
           reason: 'no real pedometer covered this day — absent, not zero');
@@ -270,8 +270,8 @@ void main() {
 
     test('a real profile still produces strain and calories', () async {
       final got = await deriveWith(
-        const Profile(
-          ageYears: 34,
+        PersonalProfile(
+          birthDate: DateTime(1992, 1, 1),
           weightKg: 72,
           heightCm: 178,
           sex: 'm',
@@ -313,7 +313,7 @@ void main() {
         skinContact: sub.skinContact,
         deviceFamily: sub.deviceFamily,
       );
-      await DerivationEngine().deriveImportedDays(flat, const Profile(), {
+      await DerivationEngine().deriveImportedDays(flat, const PersonalProfile(), {
         dayLabel,
       });
       expect(
@@ -328,7 +328,7 @@ void main() {
       final ctlStart = DateTime(2026, 4, 14).millisecondsSinceEpoch ~/ 1000;
       await DerivationEngine().deriveImportedDays(
         _synthDay(ctlStart + 9 * 3600, 2 * 3600),
-        const Profile(),
+        const PersonalProfile(),
         {ctlLabel},
       );
       expect(await LocalDb.metricValueOn(ctlLabel, 'active_min'), isNotNull);

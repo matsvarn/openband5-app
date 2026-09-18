@@ -1,0 +1,119 @@
+{
+  "synthetic": true,
+  "date": "2026-09-14",
+  "start": "07:05",
+  "duration_seconds": 1500,
+  "pause_seconds": 0,
+  "distance_m": 5000,
+  "split_seconds": [
+    295,
+    310,
+    305,
+    298,
+    292
+  ],
+  "profile": {
+    "birth_date": "2000-02-18",
+    "sex": "male",
+    "weight_kg": 75,
+    "height_cm": 180,
+    "rhr": 54
+  },
+  "hr_generator": {
+    "sample_seconds": 1,
+    "segments": [
+      [
+        0,
+        360,
+        129,
+        3
+      ],
+      [
+        360,
+        900,
+        143,
+        6
+      ],
+      [
+        900,
+        1140,
+        158,
+        4
+      ],
+      [
+        1140,
+        1500,
+        143,
+        6
+      ]
+    ],
+    "formula": "round(base + amplitude * sin(2*pi*(t-segment_start)/120))"
+  },
+  "hr_mean": 142.19666666666666,
+  "hr_max": 162,
+  "minute_means": [
+    130.95,
+    127.08333333333333,
+    130.95,
+    127.08333333333333,
+    130.95,
+    127.06666666666666,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    160.56666666666666,
+    155.43333333333334,
+    160.56666666666666,
+    155.43333333333334,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    139.16666666666666,
+    146.83333333333334,
+    139.16666666666666
+  ],
+  "zone_source": "tanaka",
+  "zone_max_hr": 189.8,
+  "zone_seconds_0_to_5": [
+    0,
+    0,
+    360,
+    900,
+    240,
+    0
+  ],
+  "trimp": 37.04739812302381,
+  "strain_0_21": 5.871568753651355,
+  "strain_quiet_reference": 0.2,
+  "bout_kcal": 327.2536866634798,
+  "used_default_anchors": false,
+  "hrr60": {
+    "peak_hr": 143.0,
+    "hr_at_60s": 123.0,
+    "drop_bpm": 20.0,
+    "drop_pct": 13.986014,
+    "tau_sec": 109.0,
+    "tau_start_hr": 144.095241,
+    "tau_amp_bpm": 48.470682,
+    "tau_asymptote_bpm": 95.624559,
+    "tau_residual_ratio": 0.009083
+  },
+  "hrr120": {
+    "peak_hr": 143.0,
+    "hr_at_60s": 111.0,
+    "drop_bpm": 32.0,
+    "drop_pct": 22.377622,
+    "tau_sec": 109.0,
+    "tau_start_hr": 144.095241,
+    "tau_amp_bpm": 48.470682,
+    "tau_asymptote_bpm": 95.624559,
+    "tau_residual_ratio": 0.009083
+  },
+  "proof": "Synthetic input evaluated against current pure analytics functions; not hardware, physiological, or app integration proof."
+}

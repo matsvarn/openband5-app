@@ -59,14 +59,14 @@ import 'paired_device.dart';
 import 'sync_policy.dart';
 
 /// Load the local profile (no Provider in the headless isolate).
-Future<Profile> _loadProfile() async {
+Future<PersonalProfile> _loadProfile() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('local_profile_json');
-    if (raw == null) return const Profile();
-    return Profile.fromMap((jsonDecode(raw) as Map).cast<String, dynamic>());
+    if (raw == null) return const PersonalProfile();
+    return PersonalProfile.fromMap((jsonDecode(raw) as Map).cast<String, dynamic>());
   } catch (_) {
-    return const Profile();
+    return const PersonalProfile();
   }
 }
 

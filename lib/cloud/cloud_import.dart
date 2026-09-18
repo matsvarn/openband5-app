@@ -98,7 +98,6 @@ class CloudImporter {
     num? n(Object? v) => v is num ? v : null;
     return <String, dynamic>{
       if (u['name'] != null) 'name': u['name'],
-      if (n(u['age']) != null) 'age': n(u['age'])!.round(),
       if (n(u['height_cm']) != null) 'height_cm': n(u['height_cm']),
       if (n(u['weight_kg']) != null) 'weight_kg': n(u['weight_kg']),
       if (u['sex'] != null) 'sex': u['sex'],

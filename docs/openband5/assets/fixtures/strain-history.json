@@ -1,0 +1,225 @@
+{
+  "synthetic": true,
+  "variant": "Separate reife Historie; ersetzt keine kanonischen Tagesdaten.",
+  "proof": "Illustrative display fixture; no physiological computation.",
+  "points": [
+    {
+      "day": "2026-08-16",
+      "strain": 6.2,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-17",
+      "strain": 8.4,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-18",
+      "strain": 4.5,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-19",
+      "strain": 9.1,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-20",
+      "strain": 7.2,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-21",
+      "strain": 3.6,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-22",
+      "strain": 10.4,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-23",
+      "strain": 6.8,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-24",
+      "strain": 8.9,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-25",
+      "strain": 5.1,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-26",
+      "strain": 11.2,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-27",
+      "strain": 7.4,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-28",
+      "strain": 4.2,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-29",
+      "strain": 9.8,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-30",
+      "strain": 6.5,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-08-31",
+      "strain": 8.1,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-01",
+      "strain": 5.8,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-02",
+      "strain": 10.6,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-03",
+      "strain": 7.3,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-04",
+      "strain": 4.7,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-05",
+      "strain": 9.4,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-06",
+      "strain": 6.1,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-07",
+      "strain": 11.5,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-08",
+      "strain": 8.7,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-09",
+      "strain": 5.4,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-10",
+      "strain": 10.2,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-11",
+      "strain": 7.8,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-12",
+      "strain": 6.9,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-13",
+      "strain": 9.6,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    },
+    {
+      "day": "2026-09-14",
+      "strain": 10.8,
+      "coverage": "complete",
+      "state": "ready",
+      "model": "illustrative-v1"
+    }
+  ],
+  "latest": 10.8,
+  "previous_29_q25_q75": [
+    6.1,
+    9.4
+  ],
+  "latest_7_mean": 8.485714285714286,
+  "previous_7_mean": 7.914285714285715,
+  "mean_difference": 0.5714285714285712
+}

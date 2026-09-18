@@ -207,7 +207,7 @@ void main() {
       LocalDb.dbName = 'openstrap_max_hr_spike_test.db';
       final dir = await databaseFactory.getDatabasesPath();
       await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
-      repo = LocalRepositoryImpl(getProfileMap: () => {'age': 30}); // maxHr 190
+      repo = LocalRepositoryImpl(getProfileMap: () => {'birth_date': '1940-01-01'}); // maxHr 190
       await seedSpikeSession();
     });
 

@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../compute/profile.dart';
+import '../profile/birth_date_field.dart';
 import '../../state/app_state.dart';
 import '../../state/units_controller.dart';
 import '../screens/home_screen.dart' show monthShortName, weekdayShortName;
@@ -83,17 +85,14 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
   late final UnitsController _u =
       widget.units ?? UnitsController.seed(UnitSystem.metric);
   late String? _sex = (widget.initial['sex'] as String?)?.toLowerCase();
-  late final _age = TextEditingController(text: _str(widget.initial['age']));
+  late DateTime? _birthDate = parseBirthDate(widget.initial['birth_date']);
   late final _height = TextEditingController(
       text: _u.heightField(widget.initial['height_cm'] as num?));
   late final _weight = TextEditingController(
       text: _u.weightField(widget.initial['weight_kg'] as num?));
 
-  static String _str(Object? v) => v == null ? '' : '$v';
-
   @override
   void dispose() {
-    _age.dispose();
     _height.dispose();
     _weight.dispose();
     super.dispose();
@@ -104,7 +103,7 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
   /// fields are typed in the units on their labels and stored in metric.
   Map<String, dynamic> _fields() => {
         if (_sex != null) 'sex': _sex,
-        if (Typed.of(_age.text).value case final v?) 'age': v.round(),
+        if (_birthDate != null) 'birth_date': birthDateString(_birthDate!),
         'height_cm': ?_u.heightToCm(_height.text),
         'weight_kg': ?_u.weightToKg(_weight.text),
       };
@@ -113,7 +112,6 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
   /// and dropping it silently is how a body ends up half-described.
   Future<void> _continue() async {
     final bad = [
-      if (Typed.of(_age.text).bad) 'Age',
       if (Typed.of(_height.text).bad) _u.heightLabel,
       if (Typed.of(_weight.text).bad) _u.weightLabel,
     ];
@@ -140,7 +138,7 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
             const SizedBox(height: S.x3),
             Text(
               l?.profileSetupBody ??
-                  'Four numbers change how your data is scored. Leave any of them '
+                  'These details personalize your estimates. Leave any of them '
                       'blank and only the metrics that need it stay unavailable.',
               style: F.body.copyWith(color: p.ink2),
             ),
@@ -174,10 +172,11 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
               ),
             ],
             const SizedBox(height: S.x5),
-            _Field(_age, l?.profileSetupAgeLabel ?? 'AGE',
-                l?.profileSetupAgeUnit ?? 'years',
-                l?.profileSetupAgeConsequence ??
-                    'Without it: heart-rate zones, calories, fitness age.'),
+            BirthDateField(
+              value: _birthDate,
+              onChanged: (date) => setState(() => _birthDate = date),
+            ),
+            const SizedBox(height: S.x4),
             _Field(_height, l?.profileSetupHeightLabel ?? 'HEIGHT',
                 _u.isImperial ? 'in' : 'cm',
                 l?.profileSetupHeightConsequence ??

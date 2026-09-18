@@ -73,11 +73,17 @@ class ThemeSwitchOverlay extends StatefulWidget {
 class ThemeSwitchOverlayState extends State<ThemeSwitchOverlay>
     with SingleTickerProviderStateMixin {
   final GlobalKey _boundaryKey = GlobalKey();
-  late final AnimationController _fade = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 420),
-  )..addListener(() => setState(() {}));
+  late final AnimationController _fade;
   ui.Image? _snapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    _fade = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {

@@ -53,6 +53,7 @@ import '../onboarding/welcome.dart' show ImportOutcome, ImportReport;
 // barrel test), so their components are imported by path.
 import '../screens/screens.dart';
 import '../ui2.dart';
+import 'birth_date_field.dart';
 import 'devices.dart';
 import 'profile.dart';
 
@@ -522,6 +523,9 @@ Map<String, Widget> _nutritionAndWellnessCases() {
               value: null,
               onChanged: (_) {}),
         ])),
+    'birth_date': BirthDateField(
+        value: DateTime(1992, 1, 1), onChanged: (_) {}),
+    'birth_date_blank': BirthDateField(value: null, onChanged: (_) {}),
     'text_field': OsTextField(
         controller: TextEditingController(text: 'Slept badly, big lunch.'),
         label: 'Anything else',

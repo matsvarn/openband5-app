@@ -576,6 +576,8 @@ dependencies:
 # `flutter pub get` with exit 66).
 
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
@@ -636,6 +638,9 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
+    - docs/openband5/assets/fixtures/day-summary.json
+    - docs/openband5/assets/fixtures/sleep-detail.json
+    - docs/openband5/assets/fixtures/additional-flows.json
     - assets/images/
     - assets/images/2.0x/
     - assets/images/3.0x/
@@ -651,6 +656,9 @@ flutter:
   # SIL Open Font License (OFL.txt alongside the .ttf files, from
   # https://github.com/google/fonts).
   fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter/Inter.ttf
     - family: Barlow Condensed
       fonts:
         - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf

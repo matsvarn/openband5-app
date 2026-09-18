@@ -298,6 +298,25 @@ class RawRecord {
 /// exists once.
 const String kGateDroppedReason = 'gate_dropped';
 
+/// Prefix for identified Gen5 historical kinds that have a decoder but no
+/// 1 Hz [Sample] mapping (v20/v21/v22/v26). Distinct from
+/// `undecodable_rec_v*` so a later redrive does not re-read PIP/deep buffers
+/// looking for seconds that will never appear.
+const String kIdentifiedUnmappedPrefix = 'identified_unmapped_v';
+
+/// Archive reason for a historical record that did not become a 1 Hz row.
+///
+/// Identified Gen5 optical/IMU/PIP buffers (20/21/22/26) are named
+/// unmapped, not undecodable — the protocol already parses them. Anything
+/// else keeps the existing `undecodable_rec_vN` label.
+String archiveReasonForHistoricalVersion(int recType) {
+  const identifiedNo1Hz = {20, 21, 22, 26};
+  if (identifiedNo1Hz.contains(recType)) {
+    return '$kIdentifiedUnmappedPrefix$recType';
+  }
+  return 'undecodable_rec_v$recType';
+}
+
 class ArchiveRecord {
   // Nullable since M1: a band with no flash-record counter (Oura) needs a
   // real NULL here, not a 0 — `thinRawArchiveBefore` samples on this column

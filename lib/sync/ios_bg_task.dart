@@ -127,14 +127,14 @@ class IosBgTask {
     return ran ?? true; // gate busy → another wake is already doing the work
   }
 
-  static Future<Profile> _loadProfile() async {
+  static Future<PersonalProfile> _loadProfile() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_kProfileKey);
-      if (raw == null) return const Profile();
-      return Profile.fromMap((jsonDecode(raw) as Map).cast<String, dynamic>());
+      if (raw == null) return const PersonalProfile();
+      return PersonalProfile.fromMap((jsonDecode(raw) as Map).cast<String, dynamic>());
     } catch (_) {
-      return const Profile();
+      return const PersonalProfile();
     }
   }
 
@@ -148,7 +148,7 @@ class IosBgTask {
   /// answer would silently reflect however-stale the last Today-screen visit
   /// was (or "I don't have today's numbers yet" if that never happened at
   /// all). Best-effort — never throws into the caller.
-  static Future<void> _refreshWidgetSnapshot(Profile profile) async {
+  static Future<void> _refreshWidgetSnapshot(PersonalProfile profile) async {
     await WidgetService.refresh(
       LocalRepositoryImpl(getProfileMap: () => profile.toMap()),
     );

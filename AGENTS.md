@@ -254,3 +254,27 @@ every metric path, idempotence under repeated derivation, flag reset on failure
 paths, transaction ordering and durability around BLE sync, isolate boundaries,
 migration safety, and anything that could display a number the data does not
 support.
+
+## OpenBand native UI review
+
+For `lib/openband` changes, use the approved Paper state and inspect the actual
+render before calling the change visually complete. `lib/main_gallery.dart`
+uses the production widgets with an isolated synthetic repository; it never
+opens the personal database or Bluetooth session.
+
+- Fast behavior/render regression: `flutter test --no-pub test/openband_flow_test.dart`.
+  Inspect changed PNGs; do not accept a visual change just by updating goldens.
+- Native simulator review: `python3 tool/ui_review.py capture` (iPhone 15 Pro),
+  or add `--small` for iPhone 13 mini. Read the generated `index.html`, PNGs,
+  `frames.json` and `run.json` under `build/ui-review/`. This runner only targets
+  its dedicated simulators and cannot overwrite the owner's phone installation.
+- Iteration with hot reload: `python3 tool/ui_review.py gallery`, or the
+  workspace's “synthetic UI (hot reload)” launch configuration.
+- Xcode 27 has a direct physical screenshot command; Device Hub is not required:
+  `xcrun devicectl device capture screenshot --device DEVICE_ID --destination PATH.png`.
+  It captures whichever app is foreground. Use it only during an explicit
+  OpenBand phone-review session; keep real screenshots in OpenBand5Lab, outside Git.
+
+Native fixtures, actual phone UI, Bluetooth recovery and physiological validity
+remain different proof classes. See `docs/openband5/DEVELOPMENT.md` for the loop
+and current toolchain limitations. No firmware or band command is part of UI review.

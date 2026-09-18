@@ -92,7 +92,7 @@ Map<String, Widget> _cases() => {
           PairingView(phase: PairPhase.cancelled, onPair: () {}, onSkip: () {}),
       'profile_setup': ProfileSetupView(onSave: (_) async {}),
       'profile_setup_filled': ProfileSetupView(
-          initial: const {'sex': 'f', 'age': 34, 'weight_kg': 61.5},
+          initial: const {'sex': 'f', 'birth_date': '1992-01-01', 'weight_kg': 61.5},
           onSave: (_) async {}),
       'profile_home': const ProfileHomeView(
         stats: ProfileStats(
@@ -146,7 +146,7 @@ Map<String, Widget> _cases() => {
         initial: const {
           'name': 'Sahil',
           'sex': 'm',
-          'age': 34,
+          'birth_date': '1992-01-01',
           'height_cm': 178.0,
           'weight_kg': 72.4,
         },

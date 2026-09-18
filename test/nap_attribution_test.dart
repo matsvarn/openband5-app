@@ -211,6 +211,41 @@ void main() {
     );
 
     test(
+      'a bout that starts after 20:00 local is not yesterday\'s nap',
+      () {
+        // Pairing-day capture: 23:45–00:51 of the next main night was stored
+        // as a 66 min nap because nothing gated the nocturnal leading edge.
+        const from = 23 * 3600 + 45 * 60;
+        final s = _daySubstrate(
+          startSec: midnight,
+          lengthSec: 26 * 3600,
+          napFromSec: from,
+          napToSec: from + napLen,
+        );
+        final bundle = <String, dynamic>{};
+        final sc = <String, dynamic>{};
+
+        final periods = DerivationEngine.debugAttachNaps(
+          bundle,
+          sc,
+          s,
+          0,
+          0,
+          attributionStartSec: midnight,
+          attributionEndSec: midnight + 86400,
+        );
+
+        expect(periods, isNotNull);
+        expect(
+          periods,
+          isEmpty,
+          reason: 'this is tonight\'s sleep, credited on the wake day',
+        );
+        expect(sc['nap_min'], 0.0);
+      },
+    );
+
+    test(
       'a mid-day nap is unaffected by the leading-edge guard',
       () {
         // Same contiguous-at-midnight record, but the block starts 2 h in.

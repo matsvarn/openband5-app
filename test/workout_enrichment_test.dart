@@ -95,7 +95,7 @@ void main() {
     // maxHr = estimatedMaxHr(30, 'gen4') = 208 - 0.7*30 = 187 (TS-03a). It was
     // 220-30 = 190 here and Tanaka 187 in the analytics anchors for the SAME
     // session; one ceiling now, and it takes the strap as well as the age.
-    repo = LocalRepositoryImpl(getProfileMap: () => {'age': 30});
+    repo = LocalRepositoryImpl(getProfileMap: () => {'birth_date': '1940-01-01'});
   });
 
   tearDownAll(() async {
@@ -360,9 +360,10 @@ void main() {
     expect(live['trace_samples'], 600);
     expect(live['trace_coverage_pct'], 100);
 
-    // The band's 1 Hz window ages out — which is what used to blank the whole
-    // chart half of this screen on day four, permanently.
-    await LocalDb.pruneDecodedBeforeRecTs(e + 100000);
+    // Model an older installation whose source was already pruned. OpenBand
+    // now retains new inputs; the cached trace must still support old stores.
+    final db = await LocalDb.instance;
+    await db.delete('decoded_onehz', where: 'rec_ts < ?', whereArgs: [e + 100000]);
     expect(await LocalDb.hrSamplesInRange(s, e), isEmpty);
 
     final frozen = await repo.getWorkout('w-frozen');

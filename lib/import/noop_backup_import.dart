@@ -87,7 +87,7 @@ class NoopBackupImporter {
   /// this must not be able to write to it, even by accident.
   static Future<NoopImportResult> importDatabase(
     String path,
-    Profile profile,
+    PersonalProfile profile,
     DerivationEngine engine, {
     void Function(int days)? onProgress,
   }) async {
@@ -206,7 +206,7 @@ class NoopBackupImporter {
 
   static Future<NoopImportResult> _import(
     Database src,
-    Profile profile,
+    PersonalProfile profile,
     DerivationEngine engine, {
     void Function(int days)? onProgress,
   }) async {

@@ -96,7 +96,7 @@ class NoopImporter {
   /// [onProgress] reports days written so far. Never loads the whole source.
   static Future<NoopImportResult> importFile(
     String path,
-    Profile profile,
+    PersonalProfile profile,
     DerivationEngine engine, {
     void Function(int days)? onProgress,
   }) async {
@@ -163,7 +163,7 @@ class NoopImporter {
 
   static Future<NoopImportResult> _importResolvedFile(
     File file,
-    Profile profile,
+    PersonalProfile profile,
     DerivationEngine engine, {
     void Function(int days)? onProgress,
   }) async {

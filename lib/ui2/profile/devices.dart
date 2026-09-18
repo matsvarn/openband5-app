@@ -1406,25 +1406,17 @@ Future<void> showReasonSheet(BuildContext c, String reason) async {
 
 /// Pairing, pushed rather than gated.
 ///
-/// The onboarding gate is what used to take the pairing screen away once a
-/// band answered. A pushed copy has no gate under it, so it closes itself —
-/// otherwise it sits there on "Paired · Continue", whose button re-runs the
-/// scan.
+/// Close this route after the nested pairing screen returns a paired band.
 class RePair extends StatelessWidget {
   const RePair({super.key});
 
   @override
   Widget build(BuildContext c) {
-    if (c.watch<AppState>().isPaired) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (c.mounted) Navigator.of(c).maybePop();
-      });
-    }
     // NO `onSkip`. That argument is first-run onboarding's "Skip for now",
     // and its note says the app opens without a band and nothing is measured
     // — a sentence about a decision this user made long ago. A re-pair backs
     // out through `NavBar`'s own back button, exactly as `addSensor` does.
-    return const DevicePickerScreen();
+    return DevicePickerScreen(onPaired: () => Navigator.of(c).pop());
   }
 }
 

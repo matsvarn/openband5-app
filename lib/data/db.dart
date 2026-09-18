@@ -180,6 +180,9 @@ class LocalDb {
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
+    'openband_sleep_draft',
+    'openband_sleep_correction',
+    'openband_calculation_job',
     'sleep_nap',
     'breathing_session',
     'sessions',
@@ -343,7 +346,13 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 51;
+  static const int schemaVersion = 52;
+
+  /// OpenBand keeps original sensor inputs by default so a correction or later
+  /// algorithm can be replayed. This is intentionally non-destructive and has
+  /// no automatic byte cap; the data-management surface must report growth and
+  /// let the user make any future destructive retention choice explicitly.
+  static const bool retainOriginalSourceByDefault = true;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -449,6 +458,7 @@ class LocalDb {
         await _createSignalPriority(db);
         await _createWorkoutSuggestions(db);
         await _createSleepOverride(db);
+        await _createOpenBandSleepState(db);
         await _createSleepNap(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
@@ -1031,9 +1041,18 @@ class LocalDb {
           // of it is a second source of truth that goes stale against the
           // adapter.
         }
+        if (oldV < 52) {
+          // OpenBand sleep-correction workflow. New tables plus nullable
+          // provenance/revision columns only; source and derived rows are not
+          // rewritten. The same helper runs from onOpen for merged builds.
+          await _createOpenBandSleepState(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
+        // No calculation isolate survives a process restart.
+        await db.update('openband_calculation_job', {'status': 'pending', 'error': null},
+            where: "status = 'calculating'");
       },
       version: schemaVersion,
     );
@@ -1099,6 +1118,7 @@ class LocalDb {
     await _ensureSyncStateSchema(db);
     await _createWorkoutSuggestions(db);
     await _createSleepOverride(db);
+    await _createOpenBandSleepState(db);
     await _createSleepNap(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
@@ -1619,7 +1639,60 @@ class LocalDb {
         onset_ts INTEGER NOT NULL,
         offset_ts INTEGER NOT NULL,
         source TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        correction_id TEXT,
+        revision INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await _addColumnIfMissing(db, 'sleep_override', 'correction_id', 'TEXT');
+    await _addColumnIfMissing(
+      db,
+      'sleep_override',
+      'revision',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+
+  /// Durable OpenBand draft, correction receipt, and calculation job.
+  ///
+  /// The correction and its pending job are written in one transaction. Jobs
+  /// are revision-checked on every transition so a late calculation can never
+  /// mark a newer correction complete.
+  static Future<void> _createOpenBandSleepState(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_sleep_draft (
+        day_id TEXT PRIMARY KEY,
+        draft_id TEXT NOT NULL UNIQUE,
+        onset_ms INTEGER NOT NULL,
+        wake_ms INTEGER NOT NULL,
+        recording_timezone TEXT,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_sleep_correction (
+        day_id TEXT PRIMARY KEY,
+        correction_id TEXT NOT NULL UNIQUE,
+        draft_id TEXT UNIQUE,
+        action TEXT NOT NULL,
+        onset_ms INTEGER,
+        wake_ms INTEGER,
+        recording_timezone TEXT,
+        revision INTEGER NOT NULL,
+        saved_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_calculation_job (
+        day_id TEXT PRIMARY KEY,
+        correction_id TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        requested_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error TEXT,
+        result_algo_version INTEGER,
+        result_computed_at INTEGER
       )
     ''');
   }
@@ -1666,6 +1739,254 @@ class LocalDb {
     final db = await instance;
     final rows = await db.query('sleep_override', columns: ['day_id']);
     return {for (final r in rows) r['day_id'] as String};
+  }
+
+  // ── OPENBAND SLEEP CORRECTION STATE ────────────────────────────────────────
+
+  static Future<void> putOpenBandSleepDraft({
+    required String dayId,
+    required String draftId,
+    required int onsetMs,
+    required int wakeMs,
+    String? recordingTimezone,
+  }) async {
+    final db = await instance;
+    await db.insert('openband_sleep_draft', {
+      'day_id': dayId,
+      'draft_id': draftId,
+      'onset_ms': onsetMs,
+      'wake_ms': wakeMs,
+      'recording_timezone': recordingTimezone,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<Map<String, dynamic>?> openBandSleepDraft(String dayId) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_sleep_draft',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> deleteOpenBandSleepDraft(String dayId) async {
+    final db = await instance;
+    await db.delete(
+      'openband_sleep_draft',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+    );
+  }
+
+  /// Atomically persist an override, its revisioned correction receipt and a
+  /// pending calculation job. Retrying the same draft id returns the existing
+  /// correction and creates no new revision. The draft is deleted only inside
+  /// the successful transaction, so any write failure leaves it durable.
+  static Future<Map<String, dynamic>> commitOpenBandSleepCorrection({
+    required String dayId,
+    required String draftId,
+    required int onsetMs,
+    required int wakeMs,
+    String? recordingTimezone,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final retry = await txn.query(
+        'openband_sleep_correction',
+        where: 'draft_id = ?',
+        whereArgs: [draftId],
+        limit: 1,
+      );
+      if (retry.isNotEmpty) {
+        final jobs = await txn.query('openband_calculation_job',
+            where: 'day_id = ? AND correction_id = ?',
+            whereArgs: [dayId, retry.first['correction_id']], limit: 1);
+        return {...retry.first, if (jobs.isNotEmpty) ...{
+          'status': jobs.single['status'], 'error': jobs.single['error'],
+        }};
+      }
+
+      // Only the currently durable draft may create the next revision. An old
+      // screen retaining a superseded draft id must not overwrite a newer
+      // correction after navigation/relaunch.
+      final drafts = await txn.query(
+        'openband_sleep_draft',
+        where: 'day_id = ? AND draft_id = ? AND onset_ms = ? AND wake_ms = ?',
+        whereArgs: [dayId, draftId, onsetMs, wakeMs],
+        limit: 1,
+      );
+      if (drafts.isEmpty) {
+        throw StateError('Sleep draft is stale or was not saved.');
+      }
+
+      final current = await txn.query(
+        'openband_sleep_correction',
+        columns: ['revision'],
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+        limit: 1,
+      );
+      final revision = current.isEmpty
+          ? 1
+          : ((current.first['revision'] as num?)?.toInt() ?? 0) + 1;
+      final correctionId = draftId;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.insert('sleep_override', {
+        'day_id': dayId,
+        'onset_ts': onsetMs ~/ 1000,
+        'offset_ts': wakeMs ~/ 1000,
+        'source': 'manual',
+        'created_at': now ~/ 1000,
+        'correction_id': correctionId,
+        'revision': revision,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final correction = <String, Object?>{
+        'day_id': dayId,
+        'correction_id': correctionId,
+        'draft_id': draftId,
+        'action': 'override',
+        'onset_ms': onsetMs,
+        'wake_ms': wakeMs,
+        'recording_timezone': recordingTimezone,
+        'revision': revision,
+        'saved_at': now,
+      };
+      await txn.insert(
+        'openband_sleep_correction',
+        correction,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert('openband_calculation_job', {
+        'day_id': dayId,
+        'correction_id': correctionId,
+        'revision': revision,
+        'status': 'pending',
+        'requested_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.delete(
+        'openband_sleep_draft',
+        where: 'day_id = ? AND draft_id = ?',
+        whereArgs: [dayId, draftId],
+      );
+      return {...correction, 'status': 'pending'};
+    });
+  }
+
+  static Future<Map<String, dynamic>?> openBandSleepCorrection(
+    String dayId,
+  ) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT c.*, j.status, j.error, j.requested_at, '
+      'j.result_algo_version, j.result_computed_at '
+      'FROM openband_sleep_correction c '
+      'LEFT JOIN openband_calculation_job j ON j.day_id = c.day_id '
+      'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+      'WHERE c.day_id = ? LIMIT 1',
+      [dayId],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Remove the override and enqueue an automatic re-detection revision in one
+  /// transaction. Repeating an already-current restore is idempotent.
+  static Future<Map<String, dynamic>> restoreOpenBandAutomatic(
+    String dayId,
+  ) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'openband_sleep_correction',
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+        limit: 1,
+      );
+      final old = rows.isEmpty ? null : rows.first;
+      if (old?['action'] == 'automatic') return old!;
+      final revision = ((old?['revision'] as num?)?.toInt() ?? 0) + 1;
+      final correctionId = 'automatic:$dayId:$revision';
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.delete(
+        'sleep_override',
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+      );
+      // A finalized day otherwise reads this cache before staging. Restoring
+      // automatic is an explicit request to rebuild the candidate from the
+      // retained source, not to resurrect a pre-correction cached proposal.
+      await txn.delete(
+        'sleep_session_candidates',
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+      );
+      final correction = <String, Object?>{
+        'day_id': dayId,
+        'correction_id': correctionId,
+        'draft_id': null,
+        'action': 'automatic',
+        // Retained only so the supplied non-null receipt contract can describe
+        // the prior correction while automatic detection is pending.
+        'onset_ms': old?['onset_ms'],
+        'wake_ms': old?['wake_ms'],
+        'recording_timezone': old?['recording_timezone'],
+        'revision': revision,
+        'saved_at': now,
+      };
+      await txn.insert(
+        'openband_sleep_correction',
+        correction,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.insert('openband_calculation_job', {
+        'day_id': dayId,
+        'correction_id': correctionId,
+        'revision': revision,
+        'status': 'pending',
+        'requested_at': now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return correction;
+    });
+  }
+
+  static Future<bool> updateOpenBandCalculationJob({
+    required String dayId,
+    required String correctionId,
+    required int revision,
+    required String status,
+    String? error,
+    int? resultAlgoVersion,
+    int? resultComputedAt,
+    Set<String>? fromStatuses,
+  }) async {
+    final db = await instance;
+    final where = StringBuffer(
+      'day_id = ? AND correction_id = ? AND revision = ?',
+    );
+    final args = <Object?>[dayId, correctionId, revision];
+    if (fromStatuses != null && fromStatuses.isNotEmpty) {
+      where.write(
+        ' AND status IN (${List.filled(fromStatuses.length, '?').join(',')})',
+      );
+      args.addAll(fromStatuses);
+    }
+    final changed = await db.update(
+      'openband_calculation_job',
+      {
+        'status': status,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'error': error,
+        'result_algo_version': resultAlgoVersion,
+        'result_computed_at': resultComputedAt,
+      },
+      where: where.toString(),
+      whereArgs: args,
+    );
+    return changed == 1;
   }
 
   // ── IMPORTED MEASUREMENTS FROM DEVICES WE ARE NOT ───────────────────────────
@@ -3184,7 +3505,11 @@ class LocalDb {
           final raw = raws[i];
           final recTs = _recTsFor(raw);
           final sample = samples[i];
-          if (sample != null) {
+          // Legacy `samples` is only the R10-lite fallback: gen5/R24 seconds
+          // already land in `decoded_onehz`. Dual-writing both on the WHOOP 5
+          // capture cost ~20% of the file and drifted (IGNORE vs REPLACE).
+          if (sample != null &&
+              _decodeOneHzSample(raw, preferred: sample) == null) {
             batch.insert('samples', {
               'device_id': deviceId,
               // From `ts`, not `recTs`: `toDbMap` writes `ts: sample.tsEpoch`
@@ -5120,6 +5445,15 @@ class LocalDb {
   /// [fallbackSec] when undecodable or the decoded ts is non-positive — so callers
   /// never store a 0/negative rec_ts. Used at insert and during the v6 backfill.
   static int decodeRecTs(String hex, {required int fallbackSec}) {
+    // Generation dispatch is terminal here too: identified Gen5 deep buffers
+    // carry a real header timestamp even though they have no 1 Hz Sample.
+    try {
+      final bytes = proto.hexToBytes(hex);
+      final gen5 = proto.parseGen5Historical(bytes);
+      if (gen5 != null && gen5.unix > 0) return gen5.unix;
+    } catch (_) {
+      /* fall through */
+    }
     // Historical type-24 carries the canonical ts; decodeRecord covers 0x28/R10/R24.
     try {
       final s = proto.decodeRecord(hex);
@@ -5255,6 +5589,10 @@ class LocalDb {
             bandSleepState: g.sleepStateRawNibble,
           );
         }
+        // A successfully identified Gen5 deep buffer has no 1 Hz mapping.
+        // Recognition is terminal: never feed those same bytes to Gen4 R24,
+        // whose permissive offsets overlap and can fabricate a biometric row.
+        if (g != null) return null;
       } catch (_) {}
       try {
         // Legacy decoder first, firmware-fallback chain second — see
@@ -5859,7 +6197,10 @@ class LocalDb {
       if (hex == null) continue;
       Map<String, Object?>? row;
       try {
-        final e = proto.parseEvent(proto.hexToBytes(hex));
+        final e = proto.parseEvent(
+          proto.hexToBytes(hex),
+          profile: _eventParseProfile((r['event_id'] as num?)?.toInt() ?? 0),
+        );
         row = e == null ? null : batteryRowFromEvent(e);
       } catch (_) {
         // A frame this build cannot parse is one battery row we do not get.
@@ -5914,11 +6255,24 @@ class LocalDb {
   /// Every caller names the device explicitly; see the M3 spec's call-site
   /// table for why each one is correct in M3 (a marked `kPrimaryDeviceId`
   /// today, a real per-session id from M2 onward).
+  static proto.BandProfile _eventParseProfile(int eventId) {
+    switch (eventId) {
+      case proto.EventId.strapConditionReport:
+      case proto.EventId.hapticsTerminated:
+      case proto.EventId.batteryPackInfo:
+      case proto.EventId.genericFirmwareEvent:
+        return proto.BandProfile.gen5;
+      default:
+        return proto.BandProfile.gen4;
+    }
+  }
+
   static Future<void> insertEvent(
     int eventId,
     int ts,
     String hex, {
     required String deviceId,
+    proto.BandProfile? profile,
   }) async {
     final capturedAt = DateTime.now().millisecondsSinceEpoch;
     // Parse BEFORE acquiring the handle so both inserts run back-to-back on one
@@ -5927,7 +6281,10 @@ class LocalDb {
     // must not crash the app (the band re-sends events).
     final parsed = () {
       try {
-        return proto.parseEvent(proto.hexToBytes(hex));
+        return proto.parseEvent(
+          proto.hexToBytes(hex),
+          profile: profile ?? _eventParseProfile(eventId),
+        );
       } catch (_) {
         return null;
       }
@@ -6433,6 +6790,7 @@ class LocalDb {
   /// exactly as long as the 1 Hz substrate they arrived with, and the sample
   /// lives forever.
   static Future<int> thinRawArchiveBefore(int beforeMs) async {
+    if (retainOriginalSourceByDefault) return 0;
     final db = await instance;
     return db.transaction((txn) => _thinRawArchiveVia(txn, beforeMs));
   }
@@ -6441,6 +6799,7 @@ class LocalDb {
     DatabaseExecutor txn,
     int beforeMs,
   ) async {
+    if (retainOriginalSourceByDefault) return 0;
     return txn.delete(
       'raw_archive',
       // `counter` is NOT NULL in practice but the column is nullable, and
@@ -6474,9 +6833,12 @@ class LocalDb {
     };
   }
 
-  static Future<Map<String, dynamic>?> latestBandBatterySample() async {
+  static Future<Map<String, dynamic>?> latestBandBatterySample({String? deviceId}) async {
     final db = await instance;
-    final rows = await db.query('band_battery', orderBy: 'ts DESC', limit: 1);
+    final rows = await db.query('band_battery',
+        where: deviceId == null ? null : 'device_id = ?',
+        whereArgs: deviceId == null ? null : [deviceId],
+        orderBy: 'ts DESC', limit: 1);
     return rows.isEmpty ? null : rows.first;
   }
 
@@ -6591,7 +6953,29 @@ class LocalDb {
     var inserted = false;
     await db.transaction((txn) async {
       final batch = txn.batch();
-      _queueDecodedOneHz(batch, raw, sample);
+      final decoded = _decodeOneHzSample(raw, preferred: sample);
+      if (decoded == null) {
+        var version = 'unknown';
+        try {
+          final bytes = proto.hexToBytes(raw.hex);
+          if (bytes.length > 1) version = bytes[1].toString();
+        } catch (_) {}
+        // Public replay/import insertion must retain the original too. The
+        // live drain already supplies its archives to commitSyncBatch; this is
+        // the equivalent atomic path for a record with no 1 Hz mapping.
+        batch.insert('raw_archive', {
+          'device_id': kPrimaryDeviceId,
+          'counter': raw.counter,
+          'hex': raw.hex,
+          'packet_type': raw.packetType,
+          'rec_ts': _recTsFor(raw),
+          'captured_at': raw.capturedAt,
+          'reason': archiveReasonForHistoricalVersion(
+            int.tryParse(version) ?? -1,
+          ),
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      _queueDecodedOneHz(batch, raw, decoded ?? sample);
       await batch.commit(noResult: true);
       inserted = true;
     });
@@ -7154,6 +7538,7 @@ class LocalDb {
     // migrated in by M3); this stores the readable string under that name
     // rather than renaming a shipped column.
     String? priorityHash,
+    int? expectedSleepCorrectionRevision,
   }) async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -7164,6 +7549,14 @@ class LocalDb {
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     final encodedPayload = SeriesCodec.encodePayloadJson(payloadJson);
     await db.transaction((txn) async {
+      if (expectedSleepCorrectionRevision != null) {
+        final rows = await txn.query('openband_sleep_correction',
+            columns: ['revision'], where: 'day_id = ?', whereArgs: [dayId], limit: 1);
+        final current = rows.isEmpty ? 0 : (rows.single['revision'] as num).toInt();
+        if (current != expectedSleepCorrectionRevision) {
+          throw StateError('Sleep correction changed while this day was calculated.');
+        }
+      }
       await txn.insert('day_result', {
         'day_id': dayId,
         'algo_version': algoVersion,
@@ -10394,6 +10787,10 @@ class LocalDb {
   /// Delete decoded substrate / structured band signals / events whose RECORD
   /// TIME (epoch seconds) is strictly before [cutoffSec].
   static Future<int> pruneDecodedBeforeRecTs(int cutoffSec) async {
+    // The first OpenBand milestone needs replayable originals for correction
+    // and algorithm comparison. Retention is therefore non-destructive by
+    // default, including the v20 archive that the old path sampled 1-in-60.
+    if (retainOriginalSourceByDefault) return 0;
     final db = await instance;
     // `deleted` used to just stay 0 forever - none of the txn.delete() calls'
     // return values (rows actually deleted) were ever added to it, so the

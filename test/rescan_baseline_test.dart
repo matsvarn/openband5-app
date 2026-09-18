@@ -76,7 +76,7 @@ void main() {
     }
     // No raw → rescanRecent bails before the substrate even decodes, but it
     // still must never throw and must return 0.
-    final n = await DerivationEngine().rescanRecent(const Profile());
+    final n = await DerivationEngine().rescanRecent(const PersonalProfile());
     expect(n, 0);
   });
 
