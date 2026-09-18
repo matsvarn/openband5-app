@@ -44,7 +44,8 @@
         "3FVE-0",
         "3FVD-0",
         "3G8R-0"
-      ]
+      ],
+      "implemented": "screens.dart / health.dart / training.dart / journal.dart (inline title)"
     },
     {
       "name": "OBPageHeader.detail",
@@ -67,7 +68,8 @@
         "3FDB-0",
         "3FVE-0"
       ],
-      "notes": "Battery % and connection dot are independent facts; dot colour = recovery when connected, gap when not."
+      "notes": "Battery % and connection dot are independent facts; dot colour = recovery when connected, gap when not.",
+      "implemented": "screens.dart (_BandPill)"
     },
     {
       "name": "OBIconButton",
@@ -100,7 +102,8 @@
       "replaces": "MetricRing ×3 inside OpenBandOverview",
       "usedIn": [
         "3F5T-0"
-      ]
+      ],
+      "implemented": "screens.dart + charts.dart (MetricRing)"
     },
     {
       "name": "OBInsightRow",
@@ -120,7 +123,8 @@
       "replaces": "StepsCard",
       "usedIn": [
         "3F5T-0"
-      ]
+      ],
+      "implemented": "daily_activity.dart"
     },
     {
       "name": "OBMetricCard",
@@ -136,7 +140,8 @@
       "children": [
         "OBRangePill",
         "OBStatusChip"
-      ]
+      ],
+      "implemented": "screens.dart"
     },
     {
       "name": "OBRangePill",
@@ -144,14 +149,16 @@
       "widget": "OBRangePill",
       "file": "charts.dart",
       "replaces": "BaselineMark",
-      "notes": "Vertical track; band = baseline range; dot = today. Metric colour + tint."
+      "notes": "Vertical track; band = baseline range; dot = today. Metric colour + tint.",
+      "implemented": "charts.dart"
     },
     {
       "name": "OBStatusChip",
       "paperNode": "3ESQ-0",
       "widget": "OBStatusChip",
       "file": "theme.dart",
-      "notes": "Text only: '+8 über Basis' / 'im Bereich'. Never repeats the value."
+      "notes": "Text only: '+8 über Basis' / 'im Bereich'. Never repeats the value.",
+      "implemented": "screens.dart (obMetricStatus)"
     },
     {
       "name": "OBTrendCard",
@@ -165,14 +172,16 @@
       ],
       "children": [
         "OBTrendPlot"
-      ]
+      ],
+      "implemented": "health.dart"
     },
     {
       "name": "OBTrendPlot",
       "paperNode": "3ETC-0",
       "widget": "OBTrendPlot",
       "file": "charts.dart",
-      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only."
+      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only.",
+      "implemented": "health.dart"
     },
     {
       "name": "OBWeekBars",
@@ -186,7 +195,8 @@
       "children": [
         "OBDeltaChip"
       ],
-      "notes": "Today = dashed outline bar."
+      "notes": "Today = dashed outline bar.",
+      "implemented": "training.dart"
     },
     {
       "name": "OBNightChart",
@@ -306,7 +316,8 @@
       "usedIn": [
         "3FVE-0",
         "3FLZ-0"
-      ]
+      ],
+      "implemented": "health.dart"
     },
     {
       "name": "OBChip",
@@ -390,7 +401,8 @@
       "usedIn": [
         "3FVD-0"
       ],
-      "notes": "Four tiles max; label must fit one line at 13 px."
+      "notes": "Four tiles max; label must fit one line at 13 px.",
+      "implemented": "training.dart"
     },
     {
       "name": "OBTemplateRow",
@@ -467,7 +479,8 @@
       "children": [
         "OBCheckinScale",
         "OBHabitRow"
-      ]
+      ],
+      "implemented": "journal.dart"
     },
     {
       "name": "OBPatternCard",
@@ -655,5 +668,19 @@
   "openBlocks": [
     "OBSleepSchedule",
     "Sport pictogram set (custom, Lucide grid)"
-  ]
+  ],
+  "status": {
+    "implementedHubs": [
+      "Übersicht",
+      "Gesundheit",
+      "Training",
+      "Journal"
+    ],
+    "deferred": [
+      "OBPatternCard and OBHabitRow yes/no (B29 boolean answer type)",
+      "OBMuscleBars, OBTemplateRow (B23 templates)",
+      "OBMacroBars/OBMealSection (B05 meal drafts)",
+      "Lauf live/result screens (B19 detail snapshots)"
+    ]
+  }
 }
