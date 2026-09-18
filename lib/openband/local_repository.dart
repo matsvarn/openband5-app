@@ -165,6 +165,27 @@ class LocalOpenBandRepository implements OpenBandRepository {
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
   @override
+  Future<PatternSummary> readPattern(
+    String habitKey,
+    MetricKey outcome,
+    String endDay,
+    int nights,
+  ) async {
+    _requireDay(endDay);
+    final days = openBandDaysEnding(endDay, nights + 1);
+    final journal = await LocalDb.journalMetricsByDay(sinceDaysEpoch: days.first);
+    final rows = await LocalDb.metricSeries(outcome.series);
+    return summarizePattern(
+      {for (final e in journal.entries) e.key: e.value[habitKey]?.value},
+      {
+        for (final r in rows)
+          r['date'] as String: (r['value'] as num?)?.toDouble(),
+      },
+      days,
+    );
+  }
+
+  @override
   Future<List<JournalEntry>> readJournal(String day) async {
     _requireDay(day);
     final repository = app.repo;

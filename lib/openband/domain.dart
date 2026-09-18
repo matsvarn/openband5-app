@@ -209,8 +209,47 @@ class JournalEntry {
   const JournalEntry(this.key, this.value);
 }
 
+class PatternGroup {
+  final int nights;
+  final double? mean;
+  const PatternGroup(this.nights, this.mean);
+}
+
+/// Outcome of the night that FOLLOWS a yes/no journal answer, split by the
+/// answer. A journal day D is paired with the metric dated D+1 (the wake
+/// day of that night). Nights without an answer or without the metric are
+/// not counted anywhere.
+class PatternSummary {
+  final PatternGroup yes, no;
+  const PatternSummary({required this.yes, required this.no});
+}
+
+PatternSummary summarizePattern(
+  Map<String, double?> answers,
+  Map<String, double?> outcomes,
+  List<String> days,
+) {
+  final yes = <double>[], no = <double>[];
+  for (var i = 0; i + 1 < days.length; i++) {
+    final answer = answers[days[i]], outcome = outcomes[days[i + 1]];
+    if (answer == null || outcome == null) continue;
+    (answer >= .5 ? yes : no).add(outcome);
+  }
+  PatternGroup group(List<double> v) => PatternGroup(
+    v.length,
+    v.isEmpty ? null : v.reduce((a, b) => a + b) / v.length,
+  );
+  return PatternSummary(yes: group(yes), no: group(no));
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<PatternSummary> readPattern(
+    String habitKey,
+    MetricKey outcome,
+    String endDay,
+    int nights,
+  );
   Future<List<JournalEntry>> readJournal(String day);
   Future<void> writeJournal(String day, String key, double value);
   Future<List<TrainingSession>> readSessions(String endDay, int days);

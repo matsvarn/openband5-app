@@ -94,6 +94,22 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
             const SizedBox(height: 10),
             if (day != null)
               _NutritionRow(intake: day.intake, onTap: widget.onNutrition),
+            const SizedBox(height: 10),
+            FutureBuilder<PatternSummary>(
+              key: ValueKey('pattern-${c.selectedDay}-${_entries.hashCode}'),
+              future: c.repository.readPattern(
+                'caffeine_late',
+                MetricKey.hrv,
+                c.selectedDay,
+                30,
+              ),
+              builder: (context, snapshot) => OBPatternCard(
+                title: 'HRV nach Koffein nach 14 Uhr',
+                unit: 'ms',
+                summary: snapshot.data,
+                error: snapshot.hasError,
+              ),
+            ),
           ],
         ),
       );
@@ -403,6 +419,105 @@ class _NutritionRow extends StatelessWidget {
               Icon(LucideIcons.chevronRight, size: 16, color: p.gap),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class OBPatternCard extends StatelessWidget {
+  static const minNights = 3;
+  final String title, unit;
+  final PatternSummary? summary;
+  final bool error;
+  const OBPatternCard({
+    super.key,
+    required this.title,
+    required this.unit,
+    required this.summary,
+    this.error = false,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final s = summary;
+    final enough =
+        s != null && s.yes.nights >= minNights && s.no.nights >= minNights;
+    final max = !enough
+        ? 0.0
+        : [s.yes.mean!, s.no.mean!].reduce((a, b) => a > b ? a : b);
+    Widget bar(String label, PatternGroup g, Color color) => Row(
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(
+            '$label · ${g.nights}',
+            style: p.text(13, weight: FontWeight.w600, color: p.muted),
+          ),
+        ),
+        Expanded(
+          child: Container(
+            height: 14,
+            alignment: Alignment.centerLeft,
+            decoration: BoxDecoration(
+              color: p.well,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            child: FractionallySizedBox(
+              widthFactor: enough && max > 0 ? g.mean! / max : 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 64,
+          child: Text(
+            enough ? '${obNumber(g.mean)} $unit' : '—',
+            textAlign: TextAlign.right,
+            style: p.text(15, weight: FontWeight.w700, display: true),
+          ),
+        ),
+      ],
+    );
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 10,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(title, style: p.text(15, weight: FontWeight.w600)),
+              ),
+              Text(
+                '30 Nächte',
+                style: p.text(13, weight: FontWeight.w500, color: p.muted),
+              ),
+            ],
+          ),
+          if (s != null) ...[
+            bar('Ja', s.yes, p.food),
+            bar('Nein', s.no, p.gap),
+          ],
+          Text(
+            error
+                ? 'Zusammenhang konnte nicht geladen werden.'
+                : s == null
+                ? ''
+                : enough
+                ? 'Ø der folgenden Nacht · Zusammenhang, kein Beweis'
+                : 'Noch zu wenige Nächte mit Antwort (mindestens $minNights je Seite)',
+            style: p.text(
+              12,
+              weight: FontWeight.w500,
+              color: error ? p.danger : p.muted,
+            ),
+          ),
+        ],
       ),
     );
   }

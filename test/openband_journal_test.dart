@@ -94,8 +94,9 @@ void main() {
     await mount(tester);
     expect(find.text('Journal'), findsOneWidget);
     expect(find.text('Noch keine Antwort'), findsOneWidget);
-    expect(find.text('—'), findsOneWidget);
+    expect(find.text('—'), findsNWidgets(3));
     expect(find.text('Ja'), findsNWidgets(3));
+    expect(find.textContaining('Noch zu wenige'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -138,5 +139,44 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-answered.png'),
     );
+  });
+
+  test('pattern pairs the answer day with the following night', () {
+    final days = openBandDaysEnding('2026-09-05', 5);
+    final s = summarizePattern(
+      {'2026-09-01': 1, '2026-09-02': 0, '2026-09-03': 1, '2026-09-04': null},
+      {'2026-09-02': 40, '2026-09-03': 50, '2026-09-04': 44, '2026-09-05': 99},
+      days,
+    );
+    expect(s.yes.nights, 2);
+    expect(s.yes.mean, 42);
+    expect(s.no.nights, 1);
+    expect(s.no.mean, 50);
+  });
+
+  testWidgets('pattern card stays open below three nights per side', (
+    tester,
+  ) async {
+    for (var i = 1; i <= 8; i++) {
+      await repo.writeJournal(
+        '2026-09-${(i + 5).toString().padLeft(2, '0')}',
+        'caffeine_late',
+        i.isEven ? 1 : 0,
+      );
+    }
+    await mount(tester);
+    expect(find.textContaining('Noch zu wenige'), findsNothing);
+    expect(find.textContaining('kein Beweis'), findsOneWidget);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/journal-pattern.png'),
+    );
+    final thin = await repo.readPattern(
+      'read_before_bed',
+      MetricKey.hrv,
+      '2026-09-15',
+      30,
+    );
+    expect(thin.yes.nights, 0);
   });
 }

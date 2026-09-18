@@ -401,7 +401,7 @@
       "usedIn": [
         "3FVD-0"
       ],
-      "notes": "Four tiles max; label must fit one line at 13 px.",
+      "notes": "Four tiles max; label must fit one line at 13 px. Icons: OBSportIcon (Tabler SVG assets).",
       "implemented": "training.dart"
     },
     {
@@ -490,7 +490,8 @@
       "usedIn": [
         "3G8R-0"
       ],
-      "notes": "Two bars (with / without habit), mean outcome each, pair counts. Keep the 'Zusammenhang, kein Beweis' line."
+      "notes": "Two bars (with / without habit), mean outcome each, pair counts. Keep the 'Zusammenhang, kein Beweis' line.",
+      "implemented": "journal.dart"
     },
     {
       "name": "OBSleepHero",
@@ -677,7 +678,6 @@
       "Journal"
     ],
     "deferred": [
-      "OBPatternCard and OBHabitRow yes/no (B29 boolean answer type)",
       "OBMuscleBars, OBTemplateRow (B23 templates)",
       "OBMacroBars/OBMealSection (B05 meal drafts)",
       "Lauf live/result screens (B19 detail snapshots)"

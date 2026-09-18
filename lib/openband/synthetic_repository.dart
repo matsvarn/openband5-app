@@ -123,6 +123,25 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, Map<String, double>> _journal = {};
 
   @override
+  Future<PatternSummary> readPattern(
+    String habitKey,
+    MetricKey outcome,
+    String endDay,
+    int nights,
+  ) async {
+    final days = openBandDaysEnding(endDay, nights + 1);
+    final series = {
+      for (final p in await readMetricHistory(outcome, endDay, nights + 1))
+        p.day: p.value,
+    };
+    return summarizePattern(
+      {for (final d in days) d: _journal[d]?[habitKey]},
+      series,
+      days,
+    );
+  }
+
+  @override
   Future<List<JournalEntry>> readJournal(String day) async => [
     for (final e in (_journal[day] ?? const {}).entries)
       JournalEntry(e.key, e.value),
