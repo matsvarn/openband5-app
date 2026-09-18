@@ -88,144 +88,144 @@ class StepsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final kcal = '${obNumber(day.intake.kcal)} kcal';
-    final water = '${obNumber(day.intake.waterMl)} ml';
     final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     return OBCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () => _details(context),
-            borderRadius: BorderRadius.circular(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            LucideIcons.footprints,
-                            size: 16,
-                            color: p.strain,
-                          ),
-                          const SizedBox(width: 6),
-                          Text('Schritte', style: p.text(13)),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        spacing: 8,
-                        children: [
-                          Text(
-                            obNumber(day.steps.value),
-                            style: p.text(27, weight: FontWeight.w600),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              last != null
-                                  ? 'bis ${obTime(last)}'
-                                  : 'Tageswert',
-                              style: p.text(11, color: p.muted),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 120,
-                  height: 40,
-                  child: day.stepIntervals.isEmpty
-                      ? Semantics(
-                          label: 'Schritteverlauf noch offen',
-                          child: Icon(
-                            LucideIcons.footprints,
-                            color: p.strain.withValues(alpha: .4),
-                            size: 34,
-                          ),
-                        )
-                      : Semantics(
-                          label:
-                              'Schritteverlauf: ${day.stepIntervals.map((s) => '${obTime(s.start)} bis ${obTime(s.end)}, ${obNumber(s.steps)} Schritte').join('. ')}',
-                          child: CustomPaint(
-                            painter: _StepsPainter(day.stepIntervals, p.strain),
-                          ),
+          Expanded(
+            flex: 3,
+            child: _DayValue(
+              label: 'Schritte',
+              icon: LucideIcons.footprints,
+              color: p.strain,
+              value: obNumber(day.steps.value),
+              unit: last != null ? 'bis ${obTime(last)}' : null,
+              onTap: () => _details(context),
+              child: day.stepIntervals.isEmpty
+                  ? null
+                  : Semantics(
+                      label:
+                          'Schritteverlauf: ${day.stepIntervals.map((s) => '${obTime(s.start)} bis ${obTime(s.end)}, ${obNumber(s.steps)} Schritte').join('. ')}',
+                      child: SizedBox(
+                        height: 24,
+                        width: double.infinity,
+                        child: CustomPaint(
+                          painter: _StepsPainter(day.stepIntervals, p.strain),
                         ),
-                ),
-              ],
+                      ),
+                    ),
             ),
           ),
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 2,
-                  children: [
-                    _chip(
-                      context,
-                      kcal,
-                      p.stageDeep,
-                      () => _details(context, intake: true),
-                    ),
-                    _chip(
-                      context,
-                      water,
-                      p.action,
-                      () => _details(context, intake: true),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Schritte ansehen',
-                onPressed: () => _details(context),
-                icon: Icon(LucideIcons.chevronRight, color: p.muted, size: 14),
-              ),
-            ],
+          Expanded(
+            flex: 2,
+            child: _DayValue(
+              label: 'Wasser',
+              icon: LucideIcons.droplet,
+              color: p.sleep,
+              value: day.intake.waterMl == null
+                  ? '—'
+                  : obNumber(day.intake.waterMl! / 1000, digits: 2),
+              unit: day.intake.waterMl == null ? null : 'l',
+              onTap: () => _details(context, intake: true),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _DayValue(
+              label: 'Energie',
+              icon: LucideIcons.utensils,
+              color: p.food,
+              value: obNumber(day.intake.kcal),
+              unit: day.intake.kcal == null ? null : 'kcal',
+              onTap: () => _details(context, intake: true),
+            ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _chip(
-    BuildContext context,
-    String label,
-    Color color,
-    VoidCallback onTap,
-  ) => Semantics(
-    button: true,
-    label: label,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(9),
-      child: ExcludeSemantics(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Center(
-            widthFactor: 1,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: .09),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Text(label, style: OB.of(context).text(13, color: color)),
+class _DayValue extends StatelessWidget {
+  final String label, value;
+  final String? unit;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final Widget? child;
+  const _DayValue({
+    required this.label,
+    required this.value,
+    this.unit,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.child,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Semantics(
+      button: true,
+      label: '$label $value ${unit ?? ''}',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              spacing: 4,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, size: 14, color: color),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: p.text(
+                          12,
+                          weight: FontWeight.w600,
+                          color: p.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 4,
+                  children: [
+                    Text(
+                      value,
+                      style: p.text(22, weight: FontWeight.w800, display: true),
+                    ),
+                    if (unit != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          unit!,
+                          style: p.text(
+                            12,
+                            weight: FontWeight.w500,
+                            color: p.muted,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                ?child,
+              ],
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _StepsPainter extends CustomPainter {

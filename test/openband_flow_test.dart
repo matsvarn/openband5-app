@@ -452,10 +452,10 @@ void main() {
       await tester.scrollUntilVisible(find.text('15. September ansehen'), 200);
       await tester.tap(find.text('15. September ansehen'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.byTooltip('Schritte ansehen'), 300);
+      await tester.scrollUntilVisible(find.bySemanticsLabel(RegExp('^Schritte ')), 300);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('Schritte ansehen'));
+      await tester.tap(find.bySemanticsLabel(RegExp('^Schritte ')));
       await tester.pumpAndSettle();
       expect(find.text('00:00–01:00 · 0 Schritte'), findsOneWidget);
       expect(tester.takeException(), isNull);

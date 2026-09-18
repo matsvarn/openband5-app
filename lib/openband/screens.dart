@@ -171,7 +171,7 @@ class OpenBandOverview extends StatelessWidget {
                             MetricRing(
                               label: 'Belastung',
                               value: obNumber(day.strain.value, digits: 1),
-                              unit: 'von 21',
+                              unit: day.strain.value == null ? null : 'von 21',
                               color: p.strain,
                               tint: p.strainTint,
                               fraction: day.strain.value == null
