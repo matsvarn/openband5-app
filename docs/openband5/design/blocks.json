@@ -330,7 +330,8 @@
       "paperNode": "3FUT-0",
       "widget": "OBLiveChip",
       "file": "screens.dart",
-      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface."
+      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface.",
+      "implemented": "run_live.dart (GPS chip)"
     },
     {
       "name": "OBEmptyState",
@@ -353,7 +354,8 @@
       "file": "training/live.dart",
       "usedIn": [
         "3FLY-0"
-      ]
+      ],
+      "implemented": "strength_live.dart (AppBar)"
     },
     {
       "name": "OBExerciseBlock",
@@ -367,7 +369,8 @@
         "OBSetHeader",
         "OBSetRow",
         "OBAddSet"
-      ]
+      ],
+      "implemented": "strength_live.dart"
     },
     {
       "name": "OBSetRow",
@@ -381,7 +384,8 @@
       ],
       "children": [
         "OBSetInput"
-      ]
+      ],
+      "implemented": "strength_live.dart (_SetRow)"
     },
     {
       "name": "OBRestTimer",
@@ -391,7 +395,8 @@
       "usedIn": [
         "3FLY-0"
       ],
-      "notes": "Remaining rest = 4 px strain progress bar along the bottom edge."
+      "notes": "Remaining rest = 4 px strain progress bar along the bottom edge.",
+      "implemented": "strength_live.dart"
     },
     {
       "name": "OBQuickStart",
@@ -421,7 +426,8 @@
       "file": "training/hub.dart",
       "usedIn": [
         "3FVD-0"
-      ]
+      ],
+      "implemented": "training.dart"
     },
     {
       "name": "OBMacroBars",
@@ -470,7 +476,8 @@
       "file": "nutrition/day.dart",
       "usedIn": [
         "3FLZ-0"
-      ]
+      ],
+      "implemented": "nutrition.dart (OBFoodSearchSheet)"
     },
     {
       "name": "OBCheckinCard",
@@ -551,7 +558,8 @@
       ],
       "children": [
         "OBLiveMetricRow"
-      ]
+      ],
+      "implemented": "run_live.dart"
     },
     {
       "name": "OBSessionSummary",
@@ -572,7 +580,8 @@
       "usedIn": [
         "3GJZ-0"
       ],
-      "notes": "MapKit slot. Paper shows a placeholder path, never a fake map."
+      "notes": "MapKit slot. Paper shows a placeholder path, never a fake map.",
+      "implemented": "run_live.dart"
     },
     {
       "name": "OBProfileRow",
@@ -685,13 +694,14 @@
       "Training",
       "Journal",
       "Ernährung · Tag",
-      "Lauf · Ergebnis"
+      "Lauf · Ergebnis",
+      "Kraft · live",
+      "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)"
     ],
     "deferred": [
-      "OBMuscleBars (needs exercise catalogue muscle mapping, B26)",
-      "OBFoodSearch / meal picker UI (host picker fills MealDraft; B10/B15/B16)",
-      "Laufen · aktiv live screen (B19 live pauses)",
-      "OBLiveBar/OBExerciseBlock/OBSetRow live strength logging (B23 session snapshot start)"
+      "Host wiring: OpenBandRunLive needs a LiveRun feed from gps/route_tracker + BLE HR (app.dart)",
+      "Template editor (create/edit plans) — contract saveTemplate exists, screen not built",
+      "OBCalendar/OBDayPreview reuse existing day_picker.dart"
     ]
   },
   "schema": {

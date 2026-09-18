@@ -30,7 +30,6 @@ class OpenBandNutrition extends StatelessWidget {
           centerTitle: true,
         ),
         body: FutureBuilder<DayMeals>(
-          key: ValueKey('meals-${controller.selectedDay}'),
           future: controller.repository.readMeals(controller.selectedDay),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
@@ -351,3 +350,127 @@ Future<bool?> showOpenBandMealDraft(
   ),
   builder: (_) => OBMealDraftSheet(repository: repository, draft: draft),
 );
+
+/// Search the local food dictionary and stage portions into a [MealDraft].
+/// Returns the updated draft when the user confirms, null when dismissed.
+class OBFoodSearchSheet extends StatefulWidget {
+  final OpenBandRepository repository;
+  final MealDraft draft;
+  const OBFoodSearchSheet({
+    super.key,
+    required this.repository,
+    required this.draft,
+  });
+  @override
+  State<OBFoodSearchSheet> createState() => _OBFoodSearchSheetState();
+}
+
+class _OBFoodSearchSheetState extends State<OBFoodSearchSheet> {
+  final _query = TextEditingController();
+  late final List<MealDraftEntry> _entries = [...widget.draft.entries];
+  List<FoodHit> _hits = const [];
+  bool _searching = false;
+
+  Future<void> _search(String q) async {
+    setState(() => _searching = true);
+    final hits = await widget.repository.searchFoods(q);
+    if (!mounted || _query.text != q) return;
+    setState(() {
+      _hits = hits;
+      _searching = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final label = obMeals.firstWhere((m) => m.$1 == widget.draft.meal).$2;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 12,
+          children: [
+            Text(
+              '$label ergänzen',
+              style: p.text(18, weight: FontWeight.w700, display: true),
+            ),
+            TextField(
+              controller: _query,
+              autofocus: true,
+              onChanged: _search,
+              decoration: InputDecoration(
+                hintText: 'Lebensmittel suchen',
+                prefixIcon: const Icon(LucideIcons.search, size: 18),
+                filled: true,
+                fillColor: p.card,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AlpRadius.row),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            if (_hits.isEmpty && _query.text.isNotEmpty && !_searching)
+              Text(
+                'Nichts gefunden. Eigene Lebensmittel lassen sich im Profil anlegen.',
+                style: p.text(13, color: p.muted),
+              ),
+            for (final h in _hits.take(6))
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  h.label,
+                  style: p.text(15, weight: FontWeight.w500),
+                ),
+                subtitle: Text(
+                  [
+                    if (h.brand.isNotEmpty) h.brand,
+                    h.kcal100 == null
+                        ? 'ohne Nährwerte'
+                        : '${obNumber(h.kcal100)} kcal / 100 g',
+                  ].join(' · '),
+                  style: p.text(12, color: p.muted),
+                ),
+                trailing: Icon(LucideIcons.plus, size: 20, color: p.action),
+                onTap: () => setState(() {
+                  _entries.add(
+                    h.portion(
+                      '${widget.draft.id}-${_entries.length + 1}',
+                      h.servingG ?? 100,
+                    ),
+                  );
+                }),
+              ),
+            if (_entries.isNotEmpty)
+              Text(
+                '${_entries.length} im Entwurf: ${_entries.map((e) => e.label).join(', ')}',
+                style: p.text(13, weight: FontWeight.w600),
+              ),
+            OBAction(
+              'Übernehmen',
+              onPressed: _entries.isEmpty
+                  ? null
+                  : () => Navigator.of(context).pop(
+                      MealDraft(
+                        id: widget.draft.id,
+                        day: widget.draft.day,
+                        meal: widget.draft.meal,
+                        entries: _entries,
+                        updatedAt: DateTime.now(),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

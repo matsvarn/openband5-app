@@ -504,8 +504,68 @@ class SessionSplit {
   const SessionSplit({required this.km, required this.seconds, this.avgHr});
 }
 
+/// A confirmed set. Bodyweight is not a load of 0 kg: [loadKg] stays null.
+class RecordedSet {
+  final String exerciseKey;
+  final int setIndex;
+  final int? reps, seconds;
+  final double? loadKg;
+  final DateTime at;
+  const RecordedSet({
+    required this.exerciseKey,
+    required this.setIndex,
+    this.reps,
+    this.seconds,
+    this.loadKg,
+    required this.at,
+  });
+}
+
+/// Work sets per muscle over a window, from recorded sets joined to the
+/// exercise catalogue. Sets whose exercise has no muscle mapping are counted
+/// under [unmapped] instead of being guessed.
+class MuscleLoad {
+  final Map<String, int> setsByMuscle;
+  final int unmapped;
+  const MuscleLoad(this.setsByMuscle, this.unmapped);
+}
+
+class FoodHit {
+  final String key, label, brand;
+  final double? servingG, kcal100, proteinG100, carbsG100, fatG100;
+  const FoodHit({
+    required this.key,
+    required this.label,
+    this.brand = '',
+    this.servingG,
+    this.kcal100,
+    this.proteinG100,
+    this.carbsG100,
+    this.fatG100,
+  });
+  MealDraftEntry portion(String id, double grams) {
+    double? per(double? v100) => v100 == null ? null : v100 * grams / 100;
+    return MealDraftEntry(
+      id: id,
+      label: label,
+      quantity: grams,
+      unit: 'g',
+      kcal: per(kcal100),
+      proteinG: per(proteinG100),
+      carbsG: per(carbsG100),
+      fatG: per(fatG100),
+      foodKey: key,
+    );
+  }
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<String> startStrengthSession(WorkoutTemplate template);
+  Future<void> recordSet(String sessionId, RecordedSet set);
+  Future<void> finishStrengthSession(String sessionId);
+  Future<MuscleLoad> readMuscleLoad(String endDay, int days);
+  Future<List<FoodHit>> searchFoods(String query);
   Future<List<WorkoutTemplate>> readTemplates();
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template);
   Future<void> archiveTemplate(String id);

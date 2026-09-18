@@ -183,6 +183,81 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     ];
   }
 
+  final Map<String, List<RecordedSet>> _liveSets = {};
+  static const _muscles = {
+    'bench_press': ['Brust', 'Trizeps'],
+    'row': ['Rücken', 'Bizeps'],
+    'squat': ['Beine', 'Gesäß'],
+  };
+  static const _foods = [
+    FoodHit(
+      key: 'oats',
+      label: 'Haferflocken',
+      servingG: 60,
+      kcal100: 372,
+      proteinG100: 13.5,
+      carbsG100: 58.7,
+      fatG100: 7,
+    ),
+    FoodHit(
+      key: 'milk',
+      label: 'Milch 1,5 %',
+      brand: 'Verifiziert',
+      servingG: 200,
+      kcal100: 47,
+      proteinG100: 3.4,
+      carbsG100: 4.9,
+      fatG100: 1.5,
+    ),
+    FoodHit(key: 'coffee', label: 'Kaffee schwarz', servingG: 200),
+  ];
+
+  @override
+  Future<String> startStrengthSession(WorkoutTemplate template) async {
+    final id = 'synthetic-live-${_liveSets.length + 1}';
+    _liveSets[id] = [];
+    return id;
+  }
+
+  @override
+  Future<void> recordSet(String sessionId, RecordedSet set) async {
+    (_liveSets[sessionId] ??= []).add(set);
+  }
+
+  @override
+  Future<void> finishStrengthSession(String sessionId) async {}
+
+  @override
+  Future<MuscleLoad> readMuscleLoad(String endDay, int days) async {
+    // B19 synthetic strength session on day -2: 3×8×60 + 3×8×40 + 3×10×30.
+    final window = openBandDaysEnding(endDay, days).toSet();
+    if (!window.contains(_shift(_day, -2))) return const MuscleLoad({}, 0);
+    final byMuscle = <String, int>{};
+    for (final key in ['squat', 'bench_press', 'row']) {
+      for (final m in _muscles[key]!) {
+        byMuscle[m] = (byMuscle[m] ?? 0) + 3;
+      }
+    }
+    for (final s in _liveSets.values.expand((v) => v)) {
+      final muscles = _muscles[s.exerciseKey];
+      if (muscles == null) continue;
+      for (final m in muscles) {
+        byMuscle[m] = (byMuscle[m] ?? 0) + 1;
+      }
+    }
+    return MuscleLoad(byMuscle, 0);
+  }
+
+  @override
+  Future<List<FoodHit>> searchFoods(String query) async {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    return [
+      for (final f in _foods)
+        if (f.label.toLowerCase().contains(q)) f,
+    ];
+  }
+
   @override
   Future<List<WorkoutTemplate>> readTemplates() async {
     _seedPlans();

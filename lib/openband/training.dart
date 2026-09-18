@@ -83,6 +83,16 @@ class OpenBandTraining extends StatelessWidget {
                       days: week,
                       sessions: sessions.where((s) => !s.live).toList(),
                     ),
+                    FutureBuilder<MuscleLoad>(
+                      key: ValueKey('muscles-${controller.selectedDay}'),
+                      future: controller.repository.readMuscleLoad(
+                        controller.selectedDay,
+                        7,
+                      ),
+                      builder: (context, snap) => snap.data == null
+                          ? const SizedBox.shrink()
+                          : OBMuscleBars(load: snap.data!),
+                    ),
                     if (sessions.isEmpty)
                       OBCard(
                         child: Column(
@@ -503,6 +513,85 @@ class OBTemplateRow extends StatelessWidget {
             ),
             child: const Text('Starten'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBMuscleBars extends StatelessWidget {
+  final MuscleLoad load;
+  const OBMuscleBars({super.key, required this.load});
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final entries = load.setsByMuscle.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (entries.isEmpty && load.unmapped == 0) return const SizedBox.shrink();
+    final max = entries.isEmpty ? 0 : entries.first.value;
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 8,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sätze je Muskelgruppe',
+                  style: p.text(13, weight: FontWeight.w600, color: p.muted),
+                ),
+              ),
+              Text(
+                'Letzte 7 Tage',
+                style: p.text(13, weight: FontWeight.w500, color: p.muted),
+              ),
+            ],
+          ),
+          for (final e in entries.take(6))
+            Row(
+              children: [
+                SizedBox(
+                  width: 84,
+                  child: Text(
+                    e.key,
+                    style: p.text(14, weight: FontWeight.w500),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: 10,
+                    alignment: Alignment.centerLeft,
+                    decoration: BoxDecoration(
+                      color: p.well,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: FractionallySizedBox(
+                      widthFactor: max == 0 ? 0 : e.value / max,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: p.strain,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 36,
+                  child: Text(
+                    '${e.value}',
+                    textAlign: TextAlign.right,
+                    style: p.text(14, weight: FontWeight.w700, display: true),
+                  ),
+                ),
+              ],
+            ),
+          if (load.unmapped > 0)
+            Text(
+              '${load.unmapped} ${load.unmapped == 1 ? 'Satz' : 'Sätze'} ohne Muskelzuordnung',
+              style: p.text(12, color: p.muted),
+            ),
         ],
       ),
     );

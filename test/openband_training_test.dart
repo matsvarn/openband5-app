@@ -7,7 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/run_live.dart';
 import 'package:openstrap_edge/openband/session.dart';
+import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -189,6 +191,101 @@ void main() {
       await repo.readSessionDetail('synthetic-2026-09-13-weight_training'),
       isNull,
     );
+  });
+
+  testWidgets('live strength: confirming a set records it, rest timer runs', (
+    tester,
+  ) async {
+    final template = (await repo.readTemplates()).single;
+    var now = DateTime(2026, 9, 15, 18);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        home: RepaintBoundary(
+          key: const ValueKey('capture'),
+          child: OpenBandStrengthLive(
+            repository: repo,
+            template: template,
+            now: () => now,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Bankdrücken'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '42,5');
+    await tester.tap(find.byTooltip('Satz 1 bestätigen').first);
+    await tester.pump();
+    now = now.add(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Pause'), findsOneWidget);
+    expect(find.text('01:10'), findsOneWidget);
+    expect(find.text('1 / 3'), findsOneWidget);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/strength-live.png'),
+    );
+    await tester.tap(find.text('Fertig'));
+    await tester.pump();
+    final load = await repo.readMuscleLoad('2026-09-15', 7);
+    expect(load.setsByMuscle['Brust'], 4);
+    expect(load.setsByMuscle['Beine'], 3);
+  });
+
+  testWidgets('live run keeps pause and active time apart', (tester) async {
+    final run = ValueNotifier(
+      const LiveRun(
+        elapsedSec: 962,
+        pausedSec: 60,
+        distanceM: 2840,
+        heartRate: 154,
+        zone: 3,
+        gps: true,
+      ),
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        home: RepaintBoundary(
+          key: const ValueKey('capture'),
+          child: OpenBandRunLive(run: run, onPause: () {}, onLap: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2,84'), findsOneWidget);
+    expect(find.text('15:02'), findsOneWidget);
+    expect(find.text('5:18'), findsOneWidget);
+    expect(find.text('154 · Z3'), findsOneWidget);
+    expect(find.text('davon 1:00 pausiert'), findsOneWidget);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/run-live.png'),
+    );
+    run.value = const LiveRun(elapsedSec: 962, pausedSec: 60, paused: true);
+    await tester.pump();
+    expect(find.text('—'), findsNWidgets(3));
+    expect(find.text('Weiter'), findsOneWidget);
+    expect(find.text('Beenden'), findsOneWidget);
   });
 
   testWidgets('empty window shows an empty state, not zero minutes', (

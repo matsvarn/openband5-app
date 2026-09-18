@@ -111,6 +111,59 @@ void main() {
     );
   });
 
+  testWidgets('food search stages a serving-sized portion', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    MealDraft? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => Center(
+              child: TextButton(
+                onPressed: () async {
+                  result = await showModalBottomSheet<MealDraft>(
+                    context: ctx,
+                    builder: (_) => OBFoodSearchSheet(
+                      repository: repo,
+                      draft: MealDraft(
+                        id: 'd',
+                        day: '2026-09-15',
+                        meal: 'dinner',
+                        entries: const [],
+                        updatedAt: DateTime(2026),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'hafer');
+    await tester.pumpAndSettle();
+    expect(find.text('372 kcal / 100 g'), findsOneWidget);
+    await tester.tap(find.text('Haferflocken'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+    final e = result!.entries.single;
+    expect(e.quantity, 60);
+    expect(e.kcal, closeTo(223.2, .01));
+    expect(e.foodKey, 'oats');
+  });
+
   test('meal draft commits atomically and never on failure', () async {
     final draft = MealDraft(
       id: 'd1',

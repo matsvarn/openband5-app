@@ -166,6 +166,91 @@ class LocalOpenBandRepository implements OpenBandRepository {
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
   @override
+  Future<String> startStrengthSession(WorkoutTemplate template) async {
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    final started = await repository.startWorkout(
+      'weight_training',
+      title: template.name,
+    );
+    return started['id'] as String;
+  }
+
+  @override
+  Future<void> recordSet(String sessionId, RecordedSet set) async {
+    final existing = await LocalDb.strengthSets(sessionId);
+    await LocalDb.saveStrengthSets(sessionId, [
+      ...existing,
+      {
+        'exercise_key': set.exerciseKey,
+        'set_index': set.setIndex,
+        'reps': set.reps,
+        'load_kg': set.loadKg,
+        'hold_sec': set.seconds,
+        'at_ts': set.at.millisecondsSinceEpoch ~/ 1000,
+      },
+    ]);
+  }
+
+  @override
+  Future<void> finishStrengthSession(String sessionId) async {
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    await repository.endWorkout(sessionId);
+  }
+
+  @override
+  Future<MuscleLoad> readMuscleLoad(String endDay, int days) async {
+    final sessions = await readSessions(endDay, days);
+    final db = await LocalDb.instance;
+    final defs = {
+      for (final r in await db.query('exercise_def'))
+        r['key'] as String:
+            (jsonDecode(r['muscles_json'] as String? ?? '{}')
+                    as Map<String, dynamic>)
+                .keys
+                .toList(),
+    };
+    final byMuscle = <String, int>{};
+    var unmapped = 0;
+    for (final s in sessions.where((s) => !s.live)) {
+      for (final row in await LocalDb.strengthSets(s.id)) {
+        final muscles = defs[row['exercise_key'] as String];
+        if (muscles == null || muscles.isEmpty) {
+          unmapped++;
+          continue;
+        }
+        for (final m in muscles) {
+          byMuscle[m] = (byMuscle[m] ?? 0) + 1;
+        }
+      }
+    }
+    return MuscleLoad(byMuscle, unmapped);
+  }
+
+  @override
+  Future<List<FoodHit>> searchFoods(String query) async {
+    final db = await LocalDb.instance;
+    return [
+      for (final r in await NutritionDb.searchFoods(db, query))
+        FoodHit(
+          key: r['key'] as String,
+          label: r['label'] as String,
+          brand: r['brand'] as String? ?? '',
+          servingG: (r['serving_g'] as num?)?.toDouble(),
+          kcal100: (r['kcal_100'] as num?)?.toDouble(),
+          proteinG100: (r['protein_g_100'] as num?)?.toDouble(),
+          carbsG100: (r['carbs_g_100'] as num?)?.toDouble(),
+          fatG100: (r['fat_g_100'] as num?)?.toDouble(),
+        ),
+    ];
+  }
+
+  @override
   Future<List<WorkoutTemplate>> readTemplates() async => [
     for (final r in await LocalDb.openBandTemplates())
       WorkoutTemplate(

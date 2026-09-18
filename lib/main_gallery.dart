@@ -7,7 +7,10 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
+import 'openband/domain.dart';
 import 'openband/nutrition.dart';
+import 'openband/run_live.dart';
+import 'openband/strength_live.dart';
 import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
@@ -163,8 +166,52 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.workout => OpenBandTraining(
         controller: controller,
-        onStart: (_) {},
-        onStartTemplate: (_) {},
+        onStart: (type) {
+          if (type != 'running') return;
+          final run = ValueNotifier(
+            const LiveRun(
+              elapsedSec: 962,
+              distanceM: 2840,
+              heartRate: 154,
+              zone: 3,
+              gps: true,
+            ),
+          );
+          Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandRunLive(
+                run: run,
+                onPause: () => run.value = LiveRun(
+                  elapsedSec: run.value.elapsedSec,
+                  pausedSec: run.value.pausedSec,
+                  distanceM: run.value.distanceM,
+                  heartRate: run.value.heartRate,
+                  zone: run.value.zone,
+                  gps: true,
+                  paused: true,
+                ),
+                onResume: () => run.value = LiveRun(
+                  elapsedSec: run.value.elapsedSec + 30,
+                  pausedSec: run.value.pausedSec + 30,
+                  distanceM: run.value.distanceM,
+                  heartRate: run.value.heartRate,
+                  zone: run.value.zone,
+                  gps: true,
+                ),
+                onLap: () {},
+                onFinish: () => Navigator.of(c).maybePop(),
+              ),
+            ),
+          );
+        },
+        onStartTemplate: (t) => Navigator.of(c).push(
+          MaterialPageRoute<void>(
+            builder: (_) => OpenBandStrengthLive(
+              repository: widget.repository,
+              template: t,
+            ),
+          ),
+        ),
         onOpen: (s) => Navigator.of(c).push(
           MaterialPageRoute<void>(
             builder: (_) =>
@@ -176,13 +223,43 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         controller: controller,
         onNutrition: () => Navigator.of(c).push(
           MaterialPageRoute<void>(
-            builder: (_) =>
-                OpenBandNutrition(controller: controller, onAdd: (_) {}),
+            builder: (ctx) => OpenBandNutrition(
+              controller: controller,
+              onAdd: (meal) => _addFood(ctx, meal),
+            ),
           ),
         ),
       ),
     },
   );
+
+  Future<void> _addFood(BuildContext ctx, String meal) async {
+    final day = controller.selectedDay;
+    final existing = await widget.repository.readMealDraft(day, meal);
+    if (!ctx.mounted) return;
+    final draft = await showModalBottomSheet<MealDraft>(
+      context: ctx,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => OBFoodSearchSheet(
+        repository: widget.repository,
+        draft:
+            existing ??
+            MealDraft(
+              id: 'draft-$day-$meal',
+              day: day,
+              meal: meal,
+              entries: const [],
+              updatedAt: DateTime.now(),
+            ),
+      ),
+    );
+    if (draft == null || !ctx.mounted) return;
+    await widget.repository.saveMealDraft(draft);
+    if (!ctx.mounted) return;
+    final saved = await showOpenBandMealDraft(ctx, widget.repository, draft);
+    if (saved == true) controller.refresh();
+  }
 
   Future<void> _options(BuildContext context) => showModalBottomSheet<void>(
     context: context,
