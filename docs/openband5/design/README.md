@@ -44,4 +44,4 @@ Nach einem Token-Export aus Paper: `tokens.json` ersetzen, `source.tokensContent
 
 ## Stand
 
-`blocks.json` listet 44 Bausteine und 8 neu aufgebaute Screens (Übersicht ×2, Gesundheit, Training, Journal, Schlaf, Kraft live, Ernährung Tag). Offene Bausteine stehen unter `openBlocks`. Kein bestehendes Widget wurde in dieser Phase verändert; `alp_tokens.dart` ist additiv.
+`blocks.json` listet 54 Bausteine und 11 neu aufgebaute Screens (Übersicht ×2, Gesundheit, Training, Journal, Schlaf, Kraft live, Laufen live, Lauf Ergebnis, Ernährung Tag, Profil). Offene Bausteine stehen unter `openBlocks`. Kein bestehendes Widget wurde in dieser Phase verändert; `alp_tokens.dart` ist additiv.
