@@ -40,7 +40,7 @@ Nach einem Token-Export aus Paper: `tokens.json` ersetzen, `source.tokensContent
 - Metrikfarben (`sleep`, `recovery`, `strain`, `pulse`, `food`) nur auf Daten und ihren `-tint`-Flächen. `alp-action` nur auf Bedienelementen.
 - Kein Text wiederholt, was ein Bild auf demselben Screen bereits zeigt. Kopf zeigt `Heute` bzw. `Di, 15. Sep.`, keine Erklärzeile.
 - Fehlende Eingaben erscheinen als `—` oder entfallen. Untergrenzen werden nicht mit `≥` markiert; der kcal-Balken zeigt ein gestricheltes Segment für Einträge ohne Nährwerte.
-- Symbole: Lucide 1.33.0 aus dem Asset-Paket, 24-Raster, 2 px Strich. Sport-Piktogramme folgen als eigener Satz im selben Raster.
+- Symbole: Lucide 1.33.0 aus dem Asset-Paket, 24-Raster, 2 px Strich. Sport-Piktogramme kommen aus Tabler Icons 3.46.0 (MIT, gleiches Raster); Zuordnung in `../assets/icons/sport/MANIFEST.json`.
 
 ## Stand
 
