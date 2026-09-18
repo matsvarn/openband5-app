@@ -2,7 +2,15 @@ import 'dart:async';
 import 'openband/controller.dart';
 import 'openband/domain.dart';
 import 'openband/local_repository.dart';
+import 'openband/health.dart';
+import 'openband/journal.dart';
+import 'openband/nutrition.dart';
+import 'openband/run_live.dart';
 import 'openband/screens.dart';
+import 'openband/session.dart';
+import 'openband/strength_live.dart';
+import 'openband/template_editor.dart';
+import 'openband/training.dart';
 import 'openband/theme.dart' show openBandTheme;
 import 'data/day_label.dart';
 
@@ -34,7 +42,6 @@ import 'ui2/profile/profile.dart';
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
-import 'ui2/screens/health_screen.dart';
 import 'ui2/screens/journal_compose.dart';
 import 'ui2/screens/log_workout.dart';
 import 'ui2/screens/nutrition_screen.dart';
@@ -642,27 +649,165 @@ class _ShellState extends State<_Shell> {
           onTraining: () => _go(ShellDomain.workout),
           onSync: () => _app!.openSession(),
         ),
-        ShellDomain.health => const HealthScreen(),
-        ShellDomain.workout => const WorkoutScreen(),
-        ShellDomain.wellness => Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => Navigator.of(c).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const NutritionScreen(),
-                  ),
-                ),
-                icon: const Icon(LucideIcons.utensils, size: 18),
-                label: const Text('Ernährung & Wasser'),
+        ShellDomain.health => OpenBandHealth(controller: _day),
+        ShellDomain.workout => OpenBandTraining(
+          controller: _day,
+          onStart: (type) => _startActivity(c, type),
+          onStartTemplate: (t) => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandStrengthLive(
+                repository: _day.repository,
+                template: t,
+                onFinished: _day.refresh,
               ),
             ),
-            const Expanded(child: WellnessScreen()),
-          ],
+          ),
+          onEditTemplate: (t) async {
+            await Navigator.of(c).push(
+              MaterialPageRoute<WorkoutTemplate>(
+                builder: (_) => OpenBandTemplateEditor(
+                  repository: _day.repository,
+                  template: t,
+                ),
+              ),
+            );
+            _day.refresh();
+          },
+          onOpen: (s) => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  OpenBandSession(repository: _day.repository, session: s),
+            ),
+          ),
+        ),
+        ShellDomain.wellness => OpenBandJournal(
+          controller: _day,
+          onEdit: (_) => Navigator.of(c).push(
+            MaterialPageRoute<void>(builder: (_) => const WellnessScreen()),
+          ),
+          onNutrition: () => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (ctx) => OpenBandNutrition(
+                controller: _day,
+                onAdd: (meal) => _addFood(ctx, meal),
+              ),
+            ),
+          ),
         ),
       },
     );
+  }
+
+  /// Quick-Start entry. Running opens the OpenBand live screen on the single
+  /// AppState live engine; every other type goes through the existing picker
+  /// so its setup (weight, privacy, GPS consent) stays in one place.
+  Future<void> _startActivity(BuildContext c, String type) async {
+    final app = _app;
+    if (app == null) return;
+    if (type != 'running') {
+      await Navigator.of(
+        c,
+      ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutScreen()));
+      return;
+    }
+    if (app.activeWorkout == null) app.startWorkout(type: 'running');
+    if (app.activeWorkout == null || !c.mounted) return;
+    final feed = _LiveRunFeed(app);
+    await Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OpenBandRunLive(
+          run: feed,
+          onPause: feed.pause,
+          onResume: feed.resume,
+          onLap: () {},
+          onFinish: () async {
+            await app.stopWorkout();
+            _day.refresh();
+            if (c.mounted) Navigator.of(c).maybePop();
+          },
+        ),
+      ),
+    );
+    feed.dispose();
+  }
+
+  Future<void> _addFood(BuildContext ctx, String meal) async {
+    final repo = _day.repository;
+    final day = _day.selectedDay;
+    final existing = await repo.readMealDraft(day, meal);
+    if (!ctx.mounted) return;
+    final draft = await showModalBottomSheet<MealDraft>(
+      context: ctx,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => OBFoodSearchSheet(
+        repository: repo,
+        draft:
+            existing ??
+            MealDraft(
+              id: 'draft-$day-$meal',
+              day: day,
+              meal: meal,
+              entries: const [],
+              updatedAt: DateTime.now(),
+            ),
+      ),
+    );
+    if (draft == null || !ctx.mounted) return;
+    await repo.saveMealDraft(draft);
+    if (!ctx.mounted) return;
+    final saved = await showOpenBandMealDraft(ctx, repo, draft);
+    if (saved == true) _day.refresh();
+  }
+}
+
+/// Adapts the AppState tick to a [LiveRun]. Pauses are the user's; the
+/// banked pause seconds and the current pause start live here, never inferred
+/// from a missing heart rate.
+class _LiveRunFeed extends ValueNotifier<LiveRun> {
+  final AppState app;
+  int _pausedSec = 0;
+  DateTime? _pausedAt;
+  _LiveRunFeed(this.app) : super(const LiveRun(elapsedSec: 0)) {
+    app.addListener(_update);
+    _update();
+  }
+  void _update() {
+    final w = app.activeWorkout;
+    if (w == null) return;
+    final now = DateTime.now();
+    final inPause = _pausedAt == null
+        ? 0
+        : now.difference(_pausedAt!).inSeconds;
+    final km = app.liveDistanceKm;
+    value = LiveRun(
+      elapsedSec: now.difference(w.startTime).inSeconds,
+      pausedSec: _pausedSec + inPause,
+      distanceM: km == null ? null : km * 1000,
+      heartRate: app.liveHr,
+      zone: app.liveZone,
+      paused: _pausedAt != null,
+      gps: app.routeTracking,
+    );
+  }
+
+  void pause() {
+    _pausedAt ??= DateTime.now();
+    _update();
+  }
+
+  void resume() {
+    if (_pausedAt case final at?) {
+      _pausedSec += DateTime.now().difference(at).inSeconds;
+      _pausedAt = null;
+    }
+    _update();
+  }
+
+  @override
+  void dispose() {
+    app.removeListener(_update);
+    super.dispose();
   }
 }
 

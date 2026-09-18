@@ -12,12 +12,14 @@ class OpenBandTraining extends StatelessWidget {
   final OpenBandController controller;
   final ValueChanged<String>? onStart;
   final ValueChanged<WorkoutTemplate>? onStartTemplate;
+  final ValueChanged<WorkoutTemplate?>? onEditTemplate;
   final ValueChanged<TrainingSession>? onOpen;
   const OpenBandTraining({
     super.key,
     required this.controller,
     this.onStart,
     this.onStartTemplate,
+    this.onEditTemplate,
     this.onOpen,
   });
   @override
@@ -33,9 +35,26 @@ class OpenBandTraining extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(left: 4),
-              child: Text(
-                'Training',
-                style: p.text(30, weight: FontWeight.w800, display: true),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Training',
+                      style: p.text(30, weight: FontWeight.w800, display: true),
+                    ),
+                  ),
+                  if (onEditTemplate != null)
+                    IconButton(
+                      tooltip: 'Neue Vorlage',
+                      onPressed: () => onEditTemplate!(null),
+                      style: IconButton.styleFrom(
+                        backgroundColor: p.card,
+                        foregroundColor: p.ink,
+                        fixedSize: const Size(40, 40),
+                      ),
+                      icon: const Icon(LucideIcons.listPlus, size: 20),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
@@ -53,6 +72,7 @@ class OpenBandTraining extends StatelessWidget {
                   child: OBTemplateRow(
                     template: templates.first,
                     onStart: onStartTemplate,
+                    onEdit: onEditTemplate,
                   ),
                 );
               },
@@ -470,50 +490,63 @@ class _SessionRow extends StatelessWidget {
 class OBTemplateRow extends StatelessWidget {
   final WorkoutTemplate template;
   final ValueChanged<WorkoutTemplate>? onStart;
-  const OBTemplateRow({super.key, required this.template, this.onStart});
+  final ValueChanged<WorkoutTemplate?>? onEdit;
+  const OBTemplateRow({
+    super.key,
+    required this.template,
+    this.onStart,
+    this.onEdit,
+  });
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final sets = template.workSets;
-    return OBCard(
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: p.strainTint,
-              borderRadius: BorderRadius.circular(12),
+    return InkWell(
+      onTap: onEdit == null ? null : () => onEdit!(template),
+      borderRadius: BorderRadius.circular(AlpRadius.card),
+      child: OBCard(
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.strainTint,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: OBSportIcon('barbell', size: 18, color: p.strain),
             ),
-            child: OBSportIcon('barbell', size: 18, color: p.strain),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Als Nächstes',
-                  style: p.text(12, weight: FontWeight.w600, color: p.muted),
-                ),
-                Text(template.name, style: p.text(15, weight: FontWeight.w600)),
-                Text(
-                  '${template.exercises.length} Übungen · $sets Arbeitssätze',
-                  style: p.text(13, color: p.muted),
-                ),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Als Nächstes',
+                    style: p.text(12, weight: FontWeight.w600, color: p.muted),
+                  ),
+                  Text(
+                    template.name,
+                    style: p.text(15, weight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${template.exercises.length} Übungen · $sets Arbeitssätze',
+                    style: p.text(13, color: p.muted),
+                  ),
+                ],
+              ),
             ),
-          ),
-          FilledButton(
-            onPressed: onStart == null ? null : () => onStart!(template),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 40),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+            FilledButton(
+              onPressed: onStart == null ? null : () => onStart!(template),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: const Text('Starten'),
             ),
-            child: const Text('Starten'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

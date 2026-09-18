@@ -167,15 +167,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
   @override
   Future<String> startStrengthSession(WorkoutTemplate template) async {
-    final repository = app.repo;
-    if (repository == null) {
-      throw StateError('Local repository is not initialized.');
+    // One live engine: AppState owns the running session (streams, tallies,
+    // the sessions row on stop). A second start path would be the bug.
+    if (app.activeWorkout != null) {
+      throw StateError('Eine Einheit läuft bereits.');
     }
-    final started = await repository.startWorkout(
-      'weight_training',
-      title: template.name,
-    );
-    return started['id'] as String;
+    final id = 'w${DateTime.now().millisecondsSinceEpoch}';
+    app.startWorkout(type: 'weight_training', workoutId: id);
+    if (app.activeWorkout?.workoutId != id) {
+      throw StateError('Einheit konnte nicht gestartet werden.');
+    }
+    return id;
   }
 
   @override
@@ -196,11 +198,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<void> finishStrengthSession(String sessionId) async {
-    final repository = app.repo;
-    if (repository == null) {
-      throw StateError('Local repository is not initialized.');
+    if (app.activeWorkout?.workoutId != sessionId) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
     }
-    await repository.endWorkout(sessionId);
+    await app.stopWorkout();
   }
 
   @override

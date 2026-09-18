@@ -10,6 +10,7 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/run_live.dart';
 import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/strength_live.dart';
+import 'package:openstrap_edge/openband/template_editor.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -286,6 +287,64 @@ void main() {
     expect(find.text('—'), findsNWidgets(3));
     expect(find.text('Weiter'), findsOneWidget);
     expect(find.text('Beenden'), findsOneWidget);
+  });
+
+  testWidgets('template editor saves a new plan and bumps an edited one', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    WorkoutTemplate? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: Builder(
+          builder: (ctx) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () async {
+                  saved = await Navigator.of(ctx).push(
+                    MaterialPageRoute<WorkoutTemplate>(
+                      builder: (_) => OpenBandTemplateEditor(repository: repo),
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Vorlage speichern'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Oberkörper B');
+    await tester.tap(find.text('Übung hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), 'Klimmzug');
+    await tester.enterText(find.byType(TextField).at(3), '6');
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byKey(const ValueKey('capture')).evaluate().isEmpty
+          ? find.byType(OpenBandTemplateEditor)
+          : find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/template-editor.png'),
+    );
+    await tester.tap(find.text('Vorlage speichern'));
+    await tester.pumpAndSettle();
+    expect(saved?.name, 'Oberkörper B');
+    expect(saved?.version, 1);
+    expect(saved?.exercises.single.exerciseKey, 'klimmzug');
+    expect(saved?.exercises.single.sets.length, 3);
+    expect(saved?.exercises.single.sets.first.reps, 6);
+    expect(saved?.exercises.single.sets.first.loadKg, isNull);
+    expect((await repo.readTemplates()).length, 2);
   });
 
   testWidgets('empty window shows an empty state, not zero minutes', (

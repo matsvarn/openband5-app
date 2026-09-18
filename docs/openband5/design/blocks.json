@@ -696,13 +696,14 @@
       "Ernährung · Tag",
       "Lauf · Ergebnis",
       "Kraft · live",
-      "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)"
+      "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)",
+      "Vorlage bearbeiten (template_editor.dart)"
     ],
     "deferred": [
-      "Host wiring: OpenBandRunLive needs a LiveRun feed from gps/route_tracker + BLE HR (app.dart)",
-      "Template editor (create/edit plans) — contract saveTemplate exists, screen not built",
-      "OBCalendar/OBDayPreview reuse existing day_picker.dart"
-    ]
+      "Route map (MapKit) inside OpenBandRunLive placeholder",
+      "Lap markers for the live run (onLap is wired, no storage yet)"
+    ],
+    "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft."
   },
   "schema": {
     "version": 53,

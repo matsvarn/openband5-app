@@ -11,6 +11,7 @@ import 'openband/domain.dart';
 import 'openband/nutrition.dart';
 import 'openband/run_live.dart';
 import 'openband/strength_live.dart';
+import 'openband/template_editor.dart';
 import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
@@ -212,6 +213,17 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             ),
           ),
         ),
+        onEditTemplate: (t) async {
+          await Navigator.of(c).push(
+            MaterialPageRoute<WorkoutTemplate>(
+              builder: (_) => OpenBandTemplateEditor(
+                repository: widget.repository,
+                template: t,
+              ),
+            ),
+          );
+          controller.refresh();
+        },
         onOpen: (s) => Navigator.of(c).push(
           MaterialPageRoute<void>(
             builder: (_) =>
