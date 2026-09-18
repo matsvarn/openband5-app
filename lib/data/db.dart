@@ -346,7 +346,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 52;
+  static const int schemaVersion = 53;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -459,6 +459,7 @@ class LocalDb {
         await _createWorkoutSuggestions(db);
         await _createSleepOverride(db);
         await _createOpenBandSleepState(db);
+        await _createOpenBandPlans(db);
         await _createSleepNap(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
@@ -1047,6 +1048,11 @@ class LocalDb {
           // rewritten. The same helper runs from onOpen for merged builds.
           await _createOpenBandSleepState(db);
         }
+        if (oldV < 53) {
+          // OpenBand training templates, meal drafts and session detail
+          // snapshots. Additive tables only; nothing existing is rewritten.
+          await _createOpenBandPlans(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1119,6 +1125,7 @@ class LocalDb {
     await _createWorkoutSuggestions(db);
     await _createSleepOverride(db);
     await _createOpenBandSleepState(db);
+    await _createOpenBandPlans(db);
     await _createSleepNap(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
@@ -1695,6 +1702,155 @@ class LocalDb {
         result_computed_at INTEGER
       )
     ''');
+  }
+
+  /// Versioned workout templates (B23), resumable meal drafts (B05) and
+  /// frozen per-session detail snapshots (B19). Templates and drafts are
+  /// plans: starting or committing them writes into the existing session /
+  /// food_entry tables and never edits a recorded row.
+  static Future<void> _createOpenBandPlans(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_workout_template (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        exercises_json TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_meal_draft (
+        draft_id TEXT PRIMARY KEY,
+        day_id TEXT NOT NULL,
+        meal TEXT NOT NULL,
+        entries_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (day_id, meal)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_session_detail (
+        session_id TEXT PRIMARY KEY,
+        algo_version INTEGER NOT NULL,
+        computed_at INTEGER NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+  }
+
+  static Future<List<Map<String, dynamic>>> openBandTemplates() async {
+    final db = await instance;
+    return db.query(
+      'openband_workout_template',
+      where: 'archived = 0',
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  static Future<int> putOpenBandTemplate(Map<String, Object?> row) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'openband_workout_template',
+        columns: ['version'],
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+      final version = existing.isEmpty
+          ? 1
+          : (existing.first['version'] as int) + 1;
+      await txn.insert('openband_workout_template', {
+        ...row,
+        'version': version,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return version;
+    });
+  }
+
+  static Future<void> archiveOpenBandTemplate(String id) async {
+    final db = await instance;
+    await db.update(
+      'openband_workout_template',
+      {'archived': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<Map<String, dynamic>?> openBandMealDraft(
+    String dayId,
+    String meal,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_meal_draft',
+      where: 'day_id = ? AND meal = ?',
+      whereArgs: [dayId, meal],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> putOpenBandMealDraft(Map<String, Object?> row) async {
+    final db = await instance;
+    await db.insert(
+      'openband_meal_draft',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Commit a meal draft: every entry row is inserted and the draft deleted
+  /// in one transaction. A failed insert leaves the draft untouched.
+  static Future<void> commitOpenBandMealDraft(
+    String draftId,
+    List<Map<String, Object?>> entryRows,
+  ) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      for (final row in entryRows) {
+        await txn.insert(
+          'food_entry',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await txn.delete(
+        'openband_meal_draft',
+        where: 'draft_id = ?',
+        whereArgs: [draftId],
+      );
+    });
+  }
+
+  static Future<void> deleteOpenBandMealDraft(String draftId) async {
+    final db = await instance;
+    await db.delete(
+      'openband_meal_draft',
+      where: 'draft_id = ?',
+      whereArgs: [draftId],
+    );
+  }
+
+  static Future<Map<String, dynamic>?> openBandSessionDetail(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_session_detail',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> putOpenBandSessionDetail(Map<String, Object?> row) async {
+    final db = await instance;
+    await db.insert(
+      'openband_session_detail',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is

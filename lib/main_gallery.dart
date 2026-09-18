@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
+import 'openband/nutrition.dart';
+import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'openband/theme.dart';
@@ -33,6 +35,7 @@ Future<SyntheticOpenBandRepository> loadGalleryRepository() async {
     await load('day-summary'),
     await load('sleep-detail'),
     activity: await load('additional-flows'),
+    run: await load('run-detail'),
   );
 }
 
@@ -161,8 +164,23 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ShellDomain.workout => OpenBandTraining(
         controller: controller,
         onStart: (_) {},
+        onStartTemplate: (_) {},
+        onOpen: (s) => Navigator.of(c).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                OpenBandSession(repository: widget.repository, session: s),
+          ),
+        ),
       ),
-      ShellDomain.wellness => OpenBandJournal(controller: controller),
+      ShellDomain.wellness => OpenBandJournal(
+        controller: controller,
+        onNutrition: () => Navigator.of(c).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                OpenBandNutrition(controller: controller, onAdd: (_) {}),
+          ),
+        ),
+      ),
     },
   );
 

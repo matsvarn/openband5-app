@@ -411,7 +411,8 @@
       "file": "training/hub.dart",
       "usedIn": [
         "3FVD-0"
-      ]
+      ],
+      "implemented": "training.dart"
     },
     {
       "name": "OBMuscleBars",
@@ -431,7 +432,8 @@
         "3FLZ-0",
         "3G8R-0"
       ],
-      "notes": "kcal bar carries a dashed segment for entries with unknown nutrition."
+      "notes": "kcal bar carries a dashed segment for entries with unknown nutrition.",
+      "implemented": "nutrition.dart"
     },
     {
       "name": "OBMealSection",
@@ -444,7 +446,8 @@
       "children": [
         "OBMealHeader",
         "OBFoodRow"
-      ]
+      ],
+      "implemented": "nutrition.dart"
     },
     {
       "name": "OBFoodRow",
@@ -457,7 +460,8 @@
       ],
       "children": [
         "OBMacroInline"
-      ]
+      ],
+      "implemented": "nutrition.dart (row inside OBMealSection)"
     },
     {
       "name": "OBFoodSearch",
@@ -513,7 +517,8 @@
       "children": [
         "OBZoneStack"
       ],
-      "notes": "Stacked proportional bar Z1–Z5 plus time per zone. Zone colours: sleep-tint, stage-rem, recovery, strain, pulse."
+      "notes": "Stacked proportional bar Z1–Z5 plus time per zone. Zone colours: sleep-tint, stage-rem, recovery, strain, pulse.",
+      "implemented": "session.dart"
     },
     {
       "name": "OBSplitCard",
@@ -526,13 +531,15 @@
       "children": [
         "OBSplitRow"
       ],
-      "notes": "Pace bar length is inverse to pace; fastest split in pulse colour."
+      "notes": "Pace bar length is inverse to pace; fastest split in pulse colour.",
+      "implemented": "session.dart"
     },
     {
       "name": "OBSplitRow",
       "paperNode": "3GKW-0",
       "widget": "OBSplitRow",
-      "file": "training/session.dart"
+      "file": "training/session.dart",
+      "implemented": "session.dart"
     },
     {
       "name": "OBLiveMetrics",
@@ -554,7 +561,8 @@
       "usedIn": [
         "3GK0-0"
       ],
-      "notes": "kcal is — when no energy estimate exists."
+      "notes": "kcal is — when no energy estimate exists.",
+      "implemented": "session.dart"
     },
     {
       "name": "OBRoutePlaceholder",
@@ -675,12 +683,23 @@
       "Übersicht",
       "Gesundheit",
       "Training",
-      "Journal"
+      "Journal",
+      "Ernährung · Tag",
+      "Lauf · Ergebnis"
     ],
     "deferred": [
-      "OBMuscleBars, OBTemplateRow (B23 templates)",
-      "OBMacroBars/OBMealSection (B05 meal drafts)",
-      "Lauf live/result screens (B19 detail snapshots)"
+      "OBMuscleBars (needs exercise catalogue muscle mapping, B26)",
+      "OBFoodSearch / meal picker UI (host picker fills MealDraft; B10/B15/B16)",
+      "Laufen · aktiv live screen (B19 live pauses)",
+      "OBLiveBar/OBExerciseBlock/OBSetRow live strength logging (B23 session snapshot start)"
+    ]
+  },
+  "schema": {
+    "version": 53,
+    "tables": [
+      "openband_workout_template",
+      "openband_meal_draft",
+      "openband_session_detail"
     ]
   }
 }

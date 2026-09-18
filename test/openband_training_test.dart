@@ -6,6 +6,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/controller.dart';
+import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -35,6 +37,13 @@ void main() {
   late OpenBandController controller;
   setUp(() {
     repo = SyntheticOpenBandRepository.fromMaps(
+      run:
+          jsonDecode(
+                File(
+                  'docs/openband5/assets/fixtures/run-detail.json',
+                ).readAsStringSync(),
+              )
+              as Map,
       jsonDecode(
             File(
               'docs/openband5/assets/fixtures/day-summary.json',
@@ -81,7 +90,11 @@ void main() {
         home: RepaintBoundary(
           key: const ValueKey('capture'),
           child: Scaffold(
-            body: OpenBandTraining(controller: controller, onStart: (_) {}),
+            body: OpenBandTraining(
+              controller: controller,
+              onStart: (_) {},
+              onStartTemplate: (_) {},
+            ),
           ),
         ),
       ),
@@ -106,6 +119,8 @@ void main() {
     expect(find.text('102'), findsOneWidget);
     expect(find.text('3 Einheiten'), findsOneWidget);
     expect(find.bySemanticsLabel('Kraft starten'), findsOneWidget);
+    expect(find.text('Ganzkörper A'), findsOneWidget);
+    expect(find.text('4 Übungen · 12 Arbeitssätze'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -115,6 +130,64 @@ void main() {
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/training-dark.png'),
+    );
+  });
+
+  test('template save bumps the version and refuses an empty plan', () async {
+    final first = (await repo.readTemplates()).single;
+    final saved = await repo.saveTemplate(first);
+    expect(saved.version, 2);
+    expect(saved.workSets, 12);
+    await expectLater(
+      repo.saveTemplate(
+        WorkoutTemplate(
+          id: 'x',
+          name: ' ',
+          version: 0,
+          exercises: const [],
+          updatedAt: DateTime(2026),
+        ),
+      ),
+      throwsArgumentError,
+    );
+  });
+
+  testWidgets('session detail renders the run fixture exactly', (tester) async {
+    final run = (await repo.readSessions('2026-09-15', 7)).first;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        home: RepaintBoundary(
+          key: const ValueKey('capture'),
+          child: OpenBandSession(repository: repo, session: run),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('5,00'), findsOneWidget);
+    expect(find.text('25:00'), findsOneWidget);
+    expect(find.text('5:00'), findsOneWidget);
+    expect(find.text('Belastung 5,9'), findsOneWidget);
+    expect(find.text('327'), findsOneWidget);
+    expect(find.text('−20'), findsOneWidget);
+    expect(find.text('−32'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/session-run.png'),
+    );
+    expect(
+      await repo.readSessionDetail('synthetic-2026-09-13-weight_training'),
+      isNull,
     );
   });
 

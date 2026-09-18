@@ -5,6 +5,7 @@ import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
+import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../state/app_state.dart';
 import 'domain.dart';
 import 'theme.dart';
@@ -165,6 +166,192 @@ class LocalOpenBandRepository implements OpenBandRepository {
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
   @override
+  Future<List<WorkoutTemplate>> readTemplates() async => [
+    for (final r in await LocalDb.openBandTemplates())
+      WorkoutTemplate(
+        id: r['id'] as String,
+        name: r['name'] as String,
+        version: r['version'] as int,
+        exercises: [
+          for (final e in jsonDecode(r['exercises_json'] as String) as List)
+            PlannedExercise.fromJson(e as Map<String, dynamic>),
+        ],
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(r['updated_at'] as int),
+      ),
+  ];
+
+  @override
+  Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template) async {
+    if (template.name.trim().isEmpty || template.exercises.isEmpty) {
+      throw ArgumentError('Eine Vorlage braucht Namen und eine Übung.');
+    }
+    final now = DateTime.now();
+    final version = await LocalDb.putOpenBandTemplate({
+      'id': template.id,
+      'name': template.name.trim(),
+      'exercises_json': jsonEncode([
+        for (final e in template.exercises) e.toJson(),
+      ]),
+      'archived': 0,
+      'updated_at': now.millisecondsSinceEpoch,
+    });
+    return WorkoutTemplate(
+      id: template.id,
+      name: template.name.trim(),
+      version: version,
+      exercises: template.exercises,
+      updatedAt: now,
+    );
+  }
+
+  @override
+  Future<void> archiveTemplate(String id) =>
+      LocalDb.archiveOpenBandTemplate(id);
+
+  @override
+  Future<DayMeals> readMeals(String day) async {
+    _requireDay(day);
+    final db = await LocalDb.instance;
+    final rollup = rollupDay(
+      day,
+      await NutritionDb.entriesForDay(db, day),
+      today: todayLabel(),
+    );
+    NutrientSum sum(NutrientTotal t) =>
+        NutrientSum(t.value, t.known, t.unknown);
+    return DayMeals(
+      day: day,
+      entries: [
+        for (final e in rollup.entries)
+          MealEntry(
+            id: e.id,
+            meal: e.meal,
+            label: e.label,
+            kcal: e.kcal,
+            proteinG: e.proteinG,
+            carbsG: e.carbsG,
+            fatG: e.fatG,
+          ),
+      ],
+      kcal: sum(rollup.kcal),
+      proteinG: sum(rollup.protein),
+      carbsG: sum(rollup.carbs),
+      fatG: sum(rollup.fat),
+    );
+  }
+
+  @override
+  Future<MealDraft?> readMealDraft(String day, String meal) async {
+    final r = await LocalDb.openBandMealDraft(day, meal);
+    if (r == null) return null;
+    return MealDraft(
+      id: r['draft_id'] as String,
+      day: day,
+      meal: meal,
+      entries: [
+        for (final e in jsonDecode(r['entries_json'] as String) as List)
+          MealDraftEntry.fromJson(e as Map<String, dynamic>),
+      ],
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(r['updated_at'] as int),
+    );
+  }
+
+  @override
+  Future<void> saveMealDraft(MealDraft draft) => LocalDb.putOpenBandMealDraft({
+    'draft_id': draft.id,
+    'day_id': draft.day,
+    'meal': draft.meal,
+    'entries_json': jsonEncode([for (final e in draft.entries) e.toJson()]),
+    'updated_at': DateTime.now().millisecondsSinceEpoch,
+  });
+
+  @override
+  Future<void> discardMealDraft(String draftId) =>
+      LocalDb.deleteOpenBandMealDraft(draftId);
+
+  @override
+  Future<void> commitMealDraft(MealDraft draft) async {
+    if (draft.entries.isEmpty) {
+      throw ArgumentError('Ein leerer Entwurf wird nicht gespeichert.');
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await LocalDb.commitOpenBandMealDraft(draft.id, [
+      for (final e in draft.entries)
+        FoodEntry(
+          id: e.id,
+          date: draft.day,
+          meal: draft.meal,
+          label: e.label,
+          foodKey: e.foodKey,
+          quantity: e.quantity,
+          unit: e.unit,
+          kcal: e.kcal,
+          proteinG: e.proteinG,
+          carbsG: e.carbsG,
+          fatG: e.fatG,
+          confirmed: true,
+        ).toRow(now),
+    ]);
+  }
+
+  @override
+  Future<SessionDetail?> readSessionDetail(String sessionId) async {
+    final stored = await LocalDb.openBandSessionDetail(sessionId);
+    if (stored != null) {
+      return SessionDetail.fromJson(
+        jsonDecode(stored['payload_json'] as String) as Map<String, dynamic>,
+      );
+    }
+    final repository = app.repo;
+    final row = await LocalDb.session(sessionId);
+    if (repository == null || row == null) return null;
+    if (row['status'] == 'live') return null;
+    final workout = await repository.getWorkout(sessionId);
+    final splits = await LocalDb.workoutSplits(sessionId);
+    final startTs = row['start_ts'] as int;
+    final endTs = row['end_ts'] as int?;
+    final zones = switch (row['zone_min_json']) {
+      final String z => [
+        for (final m in jsonDecode(z) as List) ((m as num) * 60).round(),
+      ],
+      _ => null,
+    };
+    final detail = SessionDetail(
+      sessionId: sessionId,
+      type: row['type'] as String,
+      day: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000)),
+      start: DateTime.fromMillisecondsSinceEpoch(startTs * 1000),
+      algoVersion: kAlgoVersion,
+      durationSec: endTs == null
+          ? switch (row['duration_min'] as int?) {
+              null => null,
+              final m => m * 60,
+            }
+          : endTs - startTs,
+      avgHr: (workout['avg_hr'] as num?)?.toDouble(),
+      maxHr: (workout['max_hr'] as num?)?.toInt(),
+      strain: (row['strain'] as num?)?.toDouble(),
+      kcal: (row['calories'] as num?)?.toDouble(),
+      zoneSec: zones,
+      splits: [
+        for (final s in splits)
+          SessionSplit(
+            km: s['km'] as int,
+            seconds: s['duration_sec'] as int,
+            avgHr: (s['avg_hr'] as num?)?.toDouble(),
+          ),
+      ],
+    );
+    await LocalDb.putOpenBandSessionDetail({
+      'session_id': sessionId,
+      'algo_version': kAlgoVersion,
+      'computed_at': DateTime.now().millisecondsSinceEpoch,
+      'payload_json': jsonEncode(detail.toJson()),
+    });
+    return detail;
+  }
+
+  @override
   Future<PatternSummary> readPattern(
     String habitKey,
     MetricKey outcome,
@@ -173,7 +360,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
   ) async {
     _requireDay(endDay);
     final days = openBandDaysEnding(endDay, nights + 1);
-    final journal = await LocalDb.journalMetricsByDay(sinceDaysEpoch: days.first);
+    final journal = await LocalDb.journalMetricsByDay(
+      sinceDaysEpoch: days.first,
+    );
     final rows = await LocalDb.metricSeries(outcome.series);
     return summarizePattern(
       {for (final e in journal.entries) e.key: e.value[habitKey]?.value},

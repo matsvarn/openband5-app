@@ -11,11 +11,13 @@ import 'theme.dart';
 class OpenBandTraining extends StatelessWidget {
   final OpenBandController controller;
   final ValueChanged<String>? onStart;
+  final ValueChanged<WorkoutTemplate>? onStartTemplate;
   final ValueChanged<TrainingSession>? onOpen;
   const OpenBandTraining({
     super.key,
     required this.controller,
     this.onStart,
+    this.onStartTemplate,
     this.onOpen,
   });
   @override
@@ -39,6 +41,22 @@ class OpenBandTraining extends StatelessWidget {
             const SizedBox(height: 12),
             OBQuickStart(onStart: onStart),
             const SizedBox(height: 10),
+            FutureBuilder<List<WorkoutTemplate>>(
+              future: controller.repository.readTemplates(),
+              builder: (context, snapshot) {
+                final templates = snapshot.data;
+                if (templates == null || templates.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: OBTemplateRow(
+                    template: templates.first,
+                    onStart: onStartTemplate,
+                  ),
+                );
+              },
+            ),
             FutureBuilder<List<TrainingSession>>(
               key: ValueKey('sessions-${controller.selectedDay}'),
               future: controller.repository.readSessions(
@@ -434,6 +452,58 @@ class _SessionRow extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class OBTemplateRow extends StatelessWidget {
+  final WorkoutTemplate template;
+  final ValueChanged<WorkoutTemplate>? onStart;
+  const OBTemplateRow({super.key, required this.template, this.onStart});
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final sets = template.workSets;
+    return OBCard(
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.strainTint,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: OBSportIcon('barbell', size: 18, color: p.strain),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Als Nächstes',
+                  style: p.text(12, weight: FontWeight.w600, color: p.muted),
+                ),
+                Text(template.name, style: p.text(15, weight: FontWeight.w600)),
+                Text(
+                  '${template.exercises.length} Übungen · $sets Arbeitssätze',
+                  style: p.text(13, color: p.muted),
+                ),
+              ],
+            ),
+          ),
+          FilledButton(
+            onPressed: onStart == null ? null : () => onStart!(template),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: const Text('Starten'),
+          ),
+        ],
       ),
     );
   }

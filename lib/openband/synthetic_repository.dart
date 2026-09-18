@@ -43,11 +43,15 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   late final List<({String day, double? minutes})> _history;
   late final BandSnapshot _baseBand;
 
+  /// Optional run-detail fixture (docs/openband5/assets/fixtures/run-detail.json).
+  final Map? run;
+
   SyntheticOpenBandRepository.fromMaps(
     Map summary,
     Map detail, {
     this.scenario = SyntheticScenario.complete,
     this.activity,
+    this.run,
   }) : _summary = Map<String, dynamic>.from(summary),
        _detail = Map<String, dynamic>.from(detail) {
     _day = _summary['day'] as String;
@@ -121,6 +125,196 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   final Map<String, Map<String, double>> _journal = {};
+  final Map<String, WorkoutTemplate> _templates = {};
+  final Map<String, MealDraft> _mealDrafts = {};
+  final Map<String, List<MealEntry>> _meals = {};
+  bool _seeded = false;
+
+  void _seedPlans() {
+    if (_seeded) return;
+    _seeded = true;
+    // B23 synthetic plan Ganzkörper A: four exercises, twelve work sets.
+    PlannedExercise ex(String key, String name, List<PlannedSet> sets) =>
+        PlannedExercise(
+          id: 'ex-$key',
+          exerciseKey: key,
+          name: name,
+          sets: sets,
+        );
+    List<PlannedSet> reps(String key, int reps, double kg) => [
+      for (var i = 1; i <= 3; i++)
+        PlannedSet(id: '$key-$i', reps: reps, loadKg: kg, restSec: 90),
+    ];
+    _templates['tpl-ganzkoerper-a'] = WorkoutTemplate(
+      id: 'tpl-ganzkoerper-a',
+      name: 'Ganzkörper A',
+      version: 1,
+      exercises: [
+        ex('bench_press', 'Bankdrücken', reps('bp', 8, 40)),
+        ex('row', 'Rudern', reps('row', 10, 30)),
+        ex('squat', 'Kniebeuge', reps('sq', 8, 60)),
+        ex('plank', 'Plank', [
+          for (var i = 1; i <= 3; i++)
+            PlannedSet(id: 'plank-$i', seconds: 45, restSec: 60),
+        ]),
+      ],
+      updatedAt: _at(_shift(_day, -2), '19:00'),
+    );
+    _meals[_day] = [
+      const MealEntry(
+        id: 'm1',
+        meal: 'breakfast',
+        label: 'Haferflocken mit Milch',
+        kcal: 380,
+        proteinG: 14,
+        carbsG: 58,
+        fatG: 9,
+      ),
+      const MealEntry(id: 'm2', meal: 'breakfast', label: 'Kaffee'),
+      const MealEntry(
+        id: 'm3',
+        meal: 'lunch',
+        label: 'Linsensalat',
+        kcal: 240,
+        proteinG: 12,
+        carbsG: 30,
+        fatG: 6,
+      ),
+    ];
+  }
+
+  @override
+  Future<List<WorkoutTemplate>> readTemplates() async {
+    _seedPlans();
+    return _templates.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  @override
+  Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template) async {
+    _seedPlans();
+    if (template.name.trim().isEmpty || template.exercises.isEmpty) {
+      throw ArgumentError('Eine Vorlage braucht Namen und eine Übung.');
+    }
+    final saved = WorkoutTemplate(
+      id: template.id,
+      name: template.name.trim(),
+      version: (_templates[template.id]?.version ?? 0) + 1,
+      exercises: template.exercises,
+      updatedAt: DateTime.now(),
+    );
+    _templates[template.id] = saved;
+    return saved;
+  }
+
+  @override
+  Future<void> archiveTemplate(String id) async {
+    _seedPlans();
+    _templates.remove(id);
+  }
+
+  @override
+  Future<DayMeals> readMeals(String day) async {
+    _seedPlans();
+    final entries = _meals[day] ?? const [];
+    NutrientSum sum(double? Function(MealEntry) pick) {
+      var known = 0, unknown = 0;
+      double total = 0;
+      for (final e in entries) {
+        final v = pick(e);
+        if (v == null) {
+          unknown++;
+        } else {
+          known++;
+          total += v;
+        }
+      }
+      return NutrientSum(known == 0 ? null : total, known, unknown);
+    }
+
+    return DayMeals(
+      day: day,
+      entries: entries,
+      kcal: sum((e) => e.kcal),
+      proteinG: sum((e) => e.proteinG),
+      carbsG: sum((e) => e.carbsG),
+      fatG: sum((e) => e.fatG),
+    );
+  }
+
+  @override
+  Future<MealDraft?> readMealDraft(String day, String meal) async =>
+      _mealDrafts['$day/$meal'];
+
+  @override
+  Future<void> saveMealDraft(MealDraft draft) async {
+    _mealDrafts['${draft.day}/${draft.meal}'] = draft;
+  }
+
+  @override
+  Future<void> discardMealDraft(String draftId) async {
+    _mealDrafts.removeWhere((_, d) => d.id == draftId);
+  }
+
+  @override
+  Future<void> commitMealDraft(MealDraft draft) async {
+    _seedPlans();
+    if (draft.entries.isEmpty) {
+      throw ArgumentError('Ein leerer Entwurf wird nicht gespeichert.');
+    }
+    if (scenario == SyntheticScenario.saveFailure) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    (_meals[draft.day] ??= []).addAll([
+      for (final e in draft.entries)
+        MealEntry(
+          id: e.id,
+          meal: draft.meal,
+          label: e.label,
+          kcal: e.kcal,
+          proteinG: e.proteinG,
+          carbsG: e.carbsG,
+          fatG: e.fatG,
+        ),
+    ]);
+    _mealDrafts.remove('${draft.day}/${draft.meal}');
+  }
+
+  @override
+  Future<SessionDetail?> readSessionDetail(String sessionId) async {
+    final r = run;
+    if (r == null || !sessionId.endsWith('-running')) return null;
+    final day = sessionId.substring(
+      'synthetic-'.length,
+      'synthetic-'.length + 10,
+    );
+    final zones = [
+      for (final s in r['zone_seconds_0_to_5'] as List) (s as num).toInt(),
+    ];
+    final splits = r['split_seconds'] as List;
+    return SessionDetail(
+      sessionId: sessionId,
+      type: 'running',
+      day: day,
+      start: _at(day, r['start'] as String),
+      algoVersion: 0,
+      durationSec: (r['duration_seconds'] as num).toInt(),
+      pauseSec: (r['pause_seconds'] as num).toInt(),
+      distanceM: (r['distance_m'] as num).toDouble(),
+      avgHr: (r['hr_mean'] as num).toDouble(),
+      maxHr: (r['hr_max'] as num).toInt(),
+      hrCoveredSec: (r['duration_seconds'] as num).toInt(),
+      strain: (r['strain_0_21'] as num).toDouble(),
+      kcal: (r['bout_kcal'] as num).toDouble(),
+      hrr60: ((r['hrr60'] as Map)['drop_bpm'] as num).toInt(),
+      hrr120: ((r['hrr120'] as Map)['drop_bpm'] as num).toInt(),
+      zoneSec: zones,
+      splits: [
+        for (final (i, s) in splits.indexed)
+          SessionSplit(km: i + 1, seconds: (s as num).toInt()),
+      ],
+    );
+  }
 
   @override
   Future<PatternSummary> readPattern(
@@ -162,7 +356,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       (-9, 'weight_training', '18:05', 43, null, null),
       (-3, 'cycling', '17:32', 32, null, null),
       (-2, 'weight_training', '18:10', 45, null, null),
-      (-1, 'running', '17:20', 25, 5.8716, 327.2537),
+      (-1, 'running', '07:05', 25, 5.8716, 327.2537),
     ];
     return [
       for (final (offset, type, time, minutes, strain, kcal) in all.reversed)
