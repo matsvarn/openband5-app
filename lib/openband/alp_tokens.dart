@@ -1,5 +1,5 @@
 // GENERATED from docs/openband5/design/tokens.json
-// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash 908ca522).
+// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash a96ee6a1).
 // Do not edit; run tool/gen_alp_tokens.py.
 import 'dart:ui';
 
@@ -40,6 +40,16 @@ abstract final class AlpColor {
   static const Color pulse = Color(0xFFE0457B);
   /// Alpin: Alpenrose hell.
   static const Color pulseTint = Color(0xFFFCE6EE);
+  /// Alpin: Gletscher für kleinen Text (≤ 14 px) auf Weiß, AA.
+  static const Color sleepText = Color(0xFF2A57C7);
+  /// Alpin: Tanne für kleinen Text auf Weiß, AA.
+  static const Color recoveryText = Color(0xFF157A4B);
+  /// Alpin: Alpenglühen für kleinen Text auf Weiß, AA.
+  static const Color strainText = Color(0xFFA85A0E);
+  /// Alpin: Alpenrose für kleinen Text auf Weiß, AA.
+  static const Color pulseText = Color(0xFFB82C60);
+  /// Alpin: Enzian für kleinen Text auf Weiß, AA.
+  static const Color foodText = Color(0xFF5F42BF);
   /// Alpin dunkel: Nachthimmel. Seitenhintergrund.
   static const Color darkCanvas = Color(0xFF0F1420);
   /// Alpin dunkel: Karte.

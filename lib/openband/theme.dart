@@ -39,9 +39,19 @@ class OB {
   Color get stageLight => _pick(AlpColor.stageLight, AlpColor.darkStageLight);
   Color get stageRem => _pick(AlpColor.stageRem, AlpColor.darkStageRem);
   Color get wake => _pick(AlpColor.wake, AlpColor.darkWake);
-  Color get sleepText => dark ? sleep : const Color(0xFF4F68AE);
-  Color get recoveryText => dark ? recovery : const Color(0xFF2D7463);
-  Color get strainText => dark ? strain : const Color(0xFF926018);
+  Color get sleepText => dark ? sleep : AlpColor.sleepText;
+  Color get recoveryText => dark ? recovery : AlpColor.recoveryText;
+  Color get strainText => dark ? strain : AlpColor.strainText;
+  Color get pulseText => dark ? pulse : AlpColor.pulseText;
+  Color get foodText => dark ? food : AlpColor.foodText;
+  Color smallText(Color metric) => switch (metric) {
+    _ when metric == sleep => sleepText,
+    _ when metric == recovery => recoveryText,
+    _ when metric == strain => strainText,
+    _ when metric == pulse => pulseText,
+    _ when metric == food => foodText,
+    _ => metric,
+  };
   TextStyle text(
     double size, {
     FontWeight weight = FontWeight.w400,

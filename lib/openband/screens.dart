@@ -450,7 +450,7 @@ class OBMetricCard extends StatelessWidget {
       (final v, final b) when (v! - b!).abs() < .5 => ('im Bereich', p.muted),
       (final v, final b) => (
         '${v! >= b! ? '+' : '−'}${obNumber((v - b).abs())} ${v >= b ? 'über' : 'unter'} Basis',
-        color,
+        p.smallText(color),
       ),
     };
     return InkWell(
