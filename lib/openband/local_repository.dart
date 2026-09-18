@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../data/db.dart';
+import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
@@ -163,6 +164,27 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   /// Live connection/receive state is intentionally separate from durable
   /// storage. [latestStoredAt] is the persisted band frontier, never lastRxAt.
+  @override
+  Future<List<JournalEntry>> readJournal(String day) async {
+    _requireDay(day);
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    final values = await repository.getJournalMetrics(day);
+    return [for (final e in values.entries) JournalEntry(e.key, e.value.value)];
+  }
+
+  @override
+  Future<void> writeJournal(String day, String key, double value) async {
+    _requireDay(day);
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    await repository.postJournalMetrics(day, {key: JournalMetricValue(value)});
+  }
+
   @override
   Future<List<TrainingSession>> readSessions(String endDay, int days) async {
     _requireDay(endDay);

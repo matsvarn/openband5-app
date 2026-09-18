@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
 import 'openband/health.dart';
+import 'openband/journal.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'openband/theme.dart';
@@ -146,21 +147,23 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     ),
   );
   Widget _shell(BuildContext context) => AppShell(
-    builder: (c, domain) => domain == ShellDomain.home
-        ? OpenBandOverview(
-            controller: controller,
-            onProfile: () => _options(context),
-            onSync: () {
-              widget.repository.scenario = SyntheticScenario.complete;
-              controller.updateBand(widget.repository.band);
-              controller.refresh();
-            },
-          )
-        : domain == ShellDomain.wellness
-        ? OpenBandHealth(controller: controller)
-        : domain == ShellDomain.workout
-        ? OpenBandTraining(controller: controller, onStart: (_) {})
-        : Center(child: Text('${domain.label} · nächstes Arbeitspaket')),
+    builder: (c, domain) => switch (domain) {
+      ShellDomain.home => OpenBandOverview(
+        controller: controller,
+        onProfile: () => _options(context),
+        onSync: () {
+          widget.repository.scenario = SyntheticScenario.complete;
+          controller.updateBand(widget.repository.band);
+          controller.refresh();
+        },
+      ),
+      ShellDomain.health => OpenBandHealth(controller: controller),
+      ShellDomain.workout => OpenBandTraining(
+        controller: controller,
+        onStart: (_) {},
+      ),
+      ShellDomain.wellness => OpenBandJournal(controller: controller),
+    },
   );
 
   Future<void> _options(BuildContext context) => showModalBottomSheet<void>(

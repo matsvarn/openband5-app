@@ -120,6 +120,19 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
   }
 
+  final Map<String, Map<String, double>> _journal = {};
+
+  @override
+  Future<List<JournalEntry>> readJournal(String day) async => [
+    for (final e in (_journal[day] ?? const {}).entries)
+      JournalEntry(e.key, e.value),
+  ];
+
+  @override
+  Future<void> writeJournal(String day, String key, double value) async {
+    (_journal[day] ??= {})[key] = value;
+  }
+
   @override
   Future<List<TrainingSession>> readSessions(String endDay, int days) async {
     final window = openBandDaysEnding(endDay, days).toSet();

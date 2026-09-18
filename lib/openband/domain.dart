@@ -203,8 +203,16 @@ class TrainingSession {
   });
 }
 
+class JournalEntry {
+  final String key;
+  final double value;
+  const JournalEntry(this.key, this.value);
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<List<JournalEntry>> readJournal(String day);
+  Future<void> writeJournal(String day, String key, double value);
   Future<List<TrainingSession>> readSessions(String endDay, int days);
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,
