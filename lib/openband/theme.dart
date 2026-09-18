@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../data/day_label.dart';
 import 'alp_tokens.dart';
 
 class OB {
@@ -233,6 +234,9 @@ String obNumber(num? value, {int digits = 0}) => value == null
       ).format(value);
 String obDate(String day) =>
     DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(day));
+String obDayTitle(String day) => day == todayLabel()
+    ? 'Heute'
+    : DateFormat('EEE, d. MMM', 'de_DE').format(DateTime.parse(day));
 String obTime(DateTime? time) =>
     time == null ? '—' : DateFormat('HH:mm', 'de_DE').format(time);
 

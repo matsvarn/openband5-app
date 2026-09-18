@@ -88,8 +88,7 @@ class StepsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final kcal =
-        '${day.intake.kcalIsFloor ? '≥' : ''}${obNumber(day.intake.kcal)} kcal';
+    final kcal = '${obNumber(day.intake.kcal)} kcal';
     final water = '${obNumber(day.intake.waterMl)} ml';
     final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     return OBCard(

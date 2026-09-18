@@ -249,7 +249,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    await tester.tap(find.text('15. September'));
+    await tester.tap(find.text(obDayTitle('2026-09-15')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('14'));
     await tester.pumpAndSettle();
@@ -261,7 +261,7 @@ void main() {
     await tester.tap(find.byTooltip('Abbrechen'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-09-15');
-    await tester.tap(find.text('15. September'));
+    await tester.tap(find.text(obDayTitle('2026-09-15')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('14'));
     await tester.pumpAndSettle();
@@ -435,7 +435,7 @@ void main() {
     'small phone large text keeps calendar and activity actions usable',
     (tester) async {
       await mount(tester, width: 375, height: 812, scale: 2);
-      await tester.tap(find.text('15. September'));
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.ensureVisible(find.text('14'));
@@ -445,7 +445,7 @@ void main() {
       await tester.tap(find.text('14. September ansehen'));
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-14');
-      await tester.tap(find.text('14. September'));
+      await tester.tap(find.text(obDayTitle('2026-09-14')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();

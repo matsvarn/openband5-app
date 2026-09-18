@@ -40,59 +40,70 @@ class OpenBandOverview extends StatelessWidget {
             key: const PageStorageKey('openband.overview'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 0, 0),
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 8,
+                  children: [
+                    TextButton(
                       onPressed: () => chooseOpenBandDay(context, controller),
-                      style: TextButton.styleFrom(
-                        alignment: Alignment.centerLeft,
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Wrap(
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 5,
-                            children: [
-                              Text(
-                                obDate(controller.selectedDay),
-                                style: p.text(21, weight: FontWeight.w600),
+                          Flexible(
+                            child: Text(
+                              obDayTitle(controller.selectedDay),
+                              style: p.text(
+                                30,
+                                weight: FontWeight.w800,
+                                display: true,
                               ),
-                              Icon(
-                                LucideIcons.chevronDown,
-                                size: 14,
-                                color: p.muted,
-                              ),
-                            ],
+                            ),
                           ),
-                          Text(
-                            day?.synthetic == true
-                                ? 'Synthetische Daten'
-                                : 'Dein Tagesbild',
-                            style: p.text(12, color: p.muted),
+                          const SizedBox(width: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Icon(
+                              LucideIcons.chevronDown,
+                              size: 18,
+                              color: p.muted,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  _BandPill(
-                    band: controller.band,
-                    onTap: () => showBandStatus(context, controller, onSync),
-                  ),
-                  if (onProfile != null)
-                    IconButton(
-                      tooltip: 'Profil',
-                      onPressed: onProfile,
-                      icon: Icon(
-                        LucideIcons.userRound,
-                        size: 21,
-                        color: p.muted,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _BandPill(
+                          band: controller.band,
+                          onTap: () =>
+                              showBandStatus(context, controller, onSync),
+                        ),
+                        if (onProfile != null) ...[
+                          const SizedBox(width: 8),
+                          _CircleButton(
+                            tooltip: 'Profil',
+                            icon: LucideIcons.userRound,
+                            onPressed: onProfile!,
+                          ),
+                        ],
+                      ],
                     ),
-                ],
+                  ],
+                ),
               ),
+              if (day?.synthetic == true)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, top: 2),
+                  child: Text(
+                    'Synthetische Daten',
+                    style: p.text(12, color: p.muted),
+                  ),
+                ),
               const SizedBox(height: 12),
               if (controller.loadError != null)
                 OBCard(
@@ -501,6 +512,31 @@ class OBMetricCard extends StatelessWidget {
   }
 }
 
+class _CircleButton extends StatelessWidget {
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+  const _CircleButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor: p.card,
+        foregroundColor: p.ink,
+        fixedSize: const Size(40, 40),
+      ),
+      icon: Icon(icon, size: 20),
+    );
+  }
+}
+
 class _BandPill extends StatelessWidget {
   final BandSnapshot band;
   final VoidCallback onTap;
@@ -517,8 +553,8 @@ class _BandPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         child: ExcludeSemantics(
           child: Container(
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            height: 40,
+            padding: const EdgeInsets.fromLTRB(10, 0, 12, 0),
             decoration: BoxDecoration(
               color: p.card,
               borderRadius: BorderRadius.circular(20),
@@ -532,7 +568,7 @@ class _BandPill extends StatelessWidget {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      Icon(LucideIcons.watch, size: 17, color: p.action),
+                      Icon(LucideIcons.watch, size: 17, color: p.ink),
                       Positioned(
                         left: 9,
                         top: 12,
@@ -542,7 +578,7 @@ class _BandPill extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: band.connection == BandConnection.connected
                                 ? p.recovery
-                                : p.muted,
+                                : p.gap,
                             shape: BoxShape.circle,
                             border: Border.all(color: p.card, width: 1.5),
                           ),
@@ -556,7 +592,7 @@ class _BandPill extends StatelessWidget {
                   band.batteryPercent == null
                       ? '—'
                       : '${band.batteryPercent} %',
-                  style: p.text(12, weight: FontWeight.w600),
+                  style: p.text(15, weight: FontWeight.w700, display: true),
                 ),
               ],
             ),
