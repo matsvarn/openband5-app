@@ -1462,6 +1462,11 @@ class AppState extends ChangeNotifier {
   Future<void> debugReconcileOrphanedLiveWorkout() =>
       _reconcileOrphanedLiveWorkout();
 
+  /// Tests only. Runs after a start/adopt DB await so a test can dispose
+  /// between persist and arm.
+  @visibleForTesting
+  Future<void> Function()? debugAfterWorkoutPersist;
+
   /// Feed one live accel frame through the live-pedometer path exactly as
   /// [_onLiveFrame] does, with the ingest wall-clock supplied by the caller.
   /// Tests only — lets a test replay a session's frames deterministically.
@@ -5743,6 +5748,22 @@ class AppState extends ChangeNotifier {
   // ── live session coach ───────────────────────────────────────────────────────
   LiveWorkoutState? activeWorkout;
   Timer? _workoutTimer;
+  Future<void> _workoutArmQueue = Future.value();
+
+  /// One start/reconcile/adopt at a time. Waiters run after the holder
+  /// finishes so a Start tap is not a silent no-op while a stale live row
+  /// is being finalized.
+  Future<T> _withWorkoutArming<T>(Future<T> Function() body) async {
+    final previous = _workoutArmQueue;
+    final released = Completer<void>();
+    _workoutArmQueue = released.future;
+    try {
+      await previous;
+      return await body();
+    } finally {
+      released.complete();
+    }
+  }
 
   // GPS route tracking for the active run/ride/walk (on-device only). Null when
   // no session is live or the type isn't route-eligible / permission denied.
@@ -5844,14 +5865,147 @@ class AppState extends ChangeNotifier {
   /// opposed to the activity merely being one that deserves a route.
   bool get routeTracking => _routeTracker?.isRunning ?? false;
 
-  void startWorkout({
+  Future<void> startWorkout({
     double targetKcal = 300,
     String? workoutId,
     String type = 'other',
-  }) {
+  }) async {
     if (activeWorkout != null) return;
-    final start = DateTime.now();
-    final id = workoutId ?? 'w${start.millisecondsSinceEpoch}';
+    await _withWorkoutArming(() async {
+      if (_disposed || activeWorkout != null) return;
+      var live = await LocalDb.liveSessions();
+      if (_disposed || activeWorkout != null) return;
+      if (live.isNotEmpty) {
+        await _resumeOrFinalizeLiveSessions(live);
+        if (_disposed || activeWorkout != null) return;
+        live = await LocalDb.liveSessions();
+        if (live.isNotEmpty) return;
+      }
+      final start = DateTime.now();
+      final id = workoutId ?? 'w${start.millisecondsSinceEpoch}';
+      // Persist first. A throw here must not arm: the caller sees the
+      // failure instead of a live engine with no durable row.
+      await LocalDb.putSession({
+        'id': id,
+        'start_ts': start.millisecondsSinceEpoch ~/ 1000,
+        'end_ts': null,
+        'type': type,
+        'status': 'live',
+        'source': 'manual',
+        // Which strap is measuring this workout, if one is linked right now.
+        // Null when nothing is connected — unknown provenance, not gen4.
+        'device_family': engine.linkDeviceFamily,
+        'created_at': start.millisecondsSinceEpoch,
+      });
+      await debugAfterWorkoutPersist?.call();
+      if (_disposed) {
+        throw StateError('Einheit konnte nicht gestartet werden.');
+      }
+      if (activeWorkout != null) return;
+      _armLiveWorkout(
+        id: id,
+        type: type,
+        start: start,
+        targetKcal: targetKcal,
+      );
+    });
+  }
+
+  /// Awaited reservation: the live session and strength plan land before
+  /// in-memory activation. Returns only after that write. Does not change
+  /// [startWorkout] callers (UI files outside this assignment).
+  Future<String> startDurableStrengthWorkout({
+    required String templateId,
+    required int templateVersion,
+    required String planJson,
+    String? workoutId,
+  }) async {
+    if (activeWorkout != null) {
+      throw StateError('Eine Einheit läuft bereits.');
+    }
+    return _withWorkoutArming(() async {
+      if (_disposed) {
+        throw StateError('Einheit konnte nicht gestartet werden.');
+      }
+      if (activeWorkout != null) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      var live = await LocalDb.liveSessions();
+      if (_disposed) {
+        throw StateError('Einheit konnte nicht gestartet werden.');
+      }
+      if (activeWorkout != null) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      if (live.isNotEmpty) {
+        await _resumeOrFinalizeLiveSessions(live);
+        if (_disposed) {
+          throw StateError('Einheit konnte nicht gestartet werden.');
+        }
+        if (activeWorkout != null) {
+          throw StateError('Eine Einheit läuft bereits.');
+        }
+        live = await LocalDb.liveSessions();
+        if (live.isNotEmpty) {
+          throw StateError('Eine Einheit läuft bereits.');
+        }
+      }
+      final start = DateTime.now();
+      final id = workoutId ?? 'w${start.millisecondsSinceEpoch}';
+      await LocalDb.beginOpenBandStrengthSession(
+        sessionId: id,
+        startTs: start.millisecondsSinceEpoch ~/ 1000,
+        createdAt: start.millisecondsSinceEpoch,
+        type: 'weight_training',
+        deviceFamily: engine.linkDeviceFamily,
+        templateId: templateId,
+        templateVersion: templateVersion,
+        planJson: planJson,
+      );
+      await debugAfterWorkoutPersist?.call();
+      if (_disposed) {
+        throw StateError('Einheit konnte nicht gestartet werden.');
+      }
+      if (activeWorkout != null) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      _armLiveWorkout(id: id, type: 'weight_training', start: start);
+      return id;
+    });
+  }
+
+  /// Re-arm a durable live row after process death. Physiology starts from
+  /// zero rather than inventing pre-restart measurements.
+  Future<void> adoptLiveSession(String sessionId) async {
+    if (activeWorkout?.workoutId == sessionId) return;
+    if (activeWorkout != null) {
+      throw StateError('Eine Einheit läuft bereits.');
+    }
+    await _withWorkoutArming(() async {
+      if (activeWorkout?.workoutId == sessionId) return;
+      if (activeWorkout != null) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      final row = await LocalDb.session(sessionId);
+      await debugAfterWorkoutPersist?.call();
+      if (_disposed) {
+        throw StateError('Einheit konnte nicht gestartet werden.');
+      }
+      if (activeWorkout?.workoutId == sessionId) return;
+      if (activeWorkout != null) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      if (row == null || row['status'] != 'live') return;
+      _resumeLiveSessionRow(row);
+    });
+  }
+
+  void _armLiveWorkout({
+    required String id,
+    required String type,
+    required DateTime start,
+    double targetKcal = 300,
+  }) {
     // The workout screen's live step count rides the 100 Hz IMU stream, which
     // the sticky standard-HR fallback silently suppresses (same starvation as
     // the calibration walk) — and which may simply be off (a breathing
@@ -5915,22 +6069,6 @@ class AppState extends ChangeNotifier {
         restingHrHistory: _rhr28,
       ),
       restingHr: _liveRestingHr,
-    );
-    // Persist the live session (INSERT OR REPLACE — idempotent if repo already
-    // inserted this id). Final stats are written on stop.
-    unawaited(
-      LocalDb.putSession({
-        'id': id,
-        'start_ts': start.millisecondsSinceEpoch ~/ 1000,
-        'end_ts': null,
-        'type': type,
-        'status': 'live',
-        'source': 'manual',
-        // Which strap is measuring this workout, if one is linked right now.
-        // Null when nothing is connected — unknown provenance, not gen4.
-        'device_family': engine.linkDeviceFamily,
-        'created_at': start.millisecondsSinceEpoch,
-      }),
     );
     // Never leak a previous periodic tick by overwriting the reference.
     _workoutTimer?.cancel();
@@ -6075,121 +6213,135 @@ class AppState extends ChangeNotifier {
   static const int _kMaxLiveWorkoutAgeMs = 6 * 60 * 60 * 1000; // 6h
   Future<void> _reconcileOrphanedLiveWorkout() async {
     try {
-      // Called unawaited from _init(); a concurrent startWorkout() could in
-      // principle already be running by the time this DB round-trip resolves
-      // (CodeRabbit flagged the race). Bail rather than clobber a real,
-      // just-started activeWorkout and leak its timer.
-      if (activeWorkout != null) return;
-      final rows = await LocalDb.liveSessions();
-      // RE-CHECK AFTER THE AWAIT. This is kicked unawaited from _init(), one
-      // line before `initialized = true` makes the shell interactive — so the
-      // user can tap "Start workout" INSIDE this DB round-trip. The pre-await
-      // guard alone let us then overwrite a genuinely live `activeWorkout` with
-      // the stale row AND assign a second `_workoutTimer` over the live one:
-      // the first timer became unreachable, was never cancelled, and kept
-      // running _tickWorkout at 2 Hz for the rest of the session — double
-      // counting calories/strain/zone-seconds against a workout the user never
-      // started.
-      if (activeWorkout != null) return;
-      if (rows.isEmpty) return;
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      var resumed = false;
-      for (final row in rows) {
-        final startSec = (row['start_ts'] as num?)?.toInt();
-        final ageMs = startSec == null ? null : nowMs - startSec * 1000;
-        if (!resumed &&
-            ageMs != null &&
-            ageMs >= 0 &&
-            ageMs <= _kMaxLiveWorkoutAgeMs) {
-          resumed = true;
-          final startMs = startSec! * 1000;
-          final id = row['id'] as String? ?? 'w$startMs';
-          final profileAtStart = _profile.forDate(
-            DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
-          );
-          activeWorkout = LiveWorkoutState(
-            startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
-            targetKcal: 300,
-            workoutId: id,
-            type: (row['type'] as String?) ?? 'other',
-            age: profileAtStart.ageYears,
-            profile: profileAtStart,
-            // The same ceiling startWorkout pins. Without it the resumed
-            // session's idle gate is null, and WorkoutIdleWatch then counts
-            // ANY positive reading as active — a forgotten session idling at
-            // resting heart rate would never be asked about after a restart,
-            // the exact case the watch exists for.
-            hrMax: estimatedMaxHr(
-              profileAtStart.ageYears,
-              engine.linkDeviceFamily,
-            ),
-            restingHr: _liveRestingHr,
-          );
-          // Without this, `workoutStepsMeasured` (gated on _workoutRawBase
-          // != null) stays null for the rest of this resumed session, and
-          // stopWorkout()
-          // would persist 0 steps even once real pedometer data resumes
-          // flowing — CodeRabbit caught this. Mirrors startWorkout()'s own
-          // snapshot: steps count from zero going forward, same as
-          // calories/strain/zone-minutes already (honestly) do here.
-          _workoutRawBase = _liveRaw;
-          _workoutSawSamples = false;
-          _workoutMinuteSteps.clear();
-          // A first night may have been derived since init. This read finishes
-          // after the session below is constructed, so it back-fills the anchor on
-          // `activeWorkout` when it lands rather than blocking the start.
-          unawaited(_refreshNightlyRhr());
-          // Never overwrite a live timer reference without cancelling it.
-          _workoutTimer?.cancel();
-          _workoutTimer = Timer.periodic(
-            const Duration(seconds: 1),
-            (_) => _tickWorkout(),
-          );
-          _log(
-            '[workout] resumed a live session still running after restart (id=$id).',
-          );
-          // Re-arm GPS for the REST of the session. Without this a resumed
-          // workout recorded no further route at all: the timer/calories/strain
-          // all came back, the map silently never did, and the athlete only
-          // found out at the finish screen. `_maybeStartRouteTracking` is a
-          // no-op for non-route types and re-appends to the SAME workout_route
-          // rows (`id` is unchanged), so the pre-restart part of the route is
-          // kept and the gap shows honestly as a segment break.
-          unawaited(_maybeStartRouteTracking(id, activeWorkout!.type));
-          unawaited(HrsLink.instance.arm());
-          unawaited(PolarPmdLink.instance.arm());
-          _deriveScheduler.setWorkoutActive(true);
-          ScreenWake.enable();
-        } else {
-          // A stale live row has no end_ts (it was never stopped). We don't
-          // know when the workout actually ended, so the honest stamp is
-          // reconcile-time (stated as such), not a guess at the real finish
-          // (edge#277) — and for the same reason this is NEVER exported to
-          // Health: [end_ts] here is fabricated, so a [start,end_ts] Health
-          // workout sample would report a bogus duration as real data.
-          // `end_ts_fabricated` records that so `_writeOneWorkout` can skip it
-          // on every later periodic export pass too, not just this call site —
-          // without the flag the row looks like any other finished workout and
-          // gets exported on the next drain/derive cycle regardless.
-          final reconciledEndTs = nowMs ~/ 1000;
-          final hadRealEnd = row['end_ts'] != null;
-          await LocalDb.putSession({
-            ...row,
-            'status': 'done',
-            'end_ts': row['end_ts'] ?? reconciledEndTs,
-            'end_ts_fabricated': hadRealEnd
-                ? (row['end_ts_fabricated'] ?? 0)
-                : 1,
-          });
-          _log(
-            '[workout] finalized a stale live-session row from a previous run (id=${row['id']}).',
-          );
-        }
-      }
-      if (resumed) notifyListeners();
+      await _withWorkoutArming(() async {
+        if (_disposed || activeWorkout != null) return;
+        final rows = await LocalDb.liveSessions();
+        // RE-CHECK AFTER THE AWAIT. This is kicked unawaited from _init(), one
+        // line before `initialized = true` makes the shell interactive — so the
+        // user can tap "Start workout" INSIDE this DB round-trip. The pre-await
+        // guard alone let us then overwrite a genuinely live `activeWorkout` with
+        // the stale row AND assign a second `_workoutTimer` over the live one:
+        // the first timer became unreachable, was never cancelled, and kept
+        // running _tickWorkout at 2 Hz for the rest of the session — double
+        // counting calories/strain/zone-seconds against a workout the user never
+        // started.
+        if (_disposed || activeWorkout != null) return;
+        if (rows.isEmpty) return;
+        await _resumeOrFinalizeLiveSessions(rows);
+      });
     } catch (e) {
       _log('[workout] reconcile orphaned live session failed: $e');
     }
+  }
+
+  /// Resume a recent (or Alpin-snapshot) live row; finalize stale non-strength
+  /// leftovers. Caller already holds [_withWorkoutArming].
+  Future<void> _resumeOrFinalizeLiveSessions(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    var resumed = false;
+    for (final row in rows) {
+      final startSec = (row['start_ts'] as num?)?.toInt();
+      final ageMs = startSec == null ? null : nowMs - startSec * 1000;
+      final id = row['id'] as String? ?? 'w${startSec ?? nowMs}';
+      final strengthPlan = await LocalDb.openBandStrengthSession(id);
+      if (_disposed) return;
+      if (!resumed && activeWorkout != null) return;
+      final recent = ageMs != null &&
+          ageMs >= 0 &&
+          ageMs <= _kMaxLiveWorkoutAgeMs;
+      // A strength snapshot is an explicit in-progress plan. Do not auto-
+      // finalize it at the 6h ceiling — that would block collapse/resume.
+      if (!resumed && (recent || strengthPlan != null)) {
+        resumed = true;
+        _resumeLiveSessionRow(row);
+      } else if (strengthPlan == null) {
+        // A stale live row has no end_ts (it was never stopped). We don't
+        // know when the workout actually ended, so the honest stamp is
+        // reconcile-time (stated as such), not a guess at the real finish
+        // (edge#277) — and for the same reason this is NEVER exported to
+        // Health: [end_ts] here is fabricated, so a [start,end_ts] Health
+        // workout sample would report a bogus duration as real data.
+        // `end_ts_fabricated` records that so `_writeOneWorkout` can skip it
+        // on every later periodic export pass too, not just this call site —
+        // without the flag the row looks like any other finished workout and
+        // gets exported on the next drain/derive cycle regardless.
+        final reconciledEndTs = nowMs ~/ 1000;
+        final hadRealEnd = row['end_ts'] != null;
+        await LocalDb.putSession({
+          ...row,
+          'status': 'done',
+          'end_ts': row['end_ts'] ?? reconciledEndTs,
+          'end_ts_fabricated': hadRealEnd
+              ? (row['end_ts_fabricated'] ?? 0)
+              : 1,
+        });
+        _log(
+          '[workout] finalized a stale live-session row from a previous run (id=${row['id']}).',
+        );
+      }
+    }
+    if (resumed) notifyListeners();
+  }
+
+  /// Physiology after restart is partial: calories/strain/zones start at
+  /// zero rather than being invented from a single session row.
+  void _resumeLiveSessionRow(Map<String, dynamic> row) {
+    final startSec = (row['start_ts'] as num?)?.toInt();
+    final startMs = (startSec ?? 0) * 1000;
+    final id = row['id'] as String? ?? 'w$startMs';
+    final profileAtStart = _profile.forDate(
+      DateTime.fromMillisecondsSinceEpoch(startSec != null ? startSec * 1000 : startMs),
+    );
+    activeWorkout = LiveWorkoutState(
+      startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
+      targetKcal: 300,
+      workoutId: id,
+      type: (row['type'] as String?) ?? 'other',
+      age: profileAtStart.ageYears,
+      profile: profileAtStart,
+      // The same ceiling startWorkout pins. Without it the resumed
+      // session's idle gate is null, and WorkoutIdleWatch then counts
+      // ANY positive reading as active — a forgotten session idling at
+      // resting heart rate would never be asked about after a restart,
+      // the exact case the watch exists for.
+      hrMax: estimatedMaxHr(
+        profileAtStart.ageYears,
+        engine.linkDeviceFamily,
+      ),
+      zoneSet: trainingZones(
+        age: profileAtStart.ageYears,
+        deviceFamily: engine.linkDeviceFamily,
+        observedCeilingBpm: _observedCeilingBpm,
+        restingHrHistory: _rhr28,
+      ),
+      restingHr: _liveRestingHr,
+    );
+    // Without this, `workoutStepsMeasured` (gated on _workoutRawBase
+    // != null) stays null for the rest of this resumed session, and
+    // stopWorkout()
+    // would persist 0 steps even once real pedometer data resumes
+    // flowing — CodeRabbit caught this. Mirrors startWorkout()'s own
+    // snapshot: steps count from zero going forward, same as
+    // calories/strain/zone-minutes already (honestly) do here.
+    _workoutRawBase = _liveRaw;
+    _workoutSawSamples = false;
+    _workoutMinuteSteps.clear();
+    unawaited(_refreshNightlyRhr());
+    _workoutTimer?.cancel();
+    _workoutTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _tickWorkout(),
+    );
+    _log(
+      '[workout] resumed a live session still running after restart (id=$id).',
+    );
+    unawaited(_maybeStartRouteTracking(id, activeWorkout!.type));
+    unawaited(HrsLink.instance.arm());
+    unawaited(PolarPmdLink.instance.arm());
+    _deriveScheduler.setWorkoutActive(true);
+    ScreenWake.enable();
   }
 
   Future<void> stopWorkout() async {
@@ -6254,6 +6406,7 @@ class AppState extends ChangeNotifier {
       'strain': w.strain,
       'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
       'duration_min': w.elapsed.inMinutes,
+      'hr_covered_sec': w.hrCoveredSec,
       'zone_min_json': jsonEncode(
         zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
       ),
@@ -6387,7 +6540,7 @@ class AppState extends ChangeNotifier {
         } catch (_) {
           /* seam not implemented yet; still start locally */
         }
-        startWorkout(workoutId: id, type: 'other');
+        await startWorkout(workoutId: id, type: 'other');
       }
       await HapticFeedback.mediumImpact();
     } catch (e) {
@@ -6805,6 +6958,18 @@ class LiveWorkoutState {
   /// The same series with the holes removed — for statistics (strain, mean),
   /// which want the readings and not the time axis.
   List<double> perMinuteHr() => [for (final v in perMinuteHrDense()) ?v];
+
+  /// Closed HR sample-to-sample seconds from [_secondsByBpm]. Null until a
+  /// billed interval exists — unknown is not zero, and a lone unbilled sample
+  /// has not covered any time yet.
+  int? get hrCoveredSec {
+    if (_secondsByBpm.isEmpty) return null;
+    var total = 0.0;
+    for (final s in _secondsByBpm.values) {
+      total += s;
+    }
+    return total.round();
+  }
 
   /// Seconds the bout has spent at each whole-bpm value — the calorie series.
   ///

@@ -187,4 +187,40 @@ void main() {
       expect(done.sleep.awakeMinutes, 21);
     },
   );
+
+  test(
+    'readPreviousStrengthSets matches the seeded Ganzkörper A history',
+    () async {
+      final r = repo();
+      final template = (await r.readTemplates()).singleWhere((t) => t.id == 'tpl-ganzkoerper-a');
+      final id = await r.startStrengthSession(template);
+      final prev = await r.readPreviousStrengthSets(id);
+      expect(prev['bp-1']!.loadKg, 37.5);
+      expect(prev['bp-1']!.reps, 8);
+      expect(prev['bp-1']!.at, DateTime(2026, 9, 13, 18, 10));
+      expect(prev['row-2']!.loadKg, 32.5);
+      expect(prev['sq-3']!.loadKg, 62.5);
+      expect(prev['plank-1']!.seconds, 40);
+      expect(prev['plank-1']!.loadKg, isNull);
+      expect(prev.containsKey('missing'), isFalse);
+      await r.addPlannedSet(
+        id,
+        PlannedExercise(
+          id: 'ex-bench_press',
+          exerciseKey: 'bench_press',
+          name: 'Bankdrücken',
+          sets: const [PlannedSet(id: 'bp-4', reps: 8, loadKg: 40)],
+        ),
+        const PlannedSet(id: 'bp-4', reps: 8, loadKg: 40),
+      );
+      expect(
+        (await r.readPreviousStrengthSets(id)).containsKey('bp-4'),
+        isFalse,
+      );
+      await expectLater(
+        r.readPreviousStrengthSets('foreign-id'),
+        throwsA(isA<ArgumentError>()),
+      );
+    },
+  );
 }

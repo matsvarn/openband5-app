@@ -1,4 +1,8 @@
 /// Typed boundary for the OpenBand daily flow. Only repositories decode maps.
+library;
+
+import 'package:uuid/uuid.dart';
+
 enum MetricReadiness {
   available,
   processing,
@@ -401,14 +405,20 @@ class PlannedSet {
     this.restSec,
     this.loadKg,
   });
-  factory PlannedSet.fromJson(Map<String, dynamic> j) => PlannedSet(
-    id: j['id'] as String,
-    type: j['type'] as String? ?? 'work',
-    reps: (j['reps'] as num?)?.toInt(),
-    seconds: (j['seconds'] as num?)?.toInt(),
-    restSec: (j['restSec'] as num?)?.toInt(),
-    loadKg: (j['loadKg'] as num?)?.toDouble(),
-  );
+  factory PlannedSet.fromJson(Map<String, dynamic> j) {
+    final id = j['id'] as String? ?? '';
+    if (id.isEmpty) {
+      throw const FormatException('Planned set is missing a stable id.');
+    }
+    return PlannedSet(
+      id: id,
+      type: j['type'] as String? ?? 'work',
+      reps: (j['reps'] as num?)?.toInt(),
+      seconds: (j['seconds'] as num?)?.toInt(),
+      restSec: (j['restSec'] as num?)?.toInt(),
+      loadKg: (j['loadKg'] as num?)?.toDouble(),
+    );
+  }
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type,
@@ -430,16 +440,27 @@ class PlannedExercise {
     required this.sets,
     this.note = '',
   });
-  factory PlannedExercise.fromJson(Map<String, dynamic> j) => PlannedExercise(
-    id: j['id'] as String,
-    exerciseKey: j['exerciseKey'] as String,
-    name: j['name'] as String,
-    sets: [
-      for (final s in j['sets'] as List)
-        PlannedSet.fromJson(s as Map<String, dynamic>),
-    ],
-    note: j['note'] as String? ?? '',
-  );
+  factory PlannedExercise.fromJson(Map<String, dynamic> j) {
+    final id = j['id'] as String? ?? '';
+    final exerciseKey = j['exerciseKey'] as String? ?? '';
+    final name = j['name'] as String? ?? '';
+    if (id.isEmpty || exerciseKey.isEmpty || name.isEmpty) {
+      throw const FormatException('Planned exercise is missing identity.');
+    }
+    final rawSets = j['sets'];
+    if (rawSets is! List || rawSets.isEmpty) {
+      throw const FormatException('Planned exercise has no sets.');
+    }
+    return PlannedExercise(
+      id: id,
+      exerciseKey: exerciseKey,
+      name: name,
+      sets: [
+        for (final s in rawSets) PlannedSet.fromJson(s as Map<String, dynamic>),
+      ],
+      note: j['note'] as String? ?? '',
+    );
+  }
   Map<String, dynamic> toJson() => {
     'id': id,
     'exerciseKey': exerciseKey,
@@ -449,9 +470,8 @@ class PlannedExercise {
   };
 }
 
-/// A plan. Starting it creates a session snapshot; confirming a set turns it
-/// into a recorded strength_set row. Editing the template never changes a
-/// recorded session (B23).
+/// A plan. Confirming a set records a strength_set row. Editing the template
+/// never changes a recorded session (B23).
 class WorkoutTemplate {
   final String id, name;
   final int version;
@@ -467,6 +487,254 @@ class WorkoutTemplate {
   int get workSets => exercises.fold(
     0,
     (n, e) => n + e.sets.where((s) => s.type == 'work').length,
+  );
+
+  factory WorkoutTemplate.fromJson(Map<String, dynamic> j) {
+    final id = j['id'] as String? ?? '';
+    final name = j['name'] as String? ?? '';
+    final version = (j['version'] as num?)?.toInt();
+    final updatedAtMs = (j['updatedAtMs'] as num?)?.toInt();
+    final rawExercises = j['exercises'];
+    if (id.isEmpty ||
+        name.isEmpty ||
+        version == null ||
+        updatedAtMs == null ||
+        rawExercises is! List ||
+        rawExercises.isEmpty) {
+      throw const FormatException('Strength plan snapshot is unreadable.');
+    }
+    final exercises = [
+      for (final e in rawExercises)
+        PlannedExercise.fromJson(e as Map<String, dynamic>),
+    ];
+    final ids = <String>{};
+    for (final e in exercises) {
+      if (!ids.add(e.id)) {
+        throw const FormatException('Strength plan has duplicate exercise ids.');
+      }
+      for (final s in e.sets) {
+        if (!ids.add(s.id)) {
+          throw const FormatException('Strength plan has duplicate set ids.');
+        }
+      }
+    }
+    return WorkoutTemplate(
+      id: id,
+      name: name,
+      version: version,
+      exercises: exercises,
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMs),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'version': version,
+    'exercises': [for (final e in exercises) e.toJson()],
+    'updatedAtMs': updatedAt.millisecondsSinceEpoch,
+  };
+}
+
+/// Current plan + added sets as 1-based indexes within each exercise block.
+typedef StrengthPlanSlot = ({
+  String plannedSetId,
+  String exerciseKey,
+  String exerciseId,
+  int setIndex,
+  bool timed,
+});
+
+List<StrengthPlanSlot> strengthPlanSlots(
+  WorkoutTemplate plan,
+  List<PlannedExercise> added,
+) {
+  final counts = <String, int>{};
+  final out = <StrengthPlanSlot>[];
+  void walk(List<PlannedExercise> exercises) {
+    for (final e in exercises) {
+      var n = counts[e.id] ?? 0;
+      for (final s in e.sets) {
+        n++;
+        out.add((
+          plannedSetId: s.id,
+          exerciseKey: e.exerciseKey,
+          exerciseId: e.id,
+          setIndex: n,
+          timed: s.seconds != null,
+        ));
+      }
+      counts[e.id] = n;
+    }
+  }
+
+  walk(plan.exercises);
+  walk(added);
+  return out;
+}
+
+String? _strengthExerciseId(String? id) =>
+    (id == null || id.isEmpty) ? null : id;
+
+bool _onePriorStrengthBlock(List<RecordedSet> priors) {
+  final ids = <String>{};
+  final anonIndex = <int>{};
+  var anonymous = 0;
+  for (final s in priors) {
+    final id = _strengthExerciseId(s.exerciseId);
+    if (id == null) {
+      anonymous++;
+      if (!anonIndex.add(s.setIndex)) return false;
+    } else {
+      ids.add(id);
+    }
+  }
+  if (ids.length > 1) return false;
+  if (ids.length == 1) return anonymous == 0;
+  return anonymous > 0;
+}
+
+/// Prefer [RecordedSet.exerciseId] + index inside the latest prior session.
+/// Copied/new plan ids fall back to [exerciseKey] + index only when that key
+/// has one current block and one prior block. Duplicate legacy rows omit.
+Map<String, RecordedSet> previousStrengthSetsFromLatest({
+  required List<StrengthPlanSlot> slots,
+  required Map<String, List<RecordedSet>> latestByExercise,
+}) {
+  final currentIds = <String, Set<String>>{};
+  for (final slot in slots) {
+    (currentIds[slot.exerciseKey] ??= {}).add(slot.exerciseId);
+  }
+  final out = <String, RecordedSet>{};
+  for (final slot in slots) {
+    final priors = latestByExercise[slot.exerciseKey] ?? const <RecordedSet>[];
+    RecordedSet? picked;
+    final slotId = _strengthExerciseId(slot.exerciseId);
+    if (slotId != null) {
+      final matches = [
+        for (final s in priors)
+          if (_strengthExerciseId(s.exerciseId) == slotId &&
+              s.setIndex == slot.setIndex)
+            s,
+      ];
+      if (matches.length == 1) picked = matches.single;
+    }
+    if (picked == null &&
+        (currentIds[slot.exerciseKey]?.length ?? 0) == 1 &&
+        _onePriorStrengthBlock(priors)) {
+      final matches = [
+        for (final s in priors)
+          if (s.setIndex == slot.setIndex) s,
+      ];
+      if (matches.length == 1) picked = matches.single;
+    }
+    if (picked == null) continue;
+    final compatible = slot.timed ? picked.seconds != null : picked.reps != null;
+    if (!compatible) continue;
+    out[slot.plannedSetId] = picked;
+  }
+  return out;
+}
+
+/// Another workout is already live. Start is refused; read the active
+/// strength state instead of opening a second session.
+class WorkoutBusy implements Exception {
+  const WorkoutBusy();
+  @override
+  String toString() => 'Eine Einheit läuft bereits.';
+}
+
+/// Durable Alpin strength runtime: none, a readable live plan, or a live
+/// row whose snapshot cannot be shown without fabricating a plan.
+sealed class ActiveStrengthRuntime {
+  const ActiveStrengthRuntime();
+}
+
+final class NoActiveStrength extends ActiveStrengthRuntime {
+  const NoActiveStrength();
+}
+
+final class CorruptActiveStrength extends ActiveStrengthRuntime {
+  final String sessionId;
+  const CorruptActiveStrength(this.sessionId);
+}
+
+/// Live `weight_training` without an Alpin snapshot. Resume through the
+/// existing live engine; do not invent a plan or start another session.
+final class LegacyActiveStrength extends ActiveStrengthRuntime {
+  final String sessionId;
+  const LegacyActiveStrength(this.sessionId);
+}
+
+final class ActiveStrengthSession extends ActiveStrengthRuntime {
+  final String sessionId;
+  final WorkoutTemplate plan;
+  final List<RecordedSet> recorded;
+  final Set<String> skippedPlannedSetIds;
+  final List<PlannedExercise> added;
+  final DateTime startedAt;
+  final DateTime? restEndsAt;
+  const ActiveStrengthSession({
+    required this.sessionId,
+    required this.plan,
+    required this.recorded,
+    required this.skippedPlannedSetIds,
+    required this.added,
+    required this.startedAt,
+    this.restEndsAt,
+  });
+
+  /// Stored rest end. Null after an explicit skip. Never derived from now.
+  DateTime? restUntil() => restEndsAt;
+}
+
+String obExerciseCount(int n) => n == 1 ? '1 Übung' : '$n Übungen';
+
+/// Hub card: a still-active pin, otherwise the most recently updated plan.
+WorkoutTemplate? featuredTemplate(
+  Iterable<WorkoutTemplate> templates, [
+  String? pinnedId,
+]) {
+  if (pinnedId != null) {
+    for (final t in templates) {
+      if (t.id == pinnedId) return t;
+    }
+  }
+  final i = templates.iterator;
+  return i.moveNext() ? i.current : null;
+}
+
+enum TemplateMenuChoice { edit, duplicate, pin, unpin, archive }
+
+/// Independent plan + exercise/set identities. Content is copied; the source
+/// plan is not rewritten. Name is marked ` · Kopie`.
+WorkoutTemplate copyWorkoutTemplate(WorkoutTemplate source, {DateTime? at}) {
+  String next() => const Uuid().v4();
+  return WorkoutTemplate(
+    id: next(),
+    name: '${source.name} · Kopie',
+    version: 0,
+    exercises: [
+      for (final e in source.exercises)
+        PlannedExercise(
+          id: next(),
+          exerciseKey: e.exerciseKey,
+          name: e.name,
+          note: e.note,
+          sets: [
+            for (final s in e.sets)
+              PlannedSet(
+                id: next(),
+                type: s.type,
+                reps: s.reps,
+                seconds: s.seconds,
+                restSec: s.restSec,
+                loadKg: s.loadKg,
+              ),
+          ],
+        ),
+    ],
+    updatedAt: at ?? DateTime.now(),
   );
 }
 
@@ -687,12 +955,15 @@ class SessionSplit {
 }
 
 /// A confirmed set. Bodyweight is not a load of 0 kg: [loadKg] stays null.
+/// [plannedSetId] / [exerciseId] are the stable plan identities; without
+/// them repeated blocks of the same [exerciseKey] cannot be mapped.
 class RecordedSet {
   final String exerciseKey;
   final int setIndex;
-  final int? reps, seconds;
+  final int? reps, seconds, restSec;
   final double? loadKg;
   final DateTime at;
+  final String? plannedSetId, exerciseId;
   const RecordedSet({
     required this.exerciseKey,
     required this.setIndex,
@@ -700,6 +971,9 @@ class RecordedSet {
     this.seconds,
     this.loadKg,
     required this.at,
+    this.plannedSetId,
+    this.exerciseId,
+    this.restSec,
   });
 }
 
@@ -977,12 +1251,24 @@ abstract interface class OpenBandRepository {
   Future<NightSignals> readNightSignals(String day);
   Future<String> startStrengthSession(WorkoutTemplate template);
   Future<void> recordSet(String sessionId, RecordedSet set);
+  Future<void> skipPlannedSet(String sessionId, String plannedSetId);
+  Future<void> addPlannedSet(
+    String sessionId,
+    PlannedExercise exercise,
+    PlannedSet set,
+  );
+  Future<void> skipRest(String sessionId);
+  Future<void> extendRest(String sessionId, {int seconds = 30});
+  Future<ActiveStrengthRuntime> readActiveStrengthSession();
+  Future<Map<String, RecordedSet>> readPreviousStrengthSets(String sessionId);
   Future<void> finishStrengthSession(String sessionId);
   Future<MuscleLoad> readMuscleLoad(String endDay, int days);
   Future<List<FoodHit>> searchFoods(String query);
   Future<List<WorkoutTemplate>> readTemplates();
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template);
   Future<void> archiveTemplate(String id);
+  Future<String?> readPinnedTemplateId();
+  Future<void> pinTemplate(String? id);
   Future<DayMeals> readMeals(String day);
   Future<MealDraft?> readMealDraft(String day, String meal);
   Future<void> saveMealDraft(MealDraft draft);

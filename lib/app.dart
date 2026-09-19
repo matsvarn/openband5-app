@@ -10,6 +10,7 @@ import 'openband/screens.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
 import 'openband/template_editor.dart';
+import 'openband/templates.dart';
 import 'openband/training.dart';
 import 'openband/theme.dart' show openBandTheme;
 import 'data/day_label.dart';
@@ -644,7 +645,12 @@ class _ShellState extends State<_Shell> {
     return AppShell(
       key: _shellKey,
       initial: _domain,
-      banner: live ? const _LiveSessionBar() : null,
+      banner: live
+          ? _LiveSessionBar(
+              repository: _day.repository,
+              onFinished: _day.refresh,
+            )
+          : null,
       onSelect: (d) {
         _domain = d;
         Prefs.setString('ui.openband.tab', d.name);
@@ -667,26 +673,20 @@ class _ShellState extends State<_Shell> {
         ShellDomain.workout => OpenBandTraining(
           controller: _day,
           onStart: (type) => _startActivity(c, type),
-          onStartTemplate: (t) => Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandStrengthLive(
-                repository: _day.repository,
-                template: t,
-                onFinished: _day.refresh,
-              ),
-            ),
-          ),
-          onEditTemplate: (t) async {
+          onOpenTemplates: () async {
             await Navigator.of(c).push(
-              MaterialPageRoute<WorkoutTemplate>(
-                builder: (_) => OpenBandTemplateEditor(
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandTemplates(
                   repository: _day.repository,
-                  template: t,
+                  onStartTemplate: (t) => _openStrength(c, t),
+                  onEditTemplate: (t) => _openTemplateEditor(c, t),
                 ),
               ),
             );
             _day.refresh();
           },
+          onStartTemplate: (t) => _openStrength(c, t),
+          onEditTemplate: (t) => _openTemplateEditor(c, t),
           onOpen: (s) => Navigator.of(c).push(
             MaterialPageRoute<void>(
               builder: (_) =>
@@ -712,6 +712,28 @@ class _ShellState extends State<_Shell> {
     );
   }
 
+  Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
+    return Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OpenBandStrengthLive(
+          repository: _day.repository,
+          template: t,
+          onFinished: _day.refresh,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTemplateEditor(BuildContext c, WorkoutTemplate? t) async {
+    await Navigator.of(c).push(
+      MaterialPageRoute<WorkoutTemplate>(
+        builder: (_) =>
+            OpenBandTemplateEditor(repository: _day.repository, template: t),
+      ),
+    );
+    _day.refresh();
+  }
+
   /// Quick-Start entry. Running opens the OpenBand live screen on the single
   /// AppState live engine; every other type goes through the existing picker
   /// so its setup (weight, privacy, GPS consent) stays in one place.
@@ -724,8 +746,23 @@ class _ShellState extends State<_Shell> {
       ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutScreen()));
       return;
     }
-    if (app.activeWorkout == null) app.startWorkout(type: 'running');
-    if (app.activeWorkout == null || !c.mounted) return;
+    if (app.activeWorkout == null) {
+      try {
+        await app.startWorkout(type: 'running');
+      } catch (_) {
+        if (c.mounted) {
+          showRetryableActivityStart(c, () => unawaited(_startActivity(c, type)));
+        }
+        return;
+      }
+    }
+    if (app.activeWorkout == null) {
+      if (c.mounted) {
+        showRetryableActivityStart(c, () => unawaited(_startActivity(c, type)));
+      }
+      return;
+    }
+    if (!c.mounted) return;
     final feed = _LiveRunFeed(app);
     await Navigator.of(c).push(
       MaterialPageRoute<void>(
@@ -864,7 +901,9 @@ class _LiveRunFeed extends ValueNotifier<LiveRun> {
 /// per-second rebuild of the whole shell to keep one number honest is not a
 /// trade worth making. The number is on the screen this taps through to.
 class _LiveSessionBar extends StatelessWidget {
-  const _LiveSessionBar();
+  final OpenBandRepository repository;
+  final VoidCallback? onFinished;
+  const _LiveSessionBar({required this.repository, this.onFinished});
 
   /// The activity behind the open session.
   ///
@@ -878,23 +917,10 @@ class _LiveSessionBar extends StatelessWidget {
       activityByName(LiveDraft.current?.activityKey ?? app.activeWorkout?.type);
 
   Future<void> _resume(BuildContext c) async {
-    final app = c.read<AppState>();
-    final draft = LiveDraft.current;
-    final a = _activityFor(app);
-    if (a == null) return;
-    final nav = Navigator.of(c);
-    // The lifter's previous and best. Absent renders as "First time on this
-    // lift", which would be a false claim on a resumed session.
-    final history = await loadSetHistory();
-    await nav.push(
-      MaterialPageRoute<void>(
-        builder: (_) => liveFor(
-          a,
-          private: draft?.private ?? false,
-          weightKg: draft?.weightKg,
-          host: activityHost(app, history: history),
-        ),
-      ),
+    await resumeLiveSession(
+      c,
+      repository: repository,
+      onFinished: onFinished,
     );
   }
 
@@ -986,4 +1012,101 @@ class _LiveSessionBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Resume the session the live bar is holding.
+///
+/// Non-sets keep their live route without a strength snapshot read. Sets and
+/// unknown types wait for a real read: Active/Corrupt → Alpin resume,
+/// Legacy/NoActive → the existing live engine. A thrown read is not Alpin
+/// and not NoActive — Erneut calls this again.
+Future<void> resumeLiveSession(
+  BuildContext context, {
+  required OpenBandRepository repository,
+  VoidCallback? onFinished,
+}) async {
+  final app = context.read<AppState>();
+  final draft = LiveDraft.current;
+  final a = activityByName(
+    draft?.activityKey ?? app.activeWorkout?.type,
+  );
+  if (a != null && a.track != Track.sets) {
+    final page = await _activityLive(app, a, draft);
+    if (!context.mounted) return;
+    await _pushResumedLive(context, page);
+    return;
+  }
+  final ActiveStrengthRuntime runtime;
+  try {
+    runtime = await repository.readActiveStrengthSession();
+  } catch (_) {
+    if (context.mounted) {
+      showRetryableNotice(context, 'Einheit nicht geladen', () {
+        unawaited(
+          resumeLiveSession(
+            context,
+            repository: repository,
+            onFinished: onFinished,
+          ),
+        );
+      });
+    }
+    return;
+  }
+  if (!context.mounted) return;
+  switch (runtime) {
+    case ActiveStrengthSession():
+    case CorruptActiveStrength():
+      await _pushResumedLive(
+        context,
+        OpenBandStrengthLive.resume(
+          repository: repository,
+          onFinished: onFinished,
+        ),
+      );
+    case LegacyActiveStrength():
+    case NoActiveStrength():
+      if (a == null) return;
+      final page = await _activityLive(app, a, draft);
+      if (!context.mounted) return;
+      await _pushResumedLive(context, page);
+  }
+}
+
+Future<Widget> _activityLive(AppState app, Activity a, LiveDraft? draft) async {
+  final history = await loadSetHistory();
+  return liveFor(
+    a,
+    private: draft?.private ?? false,
+    weightKg: draft?.weightKg,
+    host: activityHost(app, history: history),
+  );
+}
+
+Future<void> _pushResumedLive(BuildContext context, Widget page) async {
+  if (!context.mounted) return;
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => page),
+  );
+}
+
+void showRetryableNotice(
+  BuildContext context,
+  String message,
+  VoidCallback onRetry,
+) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      action: SnackBarAction(label: 'Erneut', onPressed: onRetry),
+    ),
+  );
+}
+
+void showRetryableActivityStart(BuildContext context, VoidCallback onRetry) {
+  showRetryableNotice(
+    context,
+    'Aktivität konnte nicht gestartet werden.',
+    onRetry,
+  );
 }

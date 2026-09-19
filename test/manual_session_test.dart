@@ -529,7 +529,14 @@ void main() {
         stats: const ManualSessionStats(),
         createdAtMs: 1,
       );
-      for (final k in ['calories', 'strain', 'max_hr', 'steps', 'hrr_bpm']) {
+      for (final k in [
+        'calories',
+        'strain',
+        'max_hr',
+        'steps',
+        'hrr_bpm',
+        'hr_covered_sec',
+      ]) {
         expect(row.containsKey(k), isTrue, reason: '$k must be present');
         expect(row[k], isNull, reason: '$k must be explicitly null');
       }
@@ -556,6 +563,46 @@ void main() {
       // Both described the OLD window; hrr_bpm is refilled by derivation.
       expect(row['steps'], isNull);
       expect(row['hrr_bpm'], isNull);
+    });
+
+    test('a same-window edit keeps billed HR coverage', () {
+      final row = buildManualSessionRow(
+        startSec: 1000,
+        endSec: 1000 + 3600,
+        type: 'cycling',
+        stats: scored,
+        createdAtMs: 1,
+        existing: const {
+          'id': 'w1',
+          'source': 'manual',
+          'created_at': 2,
+          'start_ts': 1000,
+          'end_ts': 1000 + 3600,
+          'hr_covered_sec': 180,
+        },
+      );
+      expect(row.containsKey('hr_covered_sec'), isTrue);
+      expect(row['hr_covered_sec'], 180);
+    });
+
+    test('a retime writes unknown billed HR coverage, not zero', () {
+      final row = buildManualSessionRow(
+        startSec: 2000,
+        endSec: 2000 + 3600,
+        type: 'run',
+        stats: scored,
+        createdAtMs: 1,
+        existing: const {
+          'id': 'w1',
+          'source': 'manual',
+          'created_at': 2,
+          'start_ts': 1000,
+          'end_ts': 1000 + 3600,
+          'hr_covered_sec': 180,
+        },
+      );
+      expect(row.containsKey('hr_covered_sec'), isTrue);
+      expect(row['hr_covered_sec'], isNull);
     });
 
     test('zone_min_json is a JSON list, empty when there are no zones', () {

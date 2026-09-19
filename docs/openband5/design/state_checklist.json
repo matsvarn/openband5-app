@@ -855,6 +855,106 @@
         "note": "Explicit System/Hell/Dunkel route. Selection follows durable save; serialized saves keep earlier successful choice after later failure. Retry retains requested choice; navigation waits for pending save. System follows OS brightness. Shared choice row and retry card; light/dark/error variants inspected against exact Paper export.",
         "nativeReview": "build/ui-review/appearance-final-20260919 and build/ui-review/appearance-mini-final-20260919: 180 PNGs each, every PNG inspected; run/frames/index reconciled. Includes actual theme changes, save failure/retry, System OS change/reopen, 375-width and 2x text. Synthetic simulator proof."
       }
+    },
+    "A06a · Training": {
+      "Vorlage · Aktionen": {
+        "status": "implemented",
+        "paperNode": "3MT7-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Shared menu reaches edit, copy, pin/unpin and archive. Archive retains template history; copy has fresh identities.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Vorlagen · Kopie erstellt": {
+        "status": "implemented",
+        "paperNode": "3MX9-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Copy persists a separate template and refreshes the compact list; the original remains unchanged.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Kraft · Ganzkörper A aktiv": {
+        "status": "implemented",
+        "paperNode": "3FLY-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Durable planned and recorded sets, actual previous values, skip/add and rest timer. Unknown load/history stays absent.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Training · angeheftete Vorlage": {
+        "status": "implemented",
+        "paperNode": "3MYK-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "The persisted pin selects the hub template. An archived template clears its pin without deleting prior sessions.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      }
+    },
+    "A06b · Training": {
+      "Training · Satz läuft": {
+        "status": "implemented",
+        "paperNode": "3FLY-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Current planned set retains exercise/set identity, reps or duration, actual load and rest settings. No automatic completed set.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Training · Speichern fehlgeschlagen": {
+        "status": "implemented",
+        "paperNode": "3OV4-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Write failures retain durable completed sets and current input. Retry after a committed mutation refreshes only; it does not repeat +30 seconds.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Training · Einheit wiedergefunden": {
+        "status": "implemented",
+        "paperNode": "3FLY-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Resume loads the durable live snapshot without re-arming or starting another session; missing/corrupt reads offer retry.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Aktives Training · letzte Sätze": {
+        "status": "implemented",
+        "paperNode": "3FLY-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Previous values are read from actual recorded strength history for the matching exercise, including repeated exercise blocks.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Aktives Training · keine letzten Sätze": {
+        "status": "implemented",
+        "paperNode": "3FLY-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Missing matching history displays an em dash. Planned values are not passed off as previous results.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Vorlagen · Anheften ausgewählt": {
+        "status": "implemented",
+        "paperNode": "3MX9-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Pin/unpin persists independently of list order; pin failure keeps the previous selection.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Vorlagen · keine angeheftet": {
+        "status": "implemented",
+        "paperNode": "3MNS-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "The list supports no pin and empty/error states without inventing a preferred template.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Trainingsvorlagen · kompakte Liste": {
+        "status": "implemented",
+        "paperNode": "3MNS-0",
+        "source": "lib/openband/templates.dart; lib/openband/training.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/app.dart",
+        "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
+        "note": "Reachable compact list and shared rows, start action, menus, light/dark, empty/read failure and large text. Full template editor/catalogue remain open.",
+        "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      }
     }
   }
 }

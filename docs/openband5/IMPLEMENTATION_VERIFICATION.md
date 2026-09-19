@@ -149,3 +149,14 @@ Main required OpenBand and affected onboarding suites: **349 passed**. Analyzer:
 Native synthetic Pro `build/ui-review/first-sync-v2-20260919` passed (381.82s); final mini `build/ui-review/first-sync-mini-final-20260919` passed (584.65s). **188 PNGs each, every PNG inspected**, frames and index inventories reconciled. Pro captured the same visual fixtures before the final nonvisual async/job correction; final mini and349 source/widget tests cover that correction. The earlier failed first-sync-final run is excluded. Light/dark, complete/partial/error/retry, disclosure and2x text reviewed against Paper3IBK/3P4K/3P6A/3P7I/3P8X/3PTN and canonical3PAB. Exact export: `/tmp/openband-alpin-20260919/first-sync-v3-jsx.json`.
 
 Older hub/legend/navigation/dialog/copy issues remain queued. Simulator data are synthetic; no physical-device, Bluetooth delivery or physiological proof is claimed.
+
+
+## Alpin template actions and durable live strength · 19 September 2026
+
+Schema58 adds persistent template pin/archive; schema59 stores the live strength snapshot and rest state. The Alpin list, actions and live screen are reachable from the production hub and resume bar. Planned-set and exercise identities survive recording, skipping and added sets. Previous values come from recorded history. Failed writes retain input and completed sets; read failure after a committed mutation retries only the read. Finish uses the existing atomic session finalization; algorithm and protocol responsibilities are unchanged.
+
+Lead inspected the integrated source/diff and fresh independent reviews. Required final OpenBand suite: **423 passed**; analyzer **32 items, clean**. Earlier affected manual-session/AppState suites also passed (477 combined tests before final visual-only repairs). Manifest: **89 blocks /99 screens**, schema59 reconciled. All **20 changed/new PNG goldens** inspected. Final footer regression covers real34-point bottom insets and keyboard scroll at2x text; no content leaks below the rest card.
+
+Native synthetic Pro `build/ui-review/training-v6-20260919` passed in422.42s; mini `build/ui-review/training-v6-mini-20260919` passed in628.42s. **207 PNGs per run, every PNG inspected**; names reconcile with frames.json and index.html. New template list/menu/pin and strength light/dark/error/retry/resume/skip/add/rest/large-text states match the reviewed Paper blocks. Prior v1–v5 runs are diagnostic, not final acceptance.
+
+Paper templates3MNS/3MP6/3MQE/3MX9/3MT7/3MV8 and strength3FLY/3N6K/3OGV/3OLU/3OV4/3OZE/3O3E/3O80/3PFE/3PSH/3PT3 were rendered and compared. Full template editing/catalogue, completed-session detail and remaining training flows remain open. Existing older hub, tab, stage-legend, copy and dark action contrast defects remain queued. Simulator proof does not establish physical Bluetooth behavior or physiological validity.

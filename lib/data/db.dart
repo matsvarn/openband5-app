@@ -172,6 +172,7 @@ class LocalDb {
     'lab_result',
     'lab_marker_def',
     'strength_set',
+    'openband_strength_session',
     'exercise_def',
     'food_entry',
     'food_def',
@@ -348,7 +349,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 57;
+  static const int schemaVersion = 59;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -462,6 +463,9 @@ class LocalDb {
         await _createSleepOverride(db);
         await _createOpenBandSleepState(db);
         await _createOpenBandPlans(db);
+        await _createOpenBandPinnedTemplate(db);
+        await _createOpenBandStrengthRuntime(db);
+        await _ensureStrengthSetIdentity(db);
         await _createOpenBandLaps(db);
         await _createSleepNap(db);
         await _createNapRecalcJob(db);
@@ -1076,6 +1080,15 @@ class LocalDb {
           // Optional per-result report interval. Additive columns only.
           await _ensureLabResultReportRange(db);
         }
+        if (oldV < 58) {
+          await _createOpenBandPinnedTemplate(db);
+        }
+        if (oldV < 59) {
+          // OpenBand strength runtime snapshot + set identities. Additive.
+          await _createOpenBandStrengthRuntime(db);
+          await _ensureStrengthSetIdentity(db);
+          await _addColumnIfMissing(db, 'sessions', 'hr_covered_sec', 'INTEGER');
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1151,6 +1164,9 @@ class LocalDb {
     await _createSleepOverride(db);
     await _createOpenBandSleepState(db);
     await _createOpenBandPlans(db);
+    await _createOpenBandPinnedTemplate(db);
+    await _createOpenBandStrengthRuntime(db);
+    await _ensureStrengthSetIdentity(db);
     await _createOpenBandLaps(db);
     await _createSleepNap(db);
     await _createNapRecalcJob(db);
@@ -1802,6 +1818,413 @@ class LocalDb {
     ''');
   }
 
+  /// One optional pinned plan for the training hub. Empty table = no pin.
+  static Future<void> _createOpenBandPinnedTemplate(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_pinned_template (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        template_id TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// Frozen plan of a strength session at start. Keyed by session_id so
+  /// [putSession] REPLACE on finish cannot drop the snapshot. Skip/add lists
+  /// live here; completed values live only in [strength_set].
+  static Future<void> _createOpenBandStrengthRuntime(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_strength_session (
+        session_id TEXT PRIMARY KEY,
+        template_id TEXT NOT NULL,
+        template_version INTEGER NOT NULL,
+        plan_json TEXT NOT NULL,
+        skipped_json TEXT NOT NULL DEFAULT '[]',
+        added_json TEXT NOT NULL DEFAULT '[]',
+        rest_until_ts INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await _ensureOpenBandStrengthRuntimeColumns(db);
+  }
+
+  static Future<void> _ensureOpenBandStrengthRuntimeColumns(
+    DatabaseExecutor db,
+  ) async {
+    if (db is Database) {
+      await _addColumnIfMissing(
+        db,
+        'openband_strength_session',
+        'rest_until_ts',
+        'INTEGER',
+      );
+    }
+  }
+
+  /// Nullable planned-set / exercise identities on existing strength_set
+  /// rows. Absent on pre-v59 logs; never inferred from exercise_key.
+  static Future<void> _ensureStrengthSetIdentity(Database db) async {
+    await _addColumnIfMissing(db, 'strength_set', 'planned_set_id', 'TEXT');
+    await _addColumnIfMissing(db, 'strength_set', 'exercise_id', 'TEXT');
+  }
+
+  /// Insert the live session row and its plan snapshot in one transaction.
+  /// Rolls back both if either write fails. Refuses a second live session.
+  static Future<void> beginOpenBandStrengthSession({
+    required String sessionId,
+    required int startTs,
+    required int createdAt,
+    required String type,
+    String? deviceFamily,
+    required String templateId,
+    required int templateVersion,
+    required String planJson,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final live = await txn.query(
+        'sessions',
+        columns: ['id'],
+        where: "status = 'live'",
+        limit: 1,
+      );
+      if (live.isNotEmpty) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      await txn.insert('sessions', {
+        'id': sessionId,
+        'start_ts': startTs,
+        'end_ts': null,
+        'type': type,
+        'status': 'live',
+        'source': 'manual',
+        'device_family': deviceFamily,
+        'created_at': createdAt,
+      });
+      await txn.insert('openband_strength_session', {
+        'session_id': sessionId,
+        'template_id': templateId,
+        'template_version': templateVersion,
+        'plan_json': planJson,
+        'skipped_json': '[]',
+        'added_json': '[]',
+        'rest_until_ts': null,
+        'created_at': createdAt,
+      });
+    });
+  }
+
+  static Future<Map<String, dynamic>?> openBandStrengthSession(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<Map<String, dynamic>> _requireLiveStrengthSnap(
+    Transaction txn,
+    String sessionId,
+  ) async {
+    final live = await txn.query(
+      'sessions',
+      columns: ['id'],
+      where: "id = ? AND status = 'live'",
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (live.isEmpty) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    final snaps = await txn.query(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (snaps.isEmpty) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    return snaps.first;
+  }
+
+  static Future<void> _writeStrengthSnap(
+    Transaction txn,
+    String sessionId,
+    Map<String, Object?> patch,
+  ) async {
+    if (patch.isEmpty) return;
+    final n = await txn.update(
+      'openband_strength_session',
+      patch,
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+    if (n != 1) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+  }
+
+  /// Plan + added set/exercise ids. Throws [FormatException] on unreadable
+  /// JSON instead of coercing to empty.
+  static ({Set<String> setIds, Map<String, String> setExercise, int? restSec})
+  _strengthPlanLookup(String planJson, String addedJson, String? setId) {
+    final setIds = <String>{};
+    final setExercise = <String, String>{};
+    final restBySet = <String, int?>{};
+    void walk(Object? raw, {required bool requireExercises}) {
+      final exercises = raw is Map ? raw['exercises'] : raw;
+      if (exercises is! List || (requireExercises && exercises.isEmpty)) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      for (final e in exercises) {
+        if (e is! Map) {
+          throw const FormatException('Strength plan snapshot is unreadable.');
+        }
+        final eid = e['id'] as String? ?? '';
+        if (eid.isEmpty) {
+          throw const FormatException('Planned exercise is missing identity.');
+        }
+        final sets = e['sets'];
+        if (sets is! List) {
+          throw const FormatException('Planned exercise has no sets.');
+        }
+        for (final s in sets) {
+          if (s is! Map) {
+            throw const FormatException('Planned set is missing a stable id.');
+          }
+          final sid = s['id'] as String? ?? '';
+          if (sid.isEmpty) {
+            throw const FormatException('Planned set is missing a stable id.');
+          }
+          if (!setIds.add(sid)) {
+            throw const FormatException('Strength plan has duplicate set ids.');
+          }
+          setExercise[sid] = eid;
+          restBySet[sid] = (s['restSec'] as num?)?.toInt();
+        }
+      }
+    }
+
+    walk(jsonDecode(planJson), requireExercises: true);
+    final added = jsonDecode(addedJson);
+    if (added is! List) {
+      throw const FormatException('Strength added snapshot is unreadable.');
+    }
+    walk(added, requireExercises: false);
+    return (
+      setIds: setIds,
+      setExercise: setExercise,
+      restSec: setId == null ? null : restBySet[setId],
+    );
+  }
+
+  static List<String> _strengthStringIds(Object? raw, String label) {
+    if (raw is! String) {
+      throw FormatException('Strength $label snapshot is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw FormatException('Strength $label snapshot is unreadable.');
+    }
+    final out = <String>[];
+    for (final v in decoded) {
+      if (v is! String || v.isEmpty) {
+        throw FormatException('Strength $label snapshot is unreadable.');
+      }
+      out.add(v);
+    }
+    return out;
+  }
+
+  static Future<void> skipOpenBandPlannedSet(
+    String sessionId,
+    String plannedSetId,
+  ) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedJson = snap['added_json'];
+      if (planJson is! String || addedJson is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedJson, plannedSetId);
+      if (!lookup.setIds.contains(plannedSetId)) {
+        throw ArgumentError.value(plannedSetId, 'plannedSetId');
+      }
+      final skipped = _strengthStringIds(snap['skipped_json'], 'skipped');
+      if (skipped.contains(plannedSetId)) return;
+      skipped.add(plannedSetId);
+      await _writeStrengthSnap(txn, sessionId, {
+        'skipped_json': jsonEncode(skipped),
+      });
+    });
+  }
+
+  static Future<void> addOpenBandPlannedSet({
+    required String sessionId,
+    required Map<String, dynamic> exercise,
+    required Map<String, dynamic> set,
+  }) async {
+    final setId = set['id'] as String? ?? '';
+    if (setId.isEmpty) {
+      throw const FormatException('Planned set is missing a stable id.');
+    }
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedRaw = snap['added_json'];
+      if (planJson is! String || addedRaw is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedRaw, null);
+      if (lookup.setIds.contains(setId)) {
+        throw ArgumentError.value(setId, 'set.id');
+      }
+      _strengthStringIds(snap['skipped_json'], 'skipped');
+      final addedDecoded = jsonDecode(addedRaw);
+      if (addedDecoded is! List) {
+        throw const FormatException('Strength added snapshot is unreadable.');
+      }
+      final added = [
+        for (final e in addedDecoded) Map<String, dynamic>.from(e as Map),
+      ];
+      final eid = exercise['id'] as String? ?? '';
+      if (eid.isEmpty) {
+        throw const FormatException('Planned exercise is missing identity.');
+      }
+      final i = added.indexWhere((e) => e['id'] == eid);
+      if (i >= 0) {
+        final sets = [
+          for (final s in added[i]['sets'] as List)
+            Map<String, dynamic>.from(s as Map),
+          set,
+        ];
+        added[i] = {...added[i], 'sets': sets};
+      } else {
+        added.add({
+          ...exercise,
+          'sets': [set],
+        });
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'added_json': jsonEncode(added),
+      });
+    });
+  }
+
+  static Future<void> skipOpenBandRest(String sessionId) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      await _requireLiveStrengthSnap(txn, sessionId);
+      await _writeStrengthSnap(txn, sessionId, {'rest_until_ts': null});
+    });
+  }
+
+  static Future<void> extendOpenBandRest(
+    String sessionId, {
+    int seconds = 30,
+  }) async {
+    if (seconds <= 0) {
+      throw ArgumentError.value(seconds, 'seconds');
+    }
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final until = (snap['rest_until_ts'] as num?)?.toInt();
+      if (until == null) {
+        throw StateError('Keine Pause läuft.');
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'rest_until_ts': until + seconds,
+      });
+    });
+  }
+
+  /// Append one confirmed set. Same [plannedSetId] is a no-op retry, not a
+  /// duplicate row. Completed values live only here. The session must have a
+  /// live strength snapshot. A planned-set id must belong to that snapshot.
+  static Future<void> recordOpenBandStrengthSet({
+    required String sessionId,
+    required String exerciseKey,
+    required int setIndex,
+    int? reps,
+    int? holdSec,
+    double? loadKg,
+    required int atTs,
+    String? plannedSetId,
+    String? exerciseId,
+    int? restSec,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedJson = snap['added_json'];
+      if (planJson is! String || addedJson is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedJson, plannedSetId);
+      final identity = plannedSetId != null && plannedSetId.isNotEmpty;
+      if (identity && !lookup.setIds.contains(plannedSetId)) {
+        throw ArgumentError.value(plannedSetId, 'plannedSetId');
+      }
+      final expectedEx = identity ? lookup.setExercise[plannedSetId] : null;
+      if (identity &&
+          exerciseId != null &&
+          expectedEx != null &&
+          exerciseId != expectedEx) {
+        throw ArgumentError.value(exerciseId, 'exerciseId');
+      }
+      if (identity) {
+        final existing = await txn.query(
+          'strength_set',
+          columns: ['seq'],
+          where: 'session_id = ? AND planned_set_id = ?',
+          whereArgs: [sessionId, plannedSetId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) return;
+      }
+      final maxRows = await txn.rawQuery(
+        'SELECT MAX(seq) AS m FROM strength_set WHERE session_id = ?',
+        [sessionId],
+      );
+      final nextSeq = ((maxRows.first['m'] as num?)?.toInt() ?? -1) + 1;
+      final resolvedRest = restSec ?? (identity ? lookup.restSec : null);
+      final n = await txn.insert('strength_set', {
+        'session_id': sessionId,
+        'seq': nextSeq,
+        'exercise_key': exerciseKey,
+        'set_index': setIndex,
+        'reps': reps,
+        'hold_sec': holdSec,
+        'load_kg': loadKg,
+        'at_ts': atTs,
+        'rest_sec': resolvedRest,
+        'planned_set_id': identity ? plannedSetId : null,
+        'exercise_id': identity ? (exerciseId ?? expectedEx) : exerciseId,
+        'note': '',
+      });
+      if (n == 0) {
+        throw StateError('Diese Einheit läuft nicht mehr.');
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'rest_until_ts': resolvedRest != null && resolvedRest > 0
+            ? atTs + resolvedRest
+            : null,
+      });
+    });
+  }
+
   /// User-tapped lap marks for live distance activities. Distances stay null
   /// when GPS was off — a lap without a distance is still a lap.
   static Future<void> _createOpenBandLaps(DatabaseExecutor db) async {
@@ -1849,12 +2272,51 @@ class LocalDb {
 
   static Future<void> archiveOpenBandTemplate(String id) async {
     final db = await instance;
-    await db.update(
-      'openband_workout_template',
-      {'archived': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.transaction((txn) async {
+      await txn.update(
+        'openband_workout_template',
+        {'archived': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete(
+        'openband_pinned_template',
+        where: 'template_id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  static Future<String?> openBandPinnedTemplateId() async {
+    final rows = await (await instance).query('openband_pinned_template');
+    if (rows.isEmpty) return null;
+    final id = rows.first['template_id'] as String?;
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  static Future<void> putOpenBandPinnedTemplate(String? id) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      if (id == null || id.isEmpty) {
+        await txn.delete('openband_pinned_template');
+        return;
+      }
+      final active = await txn.query(
+        'openband_workout_template',
+        columns: ['id'],
+        where: 'id = ? AND archived = 0',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (active.isEmpty) {
+        throw StateError('Anheften fehlgeschlagen');
+      }
+      await txn.delete('openband_pinned_template');
+      await txn.insert('openband_pinned_template', {
+        'singleton': 1,
+        'template_id': id,
+      });
+    });
   }
 
   static Future<Map<String, dynamic>?> openBandMealDraft(
@@ -4311,6 +4773,8 @@ class LocalDb {
         rest_sec INTEGER,
         at_ts INTEGER,
         note TEXT NOT NULL DEFAULT '',
+        planned_set_id TEXT,
+        exercise_id TEXT,
         PRIMARY KEY (session_id, seq)
       )
     ''');
@@ -4360,6 +4824,34 @@ class LocalDb {
       where: 'session_id = ?',
       whereArgs: [sessionId],
       orderBy: 'seq ASC',
+    );
+  }
+
+  /// Completed [strength_set] rows from sessions that started before
+  /// [beforeStartTs], excluding [excludeSessionId]. Newest session first.
+  static Future<List<Map<String, Object?>>> completedStrengthSetsBefore({
+    required int beforeStartTs,
+    required String excludeSessionId,
+    required Iterable<String> exerciseKeys,
+  }) async {
+    final keys = exerciseKeys.toSet().toList();
+    if (keys.isEmpty) return const [];
+    final db = await instance;
+    final placeholders = List.filled(keys.length, '?').join(',');
+    return db.rawQuery(
+      '''
+      SELECT st.exercise_key, st.set_index, st.reps, st.load_kg, st.hold_sec,
+             st.rest_sec, st.at_ts, st.planned_set_id, st.exercise_id,
+             s.id AS prior_session_id, s.start_ts AS prior_start_ts
+      FROM strength_set st
+      INNER JOIN sessions s ON s.id = st.session_id
+      WHERE s.status = 'done'
+        AND s.start_ts < ?
+        AND s.id != ?
+        AND st.exercise_key IN ($placeholders)
+      ORDER BY s.start_ts DESC, s.id DESC, st.seq ASC
+      ''',
+      [beforeStartTs, excludeSessionId, ...keys],
     );
   }
 
@@ -4422,6 +4914,7 @@ class LocalDb {
         strain REAL,
         max_hr INTEGER,
         duration_min INTEGER,
+        hr_covered_sec INTEGER,
         zone_min_json TEXT,
         steps INTEGER,
         cadence_spm INTEGER,
@@ -4615,6 +5108,9 @@ class LocalDb {
     // `ble/live_cadence.dart`). NULL means the session had no walking to have a
     // cadence for, which is most of them: it is an absence, never a 0.
     await _addColumnIfMissing(db, 'sessions', 'cadence_spm', 'INTEGER');
+    // Seconds billed from actual HR sample-to-sample intervals. NULL until a
+    // closed interval exists — unknown is not zero, and is not wall-clock.
+    await _addColumnIfMissing(db, 'sessions', 'hr_covered_sec', 'INTEGER');
     // Set only by `_reconcileOrphanedLiveWorkout` on a stale `status='live'`
     // row it finalizes without ever having seen the real finish: `end_ts` there
     // is reconcile-time, not a measurement. `_writeOneWorkout` skips any row
@@ -8373,6 +8869,8 @@ class LocalDb {
         await _createComputeState(db);
         await _createPrimitiveArtifacts(db);
         await _createLiveCoverage(db);
+        await _createOpenBandStrengthRuntime(db);
+        await _ensureStrengthSetIdentity(db);
       },
     );
 
@@ -8515,6 +9013,18 @@ class LocalDb {
         whereArgs: [startSec, endSec],
       );
       await copyRows(
+        'strength_set',
+        where:
+            'session_id IN (SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
+        whereArgs: [startSec, endSec],
+      );
+      await copyRows(
+        'openband_strength_session',
+        where:
+            'session_id IN (SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
+        whereArgs: [startSec, endSec],
+      );
+      await copyRows(
         'live_coverage',
         where: 'end_ts > ? AND start_ts < ?',
         whereArgs: [startSec, endSec],
@@ -8619,6 +9129,7 @@ class LocalDb {
           'workout_route',
           'workout_split',
           'strength_set',
+          'openband_strength_session',
         ]) {
           deleted += await txn.rawDelete(
             'DELETE FROM $child WHERE session_id IN '
@@ -8916,6 +9427,7 @@ class LocalDb {
       'lab_result',
       'lab_marker_def',
       'strength_set',
+      'openband_strength_session',
       'exercise_def',
       'food_entry',
       'food_def',
@@ -11202,6 +11714,11 @@ class LocalDb {
     // and "best" on the strength screen (recentSetsFor reads strength_set with
     // no session-existence filter) and kept exporting under a dead session_id.
     await db.delete('strength_set', where: 'session_id = ?', whereArgs: [id]);
+    await db.delete(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [id],
+    );
   }
 
   // ── workout GPS routes (run/ride/walk) I/O ─────────────────────────────────

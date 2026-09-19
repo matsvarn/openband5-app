@@ -112,7 +112,8 @@ void main() {
             body: OpenBandTraining(
               controller: controller,
               onStart: (_) {},
-              onStartTemplate: (_) {},
+              onStartTemplate: (_) async {},
+              onOpenTemplates: () {},
             ),
           ),
         ),
@@ -139,11 +140,17 @@ void main() {
     expect(find.text('3 Einheiten'), findsOneWidget);
     expect(find.bySemanticsLabel('Kraft starten'), findsOneWidget);
     expect(find.text('Ganzkörper A'), findsOneWidget);
-    expect(find.text('4 Übungen · 12 Arbeitssätze'), findsOneWidget);
+    expect(find.text('4 Übungen'), findsOneWidget);
+    expect(find.text('Als Nächstes'), findsNothing);
+    expect(find.byTooltip('Vorlagen'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/training-light.png'),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/templates-hub.png'),
     );
     await mount(tester, brightness: Brightness.dark);
     await expectLater(
@@ -153,7 +160,9 @@ void main() {
   });
 
   test('template save bumps the version and refuses an empty plan', () async {
-    final first = (await repo.readTemplates()).single;
+    final first = (await repo.readTemplates()).firstWhere(
+      (t) => t.id == 'tpl-ganzkoerper-a',
+    );
     final saved = await repo.saveTemplate(first);
     expect(saved.version, 2);
     expect(saved.workSets, 12);
@@ -213,8 +222,11 @@ void main() {
   testWidgets('live strength: confirming a set records it, rest timer runs', (
     tester,
   ) async {
-    final template = (await repo.readTemplates()).single;
+    final template = (await repo.readTemplates()).firstWhere(
+      (t) => t.id == 'tpl-ganzkoerper-a',
+    );
     var now = DateTime(2026, 9, 15, 18);
+    repo.strengthNow = () => now;
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(393, 852);
     addTearDown(tester.view.resetPhysicalSize);
@@ -246,8 +258,8 @@ void main() {
     now = now.add(const Duration(seconds: 20));
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Pause'), findsOneWidget);
-    expect(find.text('01:10'), findsOneWidget);
-    expect(find.text('1 / 3'), findsOneWidget);
+    expect(find.text('1:10'), findsOneWidget);
+    expect(find.text('ZULETZT'), findsWidgets);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-live.png'),
@@ -451,7 +463,7 @@ void main() {
     expect(saved?.exercises.single.sets.length, 3);
     expect(saved?.exercises.single.sets.first.reps, 6);
     expect(saved?.exercises.single.sets.first.loadKg, isNull);
-    expect((await repo.readTemplates()).length, 2);
+    expect((await repo.readTemplates()).length, 3);
   });
 
   testWidgets('empty window shows an empty state, not zero minutes', (
@@ -460,6 +472,8 @@ void main() {
     controller.selectedDay = '2026-07-01';
     await mount(tester);
     expect(find.text('Noch keine Einheiten'), findsOneWidget);
+    expect(find.text('Letzte 30 Tage'), findsOneWidget);
+    expect(find.textContaining('Übertragung'), findsNothing);
     expect(find.text('—'), findsOneWidget);
     expect(find.text('keine Einheit'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -467,5 +481,22 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/training-empty.png'),
     );
+  });
+
+  testWidgets('hub read failure is not an empty success', (tester) async {
+    repo.failTemplateRead = true;
+    await mount(tester);
+    expect(find.text('Vorlagen konnten nicht geladen werden.'), findsOneWidget);
+    expect(find.text('Keine Vorlagen'), findsNothing);
+    expect(find.text('Ganzkörper A'), findsNothing);
+    expect(find.text('Als Nächstes'), findsNothing);
+  });
+
+  testWidgets('hub without templates has no phantom row', (tester) async {
+    repo.clearTemplates();
+    await mount(tester);
+    expect(find.text('Ganzkörper A'), findsNothing);
+    expect(find.text('Starten'), findsNothing);
+    expect(find.text('Training'), findsOneWidget);
   });
 }

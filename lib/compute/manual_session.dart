@@ -390,8 +390,15 @@ String manualSessionId(int startSec) => 'manual:$startSec';
 /// this) and does not jump to the top of any created-at ordering.
 ///
 /// Absent stats are written as explicit nulls, NOT omitted: `putSession` is
-/// INSERT-OR-REPLACE, so an omitted key on an edit would silently retain the
-/// stale value computed for the OLD window.
+/// INSERT-OR-REPLACE, so an omitted key becomes the column default (null) and
+/// would also, if this were an UPDATE, silently retain a stale value from the
+/// OLD window. Either way the map has to name every score column.
+///
+/// Billed HR coverage (`hr_covered_sec`) is the live interval counter for
+/// THIS window. A same-bounds edit (label/type, or a retime that did not
+/// move start/end) keeps it. A moved window writes null: those seconds
+/// described the old bounds and must not be presented as coverage of the
+/// new ones. Unknown, not zero.
 /// [sessionId] and [source] override the defaults for a session that is not
 /// hand-entered — an auto-detected bout confirmed by the athlete keeps its
 /// `auto:` id and `auto` attribution while still being scored through this one
@@ -409,6 +416,9 @@ Map<String, dynamic> buildManualSessionRow({
   final id =
       (existing?['id'] as String?) ?? sessionId ?? manualSessionId(startSec);
   final zone = stats.zoneMinutes;
+  final sameWindow = existing != null &&
+      (existing['start_ts'] as num?)?.toInt() == startSec &&
+      (existing['end_ts'] as num?)?.toInt() == endSec;
   return {
     'id': id,
     'start_ts': startSec,
@@ -423,6 +433,9 @@ Map<String, dynamic> buildManualSessionRow({
     // than that is worse than one stored beside the peak it belongs with.
     'avg_hr': stats.avgHr,
     'duration_min': (endSec - startSec) ~/ 60,
+    'hr_covered_sec': sameWindow
+        ? (existing['hr_covered_sec'] as num?)?.toInt()
+        : null,
     'zone_min_json': jsonEncode(zone.any((v) => v > 0) ? zone : const <num>[]),
     // Steps and HRR belong to the window, not the entry: `steps` came from the
     // live pedometer we never ran, and `hrr_bpm` is refilled retrospectively

@@ -12,6 +12,7 @@ import 'openband/nutrition.dart';
 import 'openband/run_live.dart';
 import 'openband/strength_live.dart';
 import 'openband/template_editor.dart';
+import 'openband/templates.dart';
 import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
@@ -214,25 +215,21 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             ),
           );
         },
-        onStartTemplate: (t) => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) => OpenBandStrengthLive(
-              repository: widget.repository,
-              template: t,
-            ),
-          ),
-        ),
-        onEditTemplate: (t) async {
+        onOpenTemplates: () async {
           await Navigator.of(c).push(
-            MaterialPageRoute<WorkoutTemplate>(
-              builder: (_) => OpenBandTemplateEditor(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandTemplates(
                 repository: widget.repository,
-                template: t,
+                synthetic: true,
+                onStartTemplate: (t) => _openStrength(c, t),
+                onEditTemplate: (t) => _openTemplateEditor(c, t),
               ),
             ),
           );
           controller.refresh();
         },
+        onStartTemplate: (t) => _openStrength(c, t),
+        onEditTemplate: (t) => _openTemplateEditor(c, t),
         onOpen: (s) => Navigator.of(c).push(
           MaterialPageRoute<void>(
             builder: (_) =>
@@ -253,6 +250,25 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ),
     },
   );
+
+  Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
+    return Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            OpenBandStrengthLive(repository: widget.repository, template: t),
+      ),
+    );
+  }
+
+  Future<void> _openTemplateEditor(BuildContext c, WorkoutTemplate? t) async {
+    await Navigator.of(c).push(
+      MaterialPageRoute<WorkoutTemplate>(
+        builder: (_) =>
+            OpenBandTemplateEditor(repository: widget.repository, template: t),
+      ),
+    );
+    controller.refresh();
+  }
 
   Future<void> _addFood(BuildContext ctx, String meal) async {
     final day = controller.selectedDay;

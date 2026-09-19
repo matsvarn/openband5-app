@@ -12,9 +12,11 @@ import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/openband/appearance.dart';
 import 'package:openstrap_edge/openband/notification_settings.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:provider/provider.dart';
@@ -611,10 +613,12 @@ void main() {
       await press('Training');
       await capture('training-hub');
       await tester.tap(find.text('Starten'));
+      await tester.pump();
       await tester.pump(const Duration(seconds: 1));
       await capture('strength-live');
       await tester.tap(find.byTooltip('Einklappen'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       // 'Laufen' trifft Quick-Start-Tile und Zuletzt-Zeile; die Zeile ist letztere.
       await tester.ensureVisible(find.text('Laufen').last);
       await tester.pumpAndSettle();
@@ -638,12 +642,199 @@ void main() {
       await capture('run-live');
       await tester.tap(find.byTooltip('Einklappen'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Neue Vorlage'));
+      await tester.tap(find.byTooltip('Vorlagen'));
+      await tester.pumpAndSettle();
+      await capture('templates-list');
+      await tester.tap(find.byTooltip('Aktionen').first);
+      await tester.pumpAndSettle();
+      await capture('templates-menu');
+      await tester.tap(find.text('Anheften'));
+      await tester.pumpAndSettle();
+      await capture('templates-pinned');
+      await tester.tap(find.byTooltip('Aktionen').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bearbeiten'));
       await tester.pumpAndSettle();
       await capture('template-editor');
       await pop();
       await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Neue Vorlage'));
+      await tester.pumpAndSettle();
+      await capture('template-editor-create');
+      await pop();
+      await tester.pumpAndSettle();
+      await pop();
+      await tester.pumpAndSettle();
+      await capture('templates-hub');
 
+      await mount(brightness: Brightness.dark);
+      await press('Training');
+      await tester.tap(find.byTooltip('Vorlagen'));
+      await tester.pumpAndSettle();
+      await capture('templates-dark');
+      await tester.tap(find.byTooltip('Aktionen').first);
+      await tester.pumpAndSettle();
+      await capture('templates-menu-dark');
+      await pop();
+      await tester.pumpAndSettle();
+
+      final emptyTemplates = await mount();
+      emptyTemplates.clearTemplates();
+      await press('Training');
+      await tester.tap(find.byTooltip('Vorlagen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Keine Vorlagen'), findsOneWidget);
+      await capture('templates-empty');
+
+      final templateReadFail = await mount();
+      templateReadFail.failTemplateRead = true;
+      await press('Training');
+      await tester.tap(find.byTooltip('Vorlagen'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Vorlagen konnten nicht geladen werden.'),
+        findsOneWidget,
+      );
+      expect(find.text('Keine Vorlagen'), findsNothing);
+      await capture('templates-error');
+
+      await mount(scale: 2);
+      await press('Training');
+      await tester.tap(find.byTooltip('Vorlagen'));
+      await tester.pumpAndSettle();
+      await capture('templates-2x');
+
+      Future<SyntheticOpenBandRepository> openPaperLive({
+        Brightness brightness = Brightness.light,
+        double? scale,
+        bool failWrites = false,
+      }) async {
+        final repository = await mount(
+          brightness: brightness,
+          scale: scale,
+        );
+        final now = DateTime(2026, 9, 15, 18, 32, 14);
+        await repository.seedPaperLiveStrength(
+          startedAt: DateTime(2026, 9, 15, 18),
+          now: now,
+        );
+        repository.failStrengthWrites = failWrites;
+        final nav = tester
+            .element(find.byType(AppShell).first)
+            .findAncestorStateOfType<NavigatorState>();
+        unawaited(
+          nav!.push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandStrengthLive.resume(
+                repository: repository,
+                now: () => now,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        return repository;
+      }
+
+      Finder inBank(Finder matching) => find.descendant(
+        of: find.ancestor(
+          of: find.text('Bankdrücken'),
+          matching: find.byType(OBExerciseBlock),
+        ),
+        matching: matching,
+      );
+
+      // InkRipple._kFadeOutDuration=375ms; InkSparkle=617ms. 200ms theme
+      // duration ends while confirmed ripple is still opaque (fade starts
+      // 225/375). Cap stays under the 1s rest tick.
+      Future<void> settleLiveTransition() async {
+        await tester.pumpAndSettle(
+          const Duration(milliseconds: 16),
+          EnginePhase.sendSemanticsUpdate,
+          const Duration(milliseconds: 800),
+        );
+      }
+
+      await openPaperLive();
+      expect(find.text('1:24'), findsOneWidget);
+      expect(
+        Theme.of(tester.element(find.byType(OpenBandStrengthLive))).brightness,
+        Brightness.light,
+      );
+      await capture('strength-live-light');
+
+      await openPaperLive();
+      await tester.tap(inBank(find.byTooltip('Übungsmenü')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Satz 3 überspringen'), findsOneWidget);
+      await capture('strength-menu');
+
+      await openPaperLive();
+      await tester.tap(inBank(find.byTooltip('Übungsmenü')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Satz 3 überspringen'));
+      await settleLiveTransition();
+      expect(find.text('Satz 3 überspringen'), findsNothing);
+      expect(inBank(find.text('Übersprungen')), findsOneWidget);
+      await capture('strength-skipped');
+
+      await openPaperLive();
+      await tester.tap(inBank(find.byTooltip('Satz hinzufügen')));
+      await settleLiveTransition();
+      expect(inBank(find.text('5')), findsOneWidget);
+      await capture('strength-add');
+
+      final failingLive = await openPaperLive(failWrites: true);
+      final failNow = DateTime(2026, 9, 15, 18, 32, 14);
+      expect(inBank(find.byTooltip('Satz 3 bestätigen')), findsOneWidget);
+      await tester.tap(inBank(find.byTooltip('Satz 3 bestätigen')));
+      await settleLiveTransition();
+      expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+      await capture('strength-save-failure');
+      failingLive.failStrengthWrites = false;
+      await tester.tap(find.text('Erneut'));
+      await settleLiveTransition();
+      expect(find.text('Speichern fehlgeschlagen'), findsNothing);
+      await capture('strength-save-retry');
+      await tester.tap(find.byTooltip('Einklappen'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      unawaited(
+        tester
+            .element(find.byType(AppShell).first)
+            .findAncestorStateOfType<NavigatorState>()!
+            .push(
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandStrengthLive.resume(
+                  repository: failingLive,
+                  now: () => failNow,
+                ),
+              ),
+            ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('62,5'), findsWidgets);
+      await capture('strength-resume');
+
+      await openPaperLive(brightness: Brightness.dark);
+      expect(
+        Theme.of(tester.element(find.byType(OpenBandStrengthLive))).brightness,
+        Brightness.dark,
+      );
+      expect(find.text('Übersprungen'), findsNothing);
+      await capture('strength-live-dark');
+      await openPaperLive(scale: 2);
+      expect(find.text('+30 s').hitTestable(), findsOneWidget);
+      await capture('strength-live-large');
+      await tester.tap(find.byTooltip('Einklappen'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await mount();
       await press('Journal');
       await capture('journal-hub');
       await tester.tap(find.bySemanticsLabel('Gut'));

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
@@ -11,8 +13,9 @@ import 'theme.dart';
 class OpenBandTraining extends StatelessWidget {
   final OpenBandController controller;
   final ValueChanged<String>? onStart;
-  final ValueChanged<WorkoutTemplate>? onStartTemplate;
-  final ValueChanged<WorkoutTemplate?>? onEditTemplate;
+  final Future<void> Function(WorkoutTemplate)? onStartTemplate;
+  final Future<void> Function(WorkoutTemplate?)? onEditTemplate;
+  final VoidCallback? onOpenTemplates;
   final ValueChanged<TrainingSession>? onOpen;
   const OpenBandTraining({
     super.key,
@@ -20,6 +23,7 @@ class OpenBandTraining extends StatelessWidget {
     this.onStart,
     this.onStartTemplate,
     this.onEditTemplate,
+    this.onOpenTemplates,
     this.onOpen,
   });
   @override
@@ -43,16 +47,25 @@ class OpenBandTraining extends StatelessWidget {
                       style: p.text(30, weight: FontWeight.w800, display: true),
                     ),
                   ),
-                  if (onEditTemplate != null)
-                    IconButton(
-                      tooltip: 'Neue Vorlage',
-                      onPressed: () => onEditTemplate!(null),
-                      style: IconButton.styleFrom(
-                        backgroundColor: p.card,
-                        foregroundColor: p.ink,
-                        fixedSize: const Size(40, 40),
+                  if (onOpenTemplates != null)
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Material(
+                        color: p.card,
+                        shape: const CircleBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: IconButton(
+                          tooltip: 'Vorlagen',
+                          onPressed: onOpenTemplates,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 44,
+                            height: 44,
+                          ),
+                          icon: Icon(LucideIcons.list, size: 20, color: p.ink),
+                        ),
                       ),
-                      icon: const Icon(LucideIcons.listPlus, size: 20),
                     ),
                 ],
               ),
@@ -60,22 +73,10 @@ class OpenBandTraining extends StatelessWidget {
             const SizedBox(height: 12),
             OBQuickStart(onStart: onStart),
             const SizedBox(height: 10),
-            FutureBuilder<List<WorkoutTemplate>>(
-              future: controller.repository.readTemplates(),
-              builder: (context, snapshot) {
-                final templates = snapshot.data;
-                if (templates == null || templates.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: OBTemplateRow(
-                    template: templates.first,
-                    onStart: onStartTemplate,
-                    onEdit: onEditTemplate,
-                  ),
-                );
-              },
+            _HubTemplate(
+              controller: controller,
+              onStart: onStartTemplate,
+              onEdit: onEditTemplate,
             ),
             FutureBuilder<List<TrainingSession>>(
               key: ValueKey('sessions-${controller.selectedDay}'),
@@ -124,8 +125,8 @@ class OpenBandTraining extends StatelessWidget {
                               style: p.text(15, weight: FontWeight.w600),
                             ),
                             Text(
-                              'In den letzten 30 Tagen wurde nichts erfasst. Erkannte Einheiten des Bands erscheinen hier nach der Übertragung.',
-                              style: p.text(14, color: p.muted),
+                              'Letzte 30 Tage',
+                              style: p.text(13, color: p.muted),
                             ),
                           ],
                         ),
@@ -238,13 +239,15 @@ class OBQuickStart extends StatelessWidget {
               borderRadius: BorderRadius.circular(AlpRadius.row),
               child: ExcludeSemantics(
                 child: Container(
-                  height: 96,
+                  constraints: const BoxConstraints(minHeight: 96),
                   decoration: BoxDecoration(
                     color: p.card,
                     borderRadius: BorderRadius.circular(AlpRadius.row),
                   ),
+                  alignment: Alignment.center,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
                     spacing: 8,
                     children: [
                       Container(
@@ -373,8 +376,8 @@ class OBWeekBars extends StatelessWidget {
             label:
                 'Trainingsminuten je Tag: ${days.map((d) => '${DateFormat('EEE', 'de_DE').format(DateTime.parse(d))} ${minutes[d]}').join(', ')}',
             child: ExcludeSemantics(
-              child: SizedBox(
-                height: 80,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 80),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   spacing: 6,
@@ -383,6 +386,7 @@ class OBWeekBars extends StatelessWidget {
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
                           spacing: 6,
                           children: [
                             Container(
@@ -487,69 +491,435 @@ class _SessionRow extends StatelessWidget {
   }
 }
 
+class _HubTemplate extends StatefulWidget {
+  final OpenBandController controller;
+  final Future<void> Function(WorkoutTemplate)? onStart;
+  final Future<void> Function(WorkoutTemplate?)? onEdit;
+  const _HubTemplate({required this.controller, this.onStart, this.onEdit});
+  @override
+  State<_HubTemplate> createState() => _HubTemplateState();
+}
+
+class _HubTemplateState extends State<_HubTemplate> {
+  List<WorkoutTemplate>? _templates;
+  String? _pinnedId;
+  Object? _error;
+  bool _busy = false;
+  int _load = 0;
+
+  OpenBandRepository get _repo => widget.controller.repository;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_reload);
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_reload);
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    final token = ++_load;
+    try {
+      final templates = await _repo.readTemplates();
+      final pin = await _repo.readPinnedTemplateId();
+      if (!mounted || token != _load) return;
+      setState(() {
+        _templates = templates;
+        _pinnedId = pin;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted || token != _load) return;
+      setState(() => _error = e);
+    }
+  }
+
+  Future<void> _start(WorkoutTemplate template) async {
+    if (_busy || widget.onStart == null) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onStart!(template);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _menu(WorkoutTemplate template) async {
+    if (_busy) return;
+    final pinned = template.id == _pinnedId;
+    final choice = await showTemplateActionSheet(
+      context,
+      template: template,
+      pinned: pinned,
+    );
+    if (!mounted || choice == null) return;
+    if (choice == TemplateMenuChoice.edit) {
+      await widget.onEdit?.call(template);
+      if (mounted) await _reload();
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      switch (choice) {
+        case TemplateMenuChoice.duplicate:
+          await _repo.saveTemplate(copyWorkoutTemplate(template));
+        case TemplateMenuChoice.pin:
+          await _repo.pinTemplate(template.id);
+        case TemplateMenuChoice.unpin:
+          await _repo.pinTemplate(null);
+        case TemplateMenuChoice.archive:
+          await _repo.archiveTemplate(template.id);
+        case TemplateMenuChoice.edit:
+          break;
+      }
+      await _reload();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _error = switch (choice) {
+            TemplateMenuChoice.duplicate => 'Speichern fehlgeschlagen',
+            TemplateMenuChoice.archive => 'Archivieren fehlgeschlagen',
+            _ => 'Anheften fehlgeschlagen',
+          },
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final templates = _templates;
+    if (_error != null && templates == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 8,
+          children: [
+            Text(
+              'Vorlagen konnten nicht geladen werden.',
+              style: p.text(14, color: p.danger).copyWith(height: 18 / 14),
+            ),
+            OBAction(
+              'Erneut laden',
+              ink: true,
+              onPressed: _busy ? null : _reload,
+            ),
+          ],
+        ),
+      );
+    }
+    if (templates == null) return const SizedBox.shrink();
+    final featured = featuredTemplate(templates, _pinnedId);
+    if (featured == null && _error == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 8,
+        children: [
+          if (_error != null) ...[
+            Text(
+              _error is String
+                  ? _error! as String
+                  : 'Vorlagen konnten nicht geladen werden.',
+              style: p.text(14, color: p.danger).copyWith(height: 18 / 14),
+            ),
+            OBAction(
+              'Erneut versuchen',
+              ink: true,
+              onPressed: _busy ? null : _reload,
+            ),
+          ],
+          if (featured != null)
+            OBTemplateRow(
+              template: featured,
+              pinned: featured.id == _pinnedId,
+              busy: _busy,
+              onStart: widget.onStart == null ? null : _start,
+              onMenu: _menu,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class OBTemplateRow extends StatelessWidget {
   final WorkoutTemplate template;
-  final ValueChanged<WorkoutTemplate>? onStart;
-  final ValueChanged<WorkoutTemplate?>? onEdit;
+  final bool pinned;
+  final bool busy;
+  final Future<void> Function(WorkoutTemplate)? onStart;
+  final Future<void> Function(WorkoutTemplate)? onMenu;
   const OBTemplateRow({
     super.key,
     required this.template,
+    this.pinned = false,
+    this.busy = false,
     this.onStart,
-    this.onEdit,
+    this.onMenu,
   });
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final sets = template.workSets;
-    return InkWell(
-      onTap: onEdit == null ? null : () => onEdit!(template),
-      borderRadius: BorderRadius.circular(AlpRadius.card),
-      child: OBCard(
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: p.strainTint,
-                borderRadius: BorderRadius.circular(12),
+    final scaler = MediaQuery.textScalerOf(context);
+    final nameStyle = p
+        .text(15, weight: FontWeight.w600)
+        .copyWith(height: 20 / 15);
+    final startStyle = p
+        .text(14, weight: FontWeight.w600)
+        .copyWith(height: 18 / 14, color: p.dark ? p.canvas : Colors.white);
+    Widget nameBlock({required bool stack}) => Align(
+      alignment: Alignment.centerLeft,
+      child: Stack(
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 4,
+            children: [
+              Padding(
+                padding: pinned
+                    ? const EdgeInsets.only(right: 20)
+                    : EdgeInsets.zero,
+                child: Text(
+                  template.name,
+                  maxLines: stack ? 4 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: nameStyle,
+                ),
               ),
-              child: OBSportIcon('barbell', size: 18, color: p.strain),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Als Nächstes',
-                    style: p.text(12, weight: FontWeight.w600, color: p.muted),
-                  ),
-                  Text(
-                    template.name,
-                    style: p.text(15, weight: FontWeight.w600),
-                  ),
-                  Text(
-                    '${template.exercises.length} Übungen · $sets Arbeitssätze',
-                    style: p.text(13, color: p.muted),
-                  ),
-                ],
+              Text(
+                obExerciseCount(template.exercises.length),
+                style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
+              ),
+            ],
+          ),
+          if (pinned)
+            Positioned(
+              top: 2,
+              right: 0,
+              child: Icon(
+                LucideIcons.pin,
+                size: 14,
+                color: p.muted,
+                semanticLabel: 'Angeheftet',
               ),
             ),
-            FilledButton(
-              onPressed: onStart == null ? null : () => onStart!(template),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(0, 40),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+        ],
+      ),
+    );
+    Widget start({required bool wide}) => Semantics(
+      button: true,
+      enabled: !busy && onStart != null,
+      label: 'Starten',
+      child: ExcludeSemantics(
+        child: SizedBox(
+          width: wide ? double.infinity : 76,
+          height: wide ? null : 44,
+          child: FilledButton(
+            onPressed: busy || onStart == null
+                ? null
+                : () => onStart!(template),
+            style: FilledButton.styleFrom(
+              backgroundColor: p.ink,
+              foregroundColor: p.dark ? p.canvas : Colors.white,
+              disabledBackgroundColor: p.ink.withValues(alpha: 0.4),
+              minimumSize: Size(wide ? 44 : 76, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: const Text('Starten'),
+              textStyle: startStyle,
             ),
-          ],
+            child: busy
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator.adaptive(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(p.card),
+                    ),
+                  )
+                : Text('Starten', style: startStyle),
+          ),
+        ),
+      ),
+    );
+    final more = SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        tooltip: 'Aktionen',
+        onPressed: busy || onMenu == null ? null : () => onMenu!(template),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        icon: Icon(LucideIcons.ellipsis, size: 20, color: p.ink),
+      ),
+    );
+    return Semantics(
+      container: true,
+      label: pinned ? '${template.name}, angeheftet' : template.name,
+      child: Material(
+        color: p.card,
+        borderRadius: BorderRadius.circular(20),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 88),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final stack = _templateRowShouldStack(
+                  width: c.maxWidth,
+                  name: template.name,
+                  style: nameStyle,
+                  scaler: scaler,
+                  pinned: pinned,
+                  textDirection: Directionality.of(context),
+                );
+                if (stack) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 10,
+                    children: [
+                      nameBlock(stack: true),
+                      Row(
+                        spacing: 10,
+                        children: [
+                          Expanded(child: start(wide: true)),
+                          more,
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  spacing: 10,
+                  children: [
+                    Expanded(child: nameBlock(stack: false)),
+                    start(wide: false),
+                    more,
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+bool _templateRowShouldStack({
+  required double width,
+  required String name,
+  required TextStyle style,
+  required TextScaler scaler,
+  required bool pinned,
+  required ui.TextDirection textDirection,
+}) {
+  if (scaler.scale(14) > 20) return true;
+  const trailing = 76.0 + 10 + 44;
+  const gap = 10.0;
+  final nameMax = width - trailing - gap - (pinned ? 20 : 0);
+  if (!(nameMax > 0)) return true;
+  final painter = TextPainter(textDirection: textDirection, textScaler: scaler);
+  try {
+    for (final word in name.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      painter.text = TextSpan(text: word, style: style);
+      painter.layout();
+      if (painter.width > nameMax) return true;
+    }
+    return false;
+  } finally {
+    painter.dispose();
+  }
+}
+
+Future<TemplateMenuChoice?> showTemplateActionSheet(
+  BuildContext context, {
+  required WorkoutTemplate template,
+  required bool pinned,
+}) {
+  final p = OB.of(context);
+  return showModalBottomSheet<TemplateMenuChoice>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: p.card,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (c) {
+      final sheet = OB.of(c);
+      Widget action(
+        String label,
+        TemplateMenuChoice value, {
+        bool danger = false,
+      }) => InkWell(
+        onTap: () => Navigator.pop(c, value),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              style: sheet
+                  .text(15, color: danger ? sheet.danger : sheet.ink)
+                  .copyWith(height: 20 / 15),
+            ),
+          ),
+        ),
+      );
+      return SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(c).height * 0.7,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  template.name,
+                  style: sheet
+                      .text(18, weight: FontWeight.w600)
+                      .copyWith(height: 24 / 18),
+                ),
+                const SizedBox(height: 12),
+                action('Bearbeiten', TemplateMenuChoice.edit),
+                action('Duplizieren', TemplateMenuChoice.duplicate),
+                action(
+                  pinned ? 'Nicht mehr anheften' : 'Anheften',
+                  pinned ? TemplateMenuChoice.unpin : TemplateMenuChoice.pin,
+                ),
+                action('Archivieren', TemplateMenuChoice.archive, danger: true),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class OBMuscleBars extends StatelessWidget {

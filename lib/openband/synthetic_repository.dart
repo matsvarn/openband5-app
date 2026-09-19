@@ -51,6 +51,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failSleepGoalRead = false;
   bool failSleepGoalWrite = false;
   Future<void>? sleepGoalWriteBarrier;
+  bool failTemplateRead = false;
+  bool failTemplateWrite = false;
+  bool failPin = false;
+  bool failPinRead = false;
+  Future<void>? templateWriteBarrier;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -281,6 +286,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   final Map<String, Map<String, double>> _journal = {};
   final Map<String, WorkoutTemplate> _templates = {};
+  final Set<String> _archivedTemplates = {};
+  String? _pinnedTemplateId;
   final Map<String, MealDraft> _mealDrafts = {};
   final Map<String, List<MealEntry>> _meals = {};
   bool _seeded = false;
@@ -315,6 +322,135 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       ],
       updatedAt: _at(_shift(_day, -2), '19:00'),
     );
+    List<PlannedSet> light(String key) => [
+      for (var i = 1; i <= 3; i++)
+        PlannedSet(id: '$key-$i', reps: 10, restSec: 60),
+    ];
+    _templates['tpl-ganzkoerper-b'] = WorkoutTemplate(
+      id: 'tpl-ganzkoerper-b',
+      name: 'Ganzkörper B',
+      version: 1,
+      exercises: [
+        ex('ohp', 'Überkopfdrücken', light('ohp')),
+        ex('rdl', 'Kreuzheben', light('rdl')),
+        ex('lunge', 'Ausfallschritt', light('lunge')),
+        ex('pullup', 'Klimmzug', light('pullup')),
+        ex('curl', 'Curl', light('curl')),
+      ],
+      updatedAt: _at(_shift(_day, -4), '18:00'),
+    );
+    RecordedSet hist(
+      String key,
+      int index,
+      DateTime at, {
+      int? reps,
+      int? seconds,
+      double? loadKg,
+      String? plannedSetId,
+    }) => RecordedSet(
+      exerciseKey: key,
+      setIndex: index,
+      reps: reps,
+      seconds: seconds,
+      loadKg: loadKg,
+      at: at,
+      plannedSetId: plannedSetId,
+      exerciseId: 'ex-$key',
+    );
+    final priorDay = _shift(_day, -2);
+    final priorAt = _at(priorDay, '18:10');
+    _strength['synthetic-$priorDay-weight_training'] = _SyntheticStrength(
+      plan: _templates['tpl-ganzkoerper-a']!,
+      startedAt: priorAt,
+    )..finished = true
+     ..recorded.addAll([
+      hist('bench_press', 1, priorAt, reps: 8, loadKg: 37.5, plannedSetId: 'bp-1'),
+      hist(
+        'bench_press',
+        2,
+        priorAt.add(const Duration(minutes: 3)),
+        reps: 8,
+        loadKg: 37.5,
+        plannedSetId: 'bp-2',
+      ),
+      hist(
+        'bench_press',
+        3,
+        priorAt.add(const Duration(minutes: 6)),
+        reps: 8,
+        loadKg: 37.5,
+        plannedSetId: 'bp-3',
+      ),
+      hist(
+        'row',
+        1,
+        priorAt.add(const Duration(minutes: 10)),
+        reps: 10,
+        loadKg: 32.5,
+        plannedSetId: 'row-1',
+      ),
+      hist(
+        'row',
+        2,
+        priorAt.add(const Duration(minutes: 13)),
+        reps: 10,
+        loadKg: 32.5,
+        plannedSetId: 'row-2',
+      ),
+      hist(
+        'row',
+        3,
+        priorAt.add(const Duration(minutes: 16)),
+        reps: 10,
+        loadKg: 32.5,
+        plannedSetId: 'row-3',
+      ),
+      hist(
+        'squat',
+        1,
+        priorAt.add(const Duration(minutes: 20)),
+        reps: 8,
+        loadKg: 62.5,
+        plannedSetId: 'sq-1',
+      ),
+      hist(
+        'squat',
+        2,
+        priorAt.add(const Duration(minutes: 23)),
+        reps: 8,
+        loadKg: 62.5,
+        plannedSetId: 'sq-2',
+      ),
+      hist(
+        'squat',
+        3,
+        priorAt.add(const Duration(minutes: 26)),
+        reps: 8,
+        loadKg: 62.5,
+        plannedSetId: 'sq-3',
+      ),
+      hist(
+        'plank',
+        1,
+        priorAt.add(const Duration(minutes: 30)),
+        seconds: 40,
+        plannedSetId: 'plank-1',
+      ),
+      hist(
+        'plank',
+        2,
+        priorAt.add(const Duration(minutes: 32)),
+        seconds: 40,
+        plannedSetId: 'plank-2',
+      ),
+      hist(
+        'plank',
+        3,
+        priorAt.add(const Duration(minutes: 34)),
+        seconds: 40,
+        plannedSetId: 'plank-3',
+      ),
+    ]);
     _meals[_day] = [
       const MealEntry(
         id: 'm1',
@@ -339,14 +475,136 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   final Map<String, List<RecordedSet>> _liveSets = {};
+  final Map<String, _SyntheticStrength> _strength = {};
+  String? _activeStrengthId;
   final List<LabDraw> _labResults = [];
   final Map<String, LabMarkerDef> _labDefs = {};
   bool failLabWrites = false;
   bool failLabReads = false;
   int labWriteCount = 0;
   Future<void> Function()? beforeLabWrite;
+  DateTime Function() strengthNow = DateTime.now;
+  bool failStrengthWrites = false;
+  bool failStrengthStart = false;
+  bool failStrengthStartAfterCommit = false;
+  bool legacyActiveStrength = false;
+  int failStrengthReadRemaining = 0;
+  int strengthStartCount = 0;
+  int strengthWriteCount = 0;
+  Future<void> Function()? beforeStrengthWrite;
 
   void seedLabDraw(LabDraw draw) => _labResults.add(draw);
+
+  /// Paper live proof: Bankdrücken 4× with two confirmed sets and 1:24 of a
+  /// 2:00 rest remaining, Kniebeuge 4× with no history. Uses the same start
+  /// and record path as production.
+  Future<String> seedPaperLiveStrength({
+    required DateTime startedAt,
+    required DateTime now,
+  }) async {
+    _seedPlans();
+    _strength.removeWhere((_, runtime) => runtime.finished);
+    const bench = PlannedExercise(
+      id: 'ex-paper-bench',
+      exerciseKey: 'bench_press',
+      name: 'Bankdrücken',
+      note: 'Langhantel',
+      sets: [
+        PlannedSet(id: 'paper-bp-1', reps: 8, loadKg: 60, restSec: 120),
+        PlannedSet(id: 'paper-bp-2', reps: 8, loadKg: 62.5, restSec: 120),
+        PlannedSet(id: 'paper-bp-3', reps: 8, loadKg: 62.5, restSec: 120),
+        PlannedSet(id: 'paper-bp-4', reps: 8, loadKg: 62.5, restSec: 120),
+      ],
+    );
+    const squat = PlannedExercise(
+      id: 'ex-paper-squat',
+      exerciseKey: 'squat',
+      name: 'Kniebeuge',
+      note: 'Langhantel',
+      sets: [
+        PlannedSet(id: 'paper-sq-1', reps: 8, loadKg: 80, restSec: 150),
+        PlannedSet(id: 'paper-sq-2', reps: 8, loadKg: 80, restSec: 150),
+        PlannedSet(id: 'paper-sq-3', reps: 8, loadKg: 80, restSec: 150),
+        PlannedSet(id: 'paper-sq-4', reps: 8, loadKg: 80, restSec: 150),
+      ],
+    );
+    final paper = WorkoutTemplate(
+      id: 'tpl-paper-live',
+      name: 'Ganzkörper A',
+      version: 1,
+      exercises: const [bench, squat],
+      updatedAt: startedAt,
+    );
+    final priorAt = startedAt.subtract(const Duration(days: 1));
+    _strength['synthetic-paper-prior'] = _SyntheticStrength(
+      plan: paper,
+      startedAt: priorAt,
+    )..finished = true
+     ..recorded.addAll([
+      RecordedSet(
+        exerciseKey: 'bench_press',
+        setIndex: 1,
+        reps: 8,
+        loadKg: 60,
+        at: priorAt,
+        plannedSetId: 'paper-bp-1',
+        exerciseId: bench.id,
+      ),
+      RecordedSet(
+        exerciseKey: 'bench_press',
+        setIndex: 2,
+        reps: 8,
+        loadKg: 60,
+        at: priorAt.add(const Duration(minutes: 3)),
+        plannedSetId: 'paper-bp-2',
+        exerciseId: bench.id,
+      ),
+      RecordedSet(
+        exerciseKey: 'bench_press',
+        setIndex: 3,
+        reps: 7,
+        loadKg: 60,
+        at: priorAt.add(const Duration(minutes: 6)),
+        plannedSetId: 'paper-bp-3',
+        exerciseId: bench.id,
+      ),
+    ]);
+    final previousNow = strengthNow;
+    strengthNow = () => startedAt;
+    final id = await startStrengthSession(paper);
+    strengthNow = previousNow;
+    await recordSet(
+      id,
+      RecordedSet(
+        exerciseKey: 'bench_press',
+        setIndex: 1,
+        reps: 8,
+        loadKg: 60,
+        at: startedAt.add(const Duration(minutes: 2)),
+        plannedSetId: 'paper-bp-1',
+        exerciseId: bench.id,
+        restSec: 120,
+      ),
+    );
+    await recordSet(
+      id,
+      RecordedSet(
+        exerciseKey: 'bench_press',
+        setIndex: 2,
+        reps: 8,
+        loadKg: 62.5,
+        at: now.subtract(const Duration(seconds: 36)),
+        plannedSetId: 'paper-bp-2',
+        exerciseId: bench.id,
+        restSec: 120,
+      ),
+    );
+    return id;
+  }
+
+  void seedCorruptActiveStrength({String sessionId = 'synthetic-corrupt'}) {
+    _activeStrengthId = sessionId;
+  }
   static const _muscles = {
     'bench_press': ['Brust', 'Trizeps'],
     'row': ['Rücken', 'Bizeps'],
@@ -377,18 +635,258 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<String> startStrengthSession(WorkoutTemplate template) async {
+    strengthStartCount++;
+    if (failStrengthStart) {
+      throw StateError('Einheit konnte nicht gestartet werden.');
+    }
+    if (_activeStrengthId != null) throw const WorkoutBusy();
+    if (template.exercises.isEmpty) {
+      throw ArgumentError('Eine Vorlage braucht Namen und eine Übung.');
+    }
     final id = 'synthetic-live-${_liveSets.length + 1}';
     _liveSets[id] = [];
+    _strength[id] = _SyntheticStrength(
+      plan: WorkoutTemplate.fromJson(template.toJson()),
+      startedAt: strengthNow(),
+    );
+    _activeStrengthId = id;
+    if (failStrengthStartAfterCommit) {
+      throw StateError('Startantwort fehlgeschlagen.');
+    }
     return id;
+  }
+
+  Future<void> _awaitStrengthWrite() async {
+    strengthWriteCount++;
+    final hold = beforeStrengthWrite;
+    if (hold != null) await hold();
   }
 
   @override
   Future<void> recordSet(String sessionId, RecordedSet set) async {
-    (_liveSets[sessionId] ??= []).add(set);
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || runtime.finished) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    final identity = set.plannedSetId != null && set.plannedSetId!.isNotEmpty;
+    final lookup = _syntheticPlanLookup(runtime);
+    if (identity && !lookup.setIds.contains(set.plannedSetId)) {
+      throw ArgumentError.value(set.plannedSetId, 'plannedSetId');
+    }
+    if (identity &&
+        set.exerciseId != null &&
+        lookup.setExercise[set.plannedSetId] != set.exerciseId) {
+      throw ArgumentError.value(set.exerciseId, 'exerciseId');
+    }
+    if (identity &&
+        runtime.recorded.any((s) => s.plannedSetId == set.plannedSetId)) {
+      return;
+    }
+    var restSec = set.restSec;
+    if (restSec == null && identity) {
+      restSec = lookup.restBySet[set.plannedSetId!];
+    }
+    final stored = RecordedSet(
+      exerciseKey: set.exerciseKey,
+      setIndex: set.setIndex,
+      reps: set.reps,
+      seconds: set.seconds,
+      loadKg: set.loadKg,
+      at: set.at,
+      plannedSetId: identity ? set.plannedSetId : null,
+      exerciseId: identity
+          ? (set.exerciseId ?? lookup.setExercise[set.plannedSetId])
+          : set.exerciseId,
+      restSec: restSec,
+    );
+    runtime.recorded.add(stored);
+    runtime.restEndsAt = restSec != null && restSec > 0
+        ? set.at.add(Duration(seconds: restSec))
+        : null;
+    (_liveSets[sessionId] ??= []).add(stored);
   }
 
   @override
-  Future<void> finishStrengthSession(String sessionId) async {}
+  Future<void> skipPlannedSet(String sessionId, String plannedSetId) async {
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || runtime.finished) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    if (!_syntheticPlanLookup(runtime).setIds.contains(plannedSetId)) {
+      throw ArgumentError.value(plannedSetId, 'plannedSetId');
+    }
+    runtime.skipped.add(plannedSetId);
+  }
+
+  @override
+  Future<void> addPlannedSet(
+    String sessionId,
+    PlannedExercise exercise,
+    PlannedSet set,
+  ) async {
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || runtime.finished) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    if (set.id.isEmpty) {
+      throw const FormatException('Planned set is missing a stable id.');
+    }
+    if (_syntheticPlanLookup(runtime).setIds.contains(set.id)) {
+      throw ArgumentError.value(set.id, 'set.id');
+    }
+    final i = runtime.added.indexWhere((e) => e.id == exercise.id);
+    if (i >= 0) {
+      runtime.added[i] = PlannedExercise(
+        id: runtime.added[i].id,
+        exerciseKey: runtime.added[i].exerciseKey,
+        name: runtime.added[i].name,
+        sets: [...runtime.added[i].sets, set],
+        note: runtime.added[i].note,
+      );
+    } else {
+      runtime.added.add(
+        PlannedExercise(
+          id: exercise.id,
+          exerciseKey: exercise.exerciseKey,
+          name: exercise.name,
+          sets: [set],
+          note: exercise.note,
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<void> skipRest(String sessionId) async {
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || runtime.finished) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    runtime.restEndsAt = null;
+  }
+
+  @override
+  Future<void> extendRest(String sessionId, {int seconds = 30}) async {
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    if (seconds <= 0) {
+      throw ArgumentError.value(seconds, 'seconds');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || runtime.finished) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    final until = runtime.restEndsAt;
+    if (until == null) {
+      throw StateError('Keine Pause läuft.');
+    }
+    runtime.restEndsAt = until.add(Duration(seconds: seconds));
+  }
+
+  @override
+  Future<ActiveStrengthRuntime> readActiveStrengthSession() async {
+    if (failStrengthReadRemaining > 0) {
+      failStrengthReadRemaining--;
+      throw StateError('Einheit konnte nicht gelesen werden.');
+    }
+    if (legacyActiveStrength) {
+      return LegacyActiveStrength(_activeStrengthId ?? 'legacy-wt');
+    }
+    final id = _activeStrengthId;
+    if (id == null) return const NoActiveStrength();
+    final runtime = _strength[id];
+    if (runtime == null) return CorruptActiveStrength(id);
+    return ActiveStrengthSession(
+      sessionId: id,
+      plan: runtime.plan,
+      recorded: List.unmodifiable(runtime.recorded),
+      skippedPlannedSetIds: Set.unmodifiable(runtime.skipped),
+      added: List.unmodifiable(runtime.added),
+      startedAt: runtime.startedAt,
+      restEndsAt: runtime.restEndsAt,
+    );
+  }
+
+  @override
+  Future<Map<String, RecordedSet>> readPreviousStrengthSets(
+    String sessionId,
+  ) async {
+    _seedPlans();
+    final current = _strength[sessionId];
+    if (current == null) {
+      throw ArgumentError.value(sessionId, 'sessionId');
+    }
+    final slots = strengthPlanSlots(current.plan, current.added);
+    final latestByExercise = <String, List<RecordedSet>>{};
+    final latestStart = <String, DateTime>{};
+    for (final e in _strength.entries) {
+      if (e.key == sessionId) continue;
+      final runtime = e.value;
+      if (!runtime.finished) continue;
+      if (!runtime.startedAt.isBefore(current.startedAt)) continue;
+      final byKey = <String, List<RecordedSet>>{};
+      for (final s in runtime.recorded) {
+        (byKey[s.exerciseKey] ??= []).add(s);
+      }
+      for (final key in byKey.keys) {
+        final seen = latestStart[key];
+        if (seen != null && !runtime.startedAt.isAfter(seen)) continue;
+        latestStart[key] = runtime.startedAt;
+        latestByExercise[key] = byKey[key]!;
+      }
+    }
+    return previousStrengthSetsFromLatest(
+      slots: slots,
+      latestByExercise: latestByExercise,
+    );
+  }
+
+  ({Set<String> setIds, Map<String, String> setExercise, Map<String, int?> restBySet})
+  _syntheticPlanLookup(_SyntheticStrength runtime) {
+    final setIds = <String>{};
+    final setExercise = <String, String>{};
+    final restBySet = <String, int?>{};
+    for (final e in [...runtime.plan.exercises, ...runtime.added]) {
+      for (final s in e.sets) {
+        setIds.add(s.id);
+        setExercise[s.id] = e.id;
+        restBySet[s.id] = s.restSec;
+      }
+    }
+    return (setIds: setIds, setExercise: setExercise, restBySet: restBySet);
+  }
+
+  @override
+  Future<void> finishStrengthSession(String sessionId) async {
+    await _awaitStrengthWrite();
+    if (failStrengthWrites) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    final runtime = _strength[sessionId];
+    if (runtime == null || _activeStrengthId != sessionId) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    runtime.finished = true;
+    _activeStrengthId = null;
+  }
 
   @override
   Future<MuscleLoad> readMuscleLoad(String endDay, int days) async {
@@ -424,13 +922,20 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   @override
   Future<List<WorkoutTemplate>> readTemplates() async {
     _seedPlans();
-    return _templates.values.toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (failTemplateRead) {
+      throw StateError('Vorlagen konnten nicht geladen werden.');
+    }
+    return [
+      for (final t in _templates.values)
+        if (!_archivedTemplates.contains(t.id)) t,
+    ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   @override
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template) async {
     _seedPlans();
+    if (templateWriteBarrier != null) await templateWriteBarrier;
+    if (failTemplateWrite) throw StateError('Speichern fehlgeschlagen');
     if (template.name.trim().isEmpty || template.exercises.isEmpty) {
       throw ArgumentError('Eine Vorlage braucht Namen und eine Übung.');
     }
@@ -442,13 +947,47 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       updatedAt: DateTime.now(),
     );
     _templates[template.id] = saved;
+    _archivedTemplates.remove(template.id);
     return saved;
   }
 
   @override
   Future<void> archiveTemplate(String id) async {
     _seedPlans();
-    _templates.remove(id);
+    if (templateWriteBarrier != null) await templateWriteBarrier;
+    if (failTemplateWrite) throw StateError('Archivieren fehlgeschlagen');
+    if (!_templates.containsKey(id)) return;
+    _archivedTemplates.add(id);
+    if (_pinnedTemplateId == id) _pinnedTemplateId = null;
+  }
+
+  @override
+  Future<String?> readPinnedTemplateId() async {
+    _seedPlans();
+    if (failPinRead) throw StateError('Anheften fehlgeschlagen');
+    return _pinnedTemplateId;
+  }
+
+  @override
+  Future<void> pinTemplate(String? id) async {
+    _seedPlans();
+    if (templateWriteBarrier != null) await templateWriteBarrier;
+    if (failPin) throw StateError('Anheften fehlgeschlagen');
+    if (id == null || id.isEmpty) {
+      _pinnedTemplateId = null;
+      return;
+    }
+    if (!_templates.containsKey(id) || _archivedTemplates.contains(id)) {
+      throw StateError('Anheften fehlgeschlagen');
+    }
+    _pinnedTemplateId = id;
+  }
+
+  void clearTemplates() {
+    _seedPlans();
+    _templates.clear();
+    _archivedTemplates.clear();
+    _pinnedTemplateId = null;
   }
 
   @override
@@ -1510,4 +2049,15 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     final p = day.split('-').map(int.parse).toList();
     return dayLabelOf(DateTime(p[0], p[1], p[2]).add(Duration(days: days)));
   }
+}
+
+class _SyntheticStrength {
+  _SyntheticStrength({required this.plan, required this.startedAt});
+  final WorkoutTemplate plan;
+  final DateTime startedAt;
+  final List<RecordedSet> recorded = [];
+  final Set<String> skipped = {};
+  final List<PlannedExercise> added = [];
+  DateTime? restEndsAt;
+  bool finished = false;
 }

@@ -372,39 +372,236 @@ class LocalOpenBandRepository implements OpenBandRepository {
   Future<String> startStrengthSession(WorkoutTemplate template) async {
     // One live engine: AppState owns the running session (streams, tallies,
     // the sessions row on stop). A second start path would be the bug.
-    if (app.activeWorkout != null) {
-      throw StateError('Eine Einheit läuft bereits.');
+    // Persistence lands before activation; success is not advertised on
+    // rollback.
+    if (template.exercises.isEmpty) {
+      throw ArgumentError('Eine Vorlage braucht Namen und eine Übung.');
     }
-    final id = 'w${DateTime.now().millisecondsSinceEpoch}';
-    app.startWorkout(type: 'weight_training', workoutId: id);
-    if (app.activeWorkout?.workoutId != id) {
-      throw StateError('Einheit konnte nicht gestartet werden.');
+    final snapshot = WorkoutTemplate.fromJson(template.toJson());
+    try {
+      return await app.startDurableStrengthWorkout(
+        templateId: snapshot.id,
+        templateVersion: snapshot.version,
+        planJson: jsonEncode(snapshot.toJson()),
+      );
+    } on StateError catch (e) {
+      if (e.message == 'Eine Einheit läuft bereits.') {
+        throw const WorkoutBusy();
+      }
+      rethrow;
     }
-    return id;
   }
 
   @override
   Future<void> recordSet(String sessionId, RecordedSet set) async {
-    final existing = await LocalDb.strengthSets(sessionId);
-    await LocalDb.saveStrengthSets(sessionId, [
-      ...existing,
-      {
-        'exercise_key': set.exerciseKey,
-        'set_index': set.setIndex,
-        'reps': set.reps,
-        'load_kg': set.loadKg,
-        'hold_sec': set.seconds,
-        'at_ts': set.at.millisecondsSinceEpoch ~/ 1000,
-      },
-    ]);
+    await LocalDb.recordOpenBandStrengthSet(
+      sessionId: sessionId,
+      exerciseKey: set.exerciseKey,
+      setIndex: set.setIndex,
+      reps: set.reps,
+      holdSec: set.seconds,
+      loadKg: set.loadKg,
+      atTs: set.at.millisecondsSinceEpoch ~/ 1000,
+      plannedSetId: set.plannedSetId,
+      exerciseId: set.exerciseId,
+      restSec: set.restSec,
+    );
+  }
+
+  @override
+  Future<void> skipPlannedSet(String sessionId, String plannedSetId) =>
+      LocalDb.skipOpenBandPlannedSet(sessionId, plannedSetId);
+
+  @override
+  Future<void> addPlannedSet(
+    String sessionId,
+    PlannedExercise exercise,
+    PlannedSet set,
+  ) => LocalDb.addOpenBandPlannedSet(
+    sessionId: sessionId,
+    exercise: exercise.toJson(),
+    set: set.toJson(),
+  );
+
+  @override
+  Future<void> skipRest(String sessionId) =>
+      LocalDb.skipOpenBandRest(sessionId);
+
+  @override
+  Future<void> extendRest(String sessionId, {int seconds = 30}) =>
+      LocalDb.extendOpenBandRest(sessionId, seconds: seconds);
+
+  @override
+  Future<ActiveStrengthRuntime> readActiveStrengthSession() async {
+    final live = await LocalDb.liveSessions();
+    if (live.isEmpty) return const NoActiveStrength();
+    for (final row in live) {
+      final type = row['type'] as String? ?? '';
+      final id = row['id'] as String?;
+      if (id == null) continue;
+      final snap = await LocalDb.openBandStrengthSession(id);
+      if (snap != null) {
+        final sets = await LocalDb.strengthSets(id);
+        return _decodeActiveStrength(row, snap, sets);
+      }
+      if (type == 'weight_training') {
+        return LegacyActiveStrength(id);
+      }
+    }
+    return const NoActiveStrength();
+  }
+
+  @override
+  Future<Map<String, RecordedSet>> readPreviousStrengthSets(
+    String sessionId,
+  ) async {
+    final snap = await LocalDb.openBandStrengthSession(sessionId);
+    final row = await LocalDb.session(sessionId);
+    final startTs = (row?['start_ts'] as num?)?.toInt();
+    if (snap == null || startTs == null) {
+      throw ArgumentError.value(sessionId, 'sessionId');
+    }
+    final planJson = snap['plan_json'];
+    if (planJson is! String) {
+      throw const FormatException('Strength plan snapshot is unreadable.');
+    }
+    final plan = WorkoutTemplate.fromJson(
+      jsonDecode(planJson) as Map<String, dynamic>,
+    );
+    final added = _addedExercises(snap['added_json']);
+    final slots = strengthPlanSlots(plan, added);
+    final keys = [for (final s in slots) s.exerciseKey];
+    final rows = await LocalDb.completedStrengthSetsBefore(
+      beforeStartTs: startTs,
+      excludeSessionId: sessionId,
+      exerciseKeys: keys,
+    );
+    final latestSession = <String, String>{};
+    final latestByExercise = <String, List<RecordedSet>>{};
+    for (final prior in rows) {
+      final key = prior['exercise_key'] as String? ?? '';
+      if (key.isEmpty) continue;
+      final sid = prior['prior_session_id'] as String;
+      final seen = latestSession[key];
+      if (seen == null) {
+        latestSession[key] = sid;
+      } else if (seen != sid) {
+        continue;
+      }
+      try {
+        (latestByExercise[key] ??= []).add(_recordedFromRow(prior));
+      } on FormatException {
+        continue;
+      }
+    }
+    return previousStrengthSetsFromLatest(
+      slots: slots,
+      latestByExercise: latestByExercise,
+    );
   }
 
   @override
   Future<void> finishStrengthSession(String sessionId) async {
+    final snap = await LocalDb.openBandStrengthSession(sessionId);
+    if (snap == null) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    if (app.activeWorkout?.workoutId != sessionId) {
+      try {
+        await app.adoptLiveSession(sessionId);
+      } on StateError catch (e) {
+        if (e.message == 'Eine Einheit läuft bereits.') {
+          throw const WorkoutBusy();
+        }
+        rethrow;
+      }
+    }
     if (app.activeWorkout?.workoutId != sessionId) {
       throw StateError('Diese Einheit läuft nicht mehr.');
     }
     await app.stopWorkout();
+  }
+
+  ActiveStrengthRuntime _decodeActiveStrength(
+    Map<String, dynamic> sessionRow,
+    Map<String, dynamic> snap,
+    List<Map<String, Object?>> setRows,
+  ) {
+    final id = sessionRow['id'] as String;
+    try {
+      final plan = WorkoutTemplate.fromJson(
+        jsonDecode(snap['plan_json'] as String) as Map<String, dynamic>,
+      );
+      final added = _addedExercises(snap['added_json']);
+      final skipped = _stringSet(snap['skipped_json']);
+      final startTs = (sessionRow['start_ts'] as num?)?.toInt();
+      if (startTs == null) return CorruptActiveStrength(id);
+      final restUntilTs = (snap['rest_until_ts'] as num?)?.toInt();
+      return ActiveStrengthSession(
+        sessionId: id,
+        plan: plan,
+        recorded: [for (final row in setRows) _recordedFromRow(row)],
+        skippedPlannedSetIds: skipped,
+        added: added,
+        startedAt: DateTime.fromMillisecondsSinceEpoch(startTs * 1000),
+        restEndsAt: restUntilTs == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(restUntilTs * 1000),
+      );
+    } catch (_) {
+      return CorruptActiveStrength(id);
+    }
+  }
+
+  static RecordedSet _recordedFromRow(Map<String, Object?> row) {
+    final atTs = (row['at_ts'] as num?)?.toInt();
+    final exerciseKey = row['exercise_key'] as String? ?? '';
+    if (atTs == null || exerciseKey.isEmpty) {
+      throw const FormatException('Recorded set is unreadable.');
+    }
+    return RecordedSet(
+      exerciseKey: exerciseKey,
+      setIndex: (row['set_index'] as num?)?.toInt() ?? 0,
+      reps: (row['reps'] as num?)?.toInt(),
+      seconds: (row['hold_sec'] as num?)?.toInt(),
+      loadKg: (row['load_kg'] as num?)?.toDouble(),
+      at: DateTime.fromMillisecondsSinceEpoch(atTs * 1000),
+      plannedSetId: row['planned_set_id'] as String?,
+      exerciseId: row['exercise_id'] as String?,
+      restSec: (row['rest_sec'] as num?)?.toInt(),
+    );
+  }
+
+  static Set<String> _stringSet(Object? raw) {
+    if (raw is! String) {
+      throw const FormatException('Strength skipped snapshot is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw const FormatException('Strength skipped snapshot is unreadable.');
+    }
+    final out = <String>{};
+    for (final v in decoded) {
+      if (v is! String || v.isEmpty) {
+        throw const FormatException('Strength skipped snapshot is unreadable.');
+      }
+      out.add(v);
+    }
+    return out;
+  }
+
+  static List<PlannedExercise> _addedExercises(Object? raw) {
+    if (raw is! String) {
+      throw const FormatException('Strength added snapshot is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw const FormatException('Strength added snapshot is unreadable.');
+    }
+    return [
+      for (final e in decoded)
+        PlannedExercise.fromJson(e as Map<String, dynamic>),
+    ];
   }
 
   @override
@@ -494,8 +691,20 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
-  Future<void> archiveTemplate(String id) =>
-      LocalDb.archiveOpenBandTemplate(id);
+  Future<void> archiveTemplate(String id) async {
+    await LocalDb.archiveOpenBandTemplate(id);
+  }
+
+  @override
+  Future<String?> readPinnedTemplateId() async =>
+      LocalDb.openBandPinnedTemplateId();
+
+  @override
+  Future<void> pinTemplate(String? id) async {
+    await LocalDb.putOpenBandPinnedTemplate(
+      id == null || id.isEmpty ? null : id,
+    );
+  }
 
   @override
   Future<DayMeals> readMeals(String day) async {
@@ -591,11 +800,13 @@ class LocalOpenBandRepository implements OpenBandRepository {
         jsonDecode(stored['payload_json'] as String) as Map<String, dynamic>,
       );
     }
-    final repository = app.repo;
     final row = await LocalDb.session(sessionId);
-    if (repository == null || row == null) return null;
+    if (row == null) return null;
     if (row['status'] == 'live') return null;
-    final workout = await repository.getWorkout(sessionId);
+    final repository = app.repo;
+    final workout = repository == null
+        ? null
+        : await repository.getWorkout(sessionId);
     final splits = await LocalDb.workoutSplits(sessionId);
     final startTs = row['start_ts'] as int;
     final endTs = row['end_ts'] as int?;
@@ -617,10 +828,13 @@ class LocalOpenBandRepository implements OpenBandRepository {
               final m => m * 60,
             }
           : endTs - startTs,
-      avgHr: (workout['avg_hr'] as num?)?.toDouble(),
-      maxHr: (workout['max_hr'] as num?)?.toInt(),
+      avgHr: (workout?['avg_hr'] as num?)?.toDouble() ??
+          (row['avg_hr'] as num?)?.toDouble(),
+      maxHr: (workout?['max_hr'] as num?)?.toInt() ??
+          (row['max_hr'] as num?)?.toInt(),
       strain: (row['strain'] as num?)?.toDouble(),
       kcal: (row['calories'] as num?)?.toDouble(),
+      hrCoveredSec: (row['hr_covered_sec'] as num?)?.toInt(),
       zoneSec: zones,
       splits: [
         for (final s in splits)
@@ -1002,7 +1216,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final payload = _payload(rawPayload);
     // Unreadable derived output must not hide the durable ledger.
     final payloadUnreadable =
-        row != null && rawPayload != null && '$rawPayload'.isNotEmpty && payload == null;
+        row != null &&
+        rawPayload != null &&
+        '$rawPayload'.isNotEmpty &&
+        payload == null;
     final usable =
         row != null &&
         row['skipped'] != 1 &&
@@ -1051,8 +1268,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
           ),
     };
     final job = _napJob(await LocalDb.napRecalcJob(day));
-    final open =
-        job != null && job.state != CorrectionState.complete;
+    final open = job != null && job.state != CorrectionState.complete;
     final scalars = payload?['scalars'];
     final storedTotal = scalars is Map
         ? _durationMin(scalars['nap_min'])
@@ -1062,11 +1278,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       judged: judged,
       sessions: [
         for (final n in merged)
-          ?_sessionFromMerged(
-            n,
-            zone,
-            originByStart[_epochSec(n['start'])],
-          ),
+          ?_sessionFromMerged(n, zone, originByStart[_epochSec(n['start'])]),
       ],
       totalMin: judged && !open ? storedTotal : null,
       rejected: [
@@ -1120,9 +1332,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         (original.source == NapSource.detected ? original.endTs : null);
     final newStart = start.millisecondsSinceEpoch ~/ 1000;
     final newEnd = end.millisecondsSinceEpoch ~/ 1000;
-    final deletes = [
-      if (original.startTs != newStart) original.startTs,
-    ];
+    final deletes = [if (original.startTs != newStart) original.startTs];
     // Detected lineage is always origin + optional override. Same-start
     // override is a manual at the origin PK (rejection cannot coexist).
     // A moved override is rejected-at-origin plus manual-at-new. Moving
@@ -1263,10 +1473,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
   }
 
-  Future<List<NapMap>> _napWindowsOn(
-    String day, {
-    int? ignoringStartTs,
-  }) async {
+  Future<List<NapMap>> _napWindowsOn(String day, {int? ignoringStartTs}) async {
     final row = await LocalDb.dayResult(day);
     final payload = _payload(row?['payload_json']);
     final usable =
@@ -1284,8 +1491,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     ];
     final edits = [
       for (final e in _ledgerEdits(await LocalDb.napEdits(day)))
-        if (!(e.kind == NapEditKind.added && e.startSec == ignoringStartTs))
-          e,
+        if (!(e.kind == NapEditKind.added && e.startSec == ignoringStartTs)) e,
     ];
     return applyNapEdits(detected, edits);
   }
@@ -1386,10 +1592,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         DateTime.fromMillisecondsSinceEpoch(start * 1000),
         zone,
       ),
-      end: recordedTime(
-        DateTime.fromMillisecondsSinceEpoch(end * 1000),
-        zone,
-      ),
+      end: recordedTime(DateTime.fromMillisecondsSinceEpoch(end * 1000), zone),
       source: manual ? NapSource.manual : NapSource.detected,
       durationMin: manual ? (stored ?? ((end - start) / 60).round()) : stored,
       originStartTs: origin?.$1,
@@ -1410,10 +1613,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         DateTime.fromMillisecondsSinceEpoch(start * 1000),
         zone,
       ),
-      end: recordedTime(
-        DateTime.fromMillisecondsSinceEpoch(end * 1000),
-        zone,
-      ),
+      end: recordedTime(DateTime.fromMillisecondsSinceEpoch(end * 1000), zone),
       source: source,
       durationMin: source == NapSource.manual
           ? ((end - start) / 60).round()
