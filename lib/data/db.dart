@@ -10406,6 +10406,40 @@ class LocalDb {
     });
   }
 
+  /// Write one field's value for [date]. Other fields and dates stay put.
+  ///
+  /// Value-only: UPDATE `value`/`updated_at` by `(date, field)`, then INSERT
+  /// if no row. `at_min` is never written on the update path; a new row has
+  /// `at_min` null. No `UPSERT` — `INSERT … ON CONFLICT DO UPDATE` needs
+  /// SQLite 3.24 and minSdk 26 ships 3.18. Not a read-merge-write of the day.
+  /// Callers that mean "this map is the whole day" keep using
+  /// [putJournalMetrics].
+  static Future<void> upsertJournalMetric(
+    String date,
+    String field,
+    double value,
+  ) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+        'journal_metric',
+        {'value': value, 'updated_at': now},
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+      if (updated == 0) {
+        await txn.insert('journal_metric', {
+          'date': date,
+          'field': field,
+          'value': value,
+          'at_min': null,
+          'updated_at': now,
+        });
+      }
+    });
+  }
+
   /// One day's numeric fields, or an empty map when nothing was recorded.
   static Future<Map<String, JournalMetricValue>> journalMetricsForDay(
     String date,

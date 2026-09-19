@@ -100,3 +100,9 @@ Typed lab history, add/edit/remove and custom markers now open from Gesundheit. 
 218 OpenBand tests,48 affected storage/CSV/legacy checks, analyzer and design manifest passed (80 blocks,64 screens). All15 new lab goldens inspected. Synthetic native runs passed: iPhone15Pro `build/ui-review/labs-v3-20260919` (138 PNGs) and iPhone13mini `build/ui-review/labs-mini-v3-20260919` (139 PNGs). Every PNG inspected; run.json/frames.json/index.html checked, including native keyboard insets, light/dark, CRUD, failure/retry, missing bounds and2x. Paper list/detail/editor/custom-marker/state exports compared with native renders. Earlier failed runs are not acceptance evidence.
 
 Existing whole-health-hub differences from Paper,2x metric-title/stage-legend/tab wrapping and older sleep/calendar copy remain queued; this unit accepts the new lab flow and its shared measurement block. No personal data, physical device, Bluetooth or physiological proof.
+
+## Journal field persistence — 19 September 2026
+
+An inline answer previously called the full-day replacement API with one key, deleting other answers and dose times. Production writeJournal now uses an atomic single-field transaction. Existing timestamps survive value-only edits; new fields have no invented time. Full-day replacement retains its explicit contract. No schema or UI change.
+
+Independent review inspected the actual SQLite path. Main240 OpenBand and affected journal tests passed (including10 new storage regressions and12 existing metric-store checks); analyzer and design manifest passed. New-key insert, existing update, independent concurrent fields, invalid inputs and separate SQLite INSERT/UPDATE aborts exercise the production adapter. No simulator rerun for this storage-only repair; no physical-device proof.

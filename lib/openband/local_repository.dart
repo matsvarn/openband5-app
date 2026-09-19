@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import '../data/db.dart';
-import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
@@ -701,11 +700,21 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<void> writeJournal(String day, String key, double value) async {
     _requireDay(day);
+    if (key.isEmpty) {
+      throw ArgumentError.value(key, 'key', 'Journal field is required.');
+    }
+    if (!value.isFinite) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Journal value must be finite.',
+      );
+    }
     final repository = app.repo;
     if (repository == null) {
       throw StateError('Local repository is not initialized.');
     }
-    await repository.postJournalMetrics(day, {key: JournalMetricValue(value)});
+    await repository.upsertJournalMetric(day, key, value);
   }
 
   @override

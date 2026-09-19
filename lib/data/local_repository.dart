@@ -283,6 +283,11 @@ abstract class LocalRepository {
     Map<String, JournalMetricValue> fields,
   ) => throw UnimplementedError('re-layer: postJournalMetrics');
 
+  /// Write one field's value for [date]. Other fields, other dates, and any
+  /// existing `at_min` on this field are left unchanged.
+  Future<void> upsertJournalMetric(String date, String field, double value) =>
+      throw UnimplementedError('re-layer: upsertJournalMetric');
+
   /// Built-in fields followed by the user's own, in editor order.
   Future<List<JournalFieldSpec>> getJournalFields() =>
       throw UnimplementedError('re-layer: getJournalFields');

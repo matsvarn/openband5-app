@@ -3221,27 +3221,46 @@ class LocalRepositoryImpl extends LocalRepository {
     String date,
     Map<String, JournalMetricValue> fields,
   ) async {
-    // Clamp on the way in rather than trusting the editor. A value past the
-    // field's ceiling is almost always a mis-tap, and a single 40-coffee day
-    // would dominate every correlation that field appears in for months.
-    final specs = await getJournalFields();
-    final clamped = <String, JournalMetricValue>{};
-    for (final e in fields.entries) {
-      final spec = journalFieldSpec(
-        e.key,
-        custom: specs.where((s) => s.custom).toList(),
-      );
-      final v = spec == null
-          ? e.value.value
-          : e.value.value.clamp(0.0, spec.max).toDouble();
-      // A zero is a real answer ("no caffeine today") and is stored as one.
-      // Absence is expressed by leaving the field out of the map entirely.
-      clamped[e.key] = JournalMetricValue(
-        v,
-        atMinuteOfDay: e.value.atMinuteOfDay,
-      );
-    }
+    final custom = await _customJournalFields();
+    final clamped = <String, JournalMetricValue>{
+      for (final e in fields.entries)
+        e.key: JournalMetricValue(
+          _clampedJournalValue(e.key, e.value.value, custom),
+          atMinuteOfDay: e.value.atMinuteOfDay,
+        ),
+    };
     await LocalDb.putJournalMetrics(date, clamped);
+  }
+
+  @override
+  Future<void> upsertJournalMetric(
+    String date,
+    String field,
+    double value,
+  ) async {
+    await LocalDb.upsertJournalMetric(
+      date,
+      field,
+      _clampedJournalValue(field, value, await _customJournalFields()),
+    );
+  }
+
+  Future<List<JournalFieldSpec>> _customJournalFields() async =>
+      (await getJournalFields()).where((s) => s.custom).toList();
+
+  /// Clamp on the way in rather than trusting the editor. A value past the
+  /// field's ceiling is almost always a mis-tap, and a single 40-coffee day
+  /// would dominate every correlation that field appears in for months.
+  ///
+  /// A zero is a real answer ("no caffeine today") and is stored as one.
+  /// Absence is expressed by not writing the field, not by writing 0.
+  double _clampedJournalValue(
+    String key,
+    double value,
+    List<JournalFieldSpec> custom,
+  ) {
+    final spec = journalFieldSpec(key, custom: custom);
+    return spec == null ? value : value.clamp(0.0, spec.max).toDouble();
   }
 
   @override
