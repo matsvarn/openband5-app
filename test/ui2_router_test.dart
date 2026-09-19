@@ -49,47 +49,114 @@ void _tallView(WidgetTester tester) {
 
 void main() {
   group('the onboarding gate', () {
-    test('walks welcome → pairing → profile → shell when nothing is skipped',
-        () {
-      for (final r in AppRoute.values) {
-        expect(resolveRoute(r, pairingSkipped: false, profileSeen: false), r);
-      }
-    });
+    test(
+      'walks welcome → pairing → profile → shell when nothing is skipped',
+      () {
+        for (final r in AppRoute.values) {
+          expect(
+            resolveRoute(
+              r,
+              pairingSkipped: false,
+              firstSyncSeen: true,
+              profileSeen: false,
+            ),
+            r,
+          );
+        }
+      },
+    );
 
-    test('a skipped pairing still asks for the profile, then opens the app',
-        () {
-      expect(
-        resolveRoute(AppRoute.pairing,
-            pairingSkipped: true, profileSeen: false),
-        AppRoute.profile,
-        reason: 'the four profile numbers are still worth asking for',
-      );
-      expect(
-        resolveRoute(AppRoute.pairing, pairingSkipped: true, profileSeen: true),
-        AppRoute.shell,
-      );
-    });
+    test(
+      'a skipped pairing still asks for the profile, then opens the app',
+      () {
+        expect(
+          resolveRoute(
+            AppRoute.pairing,
+            pairingSkipped: true,
+            firstSyncSeen: false,
+            profileSeen: false,
+          ),
+          AppRoute.profile,
+          reason: 'the four profile numbers are still worth asking for',
+        );
+        expect(
+          resolveRoute(
+            AppRoute.pairing,
+            pairingSkipped: true,
+            firstSyncSeen: false,
+            profileSeen: true,
+          ),
+          AppRoute.shell,
+        );
+      },
+    );
 
     test('a deliberately partial profile is not bounced back forever', () {
       // AppState.route keeps returning `profile` while any of age/height/
       // weight/sex is blank. Honouring that literally is the bug: the form
       // says the fields are optional.
       expect(
-        resolveRoute(AppRoute.profile,
-            pairingSkipped: false, profileSeen: true),
+        resolveRoute(
+          AppRoute.profile,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: true,
+        ),
         AppRoute.shell,
+      );
+    });
+
+    test('a real pairing detours through first sync exactly once', () {
+      expect(
+        resolveRoute(
+          AppRoute.profile,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: false,
+        ),
+        AppRoute.firstSync,
+      );
+      // Seen once, it is done — the same route goes straight to the profile.
+      expect(
+        resolveRoute(
+          AppRoute.profile,
+          pairingSkipped: false,
+          firstSyncSeen: true,
+          profileSeen: false,
+        ),
+        AppRoute.profile,
+      );
+      // A skipped pairing never syncs, so it never sees the step.
+      expect(
+        resolveRoute(
+          AppRoute.profile,
+          pairingSkipped: true,
+          firstSyncSeen: false,
+          profileSeen: false,
+        ),
+        AppRoute.profile,
       );
     });
 
     test('loading is never bypassed — there is nothing to show yet', () {
       expect(
-        resolveRoute(AppRoute.loading, pairingSkipped: true, profileSeen: true),
+        resolveRoute(
+          AppRoute.loading,
+          pairingSkipped: true,
+          firstSyncSeen: false,
+          profileSeen: true,
+        ),
         AppRoute.loading,
       );
       // Not even for someone who finished onboarding months ago.
       expect(
-        resolveRoute(AppRoute.loading,
-            pairingSkipped: false, profileSeen: false, onboarded: true),
+        resolveRoute(
+          AppRoute.loading,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: false,
+          onboarded: true,
+        ),
         AppRoute.loading,
       );
     });
@@ -100,26 +167,46 @@ void main() {
       // to drop the user into the first-run pairing screen with every night
       // of their data behind it.
       expect(
-        resolveRoute(AppRoute.pairing,
-            pairingSkipped: false, profileSeen: true, onboarded: true),
+        resolveRoute(
+          AppRoute.pairing,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: true,
+          onboarded: true,
+        ),
         AppRoute.shell,
       );
       // Same for an install that upgraded into this build and never marked
       // the profile step.
       expect(
-        resolveRoute(AppRoute.profile,
-            pairingSkipped: false, profileSeen: false, onboarded: true),
+        resolveRoute(
+          AppRoute.profile,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: false,
+          onboarded: true,
+        ),
         AppRoute.shell,
       );
       // A first run is still a first run.
       expect(
-        resolveRoute(AppRoute.pairing,
-            pairingSkipped: false, profileSeen: false, onboarded: false),
+        resolveRoute(
+          AppRoute.pairing,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: false,
+          onboarded: false,
+        ),
         AppRoute.pairing,
       );
       expect(
-        resolveRoute(AppRoute.welcome,
-            pairingSkipped: false, profileSeen: false, onboarded: true),
+        resolveRoute(
+          AppRoute.welcome,
+          pairingSkipped: false,
+          firstSyncSeen: false,
+          profileSeen: false,
+          onboarded: true,
+        ),
         AppRoute.welcome,
         reason: 'welcome is reached only with no band AND no choice made',
       );
@@ -161,8 +248,11 @@ void main() {
       // `resolveTapRoute` does not carry yet — the destinations exist here so
       // they stop landing on Home the moment it does.
       expect(domainForRoute('/profile'), ShellDomain.home);
-      expect(screenForRoute('/profile'), isA<ProfileHome>(),
-          reason: 'the battery notification promises the band, not Home');
+      expect(
+        screenForRoute('/profile'),
+        isA<ProfileHome>(),
+        reason: 'the battery notification promises the band, not Home',
+      );
       // A week of sleep, strain and recovery is Health. There is no recap
       // screen; landing on Home was not even close.
       expect(domainForRoute('/recap'), ShellDomain.health);
@@ -183,9 +273,10 @@ void main() {
       expect((screen! as WorkoutSuggestionScreen).focusId, id);
       // A payload from a build that carried no id still reviews everything.
       expect(
-          (screenForRoute(kRouteWorkoutSuggestion)! as WorkoutSuggestionScreen)
-              .focusId,
-          isNull);
+        (screenForRoute(kRouteWorkoutSuggestion)! as WorkoutSuggestionScreen)
+            .focusId,
+        isNull,
+      );
     });
 
     test('the tab index the shell persists round-trips through the enum', () {
@@ -197,33 +288,45 @@ void main() {
 
   group('pairing failures are distinguishable', () {
     test('a dismissed picker is not an error', () {
-      expect(classifyPairError(Exception('Pairing cancelled.')),
-          PairPhase.cancelled);
+      expect(
+        classifyPairError(Exception('Pairing cancelled.')),
+        PairPhase.cancelled,
+      );
     });
 
     test('a refused bond is its own state, because its fix is elsewhere', () {
-      expect(classifyPairError(Exception('createBond refused'),),
-          PairPhase.bondRefused);
+      expect(
+        classifyPairError(Exception('createBond refused')),
+        PairPhase.bondRefused,
+      );
       // The engine's own counter is enough on its own — the message from a
       // platform channel is not guaranteed to name the bond.
-      expect(classifyPairError(Exception('link lost'), bondRefusals: 2),
-          PairPhase.bondRefused);
+      expect(
+        classifyPairError(Exception('link lost'), bondRefusals: 2),
+        PairPhase.bondRefused,
+      );
     });
 
     test('anything else keeps its real message and stays generic', () {
       expect(classifyPairError(Exception('gatt 133')), PairPhase.failed);
     });
 
-    testWidgets('every failure state offers a way into the app anyway',
-        (tester) async {
+    testWidgets('every failure state offers a way into the app anyway', (
+      tester,
+    ) async {
       _tallView(tester);
       for (final phase in PairPhase.values) {
         var skipped = false;
-        await tester.pumpWidget(MaterialApp(
-          theme: buildTheme(Brightness.light),
-          home: PairingView(
-              phase: phase, onPair: () {}, onSkip: () => skipped = true),
-        ));
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: PairingView(
+              phase: phase,
+              onPair: () {},
+              onSkip: () => skipped = true,
+            ),
+          ),
+        );
         if (phase == PairPhase.paired) continue;
         await tester.tap(find.text('Skip for now'));
         expect(skipped, isTrue, reason: '$phase has no escape');
@@ -235,10 +338,14 @@ void main() {
   // vaguest thing it could say is a hardware instruction for a phone setting.
   group('a phone-side block is named as a phone-side block', () {
     test('a permission refusal is not "no band in range"', () {
-      expect(classifyPairError(Exception('scan failed: permission denied')),
-          PairPhase.bluetoothBlocked);
-      expect(classifyPairError(Exception('bluetooth unauthorized')),
-          PairPhase.bluetoothBlocked);
+      expect(
+        classifyPairError(Exception('scan failed: permission denied')),
+        PairPhase.bluetoothBlocked,
+      );
+      expect(
+        classifyPairError(Exception('bluetooth unauthorized')),
+        PairPhase.bluetoothBlocked,
+      );
     });
 
     test('a typed transport failure carries its own verdict', () {
@@ -252,24 +359,34 @@ void main() {
 
     test('a band-side failure is still a band-side failure', () {
       expect(classifyPairError(Exception('gatt 133')), PairPhase.failed);
-      expect(classifyPairError(Exception('createBond refused')),
-          PairPhase.bondRefused);
-      expect(classifyPairError(Exception('Pairing cancelled.')),
-          PairPhase.cancelled);
+      expect(
+        classifyPairError(Exception('createBond refused')),
+        PairPhase.bondRefused,
+      );
+      expect(
+        classifyPairError(Exception('Pairing cancelled.')),
+        PairPhase.cancelled,
+      );
     });
 
-    testWidgets('the screen says what the BLE layer says, in its words',
-        (tester) async {
+    testWidgets('the screen says what the BLE layer says, in its words', (
+      tester,
+    ) async {
       _tallView(tester);
       final s = bandStatusFor(
-          connection: 'disconnected', blocker: BleBlocker.permissionDenied);
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: PairingView(
+        connection: 'disconnected',
+        blocker: BleBlocker.permissionDenied,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: PairingView(
             phase: PairPhase.bluetoothBlocked,
             blocker: BleBlocker.permissionDenied,
-            onPair: () {}),
-      ));
+            onPair: () {},
+          ),
+        ),
+      );
       expect(find.text(s.title), findsOneWidget);
       expect(find.text(s.reason), findsOneWidget);
       expect(find.text(s.fix!), findsOneWidget);
@@ -279,14 +396,17 @@ void main() {
   });
 
   group('profile setup keeps its promise', () {
-    testWidgets('continue is gated on sex alone, and blanks stay blank',
-        (tester) async {
+    testWidgets('continue is gated on sex alone, and blanks stay blank', (
+      tester,
+    ) async {
       _tallView(tester);
       Map<String, dynamic>? saved;
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: ProfileSetupView(onSave: (f) async => saved = f),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: ProfileSetupView(onSave: (f) async => saved = f),
+        ),
+      );
 
       // Nothing chosen: the one required field is missing.
       await tester.tap(find.text('Continue'));
@@ -310,10 +430,12 @@ void main() {
     testWidgets('what is typed is what is written', (tester) async {
       _tallView(tester);
       Map<String, dynamic>? saved;
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: ProfileSetupView(onSave: (f) async => saved = f),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: ProfileSetupView(onSave: (f) async => saved = f),
+        ),
+      );
       await tester.tap(find.text('Male'));
       await tester.tap(find.text('Select birth date'));
       await tester.pumpAndSettle();
@@ -334,24 +456,28 @@ void main() {
       expect(saved!.containsKey('height_cm'), isFalse);
     });
 
-    testWidgets('a number it cannot read stops the save instead of dropping it',
-        (tester) async {
-      _tallView(tester);
-      Map<String, dynamic>? saved;
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: ProfileSetupView(onSave: (f) async => saved = f),
-      ));
-      await tester.tap(find.text('Male'));
-      await tester.enterText(find.byType(TextField).at(1), '78 kg');
-      await tester.pump();
-      await tester.tap(find.text('Continue'));
-      await tester.pump();
+    testWidgets(
+      'a number it cannot read stops the save instead of dropping it',
+      (tester) async {
+        _tallView(tester);
+        Map<String, dynamic>? saved;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: ProfileSetupView(onSave: (f) async => saved = f),
+          ),
+        );
+        await tester.tap(find.text('Male'));
+        await tester.enterText(find.byType(TextField).at(1), '78 kg');
+        await tester.pump();
+        await tester.tap(find.text('Continue'));
+        await tester.pump();
 
-      // Blank is unknown; "78 kg" is not blank, and writing the profile
-      // without it would have read as a save that worked.
-      expect(saved, isNull);
-    });
+        // Blank is unknown; "78 kg" is not blank, and writing the profile
+        // without it would have read as a save that worked.
+        expect(saved, isNull);
+      },
+    );
   });
 
   group('a typed number is blank, a number, or unreadable', () {
@@ -378,8 +504,12 @@ void main() {
   group('sources rank by quality, not by who wrote last', () {
     HealthSource src(String name, SourceTier tier, {DateTime? at}) =>
         HealthSource(
-            name: name, kind: '', tier: tier, icon: LucideIcons.watch,
-            lastData: at);
+          name: name,
+          kind: '',
+          tier: tier,
+          icon: LucideIcons.watch,
+          lastData: at,
+        );
 
     test('a fresher worse sensor never outranks a better one', () {
       final ranked = rankSources([
@@ -387,8 +517,11 @@ void main() {
         src('Band', SourceTier.wristOptical, at: DateTime(2026, 8, 20)),
         src('Chest strap', SourceTier.beatToBeat, at: DateTime(2026, 8, 1)),
       ]);
-      expect(ranked.map((s) => s.name).toList(),
-          ['Chest strap', 'Band', 'Phone']);
+      expect(ranked.map((s) => s.name).toList(), [
+        'Chest strap',
+        'Band',
+        'Phone',
+      ]);
     });
 
     test('recency only breaks a tie inside a tier', () {
@@ -412,21 +545,23 @@ void main() {
 
   group('a source row states what is measuring, not what is switched on', () {
     HealthSource phone({bool connected = false}) => HealthSource(
-        name: 'This phone',
-        kind: '',
-        tier: SourceTier.phone,
-        icon: LucideIcons.smartphone,
-        connected: connected);
+      name: 'This phone',
+      kind: '',
+      tier: SourceTier.phone,
+      icon: LucideIcons.smartphone,
+      connected: connected,
+    );
 
     HealthSource band({bool connected = true, bool syncing = false}) =>
         HealthSource(
-            name: 'WHOOP 4.0',
-            kind: '',
-            tier: SourceTier.wristOptical,
-            icon: LucideIcons.watch,
-            connected: connected,
-            syncing: syncing,
-            isBand: true);
+          name: 'WHOOP 4.0',
+          kind: '',
+          tier: SourceTier.wristOptical,
+          icon: LucideIcons.watch,
+          connected: connected,
+          syncing: syncing,
+          isBand: true,
+        );
 
     test('the phone is a source only once steps have actually arrived', () {
       // It used to say "Connected", unconditionally, while HealthKit was
@@ -443,29 +578,38 @@ void main() {
       expect(sourceState(band(connected: false)), 'Not connected');
     });
 
-    testWidgets('a fault is named on the row, with its own fix',
-        (tester) async {
+    testWidgets('a fault is named on the row, with its own fix', (
+      tester,
+    ) async {
       _tallView(tester);
       final s = bandStatusFor(
-          connection: 'disconnected', autoReconnectPaused: true,
-          bondRefusals: 5);
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: MyDevicesView(sources: [band(connected: false)], status: s),
-      ));
+        connection: 'disconnected',
+        autoReconnectPaused: true,
+        bondRefusals: 5,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: MyDevicesView(sources: [band(connected: false)], status: s),
+        ),
+      );
       expect(find.text(s.title), findsOneWidget);
       expect(find.text(s.fix!), findsOneWidget);
     });
 
-    testWidgets('an ordinary disconnect does not get a failure card',
-        (tester) async {
+    testWidgets('an ordinary disconnect does not get a failure card', (
+      tester,
+    ) async {
       _tallView(tester);
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: MyDevicesView(
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: MyDevicesView(
             sources: [band(connected: false)],
-            status: bandStatusFor(connection: 'disconnected')),
-      ));
+            status: bandStatusFor(connection: 'disconnected'),
+          ),
+        ),
+      );
       // Exactly one "Not connected": the row. No card repeating it.
       expect(find.text('Not connected'), findsOneWidget);
     });
@@ -481,8 +625,9 @@ void main() {
   // widget tree is exactly what missed it: both halves look right on their
   // own.
   group('the way back to pairing survives a forget', () {
-    testWidgets('the band goes, the phone stays, the pair affordance appears',
-        (tester) async {
+    testWidgets('the band goes, the phone stays, the pair affordance appears', (
+      tester,
+    ) async {
       _tallView(tester);
       final app = AppState()
         ..paired = PairedDevice('AA:BB:CC:DD:EE:FF', 'SER1')
@@ -491,11 +636,15 @@ void main() {
         ..phoneStepsLastTotal = 4200;
       addTearDown(app.dispose);
 
-      await tester.pumpWidget(ChangeNotifierProvider<AppState>.value(
-        value: app,
-        child: MaterialApp(
-            theme: buildTheme(Brightness.light), home: const MyDevices()),
-      ));
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: app,
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: const MyDevices(),
+          ),
+        ),
+      );
       expect(find.text('Your band'), findsOneWidget);
       expect(find.text('Pair a band'), findsNothing);
 
@@ -506,28 +655,34 @@ void main() {
       await tester.pump();
 
       expect(find.text('Your band'), findsNothing);
-      expect(find.text('This phone'), findsOneWidget,
-          reason: 'the phone row is what used to swallow the empty state');
+      expect(
+        find.text('This phone'),
+        findsOneWidget,
+        reason: 'the phone row is what used to swallow the empty state',
+      );
       expect(find.text('Pair a band'), findsOneWidget);
     });
 
     testWidgets('and for someone who only ever had the phone', (tester) async {
       _tallView(tester);
       var pairs = 0;
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: MyDevicesView(
-          sources: [
-            const HealthSource(
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: MyDevicesView(
+            sources: [
+              const HealthSource(
                 name: 'This phone',
                 kind: 'Motion coprocessor',
                 tier: SourceTier.phone,
                 icon: LucideIcons.smartphone,
-                connected: true),
-          ],
-          onPair: () => pairs++,
+                connected: true,
+              ),
+            ],
+            onPair: () => pairs++,
+          ),
         ),
-      ));
+      );
       await tester.tap(find.text('Pair a band'));
       expect(pairs, 1);
     });
@@ -546,29 +701,41 @@ void main() {
       d.reset();
       expect(d.serial, isNull);
       expect(d.strapName, isNull);
-      expect(d.generation, isNull,
-          reason: 'a gen5 band must not be calibrated as the gen4 it replaced');
+      expect(
+        d.generation,
+        isNull,
+        reason: 'a gen5 band must not be calibrated as the gen4 it replaced',
+      );
       expect(d.batteryPct, isNull);
       expect(d.connection, 'disconnected');
-      expect(d.autoReconnectPaused, isFalse,
-          reason: 'the next band starts with a clean reconnect loop');
+      expect(
+        d.autoReconnectPaused,
+        isFalse,
+        reason: 'the next band starts with a clean reconnect loop',
+      );
       expect(d.bondRefusals, 0);
     });
 
     testWidgets('a paired band is not asked to pair again', (tester) async {
       _tallView(tester);
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: MyDevicesView(sources: [
-          const HealthSource(
-              name: 'WHOOP 4.0',
-              kind: '',
-              tier: SourceTier.wristOptical,
-              icon: LucideIcons.watch,
-              connected: true,
-              isBand: true),
-        ], onPair: () {}),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: MyDevicesView(
+            sources: [
+              const HealthSource(
+                name: 'WHOOP 4.0',
+                kind: '',
+                tier: SourceTier.wristOptical,
+                icon: LucideIcons.watch,
+                connected: true,
+                isBand: true,
+              ),
+            ],
+            onPair: () {},
+          ),
+        ),
+      );
       expect(find.text('Pair a band'), findsNothing);
     });
   });
@@ -586,13 +753,13 @@ void main() {
   // and the disclosure has to say "abstains", never quietly imply gen4.
   group('the device disclosure', () {
     HealthSource band(String? family) => HealthSource(
-          name: 'Band',
-          kind: 'wrist optical',
-          tier: SourceTier.wristOptical,
-          icon: LucideIcons.watch,
-          isBand: true,
-          family: family,
-        );
+      name: 'Band',
+      kind: 'wrist optical',
+      tier: SourceTier.wristOptical,
+      icon: LucideIcons.watch,
+      isBand: true,
+      family: family,
+    );
 
     test('names the family it is calibrated for', () {
       expect(calibrationDisclosure(band('gen4'))!.$1, 'WHOOP 4');
@@ -609,22 +776,26 @@ void main() {
 
     test('the phone has no per-sensor calibration to disclose', () {
       expect(
-        calibrationDisclosure(const HealthSource(
-          name: 'This phone',
-          kind: 'Motion coprocessor',
-          tier: SourceTier.phone,
-          icon: LucideIcons.smartphone,
-        )),
+        calibrationDisclosure(
+          const HealthSource(
+            name: 'This phone',
+            kind: 'Motion coprocessor',
+            tier: SourceTier.phone,
+            icon: LucideIcons.smartphone,
+          ),
+        ),
         isNull,
       );
     });
 
     testWidgets('reaches the band page', (tester) async {
       _tallView(tester);
-      await tester.pumpWidget(MaterialApp(
-        theme: buildTheme(Brightness.light),
-        home: DeviceDetailView(band('gen5')),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: DeviceDetailView(band('gen5')),
+        ),
+      );
       expect(find.text('Calibration'), findsOneWidget);
       expect(find.text('WHOOP 5'), findsOneWidget);
     });
@@ -646,8 +817,12 @@ void main() {
       final plain = File('${dir.path}/x.db')
         ..writeAsBytesSync(List<int>.generate(5000, (i) => i % 251));
       final sealed = File('${dir.path}/Backup (1).bin');
-      await encryptBackupFile(plain, sealed, 'correct horse battery',
-          iterations: 1000);
+      await encryptBackupFile(
+        plain,
+        sealed,
+        'correct horse battery',
+        iterations: 1000,
+      );
       expect(await isEncryptedBackup(sealed.path), isTrue);
     });
 

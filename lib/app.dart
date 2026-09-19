@@ -33,6 +33,7 @@ import 'widget/widget_service.dart';
 import 'ui2/activity/catalogue.dart';
 import 'ui2/activity/live.dart';
 import 'ui2/activity/tiles.dart' show mapTilesAllowed;
+import 'ui2/onboarding/first_sync.dart';
 import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
 import 'ui2/onboarding/profile_setup.dart';
 import 'ui2/pairing/device_picker.dart';
@@ -194,15 +195,23 @@ class _OpenStrapAppState extends State<OpenStrapApp>
 AppRoute resolveRoute(
   AppRoute route, {
   required bool pairingSkipped,
+  required bool firstSyncSeen,
   required bool profileSeen,
   bool onboarded = false,
 }) {
   var r = route;
-  if (onboarded && (r == AppRoute.pairing || r == AppRoute.profile)) {
+  if (onboarded &&
+      (r == AppRoute.pairing ||
+          r == AppRoute.firstSync ||
+          r == AppRoute.profile)) {
     return AppRoute.shell;
   }
   if (r == AppRoute.pairing && pairingSkipped) r = AppRoute.profile;
   if (r == AppRoute.profile && profileSeen) return AppRoute.shell;
+  // A real pairing shows the first-sync step once; a skipped one does not.
+  if (r == AppRoute.profile && !pairingSkipped && !firstSyncSeen) {
+    return AppRoute.firstSync;
+  }
   return r;
 }
 
@@ -238,6 +247,7 @@ class _Gate extends StatelessWidget {
         final route = resolveRoute(
           raw,
           pairingSkipped: OnboardingBypass.pairingSkipped,
+          firstSyncSeen: OnboardingBypass.firstSyncSeen,
           profileSeen: OnboardingBypass.profileSeen,
           onboarded: _onboarded,
         );
@@ -256,6 +266,9 @@ class _Gate extends StatelessWidget {
           AppRoute.pairing => DevicePickerScreen(
             onBack: () => context.read<AppState>().returnToWelcome(),
             onSkip: () => OnboardingBypass.mark(OnboardingBypass.kPairing),
+          ),
+          AppRoute.firstSync => FirstSyncScreen(
+            onDone: () => OnboardingBypass.mark(OnboardingBypass.kFirstSync),
           ),
           AppRoute.profile => ProfileSetupScreen(
             onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile),

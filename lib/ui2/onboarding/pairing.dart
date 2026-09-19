@@ -34,6 +34,7 @@ class OnboardingBypass {
   OnboardingBypass._();
 
   static const kPairing = 'onboard.skipped_pairing';
+  static const kFirstSync = 'onboard.saw_first_sync';
   static const kProfile = 'onboard.saw_profile_setup';
 
   /// Bumped on every skip so the gate — which selects on the AppState route,
@@ -41,6 +42,7 @@ class OnboardingBypass {
   static final revision = ValueNotifier<int>(0);
 
   static bool get pairingSkipped => Prefs.getBool(kPairing, false);
+  static bool get firstSyncSeen => Prefs.getBool(kFirstSync, false);
   static bool get profileSeen => Prefs.getBool(kProfile, false);
 
   static void mark(String key) {

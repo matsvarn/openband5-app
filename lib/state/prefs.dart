@@ -21,7 +21,18 @@ class Prefs {
   static Future<void> ensureLoaded() async {
     try {
       _sp ??= await SharedPreferences.getInstance();
-    } catch (_) {/* reads fall back to defaults */}
+    } catch (_) {
+      /* reads fall back to defaults */
+    }
+  }
+
+  /// Drop the cached instance so a test's fresh `setMockInitialValues` is
+  /// honoured by the next [ensureLoaded].
+  static void debugReset() {
+    assert(() {
+      _sp = null;
+      return true;
+    }());
   }
 
   /// Whether storage is actually available, i.e. whether a `getX` default is
