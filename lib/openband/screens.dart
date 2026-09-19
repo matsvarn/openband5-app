@@ -8,6 +8,8 @@ import 'domain.dart';
 import 'daily_activity.dart';
 import 'health.dart';
 import 'metric_detail.dart';
+import 'night_signals.dart';
+import '../ui2/profile/profile.dart' show SetRow;
 import 'sleep_editor.dart';
 import 'theme.dart';
 
@@ -1119,6 +1121,22 @@ class OpenBandSleep extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                OBCard(
+                  child: SetRow(
+                    LucideIcons.chartNoAxesCombined,
+                    p.sleep,
+                    'Nachtverlauf',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => OpenBandNightSignals(
+                          repository: controller.repository,
+                          day: controller.selectedDay,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 FutureBuilder<List<MetricPoint>>(

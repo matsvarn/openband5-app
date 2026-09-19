@@ -90,6 +90,52 @@ class SleepNight {
   });
 }
 
+enum NightSignalKind { pulse, hrv, respiration }
+
+class NightSignalReading {
+  final DateTime at;
+
+  /// A stored refusal stays in the timeline as a gap.
+  final double? value;
+  final ({double lower, double upper})? bounds;
+  const NightSignalReading(this.at, this.value, {this.bounds});
+}
+
+class NightSignalSeries {
+  final List<NightSignalReading> readings;
+  final String? reason;
+  final bool partial;
+
+  /// Known source cadence, including its timestamp tolerance. Null means
+  /// isolated observations; the chart must not connect them.
+  final Duration? maxConnectingGap;
+  const NightSignalSeries({
+    this.readings = const [],
+    this.reason,
+    this.partial = false,
+    this.maxConnectingGap,
+  });
+}
+
+class NightSignals {
+  final String day;
+  final ({DateTime start, DateTime end})? window;
+  final String? recordingTimezone;
+  final Map<NightSignalKind, NightSignalSeries> series;
+  final bool processing, synthetic;
+  const NightSignals({
+    required this.day,
+    this.window,
+    this.recordingTimezone,
+    this.series = const {},
+    this.processing = false,
+    this.synthetic = false,
+  });
+
+  NightSignalSeries signal(NightSignalKind kind) =>
+      series[kind] ?? const NightSignalSeries();
+}
+
 class SleepDraft {
   final String id, day;
   final DateTime onset, wake;
@@ -599,6 +645,7 @@ class FoodHit {
 
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<NightSignals> readNightSignals(String day);
   Future<String> startStrengthSession(WorkoutTemplate template);
   Future<void> recordSet(String sessionId, RecordedSet set);
   Future<void> finishStrengthSession(String sessionId);

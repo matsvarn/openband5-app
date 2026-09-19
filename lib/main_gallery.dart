@@ -295,6 +295,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                 SyntheticScenario.complete => 'Vollständige Nacht',
                 SyntheticScenario.partial => 'Teilnacht · 24 Minuten Lücke',
                 SyntheticScenario.missing => 'Keine Nacht',
+                SyntheticScenario.missingNightHrv => 'Nacht ohne HRV-Verlauf',
                 SyntheticScenario.processing => 'Auswertung läuft',
                 SyntheticScenario.disconnected => 'Band getrennt',
                 SyntheticScenario.interrupted => 'Übertragung unterbrochen',

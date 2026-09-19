@@ -593,6 +593,32 @@
         "evidence": "test/openband_gestures_test.dart",
         "note": "The selected action is read back from SharedPreferences in a local test. Hardware dispatch is not validated by the synthetic UI review."
       }
+    },
+    "A02 · Schlaf": {
+      "Nachtverlauf Puls": {
+        "status": "implemented",
+        "paperNode": "3ISM-0",
+        "source": "lib/openband/local_repository.dart: readNightSignals; series.hr_curve",
+        "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
+        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
+        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+      },
+      "Nachtverlauf HRV": {
+        "status": "implemented",
+        "paperNode": "3IUI-0",
+        "source": "lib/openband/local_repository.dart: readNightSignals; hrv_night_shape",
+        "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
+        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
+        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+      },
+      "Nachtverlauf Atemfrequenz": {
+        "status": "implemented",
+        "paperNode": "3IW8-0",
+        "source": "lib/openband/local_repository.dart: readNightSignals; series.resp_day",
+        "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
+        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
+        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+      }
     }
   }
 }

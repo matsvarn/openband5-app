@@ -19,6 +19,112 @@ class LocalOpenBandRepository implements OpenBandRepository {
   final AppState app;
 
   @override
+  Future<NightSignals> readNightSignals(String day) async {
+    _requireDay(day);
+    final correction = await LocalDb.openBandSleepCorrection(day);
+    final zone = correction?['recording_timezone']?.toString();
+    if (correction != null && correction['status'] != 'complete') {
+      return NightSignals(
+        day: day,
+        recordingTimezone: zone,
+        processing: correction['status'] != 'failed',
+      );
+    }
+    final row = await LocalDb.dayResult(day);
+    if (row == null) return NightSignals(day: day);
+    final payload = _payload(row['payload_json']);
+    if (payload == null) {
+      throw const FormatException('Stored night signals are unreadable.');
+    }
+    final start = _signalTime(_at(payload, 'sleep.window.value.onset_ms'));
+    final end = _signalTime(_at(payload, 'sleep.window.value.offset_ms'));
+    if (start == null || end == null || !end.isAfter(start)) {
+      return NightSignals(day: day, recordingTimezone: zone);
+    }
+    List<NightSignalReading> withinNight(List<NightSignalReading> readings) =>
+        List.unmodifiable(
+          readings
+            ..removeWhere((r) => r.at.isBefore(start) || !r.at.isBefore(end))
+            ..sort((a, b) => a.at.compareTo(b.at)),
+        );
+
+    NightSignalSeries curve(String key) {
+      final raw = _at(payload, 'series.$key');
+      final readings = withinNight([
+        if (raw is List)
+          for (final item in raw)
+            if (item is Map && _signalTime(item['t'], seconds: true) != null)
+              NightSignalReading(
+                _signalTime(item['t'], seconds: true)!,
+                _double(item['v']),
+              ),
+      ]);
+      return NightSignalSeries(
+        readings: readings,
+        maxConnectingGap: key == 'hr_curve'
+            ? const Duration(minutes: 1)
+            : const Duration(minutes: 5, seconds: 2),
+        // Calendar-day curves do not establish coverage of a whole night.
+        partial: readings.isNotEmpty,
+      );
+    }
+
+    final origin = _signalTime(_at(payload, 'hrv_night_shape.origin_ms'));
+    final rawBins = _at(payload, 'hrv_night_shape.value.bins');
+    final hrv = <NightSignalReading>[];
+    if (origin != null && rawBins is List) {
+      for (final bin in rawBins) {
+        if (bin is! Map) continue;
+        final offset = _double(bin['t']);
+        if (offset == null || offset < 0) continue;
+        final at = _signalTime(origin.millisecondsSinceEpoch + offset * 1000);
+        if (at == null) continue;
+        final value = _double(bin['rmssd_ms']);
+        final lower = _double(bin['lo_ms']);
+        final upper = _double(bin['hi_ms']);
+        final hasBand =
+            value != null &&
+            lower != null &&
+            upper != null &&
+            lower <= value &&
+            value <= upper;
+        hrv.add(
+          NightSignalReading(
+            at,
+            hasBand ? value : null,
+            bounds: hasBand ? (lower: lower, upper: upper) : null,
+          ),
+        );
+      }
+    }
+    final hrvReadings = withinNight(hrv);
+    return NightSignals(
+      day: day,
+      window: (start: start, end: end),
+      recordingTimezone: zone,
+      series: {
+        NightSignalKind.pulse: curve('hr_curve'),
+        NightSignalKind.respiration: curve('resp_day'),
+        NightSignalKind.hrv: NightSignalSeries(
+          readings: hrvReadings,
+          maxConnectingGap: const Duration(minutes: 30),
+          partial:
+              row['partial'] == 1 || hrvReadings.any((r) => r.value == null),
+          reason: _stringAt(payload, 'hrv_night_shape.note'),
+        ),
+      },
+    );
+  }
+
+  static DateTime? _signalTime(Object? raw, {bool seconds = false}) {
+    final value = _double(raw);
+    if (value == null) return null;
+    final ms = value * (seconds ? 1000 : 1);
+    if (ms.abs() > 8640000000000000) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms.round(), isUtc: true);
+  }
+
+  @override
   Future<OpenBandDay> readDay(String day) async {
     _requireDay(day);
     final repository = app.repo;

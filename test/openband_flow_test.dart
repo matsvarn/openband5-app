@@ -121,13 +121,25 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> pressSleepEditor(WidgetTester tester) async {
+    final target = find.byTooltip('Schlafzeiten ändern');
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('iOS back swipe keeps the edited draft for reopening', (
     tester,
   ) async {
     await mount(tester, reducedMotion: false);
     await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+    await pressSleepEditor(tester);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
     await tester.pumpAndSettle();
@@ -135,7 +147,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Schlafzeiten ändern'), findsNothing);
     expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
-    await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+    await pressSleepEditor(tester);
     await tester.pumpAndSettle();
     expect(
       tester
@@ -166,7 +178,7 @@ void main() {
   Future<void> edit(WidgetTester tester) async {
     await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+    await pressSleepEditor(tester);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
     await tester.pumpAndSettle();
@@ -397,7 +409,7 @@ void main() {
         matchesGoldenFile('openband_goldens/sleep-large.png'),
       );
       await tester.scrollUntilVisible(find.text('Zeiten korrigieren'), 300);
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor(tester);
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       addTearDown(tester.view.resetViewInsets);
@@ -420,7 +432,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+    await pressSleepEditor(tester);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
     await tester.testTextInput.receiveAction(TextInputAction.next);
@@ -451,7 +463,7 @@ void main() {
       await mount(tester);
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor(tester);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('sleep-onset')),
@@ -481,7 +493,7 @@ void main() {
       await tester.tap(find.text('Entwurf behalten'));
       await tester.pumpAndSettle();
       expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor(tester);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Änderung ansehen'));
       await tester.tap(find.text('Änderung ansehen'));
@@ -544,6 +556,12 @@ void main() {
       // Hero and the Schlafdauer trend both show the corrected night.
       expect(find.text('7h08'), findsNWidgets(2));
       // The restore action lives in the info sheet now.
+      await tester.scrollUntilVisible(
+        find.byTooltip('Schlafwerte und Methode'),
+        -250,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Schlafwerte und Methode'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Automatische Zeiten wiederherstellen'));

@@ -7,6 +7,7 @@ import 'charts.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'health.dart';
+import 'night_signals.dart';
 import 'screens.dart';
 import 'theme.dart';
 
@@ -353,8 +354,17 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute<void>(
-                          builder: (_) =>
-                              OpenBandSleep(controller: widget.controller),
+                          builder: (_) => switch (widget.metricKey) {
+                            MetricKey.hrv ||
+                            MetricKey.restingHr => OpenBandNightSignals(
+                              repository: widget.controller.repository,
+                              day: widget.controller.selectedDay,
+                              initial: widget.metricKey == MetricKey.hrv
+                                  ? NightSignalKind.hrv
+                                  : NightSignalKind.pulse,
+                            ),
+                            _ => OpenBandSleep(controller: widget.controller),
+                          },
                         ),
                       ),
                     ),

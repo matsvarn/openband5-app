@@ -460,6 +460,54 @@ void main() {
       await capture('gestures-large-text');
       await press('Taschenlampe');
       await capture('gestures-large-text-scrolled');
+
+      for (final brightness in [Brightness.light, Brightness.dark]) {
+        await mount(brightness: brightness);
+        await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
+        await tester.pumpAndSettle();
+        await press('Nachtverlauf');
+        await capture('night-pulse-${brightness.name}');
+        await press('HRV');
+        expect(find.text('60'), findsOneWidget);
+        await capture('night-hrv-${brightness.name}');
+        await press('Atmung');
+        expect(find.text('14,2'), findsOneWidget);
+        await capture('night-respiration-${brightness.name}');
+        await tester.tap(
+          find.byTooltip('Nachtverlauf: Quelle und Darstellung'),
+        );
+        await tester.pumpAndSettle();
+        await capture('night-info-${brightness.name}');
+        await press('Schließen');
+      }
+      for (final scenario in [
+        SyntheticScenario.partial,
+        SyntheticScenario.missingNightHrv,
+      ]) {
+        await mount(scenario: scenario);
+        await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')));
+        await tester.pumpAndSettle();
+        await press('Nachtverlauf');
+        if (scenario == SyntheticScenario.partial) {
+          for (var i = 0; i < 2; i++) {
+            await tester.tap(find.byTooltip('Nächster Messpunkt'));
+            await tester.pumpAndSettle();
+          }
+          expect(find.text('02:10'), findsOneWidget);
+          expect(find.text('—'), findsOneWidget);
+          await capture('night-gap-selected');
+        } else {
+          await press('HRV');
+          expect(find.text('Keine HRV-Werte'), findsOneWidget);
+          await capture('night-hrv-missing');
+        }
+      }
+      await mount(scale: 2);
+      await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
+      await tester.pumpAndSettle();
+      await press('Nachtverlauf');
+      await press('Atmung');
+      await capture('night-large-text');
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();

@@ -1,12 +1,14 @@
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'time.dart';
 
 enum SyntheticScenario {
   complete,
   dense,
   partial,
   missing,
+  missingNightHrv,
   processing,
   disconnected,
   interrupted,
@@ -34,6 +36,77 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, double> _hrvByDay = {};
   final Map<String, double> _rhrByDay = {};
   final Map<String, double> _strainByDay = {};
+
+  @override
+  Future<NightSignals> readNightSignals(String day) async {
+    final current = await readDay(day);
+    final night = current.sleep;
+    if (scenario == SyntheticScenario.missing ||
+        day != _day ||
+        night.onset == null ||
+        night.wake == null ||
+        (current.correction != null &&
+            current.correction!.state != CorrectionState.complete)) {
+      return NightSignals(
+        day: day,
+        synthetic: true,
+        processing:
+            current.correction?.state == CorrectionState.pending ||
+            current.correction?.state == CorrectionState.calculating,
+      );
+    }
+    if (scenario == SyntheticScenario.processing) {
+      return NightSignals(day: day, synthetic: true, processing: true);
+    }
+    final start = parseRecordedTime(
+      night.onset!,
+      obTime(night.onset),
+      zone: _timezone,
+    )!;
+    final end = parseRecordedTime(
+      night.wake!,
+      obTime(night.wake),
+      zone: _timezone,
+    )!;
+    final raw = Map<String, dynamic>.from(
+      _detail[scenario == SyntheticScenario.partial
+                  ? 'night_signals_sparse'
+                  : 'night_signals']
+              as Map? ??
+          const {},
+    );
+    if (scenario == SyntheticScenario.missingNightHrv) raw['hrv'] = const [];
+    return NightSignals(
+      day: day,
+      synthetic: true,
+      recordingTimezone: _timezone,
+      window: (start: start, end: end),
+      series: {
+        for (final kind in NightSignalKind.values)
+          kind: NightSignalSeries(
+            partial: true,
+            maxConnectingGap: kind == NightSignalKind.hrv
+                ? const Duration(hours: 1)
+                : const Duration(minutes: 3),
+            readings: [
+              for (final row in raw[kind.name] as List? ?? const [])
+                if (DateTime.parse(row['at'] as String).isBefore(end) &&
+                    !DateTime.parse(row['at'] as String).isBefore(start))
+                  NightSignalReading(
+                    DateTime.parse(row['at'] as String),
+                    (row['value'] as num?)?.toDouble(),
+                    bounds: row['lower'] == null
+                        ? null
+                        : (
+                            lower: (row['lower'] as num).toDouble(),
+                            upper: (row['upper'] as num).toDouble(),
+                          ),
+                  ),
+            ],
+          ),
+      },
+    );
+  }
 
   late final String _day;
   late final String _timezone;
@@ -90,10 +163,22 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       ),
       _rhrByDay,
     );
-    _indexBaseline(
-      const [1.4, 1.9, 0.8, 2.1, 1.6, 1.1, 1.8, 0.9, 2.0, 1.5, 1.3, 1.7, 1.0, 1.2],
-      _strainByDay,
-    );
+    _indexBaseline(const [
+      1.4,
+      1.9,
+      0.8,
+      2.1,
+      1.6,
+      1.1,
+      1.8,
+      0.9,
+      2.0,
+      1.5,
+      1.3,
+      1.7,
+      1.0,
+      1.2,
+    ], _strainByDay);
     final saved = _at(_day, _summary['latest_saved_local'] as String);
     _baseBand = BandSnapshot(
       connection: BandConnection.connected,

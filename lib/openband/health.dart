@@ -174,7 +174,10 @@ class OBSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     return Container(
-      height: 40,
+      height: (MediaQuery.textScalerOf(context).scale(14) * 1.36 + 8).clamp(
+        40,
+        double.infinity,
+      ),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: p.card,

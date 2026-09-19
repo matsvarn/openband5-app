@@ -40,7 +40,13 @@
     "3IK6-0": "A08 Bandgesten · Doppelt tippen",
     "3IM4-0": "A08 Bandgesten · Doppelt tippen · Dunkel",
     "3INT-0": "A08 Bandgesten · Ziel nicht verfügbar",
-    "3IPM-0": "A08 Bandgesten · gespeichert"
+    "3IPM-0": "A08 Bandgesten · gespeichert",
+    "3ISM-0": "A02 Nachtverlauf · Puls",
+    "3IUI-0": "A02 Nachtverlauf · HRV",
+    "3IW8-0": "A02 Nachtverlauf · Atemfrequenz",
+    "3IXY-0": "A02 Nachtverlauf · HRV fehlt",
+    "3IZO-0": "A02 Nachtverlauf · Dunkel",
+    "3J78-0": "A02 Nachtverlauf · wenige Werte"
   },
   "blocks": [
     {
@@ -70,7 +76,13 @@
         "3IK6-0",
         "3IM4-0",
         "3INT-0",
-        "3IPM-0"
+        "3IPM-0",
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
       ]
     },
     {
@@ -330,7 +342,13 @@
       "file": "theme.dart",
       "usedIn": [
         "3FVE-0",
-        "3FLZ-0"
+        "3FLZ-0",
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
       ],
       "implemented": "health.dart"
     },
@@ -648,7 +666,10 @@
       "widget": "SetRow",
       "file": "ui2/profile/profile.dart",
       "implemented": "SetRow in ui2/profile/profile.dart",
-      "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture)."
+      "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture).",
+      "usedIn": [
+        "3G8S-0"
+      ]
     },
     {
       "name": "OBCardRow",
@@ -818,6 +839,81 @@
       "usedIn": [
         "3INT-0"
       ]
+    },
+    {
+      "name": "OBNightSignalChart",
+      "paperNode": "3J38-0",
+      "widget": "OBNightSignalChart",
+      "file": "night_signals.dart",
+      "usedIn": [
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "children": [
+        "OBTrendPlot.night"
+      ],
+      "variants": [
+        "pulse",
+        "hrv",
+        "respiration",
+        "partial",
+        "missing",
+        "dark"
+      ],
+      "notes": "Uses OBCard and the existing metric hero type scale. Selected stored value only; no invented averages, baseline, or coverage percentage."
+    },
+    {
+      "name": "OBTrendPlot.night",
+      "paperNode": "3K9R-0",
+      "widget": "OBNightSignalPlot",
+      "file": "night_signals.dart",
+      "variant": "night",
+      "usedIn": [
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "notes": "Extends the OBTrendPlot visual language with absolute timestamps, source cadence breaks, stored HRV bounds, and nearest stored-point selection. No X markers, gap lines, smoothing, or interpolation of selected values."
+    },
+    {
+      "name": "OBSegmented.night",
+      "paperNode": "3K9K-0",
+      "widget": "OBSegmented",
+      "file": "health.dart",
+      "variant": "night",
+      "usedIn": [
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "notes": "Existing shared selector; only labels and selected index change. Height grows with system text size."
+    },
+    {
+      "name": "OBNightSignalChart.info",
+      "paperNode": "3KGQ-0",
+      "widget": "OpenBandNightSignals",
+      "file": "night_signals.dart",
+      "variant": "info",
+      "usedIn": [
+        "3ISM-0",
+        "3IUI-0",
+        "3IW8-0",
+        "3IXY-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "implemented": "night_signals.dart (_info)",
+      "notes": "Counts and method stay behind the shared info action."
     }
   ],
   "openBlocks": [
@@ -852,5 +948,15 @@
       "openband_session_detail",
       "openband_lap"
     ]
+  },
+  "research": {
+    "nightSignals": {
+      "references": [
+        "https://mobbin.com/screens/b2cd07af-0637-4ab0-83bb-4aec356a5dff",
+        "https://mobbin.com/screens/1682cf89-ebad-47a3-9bc8-454af9b04991",
+        "https://mobbin.com/screens/f91de068-fb36-4d69-a8d0-5c5b77404fb0"
+      ],
+      "decision": "Alpin 3 remains the visual contract. Borrow compact metric context and clear trace hierarchy. Keep stored HRV uncertainty and refuse to connect samples across unsupported timing gaps."
+    }
   }
 }
