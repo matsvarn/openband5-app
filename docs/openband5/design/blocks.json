@@ -29,7 +29,8 @@
     "3H8H-0": "A01 Übersicht · Band getrennt",
     "3HTP-0": "A01 Übersicht · Dunkel",
     "3HFC-0": "A01 Übersicht anpassen",
-    "3HPD-0": "A01 Übersicht · Datum wählen"
+    "3HPD-0": "A01 Übersicht · Datum wählen",
+    "3I5L-0": "A05 Gesundheit · HRV · Detail (OpenBandMetricDetail)"
   },
   "blocks": [
     {
@@ -506,9 +507,9 @@
     },
     {
       "name": "OBSleepHero",
-      "paperNode": "3GGF-0",
+      "paperNode": "3G8S-0",
       "widget": "OBSleepHero",
-      "file": "sleep_editor.dart",
+      "file": "screens.dart",
       "usedIn": [
         "3G8S-0"
       ]
@@ -685,34 +686,46 @@
     {
       "name": "OBSyncState",
       "widget": "OBSyncState",
-      "paper": "A00b · Bausteine",
-      "screens": [],
       "implemented": "screens.dart",
-      "note": "Eine Zeile unter dem Kopf: Band wird gelesen · Unterbrochen (Fortsetzen) · Gespeichert bis. Nie eine Karte im Feed. Kein Fortschritt ohne echten Wert."
+      "note": "Eine Zeile unter dem Kopf: Band wird gelesen · Unterbrochen (Fortsetzen) · Gespeichert bis. Nie eine Karte im Feed. Kein Fortschritt ohne echten Wert.",
+      "paperNode": "3I3P-0",
+      "file": "screens.dart",
+      "usedIn": [
+        "3F5T-0"
+      ]
     },
     {
       "name": "OBStepsHours",
       "widget": "OBStepsHours",
-      "paper": "A00b · Bausteine",
-      "screens": [],
       "implemented": "daily_activity.dart",
-      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau."
+      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau.",
+      "paperNode": "3I4C-0",
+      "file": "daily_activity.dart",
+      "usedIn": [
+        "3F5T-0"
+      ]
     },
     {
       "name": "OBMetricHero",
       "widget": "OBMetricHero",
-      "paper": "A00b · Bausteine",
-      "screens": [],
       "implemented": "metric_detail.dart",
-      "note": "Wert + Einheit + Status + OBRangePill; Kopf jedes Messwert-Details."
+      "note": "Wert + Einheit + Status + OBRangePill; Kopf jedes Messwert-Details.",
+      "paperNode": "3I95-0",
+      "file": "metric_detail.dart",
+      "usedIn": [
+        "3I5L-0"
+      ]
     },
     {
       "name": "OBNightBars",
       "widget": "OBNightBars",
-      "paper": "A00b · Bausteine",
-      "screens": [],
       "implemented": "metric_detail.dart",
-      "note": "Ein Balken je Nacht, Basislinie als Band, gestrichelt nur zwischen beobachteten Nächten."
+      "note": "Ein Balken je Nacht, Basislinie als Band, gestrichelt nur zwischen beobachteten Nächten.",
+      "paperNode": "3I9I-0",
+      "file": "metric_detail.dart",
+      "usedIn": [
+        "3I5L-0"
+      ]
     }
   ],
   "openBlocks": [
