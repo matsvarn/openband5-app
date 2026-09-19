@@ -331,6 +331,128 @@ void main() {
       await press('14. September ansehen');
       expect(find.bySemanticsLabel('Schlaf, 7h02 '), findsOneWidget);
 
+      Future<SyntheticOpenBandRepository> openSleepGoal({
+        SyntheticScenario scenario = SyntheticScenario.complete,
+        Brightness brightness = Brightness.light,
+        double? scale,
+        int? targetMinutes,
+        bool estimate = true,
+      }) async {
+        final repository = await mount(
+          scenario: scenario,
+          brightness: brightness,
+          scale: scale,
+        );
+        if (!estimate) repository.weekendEstimate = null;
+        if (targetMinutes != null) {
+          await repository.saveSleepGoal('2026-09-15', targetMinutes);
+        }
+        await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Schlafziel'),
+          200,
+          scrollable: find.byType(Scrollable).last,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Schlafziel'));
+        await tester.pumpAndSettle();
+        return repository;
+      }
+
+      await openSleepGoal();
+      expect(find.text('Ziel festlegen'), findsOneWidget);
+      expect(find.text('7 h 45'), findsNothing);
+      await capture('sleep-goal-unset');
+      await press('Ziel festlegen');
+      await capture('sleep-goal-editor');
+      await tester.enterText(
+        find.byKey(const ValueKey('sleep-goal-hours')),
+        '7',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('sleep-goal-minutes')),
+        '45',
+      );
+      await tester.pumpAndSettle();
+      await press('Speichern');
+      expect(find.text('7 h 45'), findsOneWidget);
+      expect(find.text('8 h 12 · Stand 15. September'), findsOneWidget);
+      await capture('sleep-goal-estimate');
+      await tester.tap(find.bySemanticsLabel('Wochenend-Schätzung'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          '75. Perzentil der Wochenendnächte. Keine Messung des Schlafbedarfs.',
+        ),
+        findsOneWidget,
+      );
+      await capture('sleep-goal-estimate-info');
+      await press('Schließen');
+      await openSleepGoal(targetMinutes: 465);
+      await press('Ändern');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-goal-hours')))
+            .controller
+            ?.text,
+        '7',
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-goal-minutes')))
+            .controller
+            ?.text,
+        '45',
+      );
+      await capture('sleep-goal-editor-target');
+      await openSleepGoal(
+        brightness: Brightness.dark,
+        targetMinutes: 465,
+        estimate: false,
+      );
+      expect(find.text('7 h 45'), findsOneWidget);
+      expect(find.text('Ändern'), findsOneWidget);
+      expect(find.text('8 h 12 · Stand 15. September'), findsNothing);
+      await capture('sleep-goal-dark');
+      await press('Ändern');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-goal-hours')))
+            .controller
+            ?.text,
+        '7',
+      );
+      await capture('sleep-goal-editor-dark');
+      await openSleepGoal(scale: 2, targetMinutes: 465);
+      expect(find.text('7 h 45'), findsOneWidget);
+      expect(find.text('8 h 12 · Stand 15. September'), findsOneWidget);
+      await capture('sleep-goal-2x');
+      await press('Ändern');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-goal-hours')))
+            .controller
+            ?.text,
+        '7',
+      );
+      await capture('sleep-goal-editor-2x');
+      final failingGoal = await openSleepGoal();
+      failingGoal.failSleepGoalWrite = true;
+      await press('Ziel festlegen');
+      await tester.enterText(
+        find.byKey(const ValueKey('sleep-goal-hours')),
+        '7',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('sleep-goal-minutes')),
+        '45',
+      );
+      await tester.pumpAndSettle();
+      await press('Speichern');
+      expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+      await capture('sleep-goal-error');
+
       // ── Hub- und Flow-Captures der neuen Oberflächen ──
       await mount();
       await press('Gesundheit');

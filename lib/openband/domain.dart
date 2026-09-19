@@ -702,6 +702,113 @@ class FoodHit {
   }
 }
 
+const int kSleepGoalMinMinutes = 1;
+const int kSleepGoalMaxMinutes = 24 * 60;
+
+/// Latest user-chosen sleep duration for a wake day. [minutes] null is an
+/// explicit "no target" boundary, not a missing row.
+class SleepGoalPeriod {
+  final String validFromDay;
+  final int? minutes;
+  final DateTime createdAt, updatedAt;
+  const SleepGoalPeriod({
+    required this.validFromDay,
+    required this.minutes,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+}
+
+/// Stored weekend p75 duration from the current `crossday` baseline only.
+class WeekendSleepEstimate {
+  final String asOfDay;
+  final int algoVersion;
+  final int builtAtEpoch;
+  final double osdHours;
+  final double? confidence;
+  final String? note;
+  const WeekendSleepEstimate({
+    required this.asOfDay,
+    required this.algoVersion,
+    required this.builtAtEpoch,
+    required this.osdHours,
+    this.confidence,
+    this.note,
+  });
+}
+
+class SleepGoalSnapshot {
+  final SleepGoalPeriod? period;
+  final WeekendSleepEstimate? weekendEstimate;
+  const SleepGoalSnapshot({this.period, this.weekendEstimate});
+  int? get targetMinutes => period?.minutes;
+}
+
+int? sleepGoalMinutesFromFields(String hoursText, String minutesText) {
+  final hours = int.tryParse(hoursText.trim());
+  final minutes = int.tryParse(minutesText.trim());
+  if (hours == null ||
+      minutes == null ||
+      hours < 0 ||
+      minutes < 0 ||
+      minutes > 59) {
+    return null;
+  }
+  final total = hours * 60 + minutes;
+  if (total < kSleepGoalMinMinutes || total > kSleepGoalMaxMinutes) return null;
+  return total;
+}
+
+int? _positiveWhole(Object? value) {
+  if (value is! num || !value.isFinite || value <= 0) return null;
+  if (value != value.roundToDouble()) return null;
+  return value.toInt();
+}
+
+/// Decode the stored `crossday` envelope. Wrong day, version, or malformed
+/// fields yield null — never a borrowed rollup or `sleep_coach.need`.
+WeekendSleepEstimate? weekendSleepEstimateFromCrossday(
+  Map<String, dynamic>? artifact, {
+  required String selectedDay,
+  required int algoVersion,
+}) {
+  if (artifact == null) return null;
+  final version = _positiveWhole(artifact['algo_version']);
+  if (version == null || version != algoVersion) return null;
+  final builtFor = artifact['built_for_day'];
+  if (builtFor is! String || builtFor != selectedDay || builtFor.isEmpty) {
+    return null;
+  }
+  final builtAtEpoch = _positiveWhole(artifact['built_at_epoch']);
+  if (builtAtEpoch == null) return null;
+  final debt = artifact['sleep_debt'];
+  if (debt is! Map) return null;
+  final value = debt['value'];
+  if (value is! Map) return null;
+  if (value['has_free_night'] != true) return null;
+  final osd = value['osd_hours'];
+  if (osd is! num || !osd.isFinite || osd <= 0) return null;
+  final confRaw = debt['confidence'];
+  double? confidence;
+  if (confRaw != null) {
+    if (confRaw is! num || !confRaw.isFinite || confRaw < 0 || confRaw > 1) {
+      return null;
+    }
+    confidence = confRaw.toDouble();
+  }
+  final noteRaw = debt['note'];
+  if (noteRaw != null && noteRaw is! String) return null;
+  final note = noteRaw is String && noteRaw.isNotEmpty ? noteRaw : null;
+  return WeekendSleepEstimate(
+    asOfDay: builtFor,
+    algoVersion: version,
+    builtAtEpoch: builtAtEpoch,
+    osdHours: osd.toDouble(),
+    confidence: confidence,
+    note: note,
+  );
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
   Future<NightSignals> readNightSignals(String day);
@@ -757,4 +864,7 @@ abstract interface class OpenBandRepository {
   Future<int> removeNap({required String day, required NapSession session});
   Future<int> restoreNap({required String day, required NapSession rejected});
   Future<void> recalculateNaps({required String day, required int revision});
+  Future<SleepGoalSnapshot> readSleepGoal(String day);
+  Future<void> saveSleepGoal(String day, int minutes);
+  Future<void> clearSleepGoal(String day);
 }

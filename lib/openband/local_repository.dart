@@ -54,8 +54,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final respSources = [_curveReadings(payload, 'resp_day', start, end)];
     if (selectedVersion != null && neighborDays.isNotEmpty) {
       final neighborRows = await LocalDb.servedDayResultsForDays(neighborDays);
-      final neighborCorrections =
-          await LocalDb.openBandSleepCorrectionsForDays(neighborDays);
+      final neighborCorrections = await LocalDb.openBandSleepCorrectionsForDays(
+        neighborDays,
+      );
       for (final id in neighborDays) {
         final neighborRow = neighborRows[id];
         if (neighborRow == null) continue;
@@ -141,8 +142,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         NightSignalKind.hrv: NightSignalSeries(
           readings: hrvReadings,
           maxConnectingGap: const Duration(minutes: 30),
-          partial:
-              selectedPartial || hrvReadings.any((r) => r.value == null),
+          partial: selectedPartial || hrvReadings.any((r) => r.value == null),
           reason: _stringAt(payload, 'hrv_night_shape.note'),
         ),
       },
@@ -860,6 +860,65 @@ class LocalOpenBandRepository implements OpenBandRepository {
       revision: (row['revision'] as num).toInt(),
     );
   }
+
+  @override
+  Future<SleepGoalSnapshot> readSleepGoal(String day) async {
+    _requireDay(day);
+    final row = await LocalDb.sleepGoalPeriodAsOf(day);
+    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    Map<String, dynamic>? artifact;
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          artifact = decoded;
+        } else if (decoded is Map) {
+          artifact = decoded.cast<String, dynamic>();
+        }
+      } catch (_) {
+        artifact = null;
+      }
+    }
+    return SleepGoalSnapshot(
+      period: row == null ? null : _sleepGoalPeriod(row),
+      weekendEstimate: weekendSleepEstimateFromCrossday(
+        artifact,
+        selectedDay: day,
+        algoVersion: kAlgoVersion,
+      ),
+    );
+  }
+
+  @override
+  Future<void> saveSleepGoal(String day, int minutes) async {
+    _requireDay(day);
+    if (minutes < kSleepGoalMinMinutes || minutes > kSleepGoalMaxMinutes) {
+      throw ArgumentError.value(
+        minutes,
+        'minutes',
+        'Duration must be 1–1440 minutes.',
+      );
+    }
+    await LocalDb.putSleepGoalPeriod(validFromDay: day, minutes: minutes);
+  }
+
+  @override
+  Future<void> clearSleepGoal(String day) async {
+    _requireDay(day);
+    await LocalDb.putSleepGoalPeriod(validFromDay: day, minutes: null);
+  }
+
+  static SleepGoalPeriod _sleepGoalPeriod(Map<String, dynamic> row) =>
+      SleepGoalPeriod(
+        validFromDay: row['valid_from_day'] as String,
+        minutes: (row['minutes'] as num?)?.toInt(),
+        createdAt: DateTime.fromMillisecondsSinceEpoch(
+          (row['created_at'] as num).toInt(),
+        ),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(
+          (row['updated_at'] as num).toInt(),
+        ),
+      );
 
   @override
   Future<NapDay> readNaps(String day) async {

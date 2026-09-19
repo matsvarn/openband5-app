@@ -185,6 +185,7 @@ class LocalDb {
     'openband_calculation_job',
     'sleep_nap',
     'nap_recalc_job',
+    'sleep_goal_period',
     'breathing_session',
     'sessions',
     'workout_route',
@@ -347,7 +348,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 55;
+  static const int schemaVersion = 56;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -464,6 +465,7 @@ class LocalDb {
         await _createOpenBandLaps(db);
         await _createSleepNap(db);
         await _createNapRecalcJob(db);
+        await _createSleepGoalPeriod(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createAlarmSchedule(db);
@@ -1065,6 +1067,11 @@ class LocalDb {
           // openband_calculation_job.day_id with night corrections.
           await _createNapRecalcJob(db);
         }
+        if (oldV < 56) {
+          // Optional user sleep-goal periods. Additive; null minutes is an
+          // explicit "no target" boundary and does not delete earlier rows.
+          await _createSleepGoalPeriod(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1143,6 +1150,7 @@ class LocalDb {
     await _createOpenBandLaps(db);
     await _createSleepNap(db);
     await _createNapRecalcJob(db);
+    await _createSleepGoalPeriod(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
     await _createWorkoutSplit(db);
@@ -1677,6 +1685,18 @@ class LocalDb {
     ''');
   }
 
+  static Future<void> _createSleepGoalPeriod(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sleep_goal_period (
+        valid_from_day TEXT PRIMARY KEY,
+        minutes INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (minutes IS NULL OR (minutes >= 1 AND minutes <= 1440))
+      )
+    ''');
+  }
+
   static Future<void> _createSleepOverride(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sleep_override (
@@ -1970,6 +1990,54 @@ class LocalDb {
     final db = await instance;
     final rows = await db.query('sleep_override', columns: ['day_id']);
     return {for (final r in rows) r['day_id'] as String};
+  }
+
+  static Future<void> putSleepGoalPeriod({
+    required String validFromDay,
+    required int? minutes,
+  }) async {
+    if (minutes != null && (minutes < 1 || minutes > 1440)) {
+      throw ArgumentError.value(
+        minutes,
+        'minutes',
+        'Duration must be 1–1440 minutes.',
+      );
+    }
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = await db.query(
+      'sleep_goal_period',
+      columns: ['created_at'],
+      where: 'valid_from_day = ?',
+      whereArgs: [validFromDay],
+      limit: 1,
+    );
+    final createdAt = existing.isEmpty
+        ? now
+        : (existing.first['created_at'] as num).toInt();
+    await db.insert('sleep_goal_period', {
+      'valid_from_day': validFromDay,
+      'minutes': minutes,
+      'created_at': createdAt,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<Map<String, dynamic>?> sleepGoalPeriodAsOf(String day) async {
+    final db = await instance;
+    final rows = await db.query(
+      'sleep_goal_period',
+      where: 'valid_from_day <= ?',
+      whereArgs: [day],
+      orderBy: 'valid_from_day DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> sleepGoalPeriods() async {
+    final db = await instance;
+    return db.query('sleep_goal_period', orderBy: 'valid_from_day ASC');
   }
 
   // ── OPENBAND SLEEP CORRECTION STATE ────────────────────────────────────────
@@ -8856,6 +8924,7 @@ class LocalDb {
       'sleep_override',
       'sleep_nap',
       'nap_recalc_job',
+      'sleep_goal_period',
       'samples',
       'events',
       'decoded_onehz',

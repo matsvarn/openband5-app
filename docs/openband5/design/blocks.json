@@ -60,7 +60,13 @@
     "3KR8-0": "A02 Nickerchen bearbeiten",
     "3KME-0": "A02 Nickerchen · Auswertung fehlgeschlagen",
     "3KNU-0": "A02 Nickerchen · keine erkannt",
-    "3KP4-0": "A02 Nickerchen · nicht bestimmbar"
+    "3KP4-0": "A02 Nickerchen · nicht bestimmbar",
+    "3KSG-0": "A02 Schlafziel · ohne Ziel",
+    "3KTM-0": "A02 Schlafziel · eigenes Ziel",
+    "3KUQ-0": "A02 Schlafziel · Dunkel",
+    "3KVT-0": "A02 Schlafziel bearbeiten",
+    "3LHP-0": "A02 Schlafziel · Wochenend-Schätzung",
+    "3MA4-0": "A02 Schlafziel bearbeiten · Dunkel"
   },
   "blocks": [
     {
@@ -105,7 +111,13 @@
         "3KR8-0",
         "3KME-0",
         "3KNU-0",
-        "3KP4-0"
+        "3KP4-0",
+        "3KSG-0",
+        "3KTM-0",
+        "3KUQ-0",
+        "3KVT-0",
+        "3LHP-0",
+        "3MA4-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -1018,7 +1030,13 @@
       "usedIn": [
         "3KL6-0",
         "3KQ3-0",
-        "3KR8-0"
+        "3KR8-0",
+        "3KSG-0",
+        "3KTM-0",
+        "3KUQ-0",
+        "3KVT-0",
+        "3LHP-0",
+        "3MA4-0"
       ]
     },
     {
@@ -1060,14 +1078,15 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 55,
+    "version": 56,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
       "openband_session_detail",
       "openband_lap",
       "sleep_nap",
-      "nap_recalc_job"
+      "nap_recalc_job",
+      "sleep_goal_period"
     ]
   },
   "research": {

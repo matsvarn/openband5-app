@@ -12,6 +12,7 @@ import 'night_signals.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 import 'naps.dart';
 import 'sleep_editor.dart';
+import 'sleep_goal.dart';
 import 'theme.dart';
 
 class OpenBandOverview extends StatelessWidget {
@@ -1152,6 +1153,23 @@ class OpenBandSleep extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OBCard(
+                  child: SetRow(
+                    LucideIcons.target,
+                    p.sleep,
+                    'Schlafziel',
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => OpenBandSleepGoal(
+                          repository: controller.repository,
+                          day: controller.selectedDay,
+                          synthetic: controller.day?.synthetic == true,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),

@@ -708,6 +708,38 @@
         "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
         "note": "Reject overlaps with the main night and active nap ledger, including adjacent days and repeated moves; no new algorithm or invented restaging.",
         "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Schlafziel, Methode wählen": {
+        "status": "implemented",
+        "paperNode": "3KSG-0",
+        "source": "lib/openband/sleep_goal.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_sleep_goal_test.dart; test/openband_sleep_goal_widget_test.dart; integration_test/openband_review_test.dart",
+        "note": "User-selected target and stored weekend estimate are separate; no default target and no learned-requirement claim.",
+        "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
+      },
+      "Eigenes Schlafziel bearbeiten": {
+        "status": "implemented",
+        "paperNode": "3KVT-0",
+        "source": "lib/openband/sleep_goal.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_sleep_goal_test.dart; test/openband_sleep_goal_widget_test.dart; integration_test/openband_review_test.dart",
+        "note": "Optional target can be set, changed or removed from the selected wake day. History remains intact; failed save retains inputs.",
+        "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
+      },
+      "Deine Schlafbasis": {
+        "status": "implemented",
+        "paperNode": "3LHP-0",
+        "source": "lib/openband/sleep_goal.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_sleep_goal_test.dart; test/openband_sleep_goal_widget_test.dart; integration_test/openband_review_test.dart",
+        "note": "Archive concept reconciled to an explicitly labeled weekend p75 estimate with source date and method disclosure. Only exact selected-day, current-algorithm stored evidence is shown; missing evidence stays unknown.",
+        "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
+      },
+      "Schlafziel gespeichert": {
+        "status": "implemented",
+        "paperNode": "3KTM-0",
+        "source": "lib/openband/sleep_goal.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_sleep_goal_test.dart; test/openband_sleep_goal_widget_test.dart; integration_test/openband_review_test.dart",
+        "note": "Saved target read back from dated persistence. Removal writes a dated boundary rather than deleting past targets.",
+        "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
       }
     }
   }

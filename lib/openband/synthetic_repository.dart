@@ -1,3 +1,5 @@
+import 'package:openstrap_edge/compute/derivation_engine.dart'
+    show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -37,10 +39,15 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, List<NapSession>> _napRejected = {};
   int _napRevision = 0;
   final Map<String, SleepNight> _applied = {};
+  final Map<String, SleepGoalPeriod> _sleepGoals = {};
   final Map<String, double> _sleepByDay = {};
   final Map<String, double> _hrvByDay = {};
   final Map<String, double> _rhrByDay = {};
   final Map<String, double> _strainByDay = {};
+  WeekendSleepEstimate? weekendEstimate;
+  bool failSleepGoalRead = false;
+  bool failSleepGoalWrite = false;
+  Future<void>? sleepGoalWriteBarrier;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -135,6 +142,13 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
        _detail = Map<String, dynamic>.from(detail) {
     _day = _summary['day'] as String;
     _timezone = (_summary['timezone'] ?? _detail['timezone']) as String;
+    weekendEstimate = WeekendSleepEstimate(
+      asOfDay: _day,
+      algoVersion: kAlgoVersion,
+      builtAtEpoch: DateTime(2026, 9, 15, 7, 42).millisecondsSinceEpoch ~/ 1000,
+      osdHours: 8.2,
+      confidence: 0.6,
+    );
     final sleep = Map<String, dynamic>.from(_summary['sleep'] as Map);
     _onset = _at(_previousDay(_day), sleep['start'] as String);
     _wake = _at(_day, sleep['end'] as String);
@@ -715,6 +729,65 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _drafts.remove(day);
     _corrections.remove(day);
     _applied.remove(day);
+  }
+
+  @override
+  Future<SleepGoalSnapshot> readSleepGoal(String day) async {
+    if (failSleepGoalRead) {
+      throw StateError('synthetic sleep goal read failure');
+    }
+    return SleepGoalSnapshot(
+      period: _sleepGoalAsOf(day),
+      weekendEstimate: weekendEstimate?.asOfDay == day ? weekendEstimate : null,
+    );
+  }
+
+  @override
+  Future<void> saveSleepGoal(String day, int minutes) async {
+    await sleepGoalWriteBarrier;
+    if (failSleepGoalWrite) {
+      throw StateError('synthetic sleep goal write failure');
+    }
+    if (minutes < kSleepGoalMinMinutes || minutes > kSleepGoalMaxMinutes) {
+      throw ArgumentError.value(
+        minutes,
+        'minutes',
+        'Duration must be 1–1440 minutes.',
+      );
+    }
+    _writeSleepGoal(day, minutes);
+  }
+
+  @override
+  Future<void> clearSleepGoal(String day) async {
+    await sleepGoalWriteBarrier;
+    if (failSleepGoalWrite) {
+      throw StateError('synthetic sleep goal write failure');
+    }
+    _writeSleepGoal(day, null);
+  }
+
+  SleepGoalPeriod? _sleepGoalAsOf(String day) {
+    SleepGoalPeriod? best;
+    for (final period in _sleepGoals.values) {
+      if (period.validFromDay.compareTo(day) > 0) continue;
+      if (best == null ||
+          period.validFromDay.compareTo(best.validFromDay) > 0) {
+        best = period;
+      }
+    }
+    return best;
+  }
+
+  void _writeSleepGoal(String day, int? minutes) {
+    final now = DateTime.now();
+    final previous = _sleepGoals[day];
+    _sleepGoals[day] = SleepGoalPeriod(
+      validFromDay: day,
+      minutes: minutes,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+    );
   }
 
   NapDay _defaultNaps(String day) {
