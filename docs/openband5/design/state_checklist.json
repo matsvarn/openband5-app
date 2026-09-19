@@ -837,6 +837,24 @@
         "note": "Missing report bounds remain unknown. Catalogue guidance is labeled separately and never substituted for a report or unknown-sex reference range.",
         "nativeReview": "build/ui-review/labs-v3-20260919 (138 PNGs); build/ui-review/labs-mini-v3-20260919 (139 PNGs). Every PNG inspected; light/dark, empty, CRUD, failures/retry, missing report bounds, keyboard and 2x text. Synthetic simulator proof."
       }
+    },
+    "A04 · System": {
+      "Darstellung · Auswahl": {
+        "status": "implemented",
+        "paperNode": "3O01-0",
+        "source": "lib/openband/appearance.dart; lib/theme/theme_controller.dart; lib/ui2/profile/settings.dart",
+        "evidence": "test/openband_appearance_test.dart; integration_test/openband_review_test.dart; test/openband_goldens/appearance-*.png",
+        "note": "Explicit System/Hell/Dunkel route. Selection follows durable save; serialized saves keep earlier successful choice after later failure. Retry retains requested choice; navigation waits for pending save. System follows OS brightness. Shared choice row and retry card; light/dark/error variants inspected against exact Paper export.",
+        "nativeReview": "build/ui-review/appearance-final-20260919 and build/ui-review/appearance-mini-final-20260919: 180 PNGs each, every PNG inspected; run/frames/index reconciled. Includes actual theme changes, save failure/retry, System OS change/reopen, 375-width and 2x text. Synthetic simulator proof."
+      },
+      "Darstellung · Dunkel ausgewählt": {
+        "status": "implemented",
+        "paperNode": "3O17-0",
+        "source": "lib/openband/appearance.dart; lib/theme/theme_controller.dart; lib/ui2/profile/settings.dart",
+        "evidence": "test/openband_appearance_test.dart; integration_test/openband_review_test.dart; test/openband_goldens/appearance-*.png",
+        "note": "Explicit System/Hell/Dunkel route. Selection follows durable save; serialized saves keep earlier successful choice after later failure. Retry retains requested choice; navigation waits for pending save. System follows OS brightness. Shared choice row and retry card; light/dark/error variants inspected against exact Paper export.",
+        "nativeReview": "build/ui-review/appearance-final-20260919 and build/ui-review/appearance-mini-final-20260919: 180 PNGs each, every PNG inspected; run/frames/index reconciled. Includes actual theme changes, save failure/retry, System OS change/reopen, 375-width and 2x text. Synthetic simulator proof."
+      }
     }
   }
 }

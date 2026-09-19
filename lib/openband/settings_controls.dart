@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'alp_tokens.dart';
 import 'theme.dart';
@@ -7,6 +8,95 @@ import 'theme.dart';
 bool _stackSettingsControls(BuildContext context) =>
     MediaQuery.textScalerOf(context).scale(15) > 20 ||
     MediaQuery.sizeOf(context).width < 360;
+
+/// Paper 3N1Y-0 retry card: 14 pad, 24 radius, 14 danger copy, 8 gap,
+/// 48 secondary ink retry. Shared by notification settings and appearance.
+class OBSettingsErrorCard extends StatelessWidget {
+  final String message;
+  final String retryLabel;
+  final VoidCallback? onRetry;
+  const OBSettingsErrorCard({
+    super.key,
+    required this.message,
+    required this.retryLabel,
+    this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: p.text(14, color: p.danger)),
+          const SizedBox(height: 8),
+          OBAction(
+            retryLabel,
+            secondary: true,
+            ink: true,
+            onPressed: onRetry,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Paper 3MCG-0 selected row: 15 regular / 600 selected, 18 ink check in a
+/// fixed lane, 48 min height. Shared by notification choice sheets and
+/// appearance. Decorative radios stay out.
+class OBSettingsChoiceRow extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const OBSettingsChoiceRow({
+    super.key,
+    required this.label,
+    required this.selected,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: p.text(
+                      15,
+                      weight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: selected
+                      ? Icon(LucideIcons.check, size: 18, color: p.ink)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Label + Cupertino-like switch. Shared by notification settings and any
 /// other on/off row. Schedule rows add a time well on top of this layout.

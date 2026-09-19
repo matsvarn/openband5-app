@@ -533,7 +533,7 @@ class NotificationSettingsView extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 children: [
                   if (loadError != null) ...[
-                    _ErrorCard(
+                    OBSettingsErrorCard(
                       message: _s(
                         context,
                         'Laden fehlgeschlagen',
@@ -548,7 +548,7 @@ class NotificationSettingsView extends StatelessWidget {
                     const _LoadingCard()
                   else if (loaded) ...[
                     if (permissionError != null) ...[
-                      _ErrorCard(
+                      OBSettingsErrorCard(
                         key: const ValueKey('notification-permission-error'),
                         message: _s(
                           context,
@@ -572,7 +572,7 @@ class NotificationSettingsView extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
                     if (saveError != null) ...[
-                      _ErrorCard(
+                      OBSettingsErrorCard(
                         key: const ValueKey('notification-error'),
                         message: _s(
                           context,
@@ -585,7 +585,7 @@ class NotificationSettingsView extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
                     if (applyError != null) ...[
-                      _ErrorCard(
+                      OBSettingsErrorCard(
                         key: const ValueKey('notification-apply-error'),
                         message: _s(
                           context,
@@ -1317,40 +1317,6 @@ class _LoadingCard extends StatelessWidget {
   }
 }
 
-class _ErrorCard extends StatelessWidget {
-  final String message;
-  final String retryLabel;
-  final VoidCallback? onRetry;
-  const _ErrorCard({
-    super.key,
-    required this.message,
-    required this.retryLabel,
-    this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    return OBCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(message, style: p.text(14, color: p.danger)),
-          if (onRetry != null) ...[
-            const SizedBox(height: 8),
-            OBAction(
-              retryLabel,
-              secondary: true,
-              ink: true,
-              onPressed: onRetry,
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _ChoiceSheet extends StatelessWidget {
   final String title;
   final List<(int value, String label)> choices;
@@ -1385,46 +1351,11 @@ class _ChoiceSheet extends StatelessWidget {
                   itemBuilder: (context, i) {
                     final choice = choices[i];
                     final on = choice.$1 == selected;
-                    return Semantics(
-                      button: true,
-                      selected: on,
+                    return OBSettingsChoiceRow(
+                      key: ValueKey('notification-choice-${choice.$1}'),
                       label: choice.$2,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => Navigator.pop(context, choice.$1),
-                          child: ConstrainedBox(
-                            key: ValueKey('notification-choice-${choice.$1}'),
-                            constraints: const BoxConstraints(minHeight: 48),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    choice.$2,
-                                    style: p.text(
-                                      15,
-                                      weight: on
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: on
-                                      ? Icon(
-                                          LucideIcons.check,
-                                          size: 18,
-                                          color: p.ink,
-                                        )
-                                      : null,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                      selected: on,
+                      onTap: () => Navigator.pop(context, choice.$1),
                     );
                   },
                 ),

@@ -26,6 +26,7 @@ import '../../health/health_export.dart' show HealthLinkState;
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/appearance.dart';
 import '../../openband/notification_settings.dart';
 import '../../openband/theme.dart' show OBPageHeader, OB;
 import '../../platform/app_icon.dart';
@@ -159,7 +160,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
       units: units.system.label,
-      appearance: theme.choice.label,
+      appearance: appearanceChoiceLabel(c, theme.choice),
       cycleTracking: app.cycleTrackingEnabled,
       appIcon: _icon,
       onPickIcon: _pickIcon,
@@ -187,8 +188,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
           : UnitSystem.imperial),
-      onCycleAppearance: () => theme.setChoice(AppThemeChoice.values[
-          (theme.choice.index + 1) % AppThemeChoice.values.length]),
+      onCycleAppearance: () => goto(c, const AppearanceSettings()),
       onToggleCycleTracking: () =>
           app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
       onTogglePhoneSteps: () => app.phoneStepsEnabled

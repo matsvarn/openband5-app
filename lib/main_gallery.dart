@@ -16,8 +16,10 @@ import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'notify/notification_prefs.dart';
+import 'openband/appearance.dart';
 import 'openband/notification_settings.dart';
 import 'openband/theme.dart';
+import 'theme/theme_controller.dart';
 import 'openband/training.dart';
 import 'state/alarm_schedule.dart';
 import 'ui2/app_shell.dart';
@@ -318,6 +320,18 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               },
             ),
           ),
+          const ListTile(title: Text('Darstellung · synthetische Zustände')),
+          ..._appearanceGalleryStates().map(
+            (entry) => ListTile(
+              title: Text(entry.$1),
+              onTap: () {
+                Navigator.pop(c);
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
+              },
+            ),
+          ),
           const ListTile(title: Text('Mitteilungen · synthetische Zustände')),
           ..._notificationGalleryStates().map(
             (entry) => ListTile(
@@ -550,6 +564,96 @@ class _AlarmGallerySessionState extends State<AlarmGallerySession> {
     onSetDayTime: _setTime,
     onTest: armedAt == null ? null : _write,
     onCancel: _cancel,
+  );
+}
+
+List<(String, Widget)> _appearanceGalleryStates() {
+  return [
+    (
+      'Darstellung · System',
+      const AppearanceSettingsView(
+        selected: AppThemeChoice.system,
+        synthetic: true,
+      ),
+    ),
+    (
+      'Darstellung · Dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: const AppearanceSettingsView(
+          selected: AppThemeChoice.dark,
+          synthetic: true,
+        ),
+      ),
+    ),
+    (
+      'Darstellung · Speichern fehlgeschlagen',
+      AppearanceGallerySession(failing: true),
+    ),
+    (
+      'Darstellung · Speichern fehlgeschlagen · Dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: AppearanceSettingsView(
+          selected: AppThemeChoice.dark,
+          synthetic: true,
+          saveError: 'Speichern fehlgeschlagen',
+          onRetry: () {},
+        ),
+      ),
+    ),
+  ];
+}
+
+/// Isolated host so gallery retry uses [ThemeController] and the page
+/// palette follows [ThemeController.effective], not the outer gallery mode.
+class AppearanceGallerySession extends StatefulWidget {
+  final AppThemeChoice initial;
+  final bool failing;
+  const AppearanceGallerySession({
+    super.key,
+    this.initial = AppThemeChoice.system,
+    this.failing = false,
+  });
+
+  @override
+  State<AppearanceGallerySession> createState() =>
+      _AppearanceGallerySessionState();
+}
+
+class _AppearanceGallerySessionState extends State<AppearanceGallerySession> {
+  late final ThemeController theme;
+  late bool failNext = widget.failing;
+
+  @override
+  void initState() {
+    super.initState();
+    theme = ThemeController.seed(
+      widget.initial,
+      Brightness.light,
+      persist: (_) async {
+        if (failNext) {
+          failNext = false;
+          throw Exception('disk full');
+        }
+        return true;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    theme.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: theme,
+    builder: (context, _) => Theme(
+      data: openBandTheme(theme.effective),
+      child: AppearanceSettings(controller: theme, synthetic: true),
+    ),
   );
 }
 

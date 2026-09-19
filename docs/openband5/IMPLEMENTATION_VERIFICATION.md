@@ -127,3 +127,14 @@ Main required OpenBand plus affected alarm/AppState/BLE/headless/notification su
 Synthetic native runs: `build/ui-review/alarm-owner-final-20260919` (iPhone15Pro,170 PNGs,370.95s) and `build/ui-review/alarm-owner-mini-final-20260919` (iPhone13mini,170 PNGs,539.84s). Both passed. Every PNG inspected; all170 frames, PNGs and index entries reconcile per run. Light/dark, pending/offline, retry failure, inactive slots, invalid time input, keyboard and2x text included. Alarm date, hero spacing, status icon, schedule controls and states compared with exact Paper exports. Existing unrelated hub/legend/tab/legacy-dialog differences remain in their owning queue units.
 
 Independent ownership/race reviews and lead source/diff inspection completed. Tests establish state-machine behavior and simulator appearance, not physical BLE delivery, alarm firing or physiological validity.
+
+
+## Alpin appearance · 19 September 2026
+
+Explicit System/Hell/Dunkel replaces hidden cycling. ThemeController serializes persistence and applies every durable success; failed writes keep the last saved choice. Pending saves pin the route, errors allow retry, and System follows actual platform brightness. Appearance and notification choices/errors reuse shared controls.
+
+Main required OpenBand suite: **314 passed**; analyzer **28 items, clean**; manifest **85 blocks /81 screens**. Fresh independent review c42e95e0 checked the navigation pin, live-theme harness and shared retry extraction. Lead inspected actual production diff and all five committed appearance PNGs. The header remains unchanged; its back action is temporarily inert during a pending save.
+
+Native Pro `build/ui-review/appearance-final-20260919` passed in380.24s; mini `build/ui-review/appearance-mini-final-20260919` passed in564.56s. **180 PNGs per run, every PNG inspected**, filenames reconcile with frames.json and index.html. Actual save failure/retry, dark selection, System→OS dark and reopen were exercised; static light/dark/error and2x frames also reviewed. No personal data, physical device or Bluetooth proof.
+
+Paper3O01/3O17/3OSU/3OTU and shared3MCG/3N1Y reviewed against the native output. Status-bar frames now explicitly reserve58px, fixing a clipped Paper page top without changing the app. Exact final export: `/tmp/openband-alpin-20260919/appearance-paper-final-jsx.json`. The broader hub/layout backlog remains open.

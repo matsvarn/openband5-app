@@ -90,7 +90,11 @@
     "3M0X-0": "A08 Alarm · Ausschalten offen",
     "3M4Y-0": "A08 Alarm · Ausschalten offen · Dunkel",
     "3M2W-0": "A08 Alarm · Alarmplätze ausgelesen",
-    "3M6Z-0": "A08 Alarm · Alarmplätze ausgelesen · Dunkel"
+    "3M6Z-0": "A08 Alarm · Alarmplätze ausgelesen · Dunkel",
+    "3O01-0": "A04 Darstellung",
+    "3O17-0": "A04 Darstellung · Dunkel",
+    "3OSU-0": "A04 Darstellung · Speichern fehlgeschlagen",
+    "3OTU-0": "A04 Darstellung · Speichern fehlgeschlagen · Dunkel"
   },
   "blocks": [
     {
@@ -151,7 +155,11 @@
         "3LUN-0",
         "3LW8-0",
         "3LXY-0",
-        "3LZI-0"
+        "3LZI-0",
+        "3O01-0",
+        "3O17-0",
+        "3OSU-0",
+        "3OTU-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -1154,8 +1162,8 @@
     {
       "name": "OBSettingsError",
       "paperNode": "3N1Y-0",
-      "widget": "_ErrorCard",
-      "file": "notification_settings.dart",
+      "widget": "OBSettingsErrorCard",
+      "file": "settings_controls.dart",
       "usedIn": [
         "3L8J-0",
         "3LCD-0",
@@ -1163,9 +1171,13 @@
         "3MDT-0",
         "3MGR-0",
         "3MZ0-0",
-        "3N2G-0"
+        "3N2G-0",
+        "3O01-0",
+        "3O17-0",
+        "3OSU-0",
+        "3OTU-0"
       ],
-      "notes": "Concise localized error and shared secondary ink retry; saved preferences and failed scheduling remain distinct."
+      "notes": "Shared notification/appearance retry card:14 pad,24 radius,14 danger text,8 gap,48 secondary ink action. No optimistic save success."
     },
     {
       "name": "OBTimePicker",
@@ -1183,6 +1195,26 @@
         "invalid": "3NUJ-0"
       },
       "notes": "Shared stock input-only time dialog with Alpin card/well/ink, 296×264 at1x and112×72 fields. Platform locale/24h and accessible input retained; no dial. Invalid entry stays open; cancellation returns no change."
+    },
+    {
+      "name": "OBSettingsChoiceRow",
+      "paperNode": "3MCG-0",
+      "widget": "OBSettingsChoiceRow",
+      "file": "settings_controls.dart",
+      "variants": [
+        "selected",
+        "unselected",
+        "disabled"
+      ],
+      "usedIn": [
+        "3O01-0",
+        "3O17-0",
+        "3OSU-0",
+        "3OTU-0",
+        "3MDT-0",
+        "3MGR-0"
+      ],
+      "notes": "Shared explicit choices for theme and notification sheets:48 minimum row,15 regular/600 selected,18 fixed check lane. Theme choice changes after durable save."
     }
   ],
   "openBlocks": [

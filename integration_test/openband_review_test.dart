@@ -9,12 +9,15 @@ import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
+import 'package:openstrap_edge/openband/appearance.dart';
 import 'package:openstrap_edge/openband/notification_settings.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
+import 'package:provider/provider.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -1338,6 +1341,156 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('21:30'), findsOneWidget);
       await capture('notifications-live-large-quiet');
+
+      Future<void> mountAppearance({
+        required Brightness brightness,
+        AppThemeChoice selected = AppThemeChoice.system,
+        String? saveError,
+        double? scale,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            key: UniqueKey(),
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('de'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: openBandTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale ?? 1)),
+              child: child!,
+            ),
+            home: AppearanceSettingsView(
+              selected: selected,
+              synthetic: true,
+              saveError: saveError,
+              onSelect: (_) {},
+              onRetry: saveError == null ? null : () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await mountAppearance(brightness: Brightness.light);
+      expect(find.text('Darstellung'), findsOneWidget);
+      expect(find.text('System'), findsOneWidget);
+      await capture('appearance-light');
+      await mountAppearance(
+        brightness: Brightness.dark,
+        selected: AppThemeChoice.dark,
+      );
+      await capture('appearance-dark');
+      await mountAppearance(
+        brightness: Brightness.light,
+        saveError: 'Speichern fehlgeschlagen',
+      );
+      expect(find.text('Erneut'), findsOneWidget);
+      await capture('appearance-error');
+      await mountAppearance(
+        brightness: Brightness.dark,
+        selected: AppThemeChoice.dark,
+        saveError: 'Speichern fehlgeschlagen',
+      );
+      expect(find.text('Erneut'), findsOneWidget);
+      await capture('appearance-error-dark');
+      await mountAppearance(
+        brightness: Brightness.light,
+        scale: 2,
+      );
+      await capture('appearance-large');
+
+      var failAppearance = true;
+      var liveTheme = ThemeController.seed(
+        AppThemeChoice.system,
+        Brightness.light,
+        persist: (_) async {
+          if (failAppearance) throw Exception('disk full');
+          return true;
+        },
+      );
+      try {
+        Future<void> mountLiveAppearance() async {
+          await tester.pumpWidget(
+            ChangeNotifierProvider<ThemeController>.value(
+              value: liveTheme,
+              child: ListenableBuilder(
+                listenable: liveTheme,
+                builder: (context, _) => MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  locale: const Locale('de'),
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  theme: openBandTheme(Brightness.light),
+                  darkTheme: openBandTheme(Brightness.dark),
+                  themeMode: liveTheme.materialThemeMode,
+                  themeAnimationDuration: Duration.zero,
+                  home: AppearanceSettings(
+                    synthetic: true,
+                    controller: liveTheme,
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        Brightness appearanceThemeBrightness() => Theme.of(
+          tester.element(find.byType(AppearanceSettings)),
+        ).brightness;
+
+        await mountLiveAppearance();
+        await tester.tap(find.byKey(const ValueKey('appearance-choice-dark')));
+        await tester.pumpAndSettle();
+        expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+        expect(liveTheme.choice, AppThemeChoice.system);
+        expect(appearanceThemeBrightness(), Brightness.light);
+        await capture('appearance-live-save-failure');
+        failAppearance = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        expect(find.text('Speichern fehlgeschlagen'), findsNothing);
+        expect(liveTheme.choice, AppThemeChoice.dark);
+        expect(liveTheme.effective, Brightness.dark);
+        expect(appearanceThemeBrightness(), Brightness.dark);
+        await capture('appearance-live-save-retry');
+
+        await tester.tap(
+          find.byKey(const ValueKey('appearance-choice-system')),
+        );
+        await tester.pumpAndSettle();
+        expect(liveTheme.choice, AppThemeChoice.system);
+        expect(liveTheme.effective, Brightness.light);
+        expect(appearanceThemeBrightness(), Brightness.light);
+        await capture('appearance-live-system');
+
+        liveTheme.updatePlatformBrightness(Brightness.dark);
+        await tester.pumpAndSettle();
+        expect(liveTheme.choice, AppThemeChoice.system);
+        expect(liveTheme.effective, Brightness.dark);
+        expect(appearanceThemeBrightness(), Brightness.dark);
+        await capture('appearance-live-system-os-dark');
+
+        final reopenedChoice = liveTheme.choice;
+        final previous = liveTheme;
+        liveTheme = ThemeController.seed(
+          reopenedChoice,
+          Brightness.dark,
+          persist: (_) async => true,
+        );
+        previous.dispose();
+        await mountLiveAppearance();
+        expect(liveTheme.choice, AppThemeChoice.system);
+        expect(liveTheme.effective, Brightness.dark);
+        expect(appearanceThemeBrightness(), Brightness.dark);
+        await capture('appearance-live-reopen');
+      } finally {
+        liveTheme.dispose();
+      }
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();
