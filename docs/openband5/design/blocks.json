@@ -23,7 +23,7 @@
     "3G8S-0": "A02 Schlaf · Nacht",
     "3GJZ-0": "A06a Laufen · aktiv",
     "3GK0-0": "A06a Lauf · 5,00 km abgeschlossen",
-    "3GQP-0": "A08 Profil · Dein Bereich",
+    "3GQP-0": "A08 Profil · Dein Bereich (lib/ui2/profile/profile.dart)",
     "3GVJ-0": "A01 Übersicht · noch keine Nacht",
     "3H1S-0": "A01 Übersicht · teilweise erfasste Nacht",
     "3H8H-0": "A01 Übersicht · Band getrennt",
@@ -33,7 +33,7 @@
     "3I5L-0": "A05 Gesundheit · HRV · Detail (OpenBandMetricDetail)",
     "L-0 · Einrichtung · Willkommen": "A03 Einrichtung · Willkommen (lib/ui2/onboarding/welcome.dart)",
     "L-0 · Einrichtung · Band verbinden": "A03 Einrichtung · Band verbinden (lib/ui2/onboarding/pairing.dart)",
-    "L-0 · Einrichtung · Erste Übertragung": "A03 Einrichtung · Erste Übertragung (paper-only — no Flutter screen yet)",
+    "L-0 · Einrichtung · Erste Übertragung": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
     "L-0 · Einrichtung · Dein Profil": "A03 Einrichtung · Dein Profil (lib/ui2/onboarding/profile_setup.dart)",
     "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
     "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)"
@@ -619,20 +619,24 @@
     {
       "name": "OBSettingsGroup",
       "paperNode": "3GRM-0",
-      "widget": "OBSettingsGroup",
-      "file": "profile/hub.dart",
+      "widget": "settingsGroup",
+      "file": "ui2/profile/profile.dart",
       "usedIn": [
         "3GQP-0"
       ],
       "children": [
         "OBSettingsRow"
-      ]
+      ],
+      "implemented": "settingsGroup() in ui2/profile/profile.dart",
+      "note": "Paper name OBSettingsGroup; Dart function settingsGroup (ui2 shared furniture, Alpin tokens)."
     },
     {
       "name": "OBSettingsRow",
       "paperNode": "3GRN-0",
-      "widget": "OBSettingsRow",
-      "file": "profile/hub.dart"
+      "widget": "SetRow",
+      "file": "ui2/profile/profile.dart",
+      "implemented": "SetRow in ui2/profile/profile.dart",
+      "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture)."
     },
     {
       "name": "OBCardRow",
@@ -793,7 +797,8 @@
       "Schlaf · Nacht (rebuilt)",
       "Messwert-Detail (HRV, Ruhepuls, Erholung, Belastung)",
       "Schlaf · Zeiten korrigieren (sleep_editor.dart)",
-      "Einrichtung · Willkommen / Band verbinden / Dein Profil (ui2/onboarding; Erste Übertragung paper-only)"
+      "Einrichtung · Willkommen / Band verbinden / Erste Übertragung / Dein Profil (ui2/onboarding)",
+      "Profil · Dein Bereich (ui2/profile/profile.dart)"
     ],
     "deferred": [],
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
