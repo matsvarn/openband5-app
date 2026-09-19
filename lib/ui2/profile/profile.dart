@@ -15,6 +15,11 @@ import 'package:provider/provider.dart';
 
 import '../../health/health_import_state.dart' show storeName;
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
+import '../../openband/domain.dart';
+import '../../openband/local_repository.dart';
+import '../../openband/theme.dart';
+import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
 import '../ui2.dart';
@@ -57,36 +62,37 @@ class SetRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
-    final accent = danger ? C.red : color;
+    final p = OB.of(c);
+    final tint = danger ? p.danger : p.muted;
     return Pressable(
       onTap: onTap,
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
         child: Row(children: [
-          Container(
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            decoration:
-                BoxDecoration(color: p.wash(accent), borderRadius: R.rSm),
-            child: glyph != null
-                ? glyph!(p.on(accent))
-                : Icon(icon, size: 16, color: p.on(accent)),
-          ),
-          const SizedBox(width: S.x3),
+          if (glyph != null)
+            glyph!(tint)
+          else
+            Icon(icon, size: 18, color: tint),
+          const SizedBox(width: 12),
           Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title,
-                  style: F.body.copyWith(color: danger ? p.on(C.red) : p.ink)),
+                  style: p.text(
+                    15,
+                    weight: FontWeight.w500,
+                    color: danger ? p.danger : p.ink,
+                  )),
               if (value.isNotEmpty && bigText(c))
                 Text(value,
-                    style: F.cap.copyWith(
-                        color: p.ink3, fontWeight: FontWeight.w600)),
+                    style: p.text(
+                      13,
+                      weight: FontWeight.w600,
+                      color: p.muted,
+                    )),
               if (sub.isNotEmpty)
-                Text(sub, style: F.over.copyWith(color: p.ink3)),
+                Text(sub, style: p.text(12, color: p.muted)),
             ]),
           ),
           // THE ROW RULE (see MetricRow): the title is the only flexible part,
@@ -96,12 +102,12 @@ class SetRow extends StatelessWidget {
           // "2026-08-16 04:12" is arbitrary-length, and at 3.1× it pushed
           // itself and the chevron off the right of every settings screen.
           if (value.isNotEmpty && !bigText(c)) ...[
-            const SizedBox(width: S.x2),
-            Text(value, style: F.cap.copyWith(color: p.ink3)),
+            const SizedBox(width: 8),
+            Text(value, style: p.text(13, color: p.muted)),
           ],
           if (chevron && !danger) ...[
-            const SizedBox(width: S.x2),
-            Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
+            const SizedBox(width: 8),
+            Icon(LucideIcons.chevronRight, size: 17, color: p.gap),
           ],
         ]),
       ),
@@ -111,17 +117,30 @@ class SetRow extends StatelessWidget {
 
 /// A titled card of [SetRow]s, hairline-separated.
 Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
-  final p = P.of(c);
-  return Section(
-    title,
-    Surface(
-      pad: const EdgeInsets.symmetric(horizontal: S.x4),
-      child: Column(children: [
-        for (var i = 0; i < rows.length; i++) ...[
-          rows[i],
-          if (i < rows.length - 1) Divider(color: p.line, height: 1),
-        ],
-      ]),
+  final p = OB.of(c);
+  return Padding(
+    padding: const EdgeInsets.only(top: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            title,
+            style: p.text(13, weight: FontWeight.w600, color: p.muted),
+          ),
+        ),
+        OBCard(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Column(children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              rows[i],
+              if (i < rows.length - 1)
+                Divider(color: p.line, height: 1, thickness: 1),
+            ],
+          ]),
+        ),
+      ],
     ),
   );
 }
@@ -226,11 +245,17 @@ class _ProfileHomeState extends State<ProfileHome> {
   /// reset left Storage on the old size until the screen was left and
   /// re-entered.
   late Future<ProfileStats> _stats = _load();
+  BandSnapshot? _band;
 
   Future<ProfileStats> _load() async {
     final app = context.read<AppState>();
     final repo = app.repo;
     final sources = liveSources(app).length;
+    try {
+      _band = await LocalOpenBandRepository(app).readBand();
+    } catch (_) {
+      // A failed status read keeps the last known observation.
+    }
     if (repo == null) {
       return ProfileStats(
           name: app.user?['name'] as String?, sources: sources);
@@ -253,6 +278,9 @@ class _ProfileHomeState extends State<ProfileHome> {
         future: _stats,
         builder: (c, snap) => ProfileHomeView(
           stats: snap.data,
+          user: c.read<AppState>().user,
+          band: _band,
+          bandName: c.read<AppState>().strapName,
           onDevices: () => _open(c, const MyDevices()),
           onSettings: () => _open(c, const MoreSettings()),
           onEdit: () => _open(c, const EditProfile()),
@@ -265,11 +293,17 @@ class ProfileHomeView extends StatelessWidget {
   /// Null while the counts are still being read — the numbers are absent, not
   /// zero, and a zero rendered during a load is a wrong number on screen.
   final ProfileStats? stats;
+  final Map<String, dynamic>? user;
+  final BandSnapshot? band;
+  final String? bandName;
   final VoidCallback? onDevices, onSettings, onEdit, onCoach;
 
   const ProfileHomeView(
       {super.key,
       this.stats,
+      this.user,
+      this.band,
+      this.bandName,
       this.onDevices,
       this.onCoach,
       this.onSettings,
@@ -278,22 +312,26 @@ class ProfileHomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final p = OB.of(c);
     final l = AppLocalizations.of(c);
     final s = stats;
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: p.canvas,
       body: SafeArea(
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.profileTitle ?? 'Profile'),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: OBPageHeader(
+              title: l?.profileTitle ?? 'Profile',
+              subtitle: '',
+            ),
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
               children: [
-                const SizedBox(height: S.x4),
+                _identityCard(c, p, s),
+                if (s != null) _bandCard(c, p, s),
                 settingsGroup(c, l?.profileQuickAccessGroup ?? 'Quick access', [
                   SetRow(LucideIcons.watch, C.blue,
                       l?.profileMyDevices ?? 'My devices',
@@ -330,12 +368,16 @@ class ProfileHomeView extends StatelessWidget {
                       onTap: () => _pickLanguage(c))),
                 ]),
                 settingsGroup(c, l?.profileYourDataGroup ?? 'Your data', [
-                  SetRow(LucideIcons.database, C.green,
-                      l?.profileStorage ?? 'Storage',
-                      value: s?.storageBytes == null
-                          ? ''
-                          : formatBytes(s!.storageBytes!),
-                      chevron: false),
+                  // When the band card renders, its Archiv column already
+                  // carries this number — showing it twice is how two figures
+                  // drift apart.
+                  if (band == null)
+                    SetRow(LucideIcons.database, C.green,
+                        l?.profileStorage ?? 'Storage',
+                        value: s?.storageBytes == null
+                            ? ''
+                            : formatBytes(s!.storageBytes!),
+                        chevron: false),
                   SetRow(LucideIcons.settings, C.n500,
                       l?.profileMoreSettings ?? 'More settings',
                       // `From $storeName` used to sit on Quick access too. It
@@ -383,5 +425,188 @@ class ProfileHomeView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _identityCard(BuildContext c, OB p, ProfileStats? s) {
+    final name = (s?.name ?? '').trim();
+    final profile = PersonalProfile.fromMap(user);
+    final parts = <String>[
+      if (ageOnDate(profile.birthDate, DateTime.now()) case final age?)
+        '$age',
+      if (profile.heightCm != null) '${profile.heightCm!.round()} cm',
+      if (profile.weightKg != null)
+        '${profile.weightKg!.toStringAsFixed(1).replaceAll('.', ',')} kg',
+    ];
+    final initials = name.isEmpty
+        ? ''
+        : name
+            .split(RegExp(r'\s+'))
+            .take(2)
+            .map((w) => w[0].toUpperCase())
+            .join();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Pressable(
+        onTap: onEdit,
+        semanticLabel: name.isEmpty ? 'Profil' : name,
+        child: OBCard(
+          child: Row(children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.sleepTint,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                initials,
+                style: p.text(
+                  16,
+                  weight: FontWeight.w700,
+                  color: p.sleep,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.isEmpty ? 'Profil' : name,
+                    style: p.text(17, weight: FontWeight.w600),
+                  ),
+                  if (parts.isNotEmpty)
+                    Text(
+                      parts.join(' · '),
+                      style: p.text(13, color: p.muted),
+                    ),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, size: 17, color: p.gap),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _bandCard(BuildContext c, OB p, ProfileStats s) {
+    final b = band;
+    if (b == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Pressable(
+          onTap: onDevices,
+          semanticLabel: 'Kein Band verbunden',
+          child: OBCard(
+            child: Row(children: [
+              Icon(LucideIcons.bluetooth, size: 18, color: p.muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Kein Band verbunden',
+                  style: p.text(15, weight: FontWeight.w500),
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, size: 17, color: p.gap),
+            ]),
+          ),
+        ),
+      );
+    }
+    final connected = b.connection == BandConnection.connected;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: OBCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: p.sleepTint,
+                  borderRadius: BorderRadius.circular(AlpRadius.card / 2),
+                ),
+                child: Icon(LucideIcons.bluetooth, size: 18, color: p.sleep),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      bandName ?? 'Band',
+                      style: p.text(17, weight: FontWeight.w600),
+                    ),
+                    Text(
+                      connected ? 'Verbunden' : 'Getrennt',
+                      style: p.text(
+                        13,
+                        weight: FontWeight.w500,
+                        color: connected ? p.recoveryText : p.muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (b.batteryPercent != null)
+                Text(
+                  '${b.batteryPercent} %',
+                  style: p.text(
+                    24,
+                    weight: FontWeight.w700,
+                    display: true,
+                  ),
+                ),
+            ]),
+            if (b.batteryPercent != null) ...[
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: R.rSm,
+                child: SizedBox(
+                  height: 4,
+                  child: Stack(children: [
+                    Container(color: p.well),
+                    FractionallySizedBox(
+                      widthFactor: (b.batteryPercent! / 100).clamp(0.0, 1.0),
+                      child: Container(color: p.recovery),
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Row(children: [
+              _bandFact(p, 'Datenstand', obTime(b.latestStoredAt)),
+              _bandFact(p, 'Gespeichert', obTime(b.receivedAt)),
+              _bandFact(
+                p,
+                'Archiv',
+                s.storageBytes == null ? '—' : formatBytes(s.storageBytes!),
+              ),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bandFact(OB p, String label, String value) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: p.text(12, weight: FontWeight.w600, color: p.muted)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: p.text(15, weight: FontWeight.w700, display: true),
+        ),
+      ],
+    ),
+  );
 
 }

@@ -29,6 +29,7 @@ import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
+import '../../openband/theme.dart' show OBPageHeader, OB;
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
@@ -583,7 +584,10 @@ class MoreSettingsView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsNavTitle ?? 'Settings'),
+            child: OBPageHeader(
+              title: l?.settingsNavTitle ?? 'Settings',
+              subtitle: '',
+            ),
           ),
           Expanded(
             child: ListView(
@@ -1483,14 +1487,30 @@ class _EditProfileViewState extends State<EditProfileView> {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.settingsEditProfileNavTitle ?? 'Edit profile',
-                trailing: Pressable(
-                  semanticLabel: l?.actionSave ?? 'Save',
-                  onTap: _save,
-                  child: Text(l?.actionSave ?? 'Save',
-                      style: F.body.copyWith(
-                          color: p.on(C.green), fontWeight: FontWeight.w600)),
-                )),
+            child: Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                OBPageHeader(
+                  title: l?.settingsEditProfileNavTitle ?? 'Edit profile',
+                  subtitle: '',
+                ),
+                Positioned(
+                  right: 4,
+                  child: Pressable(
+                    semanticLabel: l?.actionSave ?? 'Save',
+                    onTap: _save,
+                    child: Text(
+                      l?.actionSave ?? 'Save',
+                      style: OB.of(c).text(
+                        15,
+                        weight: FontWeight.w600,
+                        color: OB.of(c).action,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: ListView(

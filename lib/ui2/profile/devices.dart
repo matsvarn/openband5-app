@@ -116,6 +116,7 @@ import '../../notify/battery_forecast.dart';
 import '../../state/prefs.dart' show Prefs;
 import '../../sync/paired_device.dart' show cleanDeviceLabel;
 import '../../state/app_state.dart';
+import '../../openband/theme.dart' show OBPageHeader;
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
@@ -1468,7 +1469,10 @@ class MyDevicesView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.devicesMySources ?? 'My sources'),
+            child: OBPageHeader(
+              title: l?.devicesMySources ?? 'My sources',
+              subtitle: '',
+            ),
           ),
           Expanded(
             child: ListView(

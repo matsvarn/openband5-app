@@ -72,7 +72,12 @@ final _rules = <_Rule>[
     // long a network round trip gets before the button gives up on it, and
     // `Timer` has no non-`Duration` constructor to dodge this the way
     // beats.dart's wall-clock math does.
-    allow: {_tokenFile, 'lib/ui2/screens/home_screen.dart'},
+    allow: {
+      _tokenFile,
+      'lib/ui2/screens/home_screen.dart',
+      // first_sync's `_poll` is a status re-read, not an animation.
+      'lib/ui2/onboarding/first_sync.dart',
+    },
   ),
   _Rule(
     'raw gesture detector',
@@ -198,6 +203,9 @@ const _notComponents = {
   // onboarding routes
   'BootSplash', 'WelcomeScreen', 'WelcomeView', 'PairingScreen', 'PairingView',
   'ProfileSetupScreen', 'ProfileSetupView',
+  // A Scaffold route that reads the live band snapshot — a gallery case
+  // would be a photograph of a fixture.
+  'FirstSyncScreen',
   // profile routes
   'ProfileHome', 'ProfileHomeView', 'MoreSettings', 'MoreSettingsView',
   'NotificationSettings', 'NotificationSettingsView', 'EditProfile',
