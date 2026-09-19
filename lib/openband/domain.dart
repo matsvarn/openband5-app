@@ -50,6 +50,45 @@ class BandSnapshot {
   });
 }
 
+/// Current-local-day evaluation for first setup. Never a BLE cursor.
+enum SetupEvalState {
+  missing,
+  stale,
+  unavailable,
+  partial,
+  pending,
+  failed,
+  complete,
+}
+
+class SetupEvaluation {
+  final String day;
+  final int currentAlgo;
+  final int? storedAlgo;
+  final DateTime? computedAt;
+  final SetupEvalState state;
+  const SetupEvaluation({
+    required this.day,
+    required this.currentAlgo,
+    this.storedAlgo,
+    this.computedAt,
+    required this.state,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      other is SetupEvaluation &&
+      other.day == day &&
+      other.currentAlgo == currentAlgo &&
+      other.storedAlgo == storedAlgo &&
+      other.computedAt == computedAt &&
+      other.state == state;
+
+  @override
+  int get hashCode =>
+      Object.hash(day, currentAlgo, storedAlgo, computedAt, state);
+}
+
 class NightSegment {
   final DateTime start;
   final DateTime end;
@@ -934,6 +973,7 @@ String? labBoundsError(LabParse low, LabParse high) {
 
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
+  Future<SetupEvaluation> readSetupEvaluation(String day);
   Future<NightSignals> readNightSignals(String day);
   Future<String> startStrengthSession(WorkoutTemplate template);
   Future<void> recordSet(String sessionId, RecordedSet set);

@@ -46,6 +46,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, double> _rhrByDay = {};
   final Map<String, double> _strainByDay = {};
   WeekendSleepEstimate? weekendEstimate;
+  SetupEvaluation? setupEvaluation;
+  bool failSetupEvaluation = false;
   bool failSleepGoalRead = false;
   bool failSleepGoalWrite = false;
   Future<void>? sleepGoalWriteBarrier;
@@ -685,6 +687,68 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           : const DayMetric.missing(),
       synthetic: true,
     );
+  }
+
+  @override
+  Future<SetupEvaluation> readSetupEvaluation(String day) async {
+    if (failSetupEvaluation) {
+      throw const FormatException('Stored day result is unreadable.');
+    }
+    if (setupEvaluation != null) {
+      return SetupEvaluation(
+        day: day,
+        currentAlgo: setupEvaluation!.currentAlgo,
+        storedAlgo: setupEvaluation!.storedAlgo,
+        computedAt: setupEvaluation!.computedAt,
+        state: day == setupEvaluation!.day
+            ? setupEvaluation!.state
+            : SetupEvalState.missing,
+      );
+    }
+    if (day != _day) {
+      return SetupEvaluation(
+        day: day,
+        currentAlgo: kAlgoVersion,
+        state: SetupEvalState.missing,
+      );
+    }
+    final computed = _at(_day, '07:12');
+    switch (scenario) {
+      case SyntheticScenario.missing:
+        return SetupEvaluation(
+          day: day,
+          currentAlgo: kAlgoVersion,
+          state: SetupEvalState.missing,
+        );
+      case SyntheticScenario.processing:
+        return SetupEvaluation(
+          day: day,
+          currentAlgo: kAlgoVersion,
+          state: SetupEvalState.pending,
+        );
+      case SyntheticScenario.partial:
+        return SetupEvaluation(
+          day: day,
+          currentAlgo: kAlgoVersion,
+          storedAlgo: kAlgoVersion,
+          state: SetupEvalState.partial,
+        );
+      case SyntheticScenario.calculationFailure:
+        return SetupEvaluation(
+          day: day,
+          currentAlgo: kAlgoVersion,
+          storedAlgo: kAlgoVersion,
+          state: SetupEvalState.failed,
+        );
+      default:
+        return SetupEvaluation(
+          day: day,
+          currentAlgo: kAlgoVersion,
+          storedAlgo: kAlgoVersion,
+          computedAt: computed,
+          state: SetupEvalState.complete,
+        );
+    }
   }
 
   @override

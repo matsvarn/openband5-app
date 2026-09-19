@@ -566,7 +566,7 @@
     "A03 · Einrichtung": []
   },
   "kept": {
-    "A03 · Einrichtung": "Alpin 3 Einrichtung is reachable through WelcomeScreen, DevicePickerScreen, FirstSyncScreen and ProfileSetupScreen. First-sync stored frontier is implemented; its processing/readiness claims still need correction and Paper/native review.",
+    "A03 · Einrichtung": "Alpin 3 setup is reachable through WelcomeScreen, DevicePickerScreen, FirstSyncScreen and ProfileSetupScreen. FirstSyncScreen now separates band connection, committed frontier and exact local-day/algo evaluation with current correction jobs. Paper3IBK/3P4K/3P6A/3P7I/3P8X/info3PTN; test/openband_first_sync_test.dart and test/first_sync_test.dart; native first-sync-v2-20260919 Pro and first-sync-mini-final-20260919 mini,188 PNGs each inspected. Other onboarding routes retain separate parity review.",
     "A04 · System": "Widgets and Navigation boards kept (decisions still valid)",
     "A00 · Start hier": "header variant board kept"
   },

@@ -765,6 +765,70 @@ class LocalOpenBandRepository implements OpenBandRepository {
     return [for (final d in days) MetricPoint(d, byDay[d])];
   }
 
+  @override
+  Future<SetupEvaluation> readSetupEvaluation(String day) async {
+    _requireDay(day);
+    final row = await LocalDb.dayResult(day);
+    final sleepJob = await LocalDb.openBandSleepCorrection(day);
+    final napJob = await LocalDb.napRecalcJob(day);
+    final storedAlgo = (row?['algo_version'] as num?)?.toInt();
+    final computedAtMs = (row?['computed_at'] as num?)?.toInt();
+    final computedAt = _computedAt(computedAtMs);
+
+    var state = SetupEvalState.missing;
+    if (row != null) {
+      if (storedAlgo == null) {
+        throw const FormatException('Stored day result is unreadable.');
+      }
+      if (storedAlgo != kAlgoVersion) {
+        state = SetupEvalState.stale;
+      } else if (row['skipped'] == 1) {
+        state = SetupEvalState.unavailable;
+      } else if (row['partial'] == 1) {
+        state = SetupEvalState.partial;
+      } else {
+        if (_payload(row['payload_json']) == null || computedAt == null) {
+          throw const FormatException('Stored day result is unreadable.');
+        }
+        state = SetupEvalState.complete;
+      }
+    }
+
+    final jobState = _jobOutcome(sleepJob);
+    final napState = _jobOutcome(napJob);
+    if (jobState == SetupEvalState.failed ||
+        napState == SetupEvalState.failed) {
+      state = SetupEvalState.failed;
+    } else if (jobState == SetupEvalState.pending ||
+        napState == SetupEvalState.pending) {
+      state = SetupEvalState.pending;
+    }
+
+    return SetupEvaluation(
+      day: day,
+      currentAlgo: kAlgoVersion,
+      storedAlgo: storedAlgo,
+      computedAt: state == SetupEvalState.complete ? computedAt : null,
+      state: state,
+    );
+  }
+
+  /// Same overlay as [readDay]: the current-revision sleep/nap job status
+  /// is the outcome. A later unrelated [LocalDb.putDayResult] cannot dismiss
+  /// pending or failed.
+  static SetupEvalState? _jobOutcome(Map<String, dynamic>? job) {
+    if (job == null) return null;
+    final status = job['status']?.toString();
+    if (status == 'complete') return null;
+    if (status == 'failed') return SetupEvalState.failed;
+    return SetupEvalState.pending;
+  }
+
+  static DateTime? _computedAt(int? ms) {
+    if (ms == null || ms <= 0 || ms.abs() > 8640000000000000) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
   Future<BandSnapshot> readBand() async {
     final battery = await LocalDb.latestBandBatterySample(
       deviceId: LocalDb.kPrimaryDeviceId,

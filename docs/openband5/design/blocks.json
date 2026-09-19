@@ -94,7 +94,12 @@
     "3O01-0": "A04 Darstellung",
     "3O17-0": "A04 Darstellung · Dunkel",
     "3OSU-0": "A04 Darstellung · Speichern fehlgeschlagen",
-    "3OTU-0": "A04 Darstellung · Speichern fehlgeschlagen · Dunkel"
+    "3OTU-0": "A04 Darstellung · Speichern fehlgeschlagen · Dunkel",
+    "3P4K-0": "A03 Einrichtung · Erste Übertragung · Dunkel",
+    "3P6A-0": "A03 Einrichtung · Erste Übertragung · Auswertung vorhanden",
+    "3P7I-0": "A03 Einrichtung · Erste Übertragung · teilweise ausgewertet · Dunkel",
+    "3P8X-0": "A03 Einrichtung · Erste Übertragung · Auswertung nicht geladen",
+    "3PTN-0": "A03 Einrichtung · Erste Übertragung · Information"
   },
   "blocks": [
     {
@@ -1215,6 +1220,29 @@
         "3MGR-0"
       ],
       "notes": "Shared explicit choices for theme and notification sheets:48 minimum row,15 regular/600 selected,18 fixed check lane. Theme choice changes after durable save."
+    },
+    {
+      "name": "OBSetupStatusCard",
+      "paperNode": "3PAB-0",
+      "widget": "OBSetupStatusCard",
+      "file": "ui2/onboarding/first_sync.dart",
+      "usedIn": [
+        "3IBK-0",
+        "3P4K-0",
+        "3P6A-0",
+        "3P7I-0",
+        "3P8X-0",
+        "3PTN-0"
+      ],
+      "variants": [
+        "open",
+        "active",
+        "complete",
+        "partial",
+        "read-error",
+        "dark"
+      ],
+      "notes": "Three independent source facts: connection, stored frontier and current-local-day evaluation. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
     }
   ],
   "openBlocks": [

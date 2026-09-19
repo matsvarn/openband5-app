@@ -138,3 +138,14 @@ Main required OpenBand suite: **314 passed**; analyzer **28 items, clean**; mani
 Native Pro `build/ui-review/appearance-final-20260919` passed in380.24s; mini `build/ui-review/appearance-mini-final-20260919` passed in564.56s. **180 PNGs per run, every PNG inspected**, filenames reconcile with frames.json and index.html. Actual save failure/retry, dark selection, System→OS dark and reopen were exercised; static light/dark/error and2x frames also reviewed. No personal data, physical device or Bluetooth proof.
 
 Paper3O01/3O17/3OSU/3OTU and shared3MCG/3N1Y reviewed against the native output. Status-bar frames now explicitly reserve58px, fixing a clipped Paper page top without changing the app. Exact final export: `/tmp/openband-alpin-20260919/appearance-paper-final-jsx.json`. The broader hub/layout backlog remains open.
+
+
+## Alpin first sync · 19 September 2026
+
+Connection, committed band frontier and today’s evaluation are independent. Evaluation requires the current local day and algorithm version; pending/failed sleep or nap recalculation cannot be masked by an unrelated newer result. Partial, unavailable and read-error states retain Continue. Slow reads use one flight and one queued refresh; midnight drops the old day’s result. Band status publishes without waiting for evaluation.
+
+Main required OpenBand and affected onboarding suites: **349 passed**. Analyzer: **31 items, clean**. Manifest: **86 blocks /86 screens**. Lead inspected source and actual diff; fresh reviewer49f6ae5c verified current-job joins, failure precedence and async fixes. All six new goldens inspected.
+
+Native synthetic Pro `build/ui-review/first-sync-v2-20260919` passed (381.82s); final mini `build/ui-review/first-sync-mini-final-20260919` passed (584.65s). **188 PNGs each, every PNG inspected**, frames and index inventories reconciled. Pro captured the same visual fixtures before the final nonvisual async/job correction; final mini and349 source/widget tests cover that correction. The earlier failed first-sync-final run is excluded. Light/dark, complete/partial/error/retry, disclosure and2x text reviewed against Paper3IBK/3P4K/3P6A/3P7I/3P8X/3PTN and canonical3PAB. Exact export: `/tmp/openband-alpin-20260919/first-sync-v3-jsx.json`.
+
+Older hub/legend/navigation/dialog/copy issues remain queued. Simulator data are synthetic; no physical-device, Bluetooth delivery or physiological proof is claimed.

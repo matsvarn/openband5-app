@@ -129,7 +129,7 @@ void main() {
       expect(find.byType(PairingScreen), findsNothing);
       // A real pairing detours through Erste Übertragung once.
       expect(find.byType(FirstSyncScreen), findsOneWidget);
-      await tester.tap(find.text('Weiter zum Profil'));
+      await tester.tap(find.text('Continue to profile'));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileSetupScreen), findsOneWidget);
       expect(app.isPaired, isTrue);
@@ -168,7 +168,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PairingScreen), findsNothing);
     expect(find.byType(FirstSyncScreen), findsOneWidget);
-    await tester.tap(find.text('Weiter zum Profil'));
+    await tester.tap(find.text('Continue to profile'));
     await tester.pumpAndSettle();
     expect(find.byType(ProfileSetupScreen), findsOneWidget);
     expect(app.isPaired, isTrue);
@@ -195,7 +195,7 @@ void main() {
     expect(find.byType(PairingScreen), findsNothing);
     expect(find.byType(RePair), findsNothing);
     expect(find.byType(FirstSyncScreen), findsOneWidget);
-    await tester.tap(find.text('Weiter zum Profil'));
+    await tester.tap(find.text('Continue to profile'));
     await tester.pumpAndSettle();
     expect(find.byType(ProfileSetupScreen), findsOneWidget);
     expect(app.pairAttempts, 1);

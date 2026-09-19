@@ -21,8 +21,10 @@ import 'openband/notification_settings.dart';
 import 'openband/theme.dart';
 import 'theme/theme_controller.dart';
 import 'openband/training.dart';
+import 'compute/derivation_engine.dart' show kAlgoVersion;
 import 'state/alarm_schedule.dart';
 import 'ui2/app_shell.dart';
+import 'ui2/onboarding/first_sync.dart';
 import 'ui2/profile/alarm.dart';
 
 /// Separate entry point: no AppState, Bluetooth, real database or user profile.
@@ -326,9 +328,23 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               title: Text(entry.$1),
               onTap: () {
                 Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => entry.$2),
+                );
+              },
+            ),
+          ),
+          const ListTile(
+            title: Text('Erste Übertragung · synthetische Zustände'),
+          ),
+          ..._firstSyncGalleryStates().map(
+            (entry) => ListTile(
+              title: Text(entry.$1),
+              onTap: () {
+                Navigator.pop(c);
                 Navigator.of(
                   context,
-                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2()));
               },
             ),
           ),
@@ -365,6 +381,93 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     ),
   );
 }
+
+final galleryFirstSyncNow = DateTime(2026, 9, 15, 9, 41);
+final galleryFirstSyncStored = DateTime(2026, 9, 15, 6, 54);
+final galleryFirstSyncComputed = DateTime(2026, 9, 15, 7, 12);
+
+BandSnapshot galleryFirstSyncBand({bool receiving = true}) => BandSnapshot(
+  connection: BandConnection.connected,
+  transfer: receiving ? TransferState.receiving : TransferState.idle,
+  latestStoredAt: galleryFirstSyncStored,
+);
+
+SetupEvaluation galleryFirstSyncEval(SetupEvalState state) => SetupEvaluation(
+  day: '2026-09-15',
+  currentAlgo: kAlgoVersion,
+  storedAlgo: state == SetupEvalState.missing || state == SetupEvalState.stale
+      ? (state == SetupEvalState.stale ? kAlgoVersion - 1 : null)
+      : kAlgoVersion,
+  computedAt: state == SetupEvalState.complete
+      ? galleryFirstSyncComputed
+      : null,
+  state: state,
+);
+
+Widget firstSyncGalleryFrame({
+  required Brightness brightness,
+  BandSnapshot? band,
+  SetupEvaluation? evaluation,
+  bool bandError = false,
+  bool evalError = false,
+  bool receiving = true,
+  SetupEvalState evalState = SetupEvalState.missing,
+}) {
+  final snapshot = band ?? galleryFirstSyncBand(receiving: receiving);
+  final eval = evaluation ?? galleryFirstSyncEval(evalState);
+  return Theme(
+    data: openBandTheme(brightness),
+    child: FirstSyncScreen(
+      onDone: () {},
+      now: () => galleryFirstSyncNow,
+      synthetic: true,
+      readBand: () async {
+        if (bandError) throw StateError('band status unread');
+        return snapshot;
+      },
+      readSetupEvaluation: (day) async {
+        if (evalError) throw StateError('evaluation unread');
+        return eval.day == day
+            ? eval
+            : SetupEvaluation(
+                day: day,
+                currentAlgo: kAlgoVersion,
+                state: SetupEvalState.missing,
+              );
+      },
+    ),
+  );
+}
+
+List<(String, Widget Function())> _firstSyncGalleryStates() => [
+  (
+    'Erste Übertragung · Ausstehend',
+    () => firstSyncGalleryFrame(brightness: Brightness.light),
+  ),
+  (
+    'Erste Übertragung · Dunkel',
+    () => firstSyncGalleryFrame(brightness: Brightness.dark),
+  ),
+  (
+    'Erste Übertragung · Fertig',
+    () => firstSyncGalleryFrame(
+      brightness: Brightness.light,
+      receiving: false,
+      evalState: SetupEvalState.complete,
+    ),
+  ),
+  (
+    'Erste Übertragung · Teilweise',
+    () => firstSyncGalleryFrame(
+      brightness: Brightness.dark,
+      evalState: SetupEvalState.partial,
+    ),
+  ),
+  (
+    'Erste Übertragung · Fehler',
+    () => firstSyncGalleryFrame(brightness: Brightness.light, evalError: true),
+  ),
+];
 
 final galleryAlarmNow = DateTime(2026, 9, 15, 9, 41);
 final galleryAlarmAt = DateTime(2026, 9, 16, 7, 0);
