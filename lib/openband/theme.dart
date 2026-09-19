@@ -102,7 +102,9 @@ ThemeData openBandTheme(Brightness brightness) {
       backgroundColor: p.card,
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AlpRadius.card)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AlpRadius.card),
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -111,7 +113,9 @@ ThemeData openBandTheme(Brightness brightness) {
         foregroundColor: p.dark ? p.canvas : Colors.white,
         minimumSize: const Size(44, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AlpRadius.row)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AlpRadius.row),
+        ),
         textStyle: p.text(15, weight: FontWeight.w600),
       ),
     ),
@@ -275,6 +279,48 @@ class OBCard extends StatelessWidget {
     padding: padding,
     child: child,
   );
+}
+
+/// Icon + title + body + optional fix line, on a white card — the onboarding
+/// status card (import report, pairing advice).
+class OBNoticeCard extends StatelessWidget {
+  final String title, body;
+  final String? fix;
+  final IconData icon;
+  const OBNoticeCard(
+    this.title,
+    this.body, {
+    super.key,
+    this.fix,
+    required this.icon,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 6,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: p.action),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title, style: p.text(15, weight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          Text(body, style: p.text(14, color: p.muted)),
+          if (fix != null)
+            Text(
+              fix!,
+              style: p.text(13, weight: FontWeight.w600, color: p.action),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class OBAction extends StatelessWidget {
