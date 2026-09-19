@@ -688,6 +688,30 @@
         "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
         "note": "Individual persisted switches, battery threshold and water interval choices use shared rows; failed saves retain the chosen draft for retry.",
         "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
+      },
+      "Entfernung · Meilen mit Vorschau": {
+        "status": "implemented",
+        "paperNode": "3UKA-0",
+        "source": "lib/openband/units.dart; lib/state/units_controller.dart; lib/ui2/profile/settings.dart",
+        "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
+        "note": "Explicit metric/imperial choices with converted examples; no personal measurements invented.",
+        "nativeReview": "build/ui-review/units-v4-20260919 and build/ui-review/units-v4-mini-20260919: 219 PNGs each, all inspected; frames/index reconciled. Light/dark, 2x text, failure/retry/reopen. Synthetic simulator proof."
+      },
+      "Einheiten · metrische Voreinstellung": {
+        "status": "implemented",
+        "paperNode": "3UHD-0",
+        "source": "lib/openband/units.dart; lib/state/units_controller.dart; lib/ui2/profile/settings.dart",
+        "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
+        "note": "Existing metric setting remains selected until a durable successful write.",
+        "nativeReview": "build/ui-review/units-v4-20260919 and build/ui-review/units-v4-mini-20260919: 219 PNGs each, all inspected; frames/index reconciled. Light/dark, 2x text, failure/retry/reopen. Synthetic simulator proof."
+      },
+      "Einheiten · Meilen gespeichert": {
+        "status": "implemented",
+        "paperNode": "3UKA-0",
+        "source": "lib/openband/units.dart; lib/state/units_controller.dart; lib/ui2/profile/settings.dart",
+        "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
+        "note": "Imperial choice persists and survives reopen; failure keeps the saved choice and supports retry.",
+        "nativeReview": "build/ui-review/units-v4-20260919 and build/ui-review/units-v4-mini-20260919: 219 PNGs each, all inspected; frames/index reconciled. Light/dark, 2x text, failure/retry/reopen. Synthetic simulator proof."
       }
     },
     "A02 · Schlaf": {

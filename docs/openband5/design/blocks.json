@@ -112,7 +112,15 @@
     "3MP6-0": "A06a Vorlagen · Dunkel",
     "3MQE-0": "A06a Vorlagen · leer",
     "3MT7-0": "A06a Vorlage · Aktionen",
-    "3MV8-0": "A06a Vorlage · Aktionen · Dunkel"
+    "3MV8-0": "A06a Vorlage · Aktionen · Dunkel",
+    "3UHD-0": "A08 Einheiten · Metrisch",
+    "3UIZ-0": "A08 Einheiten · Imperial",
+    "3UKA-0": "A08 Einheiten · Metrisch · Dunkel",
+    "3UM1-0": "A08 Einheiten · Imperial · Dunkel",
+    "3UNC-0": "A08 Einheiten · Speicherfehler",
+    "3UON-0": "A08 Einheiten · Speicherfehler · Dunkel",
+    "3UQ6-0": "A08 Einheiten · 375 große Schrift",
+    "3URH-0": "A08 Einheiten · 375 große Schrift · Dunkel"
   },
   "blocks": [
     {
@@ -1271,7 +1279,15 @@
         "3OSU-0",
         "3OTU-0",
         "3MDT-0",
-        "3MGR-0"
+        "3MGR-0",
+        "3UHD-0",
+        "3UIZ-0",
+        "3UKA-0",
+        "3UM1-0",
+        "3UNC-0",
+        "3UON-0",
+        "3UQ6-0",
+        "3URH-0"
       ],
       "notes": "Shared explicit choices for theme and notification sheets:48 minimum row,15 regular/600 selected,18 fixed check lane. Theme choice changes after durable save."
     },
@@ -1337,6 +1353,27 @@
         "3MV8-0"
       ],
       "notes": "Edit, duplicate, pin/unpin and archive. Persistence failures remain retryable; pin+archive is atomic."
+    },
+    {
+      "name": "OBUnitsPreview",
+      "paperNode": "3UID-0",
+      "widget": "_PreviewRows",
+      "file": "units.dart",
+      "usedIn": [
+        "3UHD-0",
+        "3UIZ-0",
+        "3UKA-0",
+        "3UM1-0",
+        "3UNC-0",
+        "3UON-0",
+        "3UQ6-0",
+        "3URH-0"
+      ],
+      "variants": {
+        "large": "3UQ9-0",
+        "largeDark": "3URK-0"
+      },
+      "notes": "Explicit example conversions use existing UnitsController formatters, not user metrics.48-point normal rows with right-aligned values; all rows stack at large text with8 vertical padding and4 gap. No new measurement defaults."
     }
   ],
   "openBlocks": [

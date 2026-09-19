@@ -28,6 +28,7 @@ import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/appearance.dart';
 import '../../openband/notification_settings.dart';
+import '../../openband/units.dart';
 import '../../openband/theme.dart' show OBPageHeader, OB;
 import '../../platform/app_icon.dart';
 import '../../platform/tasker_bridge.dart';
@@ -159,7 +160,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
-      units: units.system.label,
+      units: unitsChoiceLabel(c, units.system),
       appearance: appearanceChoiceLabel(c, theme.choice),
       cycleTracking: app.cycleTrackingEnabled,
       appIcon: _icon,
@@ -185,9 +186,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onNotifications: () => goto(c, const NotificationSettings()),
       onData: () => goto(c, const DataScreen()),
       onAutomation: () => goto(c, const AutomationSettings()),
-      onCycleUnits: () => units.setSystem(units.isImperial
-          ? UnitSystem.metric
-          : UnitSystem.imperial),
+      onOpenUnits: () => goto(c, const UnitsSettings()),
       onCycleAppearance: () => goto(c, const AppearanceSettings()),
       onToggleCycleTracking: () =>
           app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
@@ -521,7 +520,7 @@ class MoreSettingsView extends StatelessWidget {
       onNotifications,
       onData,
       onAutomation,
-      onCycleUnits,
+      onOpenUnits,
       onCycleAppearance,
       onTogglePhoneSteps,
       onToggleTelemetry,
@@ -561,7 +560,7 @@ class MoreSettingsView extends StatelessWidget {
     this.onNotifications,
     this.onData,
     this.onAutomation,
-    this.onCycleUnits,
+    this.onOpenUnits,
     this.onCycleAppearance,
     this.onTogglePhoneSteps,
     this.onToggleTelemetry,
@@ -632,7 +631,7 @@ class MoreSettingsView extends StatelessWidget {
                 settingsGroup(c, l?.settingsGroupPreferences ?? 'Preferences', [
                   SetRow(LucideIcons.ruler, C.blue,
                       l?.settingsUnitsRowTitle ?? 'Units',
-                      value: units, onTap: onCycleUnits),
+                      value: units, onTap: onOpenUnits),
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),

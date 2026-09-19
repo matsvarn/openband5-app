@@ -20,9 +20,21 @@ class UnitsController extends ChangeNotifier {
   static const double _metersPerMile = 1609.344;
 
   UnitSystem _system;
-  UnitsController._(this._system);
+  final Future<bool> Function(UnitSystem system)? _persist;
+  Future<void> _writes = Future<void>.value();
+  bool _disposed = false;
 
-  factory UnitsController.seed(UnitSystem s) => UnitsController._(s);
+  UnitsController._(
+    this._system, {
+    Future<bool> Function(UnitSystem system)? persist,
+  }) : _persist = persist;
+
+  /// Build synchronously from an already-known system (used by [bootstrap]).
+  factory UnitsController.seed(
+    UnitSystem s, {
+    Future<bool> Function(UnitSystem system)? persist,
+  }) =>
+      UnitsController._(s, persist: persist);
 
   static Future<UnitsController> bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
@@ -35,12 +47,39 @@ class UnitsController extends ChangeNotifier {
   UnitSystem get system => _system;
   bool get isImperial => _system == UnitSystem.imperial;
 
-  Future<void> setSystem(UnitSystem s) async {
-    if (_system == s) return;
-    _system = s;
-    notifyListeners();
+  /// Persist [s] then show it. Writes run in call order; each durable
+  /// success is applied, so a later failure cannot hide an earlier save.
+  /// Selection never moves before persist returns.
+  Future<bool> setSystem(UnitSystem s) {
+    late final Future<bool> result;
+    result = _writes.then((_) => _persistAndApply(s));
+    _writes = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<bool> _persistAndApply(UnitSystem s) async {
+    try {
+      final ok = await (_persist ?? _defaultPersist)(s);
+      if (!ok) return false;
+      if (_system != s) {
+        _system = s;
+        if (!_disposed) notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _defaultPersist(UnitSystem s) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kUnits, s.name);
+    return prefs.setString(_kUnits, s.name);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   // ── display (input is always metric, as stored) ────────────────────────────

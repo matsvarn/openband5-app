@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -10,16 +11,122 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/openband/appearance.dart';
+import 'package:openstrap_edge/openband/units.dart';
 import 'package:openstrap_edge/openband/notification_settings.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
+import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:provider/provider.dart';
+
+bool reviewRouteAnimating(Animation<double>? animation) =>
+    animation != null && animation.isAnimating;
+
+bool reviewTransitionUnsettled(
+  Animation<double> primary,
+  Animation<double> secondary,
+) {
+  if (reviewRouteAnimating(primary) || reviewRouteAnimating(secondary)) {
+    return true;
+  }
+  // dismissed + value 0 is not isAnimating, but Cupertino still paints
+  // _kRightMiddleTween at Offset(1,0) — a fully shifted-off page.
+  // Secondary 1 is a settled covered route (parallax parked at -1/3).
+  if (primary.value < 1.0) return true;
+  return secondary.value > 0.0 && secondary.value < 1.0;
+}
+
+bool reviewPageTransitionRunning(WidgetTester tester) {
+  for (final element in find.byType(CupertinoPageTransition).evaluate()) {
+    final widget = element.widget as CupertinoPageTransition;
+    if (reviewTransitionUnsettled(
+      widget.primaryRouteAnimation,
+      widget.secondaryRouteAnimation,
+    )) {
+      return true;
+    }
+  }
+  for (final element
+      in find.byType(CupertinoFullscreenDialogTransition).evaluate()) {
+    final widget = element.widget as CupertinoFullscreenDialogTransition;
+    if (reviewTransitionUnsettled(
+      widget.primaryRouteAnimation,
+      widget.secondaryRouteAnimation,
+    )) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Future<void> reviewPumpPageTransitions(WidgetTester tester) async {
+  await tester.pump();
+  var pumped = 0;
+  while (reviewPageTransitionRunning(tester)) {
+    await tester.pump(const Duration(milliseconds: 16));
+    if (++pumped > 60) {
+      throw FlutterError(
+        'Page transition did not complete after $pumped pumped frames.',
+      );
+    }
+  }
+}
+
+bool reviewTimingContainsFrame(
+  List<FrameTiming> timings,
+  int? targetFrameNumber,
+) {
+  if (targetFrameNumber == null) return false;
+  for (final timing in timings) {
+    if (timing.frameNumber == targetFrameNumber) return true;
+  }
+  return false;
+}
+
+Future<void> reviewPumpPresentedFrame(WidgetTester tester) async {
+  if (tester.binding is! LiveTestWidgetsFlutterBinding) {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    return;
+  }
+
+  int? targetFrameNumber;
+  final rastered = Completer<void>();
+  late final TimingsCallback listener;
+  listener = (List<FrameTiming> timings) {
+    if (reviewTimingContainsFrame(timings, targetFrameNumber) &&
+        !rastered.isCompleted) {
+      rastered.complete();
+    }
+  };
+
+  tester.binding.addTimingsCallback(listener);
+  tester.binding.addPostFrameCallback((_) {
+    // hooks.dart updates frameData after begin-frame callbacks.
+    targetFrameNumber = tester.binding.platformDispatcher.frameData.frameNumber;
+  });
+  try {
+    await tester.pump();
+    if (targetFrameNumber == null) {
+      throw FlutterError(
+        'Post-frame callback did not record a target frame number.',
+      );
+    }
+    await rastered.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => throw FlutterError(
+        'Timed out waiting for FrameTiming of frame $targetFrameNumber.',
+      ),
+    );
+  } finally {
+    tester.binding.removeTimingsCallback(listener);
+  }
+}
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -103,8 +210,10 @@ void main() {
 
       Future<void> capture(String name) async {
         expect(tester.takeException(), isNull);
-        // UIKit chrome animates independently of Flutter's scheduled frames.
-        await Future<void>.delayed(const Duration(milliseconds: 350));
+        // Finish routes without pumpAndSettle (hangs on repeating indicators)
+        // and without ModalRoute.of, which registers inherited dependents.
+        await reviewPumpPageTransitions(tester);
+        await reviewPumpPresentedFrame(tester);
         const port = int.fromEnvironment('OPENBAND_REVIEW_PORT');
         if (port == 0) {
           await binding.takeScreenshot(name);
@@ -1752,6 +1861,163 @@ void main() {
         await capture('appearance-live-reopen');
       } finally {
         liveTheme.dispose();
+      }
+
+      Future<void> mountUnits({
+        required Brightness brightness,
+        UnitSystem selected = UnitSystem.metric,
+        String? saveError,
+        double? scale,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            key: UniqueKey(),
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('de'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: openBandTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale ?? 1)),
+              child: child!,
+            ),
+            home: UnitsSettingsView(
+              selected: selected,
+              synthetic: true,
+              saveError: saveError,
+              onSelect: (_) {},
+              onRetry: saveError == null ? null : () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await mountUnits(brightness: Brightness.light);
+      expect(find.text('Einheiten'), findsOneWidget);
+      expect(find.text('Metrisch'), findsOneWidget);
+      expect(find.text('5,00 km'), findsOneWidget);
+      await capture('units-light');
+      await mountUnits(
+        brightness: Brightness.light,
+        selected: UnitSystem.imperial,
+      );
+      expect(find.text('3,11 mi'), findsOneWidget);
+      await capture('units-imperial');
+      await mountUnits(
+        brightness: Brightness.dark,
+        selected: UnitSystem.metric,
+      );
+      await capture('units-dark');
+      await mountUnits(
+        brightness: Brightness.dark,
+        selected: UnitSystem.imperial,
+      );
+      await capture('units-imperial-dark');
+      await mountUnits(
+        brightness: Brightness.light,
+        saveError: 'Speichern fehlgeschlagen',
+      );
+      expect(find.text('Erneut'), findsOneWidget);
+      await capture('units-error');
+      await mountUnits(
+        brightness: Brightness.dark,
+        selected: UnitSystem.metric,
+        saveError: 'Speichern fehlgeschlagen',
+      );
+      expect(find.text('Erneut'), findsOneWidget);
+      await capture('units-error-dark');
+      await mountUnits(brightness: Brightness.light, scale: 2);
+      expect(find.text('Entfernung'), findsOneWidget);
+      expect(find.text('5,00 km'), findsOneWidget);
+      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      await capture('units-large');
+      await mountUnits(
+        brightness: Brightness.dark,
+        selected: UnitSystem.metric,
+        scale: 2,
+      );
+      expect(find.text('Entfernung'), findsOneWidget);
+      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      await capture('units-large-dark');
+      await mountUnits(
+        brightness: Brightness.light,
+        selected: UnitSystem.imperial,
+        scale: 2,
+      );
+      expect(find.text('3,11 mi'), findsOneWidget);
+      expect(find.text('8:03 /mi'), findsOneWidget);
+      expect(find.text('5′11″'), findsOneWidget);
+      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      await capture('units-large-imperial');
+
+      var failUnits = true;
+      var liveUnits = UnitsController.seed(
+        UnitSystem.metric,
+        persist: (_) async {
+          if (failUnits) throw Exception('disk full');
+          return true;
+        },
+      );
+      try {
+        Future<void> mountLiveUnits() async {
+          await tester.pumpWidget(
+            ChangeNotifierProvider<UnitsController>.value(
+              key: UniqueKey(),
+              value: liveUnits,
+              child: ListenableBuilder(
+                listenable: liveUnits,
+                builder: (context, _) => MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  locale: const Locale('de'),
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  localizationsDelegates:
+                      AppLocalizations.localizationsDelegates,
+                  theme: openBandTheme(Brightness.light),
+                  darkTheme: openBandTheme(Brightness.dark),
+                  themeMode: ThemeMode.light,
+                  themeAnimationDuration: Duration.zero,
+                  home: UnitsSettings(
+                    synthetic: true,
+                    controller: liveUnits,
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await mountLiveUnits();
+        await tester.tap(find.byKey(const ValueKey('units-choice-imperial')));
+        await tester.pumpAndSettle();
+        expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+        expect(liveUnits.system, UnitSystem.metric);
+        expect(find.text('5,00 km'), findsOneWidget);
+        await capture('units-live-save-failure');
+        failUnits = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        expect(find.text('Speichern fehlgeschlagen'), findsNothing);
+        expect(liveUnits.system, UnitSystem.imperial);
+        expect(find.text('3,11 mi'), findsOneWidget);
+        await capture('units-live-save-retry');
+
+        final reopenedSystem = liveUnits.system;
+        final previousUnits = liveUnits;
+        liveUnits = UnitsController.seed(
+          reopenedSystem,
+          persist: (_) async => true,
+        );
+        previousUnits.dispose();
+        await mountLiveUnits();
+        expect(liveUnits.system, UnitSystem.imperial);
+        expect(find.text('3,11 mi'), findsOneWidget);
+        await capture('units-live-reopen');
+      } finally {
+        liveUnits.dispose();
       }
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;

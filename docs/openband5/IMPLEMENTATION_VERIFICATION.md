@@ -160,3 +160,14 @@ Lead inspected the integrated source/diff and fresh independent reviews. Require
 Native synthetic Pro `build/ui-review/training-v6-20260919` passed in422.42s; mini `build/ui-review/training-v6-mini-20260919` passed in628.42s. **207 PNGs per run, every PNG inspected**; names reconcile with frames.json and index.html. New template list/menu/pin and strength light/dark/error/retry/resume/skip/add/rest/large-text states match the reviewed Paper blocks. Prior v1–v5 runs are diagnostic, not final acceptance.
 
 Paper templates3MNS/3MP6/3MQE/3MX9/3MT7/3MV8 and strength3FLY/3N6K/3OGV/3OLU/3OV4/3OZE/3O3E/3O80/3PFE/3PSH/3PT3 were rendered and compared. Full template editing/catalogue, completed-session detail and remaining training flows remain open. Existing older hub, tab, stage-legend, copy and dark action contrast defects remain queued. Simulator proof does not establish physical Bluetooth behavior or physiological validity.
+
+
+## Alpin units · 19 September 2026
+
+Explicit metric/imperial selection replaces hidden cycling. Examples convert fixed, clearly labelled example inputs; saved measurements remain unchanged. UnitsController serializes durable writes and applies each success. Failure retains the last saved choice; retry and reopen use the production controller. Pending saves pin the route.
+
+Lead inspected the integrated source/diff and fresh review4f200028/9c4e8fa0. Required OpenBand plus controller suite: **452 passed**. Final focused unit/controller/capture-helper checks: **33 passed**. Analyzer: **34 items, clean**. Manifest: **90 blocks /107 screens**. All **nine new golden PNGs** inspected. The native capture helper correlates the newly requested frame with its exact raster timing rather than accepting an older timing batch.
+
+Native synthetic Pro `build/ui-review/units-v4-20260919` passed in378.48s; mini `build/ui-review/units-v4-mini-20260919` passed in599.19s. **219 PNGs per run, every PNG inspected**; names reconcile with frames.json and index.html. Light/dark, metric/imperial, save failure/retry/reopen and2x text reviewed against Paper3UHD/3UIZ/3UKA/3UM1/3UNC/3UON/3UQ6/3URH and canonical preview3UID. Exact exports: units-v1-jsx.json and units-large-v1-jsx.json in the private task directory. Earlier v1–v3 runs are diagnostic only.
+
+Reviewing older gallery screens does not close their outstanding hub/layout/copy work. No physical-device, Bluetooth or physiological proof is claimed.

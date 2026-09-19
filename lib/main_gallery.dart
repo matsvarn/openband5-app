@@ -20,6 +20,8 @@ import 'notify/notification_prefs.dart';
 import 'openband/appearance.dart';
 import 'openband/notification_settings.dart';
 import 'openband/theme.dart';
+import 'openband/units.dart';
+import 'state/units_controller.dart';
 import 'theme/theme_controller.dart';
 import 'openband/training.dart';
 import 'compute/derivation_engine.dart' show kAlgoVersion;
@@ -340,6 +342,18 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           ),
           const ListTile(title: Text('Darstellung · synthetische Zustände')),
           ..._appearanceGalleryStates().map(
+            (entry) => ListTile(
+              title: Text(entry.$1),
+              onTap: () {
+                Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => entry.$2),
+                );
+              },
+            ),
+          ),
+          const ListTile(title: Text('Einheiten · synthetische Zustände')),
+          ..._unitsGalleryStates().map(
             (entry) => ListTile(
               title: Text(entry.$1),
               onTap: () {
@@ -722,6 +736,107 @@ List<(String, Widget)> _appearanceGalleryStates() {
       ),
     ),
   ];
+}
+
+List<(String, Widget)> _unitsGalleryStates() {
+  return [
+    (
+      'Einheiten · Metrisch',
+      const UnitsSettingsView(
+        selected: UnitSystem.metric,
+        synthetic: true,
+      ),
+    ),
+    (
+      'Einheiten · Imperial',
+      const UnitsSettingsView(
+        selected: UnitSystem.imperial,
+        synthetic: true,
+      ),
+    ),
+    (
+      'Einheiten · Dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: const UnitsSettingsView(
+          selected: UnitSystem.metric,
+          synthetic: true,
+        ),
+      ),
+    ),
+    (
+      'Einheiten · Imperial · Dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: const UnitsSettingsView(
+          selected: UnitSystem.imperial,
+          synthetic: true,
+        ),
+      ),
+    ),
+    (
+      'Einheiten · Speichern fehlgeschlagen',
+      UnitsGallerySession(failing: true),
+    ),
+    (
+      'Einheiten · Speichern fehlgeschlagen · Dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: UnitsSettingsView(
+          selected: UnitSystem.metric,
+          synthetic: true,
+          saveError: 'Speichern fehlgeschlagen',
+          onRetry: () {},
+        ),
+      ),
+    ),
+  ];
+}
+
+/// Isolated host so gallery retry uses [UnitsController] without real prefs.
+class UnitsGallerySession extends StatefulWidget {
+  final UnitSystem initial;
+  final bool failing;
+  const UnitsGallerySession({
+    super.key,
+    this.initial = UnitSystem.metric,
+    this.failing = false,
+  });
+
+  @override
+  State<UnitsGallerySession> createState() => _UnitsGallerySessionState();
+}
+
+class _UnitsGallerySessionState extends State<UnitsGallerySession> {
+  late final UnitsController units;
+  late bool failNext = widget.failing;
+
+  @override
+  void initState() {
+    super.initState();
+    units = UnitsController.seed(
+      widget.initial,
+      persist: (_) async {
+        if (failNext) {
+          failNext = false;
+          throw Exception('disk full');
+        }
+        return true;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    units.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => UnitsSettings(
+    controller: units,
+    synthetic: true,
+  );
 }
 
 /// Isolated host so gallery retry uses [ThemeController] and the page
