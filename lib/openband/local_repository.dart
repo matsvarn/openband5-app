@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../data/db.dart';
 import '../data/journal_fields.dart';
+import '../data/lab_catalogue.dart';
 import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
@@ -1619,6 +1620,160 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (dayLabelOf(recordedTime(draft.wake, draft.recordingTimezone)) !=
         draft.day) {
       throw ArgumentError('Sleep wake time must belong to the selected day.');
+    }
+  }
+
+  @override
+  Future<LabSnapshot> readLabs() async {
+    final rows = await LocalDb.labResults();
+    final defs = await LocalDb.labMarkerDefs();
+    return LabSnapshot(
+      results: [for (final r in rows) _labDraw(r)],
+      custom: [for (final d in defs) _labDef(d)],
+      sex: app.user?['sex']?.toString(),
+    );
+  }
+
+  @override
+  Future<void> saveLabDraw(
+    LabDraw draw, {
+    LabDraw? replacing,
+    bool replaceExisting = false,
+  }) async {
+    _requireLabDraw(draw);
+    final from = replacing;
+    if (from != null &&
+        (from.marker != draw.marker || from.takenOn != draw.takenOn)) {
+      try {
+        await LocalDb.relocateLabResult(
+          fromMarker: from.marker,
+          fromTakenOn: from.takenOn,
+          toMarker: draw.marker,
+          toTakenOn: draw.takenOn,
+          value: draw.value,
+          unit: draw.unit,
+          note: draw.note,
+          reportLow: draw.reportLow,
+          reportHigh: draw.reportHigh,
+          replaceDestination: replaceExisting,
+        );
+      } on StateError {
+        throw LabDrawCollision(draw.marker, draw.takenOn);
+      }
+      return;
+    }
+    try {
+      await LocalDb.putLabResult(
+        marker: draw.marker,
+        takenOn: draw.takenOn,
+        value: draw.value,
+        unit: draw.unit,
+        note: draw.note,
+        reportLow: draw.reportLow,
+        reportHigh: draw.reportHigh,
+        replaceExisting: from != null || replaceExisting,
+      );
+    } on StateError {
+      throw LabDrawCollision(draw.marker, draw.takenOn);
+    }
+  }
+
+  @override
+  Future<void> deleteLabDraw(String marker, String takenOn) =>
+      LocalDb.deleteLabResult(marker, takenOn);
+
+  @override
+  Future<void> saveLabMarkerDef(LabMarkerDef def, {bool create = false}) async {
+    final label = def.label.trim();
+    final unit = def.unit.trim();
+    if (label.isEmpty || unit.isEmpty) {
+      throw ArgumentError('Marker braucht Namen und Einheit.');
+    }
+    if (def.decimals < 0 || def.decimals > 3) {
+      throw ArgumentError('Ungültige Genauigkeit.');
+    }
+    if (kLabMarkersByKey.containsKey(def.key) ||
+        !def.key.startsWith('custom_') ||
+        def.key == 'custom_') {
+      throw ArgumentError('Eingebaute Marker lassen sich nicht überschreiben.');
+    }
+    if (def.refLow != null &&
+        def.refHigh != null &&
+        def.refLow! > def.refHigh!) {
+      throw ArgumentError('Untere Grenze liegt über der oberen.');
+    }
+    try {
+      await LocalDb.putLabMarkerDef({
+        'key': def.key,
+        'label': label,
+        'unit': unit,
+        'category': def.category,
+        'decimals': def.decimals,
+        'ref_low': def.refLow,
+        'ref_high': def.refHigh,
+      }, replaceExisting: !create);
+    } on StateError {
+      throw LabMarkerCollision(def.key);
+    }
+  }
+
+  @override
+  Future<void> deleteLabMarkerDef(String key) async {
+    final held = await LocalDb.labResults(marker: key);
+    if (held.isNotEmpty) {
+      throw StateError('lab marker still has results');
+    }
+    await LocalDb.deleteLabMarkerDef(key);
+  }
+
+  static LabDraw _labDraw(Map<String, Object?> row) {
+    const known = {
+      'marker',
+      'taken_on',
+      'value',
+      'unit',
+      'note',
+      'report_low',
+      'report_high',
+      'updated_at',
+    };
+    final raw = row['value'];
+    final value = raw is num ? raw.toDouble() : double.nan;
+    return LabDraw(
+      marker: '${row['marker'] ?? ''}',
+      takenOn: '${row['taken_on'] ?? ''}',
+      value: value.isFinite ? value : double.nan,
+      unit: '${row['unit'] ?? ''}',
+      note: '${row['note'] ?? ''}',
+      reportLow: _double(row['report_low']),
+      reportHigh: _double(row['report_high']),
+      updatedAt: (row['updated_at'] as num?)?.toInt() ?? 0,
+      extras: {
+        for (final e in row.entries)
+          if (!known.contains(e.key)) e.key: e.value,
+      },
+    );
+  }
+
+  static LabMarkerDef _labDef(Map<String, Object?> row) => LabMarkerDef(
+    key: '${row['key'] ?? ''}',
+    label: '${row['label'] ?? row['key'] ?? ''}',
+    unit: '${row['unit'] ?? ''}',
+    category: '${row['category'] ?? 'other'}',
+    decimals: (row['decimals'] as num?)?.toInt() ?? 1,
+    refLow: _double(row['ref_low']),
+    refHigh: _double(row['ref_high']),
+    createdAt: (row['created_at'] as num?)?.toInt() ?? 0,
+  );
+
+  static void _requireLabDraw(LabDraw draw) {
+    if (!draw.readable) {
+      throw ArgumentError('Laborwert unvollständig oder ungültig.');
+    }
+    if (draw.reportLow != null &&
+        draw.reportHigh != null &&
+        draw.reportLow! > draw.reportHigh!) {
+      throw ArgumentError('Untere Grenze liegt über der oberen.');
     }
   }
 }

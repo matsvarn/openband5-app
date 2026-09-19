@@ -10,10 +10,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
+import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/local_repository.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -175,6 +179,311 @@ void main() {
         'nmol/L',
         reason: 'the row carries its own unit, so it stays readable',
       );
+    });
+  });
+
+  test('report bounds round-trip, stay null when omitted, allow one side',
+      () async {
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-03-04',
+      value: 42,
+      unit: 'ng/mL',
+    );
+    expect((await LocalDb.labResults()).single['report_low'], isNull);
+    expect((await LocalDb.labResults()).single['report_high'], isNull);
+
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-03-04',
+      value: 42,
+      unit: 'ng/mL',
+      reportLow: 30,
+      reportHigh: 400,
+    );
+    expect((await LocalDb.labResults()).single['report_low'], 30);
+    expect((await LocalDb.labResults()).single['report_high'], 400);
+
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-03-04',
+      value: 41,
+      unit: 'ng/mL',
+    );
+    expect((await LocalDb.labResults()).single['report_low'], 30,
+        reason: 'omitted bounds must not wipe a stored interval');
+    expect((await LocalDb.labResults()).single['value'], 41);
+
+    await LocalDb.putLabResult(
+      marker: 'vitamin_d',
+      takenOn: '2026-09-15',
+      value: 37,
+      unit: 'ng/mL',
+      reportLow: 30,
+      reportHigh: null,
+    );
+    expect((await LocalDb.labResults(marker: 'vitamin_d')).single['report_low'],
+        30);
+    expect((await LocalDb.labResults(marker: 'vitamin_d')).single['report_high'],
+        isNull);
+  });
+
+  test('relocate is atomic and refuses a live destination', () async {
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-03-04',
+      value: 33,
+      unit: 'ng/mL',
+      reportLow: 30,
+      reportHigh: 400,
+    );
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-09-15',
+      value: 52,
+      unit: 'ng/mL',
+    );
+    await expectLater(
+      LocalDb.relocateLabResult(
+        fromMarker: 'ferritin',
+        fromTakenOn: '2026-03-04',
+        toMarker: 'ferritin',
+        toTakenOn: '2026-09-15',
+        value: 33,
+        unit: 'ng/mL',
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      (await LocalDb.labResults(marker: 'ferritin'))
+          .map((r) => r['taken_on'])
+          .toList(),
+      ['2026-09-15', '2026-03-04'],
+    );
+
+    await LocalDb.relocateLabResult(
+      fromMarker: 'ferritin',
+      fromTakenOn: '2026-03-04',
+      toMarker: 'ferritin',
+      toTakenOn: '2026-04-01',
+      value: 33,
+      unit: 'ng/mL',
+      reportLow: 30,
+      reportHigh: 400,
+    );
+    final rows = await LocalDb.labResults(marker: 'ferritin');
+    expect(rows.map((r) => r['taken_on']), ['2026-09-15', '2026-04-01']);
+    expect(
+      rows.firstWhere((r) => r['taken_on'] == '2026-04-01')['report_low'],
+      30,
+    );
+  });
+
+  test('changing a custom definition unit leaves stored units', () async {
+    await LocalDb.putLabMarkerDef({
+      'key': 'custom_kupfer',
+      'label': 'Kupfer',
+      'unit': 'µg/dL',
+      'category': 'other',
+      'decimals': 1,
+    });
+    await LocalDb.putLabResult(
+      marker: 'custom_kupfer',
+      takenOn: '2026-09-15',
+      value: 90,
+      unit: 'µg/dL',
+    );
+    await LocalDb.putLabMarkerDef({
+      'key': 'custom_kupfer',
+      'label': 'Kupfer (Serum)',
+      'unit': 'µmol/L',
+      'category': 'other',
+      'decimals': 1,
+    });
+    expect((await LocalDb.labMarkerDefs()).single['label'], 'Kupfer (Serum)');
+    expect(
+      (await LocalDb.labResults(marker: 'custom_kupfer')).single['unit'],
+      'µg/dL',
+    );
+  });
+
+  test('fresh schema exposes nullable report bounds', () async {
+    final db = await LocalDb.instance;
+    final cols = {
+      for (final c in await db.rawQuery('PRAGMA table_info(lab_result)'))
+        c['name'],
+    };
+    expect(cols, containsAll(['report_low', 'report_high']));
+    final health = await LocalDb.schemaHealth();
+    expect(health['ok'], isTrue, reason: '$health');
+  });
+
+  test('upgrade from 54 adds report columns without inventing bounds', () async {
+    const previous = 'openstrap_lab_result_test.db';
+    const name = 'openstrap_lab_result_v54.db';
+    await LocalDb.close();
+    final path = p.join(await databaseFactory.getDatabasesPath(), name);
+    await databaseFactory.deleteDatabase(path);
+    final old = await databaseFactory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 54,
+        onCreate: (db, _) async {
+          await db.execute('''
+            CREATE TABLE lab_result (
+              marker TEXT NOT NULL,
+              taken_on TEXT NOT NULL,
+              value REAL NOT NULL,
+              unit TEXT NOT NULL,
+              note TEXT NOT NULL DEFAULT '',
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (marker, taken_on)
+            )
+          ''');
+        },
+      ),
+    );
+    await old.insert('lab_result', {
+      'marker': 'ferritin',
+      'taken_on': '2026-03-04',
+      'value': 42.0,
+      'unit': 'ng/mL',
+      'note': 'fasted',
+      'updated_at': 1,
+    });
+    await old.close();
+    LocalDb.dbName = name;
+    final row = (await LocalDb.labResults()).single;
+    expect(row['value'], 42.0);
+    expect(row['note'], 'fasted');
+    expect(row['report_low'], isNull);
+    expect(row['report_high'], isNull);
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-03-04',
+      value: 42,
+      unit: 'ng/mL',
+      reportLow: 15,
+      reportHigh: null,
+    );
+    expect((await LocalDb.labResults()).single['report_low'], 15);
+    expect((await LocalDb.labResults()).single['report_high'], isNull);
+    await LocalDb.close();
+    LocalDb.dbName = previous;
+  });
+
+  test('insert without replaceExisting is atomic and refuses a live key',
+      () async {
+    await LocalDb.putLabResult(
+      marker: 'ferritin',
+      takenOn: '2026-09-15',
+      value: 52,
+      unit: 'ng/mL',
+    );
+    await expectLater(
+      LocalDb.putLabResult(
+        marker: 'ferritin',
+        takenOn: '2026-09-15',
+        value: 99,
+        unit: 'ng/mL',
+        replaceExisting: false,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    expect((await LocalDb.labResults()).single['value'], 52);
+  });
+
+  test('creating a custom def does not overwrite an existing key', () async {
+    await LocalDb.putLabMarkerDef({
+      'key': 'custom_kupfer',
+      'label': 'Kupfer',
+      'unit': 'µg/dL',
+      'category': 'other',
+      'decimals': 1,
+    }, replaceExisting: false);
+    await expectLater(
+      LocalDb.putLabMarkerDef({
+        'key': 'custom_kupfer',
+        'label': 'Kupfer (Serum)',
+        'unit': 'µmol/L',
+        'category': 'other',
+        'decimals': 1,
+      }, replaceExisting: false),
+      throwsA(isA<StateError>()),
+    );
+    expect((await LocalDb.labMarkerDefs()).single['label'], 'Kupfer');
+    expect((await LocalDb.labMarkerDefs()).single['unit'], 'µg/dL');
+  });
+
+  group('LocalOpenBandRepository SQLite collisions', () {
+    late AppState app;
+    late LocalOpenBandRepository repository;
+
+    setUp(() {
+      app = AppState.forTesting();
+      repository = LocalOpenBandRepository(app);
+    });
+
+    tearDown(() => app.dispose());
+
+    test('concurrent new draws collide in one transaction', () async {
+      const a = LabDraw(
+        marker: 'hba1c',
+        takenOn: '2026-02-02',
+        value: 5.1,
+        unit: '%',
+      );
+      const b = LabDraw(
+        marker: 'hba1c',
+        takenOn: '2026-02-02',
+        value: 5.9,
+        unit: '%',
+      );
+      Future<Object> attempt(LabDraw draw) async {
+        try {
+          await repository.saveLabDraw(draw);
+          return 'ok';
+        } catch (e) {
+          return e;
+        }
+      }
+
+      final out = await Future.wait([attempt(a), attempt(b)]);
+      expect(out.where((e) => e == 'ok'), hasLength(1));
+      expect(out.whereType<LabDrawCollision>(), hasLength(1));
+      final rows = await LocalDb.labResults(marker: 'hba1c');
+      expect(rows, hasLength(1));
+      expect(rows.single['taken_on'], '2026-02-02');
+      expect(rows.single['value'], anyOf(5.1, 5.9));
+    });
+
+    test('create does not overwrite a custom definition', () async {
+      await repository.saveLabMarkerDef(
+        const LabMarkerDef(
+          key: 'custom_kupfer',
+          label: 'Kupfer',
+          unit: 'µg/dL',
+          category: 'other',
+          decimals: 1,
+        ),
+        create: true,
+      );
+      await expectLater(
+        repository.saveLabMarkerDef(
+          const LabMarkerDef(
+            key: 'custom_kupfer',
+            label: 'Kupfer (Serum)',
+            unit: 'µmol/L',
+            category: 'other',
+            decimals: 1,
+          ),
+          create: true,
+        ),
+        throwsA(isA<LabMarkerCollision>()),
+      );
+      final snap = await repository.readLabs();
+      expect(snap.custom.single.label, 'Kupfer');
+      expect(snap.custom.single.unit, 'µg/dL');
     });
   });
 }

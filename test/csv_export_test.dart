@@ -338,4 +338,57 @@ void main() {
       expect(failed.hasFailures, isTrue);
     });
   });
+
+  test('labs CSV keeps report bounds and writes null as empty', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = 'openstrap_csv_labs_bounds_test.db';
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      await LocalDb.putLabResult(
+        marker: 'ferritin',
+        takenOn: '2026-09-15',
+        value: 52,
+        unit: 'ng/mL',
+        note: '',
+        reportLow: 30,
+        reportHigh: 400,
+      );
+      await LocalDb.putLabResult(
+        marker: 'vitamin_d',
+        takenOn: '2026-09-15',
+        value: 37,
+        unit: 'ng/mL',
+      );
+      final labs = kCsvExportSets.firstWhere((s) => s.name == 'labs');
+      expect(
+        labs.columns,
+        [
+          'taken_on',
+          'marker',
+          'value',
+          'unit',
+          'note',
+          'report_low',
+          'report_high',
+        ],
+      );
+      final rows = await (await LocalDb.instance).rawQuery(labs.sql);
+      expect(rows, hasLength(2));
+      final csv = renderCsv(labs.columns, rows);
+      expect(
+        csv,
+        startsWith(
+          'taken_on,marker,value,unit,note,report_low,report_high',
+        ),
+      );
+      expect(csv, contains('2026-09-15,ferritin,52,ng/mL,,30,400'));
+      expect(csv, contains('2026-09-15,vitamin_d,37,ng/mL,,,'));
+      expect(csv, isNot(contains('null')));
+    } finally {
+      await LocalDb.close();
+    }
+  });
 }

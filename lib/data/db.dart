@@ -348,7 +348,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 56;
+  static const int schemaVersion = 57;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1072,6 +1072,10 @@ class LocalDb {
           // explicit "no target" boundary and does not delete earlier rows.
           await _createSleepGoalPeriod(db);
         }
+        if (oldV < 57) {
+          // Optional per-result report interval. Additive columns only.
+          await _ensureLabResultReportRange(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1155,6 +1159,7 @@ class LocalDb {
     await _ensureWorkoutRouteSpeed(db);
     await _createWorkoutSplit(db);
     await _ensureBreathingWindowColumns(db);
+    await _ensureLabResultReportRange(db);
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
@@ -4208,6 +4213,8 @@ class LocalDb {
         value REAL NOT NULL,
         unit TEXT NOT NULL,
         note TEXT NOT NULL DEFAULT '',
+        report_low REAL,
+        report_high REAL,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (marker, taken_on)
       )
@@ -4265,6 +4272,13 @@ class LocalDb {
   static Future<void> _ensureBreathingWindowColumns(Database db) async {
     await _addColumnIfMissing(db, 'breathing_session', 'pre_rmssd', 'REAL');
     await _addColumnIfMissing(db, 'breathing_session', 'post_rmssd', 'REAL');
+  }
+
+  /// v57: the interval printed on that draw's report. Null is unknown — never
+  /// copied from the catalogue. One-sided bounds stay one-sided.
+  static Future<void> _ensureLabResultReportRange(Database db) async {
+    await _addColumnIfMissing(db, 'lab_result', 'report_low', 'REAL');
+    await _addColumnIfMissing(db, 'lab_result', 'report_high', 'REAL');
   }
 
   /// strength_set / exercise_def — the sets a lift is made of.
@@ -9473,6 +9487,20 @@ class LocalDb {
       'meta_json',
     ]);
 
+    final labCols = await hasTable('lab_result')
+        ? await cols('lab_result')
+        : <String>{};
+    expect('lab_result', labCols, [
+      'marker',
+      'taken_on',
+      'value',
+      'unit',
+      'note',
+      'updated_at',
+      'report_low',
+      'report_high',
+    ]);
+
     final integrity = await db.rawQuery('PRAGMA integrity_check');
     final integrityOk =
         integrity.isNotEmpty && integrity.first.values.first == 'ok';
@@ -10711,24 +10739,165 @@ class LocalDb {
 
   // ── lab results ───────────────────────────────────────────────────────────
 
+  static const Object _omitLabBound = Object();
+
   /// Upsert one result. Idempotent on (marker, date drawn), so re-entering a
   /// value corrects it instead of stacking a near-duplicate.
+  ///
+  /// [reportLow]/[reportHigh] default to omitted: an existing interval is left
+  /// alone. Pass null to record that the report had no bound.
   static Future<void> putLabResult({
     required String marker,
     required String takenOn,
     required double value,
     required String unit,
     String note = '',
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+    bool replaceExisting = true,
   }) async {
     final db = await instance;
-    await db.insert('lab_result', {
+    await db.transaction((txn) async {
+      if (!replaceExisting) {
+        final row = <String, Object?>{
+          'marker': marker,
+          'taken_on': takenOn,
+          'value': value,
+          'unit': unit,
+          'note': note,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        };
+        if (!identical(reportLow, _omitLabBound)) row['report_low'] = reportLow;
+        if (!identical(reportHigh, _omitLabBound)) {
+          row['report_high'] = reportHigh;
+        }
+        try {
+          await txn.insert(
+            'lab_result',
+            row,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        } on DatabaseException catch (e) {
+          if (e.isUniqueConstraintError()) {
+            throw StateError('lab_result occupied');
+          }
+          rethrow;
+        }
+        return;
+      }
+      await _putLabResultTxn(
+        txn,
+        marker: marker,
+        takenOn: takenOn,
+        value: value,
+        unit: unit,
+        note: note,
+        reportLow: reportLow,
+        reportHigh: reportHigh,
+      );
+    });
+  }
+
+  static Future<void> _putLabResultTxn(
+    Transaction txn, {
+    required String marker,
+    required String takenOn,
+    required double value,
+    required String unit,
+    required String note,
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+  }) async {
+    final existing = await txn.query(
+      'lab_result',
+      where: 'marker = ? AND taken_on = ?',
+      whereArgs: [marker, takenOn],
+    );
+    final row = <String, Object?>{
+      if (existing.isNotEmpty) ...existing.first,
       'marker': marker,
       'taken_on': takenOn,
       'value': value,
       'unit': unit,
       'note': note,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    };
+    if (!identical(reportLow, _omitLabBound)) row['report_low'] = reportLow;
+    if (!identical(reportHigh, _omitLabBound)) row['report_high'] = reportHigh;
+    await txn.insert(
+      'lab_result',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Move one draw to a new (marker, date). Fails if the destination exists
+  /// unless [replaceDestination] is true. Same-identity is a plain update.
+  static Future<void> relocateLabResult({
+    required String fromMarker,
+    required String fromTakenOn,
+    required String toMarker,
+    required String toTakenOn,
+    required double value,
+    required String unit,
+    String note = '',
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+    bool replaceDestination = false,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final same = fromMarker == toMarker && fromTakenOn == toTakenOn;
+      if (!same) {
+        final dest = await txn.query(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [toMarker, toTakenOn],
+        );
+        if (dest.isNotEmpty && !replaceDestination) {
+          throw StateError('lab_result destination occupied');
+        }
+        final source = await txn.query(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [fromMarker, fromTakenOn],
+        );
+        await txn.delete(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [fromMarker, fromTakenOn],
+        );
+        if (source.isNotEmpty) {
+          await txn.insert(
+            'lab_result',
+            {
+              ...source.first,
+              'marker': toMarker,
+              'taken_on': toTakenOn,
+              'value': value,
+              'unit': unit,
+              'note': note,
+              'updated_at': DateTime.now().millisecondsSinceEpoch,
+              if (!identical(reportLow, _omitLabBound)) 'report_low': reportLow,
+              if (!identical(reportHigh, _omitLabBound))
+                'report_high': reportHigh,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          return;
+        }
+      }
+      await _putLabResultTxn(
+        txn,
+        marker: toMarker,
+        takenOn: toTakenOn,
+        value: value,
+        unit: unit,
+        note: note,
+        reportLow: reportLow,
+        reportHigh: reportHigh,
+      );
+    });
   }
 
   static Future<void> deleteLabResult(String marker, String takenOn) async {
@@ -10757,12 +10926,41 @@ class LocalDb {
     return db.query('lab_marker_def', orderBy: 'label ASC');
   }
 
-  static Future<void> putLabMarkerDef(Map<String, dynamic> row) async {
+  static Future<void> putLabMarkerDef(
+    Map<String, dynamic> row, {
+    bool replaceExisting = true,
+  }) async {
     final db = await instance;
-    await db.insert('lab_marker_def', {
-      ...row,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      final key = row['key'];
+      final existing = await txn.query(
+        'lab_marker_def',
+        where: 'key = ?',
+        whereArgs: [key],
+      );
+      if (existing.isNotEmpty && !replaceExisting) {
+        throw StateError('lab_marker_def occupied');
+      }
+      if (existing.isEmpty) {
+        try {
+          await txn.insert('lab_marker_def', {
+            ...row,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.abort);
+        } on DatabaseException catch (e) {
+          if (e.isUniqueConstraintError()) {
+            throw StateError('lab_marker_def occupied');
+          }
+          rethrow;
+        }
+        return;
+      }
+      await txn.insert('lab_marker_def', {
+        ...existing.first,
+        ...row,
+        'created_at': existing.first['created_at'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   /// Forget a custom field's DEFINITION. Its recorded values are deliberately

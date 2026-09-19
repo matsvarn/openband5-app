@@ -60,9 +60,12 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     Brightness brightness = Brightness.light,
+    double scale = 1,
+    double width = 393,
+    double height = 852,
   }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
+    tester.view.physicalSize = Size(width, height);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await controller.refresh();
@@ -74,6 +77,7 @@ void main() {
         theme: openBandTheme(brightness).copyWith(platform: TargetPlatform.iOS),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(scale),
             padding: const EdgeInsets.only(top: 59, bottom: 34),
             disableAnimations: true,
           ),
@@ -149,5 +153,29 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/health-missing.png'),
     );
+  });
+
+  testWidgets('health hub at 2x reaches Laborwerte without overflow', (
+    tester,
+  ) async {
+    final scrollable = find.byWidgetPredicate(
+      (widget) =>
+          widget is Scrollable && widget.axisDirection == AxisDirection.down,
+    );
+    for (final width in [393.0, 375.0]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await mount(tester, scale: 2, width: width);
+      expect(find.text('Gesundheit'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      final labs = find.byKey(const ValueKey('laborwerte'));
+      await tester.scrollUntilVisible(labs, 300, scrollable: scrollable.first);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(labs);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Vitamin B12'), findsOneWidget);
+    }
   });
 }

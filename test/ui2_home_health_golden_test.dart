@@ -14,7 +14,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/models/metric.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -223,26 +222,6 @@ final _vitals = VitalsData(
   },
   wear: const {'worn_min': 1300, 'coverage_pct': 94},
   hrv: const {'rmssd': 68.2},
-);
-
-const _labs = LabsData(
-  markers: kLabMarkers,
-  results: [
-    {
-      'marker': 'ldl',
-      'taken_on': '2026-03-12',
-      'value': 104.0,
-      'unit': 'mg/dL',
-    },
-    {'marker': 'hdl', 'taken_on': '2026-03-12', 'value': 58.0, 'unit': 'mg/dL'},
-    {'marker': 'hba1c', 'taken_on': '2026-03-12', 'value': 5.2, 'unit': '%'},
-    {
-      'marker': 'ferritin',
-      'taken_on': '2026-03-12',
-      'value': 96.0,
-      'unit': 'ng/mL',
-    },
-  ],
 );
 
 // The fill rates SURFACE_MAP measured on 17 real gen4 days, rounded to the
@@ -682,12 +661,6 @@ Map<String, Widget> _cases() => {
   'health_overview_cold': const HealthScreen(data: _healthCold, tab: 0),
   'health_trends': HealthScreen(data: _health, tab: 2),
   'health_vitals': HealthScreen(data: _health, vitals: _vitals, tab: 3),
-  'health_labs': HealthScreen(data: _health, labs: _labs, tab: 4),
-  'health_labs_cold': HealthScreen(
-    data: _health,
-    labs: const LabsData(),
-    tab: 4,
-  ),
   'health_explore': HealthScreen(data: _health, explore: _explore, tab: 1),
   'health_explore_cold': const HealthScreen(
     data: _healthCold,
@@ -907,7 +880,6 @@ void main() {
       const Investigate('hrv', data: InvestigateData()),
       const Investigate('steps', data: InvestigateData()),
       const HealthScreen(data: _healthCold, vitals: VitalsData(), tab: 3),
-      const HealthScreen(data: _healthCold, labs: LabsData(), tab: 4),
       const HealthScreen(data: _healthCold, explore: ExploreData(), tab: 1),
       _scroll(const CycleTab(data: CycleData())),
       _scroll(const CycleTab(data: _cycleEmpty)),

@@ -5,6 +5,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
+import '../ui2/profile/profile.dart' show SetRow;
+import 'labs.dart';
 import 'metric_detail.dart';
 import 'screens.dart';
 import 'theme.dart';
@@ -153,6 +155,19 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   ),
                 ),
               ),
+            OBCard(
+              child: SetRow(
+                LucideIcons.flaskConical,
+                p.muted,
+                'Laborwerte',
+                key: const ValueKey('laborwerte'),
+                onTap: () => OpenBandLabs.push(
+                  context,
+                  repository: c.repository,
+                  now: c.now,
+                ),
+              ),
+            ),
           ],
         ),
       );

@@ -1,6 +1,7 @@
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'time.dart';
@@ -206,6 +207,49 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       batteryObservedAt: saved,
       latestStoredAt: saved,
     );
+    _labResults.addAll(const [
+      LabDraw(
+        marker: 'ferritin',
+        takenOn: '2026-09-15',
+        value: 52,
+        unit: 'ng/mL',
+        reportLow: 30,
+        reportHigh: 400,
+        updatedAt: 1,
+      ),
+      LabDraw(
+        marker: 'ferritin',
+        takenOn: '2026-06-12',
+        value: 46,
+        unit: 'ng/mL',
+        reportLow: 30,
+        reportHigh: 400,
+        updatedAt: 1,
+      ),
+      LabDraw(
+        marker: 'ferritin',
+        takenOn: '2026-03-04',
+        value: 33,
+        unit: 'ng/mL',
+        reportLow: 30,
+        reportHigh: 400,
+        updatedAt: 1,
+      ),
+      LabDraw(
+        marker: 'vitamin_b12',
+        takenOn: '2026-09-15',
+        value: 410,
+        unit: 'pg/mL',
+        updatedAt: 1,
+      ),
+      LabDraw(
+        marker: 'vitamin_d',
+        takenOn: '2026-09-15',
+        value: 37,
+        unit: 'ng/mL',
+        updatedAt: 1,
+      ),
+    ]);
   }
 
   BandSnapshot get band {
@@ -293,6 +337,14 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   final Map<String, List<RecordedSet>> _liveSets = {};
+  final List<LabDraw> _labResults = [];
+  final Map<String, LabMarkerDef> _labDefs = {};
+  bool failLabWrites = false;
+  bool failLabReads = false;
+  int labWriteCount = 0;
+  Future<void> Function()? beforeLabWrite;
+
+  void seedLabDraw(LabDraw draw) => _labResults.add(draw);
   static const _muscles = {
     'bench_press': ['Brust', 'Trizeps'],
     'row': ['Rücken', 'Bizeps'],
@@ -730,6 +782,118 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _corrections.remove(day);
     _applied.remove(day);
   }
+
+  @override
+  Future<LabSnapshot> readLabs() async {
+    if (beforeLabWrite != null) await beforeLabWrite!();
+    if (failLabReads) throw StateError('synthetic lab read failure');
+    final results = [..._labResults]
+      ..sort((a, b) => b.takenOn.compareTo(a.takenOn));
+    return LabSnapshot(
+      results: List.unmodifiable(results),
+      custom: List.unmodifiable(_labDefs.values),
+    );
+  }
+
+  @override
+  Future<void> saveLabDraw(
+    LabDraw draw, {
+    LabDraw? replacing,
+    bool replaceExisting = false,
+  }) async {
+    if (failLabWrites) throw StateError('synthetic lab save failure');
+    if (beforeLabWrite != null) await beforeLabWrite!();
+    if (!draw.readable) {
+      throw ArgumentError('Laborwert unvollständig oder ungültig.');
+    }
+    if (draw.reportLow != null &&
+        draw.reportHigh != null &&
+        draw.reportLow! > draw.reportHigh!) {
+      throw ArgumentError('Untere Grenze liegt über der oberen.');
+    }
+    labWriteCount++;
+    final dest = _labIndex(draw.marker, draw.takenOn);
+    final origin = replacing == null
+        ? -1
+        : _labIndex(replacing.marker, replacing.takenOn);
+    final same =
+        origin >= 0 &&
+        replacing!.marker == draw.marker &&
+        replacing.takenOn == draw.takenOn;
+    if (dest >= 0 && !same && !replaceExisting) {
+      throw LabDrawCollision(draw.marker, draw.takenOn);
+    }
+    if (origin >= 0 && !same) {
+      _labResults.removeAt(origin);
+    }
+    final updated = LabDraw(
+      marker: draw.marker,
+      takenOn: draw.takenOn,
+      value: draw.value,
+      unit: draw.unit,
+      note: draw.note,
+      reportLow: draw.reportLow,
+      reportHigh: draw.reportHigh,
+      updatedAt: DateTime.now().millisecondsSinceEpoch,
+      extras: draw.extras,
+    );
+    final nowDest = _labIndex(draw.marker, draw.takenOn);
+    if (nowDest >= 0) {
+      _labResults[nowDest] = updated;
+    } else {
+      _labResults.add(updated);
+    }
+  }
+
+  @override
+  Future<void> deleteLabDraw(String marker, String takenOn) async {
+    if (failLabWrites) throw StateError('synthetic lab delete failure');
+    if (beforeLabWrite != null) await beforeLabWrite!();
+    labWriteCount++;
+    _labResults.removeWhere(
+      (r) => r.marker == marker && r.takenOn == takenOn,
+    );
+  }
+
+  @override
+  Future<void> saveLabMarkerDef(LabMarkerDef def, {bool create = false}) async {
+    if (failLabWrites) throw StateError('synthetic lab save failure');
+    if (beforeLabWrite != null) await beforeLabWrite!();
+    labWriteCount++;
+    if (!def.key.startsWith('custom_') ||
+        def.key == 'custom_' ||
+        kLabMarkersByKey.containsKey(def.key) ||
+        def.label.trim().isEmpty ||
+        def.unit.trim().isEmpty) {
+      throw ArgumentError('Marker unvollständig.');
+    }
+    if (create && _labDefs.containsKey(def.key)) {
+      throw LabMarkerCollision(def.key);
+    }
+    final existing = _labDefs[def.key];
+    _labDefs[def.key] = LabMarkerDef(
+      key: def.key,
+      label: def.label.trim(),
+      unit: def.unit.trim(),
+      category: def.category,
+      decimals: def.decimals,
+      refLow: def.refLow,
+      refHigh: def.refHigh,
+      createdAt: existing?.createdAt ?? DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  @override
+  Future<void> deleteLabMarkerDef(String key) async {
+    if (failLabWrites) throw StateError('synthetic lab delete failure');
+    if (_labResults.any((r) => r.marker == key)) {
+      throw StateError('lab marker still has results');
+    }
+    _labDefs.remove(key);
+  }
+
+  int _labIndex(String marker, String takenOn) =>
+      _labResults.indexWhere((r) => r.marker == marker && r.takenOn == takenOn);
 
   @override
   Future<SleepGoalSnapshot> readSleepGoal(String day) async {

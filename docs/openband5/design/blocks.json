@@ -66,7 +66,18 @@
     "3KUQ-0": "A02 Schlafziel · Dunkel",
     "3KVT-0": "A02 Schlafziel bearbeiten",
     "3LHP-0": "A02 Schlafziel · Wochenend-Schätzung",
-    "3MA4-0": "A02 Schlafziel bearbeiten · Dunkel"
+    "3MA4-0": "A02 Schlafziel bearbeiten · Dunkel",
+    "3LIT-0": "A05 Laborwerte",
+    "3LKX-0": "A05 Laborwert · Verlauf",
+    "3LN2-0": "A05 Laborwert bearbeiten",
+    "3LPT-0": "A05 Laborwerte · Dunkel",
+    "3LRE-0": "A05 Laborwert · Verlauf · Dunkel",
+    "3LT3-0": "A05 Laborwert bearbeiten · Dunkel",
+    "3LUN-0": "A05 Laborwerte · Leer",
+    "3LW8-0": "A05 Laborwert · Speichern fehlgeschlagen",
+    "3LXY-0": "A05 Eigener Labormarker",
+    "3LZI-0": "A05 Eigener Labormarker · Dunkel",
+    "3MLB-0": "A05 Laborwert · Befundbereich fehlt"
   },
   "blocks": [
     {
@@ -117,7 +128,17 @@
         "3KUQ-0",
         "3KVT-0",
         "3LHP-0",
-        "3MA4-0"
+        "3MA4-0",
+        "3LIT-0",
+        "3LKX-0",
+        "3LN2-0",
+        "3LPT-0",
+        "3LRE-0",
+        "3LT3-0",
+        "3LUN-0",
+        "3LW8-0",
+        "3LXY-0",
+        "3LZI-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -205,7 +226,8 @@
         "OBRangePill",
         "OBStatusChip"
       ],
-      "implemented": "screens.dart"
+      "implemented": "screens.dart",
+      "notes": " Value and unit retain the Paper baseline row when they fit; at larger text or narrow widths they stack without shrinking or truncating the value."
     },
     {
       "name": "OBRangePill",
@@ -1036,7 +1058,17 @@
         "3KUQ-0",
         "3KVT-0",
         "3LHP-0",
-        "3MA4-0"
+        "3MA4-0",
+        "3LIT-0",
+        "3LKX-0",
+        "3LN2-0",
+        "3LPT-0",
+        "3LRE-0",
+        "3LT3-0",
+        "3LUN-0",
+        "3LW8-0",
+        "3LXY-0",
+        "3LZI-0"
       ]
     },
     {
@@ -1051,6 +1083,19 @@
         "3KR8-0"
       ],
       "notes": "Shared controller-backed time field; paired wells stack when text needs more width."
+    },
+    {
+      "name": "OBMeasurementRow",
+      "paperNode": "3LIU-0",
+      "widget": "OBMeasurementRow",
+      "file": "measurement_row.dart",
+      "usedIn": [
+        "3LIT-0",
+        "3LKX-0",
+        "3LPT-0",
+        "3LRE-0"
+      ],
+      "notes": "Aligned label/date and value/unit lanes with a fixed chevron. Rows stack at large text or narrow width."
     }
   ],
   "openBlocks": [
@@ -1078,7 +1123,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 56,
+    "version": 57,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -1086,7 +1131,9 @@
       "openband_lap",
       "sleep_nap",
       "nap_recalc_job",
-      "sleep_goal_period"
+      "sleep_goal_period",
+      "lab_result",
+      "lab_marker_def"
     ]
   },
   "research": {

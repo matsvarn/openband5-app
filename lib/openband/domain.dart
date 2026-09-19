@@ -809,6 +809,129 @@ WeekendSleepEstimate? weekendSleepEstimateFromCrossday(
   );
 }
 
+/// One hand-entered draw. [unit] is the row's own unit, never converted.
+class LabDraw {
+  final String marker, takenOn, unit, note;
+  final double value;
+  final double? reportLow, reportHigh;
+  final int updatedAt;
+  final Map<String, Object?> extras;
+  const LabDraw({
+    required this.marker,
+    required this.takenOn,
+    required this.value,
+    required this.unit,
+    this.note = '',
+    this.reportLow,
+    this.reportHigh,
+    this.updatedAt = 0,
+    this.extras = const {},
+  });
+
+  bool get readable =>
+      value.isFinite && unit.isNotEmpty && isLabCalendarDay(takenOn);
+
+  LabDraw copyWith({
+    String? marker,
+    String? takenOn,
+    double? value,
+    String? unit,
+    String? note,
+    double? reportLow,
+    double? reportHigh,
+    bool clearReportLow = false,
+    bool clearReportHigh = false,
+  }) => LabDraw(
+    marker: marker ?? this.marker,
+    takenOn: takenOn ?? this.takenOn,
+    value: value ?? this.value,
+    unit: unit ?? this.unit,
+    note: note ?? this.note,
+    reportLow: clearReportLow ? null : (reportLow ?? this.reportLow),
+    reportHigh: clearReportHigh ? null : (reportHigh ?? this.reportHigh),
+    updatedAt: updatedAt,
+    extras: extras,
+  );
+}
+
+/// User-defined marker. [key] is stable across label changes.
+class LabMarkerDef {
+  final String key, label, unit, category;
+  final int decimals;
+  final double? refLow, refHigh;
+  final int createdAt;
+  const LabMarkerDef({
+    required this.key,
+    required this.label,
+    required this.unit,
+    required this.category,
+    this.decimals = 1,
+    this.refLow,
+    this.refHigh,
+    this.createdAt = 0,
+  });
+}
+
+class LabSnapshot {
+  final List<LabDraw> results;
+  final List<LabMarkerDef> custom;
+  final String? sex;
+  const LabSnapshot({
+    this.results = const [],
+    this.custom = const [],
+    this.sex,
+  });
+}
+
+/// Destination already has a draw. UI must confirm before replacing it.
+class LabDrawCollision implements Exception {
+  final String marker, takenOn;
+  const LabDrawCollision(this.marker, this.takenOn);
+  @override
+  String toString() => 'LabDrawCollision($marker, $takenOn)';
+}
+
+/// Create would overwrite another custom definition. Rename keeps its key.
+class LabMarkerCollision implements Exception {
+  final String key;
+  const LabMarkerCollision(this.key);
+  @override
+  String toString() => 'LabMarkerCollision($key)';
+}
+
+/// Locale comma or dot as the decimal mark. Both present is ambiguous.
+class LabParse {
+  final double? value;
+  final bool bad;
+  const LabParse._(this.value, this.bad);
+  bool get blank => value == null && !bad;
+
+  static LabParse of(String text) {
+    final s = text.trim().replaceAll(RegExp(r'[\s\u00a0]'), '');
+    if (s.isEmpty) return const LabParse._(null, false);
+    if (s.contains(',') && s.contains('.')) return const LabParse._(null, true);
+    final v = double.tryParse(s.replaceAll(',', '.'));
+    if (v == null || !v.isFinite) return const LabParse._(null, true);
+    return LabParse._(v, false);
+  }
+}
+
+bool isLabCalendarDay(String day) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day)) return false;
+  final p = day.split('-').map(int.parse).toList();
+  final d = DateTime(p[0], p[1], p[2]);
+  return d.year == p[0] && d.month == p[1] && d.day == p[2];
+}
+
+/// One-sided bounds are allowed. Both present must be ordered.
+String? labBoundsError(LabParse low, LabParse high) {
+  if (low.bad || high.bad) return 'Bereich ist keine Zahl.';
+  if (low.value != null && high.value != null && low.value! > high.value!) {
+    return 'Untere Grenze liegt über der oberen.';
+  }
+  return null;
+}
+
 abstract interface class OpenBandRepository {
   Future<OpenBandDay> readDay(String day);
   Future<NightSignals> readNightSignals(String day);
@@ -867,4 +990,13 @@ abstract interface class OpenBandRepository {
   Future<SleepGoalSnapshot> readSleepGoal(String day);
   Future<void> saveSleepGoal(String day, int minutes);
   Future<void> clearSleepGoal(String day);
+  Future<LabSnapshot> readLabs();
+  Future<void> saveLabDraw(
+    LabDraw draw, {
+    LabDraw? replacing,
+    bool replaceExisting = false,
+  });
+  Future<void> deleteLabDraw(String marker, String takenOn);
+  Future<void> saveLabMarkerDef(LabMarkerDef def, {bool create = false});
+  Future<void> deleteLabMarkerDef(String key);
 }

@@ -589,28 +589,10 @@ class OBMetricCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        obNumber(metric.value),
-                        style: p.text(
-                          34,
-                          weight: FontWeight.w800,
-                          display: true,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        unit,
-                        style: p.text(
-                          14,
-                          weight: FontWeight.w500,
-                          color: p.muted,
-                        ),
-                      ),
-                    ],
+                  _MetricValueUnit(
+                    value: obNumber(metric.value),
+                    unit: unit,
+                    size: 34,
                   ),
                   Text(
                     status,
@@ -630,6 +612,73 @@ class OBMetricCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Paper value + unit on one baseline when they fit; stacks at large text or
+/// a narrow card instead of shrinking or truncating the figure.
+class _MetricValueUnit extends StatelessWidget {
+  final String value, unit;
+  final double size;
+  const _MetricValueUnit({
+    required this.value,
+    required this.unit,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final valueStyle = p.text(size, weight: FontWeight.w800, display: true);
+    final unitStyle = p.text(14, weight: FontWeight.w500, color: p.muted);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final dir = Directionality.of(context);
+        final rowWidth =
+            _textWidth(value, valueStyle, scaler, dir) +
+            4 +
+            _textWidth(unit, unitStyle, scaler, dir);
+        final stack =
+            constraints.hasBoundedWidth && rowWidth > constraints.maxWidth;
+        if (stack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(value, style: valueStyle),
+              Text(unit, style: unitStyle),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(value, style: valueStyle),
+            const SizedBox(width: 4),
+            Text(unit, style: unitStyle),
+          ],
+        );
+      },
+    );
+  }
+}
+
+double _textWidth(
+  String text,
+  TextStyle style,
+  TextScaler scaler,
+  TextDirection dir,
+) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: dir,
+    textScaler: scaler,
+    maxLines: 1,
+  )..layout();
+  final width = painter.width;
+  painter.dispose();
+  return width;
 }
 
 class _CircleButton extends StatelessWidget {
