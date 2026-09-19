@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -9,6 +10,7 @@ import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
 void main() {
@@ -508,6 +510,99 @@ void main() {
       await press('Nachtverlauf');
       await press('Atmung');
       await capture('night-large-text');
+
+      final alarmNow = DateTime(2026, 9, 18, 9, 41);
+      final alarmAt = DateTime(2026, 9, 19, 7, 0);
+
+      Future<void> mountAlarm({
+        DateTime? at,
+        AlarmArmState state = AlarmArmState.none,
+        bool connected = true,
+        bool scheduleEnabled = true,
+        bool failing = false,
+        Brightness brightness = Brightness.light,
+        double scale = 1,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            key: UniqueKey(),
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('de'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: openBandTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: child!,
+            ),
+            home: AlarmGallerySession(
+              armedAt: at,
+              now: alarmNow,
+              state: state,
+              connected: connected,
+              scheduleEnabled: scheduleEnabled,
+              failing: failing,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.confirmed,
+      );
+      await capture('alarm-light');
+      await tester.tap(find.byType(CupertinoSwitch).at(2));
+      await tester.pumpAndSettle();
+      expect(find.text('06:30'), findsNothing);
+      await tester.tap(find.byType(CupertinoSwitch).at(2));
+      await tester.pumpAndSettle();
+      expect(find.text('06:30'), findsOneWidget);
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.confirmed,
+        brightness: Brightness.dark,
+      );
+      await capture('alarm-dark');
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.pending,
+      );
+      await capture('alarm-pending');
+      await mountAlarm(scheduleEnabled: false);
+      await capture('alarm-none');
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.confirmed,
+        connected: false,
+      );
+      await capture('alarm-offline');
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.pending,
+        failing: true,
+      );
+      await tester.tap(find.text('Ausschalten'));
+      await tester.pumpAndSettle();
+      await capture('alarm-error');
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.confirmed,
+      );
+      await tester.tap(find.bySemanticsLabel(RegExp(r'Uhrzeit Mittwoch')));
+      await tester.pumpAndSettle();
+      await capture('alarm-timepicker');
+      await tester.tap(find.text('Abbrechen').first);
+      await tester.pumpAndSettle();
+      await mountAlarm(
+        at: alarmAt,
+        state: AlarmArmState.confirmed,
+        scale: 2,
+      );
+      await capture('alarm-large-text');
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();

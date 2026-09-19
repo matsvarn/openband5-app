@@ -170,12 +170,14 @@ class OBPageHeader extends StatelessWidget {
           textAlign: TextAlign.center,
           style: p.text(18, weight: FontWeight.w600),
         ),
-        const SizedBox(height: 2),
-        Text(
-          subtitle,
-          textAlign: TextAlign.center,
-          style: p.text(12, color: p.muted),
-        ),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: p.text(12, color: p.muted),
+          ),
+        ],
       ],
     );
     return Padding(
@@ -327,11 +329,13 @@ class OBAction extends StatelessWidget {
   final String label;
   final VoidCallback? onPressed;
   final bool secondary;
+  final bool destructive;
   const OBAction(
     this.label, {
     super.key,
     this.onPressed,
     this.secondary = false,
+    this.destructive = false,
   });
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -340,7 +344,9 @@ class OBAction extends StatelessWidget {
         ? FilledButton.tonal(
             style: FilledButton.styleFrom(
               backgroundColor: OB.of(context).card,
-              foregroundColor: OB.of(context).action,
+              foregroundColor: destructive
+                  ? OB.of(context).danger
+                  : OB.of(context).action,
             ),
             onPressed: onPressed,
             child: Text(label, textAlign: TextAlign.center),

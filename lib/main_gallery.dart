@@ -17,7 +17,9 @@ import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'openband/theme.dart';
 import 'openband/training.dart';
+import 'state/alarm_schedule.dart';
 import 'ui2/app_shell.dart';
+import 'ui2/profile/alarm.dart';
 
 /// Separate entry point: no AppState, Bluetooth, real database or user profile.
 Future<void> main() async {
@@ -314,6 +316,18 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               },
             ),
           ),
+          const ListTile(title: Text('Alarm · synthetische Zustände')),
+          ..._alarmGalleryStates().map(
+            (entry) => ListTile(
+              title: Text(entry.$1),
+              onTap: () {
+                Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => entry.$2()),
+                );
+              },
+            ),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(c),
             child: const Text('Schließen'),
@@ -321,5 +335,149 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         ],
       ),
     ),
+  );
+}
+
+final galleryAlarmNow = DateTime(2026, 9, 18, 9, 41);
+final galleryAlarmAt = DateTime(2026, 9, 19, 7, 0);
+
+List<AlarmScheduleEntry> galleryAlarmSchedule({bool enabled = true}) =>
+    fillDefaultAlarmSchedule(
+      enabled
+          ? const [
+              AlarmScheduleEntry(weekday: 5, hour: 7, minute: 0, enabled: true),
+              AlarmScheduleEntry(
+                weekday: 2,
+                hour: 6,
+                minute: 30,
+                enabled: true,
+              ),
+            ]
+          : const [],
+    );
+
+List<(String, Widget Function())> _alarmGalleryStates() => [
+      (
+        'Alarm · bestätigt',
+        () => AlarmGallerySession(
+          armedAt: galleryAlarmAt,
+          state: AlarmArmState.confirmed,
+        ),
+      ),
+      (
+        'Alarm · Bestätigung offen',
+        () => AlarmGallerySession(
+          armedAt: galleryAlarmAt,
+          state: AlarmArmState.pending,
+        ),
+      ),
+      (
+        'Alarm · unbekannt',
+        () => AlarmGallerySession(
+          armedAt: galleryAlarmAt,
+          state: AlarmArmState.unknown,
+        ),
+      ),
+      (
+        'Alarm · aus',
+        () => const AlarmGallerySession(
+          scheduleEnabled: false,
+        ),
+      ),
+      (
+        'Alarm · getrennt',
+        () => AlarmGallerySession(
+          armedAt: galleryAlarmAt,
+          state: AlarmArmState.confirmed,
+          connected: false,
+        ),
+      ),
+      (
+        'Alarm · Fehler',
+        () => AlarmGallerySession(
+          armedAt: galleryAlarmAt,
+          state: AlarmArmState.pending,
+          failing: true,
+        ),
+      ),
+    ];
+
+/// Isolated synthetic host: toggles and times update the visible schedule.
+/// Production [AlarmScreen] still owns the real band/AppState.
+class AlarmGallerySession extends StatefulWidget {
+  final DateTime? armedAt;
+  final AlarmArmState state;
+  final bool connected;
+  final bool scheduleEnabled;
+  final bool failing;
+  final DateTime? now;
+  const AlarmGallerySession({
+    super.key,
+    this.armedAt,
+    this.state = AlarmArmState.none,
+    this.connected = true,
+    this.scheduleEnabled = true,
+    this.failing = false,
+    this.now,
+  });
+
+  @override
+  State<AlarmGallerySession> createState() => _AlarmGallerySessionState();
+}
+
+class _AlarmGallerySessionState extends State<AlarmGallerySession> {
+  late DateTime? armedAt = widget.armedAt;
+  late AlarmArmState state = widget.state;
+  late List<AlarmScheduleEntry> schedule =
+      galleryAlarmSchedule(enabled: widget.scheduleEnabled);
+
+  Future<void> _write() async {
+    if (widget.failing) throw Exception('Schreiben fehlgeschlagen');
+  }
+
+  Future<void> _toggle(int weekday, bool enabled) async {
+    await _write();
+    setState(() {
+      schedule = [
+        for (final day in schedule)
+          if (day.weekday == weekday) day.copyWith(enabled: enabled) else day,
+      ];
+    });
+  }
+
+  Future<void> _setTime(int weekday, int hour, int minute) async {
+    await _write();
+    setState(() {
+      schedule = [
+        for (final day in schedule)
+          if (day.weekday == weekday)
+            day.copyWith(hour: hour, minute: minute)
+          else
+            day,
+      ];
+    });
+  }
+
+  Future<void> _cancel() async {
+    await _write();
+    setState(() {
+      armedAt = null;
+      state = AlarmArmState.none;
+      schedule = galleryAlarmSchedule(enabled: false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlarmScreenView(
+    armedAt: armedAt,
+    now: widget.now ?? galleryAlarmNow,
+    state: state,
+    connected: widget.connected,
+    schedule: schedule,
+    synthetic: true,
+    onToggleDay: _toggle,
+    onSetDayTime: _setTime,
+    onTest: armedAt == null ? null : _write,
+    onCancel: _cancel,
   );
 }

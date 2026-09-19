@@ -245,12 +245,19 @@ void main() {
     expect(find.byType(BootSplash), findsOneWidget);
   });
 
-  testWidgets('an absent value is a StatusCard, never a bare dash',
+  testWidgets('legacy absent values use StatusCard; Alpin alarm uses missing values',
       (tester) async {
     for (final entry in cases.entries) {
       await tester.pumpWidget(_frame(entry.value, Brightness.light, 1));
       await tester.pumpAndSettle();
-      expect(find.text('—'), findsNothing, reason: entry.key);
+      if (entry.key.startsWith('alarm_')) {
+        final offDays = _alarmSchedule.where((day) => !day.enabled).length;
+        expect(find.text('—'),
+            findsNWidgets(offDays + (entry.key == 'alarm_none' ? 1 : 0)),
+            reason: entry.key);
+      } else {
+        expect(find.text('—'), findsNothing, reason: entry.key);
+      }
     }
   });
 }

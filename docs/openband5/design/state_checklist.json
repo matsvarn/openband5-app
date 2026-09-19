@@ -592,6 +592,56 @@
         "source": "lib/gestures/gesture_settings.dart",
         "evidence": "test/openband_gestures_test.dart",
         "note": "The selected action is read back from SharedPreferences in a local test. Hardware dispatch is not validated by the synthetic UI review."
+      },
+      "Wecker · bestätigt": {
+        "status": "implemented",
+        "paperNode": "3KWY-0",
+        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
+        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+      },
+      "Wecker · Bestätigung offen · Band getrennt": {
+        "status": "implemented",
+        "paperNode": "3L45-0",
+        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
+        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+      },
+      "Bandwecker · Zeit und Wochentage": {
+        "status": "implemented",
+        "paperNode": "3KWY-0",
+        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
+        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+      },
+      "Bandwecker · am Band bestätigt": {
+        "status": "implemented",
+        "paperNode": "3KWY-0",
+        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
+        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+      },
+      "Bandwecker · Bestätigung ausstehend": {
+        "status": "implemented",
+        "paperNode": "3L1Y-0",
+        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
+        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+      },
+      "Wecker · ausgeschaltet bestätigt": {
+        "status": "open",
+        "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
+        "note": "Current cancellation clears local armed state after command write; typed pending/confirmed cancellation is not retained. Requires an edge state-machine/persistence extension using existing band event 59. Not implemented by the Alpin screen migration."
+      },
+      "Bandwecker · Ausschalten offen": {
+        "status": "open",
+        "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
+        "note": "Current cancellation clears local armed state after command write; typed pending/confirmed cancellation is not retained. Requires an edge state-machine/persistence extension using existing band event 59. Not implemented by the Alpin screen migration."
       }
     },
     "A02 · Schlaf": {
