@@ -199,6 +199,19 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('correction preview renders in dark mode', (tester) async {
+    await mount(tester, brightness: Brightness.dark);
+    await edit(tester);
+    expect(find.text('7h29'), findsOneWidget);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/correction-preview-dark.png'),
+    );
+    expect(controller.day!.sleep.duration.value, 438);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'save failure retains draft and original result, retry commits once',
     (tester) async {
