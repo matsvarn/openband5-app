@@ -29,6 +29,9 @@ import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
 import '../../stress/breath_phases.dart';
 import '../ui2.dart';
+import '../../openband/journal_editor.dart';
+import '../../openband/journal_fields.dart';
+import '../../openband/local_repository.dart';
 import 'calm_breathing.dart';
 import 'driver_breakdown.dart';
 import 'cycle_screen.dart';
@@ -341,8 +344,14 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
           LucideIcons.notebookPen,
           C.blue,
           onTap: () async {
+            final app = context.read<AppState>();
             await Navigator.of(c).push(
-              MaterialPageRoute<void>(builder: (_) => const JournalCompose()),
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandJournalEditor(
+                  repository: LocalOpenBandRepository(app),
+                  day: _date,
+                ),
+              ),
             );
             await _load();
           },
@@ -398,21 +407,24 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     if (repo == null || _writingField) return;
     setState(() => _writingField = true);
     try {
-      // RE-READ THE DAY, do not write from the snapshot this tab loaded with.
-      //
-      // `postJournalMetrics` -> `putJournalMetrics` DELETES the whole day and
-      // re-inserts what it is handed, so writing a merge of `_todayFields` — a
-      // copy taken when the tab last loaded — silently deleted every journal
-      // field written since. Open Wellness, go and write your journal from the
-      // compose screen, come back without the tab reloading, tick one habit,
-      // and the journal entry was gone.
-      final next = {...await repo.getJournalMetrics(_date)};
-      if (v == null) {
-        next.remove(key);
-      } else {
-        next[key] = JournalMetricValue(v);
-      }
-      await repo.postJournalMetrics(_date, next);
+      // Dirty-only patch of this key. A full-day replace used to wipe every
+      // other field written since this tab last loaded.
+      final snap = await repo.readJournalDay(_date);
+      await repo.patchJournalDay(
+        JournalDayPatch.fromBase(
+          snap,
+          metrics: {
+            key: v == null
+                ? null
+                : JournalMetricValue(
+                    v,
+                    atMinuteOfDay: snap.metrics[key]?.atMinuteOfDay,
+                  ),
+          },
+        ),
+      );
+      await _load();
+    } on JournalConflict {
       await _load();
     } finally {
       if (mounted) setState(() => _writingField = false);
@@ -574,23 +586,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                           ),
                         ),
                       ),
-                      // A habit you typed had no way out short of "Delete
-                      // everything": the delete path existed end to end and
-                      // nothing reached it.
-                      Pressable(
-                        semanticLabel:
-                            l?.wellnessRemoveHabitSemantic(h.label) ??
-                                'Remove ${h.label}',
-                        onTap: () => _confirmRemoveHabit(h),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: S.x3),
-                          child: Icon(
-                            LucideIcons.trash2,
-                            size: 18,
-                            color: p.ink3,
-                          ),
-                        ),
-                      ),
                       _Check(
                         on: (_todayFields[h.key]?.value ?? 0) >= 1,
                         // Null while a write is in flight: the tick is a
@@ -624,7 +619,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
           icon: LucideIcons.plus,
           color: C.domMind,
           soft: true,
-          onTap: () => _addHabit(c),
+          onTap: () => _openCustomFields(c),
         ),
         // MIND-01/04/12 — the whole dose-response and habit-difference half of
         // journal analysis, plus the weekday test, behind ONE door. It has
@@ -654,66 +649,17 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     return n;
   }
 
-  /// Remove the habit, keep its history.
-  ///
-  /// `journal_field_def` deliberately keeps a deleted field's recorded values
-  /// (see db.dart's note on the table) — they were real answers. A "delete"
-  /// that quietly keeps data is as much of a surprise as one that quietly loses
-  /// it, so the confirm says which this is.
-  Future<void> _confirmRemoveHabit(JournalFieldSpec h) async {
-    final l = AppLocalizations.of(context);
-    final ok = await confirmRemove(
-      context,
-      title: l?.wellnessRemoveHabitConfirmTitle(h.label) ??
-          'Remove ${h.label}?',
-      body: l?.wellnessRemoveHabitConfirmBody ??
-          'It stops being asked. The days you already recorded stay.',
-    );
-    if (!ok || !mounted) return;
-    final repo = context.read<AppState>().repo;
-    if (repo == null) return;
-    await repo.deleteCustomJournalField(h.key);
-    await _load();
-  }
-
-  Future<void> _addHabit(BuildContext c) async {
-    final l = AppLocalizations.of(c);
-    final name = await _askName(
-      c,
-      l?.wellnessAddAHabit ?? 'Add a habit',
-      l?.wellnessHabitHint ?? 'Walk after lunch',
-    );
-    if (name == null || name.isEmpty || !mounted) return;
-    final repo = context.read<AppState>().repo;
-    if (repo == null) return;
-    try {
-      await repo.postCustomJournalField(
-        JournalFieldSpec(
-          key: customJournalFieldKey(name),
-          label: name,
-          kind: JournalFieldKind.rating,
-          unit: '',
-          max: 1,
-          step: 1,
-          custom: true,
+  Future<void> _openCustomFields(BuildContext c) async {
+    final app = context.read<AppState>();
+    await Navigator.of(c).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => OpenBandJournalFields(
+          repository: LocalOpenBandRepository(app),
+          day: _date,
         ),
-      );
-    } on StateError catch (_) {
-      // putJournalFieldDef is create-only now — a duplicate lands here
-      // instead of silently rewriting the first one's definition.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(context)?.wellnessAlreadyTrack(name) ??
-                  'You already track "$name".',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-    await _load();
+      ),
+    );
+    if (mounted) await _load();
   }
 
   // ── MEDICATION ───────────────────────────────────────────────────────────

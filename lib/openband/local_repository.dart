@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../data/db.dart';
+import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
@@ -930,6 +931,45 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
     await repository.upsertJournalMetric(day, key, value);
   }
+
+  @override
+  Future<JournalDaySnapshot> readJournalDay(String day) async {
+    _requireDay(day);
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    return repository.readJournalDay(day);
+  }
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    _requireDay(patch.day);
+    final repository = app.repo;
+    if (repository == null) {
+      throw StateError('Local repository is not initialized.');
+    }
+    await repository.patchJournalDay(patch);
+  }
+
+  @override
+  Future<List<JournalFieldSpec>> listJournalFields({
+    bool includeHidden = false,
+  }) async {
+    final custom = await LocalDb.journalFieldDefs(includeHidden: includeHidden);
+    return [...kJournalFields, ...custom];
+  }
+
+  @override
+  Future<JournalFieldSpec> createJournalField(JournalFieldSpec spec) =>
+      LocalDb.putJournalFieldDef(spec);
+
+  @override
+  Future<void> hideJournalField(String key) => LocalDb.hideJournalFieldDef(key);
+
+  @override
+  Future<void> restoreJournalField(String key) =>
+      LocalDb.restoreJournalFieldDef(key);
 
   @override
   Future<List<TrainingSession>> readSessions(String endDay, int days) async {

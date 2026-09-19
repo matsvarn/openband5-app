@@ -349,7 +349,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 59;
+  static const int schemaVersion = 60;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1089,6 +1089,10 @@ class LocalDb {
           await _ensureStrengthSetIdentity(db);
           await _addColumnIfMissing(db, 'sessions', 'hr_covered_sec', 'INTEGER');
         }
+        if (oldV < 60) {
+          // Additive archive flag; hide is not purge. Idempotent.
+          await _ensureJournalFieldDefHidden(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1176,6 +1180,7 @@ class LocalDb {
     await _createWorkoutSplit(db);
     await _ensureBreathingWindowColumns(db);
     await _ensureLabResultReportRange(db);
+    await _ensureJournalFieldDefHidden(db);
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
@@ -4626,9 +4631,10 @@ class LocalDb {
   /// unit and a ceiling its values render as bare numbers and its entry has no
   /// bounds — so it gets a row.
   ///
-  /// Deleting a definition deliberately does NOT delete its history: those
-  /// readings were still real. They render unlabelled until the field is
-  /// defined again.
+  /// Hiding a definition does NOT delete its history and does NOT drop the
+  /// row: those readings were still real, and the definition is the only
+  /// record of what the number meant. Restore reactivates the same identity.
+  /// Recreating the same key is refused while a row or orphan metric exists.
   static Future<void> _createJournalFieldDef(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS journal_field_def (
@@ -4639,10 +4645,25 @@ class LocalDb {
         max_value REAL NOT NULL,
         step REAL NOT NULL,
         has_time INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await _ensureJournalFieldDefHidden(db);
   }
+
+  /// Schema 60: archive flag on custom journal definitions.
+  ///
+  /// Hide is not purge. The row stays so history keeps its label/unit/kind,
+  /// and the same key cannot be reused for a new meaning. Idempotent via
+  /// [_addColumnIfMissing], so onCreate, onUpgrade, and onOpen can all call it.
+  static Future<void> _ensureJournalFieldDefHidden(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'journal_field_def',
+        'hidden',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
 
   /// lab_result — hand-entered blood work, and definitions for user-defined
   /// markers.
@@ -10013,6 +10034,21 @@ class LocalDb {
       'report_high',
     ]);
 
+    final journalFieldDefCols = await hasTable('journal_field_def')
+        ? await cols('journal_field_def')
+        : <String>{};
+    expect('journal_field_def', journalFieldDefCols, [
+      'key',
+      'label',
+      'kind',
+      'unit',
+      'max_value',
+      'step',
+      'has_time',
+      'created_at',
+      'hidden',
+    ]);
+
     final integrity = await db.rawQuery('PRAGMA integrity_check');
     final integrityOk =
         integrity.isNotEmpty && integrity.first.values.first == 'ok';
@@ -10858,18 +10894,33 @@ class LocalDb {
   // ── journal I/O ─────────────────────────────────────────────────────────────
 
   /// Upsert one day's journal (tags JSON + note). Idempotent on date.
+  ///
+  /// Full-row replace of tags+note, but `updated_at` is monotonic so a
+  /// same-millisecond rewrite cannot rewind a pending dirty CAS.
   static Future<void> putJournal(
     String date,
     String tagsJson,
     String note,
   ) async {
     final db = await instance;
-    await db.insert('journal', {
-      'date': date,
-      'tags_json': tagsJson,
-      'note': note,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'journal',
+        columns: ['updated_at'],
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      final storedRev =
+          (rows.isEmpty ? 0 : (rows.first['updated_at'] as num?)?.toInt() ?? 0);
+      await txn.insert('journal', {
+        'date': date,
+        'tags_json': tagsJson,
+        'note': note,
+        'updated_at': _journalRevBump(now, storedRev),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   /// Recent journal rows, newest first. [sinceDaysEpoch] (a YYYY-MM-DD label) is
@@ -10898,6 +10949,8 @@ class LocalDb {
   /// that does damage.
   ///
   /// Written in one transaction so a day is never half-updated.
+  /// Surviving keys keep a monotonic `updated_at` so a same-millisecond
+  /// rewrite (including A→B→A restore) cannot rewind a pending dirty CAS.
   static Future<void> putJournalMetrics(
     String date,
     Map<String, JournalMetricValue> fields,
@@ -10905,6 +10958,16 @@ class LocalDb {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
+      final existing = await txn.query(
+        'journal_metric',
+        columns: ['field', 'updated_at'],
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+      final revs = {
+        for (final r in existing)
+          r['field'] as String: (r['updated_at'] as num?)?.toInt() ?? 0,
+      };
       await txn.delete('journal_metric', where: 'date = ?', whereArgs: [date]);
       for (final e in fields.entries) {
         await txn.insert('journal_metric', {
@@ -10912,7 +10975,7 @@ class LocalDb {
           'field': e.key,
           'value': e.value.value,
           'at_min': e.value.atMinuteOfDay,
-          'updated_at': now,
+          'updated_at': _journalRevBump(now, revs[e.key] ?? 0),
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
@@ -10922,10 +10985,11 @@ class LocalDb {
   ///
   /// Value-only: UPDATE `value`/`updated_at` by `(date, field)`, then INSERT
   /// if no row. `at_min` is never written on the update path; a new row has
-  /// `at_min` null. No `UPSERT` — `INSERT … ON CONFLICT DO UPDATE` needs
-  /// SQLite 3.24 and minSdk 26 ships 3.18. Not a read-merge-write of the day.
-  /// Callers that mean "this map is the whole day" keep using
-  /// [putJournalMetrics].
+  /// `at_min` null. `updated_at` is monotonic so same-millisecond A→B→A
+  /// cannot reuse a revision. No SQL `UPSERT` — `INSERT … ON CONFLICT DO
+  /// UPDATE` needs SQLite 3.24 and minSdk 26 ships 3.18. Not a
+  /// read-merge-write of the day. Callers that mean "this map is the whole
+  /// day" keep using [putJournalMetrics].
   static Future<void> upsertJournalMetric(
     String date,
     String field,
@@ -10934,13 +10998,13 @@ class LocalDb {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
-      final updated = await txn.update(
+      final rows = await txn.query(
         'journal_metric',
-        {'value': value, 'updated_at': now},
         where: 'date = ? AND field = ?',
         whereArgs: [date, field],
+        limit: 1,
       );
-      if (updated == 0) {
+      if (rows.isEmpty) {
         await txn.insert('journal_metric', {
           'date': date,
           'field': field,
@@ -10948,7 +11012,222 @@ class LocalDb {
           'at_min': null,
           'updated_at': now,
         });
+        return;
       }
+      final storedRev = (rows.first['updated_at'] as num?)?.toInt() ?? 0;
+      await txn.update(
+        'journal_metric',
+        {'value': value, 'updated_at': _journalRevBump(now, storedRev)},
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+    });
+  }
+
+  /// Exact-day journal row plus metric rows, in one transaction so a snapshot
+  /// cannot tear across the two tables.
+  static Future<({Map<String, Object?>? journal, List<Map<String, Object?>> metrics})>
+      readJournalDayRows(String date) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final journal = await txn.query(
+        'journal',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      final metrics = await txn.query(
+        'journal_metric',
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+      return (
+        journal: journal.isEmpty ? null : Map<String, Object?>.from(journal.first),
+        metrics: [for (final r in metrics) Map<String, Object?>.from(r)],
+      );
+    });
+  }
+
+  static int _journalRevBump(int now, int stored) =>
+      now > stored ? now : stored + 1;
+
+  static bool _sameJournalTags(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    return a.toSet().containsAll(b);
+  }
+
+
+  static JournalMetricValue? _journalMetricOf(Map<String, Object?>? row) {
+    if (row == null) return null;
+    return JournalMetricValue(
+      (row['value'] as num).toDouble(),
+      atMinuteOfDay: (row['at_min'] as num?)?.toInt(),
+    );
+  }
+
+  /// Dirty-only compare-and-write for one day. One transaction: any mismatch
+  /// on a dirty key or the journal row throws [JournalConflict] and writes
+  /// nothing. Same-millisecond writers cannot sneak through — stored
+  /// value+time and revision are both compared, and the new revision is
+  /// monotonic on the existing `updated_at`.
+  static Future<void> patchJournalDay(JournalDayPatch patch) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final journalDirty = patch.tags != null || patch.note != null;
+    await db.transaction((txn) async {
+      final conflicts = <String>[];
+      for (final key in patch.metrics.keys) {
+        final rows = await txn.query(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [patch.day, key],
+          limit: 1,
+        );
+        final row = rows.isEmpty ? null : rows.first;
+        final stored = _journalMetricOf(row);
+        final storedRev = (row?['updated_at'] as num?)?.toInt() ?? 0;
+        final expectedRev = patch.expectedMetricUpdatedAt[key] ?? 0;
+        final expected = patch.expectedMetrics[key];
+        if (storedRev != expectedRev || stored != expected) {
+          conflicts.add(key);
+        }
+      }
+      Map<String, Object?>? journalRow;
+      List<String> storedTags = const [];
+      if (journalDirty) {
+        final rows = await txn.query(
+          'journal',
+          where: 'date = ?',
+          whereArgs: [patch.day],
+          limit: 1,
+        );
+        journalRow = rows.isEmpty ? null : rows.first;
+        // Decode before any write so a note-only patch cannot wipe
+        // unreadable tags by treating them as empty.
+        storedTags = decodeJournalTags(journalRow?['tags_json']);
+        final storedRev = (journalRow?['updated_at'] as num?)?.toInt() ?? 0;
+        final expectedRev = patch.expectedJournalUpdatedAt ?? 0;
+        if (storedRev != expectedRev) {
+          conflicts.add('journal');
+        } else {
+          if (patch.expectedNote != null &&
+              ((journalRow?['note'] as String?) ?? '') != patch.expectedNote) {
+            conflicts.add('journal');
+          }
+          if (patch.expectedTags != null &&
+              !_sameJournalTags(storedTags, patch.expectedTags!)) {
+            conflicts.add('journal');
+          }
+        }
+      }
+      if (conflicts.isNotEmpty) {
+        throw JournalConflict(patch.day, fields: conflicts);
+      }
+
+      for (final e in patch.metrics.entries) {
+        if (e.value == null) {
+          await txn.delete(
+            'journal_metric',
+            where: 'date = ? AND field = ?',
+            whereArgs: [patch.day, e.key],
+          );
+          continue;
+        }
+        final existing = await txn.query(
+          'journal_metric',
+          columns: ['updated_at'],
+          where: 'date = ? AND field = ?',
+          whereArgs: [patch.day, e.key],
+          limit: 1,
+        );
+        final storedRev =
+            (existing.isEmpty ? 0 : (existing.first['updated_at'] as num?)?.toInt() ?? 0);
+        final rev = _journalRevBump(now, storedRev);
+        if (existing.isEmpty) {
+          await txn.insert('journal_metric', {
+            'date': patch.day,
+            'field': e.key,
+            'value': e.value!.value,
+            'at_min': e.value!.atMinuteOfDay,
+            'updated_at': rev,
+          });
+        } else {
+          await txn.update(
+            'journal_metric',
+            {
+              'value': e.value!.value,
+              'at_min': e.value!.atMinuteOfDay,
+              'updated_at': rev,
+            },
+            where: 'date = ? AND field = ?',
+            whereArgs: [patch.day, e.key],
+          );
+        }
+      }
+
+      if (journalDirty) {
+        final storedRev = (journalRow?['updated_at'] as num?)?.toInt() ?? 0;
+        final rev = _journalRevBump(now, storedRev);
+        await txn.insert('journal', {
+          'date': patch.day,
+          'tags_json': jsonEncode(patch.tags ?? storedTags),
+          'note': patch.note ?? ((journalRow?['note'] as String?) ?? ''),
+          'updated_at': rev,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  /// Add [delta] to one field in a single transaction. A missing row counts
+  /// as 0. Result is clamped to `[0, max]`. A step down from a stored 0
+  /// deletes the row (absence), matching the editor stepper. Other fields
+  /// and `at_min` on this field stay put.
+  static Future<double?> applyJournalMetricDelta({
+    required String date,
+    required String field,
+    required double delta,
+    required double max,
+  }) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'journal_metric',
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        if (delta <= 0) return null;
+        final value = delta.clamp(0.0, max).toDouble();
+        await txn.insert('journal_metric', {
+          'date': date,
+          'field': field,
+          'value': value,
+          'at_min': null,
+          'updated_at': now,
+        });
+        return value;
+      }
+      final row = rows.first;
+      final current = (row['value'] as num).toDouble();
+      if (current == 0 && delta < 0) {
+        await txn.delete(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, field],
+        );
+        return null;
+      }
+      final value = (current + delta).clamp(0.0, max).toDouble();
+      final storedRev = (row['updated_at'] as num?)?.toInt() ?? 0;
+      await txn.update(
+        'journal_metric',
+        {'value': value, 'updated_at': _journalRevBump(now, storedRev)},
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+      return value;
     });
   }
 
@@ -11006,56 +11285,99 @@ class LocalDb {
   }
 
   /// Custom field definitions, ordered by label.
-  static Future<List<JournalFieldSpec>> journalFieldDefs() async {
+  ///
+  /// Active (not hidden) by default so editors omit archived fields.
+  /// Pass [includeHidden] for history joins and restore lists. A corrupt
+  /// kind is reported rather than silently becoming a dose.
+  static Future<List<JournalFieldSpec>> journalFieldDefs({
+    bool includeHidden = false,
+  }) async {
     final db = await instance;
-    final rows = await db.query('journal_field_def', orderBy: 'label ASC');
-    return [
-      for (final r in rows)
-        JournalFieldSpec(
-          key: r['key'] as String,
-          label: r['label'] as String,
-          kind: JournalFieldKind.values.firstWhere(
-            (k) => k.name == r['kind'],
-            // A row written by a newer build with a kind this one has never
-            // heard of still renders as a dose rather than crashing the whole
-            // journal screen.
-            orElse: () => JournalFieldKind.dose,
-          ),
-          unit: r['unit'] as String,
-          max: (r['max_value'] as num).toDouble(),
-          step: (r['step'] as num).toDouble(),
-          hasTime: ((r['has_time'] as num?)?.toInt() ?? 0) == 1,
-          custom: true,
-        ),
-    ];
+    final rows = await db.query(
+      'journal_field_def',
+      where: includeHidden ? null : 'hidden = 0',
+      orderBy: 'label ASC',
+    );
+    return [for (final r in rows) parseStoredCustomJournalField(r)];
   }
 
   /// Create-only. A conflicting key THROWS instead of replacing: REPLACE
   /// would silently rewrite another definition's metadata (label, unit, kind)
   /// while its recorded history stayed — a field that means something else
-  /// wearing the old rows. The UI rejects duplicates before it gets here; the
-  /// throw is the race/programmatic-caller backstop.
-  static Future<void> putJournalFieldDef(JournalFieldSpec spec) async {
+  /// wearing the old rows. Hidden rows and orphan `journal_metric` keys are
+  /// the same hole; refuse them too. The throw is the race/programmatic-caller
+  /// backstop.
+  static Future<JournalFieldSpec> putJournalFieldDef(JournalFieldSpec spec) async {
+    final prepared = preparedCustomJournalField(spec);
     final db = await instance;
-    final exists = await db.query(
-      'journal_field_def',
-      where: 'key = ?',
-      whereArgs: [spec.key],
-      limit: 1,
-    );
-    if (exists.isNotEmpty) {
-      throw StateError('journal field already exists: ${spec.key}');
-    }
-    await db.insert('journal_field_def', {
-      'key': spec.key,
-      'label': spec.label,
-      'kind': spec.kind.name,
-      'unit': spec.unit,
-      'max_value': spec.max,
-      'step': spec.step,
-      'has_time': spec.hasTime ? 1 : 0,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
+    return db.transaction((txn) async {
+      final exists = await txn.query(
+        'journal_field_def',
+        where: 'key = ?',
+        whereArgs: [prepared.key],
+        limit: 1,
+      );
+      if (exists.isNotEmpty) {
+        throw StateError('journal field already exists: ${prepared.key}');
+      }
+      final orphan = await txn.query(
+        'journal_metric',
+        columns: ['field'],
+        where: 'field = ?',
+        whereArgs: [prepared.key],
+        limit: 1,
+      );
+      if (orphan.isNotEmpty) {
+        throw StateError(
+          'journal field key is already recorded: ${prepared.key}',
+        );
+      }
+      await txn.insert('journal_field_def', {
+        'key': prepared.key,
+        'label': prepared.label,
+        'kind': prepared.kind.name,
+        'unit': prepared.unit,
+        'max_value': prepared.max,
+        'step': prepared.step,
+        'has_time': prepared.hasTime ? 1 : 0,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'hidden': 0,
+      });
+      return prepared;
     });
+  }
+
+  /// Archive a custom definition. History and metadata stay. Missing keys
+  /// are a no-op, matching the previous hard-delete.
+  static Future<void> hideJournalFieldDef(String key) async {
+    if (kJournalFieldsByKey.containsKey(key) || key.isEmpty) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Cannot hide a built-in journal field.',
+      );
+    }
+    final db = await instance;
+    await db.update(
+      'journal_field_def',
+      {'hidden': 1},
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+  }
+
+  /// Reactivate the same identity. Definition metadata is not rewritten.
+  static Future<void> restoreJournalFieldDef(String key) async {
+    final db = await instance;
+    final n = await db.update(
+      'journal_field_def',
+      {'hidden': 0},
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (n == 0) {
+      throw StateError('journal field not found: $key');
+    }
   }
 
   // ── nap edits ─────────────────────────────────────────────────────────────
@@ -11509,13 +11831,11 @@ class LocalDb {
     });
   }
 
-  /// Forget a custom field's DEFINITION. Its recorded values are deliberately
-  /// left alone — they were real readings, and deleting a label should not
-  /// delete history.
-  static Future<void> deleteJournalFieldDef(String key) async {
-    final db = await instance;
-    await db.delete('journal_field_def', where: 'key = ?', whereArgs: [key]);
-  }
+  /// Archive a custom field's definition. Recorded values and the definition
+  /// row stay — hide is not purge. Same identity can be restored; the key
+  /// cannot be reused for a new unit or kind.
+  static Future<void> deleteJournalFieldDef(String key) =>
+      hideJournalFieldDef(key);
 
   /// Forget a custom marker's DEFINITION. Its results are left alone — those
   /// were real draws, and each row already carries its own unit, so they stay

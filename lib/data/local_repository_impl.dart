@@ -3245,8 +3245,88 @@ class LocalRepositoryImpl extends LocalRepository {
     );
   }
 
-  Future<List<JournalFieldSpec>> _customJournalFields() async =>
-      (await getJournalFields()).where((s) => s.custom).toList();
+  @override
+  Future<JournalDaySnapshot> readJournalDay(String day) async {
+    if (!isJournalDayId(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    final rows = await LocalDb.readJournalDayRows(day);
+    final metrics = <String, JournalMetricValue>{};
+    final metricUpdatedAt = <String, int>{};
+    for (final r in rows.metrics) {
+      final key = r['field'] as String;
+      metrics[key] = JournalMetricValue(
+        (r['value'] as num).toDouble(),
+        atMinuteOfDay: (r['at_min'] as num?)?.toInt(),
+      );
+      metricUpdatedAt[key] = (r['updated_at'] as num?)?.toInt() ?? 0;
+    }
+    final journal = rows.journal;
+    return JournalDaySnapshot(
+      day: day,
+      metrics: metrics,
+      metricUpdatedAt: metricUpdatedAt,
+      tags: decodeJournalTags(journal?['tags_json']),
+      note: (journal?['note'] as String?) ?? '',
+      journalUpdatedAt: (journal?['updated_at'] as num?)?.toInt() ?? 0,
+      fields: await getJournalFields(),
+    );
+  }
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    if (!isJournalDayId(patch.day)) {
+      throw ArgumentError.value(patch.day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    // Hidden defs stay valid for a dirty save after archive. Active editor
+    // lists still omit them; a key with no definition is still unknown.
+    final custom = await _customJournalFields(includeHidden: true);
+    final fields = <String, JournalFieldSpec>{
+      for (final f in [...kJournalFields, ...custom]) f.key: f,
+    };
+    for (final e in patch.metrics.entries) {
+      if (e.key.isEmpty || !fields.containsKey(e.key)) {
+        throw ArgumentError.value(e.key, 'field', 'Unknown journal field.');
+      }
+      if (e.value == null) continue;
+      validateJournalPatchMetric(fields[e.key]!, e.value!);
+    }
+    await LocalDb.patchJournalDay(patch);
+  }
+
+  @override
+  Future<double?> addJournalMetric(
+    String date,
+    String field,
+    double delta,
+  ) async {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(date, 'date', 'Expected YYYY-MM-DD.');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Journal field is required.');
+    }
+    if (!delta.isFinite) {
+      throw ArgumentError.value(delta, 'delta', 'Journal value must be finite.');
+    }
+    final spec = journalFieldSpec(field, custom: await _customJournalFields());
+    if (spec == null) {
+      throw ArgumentError.value(field, 'field', 'Unknown journal field.');
+    }
+    return LocalDb.applyJournalMetricDelta(
+      date: date,
+      field: field,
+      delta: delta,
+      max: spec.max,
+    );
+  }
+
+  Future<List<JournalFieldSpec>> _customJournalFields({
+    bool includeHidden = false,
+  }) async =>
+      (await getJournalFields(includeHidden: includeHidden))
+          .where((s) => s.custom)
+          .toList();
 
   /// Clamp on the way in rather than trusting the editor. A value past the
   /// field's ceiling is almost always a mis-tap, and a single 40-coffee day
@@ -3264,18 +3344,21 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<List<JournalFieldSpec>> getJournalFields() async => [
+  Future<List<JournalFieldSpec>> getJournalFields({
+    bool includeHidden = false,
+  }) async => [
     ...kJournalFields,
-    ...await LocalDb.journalFieldDefs(),
+    ...await LocalDb.journalFieldDefs(includeHidden: includeHidden),
   ];
 
   @override
-  Future<void> postCustomJournalField(JournalFieldSpec spec) =>
-      LocalDb.putJournalFieldDef(spec);
+  Future<void> postCustomJournalField(JournalFieldSpec spec) async {
+    await LocalDb.putJournalFieldDef(spec);
+  }
 
   @override
   Future<void> deleteCustomJournalField(String key) =>
-      LocalDb.deleteJournalFieldDef(key);
+      LocalDb.hideJournalFieldDef(key);
 
   /// For each distinct tag in the window, compare mean readiness on tagged days
   /// vs the window mean and emit a metric-delta card (only when n_with >= 2).
@@ -3480,8 +3563,8 @@ class LocalRepositoryImpl extends LocalRepository {
     );
 
     // Custom field definitions so a user-invented field reads by its own name
-    // and unit rather than its storage key.
-    final customs = (await getJournalFields()).where((f) => f.custom).toList();
+    // and unit rather than its storage key. Hidden rows still name history.
+    final customs = await LocalDb.journalFieldDefs(includeHidden: true);
     final betterOf = {
       for (final od in outcomeDefs)
         od['key'] as String: od['higherBetter'] as bool,

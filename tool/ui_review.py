@@ -74,6 +74,8 @@ def main():
     parser.add_argument('mode', choices=['gallery', 'capture'])
     parser.add_argument('--small', action='store_true', help='Use a dedicated 375×812 iPhone 13 mini instead of 393×852 iPhone 15 Pro.')
     parser.add_argument('--output', type=Path, help='Native review output directory; defaults to build/ui-review/<timestamp>.')
+    parser.add_argument('--flow', choices=['all', 'journal'], default='all',
+                        help='Native capture flow: full gallery (default) or Journal-only.')
     args = parser.parse_args()
     if not SDK.is_file():
         raise SystemExit(f'Pinned Flutter SDK not found: {SDK}')
@@ -88,7 +90,8 @@ def main():
         raise SystemExit('Choose an empty output directory to keep review runs separate.')
     started = time.monotonic()
     manifest = {'synthetic': True, 'device': name, 'udid': device,
-                'sdk': str(SDK), 'runtime': 'iOS 26.5', 'captureKind': 'simulator-display', 'success': False}
+                'sdk': str(SDK), 'runtime': 'iOS 26.5', 'captureKind': 'simulator-display',
+                'flow': args.flow, 'success': False}
     run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', '09:41',
         '--batteryState', 'charged', '--batteryLevel', '100')
     env = {**os.environ, 'OPENBAND_REVIEW_OUTPUT': str(output)}
@@ -97,7 +100,8 @@ def main():
         run(SDK, 'drive', '--no-pub', '-d', device,
             '--driver=test_driver/openband_review.dart',
             '--target=integration_test/openband_review_test.dart',
-            f'--dart-define=OPENBAND_REVIEW_PORT={server.server_port}', env=env)
+            f'--dart-define=OPENBAND_REVIEW_PORT={server.server_port}',
+            f'--dart-define=OPENBAND_REVIEW_FLOW={args.flow}', env=env)
         manifest['success'] = True
     finally:
         server.shutdown()
@@ -110,7 +114,8 @@ def main():
             '<style>body{font:16px system-ui;background:#eef0f4;margin:24px}main{display:flex;flex-wrap:wrap;gap:24px}'
             'figure{margin:0}img{width:295px;border:1px solid #ddd}figcaption{padding:8px 0;max-width:295px}</style>'
             '<h1>OpenBand · synthetic native review</h1><p>Native simulator renders; no real user data. '
-            f'Run passed: {manifest["success"]}. Duration: {manifest["elapsedSeconds"]} s.</p><main>'
+            f'Run passed: {manifest["success"]}. Duration: {manifest["elapsedSeconds"]} s. '
+            f'Flow: {manifest["flow"]}.</p><main>'
             + ''.join(f'<figure><img src="{p.name}"><figcaption>{p.stem}</figcaption></figure>' for p in screenshots)
             + '</main>'
         )

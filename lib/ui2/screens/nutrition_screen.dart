@@ -27,7 +27,6 @@ import '../../data/journal_fields.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import '../onboarding/profile_setup.dart' show formatDay;
-import 'journal_compose.dart' show OsTextField;
 import 'log_food.dart';
 
 class NutritionScreen extends StatefulWidget {
@@ -123,11 +122,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// step down off the last glass lands on a logged ZERO ("none today"), and a
   /// step down from zero clears the field, because absence and zero are
   /// different answers.
-  /// One write at a time. `_stepWater` reads the day, then awaits, then writes
-  /// it back — and `postJournalMetrics` replaces the whole day — so two taps
-  /// during that await both read the same map and the second write silently
-  /// eats the first tap. Same guard the wellness screen already uses for its
-  /// journal fields.
+  /// One write at a time so the optimistic figure cannot race itself. The
+  /// store adds atomically, so overlapping taps still sum rather than both
+  /// writing the same absolute total.
   bool _writingWater = false;
 
   Future<void> _stepWater(int dir) async {
@@ -145,18 +142,11 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     }
     setState(() => _waterMl = next);
     try {
-      // Inside the try, not before it: the READ can throw too, and with the
-      // guard already set that left both buttons dead until the screen was
-      // rebuilt — the flag outliving the operation it was protecting.
-      //
-      // Drop the key rather than omitting it from a spread: `putJournalMetrics`
-      // clears the day and re-inserts what it is handed, so leaving `water_ml`
-      // out is what "no answer today" looks like on disk — and spreading the
-      // old map back in is exactly what made this un-clearable.
-      final fields =
-          {...await repo.getJournalMetrics(_date)}..remove('water_ml');
-      if (next != null) fields['water_ml'] = JournalMetricValue(next);
-      await repo.postJournalMetrics(_date, fields);
+      await repo.addJournalMetric(
+        _date,
+        'water_ml',
+        dir > 0 ? spec.step : -spec.step,
+      );
       await _load();
     } finally {
       // Cleared unconditionally; the setState is only for the repaint. Gating

@@ -214,6 +214,7 @@ void main() {
       expect(back.step, 50);
       expect(back.hasTime, isTrue);
       expect(back.custom, isTrue, reason: 'a stored def is always a custom');
+      expect(back.hidden, isFalse);
     });
 
     test('deleting a definition keeps its readings', () async {
@@ -225,6 +226,12 @@ void main() {
       await LocalDb.deleteJournalFieldDef(spec.key);
 
       expect(await LocalDb.journalFieldDefs(), isEmpty);
+      final archived = await LocalDb.journalFieldDefs(includeHidden: true);
+      expect(archived.single.key, spec.key);
+      expect(archived.single.hidden, isTrue);
+      expect(archived.single.label, 'Magnesium');
+      expect(archived.single.unit, 'mg');
+      expect(archived.single.kind, JournalFieldKind.dose);
       expect(
         (await LocalDb.journalMetricsForDay('2026-06-01'))['custom_magnesium']
             ?.value,
@@ -233,7 +240,7 @@ void main() {
       );
     });
 
-    test('an unknown kind from a newer build degrades instead of throwing',
+    test('an unknown kind from a newer build is reported, not a dose',
         () async {
       final db = await LocalDb.instance;
       await db.insert('journal_field_def', {
@@ -246,9 +253,10 @@ void main() {
         'has_time': 0,
         'created_at': 0,
       });
-      // One unreadable row must not take the whole journal screen down.
-      final back = await LocalDb.journalFieldDefs();
-      expect(back.single.kind, JournalFieldKind.dose);
+      await expectLater(
+        LocalDb.journalFieldDefs(includeHidden: true),
+        throwsA(isA<FormatException>()),
+      );
     });
   });
 }

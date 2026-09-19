@@ -50,7 +50,7 @@ import '../compute/hr_max.dart';
 import '../compute/profile.dart';
 import '../data/day_label.dart';
 import '../data/journal_fields.dart'
-    show JournalMetricValue, kJournalFieldsByKey;
+    show JournalDayPatch, JournalConflict, kJournalFieldsByKey;
 import '../data/med_store.dart' show MedDb, MedDef;
 import '../data/auto_backup.dart' show BackupCadence, BackupOutcome, runBackup;
 import '../stress/breath_phases.dart';
@@ -1227,7 +1227,7 @@ class AppState extends ChangeNotifier {
     _gestureDispatcher = GestureDispatcher(
       settings: gestureSettings,
       log: _log,
-      onMarkMoment: _markMomentFromGesture,
+      onMarkMoment: markMomentFromGesture,
       onWorkoutToggle: _toggleWorkoutFromGesture,
       onLogWater: _logWaterFromGesture,
     );
@@ -1340,7 +1340,7 @@ class AppState extends ChangeNotifier {
     _gestureDispatcher = GestureDispatcher(
       settings: gestureSettings,
       log: _log,
-      onMarkMoment: _markMomentFromGesture,
+      onMarkMoment: markMomentFromGesture,
       onWorkoutToggle: _toggleWorkoutFromGesture,
       onLogWater: _logWaterFromGesture,
     );
@@ -6548,11 +6548,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// One water write at a time. `_logWaterFromGesture` reads the day, awaits, then
-  /// writes the whole map back, and `postJournalMetrics` REPLACES the day — so two
-  /// taps overlapping that await both read the same total and the second write eats
-  /// the first glass. Same guard the nutrition screen's `+` already uses. This is not
-  /// a second debounce (the dispatcher owns that); it is the read-modify-write lock.
+  /// One water write at a time so overlapping gestures cannot double-apply
+  /// the optimistic side effects. The store itself adds atomically, so two
+  /// in-flight increments still sum.
   bool _writingWaterFromGesture = false;
 
   /// Double-tap → add one glass to today's water. Step and ceiling come from the
@@ -6564,15 +6562,7 @@ class AppState extends ChangeNotifier {
     try {
       final spec = kJournalFieldsByKey['water_ml']!;
       final date = todayLabel();
-      // Inside the try: the READ can throw too, and a guard set before it would
-      // stay set forever. Spread into a fresh map — postJournalMetrics rewrites
-      // the whole day from what it is handed.
-      final fields = {...await r.getJournalMetrics(date)};
-      final now = fields['water_ml']?.value ?? 0;
-      fields['water_ml'] = JournalMetricValue(
-        (now + spec.step).clamp(0, spec.max).toDouble(),
-      );
-      await r.postJournalMetrics(date, fields);
+      await r.addJournalMetric(date, 'water_ml', spec.step);
       _log('[gesture] water logged (+${spec.step.round()} ${spec.unit})');
       await HapticFeedback.mediumImpact();
     } catch (e) {
@@ -6582,38 +6572,37 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Double-tap → stamp a timestamped tag onto today's journal (read-modify-write so
-  /// existing tags/note survive). "Remember this" for a spike, a set, a feeling.
-  Future<void> _markMomentFromGesture() async {
+  /// Double-tap → stamp a timestamped tag onto today's journal.
+  ///
+  /// Exact-day dirty CAS: the note and every other tag stay. A failed or
+  /// unreadable read refuses the write rather than replacing the row with
+  /// an empty note and a lone moment tag.
+  @visibleForTesting
+  Future<void> markMomentFromGesture() async {
     final r = repo;
     if (r == null) return;
     try {
       final now = DateTime.now();
-      final date =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}';
+      final date = todayLabel();
       final hhmm =
           '${now.hour.toString().padLeft(2, '0')}:'
           '${now.minute.toString().padLeft(2, '0')}';
-      List<String> tags = [];
-      String note = '';
-      try {
-        final journal = await r.getJournal(range: '7d');
-        final today = journal.firstWhere(
-          (e) => e['date'] == date,
-          orElse: () => <String, dynamic>{},
-        );
-        tags =
-            (today['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
-        note = (today['note'] as String?) ?? '';
-      } catch (_) {
-        /* fresh day / seam not implemented — start clean */
+      final snap = await r.readJournalDay(date);
+      final tag = 'moment $hhmm';
+      if (snap.tags.contains(tag)) {
+        _log('[gesture] moment already marked at $hhmm');
+        return;
       }
-      tags.add('moment $hhmm');
-      await r.postJournal(date, tags, note);
+      await r.patchJournalDay(
+        JournalDayPatch.fromBase(
+          snap,
+          tags: [...snap.tags, tag],
+        ),
+      );
       _log('[gesture] moment marked at $hhmm');
       await HapticFeedback.mediumImpact();
+    } on JournalConflict catch (e) {
+      _log('[gesture] mark moment failed: $e');
     } catch (e) {
       _log('[gesture] mark moment failed: $e');
     }

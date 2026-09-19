@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
@@ -128,6 +129,11 @@ Future<void> reviewPumpPresentedFrame(WidgetTester tester) async {
   }
 }
 
+const kOpenBandReviewFlow = String.fromEnvironment(
+  'OPENBAND_REVIEW_FLOW',
+  defaultValue: 'all',
+);
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final frames = <Map<String, Object?>>[];
@@ -135,6 +141,12 @@ void main() {
   testWidgets('native first-flow visual review with isolated synthetic data', (
     tester,
   ) async {
+    if (kOpenBandReviewFlow != 'all' && kOpenBandReviewFlow != 'journal') {
+      throw StateError(
+        'Unknown OPENBAND_REVIEW_FLOW: $kOpenBandReviewFlow '
+        '(expected all or journal)',
+      );
+    }
     await initializeDateFormatting('de_DE');
     final semantics = tester.ensureSemantics();
     final previousHitTestPolicy = WidgetController.hitTestWarningShouldBeFatal;
@@ -254,6 +266,328 @@ void main() {
               .join('\n'),
         });
         binding.reportData!['frames'] = frames;
+      }
+
+      Future<void> reviewJournal() async {
+        await mount();
+        await press('Journal');
+        await capture('journal-hub');
+        await tester.tap(find.bySemanticsLabel('Gut'));
+        await tester.pumpAndSettle();
+        await capture('journal-answered');
+        await tester.tap(find.text('Weitere Angaben'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor');
+        await tester.tap(find.byTooltip('Information'));
+        await tester.pumpAndSettle();
+        await capture('journal-info');
+        await tester.tap(find.text('Schließen').last);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Eigene Felder'));
+        await tester.tap(find.text('Eigene Felder'));
+        await tester.pumpAndSettle();
+        await capture('journal-fields');
+        await tester.tap(find.text('Feld hinzufügen'));
+        await tester.pumpAndSettle();
+        await capture('journal-field-create');
+        await pop();
+        await pop();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ernährung').first);
+        await tester.pumpAndSettle();
+        await capture('nutrition-day');
+        await tester.tap(find.byTooltip('Frühstück ergänzen'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, 'hafer');
+        await tester.pumpAndSettle();
+        await capture('food-search');
+        await tester.tap(find.text('Haferflocken'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Übernehmen'));
+        await tester.pumpAndSettle();
+        await capture('meal-draft-preview');
+        await tester.tap(find.text('Entwurf behalten'));
+        await tester.pumpAndSettle();
+
+        final journalFail = await mount();
+        journalFail.failJournalRead = true;
+        await press('Journal');
+        await tester.tap(find.text('Weitere Angaben'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-load-error');
+
+        await mount(brightness: Brightness.dark);
+        await press('Journal');
+        await tester.tap(find.text('Weitere Angaben'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-dark');
+        await tester.tap(find.byTooltip('Information'));
+        await tester.pumpAndSettle();
+        await capture('journal-info-dark');
+        await tester.tap(find.text('Schließen').last);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Eigene Felder'));
+        await tester.tap(find.text('Eigene Felder'));
+        await tester.pumpAndSettle();
+        await capture('journal-fields-dark');
+
+        await mount(scale: 2);
+        await press('Journal');
+        await tester.tap(find.text('Weitere Angaben'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ausgeblendet'), findsNothing);
+        await capture('journal-editor-large');
+        await tester.tap(find.byTooltip('Information'));
+        await tester.pumpAndSettle();
+        await capture('journal-info-large');
+        await tester.tap(find.text('Schließen').last);
+        await tester.pumpAndSettle();
+
+        Future<SyntheticOpenBandRepository> openJournalEditor({
+          bool filled = false,
+          bool withCustom = false,
+          Brightness brightness = Brightness.light,
+          double? scale,
+        }) async {
+          final repository = await mount(brightness: brightness, scale: scale);
+          if (filled || withCustom) {
+            repository.seedJournalEditor(
+              filled: filled,
+              withCustom: withCustom,
+            );
+          }
+          await press('Journal');
+          await tester.tap(find.text('Weitere Angaben'));
+          await tester.pumpAndSettle();
+          return repository;
+        }
+
+        await openJournalEditor();
+        await capture('journal-editor-empty');
+
+        final filledJournal = await openJournalEditor(
+          filled: true,
+          withCustom: true,
+        );
+        await tester.tap(find.text('Schlafqualität'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-rating');
+        await tester.tap(find.text('Übernehmen'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Koffein').last);
+        await tester.tap(find.text('Koffein').last);
+        await tester.pumpAndSettle();
+        await capture('journal-editor-value');
+        await tester.enterText(
+          find.byKey(const ValueKey('journal-value')),
+          '180',
+        );
+        await tester.tap(find.text('10:30'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-time');
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Übernehmen'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Tags'));
+        await tester.tap(find.text('Tags'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const ValueKey('journal-tags-sheet')),
+            matching: find.text('Koffein'),
+          ),
+        );
+        await tester.pump();
+        await capture('journal-editor-tags');
+        await tester.tap(find.byKey(const ValueKey('journal-tag-custom')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('journal-tag-custom')),
+        );
+        await capture('journal-editor-tags-keyboard');
+        await tester.enterText(
+          find.byKey(const ValueKey('journal-tag-custom')),
+          'Yoga',
+        );
+        await tester.ensureVisible(find.byTooltip('Tag hinzufügen'));
+        await tester.tap(find.byTooltip('Tag hinzufügen'));
+        await tester.pump();
+        await capture('journal-editor-tags-custom');
+        expect(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('journal-tags-sheet')),
+                matching: find.text('Tags'),
+              )
+              .hitTestable(),
+          findsOneWidget,
+        );
+        expect(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('journal-tags-sheet')),
+                matching: find.byTooltip('Schließen'),
+              )
+              .hitTestable(),
+          findsOneWidget,
+        );
+        expect(
+          find.widgetWithText(FilledButton, 'Übernehmen').hitTestable(),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(find.text('Übernehmen'));
+        await tester.tap(find.text('Übernehmen'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.bySemanticsLabel('Stimmung Sehr gut'));
+        await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
+        await tester.pump();
+        await tester.ensureVisible(find.text('Eigene Felder'));
+        await tester.tap(find.text('Eigene Felder'));
+        await tester.pumpAndSettle();
+        await capture('journal-fields-from-draft');
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-after-fields');
+        filledJournal.failJournalPatch = true;
+        await tester.tap(find.byKey(const ValueKey('journal-save')));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-save-error');
+        filledJournal.failJournalPatch = false;
+        await tester.tap(find.byKey(const ValueKey('journal-save')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Weitere Angaben'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-reopened');
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+
+        final conflictJournal = await openJournalEditor(filled: true);
+        await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
+        await tester.pump();
+        final conflictBase = await conflictJournal.readJournalDay('2026-09-15');
+        await conflictJournal.patchJournalDay(
+          JournalDayPatch.fromBase(
+            conflictBase,
+            metrics: const {'mood': JournalMetricValue(2)},
+          ),
+        );
+        await tester.tap(find.byKey(const ValueKey('journal-save')));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-conflict');
+        await tester.tap(find.text('Neu laden'));
+        await tester.pumpAndSettle();
+        await capture('journal-discard');
+        await tester.tap(find.text('Verwerfen und neu laden'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-reloaded');
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+
+        await openJournalEditor(withCustom: true);
+        await tester.ensureVisible(find.text('Eigene Felder'));
+        await tester.tap(find.text('Eigene Felder'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Feld hinzufügen'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Menge'));
+        await tester.pumpAndSettle();
+        await capture('journal-field-type');
+        await tester.tap(find.text('Dauer'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('journal-field-name')),
+          'Dehnung',
+        );
+        await tester.tap(find.text('Speichern').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Magnesium').first);
+        await tester.pumpAndSettle();
+        await capture('journal-field-detail');
+        await tester.tap(find.text('Ausblenden'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ausgeblendet'));
+        await tester.pumpAndSettle();
+        await capture('journal-fields-hidden');
+        await tester.tap(find.text('Magnesium'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Einblenden'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+
+        final fieldsFail = await openJournalEditor();
+        fieldsFail.failJournalFieldsList = true;
+        await tester.ensureVisible(find.text('Eigene Felder'));
+        await tester.tap(find.text('Eigene Felder'));
+        await tester.pumpAndSettle();
+        await capture('journal-fields-load-error');
+        fieldsFail.failJournalFieldsList = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Feld hinzufügen'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('journal-field-name')),
+          'Omega',
+        );
+        fieldsFail.failJournalFieldsList = true;
+        await tester.tap(find.text('Speichern').first);
+        await tester.pumpAndSettle();
+        await capture('journal-field-create-retry');
+        fieldsFail.failJournalFieldsList = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+
+        await openJournalEditor(filled: true, scale: 2);
+        await tester.ensureVisible(find.byKey(const ValueKey('journal-note')));
+        await tester.tap(find.byKey(const ValueKey('journal-note')));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-keyboard');
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Tags'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-scrolled');
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+        if (find.text('Änderungen verwerfen?').evaluate().isNotEmpty) {
+          await tester.tap(find.text('Weiter bearbeiten'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byTooltip('Zurück'));
+          await tester.pumpAndSettle();
+          if (find.text('Änderungen verwerfen?').evaluate().isNotEmpty) {
+            await tester.tap(find.text('Verwerfen'));
+            await tester.pumpAndSettle();
+          }
+        }
+
+        await openJournalEditor(
+          filled: true,
+          scale: 2,
+          brightness: Brightness.dark,
+        );
+        await tester.ensureVisible(find.text('Tags'));
+        await tester.pumpAndSettle();
+        await capture('journal-editor-scrolled-dark');
+        await tester.tap(find.byTooltip('Zurück'));
+        await tester.pumpAndSettle();
+      }
+
+      binding.reportData ??= <String, dynamic>{};
+      binding.reportData!['flow'] = kOpenBandReviewFlow;
+      if (kOpenBandReviewFlow == 'journal') {
+        await reviewJournal();
+        return;
       }
 
       Future<void> edit({
@@ -818,10 +1152,7 @@ void main() {
         double? scale,
         bool failWrites = false,
       }) async {
-        final repository = await mount(
-          brightness: brightness,
-          scale: scale,
-        );
+        final repository = await mount(brightness: brightness, scale: scale);
         final now = DateTime(2026, 9, 15, 18, 32, 14);
         await repository.seedPaperLiveStrength(
           startedAt: DateTime(2026, 9, 15, 18),
@@ -943,27 +1274,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      await mount();
-      await press('Journal');
-      await capture('journal-hub');
-      await tester.tap(find.bySemanticsLabel('Gut'));
-      await tester.pumpAndSettle();
-      await capture('journal-answered');
-      await tester.tap(find.text('Ernährung').first);
-      await tester.pumpAndSettle();
-      await capture('nutrition-day');
-      await tester.tap(find.byTooltip('Frühstück ergänzen'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).first, 'hafer');
-      await tester.pumpAndSettle();
-      await capture('food-search');
-      await tester.tap(find.text('Haferflocken'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Übernehmen'));
-      await tester.pumpAndSettle();
-      await capture('meal-draft-preview');
-      await tester.tap(find.text('Entwurf behalten'));
-      await tester.pumpAndSettle();
+      await reviewJournal();
 
       for (final brightness in Brightness.values) {
         for (final phoneActions in [true, false]) {
@@ -1767,10 +2078,7 @@ void main() {
       );
       expect(find.text('Erneut'), findsOneWidget);
       await capture('appearance-error-dark');
-      await mountAppearance(
-        brightness: Brightness.light,
-        scale: 2,
-      );
+      await mountAppearance(brightness: Brightness.light, scale: 2);
       await capture('appearance-large');
 
       var failAppearance = true;
@@ -1932,7 +2240,10 @@ void main() {
       await mountUnits(brightness: Brightness.light, scale: 2);
       expect(find.text('Entfernung'), findsOneWidget);
       expect(find.text('5,00 km'), findsOneWidget);
-      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('units-preview-stacked')),
+        findsOneWidget,
+      );
       await capture('units-large');
       await mountUnits(
         brightness: Brightness.dark,
@@ -1940,7 +2251,10 @@ void main() {
         scale: 2,
       );
       expect(find.text('Entfernung'), findsOneWidget);
-      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('units-preview-stacked')),
+        findsOneWidget,
+      );
       await capture('units-large-dark');
       await mountUnits(
         brightness: Brightness.light,
@@ -1950,7 +2264,10 @@ void main() {
       expect(find.text('3,11 mi'), findsOneWidget);
       expect(find.text('8:03 /mi'), findsOneWidget);
       expect(find.text('5′11″'), findsOneWidget);
-      expect(find.byKey(const ValueKey('units-preview-stacked')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('units-preview-stacked')),
+        findsOneWidget,
+      );
       await capture('units-large-imperial');
 
       var failUnits = true;
@@ -1979,10 +2296,7 @@ void main() {
                   darkTheme: openBandTheme(Brightness.dark),
                   themeMode: ThemeMode.light,
                   themeAnimationDuration: Duration.zero,
-                  home: UnitsSettings(
-                    synthetic: true,
-                    controller: liveUnits,
-                  ),
+                  home: UnitsSettings(synthetic: true, controller: liveUnits),
                 ),
               ),
             ),

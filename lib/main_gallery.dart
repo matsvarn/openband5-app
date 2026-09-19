@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
+import 'openband/journal_editor.dart';
 import 'openband/domain.dart';
 import 'openband/nutrition.dart';
 import 'openband/run_live.dart';
@@ -241,6 +242,17 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ),
       ShellDomain.wellness => OpenBandJournal(
         controller: controller,
+        onEdit: (day) async {
+          await Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandJournalEditor(
+                repository: widget.repository,
+                day: day,
+              ),
+            ),
+          );
+          controller.refresh();
+        },
         onNutrition: () => Navigator.of(c).push(
           MaterialPageRoute<void>(
             builder: (ctx) => OpenBandNutrition(

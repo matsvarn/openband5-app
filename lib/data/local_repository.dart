@@ -288,9 +288,32 @@ abstract class LocalRepository {
   Future<void> upsertJournalMetric(String date, String field, double value) =>
       throw UnimplementedError('re-layer: upsertJournalMetric');
 
+  /// Exact local day: metrics (with `at_min`), tags, note, revisions, specs.
+  /// A day never written is empty, not another date.
+  Future<JournalDaySnapshot> readJournalDay(String day) =>
+      throw UnimplementedError('re-layer: readJournalDay');
+
+  /// Dirty-only compare-and-write. Untouched keys stay. `metrics[key] == null`
+  /// clears that key. Mismatch on a dirty expected value/revision throws
+  /// [JournalConflict] and writes nothing. Success is the durable write —
+  /// callers that need a fresh snapshot call [readJournalDay] separately.
+  Future<void> patchJournalDay(JournalDayPatch patch) =>
+      throw UnimplementedError('re-layer: patchJournalDay');
+
+  /// Atomically add [delta] to one field. A missing row counts as 0. Result
+  /// is clamped to the field ceiling. A step down from a stored 0 clears the
+  /// row. Other fields and this field's `at_min` stay put.
+  Future<double?> addJournalMetric(String date, String field, double delta) =>
+      throw UnimplementedError('re-layer: addJournalMetric');
+
   /// Built-in fields followed by the user's own, in editor order.
-  Future<List<JournalFieldSpec>> getJournalFields() =>
-      throw UnimplementedError('re-layer: getJournalFields');
+  ///
+  /// Active (not hidden) customs by default so compose/wellness omit
+  /// archived fields. Pass [includeHidden] for history joins (timeline)
+  /// so a hidden definition still supplies its original label and unit.
+  Future<List<JournalFieldSpec>> getJournalFields({
+    bool includeHidden = false,
+  }) => throw UnimplementedError('re-layer: getJournalFields');
 
   Future<void> postCustomJournalField(JournalFieldSpec spec) =>
       throw UnimplementedError('re-layer: postCustomJournalField');

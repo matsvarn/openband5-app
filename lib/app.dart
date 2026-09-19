@@ -4,6 +4,7 @@ import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
+import 'openband/journal_editor.dart';
 import 'openband/nutrition.dart';
 import 'openband/run_live.dart';
 import 'openband/screens.dart';
@@ -45,7 +46,6 @@ import 'ui2/profile/profile.dart';
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
-import 'ui2/screens/journal_compose.dart';
 import 'ui2/screens/log_workout.dart';
 import 'ui2/screens/nutrition_screen.dart';
 import 'ui2/screens/wellness_screen.dart';
@@ -433,7 +433,7 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 Widget? screenForRoute(String route) => switch (routePath(route)) {
   kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
   kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
-  kRouteJournalCompose => const JournalCompose(),
+  kRouteJournalCompose => const OpenBandJournalEditorRoute(),
   kRouteBreathing => const CalmBreathing(),
   // The hydration reminder lands on Nutrition, where the water tile carries
   // its own − / + and is beside the food it belongs with. There used to be
@@ -696,9 +696,16 @@ class _ShellState extends State<_Shell> {
         ),
         ShellDomain.wellness => OpenBandJournal(
           controller: _day,
-          onEdit: (_) => Navigator.of(c).push(
-            MaterialPageRoute<void>(builder: (_) => const WellnessScreen()),
-          ),
+          onEdit: (day) async {
+            await Navigator.of(c).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandJournalEditor(
+                  repository: _day.repository,
+                  day: day,
+                ),
+              ),
+            );
+          },
           onNutrition: () => Navigator.of(c).push(
             MaterialPageRoute<void>(
               builder: (ctx) => OpenBandNutrition(

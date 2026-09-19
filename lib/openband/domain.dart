@@ -1,6 +1,7 @@
 /// Typed boundary for the OpenBand daily flow. Only repositories decode maps.
 library;
 
+import '../data/journal_fields.dart';
 import 'package:uuid/uuid.dart';
 
 enum MetricReadiness {
@@ -1285,6 +1286,12 @@ abstract interface class OpenBandRepository {
   );
   Future<List<JournalEntry>> readJournal(String day);
   Future<void> writeJournal(String day, String key, double value);
+  Future<JournalDaySnapshot> readJournalDay(String day);
+  Future<void> patchJournalDay(JournalDayPatch patch);
+  Future<List<JournalFieldSpec>> listJournalFields({bool includeHidden = false});
+  Future<JournalFieldSpec> createJournalField(JournalFieldSpec spec);
+  Future<void> hideJournalField(String key);
+  Future<void> restoreJournalField(String key);
   Future<List<TrainingSession>> readSessions(String endDay, int days);
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,

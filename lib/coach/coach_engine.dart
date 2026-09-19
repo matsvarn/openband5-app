@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/day_label.dart';
 import '../data/db.dart';
+import '../data/journal_fields.dart';
 import '../data/local_repository.dart';
 import 'coach_actions.dart';
 import 'coach_config.dart';
@@ -181,6 +182,22 @@ class CoachEngine {
 
   @visibleForTesting
   void debugTrimHistory() => _trimHistory();
+
+  /// Test seam: `_runTool` is only reached from the provider loop.
+  @visibleForTesting
+  Future<String> debugRunTool(
+    String name,
+    Map<String, dynamic> args, {
+    void Function(CoachItem)? onItem,
+    required Future<bool> Function(ActionRequest) confirm,
+  }) {
+    return _runTool(
+      name,
+      args,
+      onItem: onItem ?? (_) {},
+      confirm: confirm,
+    );
+  }
 
   // Current session identity (sessions are persisted per-user, many per user).
   String _sessionId = '';
@@ -737,13 +754,26 @@ class CoachEngine {
 
         // actions (confirmed)
         case 'log_journal':
+          final parsed = _logJournalArgs(args);
           return await _action(confirm, ActionRequest(
             tool: name, title: 'Log journal',
-            summary: 'Add journal for ${args['date']}: tags ${args['tags'] ?? []}, note "${args['note'] ?? ''}".',
+            summary: parsed.summary,
             args: args,
           ), () async {
-            await api.postJournal('${args['date']}',
-                ((args['tags'] as List?) ?? const []).map((e) => '$e').toList(), '${args['note'] ?? ''}');
+            try {
+              final snap = await api.readJournalDay(parsed.day);
+              await api.patchJournalDay(
+                JournalDayPatch.fromBase(
+                  snap,
+                  tags: parsed.tags,
+                  note: parsed.note,
+                ),
+              );
+            } on JournalConflict {
+              throw CoachActionError(
+                'That journal entry was updated elsewhere. Read it and retry.',
+              );
+            }
             return 'Journal saved.';
           });
         case 'log_period':
@@ -832,6 +862,54 @@ class CoachEngine {
   String _enc(Object? data) {
     final s = jsonEncode(data);
     return s.length > 16000 ? '${s.substring(0, 16000)}…(truncated)' : s;
+  }
+
+  /// Parse log_journal at the tool boundary. Date must already be a real
+  /// local YYYY-MM-DD — never stringified, invented, or defaulted. Omitted/null
+  /// tags or note stay off the write and off the confirmation. Present empty
+  /// means clear. Both omitted is a reject, not a confirmed no-op.
+  static ({String day, List<String>? tags, String? note, String summary})
+      _logJournalArgs(Map<String, dynamic> args) {
+    final rawDate = args['date'];
+    if (rawDate is! String || !isJournalDayId(rawDate)) {
+      throw CoachActionError('date must be a YYYY-MM-DD day.');
+    }
+    final day = rawDate;
+    List<String>? tags;
+    if (args.containsKey('tags') && args['tags'] != null) {
+      final raw = args['tags'];
+      if (raw is! List) {
+        throw CoachActionError('tags must be a list of strings.');
+      }
+      tags = <String>[];
+      for (final e in raw) {
+        if (e is! String) {
+          throw CoachActionError('tags must be a list of strings.');
+        }
+        tags.add(e);
+      }
+    }
+    String? note;
+    if (args.containsKey('note') && args['note'] != null) {
+      final raw = args['note'];
+      if (raw is! String) {
+        throw CoachActionError('note must be a string.');
+      }
+      note = raw;
+    }
+    if (tags == null && note == null) {
+      throw CoachActionError('No tags or note given.');
+    }
+    final parts = <String>[
+      if (tags != null) tags.isEmpty ? 'clear tags' : 'tags [${tags.join(', ')}]',
+      if (note != null) note.isEmpty ? 'clear note' : 'note "$note"',
+    ];
+    return (
+      day: day,
+      tags: tags,
+      note: note,
+      summary: 'Add journal for $day: ${parts.join(', ')}.',
+    );
   }
 
   /// "500 ml of water and mood 4" — the confirmation has to say what it writes,
@@ -1009,9 +1087,26 @@ class CoachEngine {
           'time': {'type': 'string', 'description': 'HH:MM of the slot; default the first'},
           'state': {'type': 'string', 'enum': ['taken', 'skipped', 'not_taken']},
         }, ['name', 'state']),
-    _fn('log_journal', 'Log a journal entry (asks the user to confirm).', {
-      'date': {'type': 'string'}, 'tags': {'type': 'array', 'items': {'type': 'string'}}, 'note': {'type': 'string'},
-    }, ['date']),
+    _fn('log_journal',
+        'Log tags and/or a note for one day (asks the user to confirm). '
+        'Pass only the fields you want to change. Omitted fields stay as they '
+        'are. An explicit empty tags list or empty note clears that field.',
+        {
+          'date': {
+            'type': 'string',
+            'description': 'YYYY-MM-DD local calendar day. Required; not defaulted.',
+          },
+          'tags': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description': 'Replace the day\'s tags. Omit to keep them. Pass [] to clear.',
+          },
+          'note': {
+            'type': 'string',
+            'description': 'Replace the day\'s note. Omit to keep it. Pass "" to clear.',
+          },
+        },
+        ['date']),
     _fn('log_period', 'Log a period start (asks the user to confirm).', {'date': {'type': 'string'}}, ['date']),
     _fn('start_workout', 'Start a live workout (asks the user to confirm).', {'type': {'type': 'string'}}),
     _fn('end_workout', 'End the active workout (asks the user to confirm).', {'workout_id': {'type': 'string'}}, ['workout_id']),

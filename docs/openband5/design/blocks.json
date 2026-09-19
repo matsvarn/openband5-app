@@ -10,7 +10,7 @@
     "layerName": "Paper layer name is canonical. Variants use a dot suffix (OBSetRow.done). A block may map to a shared widget or an inline composition; the Dart owner need not match the Paper name.",
     "canonical": "The node on the Bausteine page is canonical. Screens contain clones; a visual change is made on the Bausteine node first, then re-applied to the widget, then screens are re-derived.",
     "package": "Existing ui2 code is reused — not every Paper block is a class in lib/openband. implementationStatus is explicit when the block is not in source; absent status means implemented when file and widget resolve.",
-    "honesty": "Absent input renders as — or is omitted. Lower-bound totals are not marked with ≥; the kcal bar shows a dashed unknown segment instead.",
+    "honesty": "Absent input renders as — or is omitted. Partial totals are labeled; no ≥ prefix or invented length for unknown amounts. Progress requires an actual saved target.",
     "sourceCheck": "tool/check_design_manifest.py verifies that implemented file/widget references exist in source. It does not verify routing or visual acceptance."
   },
   "screens": {
@@ -120,7 +120,50 @@
     "3UNC-0": "A08 Einheiten · Speicherfehler",
     "3UON-0": "A08 Einheiten · Speicherfehler · Dunkel",
     "3UQ6-0": "A08 Einheiten · 375 große Schrift",
-    "3URH-0": "A08 Einheiten · 375 große Schrift · Dunkel"
+    "3URH-0": "A08 Einheiten · 375 große Schrift · Dunkel",
+    "3PAS-0": "A07 Tagesjournal bearbeiten",
+    "3PGA-0": "A07 Tagesjournal · Weiter unten",
+    "3PL2-0": "A07 Tagesjournal · Dunkel",
+    "3PV8-0": "A07 Tagesjournal · Wert bearbeiten",
+    "3Q0P-0": "A07 Tagesjournal · Wert · Dunkel",
+    "3Q6P-0": "A07 Tagesjournal · Bewertung",
+    "3QCI-0": "A07 Tagesjournal · Bewertung · Dunkel",
+    "3QIB-0": "A07 Tagesjournal · Speicherfehler",
+    "3QS6-0": "A07 Tagesjournal · Speicherfehler · Dunkel",
+    "3QN8-0": "A07 Tagesjournal · Ladefehler",
+    "3S6Y-0": "A07 Tagesjournal · Ladefehler · Dunkel",
+    "3QX3-0": "A07 Tagesjournal · Tags",
+    "3R3K-0": "A07 Tagesjournal · Tags · Dunkel",
+    "3ROA-0": "A07 Tagesjournal · Konflikt",
+    "3RT3-0": "A07 Tagesjournal · Konflikt · Dunkel",
+    "3R9V-0": "A07 Eigene Felder",
+    "3RHS-0": "A07 Eigene Felder · Dunkel",
+    "3RB3-0": "A07 Feld hinzufügen",
+    "3RD0-0": "A07 Feld hinzufügen · Dunkel",
+    "3RF3-0": "A07 Feldart",
+    "3S0O-0": "A07 Feldart · Dunkel",
+    "3RJB-0": "A07 Feld ausblenden",
+    "3S32-0": "A07 Feld ausblenden · Dunkel",
+    "3RLW-0": "A07 Ausgeblendete Felder",
+    "3RN3-0": "A07 Ausgeblendete Felder · Dunkel",
+    "3RXW-0": "A07 Feld einblenden",
+    "3S50-0": "A07 Feld einblenden · Dunkel",
+    "3SB5-0": "A07 Tagesjournal · Leer",
+    "3SG3-0": "A07 Tagesjournal · Leer · Dunkel",
+    "3SLH-0": "A07 Änderungen verwerfen",
+    "3SQ9-0": "A07 Änderungen verwerfen · Dunkel",
+    "3V3G-0": "A07 Tagesjournal · 2x",
+    "3V88-0": "A07 Tagesjournal · 2x · Weiter unten",
+    "3VY0-0": "A07b Ernährungsziele · Info (shared sheet; destination pending goal unit)",
+    "3VZH-0": "A07b Ernährungsziele · Info · Dunkel (shared sheet)",
+    "3WXN-0": "A07b Ernährungsziele · Info · 2× (shared sheet)",
+    "3WZG-0": "A07b Ernährungsziele · Info · 2× Dunkel (shared sheet)",
+    "3X3O-0": "A07a Tagesjournal · Notiz und Tags · 2× (layout repair pending native)",
+    "3X6U-0": "A07a Tagesjournal · Notiz und Tags · 2× Dunkel (layout repair pending native)",
+    "3X8S-0": "A07 Tagesjournal Info",
+    "3XDK-0": "A07 Tagesjournal Info Dunkel",
+    "3XIC-0": "A07 Tagesjournal Info große Schrift",
+    "3XOL-0": "A07 Tags Tastatur kleine Breite"
   },
   "blocks": [
     {
@@ -1374,6 +1417,151 @@
         "largeDark": "3URK-0"
       },
       "notes": "Explicit example conversions use existing UnitsController formatters, not user metrics.48-point normal rows with right-aligned values; all rows stack at large text with8 vertical padding and4 gap. No new measurement defaults."
+    },
+    {
+      "name": "OBCheckinScale",
+      "paperNode": "3G8X-0",
+      "widget": "OBJournalMoodScale",
+      "file": "journal_controls.dart",
+      "usedIn": [
+        "3PAS-0",
+        "3PGA-0",
+        "3PL2-0",
+        "3SB5-0",
+        "3SG3-0",
+        "3QIB-0",
+        "3QS6-0",
+        "3QN8-0",
+        "3S6Y-0",
+        "3ROA-0",
+        "3RT3-0",
+        "3V3G-0",
+        "3V88-0"
+      ],
+      "notes": "Five labelled Lucide faces; unselected is unknown, tapping the selection clears it. Shared52-point wells and ink selection."
+    },
+    {
+      "name": "OBJournalMetricRow",
+      "paperNode": "3PCJ-0",
+      "widget": "_MetricRow",
+      "file": "journal_editor.dart",
+      "usedIn": [
+        "3PAS-0",
+        "3PGA-0",
+        "3PL2-0",
+        "3SB5-0",
+        "3SG3-0",
+        "3QIB-0",
+        "3QS6-0",
+        "3QN8-0",
+        "3S6Y-0",
+        "3ROA-0",
+        "3RT3-0",
+        "3V3G-0",
+        "3V88-0"
+      ],
+      "notes": "56-point value rows; full-width stacked variant at large text. Values and timestamps retain stored precision."
+    },
+    {
+      "name": "OBJournalYesNoRow",
+      "paperNode": "3PDD-0",
+      "widget": "_YesNoRow",
+      "file": "journal_editor.dart",
+      "usedIn": [
+        "3PAS-0",
+        "3PGA-0",
+        "3PL2-0",
+        "3SB5-0",
+        "3SG3-0",
+        "3QIB-0",
+        "3QS6-0",
+        "3QN8-0",
+        "3S6Y-0",
+        "3ROA-0",
+        "3RT3-0",
+        "3V3G-0",
+        "3V88-0"
+      ],
+      "notes": "Unknown is unselected; yes/no selections can be cleared.44-point hit areas and centered pill labels, stacked at large text."
+    },
+    {
+      "name": "OBJournalValueSheet",
+      "paperNode": "3Q5H-0",
+      "widget": "_ValueSheet",
+      "file": "journal_editor.dart",
+      "usedIn": [
+        "3PV8-0",
+        "3Q0P-0"
+      ],
+      "notes": "Shared amount and optional time editing; blank remains absent. No rounding on opening or saving."
+    },
+    {
+      "name": "OBConfirmSheet",
+      "paperNode": "3SL4-0",
+      "widget": "OpenBandConfirmSheet",
+      "file": "confirm_sheet.dart",
+      "usedIn": [
+        "3SLH-0",
+        "3SQ9-0"
+      ],
+      "notes": "Shared compact discard confirmation. Close/cancel retain the draft; ink confirm and well cancel."
+    },
+    {
+      "name": "OBJournalFieldRow",
+      "paperNode": "3RAS-0",
+      "widget": "_FieldRow",
+      "file": "journal_fields.dart",
+      "usedIn": [
+        "3R9V-0",
+        "3RHS-0",
+        "3RLW-0",
+        "3RN3-0"
+      ],
+      "notes": "Definition label/type/unit stay attached to its identity. Hide retains source/history; restore uses the same identity."
+    },
+    {
+      "name": "OBInfoSheet",
+      "paperNode": "3W7D-0",
+      "widget": "showOpenBandJournalInfo",
+      "file": "journal_controls.dart",
+      "usedIn": [
+        "3VY0-0",
+        "3VZH-0",
+        "3WXN-0",
+        "3WZG-0",
+        "3PAS-0",
+        "3R9V-0",
+        "3X8S-0",
+        "3XDK-0",
+        "3XIC-0"
+      ],
+      "notes": "Shared disclosure sheet with44-point close target,15/22 body, adaptive safe-area padding and scrolling at large text. Nutrition destination integrated in its own unit."
+    },
+    {
+      "name": "OBJournalChip",
+      "paperNode": "3R2I-0",
+      "widget": "OBJournalChip",
+      "file": "journal_controls.dart",
+      "usedIn": [
+        "3QX3-0",
+        "3R3K-0",
+        "3RF3-0",
+        "3S0O-0",
+        "3XOL-0"
+      ],
+      "notes": "Content-width44-point pills shared by tags and field kinds; centered14/19 text, ink selection, long labels wrap."
+    },
+    {
+      "name": "OBJournalTagsRow",
+      "paperNode": "3X6I-0",
+      "widget": "_TagsRow",
+      "file": "journal_editor.dart",
+      "usedIn": [
+        "3PGA-0",
+        "3X3O-0",
+        "3X6U-0"
+      ],
+      "notes": "Saved labels wrap naturally. Normal short row is 56 points; large type or narrow width stacks label and value without ellipsis."
     }
   ],
   "openBlocks": [
@@ -1401,7 +1589,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 59,
+    "version": 60,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",

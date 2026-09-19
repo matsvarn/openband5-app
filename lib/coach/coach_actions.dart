@@ -196,9 +196,8 @@ class CoachActions {
 
   /// Write one or more numeric journal fields for a day.
   ///
-  /// `postJournalMetrics` replaces the WHOLE day — "the map IS the day, not a
-  /// patch on it" — so the stored day is read first and merged. Without that,
-  /// logging water at lunch would silently erase the morning's mood.
+  /// Only the keys in this call are patched. Other fields, note and tags stay.
+  /// A concurrent edit of the same field is refused rather than merged.
   ///
   /// Water is loggable here and is scored NOWHERE. There is no hydration score
   /// in this app and there is not going to be one.
@@ -213,7 +212,7 @@ class CoachActions {
     }
     final known = {for (final f in await repo.getJournalFields()) f.key: f};
     final at = str(a['time']).isEmpty ? null : minuteOfDay(a['time']);
-    final merged = {...await repo.getJournalMetrics(d)};
+    final pending = <String, ({JournalFieldSpec spec, double v})>{};
     final written = <String>[];
     for (final e in raw.entries) {
       final key = str(e.key);
@@ -228,13 +227,28 @@ class CoachActions {
       if (v == null) {
         throw CoachActionError('Field "$key" needs a number.');
       }
-      merged[key] = JournalMetricValue(
-        v,
-        atMinuteOfDay: spec.hasTime ? at : null,
-      );
+      pending[key] = (spec: spec, v: v);
       written.add(key);
     }
-    await repo.postJournalMetrics(d, merged);
+    try {
+      final snap = await repo.readJournalDay(d);
+      final metrics = <String, JournalMetricValue?>{
+        for (final e in pending.entries)
+          e.key: JournalMetricValue(
+            e.value.v,
+            atMinuteOfDay: e.value.spec.hasTime
+                ? (at ?? snap.metrics[e.key]?.atMinuteOfDay)
+                : snap.metrics[e.key]?.atMinuteOfDay,
+          ),
+      };
+      await repo.patchJournalDay(
+        JournalDayPatch.fromBase(snap, metrics: metrics),
+      );
+    } on JournalConflict {
+      throw CoachActionError(
+        'Those journal fields were updated elsewhere. Read them and retry.',
+      );
+    }
     return jsonEncode({'saved': true, 'date': d, 'fields': written});
   }
 

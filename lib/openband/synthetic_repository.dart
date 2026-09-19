@@ -1,6 +1,7 @@
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -56,6 +57,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failPin = false;
   bool failPinRead = false;
   Future<void>? templateWriteBarrier;
+  bool failJournalRead = false;
+  bool failJournalPatch = false;
+  bool failJournalFieldsList = false;
+  bool failJournalFieldsCreate = false;
+  Future<void>? journalPatchBarrier;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -284,7 +290,65 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
   }
 
-  final Map<String, Map<String, double>> _journal = {};
+  final Map<String, _SynthJournalDay> _journal = {};
+  final Map<String, JournalFieldSpec> _journalFieldDefs = {};
+  int _journalClock = 0;
+
+  void seedJournalEditor({
+    String? day,
+    bool filled = false,
+    bool withCustom = false,
+    Map<String, JournalMetricValue>? metrics,
+  }) {
+    final id = day ?? _day;
+    if (withCustom) {
+      _journalFieldDefs['custom_magnesium'] = const JournalFieldSpec(
+        key: 'custom_magnesium',
+        label: 'Magnesium',
+        kind: JournalFieldKind.dose,
+        unit: 'mg',
+        max: 1000,
+        step: 50,
+        hasTime: true,
+        custom: true,
+      );
+      _journalFieldDefs['custom_meditation'] = const JournalFieldSpec(
+        key: 'custom_meditation',
+        label: 'Meditation',
+        kind: JournalFieldKind.duration,
+        unit: 'min',
+        max: 120,
+        step: 5,
+        custom: true,
+        hidden: true,
+      );
+    }
+    if (!filled && metrics == null) return;
+    final row = _journal[id] ??= _SynthJournalDay();
+    if (filled) {
+      row.metrics.addAll({
+        'mood': const JournalMetricValue(4),
+        'sleep_quality': const JournalMetricValue(4),
+        'energy': const JournalMetricValue(4),
+        'stress': const JournalMetricValue(2),
+        'caffeine_late': const JournalMetricValue(1),
+        'water_ml': const JournalMetricValue(750),
+        'caffeine_mg': const JournalMetricValue(200, atMinuteOfDay: 630),
+        'screens_min': const JournalMetricValue(30),
+        'weight_kg': const JournalMetricValue(78),
+        if (withCustom)
+          'custom_magnesium': const JournalMetricValue(400, atMinuteOfDay: 855),
+      });
+      row.tags = ['Spaziergang'];
+      row.note = 'Später Spaziergang.';
+      row.journalUpdatedAt = _nextJournalRev(row.journalUpdatedAt);
+    }
+    if (metrics != null) row.metrics.addAll(metrics);
+    for (final key in row.metrics.keys) {
+      row.metricUpdatedAt[key] = _nextJournalRev(row.metricUpdatedAt[key] ?? 0);
+    }
+  }
+
   final Map<String, WorkoutTemplate> _templates = {};
   final Set<String> _archivedTemplates = {};
   String? _pinnedTemplateId;
@@ -1118,7 +1182,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         p.day: p.value,
     };
     return summarizePattern(
-      {for (final d in days) d: _journal[d]?[habitKey]},
+      {for (final d in days) d: _journal[d]?.metrics[habitKey]?.value},
       series,
       days,
     );
@@ -1126,13 +1190,182 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<List<JournalEntry>> readJournal(String day) async => [
-    for (final e in (_journal[day] ?? const {}).entries)
-      JournalEntry(e.key, e.value),
+    for (final e in (_journal[day]?.metrics ?? const {}).entries)
+      JournalEntry(e.key, e.value.value),
   ];
 
   @override
   Future<void> writeJournal(String day, String key, double value) async {
-    (_journal[day] ??= {})[key] = value;
+    final row = _journal[day] ??= _SynthJournalDay();
+    final prev = row.metrics[key];
+    row.metrics[key] = JournalMetricValue(
+      value,
+      atMinuteOfDay: prev?.atMinuteOfDay,
+    );
+    row.metricUpdatedAt[key] = _nextJournalRev(row.metricUpdatedAt[key] ?? 0);
+  }
+
+  @override
+  Future<JournalDaySnapshot> readJournalDay(String day) async {
+    if (failJournalRead) throw StateError('synthetic journal read failure');
+    final row = _journal[day];
+    return JournalDaySnapshot(
+      day: day,
+      metrics: {...?row?.metrics},
+      metricUpdatedAt: {...?row?.metricUpdatedAt},
+      tags: [...?row?.tags],
+      note: row?.note ?? '',
+      journalUpdatedAt: row?.journalUpdatedAt ?? 0,
+      fields: await listJournalFields(),
+    );
+  }
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    if (!isJournalDayId(patch.day)) {
+      throw ArgumentError.value(patch.day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    final fields = <String, JournalFieldSpec>{
+      for (final f in [...kJournalFields, ..._journalFieldDefs.values]) f.key: f,
+    };
+    for (final e in patch.metrics.entries) {
+      if (e.key.isEmpty || !fields.containsKey(e.key)) {
+        throw ArgumentError.value(e.key, 'field', 'Unknown journal field.');
+      }
+      if (e.value == null) continue;
+      validateJournalPatchMetric(fields[e.key]!, e.value!);
+    }
+    if (journalPatchBarrier != null) await journalPatchBarrier;
+    if (failJournalPatch) throw StateError('synthetic journal save failure');
+    final row = _journal[patch.day] ??= _SynthJournalDay();
+    final conflicts = <String>[];
+    for (final key in patch.metrics.keys) {
+      final stored = row.metrics[key];
+      final storedRev = row.metricUpdatedAt[key] ?? 0;
+      final expectedRev = patch.expectedMetricUpdatedAt[key] ?? 0;
+      if (storedRev != expectedRev || stored != patch.expectedMetrics[key]) {
+        conflicts.add(key);
+      }
+    }
+    final journalDirty = patch.tags != null || patch.note != null;
+    if (journalDirty) {
+      final expectedRev = patch.expectedJournalUpdatedAt ?? 0;
+      if (row.journalUpdatedAt != expectedRev) {
+        conflicts.add('journal');
+      } else {
+        if (patch.expectedNote != null && row.note != patch.expectedNote) {
+          conflicts.add('journal');
+        }
+        if (patch.expectedTags != null) {
+          final a = row.tags.toSet();
+          final b = patch.expectedTags!.toSet();
+          if (a.length != b.length || !a.containsAll(b)) {
+            conflicts.add('journal');
+          }
+        }
+      }
+    }
+    if (conflicts.isNotEmpty) {
+      throw JournalConflict(patch.day, fields: conflicts);
+    }
+    for (final e in patch.metrics.entries) {
+      if (e.value == null) {
+        row.metrics.remove(e.key);
+        row.metricUpdatedAt.remove(e.key);
+      } else {
+        row.metrics[e.key] = e.value!;
+        row.metricUpdatedAt[e.key] = _nextJournalRev(
+          row.metricUpdatedAt[e.key] ?? 0,
+        );
+      }
+    }
+    if (journalDirty) {
+      if (patch.tags != null) row.tags = [...patch.tags!];
+      if (patch.note != null) row.note = patch.note!;
+      row.journalUpdatedAt = _nextJournalRev(row.journalUpdatedAt);
+    }
+  }
+
+  int _nextJournalRev(int stored) {
+    _journalClock += 1;
+    return _journalClock > stored ? _journalClock : stored + 1;
+  }
+
+  @override
+  Future<List<JournalFieldSpec>> listJournalFields({
+    bool includeHidden = false,
+  }) async {
+    if (failJournalFieldsList) {
+      throw StateError('synthetic journal fields list failure');
+    }
+    final custom =
+        _journalFieldDefs.values
+            .where((f) => includeHidden || !f.hidden)
+            .toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
+    return [...kJournalFields, ...custom];
+  }
+
+  @override
+  Future<JournalFieldSpec> createJournalField(JournalFieldSpec spec) async {
+    if (failJournalFieldsCreate) {
+      throw StateError('synthetic journal field create failure');
+    }
+    final prepared = preparedCustomJournalField(spec);
+    if (_journalFieldDefs.containsKey(prepared.key)) {
+      throw StateError('journal field already exists: ${prepared.key}');
+    }
+    for (final day in _journal.values) {
+      if (day.metrics.containsKey(prepared.key)) {
+        throw StateError(
+          'journal field key is already recorded: ${prepared.key}',
+        );
+      }
+    }
+    return _journalFieldDefs[prepared.key] = prepared;
+  }
+
+  @override
+  Future<void> hideJournalField(String key) async {
+    if (kJournalFieldsByKey.containsKey(key) || key.isEmpty) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Cannot hide a built-in journal field.',
+      );
+    }
+    final existing = _journalFieldDefs[key];
+    if (existing == null) return;
+    _journalFieldDefs[key] = JournalFieldSpec(
+      key: existing.key,
+      label: existing.label,
+      kind: existing.kind,
+      unit: existing.unit,
+      max: existing.max,
+      step: existing.step,
+      hasTime: existing.hasTime,
+      custom: true,
+      hidden: true,
+    );
+  }
+
+  @override
+  Future<void> restoreJournalField(String key) async {
+    final existing = _journalFieldDefs[key];
+    if (existing == null) {
+      throw StateError('journal field not found: $key');
+    }
+    _journalFieldDefs[key] = JournalFieldSpec(
+      key: existing.key,
+      label: existing.label,
+      kind: existing.kind,
+      unit: existing.unit,
+      max: existing.max,
+      step: existing.step,
+      hasTime: existing.hasTime,
+      custom: true,
+      hidden: false,
+    );
   }
 
   @override
@@ -1453,9 +1686,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     if (failLabWrites) throw StateError('synthetic lab delete failure');
     if (beforeLabWrite != null) await beforeLabWrite!();
     labWriteCount++;
-    _labResults.removeWhere(
-      (r) => r.marker == marker && r.takenOn == takenOn,
-    );
+    _labResults.removeWhere((r) => r.marker == marker && r.takenOn == takenOn);
   }
 
   @override
@@ -2060,4 +2291,12 @@ class _SyntheticStrength {
   final List<PlannedExercise> added = [];
   DateTime? restEndsAt;
   bool finished = false;
+}
+
+class _SynthJournalDay {
+  final Map<String, JournalMetricValue> metrics = {};
+  final Map<String, int> metricUpdatedAt = {};
+  List<String> tags = [];
+  String note = '';
+  int journalUpdatedAt = 0;
 }

@@ -328,4 +328,57 @@ void main() {
     expect(written['mood']!.value, 5);
     expect(written['mood']!.atMinuteOfDay, isNull);
   });
+
+  test('writeJournal same-ms A-B-A still trips a stale patch', () async {
+    await seedDay(
+      day,
+      mood: 3,
+      moodAt: 480,
+      late: 1,
+      lateAt: 900,
+      caffeine: 180,
+      caffeineAt: 855,
+    );
+    final db = await LocalDb.instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'journal_metric',
+      {'updated_at': now, 'value': 3},
+      where: 'date = ? AND field = ?',
+      whereArgs: [day, 'mood'],
+    );
+
+    await repository.writeJournal(day, 'mood', 4);
+    await repository.writeJournal(day, 'mood', 3);
+
+    final row = (await db.query(
+      'journal_metric',
+      where: 'date = ? AND field = ?',
+      whereArgs: [day, 'mood'],
+    )).single;
+    expect(row['value'], 3);
+    expect((row['updated_at'] as num).toInt(), greaterThan(now));
+    expect((await LocalDb.journalMetricsForDay(day))['mood']!.atMinuteOfDay, 480);
+
+    await expectLater(
+      repo.patchJournalDay(
+        JournalDayPatch(
+          day: day,
+          metrics: {
+            'mood': const JournalMetricValue(5, atMinuteOfDay: 480),
+          },
+          expectedMetrics: {
+            'mood': const JournalMetricValue(3, atMinuteOfDay: 480),
+          },
+          expectedMetricUpdatedAt: {'mood': now},
+        ),
+      ),
+      throwsA(isA<JournalConflict>()),
+    );
+    final written = await LocalDb.journalMetricsForDay(day);
+    expect(written['mood']!.value, 3);
+    expect(written['mood']!.atMinuteOfDay, 480);
+    expect(written['caffeine_mg']!.value, 180);
+    expect(written['caffeine_mg']!.atMinuteOfDay, 855);
+  });
 }

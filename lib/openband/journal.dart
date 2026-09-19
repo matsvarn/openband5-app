@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -8,7 +10,7 @@ import 'theme.dart';
 
 class OpenBandJournal extends StatefulWidget {
   final OpenBandController controller;
-  final ValueChanged<String>? onEdit;
+  final FutureOr<void> Function(String day)? onEdit;
   final VoidCallback? onNutrition;
   const OpenBandJournal({
     super.key,
@@ -87,7 +89,16 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                       : _saveError,
                   onMood: (v) => _write('mood', v),
                   onAnswer: (key, yes) => _write(key, yes ? 1 : 0),
-                  onEdit: widget.onEdit,
+                  onEdit: widget.onEdit == null
+                      ? null
+                      : (_) async {
+                          final editDay = c.selectedDay;
+                          await widget.onEdit!(editDay);
+                          if (!mounted) return;
+                          setState(() {
+                            _entries = _load();
+                          });
+                        },
                 );
               },
             ),
@@ -126,7 +137,7 @@ class OBCheckinCard extends StatelessWidget {
   final String? error;
   final ValueChanged<double> onMood;
   final void Function(String key, bool yes) onAnswer;
-  final ValueChanged<String>? onEdit;
+  final FutureOr<void> Function(String day)? onEdit;
   const OBCheckinCard({
     super.key,
     required this.mood,

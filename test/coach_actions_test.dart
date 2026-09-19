@@ -3,8 +3,8 @@
 // Two failure modes are worth pinning here and nowhere else:
 //   • a tool that reports success and writes nothing (P2's `set_step_goal`);
 //   • a tool that writes what it was asked and DESTROYS what it was not —
-//     `postJournalMetrics` replaces the whole day, so logging water at lunch
-//     would erase the morning's mood unless the day is merged first.
+//     a full-day replace would erase the morning's mood; only action-provided
+//     keys are patched.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_actions.dart';
@@ -14,22 +14,44 @@ import 'package:openstrap_edge/data/local_repository_impl.dart';
 
 class _FakeRepo extends LocalRepository {
   Map<String, JournalMetricValue> stored = {};
+  Map<String, int> revs = {};
   String? wroteDay;
+  Map<String, JournalMetricValue?>? lastPatch;
 
   @override
-  Future<List<JournalFieldSpec>> getJournalFields() async => kJournalFields;
+  Future<List<JournalFieldSpec>> getJournalFields({
+    bool includeHidden = false,
+  }) async => kJournalFields;
 
   @override
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) async =>
       Map.of(stored);
 
   @override
-  Future<void> postJournalMetrics(
-    String date,
-    Map<String, JournalMetricValue> fields,
-  ) async {
-    wroteDay = date;
-    stored = Map.of(fields);
+  Future<JournalDaySnapshot> readJournalDay(String day) async =>
+      JournalDaySnapshot(
+        day: day,
+        metrics: Map.of(stored),
+        metricUpdatedAt: Map.of(revs),
+        tags: const [],
+        note: '',
+        journalUpdatedAt: 0,
+        fields: kJournalFields,
+      );
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    wroteDay = patch.day;
+    lastPatch = Map.of(patch.metrics);
+    for (final e in patch.metrics.entries) {
+      if (e.value == null) {
+        stored.remove(e.key);
+        revs.remove(e.key);
+      } else {
+        stored[e.key] = e.value!;
+        revs[e.key] = (revs[e.key] ?? 0) + 1;
+      }
+    }
   }
 }
 
@@ -66,14 +88,16 @@ void main() {
   });
 
   group('log_journal_fields', () {
-    test('merges the day rather than replacing it', () async {
+    test('patches only the given keys rather than replacing the day', () async {
       final repo = _FakeRepo()
-        ..stored = {'mood': const JournalMetricValue(4)};
+        ..stored = {'mood': const JournalMetricValue(4)}
+        ..revs = {'mood': 1};
       await CoachActions.logJournalFields(repo, {
         'date': '2026-08-14',
         'fields': {'water_ml': 1000},
       });
       expect(repo.wroteDay, '2026-08-14');
+      expect(repo.lastPatch?.keys, ['water_ml']);
       expect(repo.stored['water_ml']?.value, 1000);
       // The morning's mood survives the afternoon's water.
       expect(repo.stored['mood']?.value, 4);
@@ -99,6 +123,38 @@ void main() {
       });
       expect(repo.stored['caffeine_mg']?.atMinuteOfDay, 21 * 60);
       expect(repo.stored['water_ml']?.atMinuteOfDay, isNull);
+    });
+
+    test('value-only caffeine keeps the stored dose time', () async {
+      final repo = _FakeRepo()
+        ..stored = {
+          'caffeine_mg': const JournalMetricValue(180, atMinuteOfDay: 855),
+          'mood': const JournalMetricValue(3),
+        }
+        ..revs = {'caffeine_mg': 1, 'mood': 1};
+      await CoachActions.logJournalFields(repo, {
+        'date': '2026-08-14',
+        'fields': {'caffeine_mg': 250},
+      });
+      expect(repo.lastPatch?.keys, ['caffeine_mg']);
+      expect(repo.stored['caffeine_mg']?.value, 250);
+      expect(repo.stored['caffeine_mg']?.atMinuteOfDay, 855);
+      expect(repo.stored['mood']?.value, 3);
+    });
+
+    test('an explicit time updates the stored caffeine dose time', () async {
+      final repo = _FakeRepo()
+        ..stored = {
+          'caffeine_mg': const JournalMetricValue(180, atMinuteOfDay: 855),
+        }
+        ..revs = {'caffeine_mg': 1};
+      await CoachActions.logJournalFields(repo, {
+        'date': '2026-08-14',
+        'time': '21:00',
+        'fields': {'caffeine_mg': 250},
+      });
+      expect(repo.stored['caffeine_mg']?.value, 250);
+      expect(repo.stored['caffeine_mg']?.atMinuteOfDay, 21 * 60);
     });
   });
 

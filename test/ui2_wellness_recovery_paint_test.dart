@@ -182,7 +182,9 @@ class _Repo extends LocalRepository {
       {};
 
   @override
-  Future<List<JournalFieldSpec>> getJournalFields() async => const [];
+  Future<List<JournalFieldSpec>> getJournalFields({
+    bool includeHidden = false,
+  }) async => const [];
 }
 
 /// `_load` goes to sqflite for medication, breathing and the habit history, and

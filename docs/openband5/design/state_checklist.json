@@ -979,6 +979,80 @@
         "note": "Reachable compact list and shared rows, start action, menus, light/dark, empty/read failure and large text. Full template editor/catalogue remain open.",
         "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
       }
+    },
+    "A07a · Journal und Ernährung": {
+      "Journal · Check-in bearbeiten": {
+        "status": "implemented",
+        "paperNode": "3PAS-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart; lib/data/db.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Reachable day editor with real saved values, unknown versus zero/false, note/tags and typed custom values. Timed mood moments remain separate open scope.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Eintrag gespeichert": {
+        "status": "implemented",
+        "paperNode": "3PAS-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart; lib/data/db.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Atomic dirty-field CAS save on captured day. Unchanged/unknown keys and timestamps retained; saved edits survive independent failures. Reopen reads durable values.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Änderungen verwerfen": {
+        "status": "implemented",
+        "paperNode": "3SLH-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart; lib/data/db.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Unsaved draft confirmation retains or discards explicitly. Conflicts require reload; no silent overwrite.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Speichern fehlgeschlagen": {
+        "status": "implemented",
+        "paperNode": "3QIB-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart; lib/data/db.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Draft remains retryable. A failed read after a committed field mutation retries only the read and cannot duplicate creation.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Anpassen, Frage hinzugefügt": {
+        "status": "implemented",
+        "paperNode": "3RB3-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart; lib/data/db.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Typed custom-field creation, UUID identity, hidden restore and retained history. Icon selection and definition editing remain separate open states.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Eigene Frage, Definition": {
+        "status": "partial",
+        "paperNode": "3RB3-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Creation with validated kind/unit/step/maximum/time is implemented. Editing an existing definition and choosing its icon remain open.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Anpassen, vorhandene Fragen": {
+        "status": "partial",
+        "paperNode": "3R9V-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Custom-field list, hide and restore preserve saved history. Ordering/pinning and management of built-in questions remain open.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Koffein · eigene Menge": {
+        "status": "partial",
+        "paperNode": "3PV8-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Daily stored mg and last time can be edited/cleared without precision loss. Named drink events and label concentration × volume remain open; the daily total does not implement those archive states.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Stimmung · bewusst gewählt": {
+        "status": "partial",
+        "paperNode": "3PAS-0",
+        "source": "lib/openband/journal_editor.dart; lib/openband/journal_fields.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
+        "note": "Daily rating selection/clear is implemented with shared mood scale. Archive timed mood moments, optional feelings/context and multiple entries remain open.",
+        "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      }
     }
   }
 }

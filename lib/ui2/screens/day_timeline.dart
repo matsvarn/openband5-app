@@ -283,7 +283,7 @@ List<Moment> dayMoments({
         : v.value.toStringAsFixed(1);
     out.add(Moment(
       at: dayStart + min * 60,
-      title: spec?.label ?? key.replaceAll('_', ' '),
+      title: spec?.label ?? key,
       // "last one at" is the stored meaning, and saying just "at" would turn a
       // total plus one timestamp into a single event that never happened.
       detail: '$n${spec == null || spec.unit.isEmpty ? '' : ' ${spec.unit}'} · '
@@ -331,7 +331,7 @@ List<DayNote> dayNotes({
         ? v.value.round().toString()
         : v.value.toStringAsFixed(1);
     out.add(DayNote(
-      spec?.label ?? key.replaceAll('_', ' '),
+      spec?.label ?? key,
       '$n${spec == null || spec.unit.isEmpty ? '' : ' ${spec.unit}'}',
       LucideIcons.clipboardList,
     ));
@@ -561,7 +561,7 @@ class TimelineData {
 
     final timeline = await repo.getDayTimeline(day);
     final wear = await repo.getDayWear(day);
-    final fields = await repo.getJournalFields();
+    final fields = await repo.getJournalFields(includeHidden: true);
     final journal = await repo.getJournalMetrics(day);
     final db = await LocalDb.instance;
     final meals = await NutritionDb.entriesForDay(db, day);
