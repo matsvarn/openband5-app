@@ -23,13 +23,8 @@
       "Nacht 14./15. September",
       "Schlafphasen ausgewählt",
       "24 Minuten ohne Daten",
-      "Schlafzeiten ändern",
-      "Änderung prüfen",
-      "Zeiten gespeichert",
       "Schlafzeiten prüfen · Dunkel",
-      "Schlaf aktualisiert",
       "Noch keine Nacht",
-      "Auswertung offen",
       "Dein Ruhepuls",
       "Deine Schlafdauer",
       "Erholung offen",
@@ -38,8 +33,6 @@
       "Schlafwerte Erklärung",
       "Verlauf",
       "Basis fehlt",
-      "Zeitangabe prüfen",
-      "Speichern fehlgeschlagen",
       "Schlafanteil",
       "Schlafdauer Erklärung",
       "Schlafbedarf",
@@ -242,7 +235,6 @@
       "Training · Speichern fehlgeschlagen",
       "Training · Einheit wiedergefunden",
       "Belastungsverlauf · erste Daten",
-      "Belastungsverlauf · 30 Tage",
       "Belastung · weitergescrollt",
       "Nachtragen · mögliche Doppelung",
       "Belastungsverlauf · Dunkel",
@@ -534,7 +526,6 @@
       "Daten · Originale exportieren",
       "Sensoren · Verbindung offen",
       "Sensoren · verbunden",
-      "Widgets · Einrichtung",
       "Export · Daten wählen",
       "Export · Tabellen",
       "Export · Bereich fehlt",
@@ -573,7 +564,6 @@
       "Training · Erkennung prüfen",
       "Darstellung · Auswahl",
       "Darstellung · Dunkel ausgewählt",
-      "Schlaf · Korrektur zurücknehmen",
       "größere Schrift · 375 (Übersicht, Schlaf, Schlafzeiten, Darstellung, Erste Daten, Deine Werte)",
       "Übersicht · kompakt · 375",
       "System · Grundlagen / Zustände / Bedienmuster (superseded by A00b Bausteine)"
@@ -581,7 +571,7 @@
     "A03 · Einrichtung": []
   },
   "kept": {
-    "A03 · Einrichtung": "15 legacy Alpin onboarding artboards kept — no Alpin 3 rebuild yet",
+    "A03 · Einrichtung": "Alpin 3 Einrichtung rebuilt in lib/ui2/onboarding (Willkommen, Band verbinden, Dein Profil); Erste Übertragung is paper-only",
     "A04 · System": "Widgets and Navigation boards kept (decisions still valid)",
     "A00 · Start hier": "header variant board kept"
   }

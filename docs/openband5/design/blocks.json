@@ -30,7 +30,13 @@
     "3HTP-0": "A01 Übersicht · Dunkel",
     "3HFC-0": "A01 Übersicht anpassen",
     "3HPD-0": "A01 Übersicht · Datum wählen",
-    "3I5L-0": "A05 Gesundheit · HRV · Detail (OpenBandMetricDetail)"
+    "3I5L-0": "A05 Gesundheit · HRV · Detail (OpenBandMetricDetail)",
+    "L-0 · Einrichtung · Willkommen": "A03 Einrichtung · Willkommen (lib/ui2/onboarding/welcome.dart)",
+    "L-0 · Einrichtung · Band verbinden": "A03 Einrichtung · Band verbinden (lib/ui2/onboarding/pairing.dart)",
+    "L-0 · Einrichtung · Erste Übertragung": "A03 Einrichtung · Erste Übertragung (paper-only — no Flutter screen yet)",
+    "L-0 · Einrichtung · Dein Profil": "A03 Einrichtung · Dein Profil (lib/ui2/onboarding/profile_setup.dart)",
+    "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
+    "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)"
   },
   "blocks": [
     {
@@ -726,6 +732,47 @@
       "usedIn": [
         "3I5L-0"
       ]
+    },
+    {
+      "name": "OBNoticeCard",
+      "paperNode": "edge-OBNoticeCard",
+      "widget": "OBNoticeCard",
+      "file": "theme.dart",
+      "note": "Kein eigener Paper-Block — Status-/Hinweiskarte, geteilt von Einrichtung und OpenBand.",
+      "usedIn": [
+        "L-0 · Einrichtung · Willkommen",
+        "L-0 · Einrichtung · Band verbinden"
+      ]
+    },
+    {
+      "name": "OBPairCard",
+      "paperNode": "edge-OBPairCard",
+      "widget": "OBCard",
+      "file": "ui2/onboarding/pairing.dart",
+      "implemented": "PairingView status card + _Detail card",
+      "usedIn": [
+        "L-0 · Einrichtung · Band verbinden"
+      ]
+    },
+    {
+      "name": "OBFormCard",
+      "paperNode": "edge-OBFormCard",
+      "widget": "OBCard",
+      "file": "ui2/onboarding/profile_setup.dart",
+      "implemented": "_Field — Label 13/600 muted, Wert Inter Tight 24/700, Einheit",
+      "usedIn": [
+        "L-0 · Einrichtung · Dein Profil"
+      ]
+    },
+    {
+      "name": "OBFormRow",
+      "paperNode": "edge-OBFormRow",
+      "widget": "_Field",
+      "file": "ui2/onboarding/profile_setup.dart",
+      "implemented": "row inside OBFormCard (Größe, Gewicht)",
+      "usedIn": [
+        "L-0 · Einrichtung · Dein Profil"
+      ]
     }
   ],
   "openBlocks": [
@@ -744,7 +791,9 @@
       "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)",
       "Vorlage bearbeiten (template_editor.dart)",
       "Schlaf · Nacht (rebuilt)",
-      "Messwert-Detail (HRV, Ruhepuls, Erholung)"
+      "Messwert-Detail (HRV, Ruhepuls, Erholung, Belastung)",
+      "Schlaf · Zeiten korrigieren (sleep_editor.dart)",
+      "Einrichtung · Willkommen / Band verbinden / Dein Profil (ui2/onboarding; Erste Übertragung paper-only)"
     ],
     "deferred": [],
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
