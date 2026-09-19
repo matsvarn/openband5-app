@@ -585,32 +585,37 @@ class WelcomeView extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: p.recoveryTint,
-                    borderRadius: BorderRadius.circular(AlpRadius.pill),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        LucideIcons.shieldCheck,
-                        size: 14,
-                        color: p.recoveryText,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        l?.pillLocalNoCloud ?? 'Local · no cloud',
-                        style: p.text(
-                          13,
-                          weight: FontWeight.w600,
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: p.recoveryTint,
+                      borderRadius: BorderRadius.circular(AlpRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.shieldCheck,
+                          size: 14,
                           color: p.recoveryText,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            l?.pillLocalNoCloud ?? 'Local · no cloud',
+                            style: p.text(
+                              13,
+                              weight: FontWeight.w600,
+                              color: p.recoveryText,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
