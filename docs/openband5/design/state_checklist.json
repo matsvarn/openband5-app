@@ -566,7 +566,7 @@
     "A03 · Einrichtung": []
   },
   "kept": {
-    "A03 · Einrichtung": "Alpin 3 Einrichtung rebuilt in lib/ui2/onboarding (Willkommen, Band verbinden, Dein Profil); Erste Übertragung is paper-only",
+    "A03 · Einrichtung": "Alpin 3 Einrichtung is reachable through WelcomeScreen, DevicePickerScreen, FirstSyncScreen and ProfileSetupScreen. First-sync stored frontier is implemented; its processing/readiness claims still need correction and Paper/native review.",
     "A04 · System": "Widgets and Navigation boards kept (decisions still valid)",
     "A00 · Start hier": "header variant board kept"
   },
@@ -594,11 +594,11 @@
         "note": "The selected action is read back from SharedPreferences in a local test. Hardware dispatch is not validated by the synthetic UI review."
       },
       "Wecker · bestätigt": {
-        "status": "implemented",
+        "status": "open",
         "paperNode": "3KWY-0",
         "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
         "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
+        "note": "Alpin screen exists, but historical event56 does not causally confirm the current alarm generation. Existing confirmation semantics are being replaced with correlated GET_ALARM configuration readback; local tests and simulator renders do not prove hardware firing.",
         "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
       },
       "Wecker · Bestätigung offen · Band getrennt": {
@@ -636,12 +636,52 @@
       "Wecker · ausgeschaltet bestätigt": {
         "status": "open",
         "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
-        "note": "Current cancellation clears local armed state after command write; typed pending/confirmed cancellation is not retained. Requires an edge state-machine/persistence extension using existing band event 59. Not implemented by the Alpin screen migration."
+        "note": "Historical event59 cannot prove current cancellation. An edge-owned durable intent and correlated GET_ALARM readback are in progress; WHOOP5 disable-all requires every supported slot verified inactive. Not accepted or physically verified."
       },
       "Bandwecker · Ausschalten offen": {
         "status": "open",
         "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
         "note": "Current cancellation clears local armed state after command write; typed pending/confirmed cancellation is not retained. Requires an edge state-machine/persistence extension using existing band event 59. Not implemented by the Alpin screen migration."
+      },
+      "Mitteilungen · Erlauben": {
+        "status": "implemented",
+        "paperNode": "3LEZ-0",
+        "source": "lib/openband/notification_settings.dart; lib/openband/time_picker.dart; lib/ui2/profile/settings.dart; lib/notify/notification_service.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
+        "note": "Explicit system permission request; unknown permission is distinct from denial. Resume and permission changes re-read and apply the current saved preferences.",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
+      },
+      "Mitteilungen · im System aus": {
+        "status": "implemented",
+        "paperNode": "3LEZ-0",
+        "source": "lib/openband/notification_settings.dart; lib/openband/time_picker.dart; lib/ui2/profile/settings.dart; lib/notify/notification_service.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
+        "note": "Denied permission is visible; system-settings return refreshes the status. A failed status probe remains unknown and supports retry.",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
+      },
+      "Mitteilungen · erlaubt": {
+        "status": "implemented",
+        "paperNode": "3L8J-0",
+        "source": "lib/openband/notification_settings.dart; lib/openband/time_picker.dart; lib/ui2/profile/settings.dart; lib/notify/notification_service.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
+        "note": "Production settings route uses typed persisted preferences, serialized saves and independent save/apply failures. Accepted writes finish after screen disposal; the legacy destination is removed.",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
+      },
+      "Mitteilungen · Ruhezeit": {
+        "status": "implemented",
+        "paperNode": "3NJF-0",
+        "source": "lib/openband/notification_settings.dart; lib/openband/time_picker.dart; lib/ui2/profile/settings.dart; lib/notify/notification_service.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
+        "note": "Persisted quiet start/end use the shared Alpin time picker. Wrapping intervals and important-notice override retain existing scheduling semantics. Invalid input and cancellation do not write.",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
+      },
+      "Erinnerungen · einzeln wählen": {
+        "status": "implemented",
+        "paperNode": "3MDT-0",
+        "source": "lib/openband/notification_settings.dart; lib/openband/time_picker.dart; lib/ui2/profile/settings.dart; lib/notify/notification_service.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_notifications_test.dart; test/openband_time_picker_test.dart; test/app_state_notification_apply_test.dart; test/notification_permission_test.dart; integration_test/openband_review_test.dart",
+        "note": "Individual persisted switches, battery threshold and water interval choices use shared rows; failed saves retain the chosen draft for retry.",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919; build/ui-review/notifications-picker-mini-final-20260919: 162 PNGs each, every PNG inspected; run/frames/index checked. Light/dark, missing permission, save/apply error, retry, quiet time, keyboard and 2x text. Synthetic simulator proof; OS delivery on a physical device is not established."
       }
     },
     "A02 · Schlaf": {

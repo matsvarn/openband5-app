@@ -77,7 +77,16 @@
     "3LW8-0": "A05 Laborwert · Speichern fehlgeschlagen",
     "3LXY-0": "A05 Eigener Labormarker",
     "3LZI-0": "A05 Eigener Labormarker · Dunkel",
-    "3MLB-0": "A05 Laborwert · Befundbereich fehlt"
+    "3MLB-0": "A05 Laborwert · Befundbereich fehlt",
+    "3L8J-0": "A08 Mitteilungen",
+    "3LCD-0": "A08 Mitteilungen · Dunkel",
+    "3LEZ-0": "A08 Mitteilungen · Zugriff offen",
+    "3MDT-0": "A08 Mitteilungen · Akkuwert wählen",
+    "3MGR-0": "A08 Mitteilungen · Akkuwert wählen · Dunkel",
+    "3MZ0-0": "A08 Mitteilungen · Anwenden fehlgeschlagen",
+    "3N2G-0": "A08 Mitteilungen · Anwenden fehlgeschlagen · Dunkel",
+    "3NJF-0": "A08 Mitteilungen · Ruhezeit wählen",
+    "3NNQ-0": "A08 Mitteilungen · Ruhezeit wählen · Dunkel"
   },
   "blocks": [
     {
@@ -1011,7 +1020,16 @@
       "paperNode": "3LBP-0",
       "widget": "OBSettingsToggleRow",
       "file": "settings_controls.dart",
-      "note": "Shared setting control; notification screen integration remains pending."
+      "usedIn": [
+        "3L8J-0",
+        "3LCD-0",
+        "3LEZ-0",
+        "3MDT-0",
+        "3MGR-0",
+        "3MZ0-0",
+        "3N2G-0"
+      ],
+      "notes": "Canonical 56-point toggle row with a 44-point switch target; schedule variant remains64. Dark off track uses alp-line. Large text stacks controls."
     },
     {
       "name": "OBNapRow",
@@ -1096,6 +1114,71 @@
         "3LRE-0"
       ],
       "notes": "Aligned label/date and value/unit lanes with a fixed chevron. Rows stack at large text or narrow width."
+    },
+    {
+      "name": "OBSettingsRow.value",
+      "paperNode": "3MB6-0",
+      "widget": "_ValueRow",
+      "file": "notification_settings.dart",
+      "usedIn": [
+        "3L8J-0",
+        "3LCD-0",
+        "3LEZ-0",
+        "3MDT-0",
+        "3MGR-0",
+        "3MZ0-0",
+        "3N2G-0"
+      ],
+      "notes": "Value row opens an explicit choice sheet; no hidden cycling."
+    },
+    {
+      "name": "OBSettingsChoiceSheet",
+      "paperNode": "3MC1-0",
+      "widget": "_ChoiceSheet",
+      "file": "notification_settings.dart",
+      "usedIn": [
+        "3L8J-0",
+        "3LCD-0",
+        "3LEZ-0",
+        "3MDT-0",
+        "3MGR-0",
+        "3MZ0-0",
+        "3N2G-0"
+      ],
+      "notes": "One option per44+ point row; only current selection checked. Shared by battery threshold and water interval."
+    },
+    {
+      "name": "OBSettingsError",
+      "paperNode": "3N1Y-0",
+      "widget": "_ErrorCard",
+      "file": "notification_settings.dart",
+      "usedIn": [
+        "3L8J-0",
+        "3LCD-0",
+        "3LEZ-0",
+        "3MDT-0",
+        "3MGR-0",
+        "3MZ0-0",
+        "3N2G-0"
+      ],
+      "notes": "Concise localized error and shared secondary ink retry; saved preferences and failed scheduling remain distinct."
+    },
+    {
+      "name": "OBTimePicker",
+      "paperNode": "3NGR-0",
+      "widget": "showOpenBandTimePicker",
+      "file": "time_picker.dart",
+      "usedIn": [
+        "3NJF-0",
+        "3NNQ-0",
+        "3KWY-0",
+        "3KZR-0"
+      ],
+      "variants": {
+        "dark": "3NI7-0",
+        "invalid": "3NUJ-0"
+      },
+      "notes": "Shared stock input-only time dialog with Alpin card/well/ink, 296×264 at1x and112×72 fields. Platform locale/24h and accessible input retained; no dial. Invalid entry stays open; cancellation returns no change."
     }
   ],
   "openBlocks": [

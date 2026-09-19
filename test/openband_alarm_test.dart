@@ -698,16 +698,21 @@ void main() {
         MaterialApp(
           theme: openBandTheme(brightness),
           home: Scaffold(
-            body: OBSettingsToggleRow(
-              label: 'Test',
-              value: value,
-              interactive: true,
-              onToggle: () {},
+            body: ListView(
+              children: [
+                OBSettingsToggleRow(
+                  label: 'Test',
+                  value: value,
+                  interactive: true,
+                  onToggle: () {},
+                ),
+              ],
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
+      expect(tester.getSize(find.byType(OBSettingsToggleRow)).height, 56);
       return tester.widget<CupertinoSwitch>(find.byType(CupertinoSwitch));
     }
 
@@ -728,7 +733,7 @@ void main() {
     expect(darkOn.activeTrackColor, isNot(darkOn.thumbColor));
 
     final darkOff = await pumpSwitch(brightness: Brightness.dark, value: false);
-    expect(darkOff.inactiveTrackColor, AlpColor.darkWell);
+    expect(darkOff.inactiveTrackColor, AlpColor.darkLine);
     expect(darkOff.inactiveThumbColor, AlpColor.darkInk);
     expect(darkOff.inactiveTrackColor, isNot(darkOff.inactiveThumbColor));
   });

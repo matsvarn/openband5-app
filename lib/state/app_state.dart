@@ -1493,10 +1493,15 @@ class AppState extends ChangeNotifier {
   void debugFeedEngineState(String deviceId, DeviceState s) =>
       _onEngineState(deviceId, s);
 
-  /// (Re)arm the strap-buzz timer for the water reminder from the current
-  /// notification prefs. Call at launch and whenever the toggle changes (the
-  /// Notifications screen passes [prefs] so we skip a reload). Timers don't
-  /// persist, so launch is not optional.
+  /// Background wrapper that logs schedule failures. Tests only; settings
+  /// uses [refreshAiReminders], which reports plugin failures.
+  @visibleForTesting
+  Future<void> debugEnsureRemindersScheduled() => _ensureRemindersScheduled();
+
+  /// (Re)arm the in-memory water-reminder timer from the current notification
+  /// prefs. Call at launch and whenever the toggle changes (the Notifications
+  /// screen passes [prefs] so we skip a reload). This is local configure
+  /// only — not proof the strap will buzz.
   Future<void> armWaterReminder([NotificationPrefs? prefs]) async {
     final p = prefs ?? await NotificationPrefs.load();
     _waterBuzzer.configure(
@@ -1505,9 +1510,9 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Push a just-saved low-battery threshold into the device-alert pipeline.
-  /// DeviceAlerts restores its threshold once per process; without this a
-  /// change made in Settings would not apply until the next restart.
+  /// Kick DeviceAlerts to re-read the already-saved threshold on its BLE
+  /// queue. The persisted [NotificationPrefs.batteryAlertPct] is the applied
+  /// preference. The queue is future evaluation and not an apply outcome.
   Future<void> refreshBatteryThreshold(NotificationPrefs prefs) async {
     _deviceAlerts.refreshThreshold();
   }
@@ -1770,9 +1775,13 @@ class AppState extends ChangeNotifier {
     unawaited(_ensureRemindersScheduled());
   }
 
-  /// Re-assert the AI notification schedule (settings screens call this after
-  /// a prefs change; also runs on every foreground via runCadenceChecks).
-  Future<void> refreshAiReminders() => _ensureRemindersScheduled();
+  /// Re-assert the standing + AI notification schedule after a prefs change.
+  /// Plugin schedule/cancel failures propagate so settings can show
+  /// saved-but-not-applied. Background callers use [_ensureRemindersScheduled],
+  /// which logs and swallows. A successful return is "the plugin accepted the
+  /// schedule/cancel calls", not that a notification was delivered.
+  Future<void> refreshAiReminders() =>
+      NotificationService.instance.reportingScheduleFailures(_scheduleReminders);
 
   /// Screens that just wrote a briefing/journal state call this so Today's
   /// AI card (which reads BriefingStore synchronously at build) repaints.
@@ -2493,7 +2502,13 @@ class AppState extends ChangeNotifier {
     // OFF the critical path so it can never block/break boot. Guarded internally.
     unawaited(_initCompanion());
     // arm the water-reminder strap buzz (timers don't persist)
-    unawaited(armWaterReminder());
+    unawaited(() async {
+      try {
+        await armWaterReminder();
+      } catch (e) {
+        _log('[notify] water reminder skipped: $e');
+      }
+    }());
     // App status (OTA pointer + admin alert banner) — best-effort, non-blocking.
     unawaited(_loadAppStatus());
     // Register the recurring wall-clock nudges as real OS-scheduled notifications
@@ -2672,103 +2687,101 @@ class AppState extends ChangeNotifier {
   }
 
   /// (Re)register standing scheduled reminders per the user's prefs. Idempotent;
-  /// safe to call repeatedly (cancels + re-schedules). Best-effort.
+  /// safe to call repeatedly (cancels + re-schedules). Best-effort — logs and
+  /// swallows so background/unawaited callers never become unhandled async.
   Future<void> _ensureRemindersScheduled() async {
     try {
-      final prefs = await NotificationPrefs.load();
-      // ONE crossday read feeds every schedule that hangs off the rollup:
-      // the Sleep Coach bedtime (check-in, wind-down, nightly sweep) AND the
-      // weekly lookback's finding. Two separate baseline reads were how this
-      // used to be written; the second one is also where the weekly finding
-      // silently never got computed at all.
-      final cd = await _readCrossdaySummary();
-      final meds = await _medScheduleToday(prefs);
-      await NotificationCenter.instance.scheduleStandingReminders(
-        prefs,
-        bedtimeMinOfDay: cd.bedtimeMin,
-        weeklyFinding: prefs.remindersEnabled
-            ? NotificationCenter.weeklyLookbackFinding(cd.recent)
-            : null,
-        checkInDoneToday: await _checkInDoneToday(),
-        medDefs: meds.defs,
-        medDosesToday: meds.doses,
-        armedTonight: _alarmArmedTonight,
-      );
-      // The strap-buzz half of the medication reminder, off the SAME schedule
-      // read the OS dose slots above were armed from — one read feeds both
-      // surfaces. Three answers, matching the scheduler's own rule: the
-      // switch OFF is an explicit choice and CLEARS the armed buzzes (a timer
-      // left standing would buzz for doses the user has muted); a real
-      // (possibly empty) schedule re-arms from it; only a FAILED read while
-      // enabled preserves, because cancelling would disarm doses that are
-      // still real.
-      if (!prefs.medsEnabled) {
-        _medBuzzer.configure(slotInstants: const []);
-      } else if (meds.defs != null) {
-        final instants = <DateTime>[];
-        for (final s in NotificationCenter.medPromptSlots(
-          prefs,
-          meds.defs!,
-          meds.doses,
-        )) {
-          final at = NotificationCenter.medSlotInstant(s);
-          if (at != null) instants.add(at);
-        }
-        _medBuzzer.configure(slotInstants: instants);
-      }
-      // AI slots. The nightly sweep is armed only when today actually produced
-      // a finding — see [_sweepHeadlineNow], which is also where the body of
-      // that notification comes from.
-      final ai = await AiPrefs.load();
-      await NotificationCenter.instance.scheduleAiReminders(
-        prefs,
-        ai,
-        aiConfigured: coachConfig?.hasKey ?? false,
-        bedtimeMinOfDay: cd.bedtimeMin,
-        journalDoneToday: BriefingStore.journalDoneToday(),
-        sweepHeadline: await _sweepHeadlineNow(),
-      );
+      await _scheduleReminders();
     } catch (e) {
       _log('[notify] schedule reminders skipped: $e');
     }
   }
 
+  Future<void> _scheduleReminders() async {
+    final prefs = await NotificationPrefs.load();
+    // ONE crossday read feeds every schedule that hangs off the rollup:
+    // the Sleep Coach bedtime (check-in, wind-down, nightly sweep) AND the
+    // weekly lookback's finding. Two separate baseline reads were how this
+    // used to be written; the second one is also where the weekly finding
+    // silently never got computed at all.
+    final cd = await _readCrossdaySummary();
+    final meds = await _medScheduleToday(prefs);
+    await NotificationCenter.instance.scheduleStandingReminders(
+      prefs,
+      bedtimeMinOfDay: cd.bedtimeMin,
+      weeklyFinding: prefs.remindersEnabled
+          ? NotificationCenter.weeklyLookbackFinding(cd.recent)
+          : null,
+      checkInDoneToday: await _checkInDoneToday(),
+      medDefs: meds.defs,
+      medDosesToday: meds.doses,
+      armedTonight: _alarmArmedTonight,
+    );
+    // The strap-buzz half of the medication reminder, off the SAME schedule
+    // read the OS dose slots above were armed from — one read feeds both
+    // surfaces. Three answers, matching the scheduler's own rule: the
+    // switch OFF is an explicit choice and CLEARS the armed buzzes (a timer
+    // left standing would buzz for doses the user has muted); a real
+    // (possibly empty) schedule re-arms from it; only a FAILED read while
+    // enabled preserves, because cancelling would disarm doses that are
+    // still real.
+    if (!prefs.medsEnabled) {
+      _medBuzzer.configure(slotInstants: const []);
+    } else if (meds.defs != null) {
+      final instants = <DateTime>[];
+      for (final s in NotificationCenter.medPromptSlots(
+        prefs,
+        meds.defs!,
+        meds.doses,
+      )) {
+        final at = NotificationCenter.medSlotInstant(s);
+        if (at != null) instants.add(at);
+      }
+      _medBuzzer.configure(slotInstants: instants);
+    }
+    // AI slots. The nightly sweep is armed only when today actually produced
+    // a finding — see [_sweepHeadlineNow], which is also where the body of
+    // that notification comes from.
+    final ai = await AiPrefs.load();
+    await NotificationCenter.instance.scheduleAiReminders(
+      prefs,
+      ai,
+      aiConfigured: coachConfig?.hasKey ?? false,
+      bedtimeMinOfDay: cd.bedtimeMin,
+      journalDoneToday: BriefingStore.journalDoneToday(),
+      sweepHeadline: await _sweepHeadlineNow(),
+    );
+  }
+
   /// Everything the reminder scheduler needs from the crossday rollup, in ONE
   /// read: the Sleep Coach's recommended bedtime (local minutes past midnight,
   /// or null when not yet learned) and the per-day `recent[]` rows the weekly
-  /// lookback's finding summarizes. Read in one place because three schedules
-  /// hang off it — check-in, wind-down, nightly sweep, weekly lookback — and
-  /// a second copy of this parse is a second thing to get wrong.
+  /// lookback's finding summarizes. Missing payload is honest empty; a read
+  /// or parse failure propagates so settings cannot treat it as a full reapply.
   Future<({double? bedtimeMin, List<Map<String, dynamic>> recent})>
   _readCrossdaySummary() async {
-    try {
-      final cd = await LocalDb.baseline('crossday');
-      final m = cd?['payload_json'];
-      if (m is! String) {
-        return (bedtimeMin: null, recent: const <Map<String, dynamic>>[]);
-      }
-      final j = jsonDecode(m);
-      if (j is! Map) {
-        return (bedtimeMin: null, recent: const <Map<String, dynamic>>[]);
-      }
-      final bt = (j['sleep_coach'] as Map?)?['bedtime'];
-      final v = bt is Map ? bt['value'] : null;
-      final bedtime = (v is Map ? (v['bedtime_min_of_day'] as num?) : null)
-          ?.toDouble();
-      // Same rows `DerivationEngine._runNotifications` consumes for the daily
-      // exception — {date, rhr, unsettled, illness, anomaly, temp}.
-      final rawRecent = j['recent'];
-      final recent = <Map<String, dynamic>>[
-        if (rawRecent is List)
-          for (final r in rawRecent)
-            if (r is Map) r.cast<String, dynamic>(),
-      ];
-      return (bedtimeMin: bedtime, recent: recent);
-    } catch (_) {
-      // No rollup → no learned bedtime and an empty week: every consumer has
-      // its own honest silence for that.
+    final cd = await LocalDb.baseline('crossday');
+    final m = cd?['payload_json'];
+    if (m is! String) {
       return (bedtimeMin: null, recent: const <Map<String, dynamic>>[]);
     }
+    final j = jsonDecode(m);
+    if (j is! Map) {
+      return (bedtimeMin: null, recent: const <Map<String, dynamic>>[]);
+    }
+    final bt = (j['sleep_coach'] as Map?)?['bedtime'];
+    final v = bt is Map ? bt['value'] : null;
+    final bedtime = (v is Map ? (v['bedtime_min_of_day'] as num?) : null)
+        ?.toDouble();
+    // Same rows `DerivationEngine._runNotifications` consumes for the daily
+    // exception — {date, rhr, unsettled, illness, anomaly, temp}.
+    final rawRecent = j['recent'];
+    final recent = <Map<String, dynamic>>[
+      if (rawRecent is List)
+        for (final r in rawRecent)
+          if (r is Map) r.cast<String, dynamic>(),
+    ];
+    return (bedtimeMin: bedtime, recent: recent);
   }
 
   /// Whether today's self-report is already written — the check-in prompt's
@@ -2795,26 +2808,20 @@ class AppState extends ChangeNotifier {
   /// The medication schedule + today's recorded doses. Two indexed reads, only
   /// on the path that will use them.
   ///
-  /// NULL `defs` means UNREAD — the switch is off, or the read threw — and is
-  /// not the same answer as an empty list, which means "this user has no
-  /// medications". The scheduler cancels the armed doses on the second and
-  /// preserves them on the first; returning `[]` for a failed read handed it
-  /// the wrong one of those.
+  /// NULL `defs` means the switch is off. A thrown read is a failed apply,
+  /// not "unread, preserve": settings must not treat a broken meds load as a
+  /// successful reapply. Empty list still means "this user has no medications".
   Future<
     ({List<MedDef>? defs, Map<String, Map<int, Map<String, Object?>>> doses})
   >
   _medScheduleToday(NotificationPrefs prefs) async {
     const empty = <String, Map<int, Map<String, Object?>>>{};
     if (!prefs.medsEnabled) return (defs: null, doses: empty);
-    try {
-      final db = await LocalDb.instance;
-      return (
-        defs: await MedDb.defs(db),
-        doses: await MedDb.dosesForDay(db, todayLabel()),
-      );
-    } catch (_) {
-      return (defs: null, doses: empty);
-    }
+    final db = await LocalDb.instance;
+    return (
+      defs: await MedDb.defs(db),
+      doses: await MedDb.dosesForDay(db, todayLabel()),
+    );
   }
 
   String? _sweepHeadline;

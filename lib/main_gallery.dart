@@ -15,6 +15,8 @@ import 'openband/template_editor.dart';
 import 'openband/session.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
+import 'notify/notification_prefs.dart';
+import 'openband/notification_settings.dart';
 import 'openband/theme.dart';
 import 'openband/training.dart';
 import 'state/alarm_schedule.dart';
@@ -316,15 +318,27 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               },
             ),
           ),
+          const ListTile(title: Text('Mitteilungen · synthetische Zustände')),
+          ..._notificationGalleryStates().map(
+            (entry) => ListTile(
+              title: Text(entry.$1),
+              onTap: () {
+                Navigator.pop(c);
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
+              },
+            ),
+          ),
           const ListTile(title: Text('Alarm · synthetische Zustände')),
           ..._alarmGalleryStates().map(
             (entry) => ListTile(
               title: Text(entry.$1),
               onTap: () {
                 Navigator.pop(c);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => entry.$2()),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2()));
               },
             ),
           ),
@@ -357,50 +371,45 @@ List<AlarmScheduleEntry> galleryAlarmSchedule({bool enabled = true}) =>
     );
 
 List<(String, Widget Function())> _alarmGalleryStates() => [
-      (
-        'Alarm · bestätigt',
-        () => AlarmGallerySession(
-          armedAt: galleryAlarmAt,
-          state: AlarmArmState.confirmed,
-        ),
-      ),
-      (
-        'Alarm · Bestätigung offen',
-        () => AlarmGallerySession(
-          armedAt: galleryAlarmAt,
-          state: AlarmArmState.pending,
-        ),
-      ),
-      (
-        'Alarm · unbekannt',
-        () => AlarmGallerySession(
-          armedAt: galleryAlarmAt,
-          state: AlarmArmState.unknown,
-        ),
-      ),
-      (
-        'Alarm · aus',
-        () => const AlarmGallerySession(
-          scheduleEnabled: false,
-        ),
-      ),
-      (
-        'Alarm · getrennt',
-        () => AlarmGallerySession(
-          armedAt: galleryAlarmAt,
-          state: AlarmArmState.confirmed,
-          connected: false,
-        ),
-      ),
-      (
-        'Alarm · Fehler',
-        () => AlarmGallerySession(
-          armedAt: galleryAlarmAt,
-          state: AlarmArmState.pending,
-          failing: true,
-        ),
-      ),
-    ];
+  (
+    'Alarm · bestätigt',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.confirmed,
+    ),
+  ),
+  (
+    'Alarm · Bestätigung offen',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.pending,
+    ),
+  ),
+  (
+    'Alarm · unbekannt',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.unknown,
+    ),
+  ),
+  ('Alarm · aus', () => const AlarmGallerySession(scheduleEnabled: false)),
+  (
+    'Alarm · getrennt',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.confirmed,
+      connected: false,
+    ),
+  ),
+  (
+    'Alarm · Fehler',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.pending,
+      failing: true,
+    ),
+  ),
+];
 
 /// Isolated synthetic host: toggles and times update the visible schedule.
 /// Production [AlarmScreen] still owns the real band/AppState.
@@ -428,8 +437,9 @@ class AlarmGallerySession extends StatefulWidget {
 class _AlarmGallerySessionState extends State<AlarmGallerySession> {
   late DateTime? armedAt = widget.armedAt;
   late AlarmArmState state = widget.state;
-  late List<AlarmScheduleEntry> schedule =
-      galleryAlarmSchedule(enabled: widget.scheduleEnabled);
+  late List<AlarmScheduleEntry> schedule = galleryAlarmSchedule(
+    enabled: widget.scheduleEnabled,
+  );
 
   Future<void> _write() async {
     if (widget.failing) throw Exception('Schreiben fehlgeschlagen');
@@ -480,4 +490,91 @@ class _AlarmGallerySessionState extends State<AlarmGallerySession> {
     onTest: armedAt == null ? null : _write,
     onCancel: _cancel,
   );
+}
+
+List<(String, Widget)> _notificationGalleryStates() {
+  Future<void> ok(_) async {}
+  return [
+    (
+      'Mitteilungen · hell',
+      NotificationSettingsView(
+        synthetic: true,
+        prefs: openBandPaperNotificationPrefs,
+        onChanged: ok,
+      ),
+    ),
+    (
+      'Mitteilungen · dunkel',
+      Theme(
+        data: openBandTheme(Brightness.dark),
+        child: NotificationSettingsView(
+          synthetic: true,
+          prefs: openBandPaperNotificationPrefs,
+          onChanged: ok,
+        ),
+      ),
+    ),
+    (
+      'Mitteilungen · laden',
+      const NotificationSettingsView(
+        synthetic: true,
+        loaded: false,
+        granted: null,
+      ),
+    ),
+    (
+      'Mitteilungen · nicht erlaubt',
+      NotificationSettingsView(
+        synthetic: true,
+        granted: false,
+        prefs: openBandPaperNotificationPrefs,
+        onChanged: ok,
+        onRequestPermission: () {},
+      ),
+    ),
+    (
+      'Mitteilungen · Fehler',
+      NotificationSettingsView(
+        synthetic: true,
+        prefs: const NotificationPrefs(waterEnabled: true),
+        saveError: 'Speichern fehlgeschlagen',
+        onChanged: ok,
+        onRetrySave: () {},
+      ),
+    ),
+    (
+      'Mitteilungen · Anwenden fehlgeschlagen',
+      NotificationSettingsView(
+        synthetic: true,
+        prefs: const NotificationPrefs(
+          waterEnabled: true,
+          healthEnabled: false,
+        ),
+        applyError: 'Gespeichert. Anwenden fehlgeschlagen',
+        onChanged: ok,
+        onRetryApply: () {},
+      ),
+    ),
+    (
+      'Mitteilungen · Ruhezeit',
+      NotificationSettingsView(
+        synthetic: true,
+        prefs: const NotificationPrefs(
+          quietEnabled: true,
+          quietStartMin: 22 * 60,
+          quietEndMin: 7 * 60,
+          waterEnabled: true,
+        ),
+        onChanged: ok,
+      ),
+    ),
+    (
+      'Mitteilungen · Auswahl',
+      NotificationSettingsView(
+        synthetic: true,
+        prefs: openBandPaperNotificationPrefs,
+        onChanged: ok,
+      ),
+    ),
+  ];
 }

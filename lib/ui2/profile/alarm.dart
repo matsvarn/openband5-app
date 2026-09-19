@@ -24,6 +24,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
+import '../../openband/time_picker.dart';
 import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
 
@@ -339,7 +340,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   Future<void> _pickDayTime(BuildContext c, AlarmScheduleEntry day) async {
     if (!_canWrite || widget.onSetDayTime == null) return;
     await _run(() async {
-      final picked = await showTimePicker(
+      final picked = await showOpenBandTimePicker(
         context: c,
         initialTime: TimeOfDay(hour: day.hour, minute: day.minute),
       );

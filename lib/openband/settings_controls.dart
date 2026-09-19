@@ -132,7 +132,10 @@ class _SettingsLabeledRow extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: minHeight),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+            padding: EdgeInsets.symmetric(
+              vertical: (minHeight - 44) / 2,
+              horizontal: 14,
+            ),
             child: stacked
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -235,7 +238,7 @@ class _OBSettingsSwitch extends StatelessWidget {
                 : null,
             activeTrackColor: p.ink,
             thumbColor: p.dark ? p.canvas : AlpColor.canvas,
-            inactiveTrackColor: p.dark ? p.well : p.line,
+            inactiveTrackColor: p.line,
             inactiveThumbColor: p.dark ? p.ink : AlpColor.canvas,
           ),
         ),

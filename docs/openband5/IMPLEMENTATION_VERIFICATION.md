@@ -106,3 +106,14 @@ Existing whole-health-hub differences from Paper,2x metric-title/stage-legend/ta
 An inline answer previously called the full-day replacement API with one key, deleting other answers and dose times. Production writeJournal now uses an atomic single-field transaction. Existing timestamps survive value-only edits; new fields have no invented time. Full-day replacement retains its explicit contract. No schema or UI change.
 
 Independent review inspected the actual SQLite path. Main240 OpenBand and affected journal tests passed (including10 new storage regressions and12 existing metric-store checks); analyzer and design manifest passed. New-key insert, existing update, independent concurrent fields, invalid inputs and separate SQLite INSERT/UPDATE aborts exercise the production adapter. No simulator rerun for this storage-only repair; no physical-device proof.
+
+## Alpin notifications and shared time picker — 19 September 2026
+
+Production settings now use the Alpin notification flow. Typed preferences preserve ordered writes; permission unknown/denied, persistence failure and application failure are separate states. The shared stock input picker uses Alpin typography/palette and validates actual clock values. Both alarm and quiet-hours callers use it. The superseded notification UI was removed.
+
+- Required OpenBand suite plus affected notification/AppState tests: **328 passed** (`notifications-final-12h-tests.log` in `/tmp/openband-alpin-20260919/check-logs`). Analyzer: no issues, including integration and affected tests. Manifest: **84 blocks, 73 real screens**.
+- **11 new PNG goldens**, every image inspected: five notification, four German24h picker, two English12h picker. Real PM→AM selection and invalid-hour refusal tested.
+- Native synthetic captures: `build/ui-review/notifications-picker-final-20260919` (iPhone15Pro,162 PNGs,368s) and `build/ui-review/notifications-picker-mini-final-20260919` (iPhone13mini,162 PNGs,530s). Both passed; every PNG inspected, run/frames/index inventories reconciled. Notification light/dark/denied/unknown/loading, retained save retry, application failure, choices, quiet-time input/invalid keyboard and2x text included. Earlier failed runs are not acceptance evidence.
+- Paper canonical picker3NGR/3NI7/3NUJ and real screens3NJF/3NNQ inspected against measured native geometry; notifications3L8J/3LCD/3LEZ, choices3MDT/3MGR and errors3MZ0/3N2G. Exact exports remain in the private task directory.
+
+No physical-device delivery, Bluetooth behavior or physiological validity claim. Older hub2x legends/navigation labels and legacy dialogs remain queued; inspecting their captures does not accept them as complete.
