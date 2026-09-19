@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_edge/gestures/device_action.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +34,18 @@ void main() {
         } else {
           await tester.ensureVisible(target);
         }
+        await tester.pumpAndSettle();
+        await tester.tap(target);
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> pressSleepEditor() async {
+        final target = find.byTooltip('Schlafzeiten ändern');
+        await tester.scrollUntilVisible(
+          target,
+          200,
+          scrollable: find.byType(Scrollable).last,
+        );
         await tester.pumpAndSettle();
         await tester.tap(target);
         await tester.pumpAndSettle();
@@ -121,7 +136,7 @@ void main() {
       }) async {
         await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+        await pressSleepEditor();
         await tester.pumpAndSettle();
         if (captureEntry) await capture('correction-entry$variant');
         await tester.enterText(
@@ -198,6 +213,12 @@ void main() {
       await press('Auswertung erneut starten');
       await capture('calculation-retry-complete');
       await press('Nacht ansehen');
+      await tester.scrollUntilVisible(
+        find.byTooltip('Schlafzeiten ändern'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
       expect(find.byTooltip('Schlafzeiten ändern'), findsOneWidget);
       await capture('sleep-corrected');
 
@@ -215,7 +236,8 @@ void main() {
       await press('Automatische Zeiten wiederherstellen');
       await capture('restore-confirmation-dark');
       await press('Wiederherstellen');
-      expect(find.text('7h18'), findsOneWidget);
+      expect((await pending.readDay('2026-09-15')).sleep.duration.value, 438);
+      expect(find.text('7h18'), findsNWidgets(2));
 
       await mount();
       await tester.tap(find.text(obDayTitle('2026-09-15')));
@@ -231,7 +253,7 @@ void main() {
       );
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor();
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('sleep-onset')),
@@ -255,14 +277,14 @@ void main() {
       await tester.tap(find.byTooltip('Schließen'));
       await tester.pumpAndSettle();
 
-      await mount();
+      final cancelled = await mount();
       await edit(variant: '-cancel');
       await press('Weiter bearbeiten');
       await tester.tap(find.byTooltip('Zurück').first);
       await tester.pumpAndSettle();
       await capture('draft-leave-confirmation');
       await press('Entwurf behalten');
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor();
       await tester.pumpAndSettle();
       expect(
         tester
@@ -273,14 +295,16 @@ void main() {
       );
       await press('Änderung ansehen');
       await press('Änderung verwerfen');
-      expect(find.text('7h18'), findsOneWidget);
+      expect(await cancelled.readDraft('2026-09-15'), isNull);
+      expect((await cancelled.readDay('2026-09-15')).sleep.duration.value, 438);
+      expect(find.text('7h18'), findsNWidgets(2));
 
       await mount(scale: 2);
       await capture('overview-large-text');
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
       await capture('sleep-large-text');
-      await tester.tap(find.byTooltip('Schlafzeiten ändern'));
+      await pressSleepEditor();
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('sleep-onset')),
@@ -367,6 +391,75 @@ void main() {
       await capture('meal-draft-preview');
       await tester.tap(find.text('Entwurf behalten'));
       await tester.pumpAndSettle();
+
+      for (final brightness in Brightness.values) {
+        for (final phoneActions in [true, false]) {
+          var chosen = DeviceAction.none;
+          await tester.pumpWidget(
+            MaterialApp(
+              key: UniqueKey(),
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('de'),
+              supportedLocales: AppLocalizations.supportedLocales,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              theme: openBandTheme(brightness),
+              home: StatefulBuilder(
+                builder: (context, setState) => BandGesturesView(
+                  chosen: chosen,
+                  supported: {
+                    DeviceAction.none,
+                    ...DeviceAction.values.where((a) => a.isInApp),
+                    if (phoneActions) ...{
+                      DeviceAction.ringPhone,
+                      DeviceAction.torch,
+                    },
+                  },
+                  onPick: (value) => setState(() => chosen = value),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final state = phoneActions ? 'available' : 'unavailable';
+          await capture('gestures-$state-${brightness.name}');
+          if (phoneActions) {
+            await press('Wasser protokollieren');
+            expect(chosen, DeviceAction.logWater);
+            await capture('gestures-selected-${brightness.name}');
+          }
+        }
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          key: UniqueKey(),
+          debugShowCheckedModeBanner: false,
+          locale: const Locale('de'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          theme: openBandTheme(Brightness.light),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: BandGesturesView(
+            chosen: DeviceAction.none,
+            supported: {
+              DeviceAction.none,
+              ...DeviceAction.values.where((a) => a.isInApp),
+              DeviceAction.ringPhone,
+              DeviceAction.torch,
+            },
+            onPick: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await capture('gestures-large-text');
+      await press('Taschenlampe');
+      await capture('gestures-large-text-scrolled');
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();

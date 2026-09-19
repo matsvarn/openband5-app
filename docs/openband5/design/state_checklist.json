@@ -1,5 +1,5 @@
 {
-  "note": "Legacy Alpin artboards removed from Designphase 3 on 2026-09-19 (archive: Designphase 2, 01M2KDQRH0A9K3N46EWHMBF61D). Each name is a state or screen the rebuilt hub must still cover.",
+  "note": "Legacy Alpin artboards removed from Designphase 3 on 2026-09-19 (archive: Designphase 2, 01M2KDQRH0A9K3N46EWHMBF61D). Each name is a state or screen the rebuilt hub must still cover. Dispositions record checked queue items; a name without a disposition remains pending. The pages lists retain the original state names.",
   "pages": {
     "A01 · Übersicht": [
       "historischer Tag",
@@ -569,5 +569,30 @@
     "A03 · Einrichtung": "Alpin 3 Einrichtung rebuilt in lib/ui2/onboarding (Willkommen, Band verbinden, Dein Profil); Erste Übertragung is paper-only",
     "A04 · System": "Widgets and Navigation boards kept (decisions still valid)",
     "A00 · Start hier": "header variant board kept"
+  },
+  "dispositions": {
+    "A08 · Profil, Band, Daten": {
+      "Bandgesten · Doppelt tippen": {
+        "status": "implemented",
+        "paperNode": "3IK6-0",
+        "source": "lib/ui2/profile/gestures.dart",
+        "evidence": "test/openband_gestures_test.dart; test/band_gestures_test.dart",
+        "note": "Uses GestureSettings and DeviceAction capabilities. Native review uses isolated view inputs, with no Bluetooth or personal database."
+      },
+      "Bandgesten · Ziel nicht verfügbar": {
+        "status": "implemented",
+        "paperNode": "3INT-0",
+        "source": "lib/gestures/gesture_settings.dart",
+        "evidence": "test/openband_gestures_test.dart",
+        "note": "No native capabilities: phone actions are omitted and explained; in-app actions remain. bootstrap resets unsupported saved mappings to none."
+      },
+      "Bandgesten · gespeichert": {
+        "status": "implemented",
+        "paperNode": "3IPM-0",
+        "source": "lib/gestures/gesture_settings.dart",
+        "evidence": "test/openband_gestures_test.dart",
+        "note": "The selected action is read back from SharedPreferences in a local test. Hardware dispatch is not validated by the synthetic UI review."
+      }
+    }
   }
 }

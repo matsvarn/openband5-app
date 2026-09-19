@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/theme.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'profile.dart';
@@ -61,7 +62,7 @@ class BandGesturesView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final p = OB.of(c);
     final l = AppLocalizations.of(c);
     // Enum order, filtered to this phone: nothing first (it is the default and
     // the way back out), then the in-app actions, then whatever the OS offered.
@@ -73,61 +74,78 @@ class BandGesturesView extends StatelessWidget {
     final noPhoneActions = !offered.any((a) => a.isNative);
 
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: p.canvas,
       body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.gesturesNavTitle ?? 'Double-tap'),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
-              children: [
-                Section(
-                  l?.gesturesSectionTitle ?? 'Tap the band twice',
-                  Surface(
-                    child: Text(
-                      l?.gesturesSectionBody ??
-                          'Only while the app is connected and awake. A tap the '
-                              'band stored while your phone was away arrives later with '
-                              'an old timestamp, and is ignored rather than fired hours '
-                              'after you meant it.',
-                      style: F.body.copyWith(color: p.ink2, height: 1.4),
-                    ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: IconButtonTheme(
+                data: IconButtonThemeData(
+                  style: IconButton.styleFrom(
+                    backgroundColor: p.card,
+                    foregroundColor: p.ink,
+                    minimumSize: const Size(44, 44),
+                    shape: const CircleBorder(),
                   ),
                 ),
-                settingsGroup(c, l?.gesturesItDoesTitle ?? 'It does', [
-                  for (final a in offered)
-                    _ActionRow(
-                      action: a,
-                      selected: a == chosen,
-                      onTap: onPick == null ? null : () => onPick!(a),
-                    ),
-                ]),
-                if (noPhoneActions) ...[
-                  const SizedBox(height: S.x5),
-                  Section(
-                    l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
-                    Surface(
-                      child: Text(
-                        l?.gesturesNoPhoneActionsBody ??
-                            'Ringing your phone and the flashlight are missing '
-                                'because the app could not reach the system to ask what '
-                                'this device allows. Reopen the app and come back; the '
-                                'in-app actions above work either way.',
-                        style: F.body.copyWith(color: p.ink2, height: 1.4),
-                      ),
+                child: OBPageHeader(
+                  title: l?.gesturesNavTitle ?? 'Double-tap',
+                  subtitle: '',
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      l?.gesturesSectionBody ??
+                          'The app must be connected and awake.',
+                      style: p.text(13, color: p.muted),
                     ),
                   ),
+                  settingsGroup(c, l?.gesturesItDoesTitle ?? 'It does', [
+                    for (final a in offered)
+                      _ActionRow(
+                        action: a,
+                        selected: a == chosen,
+                        onTap: onPick == null ? null : () => onPick!(a),
+                      ),
+                  ]),
+                  if (noPhoneActions) ...[
+                    const SizedBox(height: 16),
+                    _explanation(
+                      p,
+                      l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
+                      l?.gesturesNoPhoneActionsBody ??
+                          'Ringing your phone and the flashlight are missing '
+                              'because the app could not reach the system to ask what '
+                              'this device allows. Reopen the app and come back; the '
+                              'in-app actions above work either way.',
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
+
+  Widget _explanation(OB p, String title, String body) => OBCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: p.text(17, weight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Text(body, style: p.text(14, color: p.muted)),
+      ],
+    ),
+  );
 }
 
 /// One choice. Label, what it does, and a tick when it is the live mapping.
@@ -140,33 +158,45 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final p = OB.of(c);
     final l = AppLocalizations.of(c);
     return Pressable(
       onTap: onTap,
-      semanticLabel: '${action.localizedLabel(c)}. ${action.localizedBlurb(c)}'
+      semanticLabel:
+          '${action.localizedLabel(c)}. ${action.localizedBlurb(c)}'
           '${selected ? (l?.settingsSelectedSuffix ?? ' Selected.') : ''}',
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
-          // THE ROW RULE (see SetRow): exactly one flexible child, so every
-          // tick in the list lands on the same right edge. Two would split the
-          // width by ratio instead.
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(action.localizedLabel(c),
-                  style: F.body.copyWith(
-                      color: selected ? p.on(C.indigo) : p.ink,
-                      fontWeight: selected ? FontWeight.w600 : null)),
-              Text(action.localizedBlurb(c),
-                  style: F.over.copyWith(color: p.ink3)),
-            ]),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 28),
+          child: Row(
+            children: [
+              // THE ROW RULE (see SetRow): exactly one flexible child, so every
+              // tick in the list lands on the same right edge. Two would split the
+              // width by ratio instead.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      action.localizedLabel(c),
+                      style: p.text(
+                        15,
+                        weight: selected ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected ? LucideIcons.check : LucideIcons.circle,
+                size: 18,
+                color: selected ? p.ink : p.gap,
+              ),
+            ],
           ),
-          const SizedBox(width: S.x2),
-          Icon(selected ? LucideIcons.check : LucideIcons.circle,
-              size: 17, color: selected ? p.on(C.indigo) : p.line),
-        ]),
+        ),
       ),
     );
   }

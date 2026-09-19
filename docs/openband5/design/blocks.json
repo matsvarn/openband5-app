@@ -36,7 +36,11 @@
     "L-0 · Einrichtung · Erste Übertragung": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
     "L-0 · Einrichtung · Dein Profil": "A03 Einrichtung · Dein Profil (lib/ui2/onboarding/profile_setup.dart)",
     "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
-    "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)"
+    "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)",
+    "3IK6-0": "A08 Bandgesten · Doppelt tippen",
+    "3IM4-0": "A08 Bandgesten · Doppelt tippen · Dunkel",
+    "3INT-0": "A08 Bandgesten · Ziel nicht verfügbar",
+    "3IPM-0": "A08 Bandgesten · gespeichert"
   },
   "blocks": [
     {
@@ -62,7 +66,11 @@
       "file": "theme.dart",
       "usedIn": [
         "3FLZ-0",
-        "3G8S-0"
+        "3G8S-0",
+        "3IK6-0",
+        "3IM4-0",
+        "3INT-0",
+        "3IPM-0"
       ]
     },
     {
@@ -622,7 +630,11 @@
       "widget": "settingsGroup",
       "file": "ui2/profile/profile.dart",
       "usedIn": [
-        "3GQP-0"
+        "3GQP-0",
+        "3IK6-0",
+        "3IM4-0",
+        "3INT-0",
+        "3IPM-0"
       ],
       "children": [
         "OBSettingsRow"
@@ -776,6 +788,35 @@
       "implemented": "row inside OBFormCard (Größe, Gewicht)",
       "usedIn": [
         "L-0 · Einrichtung · Dein Profil"
+      ]
+    },
+    {
+      "name": "OBGestureActionRow",
+      "paperNode": "3IS2-0",
+      "widget": "_ActionRow",
+      "file": "ui2/profile/gestures.dart",
+      "variants": [
+        "selected",
+        "unselected"
+      ],
+      "usedIn": [
+        "3IK6-0",
+        "3IM4-0",
+        "3INT-0",
+        "3IPM-0"
+      ],
+      "notes": "Alpin ink marks the selected mapping; the existing DeviceAction capability filter owns which choices are offered."
+    },
+    {
+      "name": "OBGestureExplanation",
+      "paperNode": "3IS8-0",
+      "widget": "BandGesturesView._explanation",
+      "file": "ui2/profile/gestures.dart",
+      "variants": [
+        "phoneActionsUnavailable"
+      ],
+      "usedIn": [
+        "3INT-0"
       ]
     }
   ],
