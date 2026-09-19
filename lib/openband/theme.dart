@@ -346,6 +346,14 @@ class OBAction extends StatelessWidget {
             child: Text(label, textAlign: TextAlign.center),
           )
         : FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: OB.of(context).action,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: OB.of(
+                context,
+              ).action.withValues(alpha: 0.4),
+              disabledForegroundColor: Colors.white,
+            ),
             onPressed: onPressed,
             child: Text(label, textAlign: TextAlign.center),
           ),
