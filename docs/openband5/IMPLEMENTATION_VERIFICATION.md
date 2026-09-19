@@ -171,3 +171,10 @@ Lead inspected the integrated source/diff and fresh review4f200028/9c4e8fa0. Req
 Native synthetic Pro `build/ui-review/units-v4-20260919` passed in378.48s; mini `build/ui-review/units-v4-mini-20260919` passed in599.19s. **219 PNGs per run, every PNG inspected**; names reconcile with frames.json and index.html. Light/dark, metric/imperial, save failure/retry/reopen and2x text reviewed against Paper3UHD/3UIZ/3UKA/3UM1/3UNC/3UON/3UQ6/3URH and canonical preview3UID. Exact exports: units-v1-jsx.json and units-large-v1-jsx.json in the private task directory. Earlier v1–v3 runs are diagnostic only.
 
 Reviewing older gallery screens does not close their outstanding hub/layout/copy work. No physical-device, Bluetooth or physiological proof is claimed.
+
+
+## Template edit preservation · 19 September 2026
+
+Saving a renamed or edited template now retains notes, set types, rest times, timed loads, exact stored fractional loads and existing identities. New objects use distinct UUIDs; duplicate labels do not merge history. Invalid counts/loads retain the draft and refuse save. A timed set cannot silently become a repetition set when its duration is blank. Save-error copy is shortened to “Speichern fehlgeschlagen.”
+
+Accepted worker8d08132c/67dbddcb after independent reviews and lead inspection; final copy repair46f7d796. Main required OpenBand suite **451 passed**, analyzer **34 items, clean**, manifest **90 blocks /107 screens**. Twelve focused fidelity tests include recorded-session isolation, locale decimals, failed-save retry and missing values. No golden regenerated. Full catalogue, note/type/rest controls and the Alpin editor redesign remain open; this is a data-preservation repair. Native synthetic Pro `build/ui-review/template-fidelity-20260919` passed in378.03s;219 frames/PNGs/index entries reconcile. The affected edit/create PNGs were inspected directly. Existing layouts were retained; this does not accept the pending editor redesign. No physical-device or physiological proof.

@@ -459,7 +459,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved?.name, 'Oberkörper B');
     expect(saved?.version, 1);
-    expect(saved?.exercises.single.exerciseKey, 'klimmzug');
+    expect(
+      saved?.exercises.single.exerciseKey,
+      matches(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          caseSensitive: false,
+        ),
+      ),
+    );
+    expect(saved?.exercises.single.exerciseKey, isNot('klimmzug'));
     expect(saved?.exercises.single.sets.length, 3);
     expect(saved?.exercises.single.sets.first.reps, 6);
     expect(saved?.exercises.single.sets.first.loadKg, isNull);

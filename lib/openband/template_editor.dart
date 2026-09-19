@@ -1,9 +1,64 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:uuid/uuid.dart';
 
 import 'alp_tokens.dart';
 import 'domain.dart';
 import 'theme.dart';
+
+String _newId() => const Uuid().v4();
+
+String _loadFieldText(double? kg) {
+  if (kg == null) return '';
+  final tenths = kg * 10;
+  if (tenths == tenths.roundToDouble()) {
+    return (tenths.round() / 10).toStringAsFixed(1).replaceAll('.', ',');
+  }
+  var s = kg.toStringAsFixed(10);
+  if (s.contains('.')) {
+    s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+  return s.replaceAll('.', ',');
+}
+
+double? _savedLoad(_SetDraft s) {
+  if (s.timed) return s.storedLoad;
+  final text = s.load.text.trim();
+  if (text.isEmpty) return null;
+  if (s.storedLoad != null && text == _loadFieldText(s.storedLoad)) {
+    return s.storedLoad;
+  }
+  final parsed = _parseLoadText(s.load.text);
+  return parsed.bad ? null : parsed.value;
+}
+
+({int? value, bool bad}) _parseCount(String raw, {required bool timed}) {
+  final s = raw.trim();
+  if (s.isEmpty) return (value: null, bad: timed);
+  final v = int.tryParse(s);
+  if (v == null || (timed ? v <= 0 : v < 0)) return (value: null, bad: true);
+  return (value: v, bad: false);
+}
+
+({double? value, bool bad}) _parseLoadText(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return (value: null, bad: false);
+  if (RegExp(r'\s').hasMatch(s)) return (value: null, bad: true);
+  final String ascii;
+  if (RegExp(r'^\d{1,3}(?:\.\d{3})+,\d+$').hasMatch(s)) {
+    ascii = s.replaceAll('.', '').replaceAll(',', '.');
+  } else if (RegExp(r'^\d+,\d+$').hasMatch(s)) {
+    ascii = s.replaceAll(',', '.');
+  } else if (RegExp(r'^\d+\.\d+$').hasMatch(s) ||
+      RegExp(r'^\d+$').hasMatch(s)) {
+    ascii = s;
+  } else {
+    return (value: null, bad: true);
+  }
+  final v = double.tryParse(ascii);
+  if (v == null || !v.isFinite || v < 0) return (value: null, bad: true);
+  return (value: v, bad: false);
+}
 
 /// Create or edit a [WorkoutTemplate] (B23). Saving is atomic and bumps the
 /// version; a failed save keeps every field. Recorded sessions are untouched.
@@ -21,21 +76,30 @@ class OpenBandTemplateEditor extends StatefulWidget {
 
 class _ExerciseDraft {
   final String id, key;
+  final String note;
   final TextEditingController name;
   final List<_SetDraft> sets;
-  _ExerciseDraft(this.id, this.key, String label, this.sets)
+  _ExerciseDraft(this.id, this.key, String label, this.sets, {this.note = ''})
     : name = TextEditingController(text: label);
 }
 
 class _SetDraft {
   final String id;
   final bool timed;
+  final String type;
+  final int? restSec;
+  final double? storedLoad;
   final TextEditingController count, load;
-  _SetDraft(this.id, {required this.timed, int? count, double? load})
-    : count = TextEditingController(text: count?.toString() ?? ''),
-      load = TextEditingController(
-        text: load == null ? '' : obNumber(load, digits: 1),
-      );
+  _SetDraft(
+    this.id, {
+    required this.timed,
+    this.type = 'work',
+    this.restSec,
+    int? count,
+    double? load,
+  }) : storedLoad = load,
+       count = TextEditingController(text: count?.toString() ?? ''),
+       load = TextEditingController(text: _loadFieldText(load));
 }
 
 class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
@@ -49,37 +113,52 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
           _SetDraft(
             s.id,
             timed: s.seconds != null,
+            type: s.type,
+            restSec: s.restSec,
             count: s.seconds ?? s.reps,
             load: s.loadKg,
           ),
-      ]),
+      ], note: e.note),
   ];
-  late final String _id =
-      widget.template?.id ?? 'tpl-${DateTime.now().millisecondsSinceEpoch}';
+  late final String _id = widget.template?.id ?? _newId();
   bool _saving = false;
   String? _error;
-  int _seq = 0;
-
-  String _next(String prefix) =>
-      '$prefix-${DateTime.now().microsecondsSinceEpoch}-${_seq++}';
 
   void _addExercise({bool timed = false}) => setState(() {
-    final id = _next('ex');
     _exercises.add(
-      _ExerciseDraft(id, id, '', [
-        for (var i = 0; i < 3; i++) _SetDraft(_next('set'), timed: timed),
+      _ExerciseDraft(_newId(), _newId(), '', [
+        for (var i = 0; i < 3; i++)
+          _SetDraft(_newId(), timed: timed, restSec: 90),
       ]),
     );
   });
 
-  bool get _valid =>
-      _name.text.trim().isNotEmpty &&
-      _exercises.isNotEmpty &&
-      _exercises.every(
-        (e) => e.name.text.trim().isNotEmpty && e.sets.isNotEmpty,
-      );
+  void _addSet(_ExerciseDraft exercise) {
+    final last = exercise.sets.last;
+    exercise.sets.add(
+      _SetDraft(
+        _newId(),
+        timed: last.timed,
+        type: last.type,
+        restSec: last.restSec,
+      ),
+    );
+  }
+
+  bool get _valid {
+    if (_name.text.trim().isEmpty || _exercises.isEmpty) return false;
+    for (final e in _exercises) {
+      if (e.name.text.trim().isEmpty || e.sets.isEmpty) return false;
+      for (final s in e.sets) {
+        if (_parseCount(s.count.text, timed: s.timed).bad) return false;
+        if (!s.timed && _parseLoadText(s.load.text).bad) return false;
+      }
+    }
+    return true;
+  }
 
   Future<void> _save() async {
+    if (!_valid) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -94,21 +173,22 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
             for (final e in _exercises)
               PlannedExercise(
                 id: e.id,
-                exerciseKey: e.key == e.id
-                    ? e.name.text.trim().toLowerCase().replaceAll(
-                        RegExp(r'[^a-z0-9äöüß]+'),
-                        '_',
-                      )
-                    : e.key,
+                exerciseKey: e.key,
                 name: e.name.text.trim(),
+                note: e.note,
                 sets: [
                   for (final s in e.sets)
                     PlannedSet(
                       id: s.id,
-                      reps: s.timed ? null : int.tryParse(s.count.text),
-                      seconds: s.timed ? int.tryParse(s.count.text) : null,
-                      loadKg: double.tryParse(s.load.text.replaceAll(',', '.')),
-                      restSec: 90,
+                      type: s.type,
+                      reps: s.timed
+                          ? null
+                          : _parseCount(s.count.text, timed: false).value,
+                      seconds: s.timed
+                          ? _parseCount(s.count.text, timed: true).value
+                          : null,
+                      loadKg: _savedLoad(s),
+                      restSec: s.restSec,
                     ),
                 ],
               ),
@@ -121,7 +201,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _error = 'Speichern schlägt fehl. Alle Eingaben bleiben erhalten.';
+          _error = 'Speichern fehlgeschlagen.';
         });
       }
     }
@@ -230,6 +310,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                             Expanded(
                               child: TextField(
                                 controller: s.load,
+                                onChanged: (_) => setState(() {}),
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
@@ -241,6 +322,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                           Expanded(
                             child: TextField(
                               controller: s.count,
+                              onChanged: (_) => setState(() {}),
                               keyboardType: TextInputType.number,
                               textAlign: TextAlign.center,
                               decoration: deco(s.timed ? 'Sek.' : 'Wdh.'),
@@ -260,11 +342,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                         ],
                       ),
                     TextButton.icon(
-                      onPressed: () => setState(
-                        () => e.sets.add(
-                          _SetDraft(_next('set'), timed: e.sets.first.timed),
-                        ),
-                      ),
+                      onPressed: () => setState(() => _addSet(e)),
                       icon: const Icon(LucideIcons.plus, size: 16),
                       label: const Text('Satz hinzufügen'),
                     ),
