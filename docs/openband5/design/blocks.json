@@ -48,8 +48,8 @@
     "3IXY-0": "A02 Nachtverlauf · HRV fehlt",
     "3IZO-0": "A02 Nachtverlauf · Dunkel",
     "3J78-0": "A02 Nachtverlauf · wenige Werte",
-    "3KWY-0": "A08 Alarm · bestätigt",
-    "3KZR-0": "A08 Alarm · Dunkel",
+    "3KWY-0": "A08 Alarm · Im Band gespeichert",
+    "3KZR-0": "A08 Alarm · Im Band gespeichert · Dunkel",
     "3L1Y-0": "A08 Alarm · Bestätigung offen",
     "3L45-0": "A08 Alarm · nicht verbunden",
     "3L6C-0": "A08 Alarm · kein gespeicherter Termin",
@@ -86,7 +86,11 @@
     "3MZ0-0": "A08 Mitteilungen · Anwenden fehlgeschlagen",
     "3N2G-0": "A08 Mitteilungen · Anwenden fehlgeschlagen · Dunkel",
     "3NJF-0": "A08 Mitteilungen · Ruhezeit wählen",
-    "3NNQ-0": "A08 Mitteilungen · Ruhezeit wählen · Dunkel"
+    "3NNQ-0": "A08 Mitteilungen · Ruhezeit wählen · Dunkel",
+    "3M0X-0": "A08 Alarm · Ausschalten offen",
+    "3M4Y-0": "A08 Alarm · Ausschalten offen · Dunkel",
+    "3M2W-0": "A08 Alarm · Alarmplätze ausgelesen",
+    "3M6Z-0": "A08 Alarm · Alarmplätze ausgelesen · Dunkel"
   },
   "blocks": [
     {

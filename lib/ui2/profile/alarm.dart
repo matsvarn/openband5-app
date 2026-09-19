@@ -6,10 +6,11 @@
 // phone being out of range entirely.
 //
 // The honesty problem is confirmation. Writing SET_ALARM to the band is not
-// evidence that the band latched it; the strap says so separately, by emitting
-// event 56, and it might never arrive. And after a relaunch there is no live
-// confirmation at all — only the epoch we wrote down. The hero says which of
-// those it is rather than drawing a confident tick over all three.
+// evidence that the band latched this arm. Events 56/59 are uncorrelated
+// history, not current-request proof, even when received after a write. The
+// hero shows pending/unknown unless a current correlated GET matches the
+// exact stored seconds. This is stored configuration, never a firing promise;
+// restart cannot restore readback evidence.
 //
 // A single next-occurrence time picker used to live here. It is gone: the
 // weekly schedule below is now the ONLY thing that arms the band (AppState
@@ -19,32 +20,44 @@
 // The time above is [armedAt] only — the schedule cannot invent it.
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../openband/time_picker.dart';
 import '../../state/alarm_schedule.dart';
+import '../../ble/ble_state.dart' show AlarmReadbackState;
 import '../../state/app_state.dart';
 
-/// What we actually know about the armed alarm.
+/// What we actually know about the armed alarm — and about turning it off.
 enum AlarmArmState {
-  /// Nothing armed.
+  /// Current correlated GET matches this SET's whole-second stored target.
+  storedSeconds,
+
+  /// Current gen5 GET coverage says all six requested slots are inactive.
+  allSlotsInactive,
+
+  /// Nothing armed. Never armed, or a previous off that is not live knowledge.
   none,
 
-  /// Written to the band; its confirmation event may still be in flight.
+  /// Written to the band and inside the initial grace window, not confirmed.
+  /// Historical lifecycle events cannot establish the current arm.
   pending,
 
-  /// The band emitted ALARM_SET — it latched.
-  confirmed,
-
-  /// Armed, but unconfirmed: either the band never acknowledged the write, or
-  /// this is an alarm from a previous run of the app and there is no live
-  /// confirmation to read. Both mean the same thing to the user — we cannot
-  /// promise it will fire — so they share one state rather than being dressed
-  /// up as two.
+  /// A target was written, but no current GET proves its wall-time mapping
+  /// and stored seconds (including after restart). Not proof of a failed SET.
+  /// Even storedSeconds is not a promise that the alarm will fire.
   unknown,
+
+  /// DISABLE left the phone; band-off remains unconfirmed.
+  offPending,
+
+  /// Desired-off without evidence of a DISABLE write.
+  offUnknown,
 }
 
 class AlarmScreen extends StatelessWidget {
@@ -54,17 +67,27 @@ class AlarmScreen extends StatelessWidget {
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
     final epoch = app.alarmEpoch;
+    final state = () {
+      if (app.alarmReadbackState == AlarmReadbackState.allSlotsInactive) {
+        return AlarmArmState.allSlotsInactive;
+      }
+      if (app.alarmReadbackState == AlarmReadbackState.storedSeconds) {
+        return AlarmArmState.storedSeconds;
+      }
+      if (app.alarmDisableOutstanding) {
+        return app.alarmDisableWritten
+            ? AlarmArmState.offPending
+            : AlarmArmState.offUnknown;
+      }
+      if (epoch == null) return AlarmArmState.none;
+      if (app.alarmPending) return AlarmArmState.pending;
+      return AlarmArmState.unknown;
+    }();
     return AlarmScreenView(
       armedAt: epoch == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(epoch * 1000),
-      state: epoch == null
-          ? AlarmArmState.none
-          : app.alarmConfirmed
-              ? AlarmArmState.confirmed
-              : app.alarmPending
-                  ? AlarmArmState.pending
-                  : AlarmArmState.unknown,
+      state: state,
       connected: app.isConnected,
       schedule: app.alarmSchedule,
       onToggleDay: (weekday, enabled) =>
@@ -115,14 +138,17 @@ class AlarmScreenView extends StatefulWidget {
     this.synthetic = false,
   });
 
-  // Kept context-free and @visibleForTesting: the arm-state contract this
-  // guards ("only `confirmed` may claim it") is tested without a widget tree.
+  // Kept context-free and @visibleForTesting: typed GET evidence describes
+  // stored configuration, never an unqualified promise that the alarm fires.
   @visibleForTesting
   static String stateLabel(AlarmArmState s) => switch (s) {
-        AlarmArmState.confirmed => 'Confirmed',
+        AlarmArmState.storedSeconds => 'Stored on band',
+        AlarmArmState.allSlotsInactive => 'Slots inactive',
         AlarmArmState.pending => 'Waiting',
         AlarmArmState.unknown => 'Not confirmed',
         AlarmArmState.none => 'Not set',
+        AlarmArmState.offPending => 'Waiting',
+        AlarmArmState.offUnknown => 'Not confirmed',
       };
 
   /// Civil-day count from [from]'s calendar date to [to]'s. Local midnight
@@ -155,9 +181,23 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
 
   bool get _canWrite => widget.connected && !_busy;
 
-  /// No epoch is always off, even if a stale [AlarmArmState] is still set.
-  AlarmArmState get _latch =>
-      widget.armedAt == null ? AlarmArmState.none : widget.state;
+  /// No epoch means no observed arm for SET states. Disable pending/unknown
+  /// keep the last instant; uncorrelated history cannot establish band-off.
+  AlarmArmState get _latch {
+    switch (widget.state) {
+      case AlarmArmState.allSlotsInactive:
+      case AlarmArmState.offPending:
+      case AlarmArmState.offUnknown:
+        return widget.state;
+      default:
+        return widget.armedAt == null ? AlarmArmState.none : widget.state;
+    }
+  }
+
+  bool get _isDisableLatch =>
+      _latch == AlarmArmState.offPending ||
+      _latch == AlarmArmState.offUnknown ||
+      _latch == AlarmArmState.allSlotsInactive;
 
   @override
   Widget build(BuildContext c) {
@@ -165,9 +205,12 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     final l = AppLocalizations.of(c);
     final at = widget.armedAt;
     final anyDayEnabled = widget.schedule.any((d) => d.enabled);
-    final showTest = widget.onTest != null && at != null;
-    final showCancel =
-        widget.onCancel != null && (at != null || anyDayEnabled);
+    final showTest =
+        widget.onTest != null && at != null && !_isDisableLatch;
+    final retryDisable = _latch == AlarmArmState.offPending ||
+        _latch == AlarmArmState.offUnknown;
+    final showCancel = widget.onCancel != null &&
+        (retryDisable || (!_isDisableLatch && (at != null || anyDayEnabled)));
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
@@ -204,9 +247,13 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                 ],
                 if (widget.synthetic) ...[
                   const SizedBox(height: 12),
-                  Text(
-                    'Synthetische Daten',
-                    style: p.text(12, color: p.muted),
+                  SizedBox(
+                    width: double.infinity,
+                    child: Text(
+                      'Synthetische Daten',
+                      textAlign: TextAlign.center,
+                      style: p.text(12, color: p.muted),
+                    ),
                   ),
                 ],
               ],
@@ -218,40 +265,70 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   }
 
   Widget _hero(BuildContext c, OB p, DateTime? at) {
-    final date = at == null ? _nextAlarmLabel(c) : _dateLabel(c, at);
-    final relative = at == null
+    final showLast = (_latch == AlarmArmState.offPending ||
+            _latch == AlarmArmState.offUnknown) &&
+        at != null;
+    final blankTime = at == null || _latch == AlarmArmState.allSlotsInactive;
+    final date = showLast
+        ? _lastArmedLabel(c)
+        : blankTime
+            ? _nextAlarmLabel(c)
+            : _dateLabel(c, at);
+    final relative = blankTime || showLast
         ? null
-        : AlarmScreenView.whichDay(at, widget.now ?? DateTime.now(), AppLocalizations.of(c));
+        : AlarmScreenView.whichDay(
+            at,
+            widget.now ?? DateTime.now(),
+            AppLocalizations.of(c),
+          );
     return OBCard(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(AlpSpace.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: AlpSpace.s4,
         children: [
           Text(
             date,
             semanticsLabel: relative == null ? date : '$date. $relative',
-            style: p.text(13, color: p.muted),
+            style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
           ),
           Text(
-            at == null ? '—' : _hhmm(at),
+            blankTime ? '—' : _hhmm(at),
             key: const ValueKey('alarm-hero-time'),
             style: p
                 .text(48, weight: FontWeight.w700, display: true)
-                .copyWith(height: 56 / 48),
+                .copyWith(height: 56 / 48, letterSpacing: -0.04 * 48),
           ),
-          Text(
-            _latchLabel(c),
-            key: const ValueKey('alarm-hero-status'),
-            style: p.text(13, color: p.muted),
-          ),
+          _statusLine(c, p),
           if (!widget.connected)
             Text(
               _offlineLabel(c),
               key: const ValueKey('alarm-hero-connection'),
-              style: p.text(13, color: p.muted),
+              style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _statusLine(BuildContext c, OB p) {
+    final stored = _latch == AlarmArmState.storedSeconds;
+    return Row(
+      children: [
+        if (stored) ...[
+          ExcludeSemantics(
+            child: Icon(LucideIcons.circleCheck, size: 14, color: p.ink),
+          ),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            _latchLabel(c),
+            key: const ValueKey('alarm-hero-status'),
+            style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
+          ),
+        ),
+      ],
     );
   }
 
@@ -330,7 +407,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
       return Row(
         children: [
           Expanded(child: test),
-          const SizedBox(width: 12),
+          const SizedBox(width: AlpSpace.s8),
           Expanded(child: cancel),
         ],
       );
@@ -399,12 +476,12 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
 
   List<String> _infoBody(BuildContext c) {
     final confirmation = switch (_latch) {
-      AlarmArmState.confirmed => _s(
-          c,
-          'Das Band hat diesen Alarm bestätigt.',
-          'The band confirmed this alarm.',
-          l10n: (l) => l.alarmDetailConfirmed,
-        ),
+      AlarmArmState.storedSeconds => _s(c,
+          'Die gespeicherte Zeit wurde in ganzen Sekunden aus dem Band gelesen. Das ist nur die Konfiguration, keine Zusage, dass der Alarm auslöst oder vibriert.',
+          'The stored time was read from the band to whole-second precision. This is configuration readback, not a promise the alarm will fire or vibrate.'),
+      AlarmArmState.allSlotsInactive => _s(c,
+          'Alle sechs Alarmplätze wurden in dieser Verbindung als inaktiv ausgelesen.',
+          'All six alarm slots were read as inactive in this connection.'),
       AlarmArmState.pending => _s(
           c,
           'Der Alarm wurde gesendet. Die Bestätigung steht noch aus.',
@@ -416,6 +493,16 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
           'Zu diesem gespeicherten Termin liegt keine aktuelle Bestätigung vor.',
           'There is no current confirmation for this stored time.',
           l10n: (l) => l.alarmDetailUnknown,
+        ),
+      AlarmArmState.offPending => _s(
+          c,
+          'Ausschalten wurde gesendet. Die Bestätigung steht noch aus.',
+          'Turn-off was sent. Confirmation is still outstanding.',
+        ),
+      AlarmArmState.offUnknown => _s(
+          c,
+          'Ob das Band den Alarm ausgeschaltet hat, ist nicht bestätigt.',
+          'Whether the band switched the alarm off is not confirmed.',
         ),
       AlarmArmState.none => null,
     };
@@ -436,16 +523,17 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   }
 
   String _latchLabel(BuildContext c) => switch (_latch) {
-        AlarmArmState.confirmed => _confirmedLabel(c),
+        AlarmArmState.storedSeconds => _s(c, 'Im Band gespeichert', 'Stored on band'),
+        AlarmArmState.allSlotsInactive => _s(c, 'Alarmplätze im Band aus', 'Band alarm slots off'),
         AlarmArmState.pending || AlarmArmState.unknown => _pendingLabel(c),
+        AlarmArmState.offPending || AlarmArmState.offUnknown =>
+          _disablePendingLabel(c),
         AlarmArmState.none => _offLabel(c),
       };
 
   String _dateLabel(BuildContext c, DateTime at) {
-    final weekday = _weekdayLabel(c, at.weekday - 1);
-    final dd = at.day.toString().padLeft(2, '0');
-    final mm = at.month.toString().padLeft(2, '0');
-    return '$weekday $dd.$mm.';
+    final locale = Localizations.localeOf(c).languageCode;
+    return DateFormat.MMMMEEEEd(locale).format(at);
   }
 
   static String _hhmm(DateTime d) => _hhmmOf(d.hour, d.minute);
@@ -483,13 +571,6 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   String _onLabel(BuildContext c) =>
       AppLocalizations.of(c)?.stateOn ?? 'An';
 
-  String _confirmedLabel(BuildContext c) => _s(
-        c,
-        'Am Band bestätigt',
-        'Confirmed on the band',
-        l10n: (l) => l.alarmHeadlineConfirmed,
-      );
-
   String _pendingLabel(BuildContext c) => _s(
         c,
         'Bestätigung offen',
@@ -513,11 +594,29 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         l10n: (l) => l.alarmHeadlineNone,
       );
 
-  String _cancelLabel(BuildContext c) => _s(
+  String _cancelLabel(BuildContext c) {
+    if (_latch == AlarmArmState.offPending ||
+        _latch == AlarmArmState.offUnknown) {
+      return _s(c, 'Erneut ausschalten', 'Turn off again');
+    }
+    return _s(
+      c,
+      'Ausschalten',
+      'Turn off',
+      l10n: (l) => l.alarmCancelTheAlarm,
+    );
+  }
+
+  String _lastArmedLabel(BuildContext c) => _s(
         c,
-        'Ausschalten',
-        'Turn off',
-        l10n: (l) => l.alarmCancelTheAlarm,
+        'Letzter gestellter Alarm',
+        'Last set alarm',
+      );
+
+  String _disablePendingLabel(BuildContext c) => _s(
+        c,
+        'Ausschalten offen',
+        'Turn-off pending',
       );
 
   String _closeLabel(BuildContext c) => _s(c, 'Schließen', 'Close');

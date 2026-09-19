@@ -40,7 +40,7 @@ import '../ble/live_cadence.dart';
 import '../ble/polar_pmd_link.dart';
 import '../ble/live_step_runs.dart';
 import '../ble/ble_state.dart'
-    show AlarmConfirmation, AlarmEffect, SyncActivityWindow;
+    show AlarmConfirmation, AlarmDisableOutcome, AlarmEffect, AlarmReadbackState, SyncActivityWindow;
 import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
@@ -57,6 +57,7 @@ import '../stress/breath_phases.dart';
 // `runBackupIfDue` is also the name of the AppState method below, so the pure
 // scheduler is imported under an alias rather than shadowed by it.
 import '../data/auto_backup.dart' as backup show runBackupIfDue;
+import 'alarm_cancel.dart';
 import 'alarm_schedule.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
@@ -1480,11 +1481,26 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   void debugTickWorkout() => _tickWorkout();
 
-  /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 cleared)
+  /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 uncertain)
   /// without going through the BLE event path. Tests only.
   @visibleForTesting
-  void debugHandleAlarmEvent(int id) =>
-      _handleAlarmEvent(id, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+  void debugHandleAlarmEvent(int id, {int? ts}) =>
+      _handleAlarmEvent(
+        id,
+        ts ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
+
+  /// Re-read alarm prefs into the confirmation machine. Tests only — production
+  /// [_initSteps] already does this; [AppState.forTesting] skips init.
+  @visibleForTesting
+  Future<void> debugRestoreAlarmFromPrefs() => _restoreAlarmFromPrefs();
+
+  @visibleForTesting
+  Future<void> debugArmNextAlarmOccurrence() => _armNextAlarmOccurrence();
+
+  @visibleForTesting
+  Future<void> debugOnAlarmGraceElapsed(DateTime when) =>
+      _onAlarmGraceElapsed(when);
 
   /// Feed one `DeviceState` through [_onEngineState] for [deviceId], exactly
   /// as `BleEngine`'s `onState` callback does. Tests only — lets a test drive
@@ -2469,23 +2485,8 @@ class AppState extends ChangeNotifier {
     // policies already trust).
     _lastRecTs = await LocalDb.getCursorInt('rec_ts_hw') ?? lastSynced?.tsEpoch;
     await LocalDb.refreshComputeFreshness();
-    final alarmPrefs = await SharedPreferences.getInstance();
-    _savedAlarm = alarmPrefs.getInt('alarm_epoch');
-    // Seed the confirmation machine from what the last session (foreground OR
-    // headless — background_sync.dart writes the same two keys) actually
-    // learned, so a relaunch doesn't forget a confirmed headless arm and
-    // wrongly read it as unconfirmed, nor trust an arm that never confirmed.
-    // `setAtMs` is stamped as "now" rather than the true original arm time —
-    // ponytail: harmless imprecision (worst case a few extra seconds of
-    // "pending" after launch before an unconfirmed arm shows its warning),
-    // add real persistence of setAtMs if that grace window ever needs to be
-    // exact across relaunches.
-    if (_savedAlarm != null) {
-      _alarm.set(_savedAlarm!, DateTime.now().millisecondsSinceEpoch);
-      _alarm.confirmed = alarmPrefs.getBool('alarm_epoch_confirmed') ?? false;
-    }
+    await _restoreAlarmFromPrefs();
     await _loadAlarmSchedule();
-    await _seedAlarmScheduleFromLegacyIfNeeded();
     // Band-gesture mapping: load the saved action + query native capabilities so the
     // settings UI knows what this platform supports. Best-effort, non-blocking.
     unawaited(gestureSettings.bootstrap());
@@ -4535,9 +4536,46 @@ class AppState extends ChangeNotifier {
   }
 
   int? _savedAlarm;
+  AlarmIntent? _alarmIntent;
+
+  Future<void> _restoreAlarmFromPrefs() async {
+    final rows = await LocalDb.alarmScheduleRows();
+    await AlarmOwner.initialize([
+      for (final row in rows) AlarmScheduleEntry.fromRow(row),
+    ]);
+    await _refreshAlarmIntent();
+  }
+
+  Future<void> _refreshAlarmIntent() async {
+    final intent = await AlarmOwner.load();
+    if (_disposed) return;
+    final changed = _alarmIntent?.generation != intent.generation ||
+        _savedAlarm != intent.armedEpoch;
+    _alarmIntent = intent;
+    _savedAlarm = intent.armedEpoch;
+    device.alarmEpoch = intent.armedEpoch;
+    _schedule = fillDefaultAlarmSchedule(intent.schedule);
+    if (changed) {
+      _alarm.disable();
+      // Only a written epoch starts the pending observation. A desired target
+      // alone is not an arm, and history event 56 cannot upgrade either one.
+      if (_savedAlarm != null) {
+        _alarm.set(_savedAlarm!, DateTime.now().millisecondsSinceEpoch);
+      }
+    }
+    _alarm.confirmed = intent.confirmed;
+    if (intent.generation > 0 && intent.next(DateTime.now()) == null) {
+      _alarm.requestDisable(DateTime.now().millisecondsSinceEpoch);
+      if (intent.disableWritten) _alarm.markDisableWritten();
+      _alarmGraceTimer?.cancel();
+    } else if (changed && _savedAlarm != null) {
+      _armAlarmGraceTimer(DateTime.fromMillisecondsSinceEpoch(_savedAlarm! * 1000));
+    }
+    notifyListeners();
+  }
 
   // ── weekly alarm schedule (replaces a single next-occurrence value) ────────
-  // The 7-day schedule lives in `alarm_schedule` (lib/data/db.dart); this cache
+  // The 7-day schedule lives in AlarmOwner's atomic desired record; this cache
   // is always exactly 7 entries (see fillDefaultAlarmSchedule) so the UI can
   // render every weekday row unconditionally, and [_armNextAlarmOccurrence]
   // never has to special-case a weekday nobody has touched.
@@ -4546,35 +4584,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> _loadAlarmSchedule() async {
     try {
-      final rows = await LocalDb.alarmScheduleRows();
-      _schedule = fillDefaultAlarmSchedule([
-        for (final r in rows) AlarmScheduleEntry.fromRow(r),
-      ]);
+      await _refreshAlarmIntent();
     } catch (e) {
       _log('[alarm] schedule load failed: $e');
-    }
-  }
-
-  /// One-time 49→50 seed: a legacy single-alarm value with nothing yet in
-  /// `alarm_schedule` becomes that weekday's slot. Safe to call on every
-  /// launch — it is a no-op the moment ANY row exists, including a schedule
-  /// the user has since cleared via Cancel-all, which must stay cleared
-  /// rather than resurrect the old value.
-  Future<void> _seedAlarmScheduleFromLegacyIfNeeded() async {
-    try {
-      if (_savedAlarm == null) return;
-      final rows = await LocalDb.alarmScheduleRows();
-      if (rows.isNotEmpty) return;
-      final seed = seedEntryFromLegacyEpoch(_savedAlarm!);
-      await LocalDb.setAlarmScheduleDay(
-        weekday: seed.weekday,
-        hour: seed.hour,
-        minute: seed.minute,
-        enabled: seed.enabled,
-      );
-      await _loadAlarmSchedule();
-    } catch (e) {
-      _log('[alarm] legacy schedule seed failed: $e');
     }
   }
 
@@ -4597,14 +4609,16 @@ class AppState extends ChangeNotifier {
       ),
     );
     final next = current.copyWith(hour: hour, minute: minute, enabled: enabled);
-    await LocalDb.setAlarmScheduleDay(
-      weekday: next.weekday,
-      hour: next.hour,
-      minute: next.minute,
-      enabled: next.enabled,
-    );
-    await _loadAlarmSchedule();
-    notifyListeners();
+    // Capture the edit synchronously; rapid edits build on the desired UI
+    // snapshot, not a delayed DB read. The JSON schedule is authoritative.
+    _schedule = [for (final e in _schedule) e.weekday == weekday ? next : e];
+    try {
+      await AlarmOwner.choose(AlarmDesired.weekly, schedule: _schedule);
+    } catch (_) {
+      await _refreshAlarmIntent();
+      rethrow;
+    }
+    await _refreshAlarmIntent();
     if (isConnected) await _armNextAlarmOccurrence();
   }
 
@@ -4619,39 +4633,14 @@ class AppState extends ChangeNotifier {
   Future<void> _armNextAlarmOccurrence() async {
     if (!isConnected) return;
     try {
-      // A headless re-arm (background_sync.dart) can have rewritten
-      // `alarm_epoch`/`alarm_epoch_confirmed` under this same live process
-      // since init() last read them — refresh from the shared store before
-      // comparing, or a stale in-memory `_savedAlarm` makes this issue a
-      // needless duplicate setAlarm write on every connect.
-      final prefs = await SharedPreferences.getInstance();
-      final onDisk = prefs.getInt('alarm_epoch');
-      if (onDisk != _savedAlarm) {
-        _savedAlarm = onDisk;
-        if (onDisk != null) {
-          _alarm.set(onDisk, DateTime.now().millisecondsSinceEpoch);
-          _alarm.confirmed = prefs.getBool('alarm_epoch_confirmed') ?? false;
-        } else {
-          _alarm.disable();
-        }
-      }
-      final result = await armNextScheduledOccurrence(
-        engine: engine,
-        schedule: _schedule,
-        currentArmedEpoch: _savedAlarm ?? device.alarmEpoch,
-      );
-      if (result.disabled) {
-        // Every weekday got disabled since the last arm — the strap doesn't
-        // give up its old alarm on its own (PR #329 review).
-        _clearArmedAlarmState();
-        notifyListeners();
-        return;
-      }
-      final epoch = result.epoch;
-      if (epoch == null) return;
-      await _onArmed(DateTime.fromMillisecondsSinceEpoch(epoch * 1000), epoch);
+      final rows = await LocalDb.alarmScheduleRows();
+      await AlarmOwner.initialize([
+        for (final row in rows) AlarmScheduleEntry.fromRow(row),
+      ]);
+      await AlarmOwner.reconcile(engine);
+      await _refreshAlarmIntent();
     } catch (e) {
-      _log('[alarm] weekly-schedule arm failed: $e');
+      _log('[alarm] reconcile failed: $e');
     }
   }
 
@@ -4665,86 +4654,57 @@ class AppState extends ChangeNotifier {
   /// a wake alarm armed tonight for tomorrow morning still counts, unlike a
   /// same-calendar-date check would (see PR #329).
   bool get _alarmArmedTonight {
+    if (_alarm.isDisableOutstanding) return false;
     final epoch = alarmEpoch;
     if (!alarmArmsTonight(epoch, DateTime.now())) return false;
-    // The window match alone isn't enough — an epoch that was WRITTEN but
-    // never actually latched (headless failure, or the write is still inside
-    // its grace window with no confirmation yet) must not suppress the 7pm
-    // check; that gap is exactly what this check exists to catch (CodeRabbit
-    // review, PR #329).
+    // The stored whole-second readback or the brief write grace suppresses
+    // this reminder. Historical latch events do not establish current proof.
     if (_alarm.targetEpoch != epoch) return false;
-    return _alarm.confirmed ||
+    return alarmReadbackState == AlarmReadbackState.storedSeconds ||
         _alarm.isPending(DateTime.now().millisecondsSinceEpoch);
   }
 
   // ── alarm confirmation state machine ────────────────────────────────────────
-  // The strap CONFIRMS an alarm actually latched via event 56 (ALARM_SET) and
-  // reports firing via 57/58 (+60). This replaces the parked GET_ALARM readback
-  // as display truth: we no longer guess from an unconfirmed readback — we know.
-  // The transitions live in the pure, unit-testable [AlarmConfirmation]; AppState
-  // just wires the strap event stream + persistence + the fired notification.
+  // Events 56/57/58/59 describe historical alarm lifecycle, not the current
+  // request. No sequence/target correlation reaches this callback. Keep the
+  // written target and desired intent, but never promote 56 to current proof.
   final AlarmConfirmation _alarm = AlarmConfirmation();
   Timer? _alarmGraceTimer;
-  // Event 56 is a one-shot BLE notification — if that single packet gets
-  // dropped by an ordinary momentary disconnect right after the write (the
-  // band DID latch the alarm), there is no retry/re-poll for it and the
-  // GET_ALARM readback fallback is parked (unconfirmed format), so the app had
-  // no way to ever clear the "unconfirmed" warning short of the user
-  // re-sending the whole alarm. One silent, automatic re-arm covers that
-  // common case; only a still-unconfirmed retry falls through to the warning.
-  bool _alarmAutoRetried = false;
 
-  /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
+  /// Legacy unqualified latch confirmation stays false. Use the typed current
+  /// readback for stored configuration; history 56 cannot establish either.
   bool get alarmConfirmed => _alarm.confirmed;
+
+  AlarmReadbackState get alarmReadbackState {
+    if (!isConnected) return AlarmReadbackState.unknown;
+    final proof = AlarmOwner.readbackFor(engine, _alarmIntent?.generation);
+    if (proof.state == AlarmReadbackState.storedSeconds && proof.wallEpoch != alarmEpoch) {
+      return AlarmReadbackState.unknown;
+    }
+    return proof.state;
+  }
 
   /// A SET was written but not yet confirmed, still inside the grace window —
   /// the UI shows a neutral "Setting alarm…" state.
   bool get alarmPending =>
       _alarm.isPending(DateTime.now().millisecondsSinceEpoch);
 
+  /// Durable desired-off remains outstanding independently of ephemeral GET
+  /// coverage. Consult alarmReadbackState for current all-slot inactivity.
+  bool get alarmDisableOutstanding => _alarm.isDisableOutstanding;
+
+  /// A DISABLE write left the phone (ACK or no reply), possibly before restart.
+  bool get alarmDisableWritten => _alarm.disableWritten;
+
   Future<void> setAlarm(DateTime when) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
-    // Pass the DateTime through so the engine computes REAL sub-seconds for the
-    // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
-    // engine owns the exact on-wire layout). Persist the wall instant the
-    // engine reports armed (null = write never reached the band).
-    final armed = await engine.setAlarm(when);
-    if (armed == null) {
-      // Do NOT persist or start the confirmation machine, or we'd strand a
-      // phantom alarm "waiting for the strap to confirm" that can never fire.
-      // Null now covers two cases: the write never left the phone, and the
-      // strap answered and REFUSED the alarm. Both mean the band holds no alarm, so both
-      // must stay out of persistence; the engine log says which one it was.
-      _log('[alarm] the band did not take the alarm — not persisting.');
-      // Neutral on purpose: null covers both a write that never left the
-      // phone and an explicit refusal — the engine log says which.
-      throw Exception('Alarm not set');
-    }
-    await _onArmed(armed, armed.millisecondsSinceEpoch ~/ 1000);
+    await AlarmOwner.choose(AlarmDesired.manual, when: when);
+    await _refreshAlarmIntent();
+    if (!isConnected) return;
+    await AlarmOwner.reconcile(engine);
+    await _refreshAlarmIntent();
   }
 
-  /// Shared bookkeeping for anything that just armed the band: optimistic
-  /// display, the confirmation machine, the persisted epoch, and the grace
-  /// timer. [setAlarm] (an explicit write) and [_armNextAlarmOccurrence] (the
-  /// schedule engine) both funnel through here so the two can never drift
-  /// apart on what "armed" means.
-  Future<void> _onArmed(DateTime when, int epoch) async {
-    _savedAlarm = epoch;
-    device.alarmEpoch = epoch; // optimistic display
-    _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch); // await event 56
-    _alarmAutoRetried = false; // a fresh arm gets its one retry
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('alarm_epoch', epoch);
-    // Not confirmed yet — event 56 (below, in _handleAlarmEvent) flips this.
-    await prefs.setBool('alarm_epoch_confirmed', false);
-    // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-    // its soft warning even if no event ever arrives.
-    _armAlarmGraceTimer(when);
-    notifyListeners();
-  }
-
-  /// (Re)arm the "grace window elapsed" timer. One helper so the grace
-  /// duration and the retry wiring can't drift between the two call sites.
+  /// (Re)arm the presentation-only grace timer; this never retries SET.
   void _armAlarmGraceTimer(DateTime when) {
     _alarmGraceTimer?.cancel();
     _alarmGraceTimer = Timer(
@@ -4753,80 +4713,12 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Grace window elapsed with no event 56. Before showing the soft warning,
-  /// try ONE silent re-arm — if the strap really did latch it and only the
-  /// confirmation notification was dropped, this re-send gives it a second
-  /// chance to confirm without the user having to notice or do anything.
+  /// Readback unknown is not a failed latch. Expiring the presentation grace
+  /// window never re-sends SET and never emits a failure notification. Normal
+  /// reconcile can retry GET without rewriting the same desired target.
   Future<void> _onAlarmGraceElapsed(DateTime when) async {
-    if (_disposed || _alarm.confirmed) return;
-    final epoch = when.millisecondsSinceEpoch ~/ 1000;
-    // A newer alarm was armed while this timer was pending — that set owns the
-    // confirmation machine now; retrying the stale time would clobber it.
-    if (_savedAlarm != epoch) return;
-    if (_alarmAutoRetried || !isConnected) {
-      notifyListeners();
-      unawaited(_notifyAlarmLatchFailed(epoch));
-      return;
-    }
-    _alarmAutoRetried = true;
-    var rearmed = false;
-    try {
-      // gen5 made setAlarm return the armed instant (null = the write never
-      // reached the band) where it used to return a bool. Same signal, so the
-      // retry bookkeeping below is unchanged.
-      rearmed = await engine.setAlarm(when) != null;
-    } catch (e) {
-      _log('[alarm] auto-retry re-arm failed: $e');
-    }
-    // The write itself never landed, so the one retry was not actually spent —
-    // give it back rather than latching this alarm out of any future retry.
-    if (!rearmed) _alarmAutoRetried = false;
-    // dispose() ran while the write was in flight — do NOT create a timer it
-    // no longer has any chance to cancel (it would keep poking a torn-down
-    // engine on every fire).
-    if (_disposed) return;
-    // Re-check staleness after the await for the same reason as above.
-    if (rearmed && _savedAlarm == epoch && !_alarm.confirmed) {
-      _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch);
-      _armAlarmGraceTimer(when);
-      return;
-    }
+    if (_disposed || _savedAlarm != when.millisecondsSinceEpoch ~/ 1000) return;
     notifyListeners();
-    unawaited(_notifyAlarmLatchFailed(epoch));
-  }
-
-  /// The "alarm not confirmed" safety notification (Feature 2.1): fires once
-  /// per armed epoch, only once every retry this grace window can offer is
-  /// exhausted and the strap still never confirmed. Respects its own toggle
-  /// (default ON). Category device + critical priority rides the same
-  /// quiet-hours exemption as the band's other own-failure alerts (flat
-  /// battery, gone quiet) — a wake alarm that silently didn't latch is
-  /// exactly the kind of thing quiet hours must not swallow.
-  Future<void> _notifyAlarmLatchFailed(int epoch) async {
-    try {
-      final prefs = await NotificationPrefs.load();
-      if (!alarmLatchFailed(
-        _alarm,
-        epoch,
-        enabled: prefs.alarmLatchFailedEnabled,
-      )) {
-        return;
-      }
-      await NotificationCenter.instance.emit(
-        NotificationEvent(
-          dedupeKey: 'alarm_latch_failed:$epoch',
-          category: NotifCategory.device,
-          priority: NotifPriority.critical,
-          title: 'Alarm not confirmed',
-          body: 'The band did not confirm this alarm — check the strap.',
-          date: todayLabel(),
-          route: kRouteAlarm,
-          osId: NotificationService.idAlarmLatchFailed,
-        ),
-      );
-    } catch (e) {
-      _log('[alarm] latch-failure notification skipped: $e');
-    }
   }
 
   /// Fire the strap's alarm haptics immediately — a "test buzz" so the user can
@@ -4853,49 +4745,39 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The UI's "Cancel-all": DISABLE_ALARM on the band, and clear the whole
-  /// weekly schedule — not just the currently-armed instant — so nothing left
-  /// in `alarm_schedule` can silently re-arm this on the next connect/sync.
+  /// Cancel is durable even offline / on radio rejection. The desired empty
+  /// schedule and off intent are one atomic record; old DB rows are inert.
   Future<void> disableAlarm() async {
-    if (!isConnected) throw Exception('Connect to your strap first');
-    await engine.disableAlarm();
-    _savedAlarm = null;
-    device.alarmEpoch = null;
-    _alarm.disable();
     _alarmGraceTimer?.cancel();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('alarm_epoch');
-    await prefs.remove('alarm_epoch_confirmed');
-    await LocalDb.clearAlarmSchedule();
-    _schedule = fillDefaultAlarmSchedule(const []);
-    notifyListeners();
+    await AlarmOwner.choose(AlarmDesired.off);
+    await _refreshAlarmIntent();
+    if (!isConnected) return;
+    final outcome = await AlarmOwner.reconcile(engine);
+    await _refreshAlarmIntent();
+    if ((outcome == AlarmDisableOutcome.writeFailed ||
+        outcome == AlarmDisableOutcome.rejected) &&
+        alarmReadbackState != AlarmReadbackState.allSlotsInactive) {
+      throw Exception('Alarm not disabled');
+    }
   }
 
-  /// Retained name for the UI's "clear alarm" affordance — delegates to
-  /// [disableAlarm] (the DISABLE_ALARM opcode).
   Future<void> clearAlarm() => disableAlarm();
 
-  /// Strap alarm-lifecycle events (56 set / 57–58 fired / 59 disabled). This is
-  /// the authoritative confirmation the SET write actually took. The edge DOES see
-  /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
-  /// machine matches the raw ids so it stays dependency-free.
+  /// Historical alarm lifecycle (56 set / 57–58 fired / 59 disabled).
+  /// These callbacks lack current-request correlation even when processed
+  /// immediately; never use arrival order as proof of the current arm.
   void _handleAlarmEvent(int id, int ts) {
-    final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch);
+    final intent = _alarmIntent;
+    if (intent == null) return;
+    final effect = _alarm.onEvent(
+      id,
+      DateTime.now().millisecondsSinceEpoch,
+      eventTsSec: ts,
+    );
     if (effect == null) return;
     switch (effect) {
-      case AlarmEffect.confirmed:
-        _alarmGraceTimer?.cancel();
-        // Diagnostic: ALARM_SET (event 56) means the arm LATCHED on the band.
-        // Its absence after a SET is the tell that the write never took.
-        _log('[alarm] strap CONFIRMED arm — ALARM_SET (event $id) received.');
-        unawaited(() async {
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('alarm_epoch_confirmed', true);
-          } catch (e) {
-            _log('[alarm] persisting confirmation failed: $e');
-          }
-        }());
+      case AlarmEffect.uncertain:
+        _persistAlarmObservation(intent);
         break;
       case AlarmEffect.fired:
         _log('[alarm] strap FIRED — EXECUTED (event $id) received.');
@@ -4906,33 +4788,24 @@ class AppState extends ChangeNotifier {
         // row went on advertising e.g. "06:30 (7/25)" as the CURRENT alarm
         // indefinitely — with live "Test buzz"/"Clear" affordances for an alarm
         // that is no longer armed. Clear state AND the persisted epoch.
-        _clearArmedAlarmState();
-        break;
-      case AlarmEffect.cleared:
-        // Same persistence gap on the strap-driven clear (event 59): state was
-        // nulled but `alarm_epoch` stayed on disk and came back on next launch.
-        _clearArmedAlarmState();
-        _log('[alarm] cleared (event $id).');
+        // Historical execution must not delete a newer desired target.
+        // Only retire the observed epoch once its wall target has passed.
+        if ((_savedAlarm ?? 0) <= DateTime.now().millisecondsSinceEpoch ~/ 1000) {
+          _savedAlarm = null;
+          device.alarmEpoch = null;
+          _persistAlarmObservation(intent, fired: true);
+        }
         break;
     }
     notifyListeners();
   }
 
-  /// Drop the armed-alarm state (in-memory + persisted). [AlarmConfirmation]'s
-  /// `firedAt` deliberately survives `disable()`, so the fired-notification's
-  /// dedupeKey still resolves after this runs.
-  void _clearArmedAlarmState() {
-    _savedAlarm = null;
-    device.alarmEpoch = null;
-    _alarm.disable();
-    _alarmGraceTimer?.cancel();
+  void _persistAlarmObservation(AlarmIntent intent, {bool fired = false}) {
     unawaited(() async {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove('alarm_epoch');
-        await prefs.remove('alarm_epoch_confirmed');
+        await AlarmOwner.observeEvent(intent, fired: fired);
       } catch (e) {
-        _log('[alarm] clearing the persisted epoch failed: $e');
+        _log('[alarm] observation persistence failed: $e');
       }
     }());
   }

@@ -17,6 +17,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -111,15 +112,14 @@ Map<String, Widget> _cases() => {
           appearance: 'Dark',
           phoneSteps: true,
           appIcon: AppIconChoice.colourful),
-      // The alarm's three confirmation states are the point of the screen: it
-      // must not draw a confident tick over an alarm the band never
-      // acknowledged.
+      // The alarm's typed GET states are the point of the screen: stored
+      // seconds may show a configuration check, never a firing promise.
       'alarm_none':
           AlarmScreenView(connected: true, schedule: _alarmSchedule),
       'alarm_confirmed': AlarmScreenView(
           armedAt: _alarmAt,
           now: _alarmNow,
-          state: AlarmArmState.confirmed,
+          state: AlarmArmState.storedSeconds,
           connected: true,
           schedule: _alarmSchedule,
           onTest: () async {},
@@ -202,6 +202,7 @@ void main() {
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
+    await initializeDateFormatting();
     await _loadType();
   });
 

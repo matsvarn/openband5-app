@@ -36,6 +36,8 @@
 // bursts), so the compute trigger survives the move to continuous listening.
 
 import 'dart:async';
+
+import '../sync/headless_gate.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -1059,6 +1061,31 @@ class BleEngine {
   /// the identical guarantee for the identical reason (ASSUMPTIONS G5) — one
   /// chain each, never one between them.
   final WriteChain _writeChain = WriteChain();
+  Future<void> _alarmOpTail = Future.value();
+  final Set<int> _alarmReadSequences = {};
+  Object? _alarmReadSequenceSession;
+  int _alarmEvidenceVersion = 0;
+  int _alarmClockVersion = 0;
+  int? _alarmClockRefVersion;
+  ({Object session, ClockRef? clock, int clockVersion, int wall, int strap})? _alarmSetFrame;
+
+  @visibleForTesting
+  Duration alarmReadTimeout = const Duration(seconds: 2);
+
+
+  /// Serialize whole alarm operations (clock prep + delay + SET/DISABLE),
+  /// not just individual GATT writes.
+  Future<T> _serializeAlarmOp<T>(Future<T> Function() op) async {
+    final gate = Completer<void>();
+    final wait = _alarmOpTail;
+    _alarmOpTail = gate.future;
+    await wait;
+    try {
+      return await op();
+    } finally {
+      gate.complete();
+    }
+  }
 
   /// Reconnection backoff schedule (bounded exponential + jitter). Owned by the
   /// transport; the caller's reconnect loop reads `reconnectDelay(attempt)` so the
@@ -3142,6 +3169,7 @@ class BleEngine {
       // the awaiter's timeout later — so `driftSec` would be the round-trip
       // latency, and `setAlarm` arms at `when - driftSec`.
       _clockRef = ClockRef(device: sec, wall: sec);
+      _alarmClockRefVersion = _alarmClockVersion;
       // And the phone-suspect verdict — computed off the PRE-correction hello
       // timestamp — is now stale by construction: strap and phone agree
       // because this write made them agree. Left set, it would defer the
@@ -4013,6 +4041,7 @@ class BleEngine {
     Uint8List raw, {
     _Session? owner,
     bool allowDangerous = false,
+    void Function()? onAttempt,
   }) {
     final session = _session;
     // The dangerous-opcode block lives HERE, at the one write every command
@@ -4029,13 +4058,15 @@ class BleEngine {
       _log('REFUSED dangerous opcode 0x${opcode.toRadixString(16)} at _write');
       return Future.value(false);
     }
+    final lease = HeadlessSyncGate.currentLease;
     return _writeChain.add<bool>(() async {
       try {
+        if (!(lease?.active ?? true)) return false;
         // Readiness and ownership are checked BEFORE the test seam, not after,
         // so a hooked write rejects a stale-session ACK exactly like the real
         // one. A seam that skips the guards it is meant to be standing in for
         // makes every test that relies on it prove the wrong thing.
-        if (session == null || !session.connected) {
+        if (session == null || !session.connected || !identical(session, _session)) {
           _log('write skipped: link not ready.');
           return false;
         }
@@ -4043,8 +4074,12 @@ class BleEngine {
           _log('write skipped: it belongs to a session that is no longer live.');
           return false;
         }
+        if (_opcodeOfFrame(raw, session.entry) == Cmd.setClock) _alarmClockVersion++;
         final hook = debugWriteHook;
-        if (hook != null) return await hook(raw);
+        if (hook != null) {
+          onAttempt?.call();
+          return await hook(raw);
+        }
         final cmd = session.cmdTo;
         if (cmd == null) {
           _log('write skipped: link not ready.');
@@ -4055,6 +4090,7 @@ class BleEngine {
         // write, flutter_blue_plus throws "value > mtu-3" if the negotiated MTU
         // never rose, and _send would swallow the alarm silently. Long writes are
         // a no-op for the small (<=20B) frames every other command uses.
+        onAttempt?.call();
         await cmd
             .write(raw, withoutResponse: false, allowLongWrite: true)
             .timeout(_writeTimeout);
@@ -4168,26 +4204,44 @@ class BleEngine {
   /// [frameBuilder] is for commands whose frame comes from a protocol helper
   /// rather than a bare opcode+payload (the gen5 hello); it receives the
   /// allocated sequence so the correlation still holds.
-  Future<({bool written, Future<CorrelatedResponse?> response})> _sendAwaited(
+  Future<({bool written, bool attempted, Future<CorrelatedResponse?> response})> _sendAwaited(
     int opcode,
     List<int> payload, {
     Duration timeout = CommandAwaiter.defaultTimeout,
     Uint8List Function(int seq)? frameBuilder,
+    bool freshAlarmRead = false,
   }) async {
     if (_refuseDangerousOpcode(opcode)) {
-      return (written: false, response: Future<CorrelatedResponse?>.value());
+      return (written: false, attempted: false, response: Future<CorrelatedResponse?>.value());
     }
-    final seq = _seq.nextLive();
+    var seq = _seq.nextLive();
+    if (freshAlarmRead) {
+      // A delayed GET reply must not satisfy a later GET after byte-sequence
+      // wrap. Exhaustion abstains until a fresh link/session; old-session
+      // callbacks are rejected at _onFrame before response delivery.
+      if (!identical(_alarmReadSequenceSession, _session)) {
+        _alarmReadSequenceSession = _session;
+        _alarmReadSequences.clear();
+      }
+      var attempts = 0;
+      while (_alarmReadSequences.contains(seq) && attempts++ < 256) {
+        seq = _seq.nextLive();
+      }
+      if (!_alarmReadSequences.add(seq)) {
+        return (written: false, attempted: false, response: Future<CorrelatedResponse?>.value());
+      }
+    }
     final pending = _awaiter.register(seq, opcode, timeout: timeout);
     final frame = frameBuilder?.call(seq) ??
         buildCommand(seq, opcode, payload, _session?.band ?? BandProfile.gen4);
-    if (!await _write(frame)) {
+    var attempted = false;
+    if (!await _write(frame, onAttempt: () => attempted = true)) {
       pending.cancel();
       _log('WRITE FAILED for opcode 0x${opcode.toRadixString(16)} — '
           'command not delivered.');
-      return (written: false, response: pending.response);
+      return (written: false, attempted: attempted, response: pending.response);
     }
-    return (written: true, response: pending.response);
+    return (written: true, attempted: attempted, response: pending.response);
   }
 
   // Offload commands whose PAYLOAD (not just the frame envelope) is
@@ -4321,6 +4375,7 @@ class BleEngine {
 
   // ── frame handling ─────────────────────────────────────────────────────────────
   void _onFrame(String role, Frame frame, _Session session) {
+    if (!identical(session, _session) || !session.connected) return;
     final pt = frame.packetType;
     // Metadata ALWAYS takes the serialized queue, whatever characteristic it
     // was reassembled on. It used to take the queue only on the `data` role;
@@ -6729,6 +6784,7 @@ class BleEngine {
         );
       } else {
         _clockRef = ClockRef(device: dev, wall: wall);
+        _alarmClockRefVersion = _alarmClockVersion;
         _log('Clock correlated: device=$dev wall=$wall (drift=${wall - dev}s).');
       }
       // CORRECTION RUNS ON THE RAW READ, outside the correlation gate above.
@@ -7013,15 +7069,17 @@ class BleEngine {
   /// WHOOP 5 — the rich 21-byte slot-1 body, unchanged (#194; index 0 is
   /// rejected with `arm info is invalid, error 0xb`).
   ///
-  /// The strap confirms via event 56 and reports firing via 57/58 + 60 —
-  /// delivered through the band's history stream (typically the NEXT sync),
-  /// not necessarily live.
+  /// Event 56 records that some SET latched; 57/58 + 60 record firing.
+  /// The pinned protocol documents next-sync history delivery. EventInfo has
+  /// no request sequence or decoded target/slot, so none of these events
+  /// confirms THIS call, even if received after its write or response.
   ///
-  /// Returns the wall-clock instant armed, or null when the strap did not take
-  /// the alarm — so the caller never persists a phantom alarm. Null means one
-  /// of two things, both of them "there is no alarm on that band":
+  /// Returns the requested wall instant for a non-refused write, not proof of
+  /// storage or firing. Null means this request was not recorded as applied;
+  /// it NEVER proves off: a previous alarm may remain, and a failed GATT ACK
+  /// cannot prove that no bytes reached the band. Possible causes include:
   ///
-  ///  * the write never left the phone, or
+  ///  * cancellation, an unavailable link, or an attempted write failure, or
   ///  * the strap answered and REFUSED it — a FAILURE/UNSUPPORTED outer result,
   ///    or an alarm-status byte from the input-rejection family.
   ///    That byte is "in addition to" the outer result and the doc says to
@@ -7040,11 +7098,27 @@ class BleEngine {
     int index = 0,
     List<int>? haptics,
   }) async {
+    return _serializeAlarmOp(() => _setAlarmOperation(when,
+        index: index, haptics: haptics));
+  }
+
+  Future<DateTime?> _setAlarmOperation(DateTime when, {
+    int index = 0, List<int>? haptics,
+    void Function(AlarmCommandFailure)? onFailure,
+  }) async {
+    _alarmEvidenceVersion++;
+    _alarmSetFrame = null;
+    if (!HeadlessSyncGate.continuationAllowed) return null;
+    final owner = _session;
     final isGen5 = _session?.band.isGen5 ?? false;
     if (isGen5) {
       // Official WHOOP app SET_CLOCKs before SET_ALARM; refresh RTC drift first.
       await setClock();
       await Future.delayed(const Duration(milliseconds: 120));
+    }
+    if (owner == null || !identical(owner, _session) || !owner.connected ||
+        !HeadlessSyncGate.continuationAllowed) {
+      return null;
     }
     // Arm in the STRAP's RTC frame. The strap fires the wake alarm autonomously
     // on its OWN clock, so if that clock is offset from wall time (SET_CLOCK not
@@ -7059,6 +7133,7 @@ class BleEngine {
     // generation dispatch live in the pure [AlarmPayloads]; the gen4 rev-1
     // byte layout itself is sourced from `openstrap_protocol`.
     final ref = _clockRef;
+    final clockVersion = _alarmClockVersion;
     final driftSec = ref?.driftSec ?? 0;
     final armWhen = AlarmPayloads.toStrapFrame(when, driftSec);
     final payload = AlarmPayloads.setPayloadForBand(
@@ -7068,6 +7143,18 @@ class BleEngine {
       haptics: haptics,
     );
     final out = await _sendAwaited(Cmd.setAlarmTime, payload);
+    // Retain the actual SET frame, not a later clock conversion. Without a
+    // clock reference the raw-epoch fallback is still written, but matching
+    // raw seconds cannot prove the wall time shown to the user. A reference
+    // predating the latest SET_CLOCK attempt is also not mapping evidence.
+    // A changed session/clock during the operation invalidates the mapping.
+    if (ref != null && _alarmClockRefVersion == clockVersion &&
+        out.written && identical(owner, _session) &&
+        ref.driftSec == _clockRef?.driftSec && clockVersion == _alarmClockVersion) {
+      _alarmSetFrame = (session: owner, clock: ref, clockVersion: clockVersion,
+        wall: when.millisecondsSinceEpoch ~/ 1000,
+        strap: armWhen.millisecondsSinceEpoch ~/ 1000);
+    }
     // rev-1 has no slot byte — payload[1] there is an epoch byte, so only the
     // gen5 rich body logs an idx.
     _log(
@@ -7078,7 +7165,10 @@ class BleEngine {
       '${isGen5 && payload.length >= 2 ? 'idx=${payload[1]} ' : ''}'
       'write=${out.written ? 'ok' : 'FAILED'}',
     );
-    if (!out.written) return null;
+    if (!out.written) {
+      if (out.attempted) onFailure?.call(AlarmCommandFailure.writeFailed);
+      return null;
+    }
     // Worst case here is the awaiter's single 5 s timeout, applied once, with
     // no resend — arming is a user-facing action, not a background poll, and a
     // duplicate SET after a slow-but-successful one would rewrite the strap's
@@ -7086,8 +7176,8 @@ class BleEngine {
     final resp = await out.response;
     if (resp == null) {
       _log('[ALARM] arm UNCONFIRMED — no correlated SET_ALARM_TIME reply. '
-          'Treating the write as the arm (the strap may not echo the '
-          'originating sequence); verify with getAlarm().');
+          'Retaining the written target; only applyAlarmIntent with current '
+          'GET evidence can verify stored seconds.');
       return when;
     }
     final code = (resp.fields['alarm_status'] as num?)?.toInt();
@@ -7096,13 +7186,16 @@ class BleEngine {
         resp.unsupported ||
         (code != null && AlarmStatus.isInputRejection(code));
     if (rejected) {
+      _alarmSetFrame = null;
+      if (!resp.viaSeqZeroFallback) onFailure?.call(AlarmCommandFailure.rejected);
       _log('[ALARM] arm REJECTED by the strap — result=${resp.status} '
-          'alarm_status=$code ($name). NOT recording an alarm: there is '
-          'nothing armed on the band.');
+          'alarm_status=$code ($name). Not recording this SET as applied; '
+          'a previous alarm may still be stored.');
       return null;
     }
     _log('[ALARM] arm accepted — result=${resp.status} '
-        'alarm_status=${code ?? 'absent'} (${name ?? 'no status byte'}).');
+        'alarm_status=${code ?? 'absent'} (${name ?? 'no status byte'}). '
+        'Current arm remains unconfirmed; event 56 is uncorrelated history.');
     return when;
   }
 
@@ -7112,25 +7205,111 @@ class BleEngine {
   /// identical frame when that u16 is 0, so it is not a distinct wire form.
   /// Use [setAlarm], which also converts to the strap's RTC frame; this sends
   /// the raw epoch.
-  Future<void> setAlarmSimple(DateTime when) async {
+  Future<void> setAlarmSimple(DateTime when) => _serializeAlarmOp(() async {
+    _alarmEvidenceVersion++;
+    _alarmSetFrame = null;
     await _send(Cmd.setAlarmTime, AlarmPayloads.simple(when));
     _log('SET_ALARM_TIME (simple 7B) → '
         'sec=${when.millisecondsSinceEpoch ~/ 1000}');
-  }
+  });
+
+  /// Apply / inspect one desired intent as ONE radio operation. Verification
+  /// uses only pinned protocol fields, true echoed-sequence correlation, and
+  /// this session's exact SET clock mapping. No evidence survives restart.
+  Future<AlarmOperationResult> applyAlarmIntent({DateTime? when,
+      bool readOnly = false}) => _serializeAlarmOp(() async {
+    final session = _session;
+    final lease = HeadlessSyncGate.currentLease;
+    if (session == null || !session.connected || !(lease?.active ?? true)) {
+      return const AlarmOperationResult();
+    }
+    DateTime? armed;
+    AlarmDisableOutcome? disabled;
+    AlarmCommandFailure? failureKind;
+    int? failureVersion;
+    void failed(AlarmCommandFailure kind) {
+      failureKind = kind;
+      failureVersion = _alarmEvidenceVersion;
+    }
+    AlarmFailure? failure() => failureKind == null ? null : AlarmFailure(
+      failureKind!, stillCurrent: () => identical(session, _session) &&
+        session.connected && (lease?.active ?? true) &&
+        failureVersion == _alarmEvidenceVersion);
+    if (!readOnly) {
+      if (when == null) {
+        disabled = await _disableAlarmOperation(onFailure: failed);
+      } else {
+        armed = await _setAlarmOperation(when, onFailure: failed);
+        if (armed == null) return AlarmOperationResult(failure: failure());
+      }
+    } else {
+      armed = when;
+      _alarmEvidenceVersion++;
+    }
+    final version = _alarmEvidenceVersion;
+    final clock = _clockRef;
+    final clockVersion = _alarmClockVersion;
+    bool current() => identical(session, _session) && session.connected &&
+        clock?.driftSec == _clockRef?.driftSec && clockVersion == _alarmClockVersion &&
+        version == _alarmEvidenceVersion &&
+        (when == null || DateTime.now().isBefore(when)) &&
+        (lease?.active ?? true);
+    AlarmOperationResult unknown() => AlarmOperationResult(
+        armed: armed, disableOutcome: disabled, failure: failure());
+    if (!current()) return unknown();
+    final gen5 = session.band.isGen5;
+    // Gen4 has no active flag: reading an epoch cannot prove off.
+    if (when == null && !gen5) return unknown();
+    final deadline = DateTime.now().add(const Duration(seconds: 8));
+    for (final slot in when == null ? [1, 2, 3, 4, 5, 6] : [1]) {
+      final remaining = deadline.difference(DateTime.now());
+      if (!current() || remaining <= Duration.zero) return unknown();
+      final out = await _sendAwaited(Cmd.getAlarmTime,
+        AlarmPayloads.getPayloadForBand(isGen5: gen5, id: slot),
+        freshAlarmRead: true,
+        timeout: remaining < alarmReadTimeout ? remaining : alarmReadTimeout);
+      final reply = await out.response;
+      if (!current() || DateTime.now().isAfter(deadline) ||
+          !out.written || reply == null || !reply.success ||
+          reply.viaSeqZeroFallback) {
+        return unknown();
+      }
+      final epoch = (reply.fields['alarm_epoch'] as num?)?.toInt();
+      final active = reply.fields['alarm_active'] as bool?;
+      if (epoch == null) return unknown();
+      if (when == null) {
+        if (active != false) return unknown();
+      } else {
+        final frame = _alarmSetFrame;
+        if ((gen5 && active != true) || active == false || frame == null ||
+            !identical(frame.session, session) || frame.clock?.driftSec != clock?.driftSec ||
+            frame.clockVersion != clockVersion ||
+            frame.wall != when.millisecondsSinceEpoch ~/ 1000 ||
+            frame.strap != epoch) {
+          return unknown();
+        }
+      }
+    }
+    return AlarmOperationResult(armed: armed, disableOutcome: disabled, failure: failure(),
+      readback: AlarmReadback(when == null ? AlarmReadbackState.allSlotsInactive
+          : AlarmReadbackState.storedSeconds,
+        wallEpoch: when == null ? null
+            : when.millisecondsSinceEpoch ~/ 1000, stillCurrent: current));
+  });
 
   /// Read the armed alarm back. Body is band-specific (see
   /// [AlarmPayloads.getPayloadForBand]) — gen5 rejects gen4's operand-less
   /// revision-1 body.
-  Future<void> getAlarm({int? id}) {
+  Future<void> getAlarm({int? id}) => _serializeAlarmOp(() async {
+    _alarmEvidenceVersion++;
     final isGen5 = _session?.band.isGen5 ?? false;
-    return _send(
-      Cmd.getAlarmTime,
-      AlarmPayloads.getPayloadForBand(
-        isGen5: isGen5,
-        id: id ?? AlarmPayloads.gen5Slot,
-      ),
-    );
-  }
+    final slot = id ?? AlarmPayloads.gen5Slot;
+    if (isGen5 && (slot < 1 || slot > 6)) throw ArgumentError.value(slot, 'id');
+    final out = await _sendAwaited(Cmd.getAlarmTime,
+      AlarmPayloads.getPayloadForBand(isGen5: isGen5, id: slot),
+      freshAlarmRead: true, timeout: alarmReadTimeout);
+    await out.response; // diagnostic only; never published as evidence
+  });
 
   /// Fire the alarm haptics IMMEDIATELY — a "test buzz" so the user can confirm
   /// the strap actually fires before trusting the scheduled wake.
@@ -7153,16 +7332,60 @@ class BleEngine {
   /// Cancel the on-device alarm (DISABLE_ALARM = 0x45). gen4 body `[0x01]`
   /// (the earlier `[0x00]` body was ACKed but did not clear the alarm); gen5
   /// needs revision 2 plus the alarm id, defaulting to "all slots" — see
-  /// [AlarmPayloads.disableForBand].
-  Future<void> disableAlarm({int? id}) {
+  /// [AlarmPayloads.disableForBand]. Opcode and body are unchanged.
+  ///
+  /// Returns how far the write got — never whether the band is off. Event 59
+  /// is historical and uncorrelated, not proof of this attempt's off state;
+  /// a command ACK is [AlarmDisableOutcome.written]
+  /// and an unanswered write is [AlarmDisableOutcome.noReply]. Both stay
+  /// unconfirmed. A write that never left, or a strap refusal, must not be
+  /// treated as switched off.
+  Future<AlarmDisableOutcome> disableAlarm({int? id}) async {
+    return _serializeAlarmOp(() => _disableAlarmOperation(id: id));
+  }
+
+  Future<AlarmDisableOutcome> _disableAlarmOperation({int? id,
+      void Function(AlarmCommandFailure)? onFailure}) async {
+    _alarmEvidenceVersion++;
+    _alarmSetFrame = null;
+    if (!HeadlessSyncGate.continuationAllowed) {
+      return AlarmDisableOutcome.writeFailed;
+    }
     final isGen5 = _session?.band.isGen5 ?? false;
-    return _send(
-      Cmd.disableAlarm,
-      AlarmPayloads.disableForBand(
-        isGen5: isGen5,
-        id: id ?? AlarmPayloads.gen5AllSlots,
-      ),
+    final payload = AlarmPayloads.disableForBand(
+      isGen5: isGen5,
+      id: id ?? AlarmPayloads.gen5AllSlots,
     );
+    final out = await _sendAwaited(Cmd.disableAlarm, payload);
+    _log(
+      'DISABLE_ALARM (${isGen5 ? "gen5 rev2" : "gen4"} ${payload.length}B) '
+      'write=${out.written ? 'ok' : 'FAILED'}',
+    );
+    if (!out.written) {
+      if (out.attempted) onFailure?.call(AlarmCommandFailure.writeFailed);
+      return AlarmDisableOutcome.writeFailed;
+    }
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[ALARM] disable UNCONFIRMED — no correlated DISABLE_ALARM reply. '
+          'The write left the phone; the band is not confirmed off.');
+      return AlarmDisableOutcome.noReply;
+    }
+    final code = (resp.fields['alarm_status'] as num?)?.toInt();
+    final name = resp.fields['alarm_status_name'] as String?;
+    final rejected = resp.failed ||
+        resp.unsupported ||
+        (code != null && AlarmStatus.isInputRejection(code));
+    if (rejected) {
+      if (!resp.viaSeqZeroFallback) onFailure?.call(AlarmCommandFailure.rejected);
+      _log('[ALARM] disable REJECTED by the strap — result=${resp.status} '
+          'alarm_status=$code ($name). Not proof off; a previous alarm may remain.');
+      return AlarmDisableOutcome.rejected;
+    }
+    _log('[ALARM] disable write accepted — result=${resp.status} '
+        'alarm_status=${code ?? 'absent'} (${name ?? 'no status byte'}). '
+        'Band-off remains unconfirmed; historical event 59 is uncorrelated.');
+    return AlarmDisableOutcome.written;
   }
 
   /// Read the strap's advertising name. gen5 does not implement gen4's

@@ -325,7 +325,7 @@ void main() {
           body: AlarmScreenView(
             armedAt: DateTime(2026, 9, 19, 7),
             now: DateTime(2026, 9, 18, 9, 41),
-            state: AlarmArmState.confirmed,
+            state: AlarmArmState.storedSeconds,
             connected: true,
             schedule: schedule,
             onSetDayTime: (_, _, _) async {},

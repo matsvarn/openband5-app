@@ -779,9 +779,6 @@ void main() {
       await press('Atmung');
       await capture('night-large-text');
 
-      final alarmNow = DateTime(2026, 9, 18, 9, 41);
-      final alarmAt = DateTime(2026, 9, 19, 7, 0);
-
       Future<void> mountAlarm({
         DateTime? at,
         AlarmArmState state = AlarmArmState.none,
@@ -807,7 +804,7 @@ void main() {
             ),
             home: AlarmGallerySession(
               armedAt: at,
-              now: alarmNow,
+              now: galleryAlarmNow,
               state: state,
               connected: connected,
               scheduleEnabled: scheduleEnabled,
@@ -818,47 +815,73 @@ void main() {
         await tester.pumpAndSettle();
       }
 
-      await mountAlarm(at: alarmAt, state: AlarmArmState.confirmed);
-      await capture('alarm-light');
+      Finder wednesdayTime() => find.descendant(
+        of: find.byKey(const ValueKey('alarm-day-2')),
+        matching: find.text('07:00'),
+      );
+
+      await mountAlarm(at: galleryAlarmAt, state: AlarmArmState.storedSeconds);
+      await capture('alarm-ready');
       await tester.tap(find.byType(CupertinoSwitch).at(2));
       await tester.pumpAndSettle();
-      expect(find.text('06:30'), findsNothing);
+      expect(wednesdayTime(), findsNothing);
       await tester.tap(find.byType(CupertinoSwitch).at(2));
       await tester.pumpAndSettle();
-      expect(find.text('06:30'), findsOneWidget);
+      expect(wednesdayTime(), findsOneWidget);
       await mountAlarm(
-        at: alarmAt,
-        state: AlarmArmState.confirmed,
+        at: galleryAlarmAt,
+        state: AlarmArmState.storedSeconds,
+        brightness: Brightness.dark,
+      );
+      await capture('alarm-ready-dark');
+      await mountAlarm(at: galleryAlarmAt, state: AlarmArmState.unknown);
+      await capture('alarm-light');
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.unknown,
         brightness: Brightness.dark,
       );
       await capture('alarm-dark');
-      await mountAlarm(at: alarmAt, state: AlarmArmState.pending);
+      await mountAlarm(at: galleryAlarmAt, state: AlarmArmState.pending);
       await capture('alarm-pending');
       await mountAlarm(scheduleEnabled: false);
       await capture('alarm-none');
       await mountAlarm(
-        at: alarmAt,
-        state: AlarmArmState.confirmed,
+        at: galleryAlarmAt,
+        state: AlarmArmState.allSlotsInactive,
+        scheduleEnabled: false,
+      );
+      await capture('alarm-slots-inactive');
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.allSlotsInactive,
+        scheduleEnabled: false,
+        brightness: Brightness.dark,
+      );
+      await capture('alarm-slots-inactive-dark');
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.unknown,
         connected: false,
       );
       await capture('alarm-offline');
       await mountAlarm(
-        at: alarmAt,
+        at: galleryAlarmAt,
         state: AlarmArmState.pending,
         failing: true,
       );
       await tester.tap(find.text('Ausschalten'));
       await tester.pumpAndSettle();
       await capture('alarm-error');
-      await mountAlarm(at: alarmAt, state: AlarmArmState.confirmed);
+      await mountAlarm(at: galleryAlarmAt, state: AlarmArmState.unknown);
       await tester.tap(find.bySemanticsLabel(RegExp(r'Uhrzeit Mittwoch')));
       await tester.pumpAndSettle();
       await capture('alarm-timepicker');
       await tester.tap(find.text('Abbrechen').first);
       await tester.pumpAndSettle();
       await mountAlarm(
-        at: alarmAt,
-        state: AlarmArmState.confirmed,
+        at: galleryAlarmAt,
+        state: AlarmArmState.unknown,
         brightness: Brightness.dark,
       );
       await tester.tap(find.bySemanticsLabel(RegExp(r'Uhrzeit Mittwoch')));
@@ -866,7 +889,7 @@ void main() {
       await capture('alarm-timepicker-dark');
       await tester.tap(find.text('Abbrechen').first);
       await tester.pumpAndSettle();
-      await mountAlarm(at: alarmAt, state: AlarmArmState.confirmed);
+      await mountAlarm(at: galleryAlarmAt, state: AlarmArmState.storedSeconds);
       await tester.tap(find.bySemanticsLabel(RegExp(r'Uhrzeit Mittwoch')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).first, '88');
@@ -876,13 +899,48 @@ void main() {
       await capture('alarm-timepicker-input');
       await tester.tap(find.text('Abbrechen').first);
       await tester.pumpAndSettle();
-      await mountAlarm(at: alarmAt, state: AlarmArmState.confirmed, scale: 2);
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.storedSeconds,
+        scale: 2,
+      );
       await capture('alarm-large-text');
       await tester.tap(find.bySemanticsLabel(RegExp(r'Uhrzeit Mittwoch')));
       await tester.pumpAndSettle();
       await capture('alarm-timepicker-large');
       await tester.tap(find.text('Abbrechen').first);
       await tester.pumpAndSettle();
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.offPending,
+        scheduleEnabled: false,
+      );
+      await capture('alarm-off-pending');
+      await tester.tap(find.text('Erneut ausschalten'));
+      await tester.pumpAndSettle();
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.offPending,
+        scheduleEnabled: false,
+        brightness: Brightness.dark,
+      );
+      await capture('alarm-off-pending-dark');
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.offPending,
+        scheduleEnabled: false,
+        connected: false,
+      );
+      await capture('alarm-off-offline');
+      await mountAlarm(
+        at: galleryAlarmAt,
+        state: AlarmArmState.offPending,
+        scheduleEnabled: false,
+        failing: true,
+      );
+      await tester.tap(find.text('Erneut ausschalten'));
+      await tester.pumpAndSettle();
+      await capture('alarm-off-retry-error');
       Future<void> openNaps() async {
         await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
         await tester.pumpAndSettle();

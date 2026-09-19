@@ -247,6 +247,46 @@ void main() {
     });
   });
 
+  group('emit stillValid', () {
+    test('invalidation after claim releases the key so a valid retry presents',
+        () async {
+      final blocker = _GatedSink();
+      final shown = <String>[];
+      center.presentSink = (e, {bool allowPermissionPrompt = true}) async {
+        if (e.dedupeKey == '$_today:blocker') {
+          return blocker.call(e, allowPermissionPrompt: allowPermissionPrompt);
+        }
+        shown.add(e.dedupeKey);
+        return true;
+      };
+
+      final blocking = center.emit(_ev('$_today:blocker'));
+      await blocker.entered;
+
+      var valid = true;
+      var checks = 0;
+      final e = _ev('$_today:stale-intent');
+      final queued = center.emit(e, stillValid: () {
+        checks++;
+        return valid;
+      });
+      for (var i = 0; i < 50 && checks < 1; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(checks, greaterThanOrEqualTo(1));
+      valid = false;
+      blocker.release();
+      expect(await queued, isFalse);
+      await blocking;
+      expect(shown, isEmpty);
+      expect(checks, greaterThanOrEqualTo(2));
+      expect(await const FiredKeyStore().hasFired(e.dedupeKey), isFalse);
+
+      expect(await center.emit(e, stillValid: () => true), isTrue);
+      expect(shown, [e.dedupeKey]);
+    });
+  });
+
   group('concurrent emit serialisation', () {
     test('two overlapping emits of the SAME key present exactly once',
         () async {

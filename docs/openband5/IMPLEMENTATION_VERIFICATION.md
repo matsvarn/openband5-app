@@ -117,3 +117,13 @@ Production settings now use the Alpin notification flow. Typed preferences prese
 - Paper canonical picker3NGR/3NI7/3NUJ and real screens3NJF/3NNQ inspected against measured native geometry; notifications3L8J/3LCD/3LEZ, choices3MDT/3MGR and errors3MZ0/3N2G. Exact exports remain in the private task directory.
 
 No physical-device delivery, Bluetooth behavior or physiological validity claim. Older hub2x legends/navigation labels and legacy dialogs remain queued; inspecting their captures does not accept them as complete.
+
+## Alpin alarm ownership and configuration readback — 19 September 2026
+
+Alarm state now follows a durable intent generation and correlated band configuration readback. Historical56/59 events cannot confirm the current request. Unknown device-clock mapping remains unknown; cancellation requires all six slots inactive. Foreground/background ownership is serialized and revocable. Failed replacement retains the prior possibly stored alarm. Only an actual current command failure/rejection may notify; validity is checked again after notification queue work.
+
+Main required OpenBand plus affected alarm/AppState/BLE/headless/notification suites: **589 passed**. Required analyzer plus affected files: **33 items, no issues**. Final enabled-control fixture repair: **36 passed**. Manifest: **84 blocks,77 real screens**. All8 new alarm goldens and5 changed notification goldens inspected. Existing bytes/decoding and analytics pins unchanged.
+
+Synthetic native runs: `build/ui-review/alarm-owner-final-20260919` (iPhone15Pro,170 PNGs,370.95s) and `build/ui-review/alarm-owner-mini-final-20260919` (iPhone13mini,170 PNGs,539.84s). Both passed. Every PNG inspected; all170 frames, PNGs and index entries reconcile per run. Light/dark, pending/offline, retry failure, inactive slots, invalid time input, keyboard and2x text included. Alarm date, hero spacing, status icon, schedule controls and states compared with exact Paper exports. Existing unrelated hub/legend/tab/legacy-dialog differences remain in their owning queue units.
+
+Independent ownership/race reviews and lead source/diff inspection completed. Tests establish state-machine behavior and simulator appearance, not physical BLE delivery, alarm firing or physiological validity.

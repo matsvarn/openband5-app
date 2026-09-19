@@ -352,30 +352,36 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   );
 }
 
-final galleryAlarmNow = DateTime(2026, 9, 18, 9, 41);
-final galleryAlarmAt = DateTime(2026, 9, 19, 7, 0);
+final galleryAlarmNow = DateTime(2026, 9, 15, 9, 41);
+final galleryAlarmAt = DateTime(2026, 9, 16, 7, 0);
+
+List<AlarmScheduleEntry> galleryAlarmWeekdays() => [
+  for (var w = 0; w < 5; w++)
+    AlarmScheduleEntry(weekday: w, hour: 7, minute: 0, enabled: true),
+];
 
 List<AlarmScheduleEntry> galleryAlarmSchedule({bool enabled = true}) =>
-    fillDefaultAlarmSchedule(
-      enabled
-          ? const [
-              AlarmScheduleEntry(weekday: 5, hour: 7, minute: 0, enabled: true),
-              AlarmScheduleEntry(
-                weekday: 2,
-                hour: 6,
-                minute: 30,
-                enabled: true,
-              ),
-            ]
-          : const [],
-    );
+    fillDefaultAlarmSchedule(enabled ? galleryAlarmWeekdays() : const []);
+
+Widget _alarmGalleryTheme(Brightness brightness, Widget child) =>
+    Theme(data: openBandTheme(brightness), child: child);
 
 List<(String, Widget Function())> _alarmGalleryStates() => [
   (
-    'Alarm · bestätigt',
+    'Alarm · Im Band gespeichert',
     () => AlarmGallerySession(
       armedAt: galleryAlarmAt,
-      state: AlarmArmState.confirmed,
+      state: AlarmArmState.storedSeconds,
+    ),
+  ),
+  (
+    'Alarm · Im Band gespeichert · Dunkel',
+    () => _alarmGalleryTheme(
+      Brightness.dark,
+      AlarmGallerySession(
+        armedAt: galleryAlarmAt,
+        state: AlarmArmState.storedSeconds,
+      ),
     ),
   ),
   (
@@ -394,10 +400,66 @@ List<(String, Widget Function())> _alarmGalleryStates() => [
   ),
   ('Alarm · aus', () => const AlarmGallerySession(scheduleEnabled: false)),
   (
+    'Alarm · Alarmplätze aus',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.allSlotsInactive,
+      scheduleEnabled: false,
+    ),
+  ),
+  (
+    'Alarm · Alarmplätze aus · Dunkel',
+    () => _alarmGalleryTheme(
+      Brightness.dark,
+      AlarmGallerySession(
+        armedAt: galleryAlarmAt,
+        state: AlarmArmState.allSlotsInactive,
+        scheduleEnabled: false,
+      ),
+    ),
+  ),
+  (
+    'Alarm · Ausschalten offen',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.offPending,
+      scheduleEnabled: false,
+    ),
+  ),
+  (
+    'Alarm · Ausschalten offen · Dunkel',
+    () => _alarmGalleryTheme(
+      Brightness.dark,
+      AlarmGallerySession(
+        armedAt: galleryAlarmAt,
+        state: AlarmArmState.offPending,
+        scheduleEnabled: false,
+      ),
+    ),
+  ),
+  (
+    'Alarm · Ausschalten offen · getrennt',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.offPending,
+      scheduleEnabled: false,
+      connected: false,
+    ),
+  ),
+  (
+    'Alarm · Erneut ausschalten Fehler',
+    () => AlarmGallerySession(
+      armedAt: galleryAlarmAt,
+      state: AlarmArmState.offPending,
+      scheduleEnabled: false,
+      failing: true,
+    ),
+  ),
+  (
     'Alarm · getrennt',
     () => AlarmGallerySession(
       armedAt: galleryAlarmAt,
-      state: AlarmArmState.confirmed,
+      state: AlarmArmState.unknown,
       connected: false,
     ),
   ),
@@ -471,8 +533,7 @@ class _AlarmGallerySessionState extends State<AlarmGallerySession> {
   Future<void> _cancel() async {
     await _write();
     setState(() {
-      armedAt = null;
-      state = AlarmArmState.none;
+      state = AlarmArmState.offPending;
       schedule = galleryAlarmSchedule(enabled: false);
     });
   }

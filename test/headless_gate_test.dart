@@ -17,6 +17,27 @@ void main() {
     BandOwnership.resetForTest();
   });
 
+  test('timeout revokes orphan zone without revoking the next run', () async {
+    final release = Completer<void>();
+    final orphan = Completer<bool>();
+    HeadlessRunLease? oldLease;
+    await HeadlessSyncGate.tryRun('old', () async {
+      oldLease = HeadlessSyncGate.currentLease;
+      expect(HeadlessSyncGate.continuationAllowed, isTrue);
+      await release.future;
+      orphan.complete(HeadlessSyncGate.continuationAllowed);
+    }, ceiling: const Duration(milliseconds: 10));
+    expect(oldLease!.active, isFalse);
+    await HeadlessSyncGate.tryRun('new', () async {
+      expect(HeadlessSyncGate.continuationAllowed, isTrue);
+      release.complete();
+      expect(await orphan.future, isFalse);
+      expect(HeadlessSyncGate.continuationAllowed, isTrue);
+    });
+    expect(HeadlessSyncGate.currentLease, isNull);
+    expect(HeadlessSyncGate.continuationAllowed, isTrue);
+  });
+
   test('a solo run is never a skip and leaves no streak', () async {
     final result = await HeadlessSyncGate.tryRun<int>('owner_a', () async => 1);
     expect(result, 1);
@@ -53,7 +74,10 @@ void main() {
 
     await HeadlessSyncGate.tryRun<int>('owner_b', () async => 2); // skip #1
     await HeadlessSyncGate.tryRun<int>('owner_b', () async => 2); // skip #2
-    await HeadlessSyncGate.tryRun<int>('owner_c', () async => 3); // owner_c skip #1
+    await HeadlessSyncGate.tryRun<int>(
+      'owner_c',
+      () async => 3,
+    ); // owner_c skip #1
 
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 2);
     expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
@@ -63,28 +87,30 @@ void main() {
     await firstRun;
   });
 
-  test('a successful run resets that owner\'s own streak, not others\'',
-      () async {
-    final gateHeld = Completer<void>();
-    final releaseGate = Completer<void>();
-    final firstRun = HeadlessSyncGate.tryRun<void>('owner_a', () async {
-      gateHeld.complete();
-      await releaseGate.future;
-    });
-    await gateHeld.future;
-    await HeadlessSyncGate.tryRun<int>('owner_b', () async => 2); // skip
-    await HeadlessSyncGate.tryRun<int>('owner_c', () async => 3); // skip
-    releaseGate.complete();
-    await firstRun;
+  test(
+    'a successful run resets that owner\'s own streak, not others\'',
+    () async {
+      final gateHeld = Completer<void>();
+      final releaseGate = Completer<void>();
+      final firstRun = HeadlessSyncGate.tryRun<void>('owner_a', () async {
+        gateHeld.complete();
+        await releaseGate.future;
+      });
+      await gateHeld.future;
+      await HeadlessSyncGate.tryRun<int>('owner_b', () async => 2); // skip
+      await HeadlessSyncGate.tryRun<int>('owner_c', () async => 3); // skip
+      releaseGate.complete();
+      await firstRun;
 
-    expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 1);
-    expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
+      expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 1);
+      expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
 
-    // owner_b finally gets to run — its OWN streak clears; owner_c's doesn't.
-    await HeadlessSyncGate.tryRun<int>('owner_b', () async => 4);
-    expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 0);
-    expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
-  });
+      // owner_b finally gets to run — its OWN streak clears; owner_c's doesn't.
+      await HeadlessSyncGate.tryRun<int>('owner_b', () async => 4);
+      expect(HeadlessSyncGate.consecutiveSkipsFor('owner_b'), 0);
+      expect(HeadlessSyncGate.consecutiveSkipsFor('owner_c'), 1);
+    },
+  );
 
   test('busy reflects gate ownership across the run', () async {
     expect(HeadlessSyncGate.busy, isFalse);
@@ -102,35 +128,32 @@ void main() {
   });
 
   group('a wedged run cannot hold the gate forever', () {
-    test('the run is abandoned at the ceiling and the gate is handed back',
-        () async {
-      final wedged = Completer<void>(); // never completed — the whole point
-      final result = await HeadlessSyncGate.tryRun<int>(
-        'bg_task',
-        () async {
+    test(
+      'the run is abandoned at the ceiling and the gate is handed back',
+      () async {
+        final wedged = Completer<void>(); // never completed — the whole point
+        final result = await HeadlessSyncGate.tryRun<int>('bg_task', () async {
           await wedged.future;
           return 1;
-        },
-        ceiling: const Duration(milliseconds: 20),
-      );
+        }, ceiling: const Duration(milliseconds: 20));
 
-      // OLD BEHAVIOUR: tryRun awaited body() with nothing above it, so this
-      // never returned and `busy` stayed true for the life of the process —
-      // every later BGProcessingTask / BGAppRefreshTask / BLE-restore / boot
-      // wake skipped forever and background sync silently stopped.
-      expect(result, isNull);
-      expect(HeadlessSyncGate.busy, isFalse);
-      expect(HeadlessSyncGate.timedOutRuns, 1);
+        // OLD BEHAVIOUR: tryRun awaited body() with nothing above it, so this
+        // never returned and `busy` stayed true for the life of the process —
+        // every later BGProcessingTask / BGAppRefreshTask / BLE-restore / boot
+        // wake skipped forever and background sync silently stopped.
+        expect(result, isNull);
+        expect(HeadlessSyncGate.busy, isFalse);
+        expect(HeadlessSyncGate.timedOutRuns, 1);
 
-      // And the next wake actually runs.
-      expect(
-        await HeadlessSyncGate.tryRun<int>('bg_refresh', () async => 7),
-        7,
-      );
-    });
+        // And the next wake actually runs.
+        expect(
+          await HeadlessSyncGate.tryRun<int>('bg_refresh', () async => 7),
+          7,
+        );
+      },
+    );
 
-    test(
-        'a timeout also frees the band, not just the gate — the orphaned '
+    test('a timeout also frees the band, not just the gate — the orphaned '
         'body never gets to run its own release', () async {
       // Mirrors the three iOS entry points: runHeadlessSync() self-acquires
       // its lease with no way for the caller to hand it back, so the ONLY
@@ -155,8 +178,11 @@ void main() {
       // every later headless wake would silently no-op, and a foreground
       // connect attempt would spin in acquireForeground()'s wait loop with
       // nothing left alive to ever complete it.
-      expect(BandOwnership.owner, isNull,
-          reason: 'a wedged run must not strand the band lease');
+      expect(
+        BandOwnership.owner,
+        isNull,
+        reason: 'a wedged run must not strand the band lease',
+      );
 
       // A foreground connect attempt actually completes instead of hanging.
       final fg = await BandOwnership.acquireForeground();
@@ -171,8 +197,11 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       for (var i = 0; i < HeadlessSyncGate.starvedAfterSkips; i++) {
-        expect(HeadlessSyncGate.isStarved('ble_restore_wake'), isFalse,
-            reason: 'not starved until the threshold is actually crossed');
+        expect(
+          HeadlessSyncGate.isStarved('ble_restore_wake'),
+          isFalse,
+          reason: 'not starved until the threshold is actually crossed',
+        );
         await HeadlessSyncGate.tryRun<int>('ble_restore_wake', () async => 1);
       }
       expect(HeadlessSyncGate.isStarved('ble_restore_wake'), isTrue);
@@ -215,34 +244,36 @@ void main() {
       expect(HeadlessSyncGate.busy, isFalse);
     });
 
-    test('a boot wake that loses the race skips AND releases its band lease',
-        () async {
-      final lease = BandOwnership.tryAcquireHeadless()!;
-      expect(BandOwnership.owner, BandOwnerKind.headless);
+    test(
+      'a boot wake that loses the race skips AND releases its band lease',
+      () async {
+        final lease = BandOwnership.tryAcquireHeadless()!;
+        expect(BandOwnership.owner, BandOwnerKind.headless);
 
-      final finish = Completer<void>();
-      final holder = HeadlessSyncGate.tryRun<void>('ios_bg_task', () async {
-        await finish.future;
-      });
+        final finish = Completer<void>();
+        final holder = HeadlessSyncGate.tryRun<void>('ios_bg_task', () async {
+          await finish.future;
+        });
 
-      var ran = false;
-      final result = await runBootSyncThroughGate(
-        lease,
-        runner: (l) async {
-          ran = true;
-          return true;
-        },
-      );
+        var ran = false;
+        final result = await runBootSyncThroughGate(
+          lease,
+          runner: (l) async {
+            ran = true;
+            return true;
+          },
+        );
 
-      expect(result, isNull);
-      expect(ran, isFalse);
-      // The lease was acquired before the gate was consulted; a skipped cycle
-      // must hand it back or the band stays owned by a run that never happened.
-      expect(BandOwnership.owner, isNull);
-      expect(HeadlessSyncGate.consecutiveSkipsFor(kBootWakeGateOwner), 1);
+        expect(result, isNull);
+        expect(ran, isFalse);
+        // The lease was acquired before the gate was consulted; a skipped cycle
+        // must hand it back or the band stays owned by a run that never happened.
+        expect(BandOwnership.owner, isNull);
+        expect(HeadlessSyncGate.consecutiveSkipsFor(kBootWakeGateOwner), 1);
 
-      finish.complete();
-      await holder;
-    });
+        finish.complete();
+        await holder;
+      },
+    );
   });
 }

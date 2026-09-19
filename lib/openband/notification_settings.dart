@@ -670,9 +670,8 @@ class NotificationSettingsView extends StatelessWidget {
                           key: const ValueKey('notif-alarm-latch'),
                           label: _s(
                             context,
-                            'Alarm nicht bestätigt',
-                            'Alarm not confirmed',
-                            l10n: (l) => l.settingsAlarmLatchFailedRowTitle,
+                            'Alarmfehler',
+                            'Alarm error',
                           ),
                           value: prefs.alarmLatchFailedEnabled,
                           interactive: interactive,

@@ -276,7 +276,7 @@ void main() {
       'Auffällige Werte',
       'Bandstatus',
       'Warnen unter',
-      'Alarm nicht bestätigt',
+      'Alarmfehler',
       'Abends ohne Alarm',
       'Erholung bereit',
       'Wochenrückblick',

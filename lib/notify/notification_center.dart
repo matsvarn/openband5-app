@@ -93,9 +93,18 @@ class NotificationCenter {
   /// it off this, never off the mere fact that emit was called: the event is
   /// dropped outright when [NotificationPrefs.shouldFireOs] says no (quiet
   /// hours, category muted) or when the OS present fails.
+  ///
+  /// [stillValid] is an optional live predicate for callers whose event can be
+  /// superseded while emit is queued (prefs load, the in-isolate lock, claim).
+  /// Evaluated after [NotificationPrefs.shouldFireOs] and again after a
+  /// successful claim, immediately before [presentSink]. False leaves the claim
+  /// unspent and does not present. Once [presentSink] is invoked, OS-present
+  /// latency cannot be revoked here. Absent (the default) leaves every other
+  /// caller unchanged.
   Future<bool> emit(
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
+    bool Function()? stillValid,
   }) async {
     var presented = false;
     try {
@@ -103,6 +112,7 @@ class NotificationCenter {
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
       if (!prefs.shouldFireOs(e, minuteOfDay)) return false;
+      if (stillValid != null && !stillValid()) return false;
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
       // The OS id only REPLACES a prior post of the same key — it still
       // re-alerts — and derivation re-runs on every BLE sync, so an insight
@@ -123,6 +133,7 @@ class NotificationCenter {
         if (!await _fired.claim(e.dedupeKey)) return;
         var shown = false;
         try {
+          if (stillValid != null && !stillValid()) return;
           shown = await presentSink(
             e,
             allowPermissionPrompt: allowPermissionPrompt,

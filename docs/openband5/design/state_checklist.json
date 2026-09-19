@@ -594,54 +594,60 @@
         "note": "The selected action is read back from SharedPreferences in a local test. Hardware dispatch is not validated by the synthetic UI review."
       },
       "Wecker · bestätigt": {
-        "status": "open",
+        "status": "implemented",
         "paperNode": "3KWY-0",
-        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
-        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Alpin screen exists, but historical event56 does not causally confirm the current alarm generation. Existing confirmation semantics are being replaced with correlated GET_ALARM configuration readback; local tests and simulator renders do not prove hardware firing.",
-        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Archive confirmation now means Im Band gespeichert: strictly correlated GET_ALARM readback of the current durable intent, device session and RTC mapping. Historical event56 is not confirmation; no firing guarantee.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Wecker · Bestätigung offen · Band getrennt": {
         "status": "implemented",
         "paperNode": "3L45-0",
-        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
-        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
-        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Disconnected/unknown readback stays pending. Retains the last possibly stored alarm and durable intent; offline writes are disabled.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Bandwecker · Zeit und Wochentage": {
         "status": "implemented",
         "paperNode": "3KWY-0",
-        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
-        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
-        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Persisted weekday schedule, whole-second target and shared Alpin input picker. Serialized durable generations and radio ownership prevent stale replacement.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Bandwecker · am Band bestätigt": {
         "status": "implemented",
         "paperNode": "3KWY-0",
-        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
-        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
-        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Archive state implemented as Im Band gespeichert from correlated configuration readback, not historical event56 or proof of firing.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Bandwecker · Bestätigung ausstehend": {
         "status": "implemented",
         "paperNode": "3L1Y-0",
-        "source": "lib/ui2/profile/alarm.dart; lib/openband/settings_controls.dart",
-        "evidence": "test/openband_alarm_test.dart; test/ui2_alarm_test.dart; integration_test/openband_review_test.dart",
-        "note": "Production AppState schedule and arm-confirmation adapter; offline/busy writes blocked, errors retained. Synthetic native UI proof does not establish Bluetooth operation.",
-        "nativeReview": "build/ui-review/alarm-20260919; build/ui-review/alarm-mini-20260919 (synthetic light/dark, none/pending/offline/error, picker and 2x text)"
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Unknown, stale, mismatched and unmapped responses remain pending. Only current actual command failure/rejection may emit Alarmfehler; queue-time validity prevents stale alerts.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Wecker · ausgeschaltet bestätigt": {
-        "status": "open",
-        "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
-        "note": "Historical event59 cannot prove current cancellation. An edge-owned durable intent and correlated GET_ALARM readback are in progress; WHOOP5 disable-all requires every supported slot verified inactive. Not accepted or physically verified."
+        "status": "implemented",
+        "paperNode": "3M2W-0",
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Alarmplätze im Band aus requires correlated inactive readback for all six WHOOP5 slots. Historical event59 and a successful command write cannot establish cancellation.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Bandwecker · Ausschalten offen": {
-        "status": "open",
-        "source": "lib/state/app_state.dart: disableAlarm; lib/ui2/profile/alarm.dart: AlarmArmState",
-        "note": "Current cancellation clears local armed state after command write; typed pending/confirmed cancellation is not retained. Requires an edge state-machine/persistence extension using existing band event 59. Not implemented by the Alpin screen migration."
+        "status": "implemented",
+        "paperNode": "3M0X-0",
+        "source": "lib/state/alarm_cancel.dart; lib/state/app_state.dart; lib/ble/ble_engine.dart; lib/ble/ble_state.dart; lib/sync/headless_gate.dart; lib/ui2/profile/alarm.dart",
+        "evidence": "test/alarm_test.dart; test/app_state_regressions_test.dart; test/gen5_wiring_test.dart; test/headless_gate_test.dart; test/notification_dedupe_test.dart; test/openband_alarm_test.dart; integration_test/openband_review_test.dart",
+        "note": "Durable pending cancellation retains the last possibly stored target through failures/relaunch; connected retry and disconnected states are distinct.",
+        "nativeReview": "build/ui-review/alarm-owner-final-20260919 and build/ui-review/alarm-owner-mini-final-20260919: 170 PNGs each, every PNG inspected and run/frames/index reconciled. Light/dark, pending/offline/retry, all-slots inactive, picker and 2x text. Synthetic simulator proof; no physical Bluetooth or firing proof."
       },
       "Mitteilungen · Erlauben": {
         "status": "implemented",
