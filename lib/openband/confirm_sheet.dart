@@ -9,6 +9,7 @@ import 'theme.dart';
 Future<bool?> showOpenBandConfirmSheet({
   required BuildContext context,
   required String title,
+  String? body,
   String confirmLabel = 'Verwerfen',
   String cancelLabel = 'Weiter bearbeiten',
 }) {
@@ -18,6 +19,7 @@ Future<bool?> showOpenBandConfirmSheet({
     barrierColor: Colors.black.withValues(alpha: 0.32),
     builder: (context) => OpenBandConfirmSheet(
       title: title,
+      body: body,
       confirmLabel: confirmLabel,
       cancelLabel: cancelLabel,
     ),
@@ -26,11 +28,13 @@ Future<bool?> showOpenBandConfirmSheet({
 
 class OpenBandConfirmSheet extends StatelessWidget {
   final String title;
+  final String? body;
   final String confirmLabel;
   final String cancelLabel;
   const OpenBandConfirmSheet({
     super.key,
     required this.title,
+    this.body,
     this.confirmLabel = 'Verwerfen',
     this.cancelLabel = 'Weiter bearbeiten',
   });
@@ -111,6 +115,13 @@ class OpenBandConfirmSheet extends StatelessWidget {
                 ],
               ),
             ),
+            if (body != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                body!,
+                style: p.text(15, color: p.muted).copyWith(height: 20 / 15),
+              ),
+            ],
             const SizedBox(height: 12),
             action(
               key: const ValueKey('ob-confirm-yes'),

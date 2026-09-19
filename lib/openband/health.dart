@@ -179,15 +179,107 @@ class OBSegmented extends StatelessWidget {
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onChanged;
+  final bool compact;
+  final List<bool>? enabled;
   const OBSegmented({
     super.key,
     required this.labels,
     required this.selected,
     required this.onChanged,
+    this.compact = false,
+    this.enabled,
   });
+
+  bool _on(int i) => enabled == null || (i < enabled!.length && enabled![i]);
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    if (compact) {
+      final scaled = MediaQuery.textScalerOf(context).scale(14) / 14;
+      final width = (102.0 * scaled).clamp(102.0, 146.0);
+      final inner = (34.0 * scaled).clamp(34.0, 44.0);
+      final wellH = inner + 6;
+      final rowH = wellH < 44 ? 44.0 : wellH;
+      return SizedBox(
+        width: width,
+        height: rowH,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            IgnorePointer(
+              child: Container(
+                width: width,
+                height: wellH,
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: p.well,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    for (final (i, _) in labels.indexed) ...[
+                      if (i > 0) const SizedBox(width: 2),
+                      Expanded(
+                        child: Opacity(
+                          opacity: _on(i) ? 1 : 0.38,
+                          child: Container(
+                            height: inner,
+                            decoration: BoxDecoration(
+                              color: i == selected ? p.ink : null,
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (i, label) in labels.indexed) ...[
+                    if (i > 0) const SizedBox(width: 2),
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: i == selected,
+                        enabled: _on(i),
+                        child: InkWell(
+                          onTap: _on(i) ? () => onChanged(i) : null,
+                          borderRadius: BorderRadius.circular(11),
+                          child: Align(
+                            child: Opacity(
+                              opacity: _on(i) ? 1 : 0.38,
+                              child: Text(
+                                label,
+                                style: p
+                                    .text(
+                                      14,
+                                      weight: i == selected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                      color: i == selected ? p.card : p.muted,
+                                    )
+                                    .copyWith(height: 18 / 14),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
       height: (MediaQuery.textScalerOf(context).scale(14) * 1.36 + 8).clamp(
         40,
@@ -202,31 +294,53 @@ class OBSegmented extends StatelessWidget {
         children: [
           for (final (i, label) in labels.indexed)
             Expanded(
-              child: Semantics(
-                button: true,
-                selected: i == selected,
-                child: InkWell(
-                  onTap: () => onChanged(i),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: i == selected ? p.ink : null,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(
-                      label,
-                      style: p.text(
-                        14,
-                        weight: FontWeight.w600,
-                        color: i == selected ? p.card : p.muted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              child: _segment(p, i, label, inner: null, radius: 14),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _segment(
+    OB p,
+    int i,
+    String label, {
+    required double? inner,
+    required double radius,
+    bool compact = false,
+  }) {
+    final on = enabled == null || (i < enabled!.length && enabled![i]);
+    final chosen = i == selected;
+    return Semantics(
+      button: true,
+      selected: chosen,
+      enabled: on,
+      child: Opacity(
+        opacity: on ? 1 : 0.38,
+        child: InkWell(
+          onTap: on ? () => onChanged(i) : null,
+          borderRadius: BorderRadius.circular(radius),
+          child: Container(
+            height: inner,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: chosen ? p.ink : null,
+              borderRadius: BorderRadius.circular(radius),
+            ),
+            child: Text(
+              label,
+              style: p
+                  .text(
+                    14,
+                    weight: !compact || chosen
+                        ? FontWeight.w600
+                        : FontWeight.w500,
+                    color: chosen ? p.card : p.muted,
+                  )
+                  .copyWith(height: compact ? 18 / 14 : null),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -25,6 +25,9 @@ import '../../data/nutrition_store.dart';
 import '../../models/metric.dart';
 import '../../data/journal_fields.dart';
 import '../../state/app_state.dart';
+import '../../openband/domain.dart';
+import '../../openband/local_repository.dart';
+import '../../openband/nutrition_goals.dart';
 import '../ui2.dart';
 import '../onboarding/profile_setup.dart' show formatDay;
 import 'log_food.dart';
@@ -55,11 +58,8 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   Metric? _burned;
   double? _waterMl;
   bool _loading = true;
-
-  /// The local profile map, read once per load. Targets live here rather than
-  /// in a new table: they are two numbers the user typed, the same shape as
-  /// `step_goal` next to them.
-  Map<String, dynamic> _profile = const {};
+  NutritionTargetSnapshot? _goals;
+  Object? _goalsError;
 
   @override
   void initState() {
@@ -88,12 +88,20 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
       if (daily is Map) burned = Metric.parse(daily['calories_total']);
       water = (await repo.getJournalMetrics(_date))['water_ml']?.value;
     }
+    NutritionTargetSnapshot? goals;
+    Object? goalsError;
+    try {
+      goals = await LocalOpenBandRepository(app).readNutritionTargets(_date);
+    } catch (e) {
+      goalsError = e;
+    }
     if (!stillNewest(#nutrition, t)) return;
     setState(() {
       _week = week;
       _burned = burned;
       _waterMl = water;
-      _profile = {...?app.user};
+      _goals = goals;
+      _goalsError = goalsError;
       _loading = false;
     });
   }
@@ -441,104 +449,84 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// A target the user TYPES. Adaptive targets need weight history and ~21
   /// complete days and stay deferred; a typed one needs no science at all, and
   /// the tab is named Goals.
-  static List<(String, String, String, Color)> _goalSpecs(BuildContext c) {
+  List<_GoalSpec> _goalSpecs(BuildContext c) {
     final l = AppLocalizations.of(c);
+    final w = _week;
     return [
-      ('kcal_target', l?.nutritionDailyEnergy ?? 'Daily energy', 'kcal', C.domFood),
-      ('protein_target', l?.nutritionDailyProtein ?? 'Daily protein', 'g', C.red),
+      _GoalSpec(
+        l?.nutritionDailyEnergy ?? 'Daily energy',
+        'kcal',
+        l?.nutritionEnergyWord ?? 'energy',
+        C.domFood,
+        (v) => v.energyKcal,
+        w?.meanKcal,
+      ),
+      _GoalSpec(
+        l?.nutritionDailyProtein ?? 'Daily protein',
+        'g',
+        l?.nutritionProteinWord ?? 'protein',
+        C.red,
+        (v) => v.proteinG,
+        w?.meanProtein,
+      ),
+      _GoalSpec(
+        l?.nutritionLabelCarbs ?? 'Carbs',
+        'g',
+        'carbs',
+        C.orange,
+        (v) => v.carbohydrateG,
+        w?.meanCarbs,
+      ),
+      _GoalSpec(
+        l?.nutritionLabelFat ?? 'Fat',
+        'g',
+        'fat',
+        C.yellow,
+        (v) => v.fatG,
+        w?.meanFat,
+      ),
     ];
   }
 
-  double? _target(String key) => (_profile[key] as num?)?.toDouble();
+  double? _target(_GoalSpec spec) {
+    final v = _goals?.values;
+    if (v == null || _goals?.origin == null) return null;
+    return spec.read(v);
+  }
 
-  /// The same gated mean the Week tab prints, so goal progress and the average
-  /// can never disagree — including about how many days went into it.
-  NutrientMean? _meanFor(String key) =>
-      key == 'kcal_target' ? _week?.meanKcal : _week?.meanProtein;
-
-  Future<void> _editTargets() async {
-    final specs = _goalSpecs(context);
-    final ctrls = {
-      for (final g in specs)
-        g.$1: TextEditingController(text: _target(g.$1)?.round().toString() ?? ''),
-    };
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      sheetAnimationStyle: sheetMotion(context),
-      backgroundColor: P.of(context).card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(R.xxl)),
+  Future<void> _openGoals() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => OpenBandNutritionGoalsRoute(date: _date),
       ),
-      builder: (s) {
-        final l = AppLocalizations.of(s);
-        return Padding(
-          padding: EdgeInsets.only(
-              left: S.x5,
-              right: S.x5,
-              top: S.x5,
-              bottom: MediaQuery.of(s).viewInsets.bottom + S.x5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(l?.nutritionYourTargetsSection ?? 'Your targets',
-                  style: F.head.copyWith(color: P.of(s).ink)),
-              const SizedBox(height: S.x4),
-              for (final g in specs) ...[
-                OsTextField(
-                  controller: ctrls[g.$1]!,
-                  label: '${g.$2} (${g.$3})',
-                  hint: l?.nutritionHintNone ?? 'none',
-                  keyboard: const TextInputType.numberWithOptions(decimal: true),
-                ),
-                const SizedBox(height: S.x3),
-              ],
-              const SizedBox(height: S.x2),
-              BigButton(l?.actionSave ?? 'Save',
-                  color: C.domFood, onTap: () => Navigator.of(s).pop(true)),
-            ],
-          ),
-        );
-      },
     );
-    // Blank clears the target; a typo does NOT. "2,000" used to clear it and
-    // the sheet closed as if it had saved.
-    final typed = {
-      for (final g in specs) g.$1: Typed.of(ctrls[g.$1]!.text),
-    };
-    final fields = {
-      for (final g in specs) g.$1: typed[g.$1]!.value,
-    };
-    for (final ctrl in ctrls.values) {
-      ctrl.dispose();
-    }
-    if (saved != true || !mounted) return;
-    final bad = [for (final g in specs) if (typed[g.$1]!.bad) g.$2];
-    if (bad.isNotEmpty) {
-      sayUnreadable(context, bad);
-      return;
-    }
-    await context.read<AppState>().updateProfile(fields);
-    await _load();
+    if (mounted) await _load();
   }
 
   Widget _goalsTab(BuildContext c) {
     final l = AppLocalizations.of(c);
     final p = P.of(c);
     final specs = _goalSpecs(c);
-    final set = [for (final g in specs) if (_target(g.$1) != null) g];
+    final set = [for (final g in specs) if (_target(g) != null) g];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (set.isEmpty)
+        if (_goalsError != null)
+          StatusCard(
+            'Ziele nicht geladen',
+            'Erneut versuchen.',
+            fix: 'Erneut',
+            icon: LucideIcons.target,
+            onFix: () { _load(); },
+          )
+        else if (set.isEmpty)
           StatusCard(
             l?.nutritionNoTargetsTitle ?? 'No targets set',
             l?.nutritionNoTargetsBody ?? 'A target here is one you type.',
             fix: l?.nutritionSetTargetFix ?? 'Set a target',
             icon: LucideIcons.target,
-            onFix: _editTargets,
+            onFix: _openGoals,
           )
         else
           Section(
@@ -553,7 +541,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
               ],
             ),
             action: l?.nutritionEditAction ?? 'Edit',
-            onAction: _editTargets,
+            onAction: _openGoals,
           ),
         const SizedBox(height: S.x4),
         Surface(
@@ -596,18 +584,13 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   /// Current → target → the rate between them. The "current" is the mean of
   /// COMPLETE days only, the same denominator the Week tab uses, so the goal
   /// and the average can never disagree about what was counted.
-  Widget _goalCard(BuildContext c, (String, String, String, Color) g) {
+  Widget _goalCard(BuildContext c, _GoalSpec g) {
     final l = AppLocalizations.of(c);
-    final target = _target(g.$1)!;
-    final m = _meanFor(g.$1);
+    final target = _target(g)!;
+    final m = g.mean;
     final mean = m?.value;
-    // A stable per-goal noun, not `g.$2`'s last word: the label is a full
-    // localized phrase ("Énergie quotidienne" in French puts the adjective
-    // AFTER the noun), so slicing it grabs "quotidienne", not "énergie".
-    final nutrient = g.$1 == 'kcal_target'
-        ? (l?.nutritionEnergyWord ?? 'energy')
-        : (l?.nutritionProteinWord ?? 'protein');
-    if (mean == null || target <= 0) {
+    final nutrient = g.noun;
+    if (mean == null) {
       return StatusCard(
         l?.nutritionNothingToMeasure(nutrient) ??
             'Nothing to measure $nutrient against yet',
@@ -642,26 +625,55 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     // The nutrient's OWN denominator, not the window's count of complete days:
     // protein can be measured on fewer days than energy was.
     final days = m!.days;
+    final meanNote = l?.nutritionMeanOfDays(days) ??
+        'mean of $days complete day${days == 1 ? '' : 's'}';
+    // Explicit 0 g is a stored target. mean/0 is undefined, so no bar.
+    if (target == 0) {
+      final amount = '${target.round()} ${g.unit}';
+      return MetricRow(
+        LucideIcons.target,
+        g.color,
+        g.title,
+        '${mean.round()} ${g.unit}',
+        sub: '${l?.homeGoalSteps(amount) ?? 'Goal $amount'} · $meanNote',
+      );
+    }
     final diff = mean - target;
     final rate = diff.abs() < 1
         ? (l?.nutritionOnTarget ?? 'On target')
         : (diff > 0
-            ? (l?.nutritionRateAbove(diff.abs().round(), g.$3) ??
-                '${diff.abs().round()} ${g.$3}/day above')
-            : (l?.nutritionRateBelow(diff.abs().round(), g.$3) ??
-                '${diff.abs().round()} ${g.$3}/day below'));
-    final meanNote = l?.nutritionMeanOfDays(days) ??
-        'mean of $days complete day${days == 1 ? '' : 's'}';
+            ? (l?.nutritionRateAbove(diff.abs().round(), g.unit) ??
+                '${diff.abs().round()} ${g.unit}/day above')
+            : (l?.nutritionRateBelow(diff.abs().round(), g.unit) ??
+                '${diff.abs().round()} ${g.unit}/day below'));
     return GoalTrajectory(
-      g.$2,
-      '${mean.round()} ${g.$3}',
-      '${target.round()} ${g.$3}',
+      g.title,
+      '${mean.round()} ${g.unit}',
+      '${target.round()} ${g.unit}',
       '$rate · $meanNote',
       (mean / target).clamp(0, 1).toDouble(),
-      g.$4,
+      g.color,
       rateDown: diff > 0,
     );
   }
+}
+
+class _GoalSpec {
+  final String title;
+  final String unit;
+  final String noun;
+  final Color color;
+  final double? Function(NutritionTargetValues) read;
+  final NutrientMean? mean;
+
+  const _GoalSpec(
+    this.title,
+    this.unit,
+    this.noun,
+    this.color,
+    this.read,
+    this.mean,
+  );
 }
 
 /// "Thu 4 Sep" from a `YYYY-MM-DD` day label, for an axis end-label.

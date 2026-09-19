@@ -3,6 +3,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
+import 'package:openstrap_edge/data/nutrition_targets.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'time.dart';
@@ -42,6 +43,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   int _napRevision = 0;
   final Map<String, SleepNight> _applied = {};
   final Map<String, SleepGoalPeriod> _sleepGoals = {};
+  final Map<String, NutritionTargetChange> _nutritionTargets = {};
   final Map<String, double> _sleepByDay = {};
   final Map<String, double> _hrvByDay = {};
   final Map<String, double> _rhrByDay = {};
@@ -52,6 +54,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failSleepGoalRead = false;
   bool failSleepGoalWrite = false;
   Future<void>? sleepGoalWriteBarrier;
+  bool failNutritionTargetRead = false;
+  bool failNutritionTargetWrite = false;
+  Future<void>? nutritionTargetWriteBarrier;
+  String Function() nutritionToday = () => todayLabel();
+  Map<String, dynamic>? legacyUndatedProfile;
   bool failTemplateRead = false;
   bool failTemplateWrite = false;
   bool failPin = false;
@@ -1786,6 +1793,157 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
     );
+  }
+
+  @override
+  Future<NutritionTargetSnapshot> readNutritionTargets(String day) async {
+    if (failNutritionTargetRead) {
+      throw StateError('synthetic nutrition target read failure');
+    }
+    if (!isLabCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    final applied = _nutritionTargetAsOf(day);
+    if (applied != null) {
+      return NutritionTargetSnapshot(
+        day: day,
+        values: applied.values,
+        origin: NutritionTargetOrigin.dated,
+        effectiveDay: applied.validFromDay,
+        revision: applied.validFromDay == day ? applied.revision : null,
+      );
+    }
+    if (day != nutritionToday()) {
+      return NutritionTargetSnapshot(day: day);
+    }
+    final legacy = NutritionTargetValues(
+      energyKcal: decodeOptionalEnergy(
+        legacyUndatedProfile?[kLegacyEnergyTargetKey],
+      ),
+      proteinG: decodeOptionalGrams(
+        legacyUndatedProfile?[kLegacyProteinTargetKey],
+      ),
+    );
+    if (!legacy.hasAny) {
+      return NutritionTargetSnapshot(day: day);
+    }
+    return NutritionTargetSnapshot(
+      day: day,
+      values: legacy,
+      origin: NutritionTargetOrigin.legacyUndated,
+    );
+  }
+
+  @override
+  Future<List<NutritionTargetChange>> listNutritionTargetChanges() async {
+    if (failNutritionTargetRead) {
+      throw StateError('synthetic nutrition target read failure');
+    }
+    final rows = _nutritionTargets.values.toList()
+      ..sort((a, b) => a.validFromDay.compareTo(b.validFromDay));
+    return List.unmodifiable(rows);
+  }
+
+  @override
+  Future<NutritionTargetWriteResult> saveNutritionTargets(
+    String day,
+    NutritionTargetValues values, {
+    int? expectedRevision,
+  }) async {
+    await nutritionTargetWriteBarrier;
+    if (failNutritionTargetWrite) {
+      throw StateError('synthetic nutrition target write failure');
+    }
+    if (!isLabCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    requireNutritionTargetValues(values);
+    return _putNutritionTargets(day, values, expectedRevision);
+  }
+
+  @override
+  Future<NutritionTargetWriteResult> clearNutritionTargets(
+    String day, {
+    int? expectedRevision,
+  }) async {
+    await nutritionTargetWriteBarrier;
+    if (failNutritionTargetWrite) {
+      throw StateError('synthetic nutrition target write failure');
+    }
+    if (!isLabCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    return _putNutritionTargets(
+      day,
+      const NutritionTargetValues(),
+      expectedRevision,
+    );
+  }
+
+  NutritionTargetChange? _nutritionTargetAsOf(String day) {
+    NutritionTargetChange? best;
+    for (final period in _nutritionTargets.values) {
+      if (period.validFromDay.compareTo(day) > 0) continue;
+      if (best == null ||
+          period.validFromDay.compareTo(best.validFromDay) > 0) {
+        best = period;
+      }
+    }
+    return best;
+  }
+
+  NutritionTargetWriteResult _putNutritionTargets(
+    String day,
+    NutritionTargetValues values,
+    int? expectedRevision,
+  ) {
+    final existing = _nutritionTargets[day];
+    if (expectedRevision == null) {
+      if (existing != null) {
+        return NutritionTargetWriteResult.conflict(existing);
+      }
+    } else {
+      if (existing == null) {
+        return const NutritionTargetWriteResult.conflict();
+      }
+      if (existing.revision != expectedRevision) {
+        return NutritionTargetWriteResult.conflict(existing);
+      }
+    }
+    final now = DateTime.now();
+    final row = NutritionTargetChange(
+      validFromDay: day,
+      values: values,
+      revision: existing == null ? 1 : expectedRevision! + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    );
+    _nutritionTargets[day] = row;
+    return NutritionTargetWriteResult.saved(row);
+  }
+
+  static const nutritionGoalFixture = NutritionTargetValues(
+    energyKcal: 2000,
+    proteinG: 125,
+    carbohydrateG: 240,
+    fatG: 60,
+  );
+
+  static const nutritionGoalFutureFixture = NutritionTargetValues(
+    energyKcal: 2100,
+    proteinG: 131.25,
+    carbohydrateG: 252,
+    fatG: 63,
+  );
+
+  /// Gallery/native fixture. Not a production default.
+  Future<void> seedNutritionGoals({bool withFuture = true}) async {
+    nutritionToday = () => '2026-09-15';
+    _nutritionTargets.clear();
+    await saveNutritionTargets('2026-09-15', nutritionGoalFixture);
+    if (withFuture) {
+      await saveNutritionTargets('2026-09-20', nutritionGoalFutureFixture);
+    }
   }
 
   NapDay _defaultNaps(String day) {

@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
+import 'nutrition_goals.dart';
 import 'theme.dart';
 
 const obMeals = [
@@ -28,6 +29,21 @@ class OpenBandNutrition extends StatelessWidget {
           backgroundColor: p.canvas,
           title: Text('Ernährung', style: p.text(18, weight: FontWeight.w600)),
           centerTitle: true,
+          actions: [
+            IconButton(
+              tooltip: 'Ernährungsziele',
+              onPressed: () => openOpenBandNutritionGoals(
+                context,
+                repository: controller.repository,
+                day: controller.selectedDay,
+                now: controller.day?.synthetic == true
+                    ? () => DateTime(2026, 9, 15, 9, 41)
+                    : controller.now,
+                synthetic: controller.day?.synthetic == true,
+              ),
+              icon: Icon(LucideIcons.settings, size: 20, color: p.ink),
+            ),
+          ],
         ),
         body: FutureBuilder<DayMeals>(
           future: controller.repository.readMeals(controller.selectedDay),

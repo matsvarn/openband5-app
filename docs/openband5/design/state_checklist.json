@@ -1053,6 +1053,56 @@
         "note": "Daily rating selection/clear is implemented with shared mood scale. Archive timed mood moments, optional feelings/context and multiple entries remain open.",
         "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
       }
+    },
+    "A07b · Ernährung": {
+      "Ernährung · Eigene Ziele, Gramm": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "implemented",
+        "paperNode": "3USS-0",
+        "note": "Optional energy and protein/carbohydrate/fat targets. Blank is unset, zero grams remains explicit. No default or learned requirement. Exact-day revision conflicts preserve the stored row."
+      },
+      "Ernährung · Eigene Ziele, Prozent": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "implemented",
+        "paperNode": "3UWK-0",
+        "note": "Percent editor preserves canonical gram precision across view switches. Invalid totals and malformed input refuse save without replacing the draft."
+      },
+      "Ernährung · Ziele, Gültigkeit im Verlauf": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "implemented",
+        "paperNode": "3VGK-0",
+        "note": "Actual dated energy/macro boundaries, future planning and retained removal history. Undated legacy values apply only today without inventing a start date."
+      },
+      "Ernährung · Energieziel ändern, feste Prozente": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "implemented",
+        "paperNode": "3UWK-0",
+        "note": "An explicit energy edit in percent mode rescales canonical grams. Switching views alone does not round or rewrite stored values."
+      },
+      "Ernährung · Zieländerung für morgen": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "implemented",
+        "paperNode": "3W90-0",
+        "note": "Future effective dates for energy and macro targets use the shared calendar. Earlier and later stored boundaries are retained."
+      },
+      "Ernährung · Deine Ernährungsziele": {
+        "source": "lib/openband/nutrition_goals.dart; lib/openband/local_repository.dart; lib/data/nutrition_targets.dart; lib/data/db.dart",
+        "evidence": "test/openband_nutrition_goals_test.dart; test/openband_nutrition_targets_test.dart; test/ui2_revision_reload_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "build/ui-review/nutrition-goals-v2-20260920 and build/ui-review/nutrition-goals-v2-mini-20260920: 64 PNGs each, every PNG inspected; run/frames/index reconcile. Light/dark, missing, read/write/removal error, conflicts, retained history, calendar and 2x. Synthetic simulator proof only.",
+        "status": "partial",
+        "paperNode": "3VAZ-0",
+        "note": "Energy and macro overview/edit/history/removal are implemented. Fibre and other nutrient targets, minimum/maximum semantics and wider nutrient contributions remain open supported work."
+      }
     }
   }
 }

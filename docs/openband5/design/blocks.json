@@ -154,16 +154,47 @@
     "3SQ9-0": "A07 Änderungen verwerfen · Dunkel",
     "3V3G-0": "A07 Tagesjournal · 2x",
     "3V88-0": "A07 Tagesjournal · 2x · Weiter unten",
-    "3VY0-0": "A07b Ernährungsziele · Info (shared sheet; destination pending goal unit)",
-    "3VZH-0": "A07b Ernährungsziele · Info · Dunkel (shared sheet)",
-    "3WXN-0": "A07b Ernährungsziele · Info · 2× (shared sheet)",
-    "3WZG-0": "A07b Ernährungsziele · Info · 2× Dunkel (shared sheet)",
-    "3X3O-0": "A07a Tagesjournal · Notiz und Tags · 2× (layout repair pending native)",
-    "3X6U-0": "A07a Tagesjournal · Notiz und Tags · 2× Dunkel (layout repair pending native)",
+    "3VY0-0": "A07b Ernährungsziele · Info",
+    "3VZH-0": "A07b Ernährungsziele · Info · Dunkel",
+    "3WXN-0": "A07b Ernährungsziele · Info · 2×",
+    "3WZG-0": "A07b Ernährungsziele · Info · 2× Dunkel",
+    "3X3O-0": "A07a Tagesjournal · Notiz und Tags · 2×",
+    "3X6U-0": "A07a Tagesjournal · Notiz und Tags · 2× Dunkel",
     "3X8S-0": "A07 Tagesjournal Info",
     "3XDK-0": "A07 Tagesjournal Info Dunkel",
     "3XIC-0": "A07 Tagesjournal Info große Schrift",
-    "3XOL-0": "A07 Tags Tastatur kleine Breite"
+    "3XOL-0": "A07 Tags Tastatur kleine Breite",
+    "3USS-0": "A07b Ernährungsziele · Gramm",
+    "3UUU-0": "A07b Ernährungsziele · Gramm · Dunkel",
+    "3UWK-0": "A07b Ernährungsziele · Prozent",
+    "3V00-0": "A07b Ernährungsziele · Prozent · Dunkel",
+    "3UYA-0": "A07b Ernährungsziele · Nicht gesetzte Werte",
+    "3V1Q-0": "A07b Ernährungsziele · Nicht gesetzte Werte · Dunkel",
+    "3VAZ-0": "A07b Ernährungsziele · Übersicht",
+    "3VDM-0": "A07b Ernährungsziele · Übersicht · Dunkel",
+    "3VF3-0": "A07b Ernährungsziele · Keine Ziele",
+    "3VQ7-0": "A07b Ernährungsziele · Keine Ziele · Dunkel",
+    "3VGK-0": "A07b Ernährungsziele · Verlauf",
+    "3VR4-0": "A07b Ernährungsziele · Verlauf · Dunkel",
+    "3VJF-0": "A07b Ernährungsziele · Speichern fehlgeschlagen",
+    "3VSR-0": "A07b Ernährungsziele · Speichern fehlgeschlagen · Dunkel",
+    "3VL5-0": "A07b Ernährungsziele · Ungültige Prozentverteilung",
+    "3VUJ-0": "A07b Ernährungsziele · Ungültige Prozentverteilung · Dunkel",
+    "3VMV-0": "A07b Ernährungsziele · Übernommene undatierte Ziele",
+    "3VOC-0": "A07b Ernährungsziele · Bearbeiten · 2×",
+    "3VWA-0": "A07b Ernährungsziele · Bearbeiten · 2× Dunkel",
+    "3W0Y-0": "A07b Ernährungsziele · Entfernen",
+    "3W2F-0": "A07b Ernährungsziele · Entfernen · Dunkel",
+    "3W3W-0": "A07b Ernährungsziele · Speicherkonflikt",
+    "3W5M-0": "A07b Ernährungsziele · Speicherkonflikt · Dunkel",
+    "3W90-0": "A07b Ernährungsziele · Gültig ab",
+    "3WAH-0": "A07b Ernährungsziele · Gültig ab · Dunkel",
+    "3WBY-0": "A07b Ernährungsziele · Lesefehler",
+    "3WDF-0": "A07b Ernährungsziele · Lesefehler · Dunkel",
+    "3XQA-0": "A07b Ernährungsziele · Entfernen Konflikt",
+    "3XRR-0": "A07b Ernährungsziele · Entfernen Konflikt · Dunkel",
+    "3XTI-0": "A07b Ernährungsziele · Entfernen Fehler",
+    "3XV2-0": "A07b Ernährungsziele · Entfernen Fehler · Dunkel"
   },
   "blocks": [
     {
@@ -504,9 +535,24 @@
         "3IW8-0",
         "3IXY-0",
         "3IZO-0",
-        "3J78-0"
+        "3J78-0",
+        "3USS-0",
+        "3UUU-0",
+        "3UWK-0",
+        "3V00-0",
+        "3UYA-0",
+        "3V1Q-0",
+        "3VJF-0",
+        "3VSR-0",
+        "3VL5-0",
+        "3VUJ-0",
+        "3VOC-0",
+        "3VWA-0",
+        "3W3W-0",
+        "3W5M-0"
       ],
-      "implemented": "health.dart"
+      "implemented": "health.dart",
+      "notes": "Existing full-width selector plus compact g/% variant. Labels centered; explicit disabled mode,44-point outer area and text-scaled height."
     },
     {
       "name": "OBChip",
@@ -903,13 +949,15 @@
     {
       "name": "OBCalendar",
       "paperNode": "3HPT-0",
-      "widget": "_DayPicker",
-      "file": "day_picker.dart",
+      "widget": "OBCalendar",
+      "file": "calendar.dart",
       "replaces": "existing calendar in day_picker.dart",
       "usedIn": [
-        "3HPD-0"
+        "3HPD-0",
+        "3W90-0",
+        "3WAH-0"
       ],
-      "notes": "Monday-first, 44 pt cells, dot = night with data, selected = alp-ink fill, today = alp-action outline, future/other month = alp-gap. Calendar UI is _DayPicker; entry is chooseOpenBandDay. No OBCalendar class."
+      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json."
     },
     {
       "name": "OBDayPreview",
@@ -1502,9 +1550,11 @@
       "file": "confirm_sheet.dart",
       "usedIn": [
         "3SLH-0",
-        "3SQ9-0"
+        "3SQ9-0",
+        "3W0Y-0",
+        "3W2F-0"
       ],
-      "notes": "Shared compact discard confirmation. Close/cancel retain the draft; ink confirm and well cancel."
+      "notes": "Shared discard/remove sheet; optional short body explains which dated target boundary will change. Close/cancel retain draft."
     },
     {
       "name": "OBJournalFieldRow",
@@ -1535,7 +1585,7 @@
         "3XDK-0",
         "3XIC-0"
       ],
-      "notes": "Shared disclosure sheet with44-point close target,15/22 body, adaptive safe-area padding and scrolling at large text. Nutrition destination integrated in its own unit."
+      "notes": "Shared disclosure sheet with44-point close target,15/22 body, adaptive safe-area padding and scrolling at large text. Shared production Journal and nutrition-goal disclosures."
     },
     {
       "name": "OBJournalChip",
@@ -1562,6 +1612,83 @@
         "3X6U-0"
       ],
       "notes": "Saved labels wrap naturally. Normal short row is 56 points; large type or narrow width stacks label and value without ellipsis."
+    },
+    {
+      "name": "OBNutritionGoalNumber",
+      "paperNode": "3UTP-0",
+      "widget": "_GoalNumberField",
+      "file": "nutrition_goals.dart",
+      "usedIn": [
+        "3USS-0",
+        "3UUU-0",
+        "3UWK-0",
+        "3V00-0",
+        "3UYA-0",
+        "3V1Q-0",
+        "3VJF-0",
+        "3VSR-0",
+        "3VL5-0",
+        "3VUJ-0",
+        "3VOC-0",
+        "3VWA-0",
+        "3W3W-0",
+        "3W5M-0"
+      ],
+      "notes": "Canonical amount field with baseline-aligned unit; blank stays unset, finite decimal boundary, no internal whitespace repair. Full-width at narrow/large text."
+    },
+    {
+      "name": "OBNutritionGoalMacros",
+      "paperNode": "3UTT-0",
+      "widget": "_OpenBandNutritionGoalsEditorState._macrosCard",
+      "file": "nutrition_goals.dart",
+      "usedIn": [
+        "3USS-0",
+        "3UUU-0",
+        "3UWK-0",
+        "3V00-0",
+        "3UYA-0",
+        "3V1Q-0",
+        "3VJF-0",
+        "3VSR-0",
+        "3VL5-0",
+        "3VUJ-0",
+        "3VOC-0",
+        "3VWA-0",
+        "3W3W-0",
+        "3W5M-0"
+      ],
+      "notes": "One grams/percent editor, lossless canonical gram values across view switches. Explicit energy edits rescale only percent mode; invalid totals refuse save."
+    },
+    {
+      "name": "OBNutritionGoalsOverview",
+      "paperNode": "3VCQ-0",
+      "widget": "OpenBandNutritionGoals",
+      "file": "nutrition_goals.dart",
+      "usedIn": [
+        "3VAZ-0",
+        "3VDM-0",
+        "3VF3-0",
+        "3VQ7-0",
+        "3VMV-0",
+        "3WBY-0",
+        "3WDF-0",
+        "3XQA-0",
+        "3XRR-0",
+        "3XTI-0",
+        "3XV2-0"
+      ],
+      "notes": "Optional actual stored targets with dated/undated origin. No recommended/default value. Actions lead to same editor/history."
+    },
+    {
+      "name": "OBNutritionTargetHistory",
+      "paperNode": "3VI7-0",
+      "widget": "_HistoryCard",
+      "file": "nutrition_goals.dart",
+      "usedIn": [
+        "3VGK-0",
+        "3VR4-0"
+      ],
+      "notes": "Actual dated boundaries, including empty removal boundaries and future planned changes. No synthetic historical origin for undated preferences."
     }
   ],
   "openBlocks": [

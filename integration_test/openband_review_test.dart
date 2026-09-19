@@ -310,6 +310,263 @@ void main() {
         await tester.tap(find.text('Entwurf behalten'));
         await tester.pumpAndSettle();
 
+        Future<SyntheticOpenBandRepository> openGoals({
+          Brightness brightness = Brightness.light,
+          double? scale,
+        }) async {
+          final repository = await mount(brightness: brightness, scale: scale);
+          await press('Journal');
+          await tester.tap(find.text('Ernährung').first);
+          await tester.pumpAndSettle();
+          await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
+          await tester.pumpAndSettle();
+          return repository;
+        }
+
+        Future<void> openGoalInfo() async {
+          await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> closeGoalInfo() async {
+          await tester.tap(find.text('Schließen').last);
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> settleGoalKeyboard() async {
+          FocusManager.instance.primaryFocus?.unfocus();
+          await tester.pumpAndSettle();
+        }
+
+        await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
+        await tester.pumpAndSettle();
+        await capture('nutrition-goals-overview');
+        await openGoalInfo();
+        await capture('nutrition-goals-info');
+        await closeGoalInfo();
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        expect(find.text('2000'), findsWidgets);
+        await capture('nutrition-goals-editor');
+        await tester.tap(find.text('%'));
+        await tester.pumpAndSettle();
+        expect(find.text('25'), findsOneWidget);
+        await capture('nutrition-goals-percent');
+        await tester.tap(find.text('g'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Gültig ab'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('20'));
+        await tester.pumpAndSettle();
+        await capture('nutrition-goals-date');
+        await tester.ensureVisible(find.textContaining('übernehmen'));
+        await tester.tap(find.textContaining('übernehmen'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('nutrition-goal-save')),
+        );
+        await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Verlauf'));
+        await tester.pumpAndSettle();
+        expect(find.text('Geplant'), findsOneWidget);
+        await capture('nutrition-goals-history');
+        await pop();
+        await tester.tap(find.text('Ziele entfernen'));
+        await tester.pumpAndSettle();
+        await capture('nutrition-goals-clear');
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Keine Ziele'), findsOneWidget);
+        await capture('nutrition-goals-cleared');
+        await tester.tap(find.text('Verlauf'));
+        await tester.pumpAndSettle();
+        expect(find.text('Geplant'), findsOneWidget);
+        await capture('nutrition-goals-history-retained');
+        await pop();
+        await pop();
+
+        final goalFail = await mount();
+        goalFail.failNutritionTargetRead = true;
+        await press('Journal');
+        await tester.tap(find.text('Ernährung').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele nicht geladen'), findsOneWidget);
+        await capture('nutrition-goals-read-error');
+        goalFail.failNutritionTargetRead = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele nicht geladen'), findsNothing);
+        await capture('nutrition-goals-read-retry');
+
+        final goalWrite = await openGoals();
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('nutrition-goal-energy')),
+          '1550',
+        );
+        await tester.pumpAndSettle();
+        await settleGoalKeyboard();
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('nutrition-goal-save')),
+        );
+        goalWrite.failNutritionTargetWrite = true;
+        await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
+        await tester.pumpAndSettle();
+        expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+        await capture('nutrition-goals-write-error');
+        goalWrite.failNutritionTargetWrite = false;
+        await tester.ensureVisible(find.text('Erneut speichern'));
+        await tester.tap(find.text('Erneut speichern'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        expect(find.text('1550'), findsWidgets);
+        await capture('nutrition-goals-write-retry');
+
+        final goalConflict = await openGoals();
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('nutrition-goal-energy')),
+          '1600',
+        );
+        await tester.pumpAndSettle();
+        await settleGoalKeyboard();
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('nutrition-goal-save')),
+        );
+        await goalConflict.saveNutritionTargets(
+          '2026-09-15',
+          const NutritionTargetValues(energyKcal: 1700),
+          expectedRevision: 1,
+        );
+        await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele wurden inzwischen geändert.'), findsOneWidget);
+        await capture('nutrition-goals-conflict');
+
+        final goalClearConflict = await openGoals();
+        await goalClearConflict.saveNutritionTargets(
+          '2026-09-15',
+          const NutritionTargetValues(energyKcal: 1700),
+          expectedRevision: 1,
+        );
+        await tester.tap(find.text('Ziele entfernen'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele inzwischen geändert.'), findsOneWidget);
+        expect(find.text('2.000'), findsOneWidget);
+        expect(find.text('Gültig ab'), findsNothing);
+        await capture('nutrition-goals-clear-conflict');
+        await tester.tap(find.text('Neu laden'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele inzwischen geändert.'), findsNothing);
+        expect(find.text('1.700'), findsOneWidget);
+
+        final goalClearConflictDark = await openGoals(
+          brightness: Brightness.dark,
+        );
+        await goalClearConflictDark.saveNutritionTargets(
+          '2026-09-15',
+          const NutritionTargetValues(energyKcal: 1700),
+          expectedRevision: 1,
+        );
+        await tester.tap(find.text('Ziele entfernen'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele inzwischen geändert.'), findsOneWidget);
+        await capture('nutrition-goals-clear-conflict-dark');
+
+        final goalClearFail = await openGoals();
+        goalClearFail.failNutritionTargetWrite = true;
+        await tester.tap(find.text('Ziele entfernen'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Entfernen fehlgeschlagen.'), findsOneWidget);
+        expect(find.text('2.000'), findsOneWidget);
+        expect(find.text('Gültig ab'), findsNothing);
+        await capture('nutrition-goals-clear-error');
+        goalClearFail.failNutritionTargetWrite = false;
+        await tester.tap(find.text('Erneut'));
+        await tester.pumpAndSettle();
+        expect(find.text('Ziele entfernen?'), findsOneWidget);
+        await capture('nutrition-goals-clear-retry');
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Keine Ziele'), findsOneWidget);
+
+        final goalClearFailDark = await openGoals(brightness: Brightness.dark);
+        goalClearFailDark.failNutritionTargetWrite = true;
+        await tester.tap(find.text('Ziele entfernen'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Entfernen'));
+        await tester.pumpAndSettle();
+        expect(find.text('Entfernen fehlgeschlagen.'), findsOneWidget);
+        await capture('nutrition-goals-clear-error-dark');
+
+        final missingGoals = await mount();
+        await missingGoals.clearNutritionTargets(
+          '2026-09-15',
+          expectedRevision: 1,
+        );
+        await missingGoals.clearNutritionTargets(
+          '2026-09-20',
+          expectedRevision: 1,
+        );
+        await press('Journal');
+        await tester.tap(find.text('Ernährung').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.text('Keine Ziele'), findsOneWidget);
+        await capture('nutrition-goals-empty');
+
+        await openGoals(brightness: Brightness.dark);
+        await capture('nutrition-goals-overview-dark');
+        await openGoalInfo();
+        await capture('nutrition-goals-info-dark');
+        await closeGoalInfo();
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        await capture('nutrition-goals-editor-dark');
+        await tester.tap(find.text('%'));
+        await tester.pumpAndSettle();
+        expect(find.text('25'), findsOneWidget);
+        await capture('nutrition-goals-percent-dark');
+
+        await openGoals(scale: 2);
+        await openGoalInfo();
+        expect(find.text('Ernährungs-\nziele'), findsWidgets);
+        await capture('nutrition-goals-info-large');
+        await closeGoalInfo();
+        await tester.ensureVisible(find.text('Ändern'));
+        await tester.tap(find.text('Ändern'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await capture('nutrition-goals-editor-large');
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('nutrition-goal-fat')),
+          200,
+          scrollable: verticalScrollable().last,
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('nutrition-goal-save')),
+          200,
+          scrollable: verticalScrollable().last,
+        );
+        expect(
+          find.byKey(const ValueKey('nutrition-goal-save')).hitTestable(),
+          findsOneWidget,
+        );
+        await capture('nutrition-goals-editor-large-scrolled');
+
         final journalFail = await mount();
         journalFail.failJournalRead = true;
         await press('Journal');

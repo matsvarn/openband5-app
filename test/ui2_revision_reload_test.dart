@@ -21,8 +21,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/data/nutrition_store.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
@@ -60,8 +63,16 @@ Future<void> _until(WidgetTester t, Finder f, {int n = 60}) async {
   }
 }
 
-Widget _app(AppState app, {LocaleController? locale}) => MaterialApp(
+Widget _app(AppState app, {LocaleController? locale, Locale? forceLocale}) =>
+    MaterialApp(
       theme: buildTheme(Brightness.light),
+      locale: forceLocale,
+      localizationsDelegates: forceLocale == null
+          ? null
+          : AppLocalizations.localizationsDelegates,
+      supportedLocales: forceLocale == null
+          ? const [Locale('en', 'US')]
+          : AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AppState>.value(value: app),
@@ -185,6 +196,67 @@ void main() {
     expect(identical(t.state(find.byType(NutritionScreen)), before), isTrue,
         reason:
             'the screen was remounted — that is the workaround, not the fix');
+  });
+
+  testWidgets(
+      'an explicit 0 g target with a known mean is not missing nutrient data',
+      (t) async {
+    t.view.physicalSize = const Size(390 * 3, 2400 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+
+    final today = todayLabel();
+    final parts = today.split('-').map(int.parse).toList();
+    final counted = dayLabelOf(DateTime(parts[0], parts[1], parts[2] - 1));
+    final evening = DateTime(parts[0], parts[1], parts[2] - 1, 19)
+            .millisecondsSinceEpoch ~/
+        1000;
+
+    await t.runAsync(() async {
+      final db = await LocalDb.instance;
+      await NutritionDb.put(
+        db,
+        FoodEntry(
+          id: 'zero-protein-counted',
+          date: counted,
+          meal: 'dinner',
+          label: 'Counted dinner',
+          atTs: evening,
+          kcal: 510,
+          proteinG: 87,
+          confirmed: true,
+        ),
+      );
+      final written = await LocalDb.putNutritionTargetPeriod(
+        validFromDay: today,
+        proteinG: 0,
+      );
+      expect(written.conflict, isFalse);
+    });
+
+    final app = AppState.forTesting();
+    addTearDown(app.dispose);
+    app.repo = _Repo();
+
+    await t.pumpWidget(_app(app, forceLocale: const Locale('de')));
+    await _until(t, find.text('Noch keins'));
+    await t.tap(find.text('Ziele'));
+    await t.pump();
+    await _until(t, find.textContaining('87 g'));
+
+    expect(find.textContaining('87 g'), findsOneWidget);
+    expect(find.textContaining('Ziel 0 g'), findsOneWidget);
+    expect(find.textContaining('Goal 0 g'), findsNothing);
+    expect(
+      find.textContaining('Durchschnitt über 1 vollständigen Tag'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Nothing to measure protein'), findsNothing);
+    expect(
+      find.textContaining('none of them carried a protein figure'),
+      findsNothing,
+    );
+    expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
   // ── the signal has to be raised where the writes are ──────────────────────

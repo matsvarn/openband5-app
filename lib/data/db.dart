@@ -37,6 +37,7 @@ import 'live_coverage_policy.dart';
 import 'med_store.dart';
 import 'models.dart';
 import 'nutrition_store.dart';
+import 'nutrition_targets.dart';
 import 'observation.dart';
 import 'series_codec.dart';
 
@@ -187,6 +188,7 @@ class LocalDb {
     'sleep_nap',
     'nap_recalc_job',
     'sleep_goal_period',
+    'nutrition_target_period',
     'breathing_session',
     'sessions',
     'workout_route',
@@ -349,7 +351,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 60;
+  static const int schemaVersion = 61;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -470,6 +472,7 @@ class LocalDb {
         await _createSleepNap(db);
         await _createNapRecalcJob(db);
         await _createSleepGoalPeriod(db);
+        await _createNutritionTargetPeriod(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createAlarmSchedule(db);
@@ -1093,6 +1096,10 @@ class LocalDb {
           // Additive archive flag; hide is not purge. Idempotent.
           await _ensureJournalFieldDefHidden(db);
         }
+        if (oldV < 61) {
+          // Empty targets end the prior period without deleting history.
+          await _createNutritionTargetPeriod(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1175,6 +1182,7 @@ class LocalDb {
     await _createSleepNap(db);
     await _createNapRecalcJob(db);
     await _createSleepGoalPeriod(db);
+    await _createNutritionTargetPeriod(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
     await _createWorkoutSplit(db);
@@ -1719,6 +1727,26 @@ class LocalDb {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         CHECK (minutes IS NULL OR (minutes >= 1 AND minutes <= 1440))
+      )
+    ''');
+  }
+
+  static Future<void> _createNutritionTargetPeriod(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS nutrition_target_period (
+        valid_from_day TEXT PRIMARY KEY,
+        energy_kcal REAL,
+        protein_g REAL,
+        carbs_g REAL,
+        fat_g REAL,
+        revision INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (revision >= 1),
+        CHECK (energy_kcal IS NULL OR energy_kcal > 0),
+        CHECK (protein_g IS NULL OR protein_g >= 0),
+        CHECK (carbs_g IS NULL OR carbs_g >= 0),
+        CHECK (fat_g IS NULL OR fat_g >= 0)
       )
     ''');
   }
@@ -2510,6 +2538,112 @@ class LocalDb {
   static Future<List<Map<String, dynamic>>> sleepGoalPeriods() async {
     final db = await instance;
     return db.query('sleep_goal_period', orderBy: 'valid_from_day ASC');
+  }
+
+  /// Latest dated nutrition-target row with [valid_from_day] <= [day].
+  static Future<Map<String, dynamic>?> nutritionTargetPeriodAsOf(
+    String day,
+  ) async {
+    requireNutritionTargetDay(day);
+    final db = await instance;
+    final rows = await db.query(
+      kNutritionTargetPeriodTable,
+      where: 'valid_from_day <= ?',
+      whereArgs: [day],
+      orderBy: 'valid_from_day DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The dated row for exactly [day], or null when that date has no row.
+  static Future<Map<String, dynamic>?> nutritionTargetPeriodOn(
+    String day,
+  ) async {
+    requireNutritionTargetDay(day);
+    final db = await instance;
+    final rows = await db.query(
+      kNutritionTargetPeriodTable,
+      where: 'valid_from_day = ?',
+      whereArgs: [day],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> nutritionTargetPeriods() async {
+    final db = await instance;
+    return db.query(
+      kNutritionTargetPeriodTable,
+      orderBy: 'valid_from_day ASC',
+    );
+  }
+
+  /// Insert or replace the dated row for [validFromDay] with CAS.
+  ///
+  /// [expectedRevision] null means the caller believes no row exists for that
+  /// date. A stored empty boundary has revision >= 1, so it conflicts with
+  /// null rather than looking like an absent row. On conflict the existing
+  /// row is returned unchanged.
+  static Future<({bool conflict, Map<String, dynamic>? row})>
+  putNutritionTargetPeriod({
+    required String validFromDay,
+    double? energyKcal,
+    double? proteinG,
+    double? carbsG,
+    double? fatG,
+    int? expectedRevision,
+  }) async {
+    requireNutritionTargetDay(validFromDay);
+    requireNutritionTargetNumbers(
+      energyKcal: energyKcal,
+      proteinG: proteinG,
+      carbohydrateG: carbsG,
+      fatG: fatG,
+    );
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        kNutritionTargetPeriodTable,
+        where: 'valid_from_day = ?',
+        whereArgs: [validFromDay],
+        limit: 1,
+      );
+      if (expectedRevision == null) {
+        if (existing.isNotEmpty) {
+          return (conflict: true, row: Map<String, dynamic>.from(existing.first));
+        }
+      } else {
+        if (existing.isEmpty) {
+          return (conflict: true, row: null);
+        }
+        final rev = (existing.first['revision'] as num).toInt();
+        if (rev != expectedRevision) {
+          return (conflict: true, row: Map<String, dynamic>.from(existing.first));
+        }
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final createdAt = existing.isEmpty
+          ? now
+          : (existing.first['created_at'] as num).toInt();
+      final revision = existing.isEmpty ? 1 : expectedRevision! + 1;
+      final row = <String, dynamic>{
+        'valid_from_day': validFromDay,
+        'energy_kcal': energyKcal,
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fat_g': fatG,
+        'revision': revision,
+        'created_at': createdAt,
+        'updated_at': now,
+      };
+      await txn.insert(
+        kNutritionTargetPeriodTable,
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return (conflict: false, row: row);
+    });
   }
 
   // ── OPENBAND SLEEP CORRECTION STATE ────────────────────────────────────────
@@ -9472,6 +9606,7 @@ class LocalDb {
       'sleep_nap',
       'nap_recalc_job',
       'sleep_goal_period',
+      'nutrition_target_period',
       'samples',
       'events',
       'decoded_onehz',

@@ -1,9 +1,12 @@
 import 'dart:convert';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../data/db.dart';
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/nutrition_store.dart';
+import '../data/nutrition_targets.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
@@ -1240,6 +1243,141 @@ class LocalOpenBandRepository implements OpenBandRepository {
       SleepGoalPeriod(
         validFromDay: row['valid_from_day'] as String,
         minutes: (row['minutes'] as num?)?.toInt(),
+        createdAt: DateTime.fromMillisecondsSinceEpoch(
+          (row['created_at'] as num).toInt(),
+        ),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(
+          (row['updated_at'] as num).toInt(),
+        ),
+      );
+
+  @override
+  Future<NutritionTargetSnapshot> readNutritionTargets(String day) async {
+    _requireDay(day);
+    final applied = await LocalDb.nutritionTargetPeriodAsOf(day);
+    if (applied != null) {
+      final effectiveDay = applied['valid_from_day'] as String;
+      return NutritionTargetSnapshot(
+        day: day,
+        values: _nutritionValues(applied),
+        origin: NutritionTargetOrigin.dated,
+        effectiveDay: effectiveDay,
+        revision: effectiveDay == day
+            ? (applied['revision'] as num).toInt()
+            : null,
+      );
+    }
+    if (day != todayLabel()) {
+      return NutritionTargetSnapshot(day: day);
+    }
+    final legacy = _legacyUndatedValues(await _legacyProfileMap());
+    if (!legacy.hasAny) {
+      return NutritionTargetSnapshot(day: day);
+    }
+    return NutritionTargetSnapshot(
+      day: day,
+      values: legacy,
+      origin: NutritionTargetOrigin.legacyUndated,
+    );
+  }
+
+  @override
+  Future<List<NutritionTargetChange>> listNutritionTargetChanges() async {
+    final rows = await LocalDb.nutritionTargetPeriods();
+    return [for (final row in rows) _nutritionChange(row)];
+  }
+
+  @override
+  Future<NutritionTargetWriteResult> saveNutritionTargets(
+    String day,
+    NutritionTargetValues values, {
+    int? expectedRevision,
+  }) async {
+    _requireDay(day);
+    requireNutritionTargetValues(values);
+    return _putNutritionTargets(
+      day,
+      values,
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  @override
+  Future<NutritionTargetWriteResult> clearNutritionTargets(
+    String day, {
+    int? expectedRevision,
+  }) async {
+    _requireDay(day);
+    return _putNutritionTargets(
+      day,
+      const NutritionTargetValues(),
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  Future<NutritionTargetWriteResult> _putNutritionTargets(
+    String day,
+    NutritionTargetValues values, {
+    int? expectedRevision,
+  }) async {
+    final result = await LocalDb.putNutritionTargetPeriod(
+      validFromDay: day,
+      energyKcal: values.energyKcal,
+      proteinG: values.proteinG,
+      carbsG: values.carbohydrateG,
+      fatG: values.fatG,
+      expectedRevision: expectedRevision,
+    );
+    if (result.conflict) {
+      return NutritionTargetWriteResult.conflict(
+        result.row == null ? null : _nutritionChange(result.row!),
+      );
+    }
+    return NutritionTargetWriteResult.saved(_nutritionChange(result.row!));
+  }
+
+  /// Prefs is the source blob. A present unreadable/non-map value throws
+  /// [FormatException] — not [AppState.user], which can be a stale decode of
+  /// an earlier good blob, and not an empty snapshot (that would claim "no
+  /// targets"). Absent key may use in-memory [AppState.user]:
+  /// [AppState.forTesting] never loads prefs, and production `_loadProfile`
+  /// fills `user` from this same key. Never writes the blob.
+  Future<Map<String, dynamic>?> _legacyProfileMap() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!prefs.containsKey(kLegacyProfilePrefsKey)) return app.user;
+    final raw = prefs.getString(kLegacyProfilePrefsKey);
+    if (raw == null) {
+      throw const FormatException('Stored nutrition profile is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return decoded.cast<String, dynamic>();
+    throw const FormatException('Stored nutrition profile is unreadable.');
+  }
+
+  static NutritionTargetValues _legacyUndatedValues(
+    Map<String, dynamic>? profile,
+  ) {
+    if (profile == null) return const NutritionTargetValues();
+    return NutritionTargetValues(
+      energyKcal: decodeOptionalEnergy(profile[kLegacyEnergyTargetKey]),
+      proteinG: decodeOptionalGrams(profile[kLegacyProteinTargetKey]),
+    );
+  }
+
+  static NutritionTargetValues _nutritionValues(Map<String, dynamic> row) =>
+      NutritionTargetValues(
+        energyKcal: decodeOptionalEnergy(row['energy_kcal']),
+        proteinG: decodeOptionalGrams(row['protein_g']),
+        carbohydrateG: decodeOptionalGrams(row['carbs_g']),
+        fatG: decodeOptionalGrams(row['fat_g']),
+      );
+
+  static NutritionTargetChange _nutritionChange(Map<String, dynamic> row) =>
+      NutritionTargetChange(
+        validFromDay: row['valid_from_day'] as String,
+        values: _nutritionValues(row),
+        revision: (row['revision'] as num).toInt(),
         createdAt: DateTime.fromMillisecondsSinceEpoch(
           (row['created_at'] as num).toInt(),
         ),

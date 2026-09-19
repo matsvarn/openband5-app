@@ -1123,6 +1123,114 @@ WeekendSleepEstimate? weekendSleepEstimateFromCrossday(
   );
 }
 
+/// Where an effective nutrition target came from. Null origin on a snapshot
+/// means no goal applies — never a default or a borrowed historical date.
+enum NutritionTargetOrigin { dated, legacyUndated }
+
+enum NutritionTargetWriteStatus { saved, conflict }
+
+/// One optional energy/macro set. Null is unset. Zero grams is explicit.
+class NutritionTargetValues {
+  final double? energyKcal, proteinG, carbohydrateG, fatG;
+  const NutritionTargetValues({
+    this.energyKcal,
+    this.proteinG,
+    this.carbohydrateG,
+    this.fatG,
+  });
+
+  static const empty = NutritionTargetValues();
+
+  bool get hasAny =>
+      energyKcal != null ||
+      proteinG != null ||
+      carbohydrateG != null ||
+      fatG != null;
+}
+
+/// Effective targets for a selected local day.
+///
+/// [values] and [revision] always come from one dated row, or from the undated
+/// prefs blob. [revision] is that row's revision only when [effectiveDay]
+/// equals [day]; an inherited earlier boundary keeps [revision] null so a
+/// write here is a new date. [legacyUndated] has no start date: [effectiveDay]
+/// and [revision] stay null — never today's label as a fabricated origin.
+class NutritionTargetSnapshot {
+  final String day;
+  final NutritionTargetValues values;
+  final NutritionTargetOrigin? origin;
+  final String? effectiveDay;
+  final int? revision;
+  const NutritionTargetSnapshot({
+    required this.day,
+    this.values = const NutritionTargetValues(),
+    this.origin,
+    this.effectiveDay,
+    this.revision,
+  }) : assert(
+         origin != NutritionTargetOrigin.legacyUndated ||
+             (effectiveDay == null && revision == null),
+         'legacyUndated must not invent an effectiveDay',
+       );
+}
+
+/// An actual dated change. Empty values are a stored "no target" boundary.
+class NutritionTargetChange {
+  final String validFromDay;
+  final NutritionTargetValues values;
+  final int revision;
+  final DateTime createdAt, updatedAt;
+  const NutritionTargetChange({
+    required this.validFromDay,
+    required this.values,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+}
+
+/// Optimistic write outcome. [conflict] preserves the stored row.
+class NutritionTargetWriteResult {
+  final NutritionTargetWriteStatus status;
+  final NutritionTargetChange? row;
+  const NutritionTargetWriteResult._(this.status, this.row);
+  const NutritionTargetWriteResult.saved(NutritionTargetChange row)
+    : this._(NutritionTargetWriteStatus.saved, row);
+  const NutritionTargetWriteResult.conflict([NutritionTargetChange? row])
+    : this._(NutritionTargetWriteStatus.conflict, row);
+  bool get saved => status == NutritionTargetWriteStatus.saved;
+  bool get conflict => status == NutritionTargetWriteStatus.conflict;
+}
+
+void requireNutritionTargetValues(NutritionTargetValues values) {
+  void energy(double? value, String name) {
+    if (value == null) return;
+    if (!value.isFinite || value <= 0) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'Energy must be a finite positive value when set.',
+      );
+    }
+  }
+
+  void grams(double? value, String name) {
+    if (value == null) return;
+    if (!value.isFinite || value < 0) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'Gram targets must be finite and nonnegative when set.',
+      );
+    }
+  }
+
+  energy(values.energyKcal, 'energyKcal');
+  grams(values.proteinG, 'proteinG');
+  grams(values.carbohydrateG, 'carbohydrateG');
+  grams(values.fatG, 'fatG');
+}
+
 /// One hand-entered draw. [unit] is the row's own unit, never converted.
 class LabDraw {
   final String marker, takenOn, unit, note;
@@ -1323,6 +1431,17 @@ abstract interface class OpenBandRepository {
   Future<SleepGoalSnapshot> readSleepGoal(String day);
   Future<void> saveSleepGoal(String day, int minutes);
   Future<void> clearSleepGoal(String day);
+  Future<NutritionTargetSnapshot> readNutritionTargets(String day);
+  Future<List<NutritionTargetChange>> listNutritionTargetChanges();
+  Future<NutritionTargetWriteResult> saveNutritionTargets(
+    String day,
+    NutritionTargetValues values, {
+    int? expectedRevision,
+  });
+  Future<NutritionTargetWriteResult> clearNutritionTargets(
+    String day, {
+    int? expectedRevision,
+  });
   Future<LabSnapshot> readLabs();
   Future<void> saveLabDraw(
     LabDraw draw, {

@@ -47,12 +47,14 @@ Future<SyntheticOpenBandRepository> loadGalleryRepository() async {
             ),
           )
           as Map;
-  return SyntheticOpenBandRepository.fromMaps(
+  final repo = SyntheticOpenBandRepository.fromMaps(
     await load('day-summary'),
     await load('sleep-detail'),
     activity: await load('additional-flows'),
     run: await load('run-detail'),
   );
+  await repo.seedNutritionGoals();
+  return repo;
 }
 
 class OpenBandGallery extends StatefulWidget {
