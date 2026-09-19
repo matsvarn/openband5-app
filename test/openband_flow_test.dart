@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/controller.dart';
+import 'package:openstrap_edge/openband/daily_activity.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -110,6 +111,7 @@ void main() {
                     controller: controller,
                     onProfile: () {},
                     onJournal: () {},
+                    onSync: () {},
                   )
                 : Center(child: Text(d.label)),
           ),
@@ -323,6 +325,37 @@ void main() {
       },
     );
   }
+  test('stepsByHour splits a boundary-crossing interval by duration', () {
+    final buckets = stepsByHour([
+      StepInterval(
+        DateTime(2026, 9, 15, 6, 50),
+        DateTime(2026, 9, 15, 7, 10),
+        200,
+      ),
+      StepInterval(
+        DateTime(2026, 9, 15, 12, 0),
+        DateTime(2026, 9, 15, 12, 30),
+        300,
+      ),
+    ]);
+    expect(buckets.length, 24);
+    expect(buckets[6], 100);
+    expect(buckets[7], 100);
+    expect(buckets[12], 300);
+    expect(buckets.fold<double>(0, (a, b) => a + b), 500);
+  });
+
+  testWidgets('interrupted transfer shows the sync pill with a resume action', (
+    tester,
+  ) async {
+    repo.scenario = SyntheticScenario.interrupted;
+    controller.updateBand(repo.band);
+    await mount(tester);
+    // Fixture latest_saved_local is 07:42.
+    expect(find.text('Unterbrochen · bis 07:42'), findsOneWidget);
+    expect(find.text('Fortsetzen'), findsOneWidget);
+  });
+
   testWidgets(
     '375 pt and double text supports scrolling, editor and keyboard',
     (tester) async {
@@ -453,7 +486,10 @@ void main() {
       await tester.scrollUntilVisible(find.text('15. September ansehen'), 200);
       await tester.tap(find.text('15. September ansehen'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.bySemanticsLabel(RegExp('^Schritte ')), 300);
+      await tester.scrollUntilVisible(
+        find.bySemanticsLabel(RegExp('^Schritte ')),
+        300,
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await tester.tap(find.bySemanticsLabel(RegExp('^Schritte ')));

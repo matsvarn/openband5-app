@@ -7,8 +7,14 @@ import 'theme.dart';
 
 class StepsCard extends StatelessWidget {
   final OpenBandDay day;
+  final DateTime Function() now;
   final VoidCallback? onNutrition;
-  const StepsCard({super.key, required this.day, this.onNutrition});
+  const StepsCard({
+    super.key,
+    required this.day,
+    required this.now,
+    this.onNutrition,
+  });
 
   void _details(BuildContext context, {bool intake = false}) {
     final p = OB.of(context);
@@ -104,16 +110,27 @@ class StepsCard extends StatelessWidget {
               onTap: () => _details(context),
               child: day.stepIntervals.isEmpty
                   ? null
-                  : Semantics(
-                      label:
-                          'Schritteverlauf: ${day.stepIntervals.map((s) => '${obTime(s.start)} bis ${obTime(s.end)}, ${obNumber(s.steps)} Schritte').join('. ')}',
-                      child: SizedBox(
-                        height: 24,
-                        width: double.infinity,
-                        child: CustomPaint(
-                          painter: _StepsPainter(day.stepIntervals, p.strain),
-                        ),
-                      ),
+                  : Builder(
+                      builder: (context) {
+                        final buckets = stepsByHour(day.stepIntervals);
+                        return Semantics(
+                          label:
+                              'Schritteverlauf: ${buckets.indexed.where((e) => e.$2 > 0).map((e) => '${e.$1.toString().padLeft(2, '0')}:00 ${obNumber(e.$2.round())} Schritte').join(', ')}',
+                          child: SizedBox(
+                            height: 40,
+                            width: double.infinity,
+                            child: CustomPaint(
+                              painter: _StepsPainter(
+                                buckets,
+                                day.day == todayLabel() ? now().hour : 23,
+                                p.strain,
+                                p.strainTint,
+                                p.line,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
             ),
           ),
@@ -228,42 +245,66 @@ class _DayValue extends StatelessWidget {
   }
 }
 
+/// Splits [StepInterval]s into 24 local hour buckets; an interval crossing an
+/// hour boundary contributes to each hour proportionally to its overlap.
+List<double> stepsByHour(List<StepInterval> intervals) {
+  final hours = List<double>.filled(24, 0);
+  for (final s in intervals) {
+    final totalMs = s.end.difference(s.start).inMilliseconds;
+    if (totalMs <= 0) continue;
+    var start = s.start;
+    while (start.isBefore(s.end)) {
+      final hourEnd = DateTime(
+        start.year,
+        start.month,
+        start.day,
+        start.hour + 1,
+      );
+      final sliceEnd = hourEnd.isBefore(s.end) ? hourEnd : s.end;
+      hours[start.hour] +=
+          s.steps * sliceEnd.difference(start).inMilliseconds / totalMs;
+      start = sliceEnd;
+    }
+  }
+  return hours;
+}
+
 class _StepsPainter extends CustomPainter {
-  final List<StepInterval> intervals;
-  final Color color;
-  _StepsPainter(this.intervals, this.color);
+  final List<double> buckets;
+  final int currentHour;
+  final Color color, tint, line;
+  _StepsPainter(
+    this.buckets,
+    this.currentHour,
+    this.color,
+    this.tint,
+    this.line,
+  );
   @override
   void paint(Canvas canvas, Size size) {
-    final maxValue = intervals.map((v) => v.steps).fold<double>(0, math.max);
-    if (maxValue <= 0) return;
-    final start = intervals.first.start.millisecondsSinceEpoch;
-    final span = intervals.last.end.millisecondsSinceEpoch - start;
-    if (span <= 0) return;
-    for (final interval in intervals) {
-      final x =
-          (interval.start.millisecondsSinceEpoch - start) / span * size.width;
-      final width =
-          (interval.end.difference(interval.start).inMilliseconds /
-                      span *
-                      size.width -
-                  2)
-              .clamp(.5, size.width);
-      final height = interval.steps / maxValue * size.height;
-      if (height <= 0) continue;
+    final maxValue = buckets.fold<double>(0, math.max);
+    const gap = 3.0;
+    final width = (size.width - 23 * gap) / 24;
+    for (var h = 0; h < 24; h++) {
+      final v = buckets[h];
+      final (height, paint) = v > 0
+          ? (math.max(4.0, size.height * v / maxValue), Paint()..color = color)
+          : (3.0, Paint()..color = h <= currentHour ? tint : line);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, size.height - height, width, height),
+          Rect.fromLTWH(h * (width + gap), size.height - height, width, height),
           const Radius.circular(3),
         ),
-        Paint()
-          ..color = color.withValues(
-            alpha: .52 + .48 * interval.steps / maxValue,
-          ),
+        paint,
       );
     }
   }
 
   @override
   bool shouldRepaint(covariant _StepsPainter old) =>
-      old.intervals != intervals || old.color != color;
+      old.buckets != buckets ||
+      old.currentHour != currentHour ||
+      old.color != color ||
+      old.tint != tint ||
+      old.line != line;
 }

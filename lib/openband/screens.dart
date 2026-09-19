@@ -7,6 +7,7 @@ import 'day_picker.dart';
 import 'domain.dart';
 import 'daily_activity.dart';
 import 'health.dart';
+import 'metric_detail.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
 
@@ -128,6 +129,11 @@ class OpenBandOverview extends StatelessWidget {
                   child: Center(child: CircularProgressIndicator.adaptive()),
                 ),
               if (day != null) ...[
+                OBSyncState(
+                  band: controller.band,
+                  onResume: onSync,
+                  now: controller.now,
+                ),
                 OBCard(
                   padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                   child: Column(
@@ -161,12 +167,16 @@ class OpenBandOverview extends StatelessWidget {
                               fraction: day.recovery.value == null
                                   ? null
                                   : day.recovery.value! / 100,
-                              onTap: () => showMetric(
+                              onTap: () => OpenBandMetricDetail.push(
                                 context,
-                                'Erholung',
-                                day.recovery,
-                                '/ 100',
-                                day.day,
+                                controller: controller,
+                                metricKey: MetricKey.recovery,
+                                label: 'Erholung',
+                                subtitle: 'aus der Nacht',
+                                unit: 'von 100',
+                                icon: LucideIcons.heartPulse,
+                                color: (p) => p.recovery,
+                                tint: (p) => p.recoveryTint,
                               ),
                             ),
                             MetricRing(
@@ -270,40 +280,6 @@ class OpenBandOverview extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (day.correction != null || controller.calculating)
                   CorrectionBanner(controller: controller),
-                if (controller.band.transfer != TransferState.idle)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: OBCard(
-                      child: Row(
-                        children: [
-                          Icon(
-                            controller.band.transfer ==
-                                    TransferState.interrupted
-                                ? LucideIcons.bluetoothOff
-                                : LucideIcons.refreshCw,
-                            size: 18,
-                            color: p.action,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              controller.band.transfer ==
-                                      TransferState.interrupted
-                                  ? 'Übertragung unterbrochen. Gespeicherte Werte bleiben erhalten.'
-                                  : 'Banddaten werden gespeichert.',
-                              style: p.text(13),
-                            ),
-                          ),
-                          if (onSync != null)
-                            IconButton(
-                              tooltip: 'Übertragung fortsetzen',
-                              onPressed: onSync,
-                              icon: const Icon(LucideIcons.refreshCw, size: 18),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
                 _AdaptiveValues(
                   children: [
                     OBMetricCard(
@@ -314,6 +290,17 @@ class OpenBandOverview extends StatelessWidget {
                       color: p.recovery,
                       tint: p.recoveryTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: controller,
+                        metricKey: MetricKey.hrv,
+                        label: 'HRV',
+                        subtitle: 'Herzratenvariabilität',
+                        unit: 'ms',
+                        icon: LucideIcons.activity,
+                        color: (p) => p.recovery,
+                        tint: (p) => p.recoveryTint,
+                      ),
                     ),
                     OBMetricCard(
                       label: 'Ruhepuls',
@@ -323,6 +310,17 @@ class OpenBandOverview extends StatelessWidget {
                       color: p.pulse,
                       tint: p.pulseTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: controller,
+                        metricKey: MetricKey.restingHr,
+                        label: 'Ruhepuls',
+                        subtitle: 'in der Nacht',
+                        unit: '/min',
+                        icon: LucideIcons.heart,
+                        color: (p) => p.pulse,
+                        tint: (p) => p.pulseTint,
+                      ),
                     ),
                   ],
                 ),
@@ -380,7 +378,11 @@ class OpenBandOverview extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                StepsCard(day: day, onNutrition: onNutrition),
+                StepsCard(
+                  day: day,
+                  now: controller.now,
+                  onNutrition: onNutrition,
+                ),
                 const SizedBox(height: 12),
                 if (onJournal != null)
                   OBCard(
@@ -466,6 +468,7 @@ class OBMetricCard extends StatelessWidget {
   final DayMetric metric;
   final IconData icon;
   final Color color, tint;
+  final VoidCallback? onTap;
   const OBMetricCard({
     super.key,
     required this.label,
@@ -475,6 +478,7 @@ class OBMetricCard extends StatelessWidget {
     required this.color,
     required this.tint,
     required this.day,
+    this.onTap,
   });
   @override
   Widget build(BuildContext context) {
@@ -484,7 +488,7 @@ class OBMetricCard extends StatelessWidget {
         ? p.smallText(color)
         : p.muted;
     return InkWell(
-      onTap: () => showMetric(context, label, metric, unit, day),
+      onTap: onTap,
       borderRadius: BorderRadius.circular(AlpRadius.card),
       child: OBCard(
         child: Row(
@@ -575,6 +579,104 @@ class _CircleButton extends StatelessWidget {
         fixedSize: const Size(40, 40),
       ),
       icon: Icon(icon, size: 20),
+    );
+  }
+}
+
+/// 40-px sync status pill under the overview header. Says nothing when there
+/// is nothing to say — a progress track would need a real progress value,
+/// which [BandSnapshot] does not carry, so none is drawn.
+class OBSyncState extends StatelessWidget {
+  final BandSnapshot band;
+  final VoidCallback? onResume;
+  final DateTime Function() now;
+  const OBSyncState({
+    super.key,
+    required this.band,
+    this.onResume,
+    required this.now,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final stored = 'bis ${obTime(band.latestStoredAt)}';
+    final (
+      IconData? icon,
+      Color? iconColor,
+      String? text,
+      Widget? trailing,
+    ) = switch (band.transfer) {
+      TransferState.receiving => (
+        LucideIcons.refreshCw,
+        p.action,
+        'Band wird gelesen',
+        Text(
+          stored,
+          style: p.text(
+            13,
+            weight: FontWeight.w700,
+            display: true,
+            color: p.muted,
+          ),
+        ),
+      ),
+      TransferState.interrupted => (
+        LucideIcons.bluetoothOff,
+        p.warning,
+        'Unterbrochen · $stored',
+        onResume == null
+            ? null
+            : TextButton(
+                onPressed: onResume,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Fortsetzen',
+                  style: p.text(13, weight: FontWeight.w600, color: p.action),
+                ),
+              ),
+      ),
+      TransferState.idle => switch (band.receivedAt) {
+        final at? when now().difference(at).inMinutes.abs() <= 10 => (
+          LucideIcons.check,
+          p.recovery,
+          'Gespeichert $stored',
+          Text(
+            'vor ${now().difference(at).inMinutes.abs()} Min.',
+            style: p.text(13, weight: FontWeight.w500, color: p.muted),
+          ),
+        ),
+        _ => (null, null, null, null),
+      },
+    };
+    if (icon == null) return const SizedBox.shrink();
+    return Semantics(
+      label: text,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: p.card,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            spacing: 10,
+            children: [
+              Icon(icon, size: 16, color: iconColor),
+              Expanded(
+                child: Text(text!, style: p.text(13, weight: FontWeight.w600)),
+              ),
+              ?trailing,
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -860,6 +962,17 @@ class OpenBandSleep extends StatelessWidget {
                       color: p.pulse,
                       tint: p.pulseTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: controller,
+                        metricKey: MetricKey.restingHr,
+                        label: 'Ruhepuls',
+                        subtitle: 'in der Nacht',
+                        unit: '/min',
+                        icon: LucideIcons.heart,
+                        color: (p) => p.pulse,
+                        tint: (p) => p.pulseTint,
+                      ),
                     ),
                     OBMetricCard(
                       label: 'HRV',
@@ -869,6 +982,17 @@ class OpenBandSleep extends StatelessWidget {
                       color: p.recovery,
                       tint: p.recoveryTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: controller,
+                        metricKey: MetricKey.hrv,
+                        label: 'HRV',
+                        subtitle: 'Herzratenvariabilität',
+                        unit: 'ms',
+                        icon: LucideIcons.activity,
+                        color: (p) => p.recovery,
+                        tint: (p) => p.recoveryTint,
+                      ),
                     ),
                   ],
                 ),

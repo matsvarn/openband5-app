@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
+import 'metric_detail.dart';
 import 'screens.dart';
 import 'theme.dart';
 
@@ -58,6 +59,17 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       color: p.recovery,
                       tint: p.recoveryTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: c,
+                        metricKey: MetricKey.hrv,
+                        label: 'HRV',
+                        subtitle: 'Herzratenvariabilität',
+                        unit: 'ms',
+                        icon: LucideIcons.activity,
+                        color: (p) => p.recovery,
+                        tint: (p) => p.recoveryTint,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -70,6 +82,17 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       color: p.pulse,
                       tint: p.pulseTint,
                       day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: c,
+                        metricKey: MetricKey.restingHr,
+                        label: 'Ruhepuls',
+                        subtitle: 'in der Nacht',
+                        unit: '/min',
+                        icon: LucideIcons.heart,
+                        color: (p) => p.pulse,
+                        tint: (p) => p.pulseTint,
+                      ),
                     ),
                   ),
                 ],
