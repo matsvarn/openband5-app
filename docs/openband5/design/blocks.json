@@ -681,6 +681,38 @@
         "3HFC-0",
         "3HPD-0"
       ]
+    },
+    {
+      "name": "OBSyncState",
+      "widget": "OBSyncState",
+      "paper": "A00b · Bausteine",
+      "screens": [],
+      "implemented": "screens.dart",
+      "note": "Eine Zeile unter dem Kopf: Band wird gelesen · Unterbrochen (Fortsetzen) · Gespeichert bis. Nie eine Karte im Feed. Kein Fortschritt ohne echten Wert."
+    },
+    {
+      "name": "OBStepsHours",
+      "widget": "OBStepsHours",
+      "paper": "A00b · Bausteine",
+      "screens": [],
+      "implemented": "daily_activity.dart",
+      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau."
+    },
+    {
+      "name": "OBMetricHero",
+      "widget": "OBMetricHero",
+      "paper": "A00b · Bausteine",
+      "screens": [],
+      "implemented": "metric_detail.dart",
+      "note": "Wert + Einheit + Status + OBRangePill; Kopf jedes Messwert-Details."
+    },
+    {
+      "name": "OBNightBars",
+      "widget": "OBNightBars",
+      "paper": "A00b · Bausteine",
+      "screens": [],
+      "implemented": "metric_detail.dart",
+      "note": "Ein Balken je Nacht, Basislinie als Band, gestrichelt nur zwischen beobachteten Nächten."
     }
   ],
   "openBlocks": [
@@ -697,7 +729,9 @@
       "Lauf · Ergebnis",
       "Kraft · live",
       "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)",
-      "Vorlage bearbeiten (template_editor.dart)"
+      "Vorlage bearbeiten (template_editor.dart)",
+      "Schlaf · Nacht (rebuilt)",
+      "Messwert-Detail (HRV, Ruhepuls, Erholung)"
     ],
     "deferred": [],
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."

@@ -439,6 +439,71 @@ String? _sleepDelta(DayMetric duration) {
   return d == 0 ? 'wie Basis' : '${d > 0 ? '+' : '−'}${obGapMinutes(d.abs())}';
 }
 
+String _sleepDeltaLabel(DayMetric duration) {
+  final d = (duration.value! - duration.baseline!).round();
+  if (d == 0) return 'wie Basis';
+  return '${d > 0 ? '+' : '−'}${obGapMinutes(d.abs())} '
+      '${d > 0 ? 'über' : 'unter'} Basis';
+}
+
+String _sleepEfficiency(SleepNight night) {
+  final v = night.duration.value, bed = night.bedMinutes;
+  if (v == null || bed == null || bed <= 0) return '—';
+  return '${(v / bed * 100).round()} %';
+}
+
+/// Onset, the full hours nearest one and two thirds through the night, wake.
+List<DateTime> _sleepAxisTimes(SleepNight night) {
+  final onset = night.onset!, wake = night.wake!;
+  final spanMin = wake.difference(onset).inMinutes;
+  DateTime nearestHour(DateTime t) =>
+      DateTime(t.year, t.month, t.day, t.hour + (t.minute >= 30 ? 1 : 0));
+  return [
+    onset,
+    nearestHour(onset.add(Duration(minutes: spanMin ~/ 3))),
+    nearestHour(onset.add(Duration(minutes: spanMin * 2 ~/ 3))),
+    wake,
+  ];
+}
+
+Widget _sleepStageFact(OB p, String label, Color? swatch, String value) =>
+    Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: swatch ?? p.well,
+                  borderRadius: BorderRadius.circular(2),
+                  border: swatch == null ? Border.all(color: p.line) : null,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: p.text(11, weight: FontWeight.w600, color: p.muted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: p.text(15, weight: FontWeight.w700, display: true),
+            ),
+          ),
+        ],
+      ),
+    );
+
 class _AdaptiveValues extends StatelessWidget {
   final List<Widget> children;
   const _AdaptiveValues({required this.children});
@@ -850,9 +915,9 @@ class OpenBandSleep extends StatelessWidget {
               OBPageHeader(
                 title: 'Schlaf',
                 subtitle:
-                    '${night.onset == null ? '' : '${night.onset!.day}./'}${obDate(controller.selectedDay)}${day?.synthetic == true ? ' · Synthetische Daten' : ''}',
+                    '${night.onset == null ? '' : '${night.onset!.day}./'}${obDate(controller.selectedDay)}',
                 onDate: () => chooseOpenBandDay(context, controller),
-                onInfo: () => _sleepMethod(context, night),
+                onInfo: () => _sleepMethod(context, controller),
                 infoLabel: 'Schlafwerte und Methode',
               ),
               if (controller.loadError != null)
@@ -861,119 +926,153 @@ class OpenBandSleep extends StatelessWidget {
                 const Center(child: CircularProgressIndicator.adaptive()),
               if (day != null) ...[
                 OBCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                  child: night.duration.value == null
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Für diese Nacht liegt noch kein Schlafwert vor.',
+                              style: p.text(14, color: p.muted),
+                            ),
+                            if (night.duration.reason != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                night.duration.reason!,
+                                style: p.text(14, color: p.muted),
+                              ),
+                            ],
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          spacing: 12,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(
-                                  obDuration(night.duration.value),
-                                  style: p.text(38, weight: FontWeight.w600),
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    Text(
+                                      obDuration(night.duration.value),
+                                      style: p.text(
+                                        34,
+                                        weight: FontWeight.w800,
+                                        display: true,
+                                      ),
+                                    ),
+                                    if (night.duration.baseline != null) ...[
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _sleepDeltaLabel(night.duration),
+                                        style: p.text(
+                                          13,
+                                          weight: FontWeight.w600,
+                                          color: p.smallText(p.sleep),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Schlaf',
-                                  style: p.text(13, color: p.muted),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Effizienz',
+                                      style: p.text(
+                                        13,
+                                        weight: FontWeight.w600,
+                                        color: p.muted,
+                                      ),
+                                    ),
+                                    Text(
+                                      _sleepEfficiency(night),
+                                      style: p.text(
+                                        17,
+                                        weight: FontWeight.w700,
+                                        display: true,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ),
-                          if (night.onset != null && night.wake != null)
-                            IconButton(
-                              tooltip: 'Schlafzeiten ändern',
-                              onPressed: () => _edit(context),
-                              icon: const Icon(LucideIcons.pencil, size: 19),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      if (night.duration.value == null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            night.duration.reason ??
-                                'Für diese Nacht liegt noch kein Schlafwert vor.',
-                            style: p.text(14, color: p.muted),
-                          ),
-                        ),
-                      NightChart(night: night, labels: true),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final part in [
-                            (NightStage.rem, night.remMinutes),
-                            (NightStage.light, night.lightMinutes),
-                            (NightStage.deep, night.deepMinutes),
-                            (NightStage.awake, night.awakeMinutes),
-                          ])
-                            if (part.$2 != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: stageColor(
-                                    p,
-                                    part.$1,
-                                  ).withValues(alpha: .12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${stageName(part.$1)} ${part.$1 == NightStage.awake ? '${obNumber(part.$2)} Min.' : obDuration(part.$2)}',
-                                  style: p.text(
-                                    13,
-                                    color: switch (part.$1) {
-                                      NightStage.rem ||
-                                      NightStage.light => p.sleepText,
-                                      NightStage.deep => p.stageDeep,
-                                      NightStage.awake => p.strainText,
-                                    },
-                                  ),
-                                ),
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: p.well,
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        '${obDuration(night.bedMinutes)} im Bett',
-                        style: p.text(13, color: p.muted),
-                      ),
-                    ],
-                  ),
+                              child: NightChart(
+                                night: night,
+                                labels: false,
+                                showGapCaption: false,
+                              ),
+                            ),
+                            if (night.onset != null && night.wake != null)
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  for (final t in _sleepAxisTimes(night))
+                                    Text(
+                                      obTime(t),
+                                      style: p.text(
+                                        12,
+                                        weight: FontWeight.w500,
+                                        color: p.muted,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sleepStageFact(
+                                  p,
+                                  'Tief',
+                                  p.stageDeep,
+                                  obDuration(night.deepMinutes),
+                                ),
+                                _sleepStageFact(
+                                  p,
+                                  'Leicht',
+                                  p.stageLight,
+                                  obDuration(night.lightMinutes),
+                                ),
+                                _sleepStageFact(
+                                  p,
+                                  'REM',
+                                  p.stageRem,
+                                  obDuration(night.remMinutes),
+                                ),
+                                _sleepStageFact(
+                                  p,
+                                  'Wach',
+                                  p.wake,
+                                  night.awakeMinutes == null
+                                      ? '—'
+                                      : '${obNumber(night.awakeMinutes)} Min.',
+                                ),
+                                _sleepStageFact(
+                                  p,
+                                  'Im Bett',
+                                  null,
+                                  obDuration(night.bedMinutes),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                 ),
                 const SizedBox(height: 12),
-                if (day.correction != null)
+                if (day.correction != null || controller.calculating)
                   CorrectionBanner(controller: controller),
                 _AdaptiveValues(
                   children: [
-                    OBMetricCard(
-                      label: 'Ruhepuls',
-                      unit: '/min',
-                      metric: day.restingHr,
-                      icon: LucideIcons.heart,
-                      color: p.pulse,
-                      tint: p.pulseTint,
-                      day: day.day,
-                      onTap: () => OpenBandMetricDetail.push(
-                        context,
-                        controller: controller,
-                        metricKey: MetricKey.restingHr,
-                        label: 'Ruhepuls',
-                        subtitle: 'in der Nacht',
-                        unit: '/min',
-                        icon: LucideIcons.heart,
-                        color: (p) => p.pulse,
-                        tint: (p) => p.pulseTint,
-                      ),
-                    ),
                     OBMetricCard(
                       label: 'HRV',
                       unit: 'ms',
@@ -994,54 +1093,57 @@ class OpenBandSleep extends StatelessWidget {
                         tint: (p) => p.recoveryTint,
                       ),
                     ),
+                    OBMetricCard(
+                      label: 'Ruhepuls',
+                      unit: '/min',
+                      metric: day.restingHr,
+                      icon: LucideIcons.heart,
+                      color: p.pulse,
+                      tint: p.pulseTint,
+                      day: day.day,
+                      onTap: () => OpenBandMetricDetail.push(
+                        context,
+                        controller: controller,
+                        metricKey: MetricKey.restingHr,
+                        label: 'Ruhepuls',
+                        subtitle: 'in der Nacht',
+                        unit: '/min',
+                        icon: LucideIcons.heart,
+                        color: (p) => p.pulse,
+                        tint: (p) => p.pulseTint,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                if (night.history.isNotEmpty)
-                  OBCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Deine Woche',
-                          style: p.text(15, weight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 12),
-                        _SleepHistory(night.history, p),
-                      ],
-                    ),
+                FutureBuilder<List<MetricPoint>>(
+                  future: controller.repository.readMetricHistory(
+                    MetricKey.sleepDuration,
+                    controller.selectedDay,
+                    30,
                   ),
-                const SizedBox(height: 12),
-                OBCard(
-                  child: Column(
-                    children: [
-                      _ActionRow(
-                        'Schlafzeiten prüfen',
-                        LucideIcons.clock3,
-                        () => _edit(context),
-                      ),
-                      _ActionRow(
-                        'Schlafphasen & Daten',
-                        LucideIcons.chartNoAxesCombined,
-                        () => _sleepMethod(context, night),
-                      ),
-                      _Fact('Quelle', night.source),
-                      _Fact(
-                        'Aufzeichnungszone',
-                        night.recordingTimezone ?? 'Nicht gespeichert',
-                      ),
-                    ],
+                  builder: (context, snapshot) => OBTrendCard(
+                    label: 'Schlafdauer',
+                    unit: '',
+                    icon: LucideIcons.moon,
+                    color: p.sleep,
+                    tint: p.sleepTint,
+                    nights: 30,
+                    points: snapshot.data,
+                    baseline: night.duration.baseline,
+                    error: snapshot.hasError,
+                    format: obDuration,
                   ),
                 ),
-                if (day.correction != null && !day.correction!.automatic)
-                  TextButton(
-                    onPressed: () => restoreAutomaticSleep(
-                      context,
-                      controller,
-                      controller.selectedDay,
-                    ),
-                    child: const Text('Automatische Zeiten wiederherstellen'),
+                const SizedBox(height: 12),
+                Tooltip(
+                  message: 'Schlafzeiten ändern',
+                  child: OBAction(
+                    'Zeiten korrigieren',
+                    secondary: true,
+                    onPressed: () => _edit(context),
                   ),
+                ),
               ],
             ],
           ),
@@ -1128,63 +1230,6 @@ class CorrectionBanner extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SleepHistory extends StatelessWidget {
-  final List<({String day, double? minutes})> history;
-  final OB p;
-  const _SleepHistory(this.history, this.p);
-  @override
-  Widget build(BuildContext context) {
-    final entries = history.length > 7
-        ? history.sublist(history.length - 7)
-        : history;
-    return Semantics(
-      label: entries
-          .map((e) => '${obDate(e.day)}: ${obDuration(e.minutes)} Schlaf')
-          .join('. '),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 54,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                for (final e in entries)
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Container(
-                        height: e.minutes == null
-                            ? 2
-                            : ((e.minutes! / 600) * 54).clamp(3, 54),
-                        decoration: BoxDecoration(
-                          color: e.minutes == null
-                              ? p.line
-                              : p.sleep.withValues(alpha: .65),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                obDate(entries.first.day),
-                style: p.text(12, color: p.muted),
-              ),
-              Text(obDate(entries.last.day), style: p.text(12, color: p.muted)),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -1284,13 +1329,15 @@ Future<void> showMetric(
 );
 Future<void> _sleepMethod(
   BuildContext context,
-  SleepNight night,
+  OpenBandController controller,
 ) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {
     final p = OB.of(c);
+    final night = controller.day?.sleep ?? const SleepNight();
+    final correction = controller.day?.correction;
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -1314,11 +1361,27 @@ Future<void> _sleepMethod(
             ),
             _Fact('Quelle', night.source),
             _Fact(
+              'Aufzeichnungszone',
+              night.recordingTimezone ?? 'Nicht gespeichert',
+            ),
+            _Fact(
               'Ohne Daten',
               night.unobservedMinutes == null
                   ? 'Nicht bestimmt'
                   : '${obNumber(night.unobservedMinutes)} Min.',
             ),
+            if (correction != null && !correction.automatic)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(c);
+                  restoreAutomaticSleep(
+                    context,
+                    controller,
+                    controller.selectedDay,
+                  );
+                },
+                child: const Text('Automatische Zeiten wiederherstellen'),
+              ),
             OBAction('Schließen', onPressed: () => Navigator.pop(c)),
           ],
         ),

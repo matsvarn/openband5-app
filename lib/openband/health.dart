@@ -146,6 +146,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       MetricKey.hrv => day?.hrv.baseline,
                       MetricKey.restingHr => day?.restingHr.baseline,
                       MetricKey.recovery => null,
+                      MetricKey.sleepDuration => day?.sleep.duration.baseline,
                     },
                     error: snapshot.hasError,
                   ),
@@ -220,6 +221,7 @@ class OBTrendCard extends StatelessWidget {
   final List<MetricPoint>? points;
   final double? baseline;
   final bool error;
+  final String Function(double?)? format;
   const OBTrendCard({
     super.key,
     required this.label,
@@ -231,6 +233,7 @@ class OBTrendCard extends StatelessWidget {
     required this.points,
     this.baseline,
     this.error = false,
+    this.format,
   });
   @override
   Widget build(BuildContext context) {
@@ -246,7 +249,12 @@ class OBTrendCard extends StatelessWidget {
         ? ('Noch keine Werte', p.muted)
         : observed < nights
         ? ('$observed von $nights Nächten', p.muted)
-        : (obMetricStatus(last, baseline, unit: unit), p.smallText(color));
+        : (
+            format != null && baseline != null && last != null
+                ? _durationStatus(last, baseline!)
+                : obMetricStatus(last, baseline, unit: unit),
+            p.smallText(color),
+          );
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -273,7 +281,7 @@ class OBTrendCard extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                obNumber(last),
+                format?.call(last) ?? obNumber(last),
                 style: p.text(28, weight: FontWeight.w800, display: true),
               ),
               const SizedBox(width: 4),
@@ -327,6 +335,13 @@ class OBTrendCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _durationStatus(double value, double baseline) {
+  final d = (value - baseline).round();
+  if (d == 0) return 'wie Basis';
+  return '${d > 0 ? '+' : '−'}${obGapMinutes(d.abs())} '
+      '${d > 0 ? 'über' : 'unter'} Basis';
 }
 
 String obMetricStatus(double? value, double? baseline, {String unit = ''}) {

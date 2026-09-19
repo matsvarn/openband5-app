@@ -284,6 +284,10 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
       await tester.pumpAndSettle();
+      expect(find.text('Effizienz'), findsOneWidget);
+      expect(find.text('Im Bett'), findsOneWidget);
+      expect(find.text('Schlafdauer'), findsOneWidget);
+      expect(find.text('Zeiten korrigieren'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-partial.png'),
@@ -368,6 +372,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-large.png'),
       );
+      await tester.scrollUntilVisible(find.text('Zeiten korrigieren'), 300);
       await tester.tap(find.byTooltip('Schlafzeiten ändern'));
       await tester.pumpAndSettle();
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
@@ -512,12 +517,11 @@ void main() {
       );
       await tester.tap(find.text('Nacht ansehen'));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Schlafzeiten ändern'), findsOneWidget);
-      expect(find.text('7h08'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('Automatische Zeiten wiederherstellen'),
-        300,
-      );
+      // Hero and the Schlafdauer trend both show the corrected night.
+      expect(find.text('7h08'), findsNWidgets(2));
+      // The restore action lives in the info sheet now.
+      await tester.tap(find.byTooltip('Schlafwerte und Methode'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Automatische Zeiten wiederherstellen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Wiederherstellen'));

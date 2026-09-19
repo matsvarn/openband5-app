@@ -179,7 +179,8 @@ class MetricPoint {
 enum MetricKey {
   hrv('rmssd'),
   restingHr('rhr'),
-  recovery('readiness');
+  recovery('readiness'),
+  sleepDuration('tst_min');
 
   final String series;
   const MetricKey(this.series);

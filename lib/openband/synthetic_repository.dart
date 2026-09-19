@@ -482,6 +482,13 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       MetricKey.recovery => {
         if (todayKnown) _day: (recovery['score'] as num).toDouble(),
       },
+      MetricKey.sleepDuration => {
+        for (final e in _sleepByDay.entries)
+          if (e.key != _day) e.key: e.value,
+        // Today's stored duration follows the scenario (partial night etc.),
+        // exactly what readDay reports, so hero and trend never disagree.
+        if (todayKnown) _day: ?(await readDay(_day)).sleep.duration.value,
+      },
     };
     return [
       for (final d in openBandDaysEnding(endDay, nights))

@@ -95,6 +95,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
     MetricKey.hrv => day.hrv,
     MetricKey.restingHr => day.restingHr,
     MetricKey.recovery => day.recovery,
+    MetricKey.sleepDuration => day.sleep.duration,
   };
 
   void _basis(BuildContext context) => showModalBottomSheet<void>(
