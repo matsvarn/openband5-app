@@ -33,6 +33,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, double> _sleepByDay = {};
   final Map<String, double> _hrvByDay = {};
   final Map<String, double> _rhrByDay = {};
+  final Map<String, double> _strainByDay = {};
 
   late final String _day;
   late final String _timezone;
@@ -88,6 +89,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         Map<String, dynamic>.from(_summary['recovery'] as Map)['rhr_baseline'],
       ),
       _rhrByDay,
+    );
+    _indexBaseline(
+      const [1.4, 1.9, 0.8, 2.1, 1.6, 1.1, 1.8, 0.9, 2.0, 1.5, 1.3, 1.7, 1.0, 1.2],
+      _strainByDay,
     );
     final saved = _at(_day, _summary['latest_saved_local'] as String);
     _baseBand = BandSnapshot(
@@ -488,6 +493,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         // Today's stored duration follows the scenario (partial night etc.),
         // exactly what readDay reports, so hero and trend never disagree.
         if (todayKnown) _day: ?(await readDay(_day)).sleep.duration.value,
+      },
+      MetricKey.strain => {
+        ..._strainByDay,
+        if (todayKnown) _day: ?(await readDay(_day)).strain.value,
       },
     };
     return [

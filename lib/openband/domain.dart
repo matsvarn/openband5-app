@@ -180,7 +180,8 @@ enum MetricKey {
   hrv('rmssd'),
   restingHr('rhr'),
   recovery('readiness'),
-  sleepDuration('tst_min');
+  sleepDuration('tst_min'),
+  strain('strain');
 
   final String series;
   const MetricKey(this.series);

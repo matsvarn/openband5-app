@@ -62,6 +62,7 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     Brightness brightness = Brightness.light,
+    bool strain = false,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(393, 852);
@@ -85,13 +86,14 @@ void main() {
           key: const ValueKey('capture'),
           child: OpenBandMetricDetail(
             controller: controller,
-            metricKey: MetricKey.hrv,
-            label: 'HRV',
-            subtitle: 'Herzratenvariabilität',
-            unit: 'ms',
-            icon: LucideIcons.activity,
-            color: (p) => p.recovery,
-            tint: (p) => p.recoveryTint,
+            metricKey: strain ? MetricKey.strain : MetricKey.hrv,
+            label: strain ? 'Belastung' : 'HRV',
+            subtitle: strain ? 'heute bis jetzt' : 'Herzratenvariabilität',
+            unit: strain ? 'von 21' : 'ms',
+            icon: strain ? LucideIcons.flame : LucideIcons.activity,
+            color: strain ? (p) => p.strain : (p) => p.recovery,
+            tint: strain ? (p) => p.strainTint : (p) => p.recoveryTint,
+            digits: strain ? 1 : 0,
           ),
         ),
       ),
@@ -124,6 +126,25 @@ void main() {
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
     expect(find.textContaining('von 7 Nächten'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('strain detail shows the day value without night rows', (
+    tester,
+  ) async {
+    await mount(tester, strain: true);
+    expect(find.text('1,6'), findsOneWidget);
+    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.textContaining('von 30 Tagen'), findsOneWidget);
+    expect(find.text('Verlauf in der Nacht'), findsNothing);
+    expect(find.text('So entsteht die Basis'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('strain missing scenario shows a dash hero', (tester) async {
+    repo.scenario = SyntheticScenario.missing;
+    await mount(tester, strain: true);
+    expect(find.text('—'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

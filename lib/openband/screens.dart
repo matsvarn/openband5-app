@@ -188,12 +188,17 @@ class OpenBandOverview extends StatelessWidget {
                               fraction: day.strain.value == null
                                   ? null
                                   : day.strain.value! / 21,
-                              onTap: () => showMetric(
+                              onTap: () => OpenBandMetricDetail.push(
                                 context,
-                                'Belastung',
-                                day.strain,
-                                '/ 21',
-                                day.day,
+                                controller: controller,
+                                metricKey: MetricKey.strain,
+                                label: 'Belastung',
+                                subtitle: 'heute bis jetzt',
+                                unit: 'von 21',
+                                icon: LucideIcons.flame,
+                                digits: 1,
+                                color: (p) => p.strain,
+                                tint: (p) => p.strainTint,
                               ),
                             ),
                           ],
@@ -1284,49 +1289,6 @@ class _Fact extends StatelessWidget {
   }
 }
 
-Future<void> showMetric(
-  BuildContext context,
-  String title,
-  DayMetric metric,
-  String unit,
-  String day,
-) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  builder: (c) {
-    final p = OB.of(c);
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title, style: p.text(18, weight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            Text(
-              '${obNumber(metric.value, digits: title == 'Belastung' ? 1 : 0)} $unit',
-              style: p.text(32, weight: FontWeight.w600),
-            ),
-            _Fact('Tag', obDate(day)),
-            if (metric.baseline != null)
-              _Fact('Persönliche Basis', '${obNumber(metric.baseline)} $unit'),
-            Text(
-              metric.reason ??
-                  (metric.value == null
-                      ? 'Für diesen Tag fehlt eine ausreichende Datengrundlage.'
-                      : 'Gespeicherter, auf dem Gerät berechneter Wert. Fehlende Eingänge werden nicht ergänzt.'),
-              style: p.text(14, color: p.muted),
-            ),
-            const SizedBox(height: 12),
-            OBAction('Schließen', onPressed: () => Navigator.pop(c)),
-          ],
-        ),
-      ),
-    );
-  },
-);
 Future<void> _sleepMethod(
   BuildContext context,
   OpenBandController controller,

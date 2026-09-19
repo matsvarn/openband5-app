@@ -349,6 +349,17 @@ void main() {
     expect(buckets.fold<double>(0, (a, b) => a + b), 500);
   });
 
+  testWidgets('Belastung ring opens the strain day detail', (tester) async {
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel(RegExp(r'^Belastung, ')));
+    await tester.pumpAndSettle();
+    expect(find.text('Belastung'), findsWidgets);
+    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.textContaining('von 30 Tagen'), findsOneWidget);
+    expect(find.text('Verlauf in der Nacht'), findsNothing);
+    expect(find.text('So entsteht die Basis'), findsNothing);
+  });
+
   testWidgets('interrupted transfer shows the sync pill with a resume action', (
     tester,
   ) async {

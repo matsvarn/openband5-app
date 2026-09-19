@@ -18,6 +18,7 @@ class OpenBandMetricDetail extends StatefulWidget {
   final String label, subtitle, unit;
   final IconData icon;
   final Color Function(OB) color, tint;
+  final int digits;
   const OpenBandMetricDetail({
     super.key,
     required this.controller,
@@ -28,6 +29,7 @@ class OpenBandMetricDetail extends StatefulWidget {
     required this.icon,
     required this.color,
     required this.tint,
+    this.digits = 0,
   });
 
   static void push(
@@ -40,6 +42,7 @@ class OpenBandMetricDetail extends StatefulWidget {
     required IconData icon,
     required Color Function(OB) color,
     required Color Function(OB) tint,
+    int digits = 0,
   }) => Navigator.push(
     context,
     MaterialPageRoute<void>(
@@ -52,6 +55,7 @@ class OpenBandMetricDetail extends StatefulWidget {
         icon: icon,
         color: color,
         tint: tint,
+        digits: digits,
       ),
     ),
   );
@@ -91,11 +95,17 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
     }
   }
 
+  // Strain is scored per waking day, everything else per night; the copy and
+  // the onward links follow that, and strain carries no baseline at all.
+  bool get _nightly => widget.metricKey != MetricKey.strain;
+  String get _period => _nightly ? 'Nächte' : 'Tage';
+
   DayMetric _metric(OpenBandDay day) => switch (widget.metricKey) {
     MetricKey.hrv => day.hrv,
     MetricKey.restingHr => day.restingHr,
     MetricKey.recovery => day.recovery,
     MetricKey.sleepDuration => day.sleep.duration,
+    MetricKey.strain => day.strain,
   };
 
   void _basis(BuildContext context) => showModalBottomSheet<void>(
@@ -175,7 +185,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                             Flexible(
                               child: Text(
                                 widget.controller.selectedDay == todayLabel()
-                                    ? 'Nacht auf heute'
+                                    ? (_nightly ? 'Nacht auf heute' : 'Heute')
                                     : obDayTitle(widget.controller.selectedDay),
                                 style: p.text(
                                   13,
@@ -191,7 +201,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                           textBaseline: TextBaseline.alphabetic,
                           children: [
                             Text(
-                              obNumber(metric.value),
+                              obNumber(metric.value, digits: widget.digits),
                               style: p.text(
                                 44,
                                 weight: FontWeight.w800,
@@ -230,7 +240,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
             ),
             const SizedBox(height: 12),
             OBSegmented(
-              labels: [for (final n in _nightOptions) '$n Nächte'],
+              labels: [for (final n in _nightOptions) '$n $_period'],
               selected: _nightOptions.indexOf(_nights),
               onChanged: (i) => setState(() {
                 _nights = _nightOptions[i];
@@ -247,7 +257,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Nacht für Nacht',
+                          _nightly ? 'Nacht für Nacht' : 'Tag für Tag',
                           style: p.text(
                             13,
                             weight: FontWeight.w600,
@@ -256,7 +266,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                         ),
                       ),
                       Text(
-                        '${_points?.where((e) => e.value != null).length ?? 0} von $_nights Nächten',
+                        '${_points?.where((e) => e.value != null).length ?? 0} von $_nights ${_nightly ? 'Nächten' : 'Tagen'}',
                         style: p.text(
                           13,
                           weight: FontWeight.w500,
@@ -325,41 +335,42 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            OBCard(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-              child: Column(
-                children: [
-                  _row(
-                    p,
-                    LucideIcons.moon,
-                    p.sleep,
-                    p.sleepTint,
-                    'Verlauf in der Nacht',
-                    day?.sleep.onset != null && day?.sleep.wake != null
-                        ? '${obTime(day!.sleep.onset)} – ${obTime(day.sleep.wake)}'
-                        : '—',
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            OpenBandSleep(controller: widget.controller),
+            if (_nightly) const SizedBox(height: 12),
+            if (_nightly)
+              OBCard(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                child: Column(
+                  children: [
+                    _row(
+                      p,
+                      LucideIcons.moon,
+                      p.sleep,
+                      p.sleepTint,
+                      'Verlauf in der Nacht',
+                      day?.sleep.onset != null && day?.sleep.wake != null
+                          ? '${obTime(day!.sleep.onset)} – ${obTime(day.sleep.wake)}'
+                          : '—',
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) =>
+                              OpenBandSleep(controller: widget.controller),
+                        ),
                       ),
                     ),
-                  ),
-                  Container(height: 1, color: p.line),
-                  _row(
-                    p,
-                    LucideIcons.info,
-                    p.ink,
-                    p.well,
-                    'So entsteht die Basis',
-                    '30 Nächte',
-                    () => _basis(context),
-                  ),
-                ],
+                    Container(height: 1, color: p.line),
+                    _row(
+                      p,
+                      LucideIcons.info,
+                      p.ink,
+                      p.well,
+                      'So entsteht die Basis',
+                      '30 Nächte',
+                      () => _basis(context),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ),
       );

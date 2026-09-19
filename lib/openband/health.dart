@@ -147,6 +147,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       MetricKey.restingHr => day?.restingHr.baseline,
                       MetricKey.recovery => null,
                       MetricKey.sleepDuration => day?.sleep.duration.baseline,
+                      MetricKey.strain => day?.strain.baseline,
                     },
                     error: snapshot.hasError,
                   ),
