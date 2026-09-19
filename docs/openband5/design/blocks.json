@@ -7,10 +7,11 @@
     "exportedAt": "2026-09-18"
   },
   "conventions": {
-    "layerName": "Paper layer name == Dart class name. Variants use a dot suffix (OBSetRow.done) and map to an enum or named constructor.",
+    "layerName": "Paper layer name is canonical. Variants use a dot suffix (OBSetRow.done). A block may map to a shared widget or an inline composition; the Dart owner need not match the Paper name.",
     "canonical": "The node on the Bausteine page is canonical. Screens contain clones; a visual change is made on the Bausteine node first, then re-applied to the widget, then screens are re-derived.",
-    "package": "All widgets live in edge/lib/openband/. Existing classes are kept where the block matches; renames are listed under `replaces`.",
-    "honesty": "Absent input renders as — or is omitted. Lower-bound totals are not marked with ≥; the kcal bar shows a dashed unknown segment instead."
+    "package": "Existing ui2 code is reused — not every Paper block is a class in lib/openband. implementationStatus is explicit when the block is not in source; absent status means implemented when file and widget resolve.",
+    "honesty": "Absent input renders as — or is omitted. Lower-bound totals are not marked with ≥; the kcal bar shows a dashed unknown segment instead.",
+    "sourceCheck": "tool/check_design_manifest.py verifies that implemented file/widget references exist in source. It does not verify routing or visual acceptance."
   },
   "screens": {
     "3F5T-0": "A01 Übersicht · vollständig erfasste Nacht",
@@ -28,13 +29,13 @@
     "3H1S-0": "A01 Übersicht · teilweise erfasste Nacht",
     "3H8H-0": "A01 Übersicht · Band getrennt",
     "3HTP-0": "A01 Übersicht · Dunkel",
-    "3HFC-0": "A01 Übersicht anpassen",
+    "3HFC-0": "A01 Übersicht anpassen (Paper-only)",
     "3HPD-0": "A01 Übersicht · Datum wählen",
     "3I5L-0": "A05 Gesundheit · HRV · Detail (OpenBandMetricDetail)",
-    "L-0 · Einrichtung · Willkommen": "A03 Einrichtung · Willkommen (lib/ui2/onboarding/welcome.dart)",
-    "L-0 · Einrichtung · Band verbinden": "A03 Einrichtung · Band verbinden (lib/ui2/onboarding/pairing.dart)",
-    "L-0 · Einrichtung · Erste Übertragung": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
-    "L-0 · Einrichtung · Dein Profil": "A03 Einrichtung · Dein Profil (lib/ui2/onboarding/profile_setup.dart)",
+    "3IBI-0": "A03 Einrichtung · Willkommen (lib/ui2/onboarding/welcome.dart)",
+    "3IBJ-0": "A03 Einrichtung · Band verbinden (lib/ui2/onboarding/pairing.dart)",
+    "3IBK-0": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
+    "3IBL-0": "A03 Einrichtung · Dein Profil (lib/ui2/onboarding/profile_setup.dart)",
     "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
     "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)",
     "3IK6-0": "A08 Bandgesten · Doppelt tippen",
@@ -52,9 +53,9 @@
     {
       "name": "OBPageHeader.hub",
       "paperNode": "3EQN-0",
-      "widget": "OBPageHeader",
+      "widget": "OpenBandOverview",
       "variant": "hub",
-      "file": "theme.dart",
+      "file": "screens.dart",
       "replaces": "OBPageHeader (rewrite: title only, 'Heute' when today, 'Di, 15. Sep.' otherwise; no eyebrow)",
       "usedIn": [
         "3F5T-0",
@@ -62,7 +63,8 @@
         "3FVD-0",
         "3G8R-0"
       ],
-      "implemented": "screens.dart / health.dart / training.dart / journal.dart (inline title)"
+      "implemented": "screens.dart / health.dart / training.dart / journal.dart (inline title)",
+      "notes": "Inline hub titles in OpenBandOverview / OpenBandHealth / OpenBandTraining / OpenBandJournal; not OBPageHeader."
     },
     {
       "name": "OBPageHeader.detail",
@@ -88,8 +90,8 @@
     {
       "name": "OBBandCapsule",
       "paperNode": "3EQU-0",
-      "widget": "OBBandCapsule",
-      "file": "theme.dart",
+      "widget": "_BandPill",
+      "file": "screens.dart",
       "usedIn": [
         "3F5T-0",
         "3FDB-0",
@@ -101,17 +103,18 @@
     {
       "name": "OBIconButton",
       "paperNode": "3ER1-0",
-      "widget": "OBIconButton",
-      "file": "theme.dart",
+      "widget": "_CircleButton",
+      "file": "screens.dart",
       "usedIn": [
         "*"
-      ]
+      ],
+      "notes": "No OBIconButton class; overview uses _CircleButton. Headers use stock IconButton via theme.dart IconButtonTheme."
     },
     {
       "name": "OBTabBar",
       "paperNode": "3ERJ-0",
-      "widget": "OBTabBar",
-      "file": "screens.dart",
+      "widget": "AppShell",
+      "file": "ui2/app_shell.dart",
       "usedIn": [
         "3F5T-0",
         "3FDB-0",
@@ -124,8 +127,8 @@
     {
       "name": "OBRingTrio",
       "paperNode": "3EV6-0",
-      "widget": "OBRingTrio",
-      "file": "screens.dart",
+      "widget": "MetricRing",
+      "file": "charts.dart",
       "replaces": "MetricRing ×3 inside OpenBandOverview",
       "usedIn": [
         "3F5T-0"
@@ -135,17 +138,17 @@
     {
       "name": "OBInsightRow",
       "paperNode": "3EVZ-0",
-      "widget": "OBInsightRow",
+      "widget": "OpenBandOverview",
       "file": "screens.dart",
       "usedIn": [
         "3F5T-0"
       ],
-      "notes": "Body says only what no picture on the screen already shows."
+      "notes": "Body says only what no picture on the screen already shows. Inline in OpenBandOverview; no OBInsightRow class."
     },
     {
       "name": "OBDayStrip",
       "paperNode": "3FB5-0",
-      "widget": "OBDayStrip",
+      "widget": "StepsCard",
       "file": "daily_activity.dart",
       "replaces": "StepsCard",
       "usedIn": [
@@ -182,16 +185,16 @@
     {
       "name": "OBStatusChip",
       "paperNode": "3ESQ-0",
-      "widget": "OBStatusChip",
-      "file": "theme.dart",
+      "widget": "obMetricStatus",
+      "file": "health.dart",
       "notes": "Text only: '+8 über Basis' / 'im Bereich'. Never repeats the value.",
-      "implemented": "screens.dart (obMetricStatus)"
+      "implemented": "health.dart"
     },
     {
       "name": "OBTrendCard",
       "paperNode": "3ET0-0",
       "widget": "OBTrendCard",
-      "file": "charts.dart",
+      "file": "health.dart",
       "usedIn": [
         "3FDB-0",
         "3FVE-0",
@@ -205,16 +208,16 @@
     {
       "name": "OBTrendPlot",
       "paperNode": "3ETC-0",
-      "widget": "OBTrendPlot",
-      "file": "charts.dart",
-      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only.",
+      "widget": "_TrendPainter",
+      "file": "health.dart",
+      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only. Plot is inline in OBTrendCard via _TrendPainter; no OBTrendPlot type.",
       "implemented": "health.dart"
     },
     {
       "name": "OBWeekBars",
       "paperNode": "3ETN-0",
       "widget": "OBWeekBars",
-      "file": "charts.dart",
+      "file": "training.dart",
       "usedIn": [
         "3FDB-0",
         "3FVD-0"
@@ -241,48 +244,52 @@
     {
       "name": "OBHypnogram",
       "paperNode": "3EWE-0",
-      "widget": "OBHypnogram",
+      "widget": "_NightPainter",
       "file": "charts.dart",
       "usedIn": [
         "3F5T-0",
         "3G8S-0"
-      ]
+      ],
+      "notes": "Drawn by NightChart._NightPainter; no OBHypnogram class."
     },
     {
       "name": "OBStageLegend",
       "paperNode": "3EX4-0",
-      "widget": "OBStageLegend",
-      "file": "charts.dart",
+      "widget": "_sleepStageFact",
+      "file": "screens.dart",
       "usedIn": [
         "3F5T-0",
         "3G8S-0"
-      ]
+      ],
+      "notes": "Sleep-screen stage facts; no OBStageLegend class."
     },
     {
       "name": "OBSectionHeader",
       "paperNode": "3EXT-0",
-      "widget": "OBSectionHeader",
-      "file": "theme.dart",
+      "widget": "OpenBandTraining",
+      "file": "training.dart",
       "usedIn": [
         "3FDB-0",
         "3FVE-0",
         "3FVD-0"
-      ]
+      ],
+      "notes": "Inline section titles on hubs; no OBSectionHeader class."
     },
     {
       "name": "OBSectionHeader.range",
       "paperNode": "3EWA-0",
-      "widget": "OBSectionHeader",
+      "widget": "OpenBandOverview",
       "variant": "range",
-      "file": "theme.dart",
+      "file": "screens.dart",
       "usedIn": [
         "3F5T-0"
-      ]
+      ],
+      "notes": "Inline 'Deine Nacht' range row; no OBSectionHeader class."
     },
     {
       "name": "OBListCard",
       "paperNode": "3EXW-0",
-      "widget": "OBListCard",
+      "widget": "OBCard",
       "file": "theme.dart",
       "children": [
         "OBListRow"
@@ -291,23 +298,25 @@
         "3FDB-0",
         "3FVE-0",
         "3FVD-0"
-      ]
+      ],
+      "notes": "List grouping uses OBCard; no OBListCard class."
     },
     {
       "name": "OBListRow",
       "paperNode": "3EXX-0",
-      "widget": "OBListRow",
-      "file": "theme.dart",
+      "widget": "_SessionRow",
+      "file": "training.dart",
       "children": [
         "OBLens"
-      ]
+      ],
+      "notes": "Training session rows; overview also uses inline _ActionRow. No OBListRow class."
     },
     {
       "name": "OBLens",
       "paperNode": "3EXY-0",
-      "widget": "OBLens",
-      "file": "theme.dart",
-      "notes": "36×36, radius 12, metric tint background, 18 px Lucide icon in metric colour."
+      "widget": "OpenBandOverview",
+      "file": "screens.dart",
+      "notes": "36×36, radius 12, metric tint background, 18 px Lucide icon in metric colour. 36×36 metric tint icon is inline in OpenBandOverview; no OBLens class."
     },
     {
       "name": "OBActionPrimary",
@@ -333,13 +342,15 @@
       "paperNode": "3EZC-0",
       "widget": "OBAction",
       "variant": "destructive",
-      "file": "theme.dart"
+      "file": "theme.dart",
+      "implementationStatus": "paper-only",
+      "notes": "OBAction has primary/secondary only; no destructive constructor."
     },
     {
       "name": "OBSegmented",
       "paperNode": "3EZE-0",
       "widget": "OBSegmented",
-      "file": "theme.dart",
+      "file": "health.dart",
       "usedIn": [
         "3FVE-0",
         "3FLZ-0",
@@ -355,46 +366,48 @@
     {
       "name": "OBChip",
       "paperNode": "3EZO-0",
-      "widget": "OBChip",
-      "file": "theme.dart"
+      "widget": "OpenBandOverview",
+      "file": "screens.dart",
+      "notes": "Status pill is inline in OpenBandOverview; no OBChip class."
     },
     {
       "name": "OBLiveChip",
       "paperNode": "3FUT-0",
-      "widget": "OBLiveChip",
-      "file": "screens.dart",
-      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface.",
+      "widget": "OpenBandRunLive",
+      "file": "run_live.dart",
+      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface. GPS chip is inline in the OpenBandRunLive AppBar; no OBLiveChip class.",
       "implemented": "run_live.dart (GPS chip)"
     },
     {
       "name": "OBEmptyState",
       "paperNode": "3F06-0",
-      "widget": "OBEmptyState",
-      "file": "theme.dart",
-      "notes": "Title + stated reason + one action."
+      "widget": "OpenBandTraining",
+      "file": "training.dart",
+      "notes": "Title + stated reason + one action. Inline empty-session card; no OBEmptyState class."
     },
     {
       "name": "OBGapNotice",
       "paperNode": "3F0E-0",
-      "widget": "OBGapNotice",
-      "file": "theme.dart",
+      "widget": "CorrectionBanner",
+      "file": "screens.dart",
       "replaces": "CorrectionBanner (partly)"
     },
     {
       "name": "OBLiveBar",
       "paperNode": "3FHJ-0",
-      "widget": "OBLiveBar",
-      "file": "training/live.dart",
+      "widget": "OpenBandStrengthLive",
+      "file": "strength_live.dart",
       "usedIn": [
         "3FLY-0"
       ],
-      "implemented": "strength_live.dart (AppBar)"
+      "implemented": "strength_live.dart (AppBar)",
+      "notes": "Live AppBar on OpenBandStrengthLive (and OpenBandRunLive); no OBLiveBar class."
     },
     {
       "name": "OBExerciseBlock",
       "paperNode": "3FHV-0",
       "widget": "OBExerciseBlock",
-      "file": "training/live.dart",
+      "file": "strength_live.dart",
       "usedIn": [
         "3FLY-0"
       ],
@@ -408,8 +421,8 @@
     {
       "name": "OBSetRow",
       "paperNode": "3FID-0",
-      "widget": "OBSetRow",
-      "file": "training/live.dart",
+      "widget": "_SetRow",
+      "file": "strength_live.dart",
       "variants": [
         "done",
         "active",
@@ -424,7 +437,7 @@
       "name": "OBRestTimer",
       "paperNode": "3FV1-0",
       "widget": "OBRestTimer",
-      "file": "training/live.dart",
+      "file": "strength_live.dart",
       "usedIn": [
         "3FLY-0"
       ],
@@ -435,7 +448,7 @@
       "name": "OBQuickStart",
       "paperNode": "3G6I-0",
       "widget": "OBQuickStart",
-      "file": "training/hub.dart",
+      "file": "training.dart",
       "usedIn": [
         "3FVD-0"
       ],
@@ -446,7 +459,7 @@
       "name": "OBTemplateRow",
       "paperNode": "3FW8-0",
       "widget": "OBTemplateRow",
-      "file": "training/hub.dart",
+      "file": "training.dart",
       "usedIn": [
         "3FVD-0"
       ],
@@ -456,7 +469,7 @@
       "name": "OBMuscleBars",
       "paperNode": "3FVF-0",
       "widget": "OBMuscleBars",
-      "file": "training/hub.dart",
+      "file": "training.dart",
       "usedIn": [
         "3FVD-0"
       ],
@@ -466,7 +479,7 @@
       "name": "OBMacroBars",
       "paperNode": "3FJN-0",
       "widget": "OBMacroBars",
-      "file": "nutrition/day.dart",
+      "file": "nutrition.dart",
       "usedIn": [
         "3FLZ-0",
         "3G8R-0"
@@ -478,7 +491,7 @@
       "name": "OBMealSection",
       "paperNode": "3FKF-0",
       "widget": "OBMealSection",
-      "file": "nutrition/day.dart",
+      "file": "nutrition.dart",
       "usedIn": [
         "3FLZ-0"
       ],
@@ -491,8 +504,8 @@
     {
       "name": "OBFoodRow",
       "paperNode": "3FKQ-0",
-      "widget": "OBFoodRow",
-      "file": "nutrition/day.dart",
+      "widget": "OBMealSection",
+      "file": "nutrition.dart",
       "variants": [
         "known",
         "unknown"
@@ -500,13 +513,14 @@
       "children": [
         "OBMacroInline"
       ],
-      "implemented": "nutrition.dart (row inside OBMealSection)"
+      "implemented": "nutrition.dart (row inside OBMealSection)",
+      "notes": "Food rows are inline in OBMealSection; no OBFoodRow class."
     },
     {
       "name": "OBFoodSearch",
       "paperNode": "3FLH-0",
-      "widget": "OBFoodSearch",
-      "file": "nutrition/day.dart",
+      "widget": "OBFoodSearchSheet",
+      "file": "nutrition.dart",
       "usedIn": [
         "3FLZ-0"
       ],
@@ -516,7 +530,7 @@
       "name": "OBCheckinCard",
       "paperNode": "3G8T-0",
       "widget": "OBCheckinCard",
-      "file": "journal/hub.dart",
+      "file": "journal.dart",
       "usedIn": [
         "3G8R-0"
       ],
@@ -530,7 +544,7 @@
       "name": "OBPatternCard",
       "paperNode": "3GAO-0",
       "widget": "OBPatternCard",
-      "file": "journal/hub.dart",
+      "file": "journal.dart",
       "usedIn": [
         "3G8R-0"
       ],
@@ -540,17 +554,18 @@
     {
       "name": "OBSleepHero",
       "paperNode": "3G8S-0",
-      "widget": "OBSleepHero",
+      "widget": "OpenBandSleep",
       "file": "screens.dart",
       "usedIn": [
         "3G8S-0"
-      ]
+      ],
+      "notes": "Hero is inline in OpenBandSleep; no OBSleepHero class."
     },
     {
       "name": "OBZoneBars",
       "paperNode": "3GK1-0",
       "widget": "OBZoneBars",
-      "file": "training/session.dart",
+      "file": "session.dart",
       "usedIn": [
         "3GK0-0"
       ],
@@ -564,7 +579,7 @@
       "name": "OBSplitCard",
       "paperNode": "3GKR-0",
       "widget": "OBSplitCard",
-      "file": "training/session.dart",
+      "file": "session.dart",
       "usedIn": [
         "3GK0-0"
       ],
@@ -577,15 +592,16 @@
     {
       "name": "OBSplitRow",
       "paperNode": "3GKW-0",
-      "widget": "OBSplitRow",
-      "file": "training/session.dart",
-      "implemented": "session.dart"
+      "widget": "OBSplitCard",
+      "file": "session.dart",
+      "implemented": "session.dart",
+      "notes": "Split rows are inline in OBSplitCard; no OBSplitRow class."
     },
     {
       "name": "OBLiveMetrics",
       "paperNode": "3GLQ-0",
       "widget": "OBLiveMetrics",
-      "file": "training/live.dart",
+      "file": "run_live.dart",
       "usedIn": [
         "3GJZ-0"
       ],
@@ -598,7 +614,7 @@
       "name": "OBSessionSummary",
       "paperNode": "3GOF-0",
       "widget": "OBSessionSummary",
-      "file": "training/session.dart",
+      "file": "session.dart",
       "usedIn": [
         "3GK0-0"
       ],
@@ -608,31 +624,32 @@
     {
       "name": "OBRoutePlaceholder",
       "paperNode": "3GNC-0",
-      "widget": "OBRouteMap",
-      "file": "training/live.dart",
+      "widget": "_LiveRouteMap",
+      "file": "run_live.dart",
       "usedIn": [
         "3GJZ-0"
       ],
-      "notes": "MapKit slot. Paper shows a placeholder path, never a fake map.",
+      "notes": "MapKit slot. Paper shows a placeholder path, never a fake map. Map/placeholder live in OpenBandRunLive; no OBRouteMap class.",
       "implemented": "run_live.dart"
     },
     {
       "name": "OBProfileRow",
       "paperNode": "3GQR-0",
-      "widget": "OBProfileRow",
-      "file": "profile/hub.dart",
+      "widget": "ProfileHomeView._identityCard",
+      "file": "ui2/profile/profile.dart",
       "usedIn": [
         "3GQP-0"
       ],
       "children": [
         "OBAvatar"
-      ]
+      ],
+      "notes": "No Alpin profile hub; identity card is inline on ProfileHomeView."
     },
     {
       "name": "OBBandCard",
       "paperNode": "3GQZ-0",
-      "widget": "OBBandCard",
-      "file": "profile/hub.dart",
+      "widget": "ProfileHomeView._bandCard",
+      "file": "ui2/profile/profile.dart",
       "usedIn": [
         "3GQP-0"
       ],
@@ -640,7 +657,7 @@
         "OBBatteryBar",
         "OBSyncFacts"
       ],
-      "notes": "Datenstand (band), Gespeichert (iPhone receipt) and Archiv are independent facts."
+      "notes": "Datenstand (band), Gespeichert (iPhone receipt) and Archiv are independent facts. Band card is inline on ProfileHomeView; no OBBandCard class."
     },
     {
       "name": "OBSettingsGroup",
@@ -674,8 +691,8 @@
     {
       "name": "OBCardRow",
       "paperNode": "3HK8-0",
-      "widget": "OBCardRow",
-      "file": "overview/customize.dart",
+      "widget": null,
+      "file": null,
       "variants": [
         "active",
         "available"
@@ -685,35 +702,38 @@
       ],
       "children": [
         "OBCardPreview"
-      ]
+      ],
+      "implementationStatus": "paper-only",
+      "notes": "Overview customize is Paper-only; no overview/customize.dart."
     },
     {
       "name": "OBCardPreview",
       "paperNode": "3HKC-0",
-      "widget": "OBCardPreview",
-      "file": "overview/customize.dart",
-      "notes": "One painter per card kind (rings, daystrip, hypnogram, metrics, weekbars, macros, trend, list). Uses the card's own tokens."
+      "widget": null,
+      "file": null,
+      "notes": "One painter per card kind (rings, daystrip, hypnogram, metrics, weekbars, macros, trend, list). Uses the card's own tokens. Overview customize is Paper-only; no overview/customize.dart.",
+      "implementationStatus": "paper-only"
     },
     {
       "name": "OBCalendar",
       "paperNode": "3HPT-0",
-      "widget": "OBCalendar",
+      "widget": "_DayPicker",
       "file": "day_picker.dart",
       "replaces": "existing calendar in day_picker.dart",
       "usedIn": [
         "3HPD-0"
       ],
-      "notes": "Monday-first, 44 pt cells, dot = night with data, selected = alp-ink fill, today = alp-action outline, future/other month = alp-gap."
+      "notes": "Monday-first, 44 pt cells, dot = night with data, selected = alp-ink fill, today = alp-action outline, future/other month = alp-gap. Calendar UI is _DayPicker; entry is chooseOpenBandDay. No OBCalendar class."
     },
     {
       "name": "OBDayPreview",
       "paperNode": "3HPD-0",
-      "widget": "OBDayPreview",
+      "widget": "_DayPicker",
       "file": "day_picker.dart",
       "usedIn": [
         "3HPD-0"
       ],
-      "notes": "Selected day summary: sleep / recovery / strain in metric colours. paperNode is the screen; block lives inline."
+      "notes": "Selected day summary: sleep / recovery / strain in metric colours. paperNode is the screen; block lives inline. Selected-day summary is inline in _DayPicker; no OBDayPreview class."
     },
     {
       "name": "OBPageHeader.sheet",
@@ -724,7 +744,8 @@
       "usedIn": [
         "3HFC-0",
         "3HPD-0"
-      ]
+      ],
+      "notes": "Current usage is the day-picker detail header (3HPD-0). There is no separate sheet constructor. 3HFC-0 customize remains Paper-only usedIn; this mapping does not assert that the designed sheet usage is implemented."
     },
     {
       "name": "OBSyncState",
@@ -739,9 +760,9 @@
     },
     {
       "name": "OBStepsHours",
-      "widget": "OBStepsHours",
+      "widget": "stepsByHour",
       "implemented": "daily_activity.dart",
-      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau.",
+      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau. Hour buckets via stepsByHour, drawn in StepsCard; no OBStepsHours class.",
       "paperNode": "3I4C-0",
       "file": "daily_activity.dart",
       "usedIn": [
@@ -750,9 +771,9 @@
     },
     {
       "name": "OBMetricHero",
-      "widget": "OBMetricHero",
+      "widget": "OpenBandMetricDetail",
       "implemented": "metric_detail.dart",
-      "note": "Wert + Einheit + Status + OBRangePill; Kopf jedes Messwert-Details.",
+      "note": "Wert + Einheit + Status + OBRangePill; Kopf jedes Messwert-Details. Hero is inline in OpenBandMetricDetail; no OBMetricHero class.",
       "paperNode": "3I95-0",
       "file": "metric_detail.dart",
       "usedIn": [
@@ -761,9 +782,9 @@
     },
     {
       "name": "OBNightBars",
-      "widget": "OBNightBars",
+      "widget": "_NightBarsPainter",
       "implemented": "metric_detail.dart",
-      "note": "Ein Balken je Nacht, Basislinie als Band, gestrichelt nur zwischen beobachteten Nächten.",
+      "note": "Ein Balken je Nacht, Basislinie als Band, gestrichelt nur zwischen beobachteten Nächten. Bars are inline in OpenBandMetricDetail via _NightBarsPainter; no OBNightBars class.",
       "paperNode": "3I9I-0",
       "file": "metric_detail.dart",
       "usedIn": [
@@ -777,29 +798,31 @@
       "file": "theme.dart",
       "note": "Kein eigener Paper-Block — Status-/Hinweiskarte, geteilt von Einrichtung und OpenBand.",
       "usedIn": [
-        "L-0 · Einrichtung · Willkommen",
-        "L-0 · Einrichtung · Band verbinden"
+        "3IBI-0",
+        "3IBJ-0"
       ]
     },
     {
       "name": "OBPairCard",
       "paperNode": "edge-OBPairCard",
-      "widget": "OBCard",
+      "widget": "PairingView",
       "file": "ui2/onboarding/pairing.dart",
       "implemented": "PairingView status card + _Detail card",
       "usedIn": [
-        "L-0 · Einrichtung · Band verbinden"
-      ]
+        "3IBJ-0"
+      ],
+      "notes": "Pairing status uses OBNoticeCard + _Detail inside PairingView; no OBPairCard class."
     },
     {
       "name": "OBFormCard",
       "paperNode": "edge-OBFormCard",
-      "widget": "OBCard",
+      "widget": "ProfileSetupView",
       "file": "ui2/onboarding/profile_setup.dart",
       "implemented": "_Field — Label 13/600 muted, Wert Inter Tight 24/700, Einheit",
       "usedIn": [
-        "L-0 · Einrichtung · Dein Profil"
-      ]
+        "3IBL-0"
+      ],
+      "notes": "Form is ProfileSetupView wrapping _Field rows; no OBFormCard class."
     },
     {
       "name": "OBFormRow",
@@ -808,7 +831,7 @@
       "file": "ui2/onboarding/profile_setup.dart",
       "implemented": "row inside OBFormCard (Größe, Gewicht)",
       "usedIn": [
-        "L-0 · Einrichtung · Dein Profil"
+        "3IBL-0"
       ]
     },
     {
