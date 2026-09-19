@@ -144,11 +144,11 @@ class _OpenBandNightSignalsState extends State<OpenBandNightSignals> {
                 Text(
                   _kind == NightSignalKind.hrv
                       ? 'Gespeicherte HRV-Abschnitte mit ihrem Unsicherheitsbereich. Die Zeit bezeichnet den Beginn des Abschnitts.'
-                      : 'Gespeicherte Tagesauswertung, auf diese Nacht begrenzt. Abschnitte außerhalb des gespeicherten Tages können fehlen.',
+                      : 'Gespeicherte Werte aus den Tagesauswertungen dieser Nacht.',
                   style: p.text(14),
                 ),
                 Text(
-                  'Fehlende Messungen unterbrechen den Verlauf. Angezeigt werden ausschließlich gespeicherte Werte.',
+                  'Lücken bleiben offen.',
                   style: p.text(14),
                 ),
                 Text(

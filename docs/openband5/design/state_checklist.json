@@ -600,24 +600,24 @@
         "paperNode": "3ISM-0",
         "source": "lib/openband/local_repository.dart: readNightSignals; series.hr_curve",
         "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
-        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
-        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+        "note": "Unions stored calendar bundles intersecting the absolute night window, including pre-midnight readings. Uses the selected served algorithm version; pending/failed corrections, skipped and corrupt bundles are refused. Equal duplicates collapse; conflicts retain null gaps. Candidate reads include timezone/DST bounds; all populated curves remain partial because downsampled readings do not prove continuous coverage. SQLite and synthetic simulator proof; no band or physiological validation.",
+        "nativeReview": "build/ui-review/night-coverage-20260919: iPhone 15 Pro, light/dark, selected gap, missing HRV, info, 2x text; synthetic; all 87 capture PNGs inspected"
       },
       "Nachtverlauf HRV": {
         "status": "implemented",
         "paperNode": "3IUI-0",
         "source": "lib/openband/local_repository.dart: readNightSignals; hrv_night_shape",
         "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
-        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
-        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+        "note": "Only the selected stored night shape, with its actual origin and uncertainty bounds. No neighboring HRV timeline substitution. Pending corrections withhold stale curves. SQLite and synthetic simulator proof; no band or physiological validation.",
+        "nativeReview": "build/ui-review/night-coverage-20260919: iPhone 15 Pro, light/dark, selected gap, missing HRV, info, 2x text; synthetic; all 87 capture PNGs inspected"
       },
       "Nachtverlauf Atemfrequenz": {
         "status": "implemented",
         "paperNode": "3IW8-0",
         "source": "lib/openband/local_repository.dart: readNightSignals; series.resp_day",
         "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
-        "note": "Typed projection from the selected stored day and its stored sleep window. Pending corrections withhold stale curves. Synthetic UI proof is separate from band and physiological proof.",
-        "nativeReview": "build/ui-review/20260919-115603: iPhone 15 Pro, light/dark, missing HRV, selected gap, 2x text; synthetic"
+        "note": "Unions stored calendar bundles intersecting the absolute night window, including pre-midnight readings. Uses the selected served algorithm version; pending/failed corrections, skipped and corrupt bundles are refused. Equal duplicates collapse; conflicts retain null gaps. Candidate reads include timezone/DST bounds; all populated curves remain partial because downsampled readings do not prove continuous coverage. SQLite and synthetic simulator proof; no band or physiological validation.",
+        "nativeReview": "build/ui-review/night-coverage-20260919: iPhone 15 Pro, light/dark, selected gap, missing HRV, info, 2x text; synthetic; all 87 capture PNGs inspected"
       }
     }
   }

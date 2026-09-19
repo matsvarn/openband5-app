@@ -31,7 +31,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
     final row = await LocalDb.dayResult(day);
-    if (row == null) return NightSignals(day: day);
+    if (row == null || row['skipped'] == 1) {
+      return NightSignals(day: day, recordingTimezone: zone);
+    }
     final payload = _payload(row['payload_json']);
     if (payload == null) {
       throw const FormatException('Stored night signals are unreadable.');
@@ -41,33 +43,57 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (start == null || end == null || !end.isAfter(start)) {
       return NightSignals(day: day, recordingTimezone: zone);
     }
+
+    final selectedVersion = (row['algo_version'] as num?)?.toInt();
+    final neighborDays = [
+      for (final id in _nightCandidateDays(day, start, end))
+        if (id != day) id,
+    ];
+    final pulseSources = [_curveReadings(payload, 'hr_curve', start, end)];
+    final respSources = [_curveReadings(payload, 'resp_day', start, end)];
+    if (selectedVersion != null && neighborDays.isNotEmpty) {
+      final neighborRows = await LocalDb.servedDayResultsForDays(neighborDays);
+      final neighborCorrections =
+          await LocalDb.openBandSleepCorrectionsForDays(neighborDays);
+      for (final id in neighborDays) {
+        final neighborRow = neighborRows[id];
+        if (neighborRow == null) continue;
+        final neighborVersion = (neighborRow['algo_version'] as num?)?.toInt();
+        final neighborCorrection = neighborCorrections[id];
+        if (neighborRow['skipped'] == 1 ||
+            neighborVersion != selectedVersion ||
+            (neighborCorrection != null &&
+                neighborCorrection['status'] != 'complete')) {
+          continue;
+        }
+        final neighborPayload = _payload(neighborRow['payload_json']);
+        if (neighborPayload == null) continue;
+        pulseSources.add(
+          _curveReadings(neighborPayload, 'hr_curve', start, end),
+        );
+        respSources.add(
+          _curveReadings(neighborPayload, 'resp_day', start, end),
+        );
+      }
+    }
+
+    final selectedPartial = row['partial'] == 1;
+    NightSignalSeries storedCurve(
+      List<NightSignalReading> readings,
+      Duration gap,
+    ) => NightSignalSeries(
+      readings: readings,
+      maxConnectingGap: gap,
+      // Calendar-day downsampled curves do not prove continuous overnight coverage.
+      partial: readings.isNotEmpty,
+    );
+
     List<NightSignalReading> withinNight(List<NightSignalReading> readings) =>
         List.unmodifiable(
           readings
             ..removeWhere((r) => r.at.isBefore(start) || !r.at.isBefore(end))
             ..sort((a, b) => a.at.compareTo(b.at)),
         );
-
-    NightSignalSeries curve(String key) {
-      final raw = _at(payload, 'series.$key');
-      final readings = withinNight([
-        if (raw is List)
-          for (final item in raw)
-            if (item is Map && _signalTime(item['t'], seconds: true) != null)
-              NightSignalReading(
-                _signalTime(item['t'], seconds: true)!,
-                _double(item['v']),
-              ),
-      ]);
-      return NightSignalSeries(
-        readings: readings,
-        maxConnectingGap: key == 'hr_curve'
-            ? const Duration(minutes: 1)
-            : const Duration(minutes: 5, seconds: 2),
-        // Calendar-day curves do not establish coverage of a whole night.
-        partial: readings.isNotEmpty,
-      );
-    }
 
     final origin = _signalTime(_at(payload, 'hrv_night_shape.origin_ms'));
     final rawBins = _at(payload, 'hrv_night_shape.value.bins');
@@ -103,13 +129,19 @@ class LocalOpenBandRepository implements OpenBandRepository {
       window: (start: start, end: end),
       recordingTimezone: zone,
       series: {
-        NightSignalKind.pulse: curve('hr_curve'),
-        NightSignalKind.respiration: curve('resp_day'),
+        NightSignalKind.pulse: storedCurve(
+          _unionNightReadings(pulseSources),
+          const Duration(minutes: 1),
+        ),
+        NightSignalKind.respiration: storedCurve(
+          _unionNightReadings(respSources),
+          const Duration(minutes: 5, seconds: 2),
+        ),
         NightSignalKind.hrv: NightSignalSeries(
           readings: hrvReadings,
           maxConnectingGap: const Duration(minutes: 30),
           partial:
-              row['partial'] == 1 || hrvReadings.any((r) => r.value == null),
+              selectedPartial || hrvReadings.any((r) => r.value == null),
           reason: _stringAt(payload, 'hrv_night_shape.note'),
         ),
       },
@@ -122,6 +154,70 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final ms = value * (seconds ? 1000 : 1);
     if (ms.abs() > 8640000000000000) return null;
     return DateTime.fromMillisecondsSinceEpoch(ms.round(), isUtc: true);
+  }
+
+  static const _kNightCandidatePad = Duration(hours: 16);
+  static const _kMaxNightCandidateDays = 16;
+
+  /// Civil-date labels that may own calendar-day curves intersecting [start, end).
+  /// ±16h around the absolute window covers IANA UTC−12..+14 plus DST.
+  static Set<String> _nightCandidateDays(
+    String selected,
+    DateTime start,
+    DateTime end,
+  ) {
+    final lo = start.toUtc().subtract(_kNightCandidatePad);
+    final hi = end.toUtc().add(_kNightCandidatePad);
+    var cursor = DateTime(lo.year, lo.month, lo.day);
+    final last = DateTime(hi.year, hi.month, hi.day);
+    final out = <String>{selected};
+    while (!cursor.isAfter(last)) {
+      out.add(dayLabelOf(cursor));
+      if (out.length > _kMaxNightCandidateDays) {
+        throw const FormatException('Stored night signals are unreadable.');
+      }
+      cursor = DateTime(cursor.year, cursor.month, cursor.day + 1);
+    }
+    return out;
+  }
+
+  static List<NightSignalReading> _curveReadings(
+    Map<String, dynamic> payload,
+    String key,
+    DateTime start,
+    DateTime end,
+  ) {
+    final raw = _at(payload, 'series.$key');
+    if (raw == null) return const [];
+    if (raw is! List) return const [];
+    final readings = <NightSignalReading>[];
+    for (final item in raw) {
+      if (item is! Map) return const [];
+      final at = _signalTime(item['t'], seconds: true);
+      if (at == null) return const [];
+      if (at.isBefore(start) || !at.isBefore(end)) continue;
+      readings.add(NightSignalReading(at, _double(item['v'])));
+    }
+    return readings;
+  }
+
+  static List<NightSignalReading> _unionNightReadings(
+    List<List<NightSignalReading>> sources,
+  ) {
+    final byMs = <int, Set<double?>>{};
+    for (final source in sources) {
+      for (final reading in source) {
+        (byMs[reading.at.millisecondsSinceEpoch] ??= {}).add(reading.value);
+      }
+    }
+    final times = byMs.keys.toList()..sort();
+    return List.unmodifiable([
+      for (final ms in times)
+        NightSignalReading(
+          DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true),
+          byMs[ms]!.length == 1 ? byMs[ms]!.single : null,
+        ),
+    ]);
   }
 
   @override

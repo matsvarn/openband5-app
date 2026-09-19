@@ -2091,6 +2091,27 @@ class LocalDb {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Correction rows plus current job status for a bounded day_id set.
+  static Future<Map<String, Map<String, dynamic>>>
+      openBandSleepCorrectionsForDays(Iterable<String> dayIds) async {
+    final ids = _boundedDayIds(dayIds);
+    if (ids.isEmpty) return {};
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT c.*, j.status, j.error, j.requested_at, '
+      'j.result_algo_version, j.result_computed_at '
+      'FROM openband_sleep_correction c '
+      'LEFT JOIN openband_calculation_job j ON j.day_id = c.day_id '
+      'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+      'WHERE c.day_id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String: r,
+    };
+  }
+
   /// Remove the override and enqueue an automatic re-detection revision in one
   /// transaction. Repeating an already-current restore is idempotent.
   static Future<Map<String, dynamic>> restoreOpenBandAutomatic(
@@ -7856,6 +7877,41 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : _withDate(rows.first);
+  }
+
+  static List<String> _boundedDayIds(Iterable<String> dayIds) {
+    final ids = {...dayIds}.toList()..sort();
+    if (ids.length > 16) {
+      throw ArgumentError.value(
+        ids.length,
+        'dayIds',
+        'Expected at most 16 day ids.',
+      );
+    }
+    return ids;
+  }
+
+  /// Served `day_result` rows for a bounded day_id set.
+  ///
+  /// Each day is the highest version this build will read. Callers that need a
+  /// matching generation compare `algo_version` to the selected night; a newer
+  /// served neighbor is refused rather than falling back to an older row.
+  static Future<Map<String, Map<String, dynamic>>> servedDayResultsForDays(
+    Iterable<String> dayIds,
+  ) async {
+    final ids = _boundedDayIds(dayIds);
+    if (ids.isEmpty) return {};
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.* FROM day_result r '
+      '$_servedDayJoin '
+      'WHERE r.day_id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String: _withDate(r),
+    };
   }
 
   /// The most recent day (highest day_id label), latest version, or null.

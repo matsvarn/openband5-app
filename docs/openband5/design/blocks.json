@@ -864,7 +864,7 @@
         "missing",
         "dark"
       ],
-      "notes": "Uses OBCard and the existing metric hero type scale. Selected stored value only; no invented averages, baseline, or coverage percentage."
+      "notes": "Uses OBCard and the existing metric hero type scale. Selected stored value only; pulse and respiration union same-version calendar bundles intersecting the actual night. Conflicting timestamps stay null. No invented averages, baseline, or coverage percentage; available calendar curves remain partial."
     },
     {
       "name": "OBTrendPlot.night",
@@ -913,7 +913,7 @@
         "3J78-0"
       ],
       "implemented": "night_signals.dart (_info)",
-      "notes": "Counts and method stay behind the shared info action."
+      "notes": "Counts and method stay behind the shared info action. Multi-day stored-source wording matches the overnight repository union; no repeated reassurance."
     }
   ],
   "openBlocks": [
