@@ -427,6 +427,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
             avgHr: (s['avg_hr'] as num?)?.toDouble(),
           ),
       ],
+      laps: await readLaps(sessionId),
     );
     await LocalDb.putOpenBandSessionDetail({
       'session_id': sessionId,
@@ -436,6 +437,28 @@ class LocalOpenBandRepository implements OpenBandRepository {
     });
     return detail;
   }
+
+  @override
+  Future<void> recordLap(String sessionId, Lap lap) => LocalDb.putOpenBandLap({
+    'session_id': sessionId,
+    'lap_index': lap.index,
+    'at_ts': lap.at.millisecondsSinceEpoch ~/ 1000,
+    'elapsed_sec': lap.elapsedSec,
+    'paused_sec': lap.pausedSec,
+    'distance_m': lap.distanceM,
+  });
+
+  @override
+  Future<List<Lap>> readLaps(String sessionId) async => [
+    for (final row in await LocalDb.openBandLaps(sessionId))
+      Lap(
+        index: row['lap_index'] as int,
+        elapsedSec: row['elapsed_sec'] as int,
+        pausedSec: row['paused_sec'] as int,
+        distanceM: (row['distance_m'] as num?)?.toDouble(),
+        at: DateTime.fromMillisecondsSinceEpoch((row['at_ts'] as int) * 1000),
+      ),
+  ];
 
   @override
   Future<PatternSummary> readPattern(

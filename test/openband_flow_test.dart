@@ -70,6 +70,7 @@ void main() {
       repository: repo,
       initialDay: '2026-09-15',
       band: repo.band,
+      now: () => DateTime(2026, 9, 18, 9, 41),
     );
   });
   tearDown(() => controller.dispose());

@@ -3,8 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:openstrap_edge/gps/route_models.dart';
+import 'package:openstrap_edge/gps/route_tracker.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/run_live.dart';
@@ -14,6 +18,18 @@ import 'package:openstrap_edge/openband/template_editor.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+
+/// Serves a transparent 1×1 PNG for every tile so the live-map test never
+/// touches the network.
+class _StubTileProvider extends TileProvider {
+  static final _png = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQAB'
+    'h6FO1AAAAABJRU5ErkJggg==',
+  );
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) =>
+      MemoryImage(_png);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -287,6 +303,97 @@ void main() {
     expect(find.text('—'), findsNWidgets(3));
     expect(find.text('Weiter'), findsOneWidget);
     expect(find.text('Beenden'), findsOneWidget);
+  });
+
+  testWidgets('live run shows the route map when a tracker is bound', (
+    tester,
+  ) async {
+    final tracker = RouteTracker(sink: (_) async {});
+    addTearDown(tracker.dispose);
+    tracker.path.value = const [
+      RouteVertex(LatLng(52.5200, 13.4050), 3),
+      RouteVertex(LatLng(52.5210, 13.4060), 3),
+      RouteVertex(LatLng(52.5220, 13.4070), 4),
+    ];
+    tracker.current.value = const LatLng(52.5220, 13.4070);
+    final run = ValueNotifier(
+      const LiveRun(elapsedSec: 962, distanceM: 2840, gps: true, laps: 2),
+    );
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        home: OpenBandRunLive(
+          run: run,
+          tracker: tracker,
+          tileProvider: _StubTileProvider(),
+          mapAllowed: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Karte ohne GPS nicht verfügbar'), findsNothing);
+    expect(find.byType(FlutterMap), findsOneWidget);
+    expect(find.text('Runde 2'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('recordLap freezes laps into the session detail', () async {
+    const id = 'synthetic-2026-09-14-running';
+    await repo.recordLap(
+      id,
+      Lap(
+        index: 1,
+        elapsedSec: 600,
+        pausedSec: 0,
+        distanceM: 2000,
+        at: DateTime(2026, 9, 14, 7, 15),
+      ),
+    );
+    final detail = await repo.readSessionDetail(id);
+    expect(detail?.laps.length, 1);
+    expect(detail?.laps.single.distanceM, 2000);
+  });
+
+  testWidgets('session detail lists recorded laps', (tester) async {
+    const id = 'synthetic-2026-09-14-running';
+    await repo.recordLap(
+      id,
+      Lap(
+        index: 1,
+        elapsedSec: 600,
+        pausedSec: 0,
+        distanceM: 2000,
+        at: DateTime(2026, 9, 14, 7, 15),
+      ),
+    );
+    final run = (await repo.readSessions('2026-09-15', 7)).first;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        home: OpenBandSession(repository: repo, session: run),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Runde 1 · 10:00 · 2,00 km'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('template editor saves a new plan and bumps an edited one', (

@@ -699,18 +699,16 @@
       "Laufen · aktiv (UI over LiveRun; host feeds GPS/HR)",
       "Vorlage bearbeiten (template_editor.dart)"
     ],
-    "deferred": [
-      "Route map (MapKit) inside OpenBandRunLive placeholder",
-      "Lap markers for the live run (onLap is wired, no storage yet)"
-    ],
-    "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft."
+    "deferred": [],
+    "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 53,
+    "version": 54,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
-      "openband_session_detail"
+      "openband_session_detail",
+      "openband_lap"
     ]
   }
 }

@@ -346,7 +346,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 53;
+  static const int schemaVersion = 54;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -460,6 +460,7 @@ class LocalDb {
         await _createSleepOverride(db);
         await _createOpenBandSleepState(db);
         await _createOpenBandPlans(db);
+        await _createOpenBandLaps(db);
         await _createSleepNap(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
@@ -1053,6 +1054,10 @@ class LocalDb {
           // snapshots. Additive tables only; nothing existing is rewritten.
           await _createOpenBandPlans(db);
         }
+        if (oldV < 54) {
+          // User lap marks for live distance activities; additive.
+          await _createOpenBandLaps(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1126,6 +1131,7 @@ class LocalDb {
     await _createSleepOverride(db);
     await _createOpenBandSleepState(db);
     await _createOpenBandPlans(db);
+    await _createOpenBandLaps(db);
     await _createSleepNap(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
@@ -1739,6 +1745,22 @@ class LocalDb {
     ''');
   }
 
+  /// User-tapped lap marks for live distance activities. Distances stay null
+  /// when GPS was off — a lap without a distance is still a lap.
+  static Future<void> _createOpenBandLaps(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_lap (
+        session_id TEXT NOT NULL,
+        lap_index INTEGER NOT NULL,
+        at_ts INTEGER NOT NULL,
+        elapsed_sec INTEGER NOT NULL,
+        paused_sec INTEGER NOT NULL,
+        distance_m REAL,
+        PRIMARY KEY (session_id, lap_index)
+      )
+    ''');
+  }
+
   static Future<List<Map<String, dynamic>>> openBandTemplates() async {
     final db = await instance;
     return db.query(
@@ -1850,6 +1872,27 @@ class LocalDb {
       'openband_session_detail',
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<int> putOpenBandLap(Map<String, Object?> row) async {
+    final db = await instance;
+    return db.insert(
+      'openband_lap',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> openBandLaps(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    return db.query(
+      'openband_lap',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'lap_index ASC',
     );
   }
 

@@ -5,6 +5,10 @@ import 'domain.dart';
 class OpenBandController extends ChangeNotifier {
   final OpenBandRepository repository;
   final Future<void> Function(String)? persistDay;
+
+  /// Wall clock for "today" decisions (calendar bounds, the Heute title).
+  /// Injectable so goldens do not move when the date rolls over.
+  final DateTime Function() now;
   String selectedDay;
   OpenBandDay? day;
   BandSnapshot band;
@@ -22,6 +26,7 @@ class OpenBandController extends ChangeNotifier {
     String? initialDay,
     this.persistDay,
     this.band = const BandSnapshot(),
+    this.now = DateTime.now,
   }) : selectedDay = initialDay ?? todayLabel();
 
   bool get calculating => _calculating.contains(selectedDay);

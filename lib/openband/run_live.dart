@@ -1,7 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../gps/route_models.dart';
+import '../gps/route_tracker.dart';
+import '../ui2/activity/tiles.dart' show kOsmAttribution;
 import 'alp_tokens.dart';
 import 'session.dart';
 import 'theme.dart';
@@ -11,13 +16,14 @@ import 'theme.dart';
 /// are kept apart so the saved duration cannot silently swap one for the
 /// other.
 class LiveRun {
-  final int elapsedSec, pausedSec;
+  final int elapsedSec, pausedSec, laps;
   final double? distanceM;
   final int? heartRate, zone;
   final bool paused, gps;
   const LiveRun({
     required this.elapsedSec,
     this.pausedSec = 0,
+    this.laps = 0,
     this.distanceM,
     this.heartRate,
     this.zone,
@@ -29,11 +35,20 @@ class LiveRun {
 
 class OpenBandRunLive extends StatelessWidget {
   final ValueListenable<LiveRun> run;
+  final RouteTracker? tracker;
+  final TileProvider? tileProvider;
+
+  /// Basemap tiles are an outbound request; they are drawn only when the user
+  /// has allowed them (tiles.dart `mapTilesAllowed`). Default off.
+  final bool mapAllowed;
   final String label;
   final VoidCallback? onPause, onResume, onLap, onFinish, onCollapse;
   const OpenBandRunLive({
     super.key,
     required this.run,
+    this.tracker,
+    this.tileProvider,
+    this.mapAllowed = false,
     this.label = 'Laufen',
     this.onPause,
     this.onResume,
@@ -110,31 +125,41 @@ class OpenBandRunLive extends StatelessWidget {
                   const SizedBox(height: 10),
                   Container(
                     height: 200,
+                    clipBehavior: Clip.antiAlias,
                     alignment: Alignment.bottomLeft,
-                    padding: const EdgeInsets.all(12),
+                    padding: tracker != null && r.gps && mapAllowed
+                        ? EdgeInsets.zero
+                        : const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: p.sleepTint,
                       borderRadius: BorderRadius.circular(AlpRadius.card),
                     ),
-                    child: Container(
-                      height: 28,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: p.card,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        r.gps
-                            ? 'Karte · Apple Maps'
-                            : 'Karte ohne GPS nicht verfügbar',
-                        style: p.text(
-                          12,
-                          weight: FontWeight.w600,
-                          color: p.muted,
-                        ),
-                      ),
-                    ),
+                    child: tracker != null && r.gps && mapAllowed
+                        ? _LiveRouteMap(
+                            tracker: tracker!,
+                            tileProvider: tileProvider,
+                          )
+                        : Container(
+                            height: 28,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: p.card,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              !r.gps
+                                  ? 'Karte ohne GPS nicht verfügbar'
+                                  : mapAllowed
+                                  ? 'Karte'
+                                  : 'Karte aus · Kartendaten in den Einstellungen erlauben',
+                              style: p.text(
+                                12,
+                                weight: FontWeight.w600,
+                                color: p.muted,
+                              ),
+                            ),
+                          ),
                   ),
                   if (r.pausedSec > 0)
                     Padding(
@@ -185,6 +210,131 @@ class OpenBandRunLive extends StatelessWidget {
   }
 }
 
+/// Live route over CARTO raster tiles (the app's single interactive tile
+/// provider — the pubspec note covers why CARTO and not OSM directly).
+/// [RouteVertex.gapBefore] breaks the polyline rather than drawing a straight
+/// line across a recording gap.
+class _LiveRouteMap extends StatefulWidget {
+  final RouteTracker tracker;
+  final TileProvider? tileProvider;
+  const _LiveRouteMap({required this.tracker, this.tileProvider});
+  @override
+  State<_LiveRouteMap> createState() => _LiveRouteMapState();
+}
+
+class _LiveRouteMapState extends State<_LiveRouteMap> {
+  final _controller = MapController();
+  bool _ready = false;
+
+  List<LatLng> get _pts => [for (final v in widget.tracker.path.value) v.pos];
+
+  void _refit() {
+    if (!_ready) return;
+    final pts = _pts;
+    if (pts.length < 2) return;
+    _controller.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(pts),
+        padding: const EdgeInsets.all(28),
+        maxZoom: 17,
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.tracker.path.addListener(_refit);
+  }
+
+  @override
+  void dispose() {
+    widget.tracker.path.removeListener(_refit);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return ValueListenableBuilder<List<RouteVertex>>(
+      valueListenable: widget.tracker.path,
+      builder: (context, path, _) => ValueListenableBuilder<LatLng?>(
+        valueListenable: widget.tracker.current,
+        builder: (context, current, _) {
+          // One polyline per contiguous segment: a gap vertex opens a new one.
+          final polylines = <Polyline>[];
+          var seg = <LatLng>[];
+          for (final v in path) {
+            if (v.gapBefore && seg.isNotEmpty) {
+              polylines.add(
+                Polyline(points: seg, strokeWidth: 4, color: p.strain),
+              );
+              seg = <LatLng>[];
+            }
+            seg.add(v.pos);
+          }
+          if (seg.isNotEmpty) {
+            polylines.add(
+              Polyline(points: seg, strokeWidth: 4, color: p.strain),
+            );
+          }
+          return FlutterMap(
+            mapController: _controller,
+            options: MapOptions(
+              initialCameraFit: _pts.length >= 2
+                  ? CameraFit.bounds(
+                      bounds: LatLngBounds.fromPoints(_pts),
+                      padding: const EdgeInsets.all(28),
+                      maxZoom: 17,
+                    )
+                  : null,
+              initialCenter:
+                  current ?? (_pts.isNotEmpty ? _pts.last : const LatLng(0, 0)),
+              initialZoom: 15,
+              onMapReady: () {
+                _ready = true;
+                _refit();
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
+                userAgentPackageName: 'com.openstrap.edge',
+                tileProvider: widget.tileProvider,
+              ),
+              PolylineLayer(polylines: polylines),
+              if (current != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: current,
+                      width: 16,
+                      height: 16,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: p.strain,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: p.card, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              const SimpleAttributionWidget(
+                source: Text(kOsmAttribution),
+                alignment: Alignment.bottomLeft,
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class OBLiveMetrics extends StatelessWidget {
   final LiveRun run;
   const OBLiveMetrics({super.key, required this.run});
@@ -228,6 +378,21 @@ class OBLiveMetrics extends StatelessWidget {
                 'km',
                 style: p.text(14, weight: FontWeight.w600, color: p.muted),
               ),
+              if (r.laps > 0)
+                Container(
+                  height: 24,
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: p.well,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Runde ${r.laps}',
+                    style: p.text(13, weight: FontWeight.w600),
+                  ),
+                ),
             ],
           ),
           Row(

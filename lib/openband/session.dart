@@ -85,6 +85,10 @@ class OpenBandSession extends StatelessWidget {
                 const SizedBox(height: 10),
                 OBSplitCard(splits: d.splits),
               ],
+              if (d.laps.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                OBLapCard(laps: d.laps),
+              ],
               if (d.hrr60 != null || d.hrr120 != null) ...[
                 const SizedBox(height: 10),
                 OBCard(
@@ -319,6 +323,48 @@ class OBZoneBars extends StatelessWidget {
                 ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// User-tapped lap marks — plain rows in the split card's typographic style;
+/// a lap carries no per-km comparison, so there is deliberately no bar.
+class OBLapCard extends StatelessWidget {
+  final List<Lap> laps;
+  const OBLapCard({super.key, required this.laps});
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return OBCard(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                Text(
+                  'RUNDEN',
+                  style: p.text(11, weight: FontWeight.w600, color: p.muted),
+                ),
+              ],
+            ),
+          ),
+          for (final l in laps)
+            Container(
+              height: 36,
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: p.line)),
+              ),
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Runde ${l.index} · ${obClock(l.elapsedSec - l.pausedSec)} · '
+                '${l.distanceM == null ? '—' : '${obNumber(l.distanceM! / 1000, digits: 2)} km'}',
+                style: p.text(14, weight: FontWeight.w700, display: true),
+              ),
+            ),
         ],
       ),
     );

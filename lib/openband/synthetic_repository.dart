@@ -388,8 +388,20 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         for (final (i, s) in splits.indexed)
           SessionSplit(km: i + 1, seconds: (s as num).toInt()),
       ],
+      laps: List.unmodifiable(_laps[sessionId] ?? const []),
     );
   }
+
+  final Map<String, List<Lap>> _laps = {};
+
+  @override
+  Future<void> recordLap(String sessionId, Lap lap) async {
+    (_laps[sessionId] ??= []).add(lap);
+  }
+
+  @override
+  Future<List<Lap>> readLaps(String sessionId) async =>
+      List.unmodifiable(_laps[sessionId] ?? const []);
 
   @override
   Future<PatternSummary> readPattern(

@@ -429,6 +429,7 @@ class SessionDetail {
   final int? maxHr, hrCoveredSec, hrr60, hrr120;
   final List<int>? zoneSec;
   final List<SessionSplit> splits;
+  final List<Lap> laps;
   const SessionDetail({
     required this.sessionId,
     required this.type,
@@ -447,6 +448,7 @@ class SessionDetail {
     this.hrr120,
     this.zoneSec,
     this.splits = const [],
+    this.laps = const [],
   });
   factory SessionDetail.fromJson(Map<String, dynamic> j) => SessionDetail(
     sessionId: j['sessionId'] as String,
@@ -473,6 +475,10 @@ class SessionDetail {
           avgHr: (s['avgHr'] as num?)?.toDouble(),
         ),
     ],
+    laps: [
+      for (final l in j['laps'] as List? ?? const [])
+        Lap.fromJson((l as Map).cast<String, dynamic>()),
+    ],
   );
   Map<String, dynamic> toJson() => {
     'sessionId': sessionId,
@@ -495,6 +501,36 @@ class SessionDetail {
       for (final s in splits)
         {'km': s.km, 'seconds': s.seconds, 'avgHr': s.avgHr},
     ],
+    'laps': [for (final l in laps) l.toJson()],
+  };
+}
+
+/// A user-tapped lap mark inside a distance session. [distanceM] stays null
+/// when GPS was off.
+class Lap {
+  final int index, elapsedSec, pausedSec;
+  final double? distanceM;
+  final DateTime at;
+  const Lap({
+    required this.index,
+    required this.elapsedSec,
+    required this.pausedSec,
+    this.distanceM,
+    required this.at,
+  });
+  factory Lap.fromJson(Map<String, dynamic> j) => Lap(
+    index: (j['index'] as num).toInt(),
+    elapsedSec: (j['elapsedSec'] as num).toInt(),
+    pausedSec: (j['pausedSec'] as num).toInt(),
+    distanceM: (j['distanceM'] as num?)?.toDouble(),
+    at: DateTime.fromMillisecondsSinceEpoch(j['atMs'] as int),
+  );
+  Map<String, dynamic> toJson() => {
+    'index': index,
+    'elapsedSec': elapsedSec,
+    'pausedSec': pausedSec,
+    'distanceM': distanceM,
+    'atMs': at.millisecondsSinceEpoch,
   };
 }
 
@@ -575,6 +611,8 @@ abstract interface class OpenBandRepository {
   Future<void> discardMealDraft(String draftId);
   Future<void> commitMealDraft(MealDraft draft);
   Future<SessionDetail?> readSessionDetail(String sessionId);
+  Future<void> recordLap(String sessionId, Lap lap);
+  Future<List<Lap>> readLaps(String sessionId);
   Future<PatternSummary> readPattern(
     String habitKey,
     MetricKey outcome,

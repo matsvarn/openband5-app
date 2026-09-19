@@ -32,6 +32,7 @@ import 'theme/theme_switcher.dart';
 import 'widget/widget_service.dart';
 import 'ui2/activity/catalogue.dart';
 import 'ui2/activity/live.dart';
+import 'ui2/activity/tiles.dart' show mapTilesAllowed;
 import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
 import 'ui2/onboarding/profile_setup.dart';
 import 'ui2/pairing/device_picker.dart';
@@ -717,9 +718,29 @@ class _ShellState extends State<_Shell> {
       MaterialPageRoute<void>(
         builder: (_) => OpenBandRunLive(
           run: feed,
+          tracker: app.routeTracker,
+          mapAllowed: mapTilesAllowed,
           onPause: feed.pause,
           onResume: feed.resume,
-          onLap: () {},
+          onLap: () {
+            if (feed.value.paused) return;
+            final v = feed.value;
+            final id = app.activeWorkout?.workoutId;
+            if (id == null) return;
+            unawaited(
+              _day.repository.recordLap(
+                id,
+                Lap(
+                  index: v.laps + 1,
+                  elapsedSec: v.elapsedSec,
+                  pausedSec: v.pausedSec,
+                  distanceM: v.distanceM,
+                  at: DateTime.now(),
+                ),
+              ),
+            );
+            feed.markLap();
+          },
           onFinish: () async {
             await app.stopWorkout();
             _day.refresh();
@@ -767,6 +788,7 @@ class _ShellState extends State<_Shell> {
 class _LiveRunFeed extends ValueNotifier<LiveRun> {
   final AppState app;
   int _pausedSec = 0;
+  int _laps = 0;
   DateTime? _pausedAt;
   _LiveRunFeed(this.app) : super(const LiveRun(elapsedSec: 0)) {
     app.addListener(_update);
@@ -783,6 +805,7 @@ class _LiveRunFeed extends ValueNotifier<LiveRun> {
     value = LiveRun(
       elapsedSec: now.difference(w.startTime).inSeconds,
       pausedSec: _pausedSec + inPause,
+      laps: _laps,
       distanceM: km == null ? null : km * 1000,
       heartRate: app.liveHr,
       zone: app.liveZone,
@@ -793,6 +816,11 @@ class _LiveRunFeed extends ValueNotifier<LiveRun> {
 
   void pause() {
     _pausedAt ??= DateTime.now();
+    _update();
+  }
+
+  void markLap() {
+    _laps++;
     _update();
   }
 

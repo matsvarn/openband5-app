@@ -71,7 +71,7 @@ class _DayPickerState extends State<_DayPicker> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final now = DateTime.now();
+    final now = widget.controller.now();
     final count = DateTime(month.year, month.month + 1, 0).day;
     final offset = (month.weekday - 1) % 7;
     final large = MediaQuery.textScalerOf(context).scale(14) > 20;
