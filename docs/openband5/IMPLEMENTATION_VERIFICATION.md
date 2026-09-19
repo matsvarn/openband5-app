@@ -78,3 +78,11 @@ The new `tool/ui_review.py capture` runner bypasses Device Hub for automated sim
 Real VoiceOver speech/focus order, Bold Text/Increase Contrast, production lock/background transitions, measured frame pacing during real sync, physical interruption recovery and physiological validity remain unverified. Native simulator screenshots establish more than widget-only captures but do not substitute for those outcomes.
 
 Next: **WP3 physical WHOOP 5.0 capture and sync recovery**, using retained originals and private lab storage. Check firmware-specific channel interpretation, commit/ACK sequence, disconnect/relaunch, source completeness and archive growth before expanding metric claims. Then WP4 establishes the full shared metric detail contract.
+
+## 19 September 2026 · Alpin Nickerchen
+
+Stored nap results and durable manual edits now share a typed production flow. Add, edit, remove, restore and recalculation retry preserve source bounds and saved edits; no-result and unjudged days remain distinct. Schema55 adds independent revisioned nap jobs. Legacy nap destination removed.
+
+Required checks:166 OpenBand tests passed; analyzer and design manifest passed (79 blocks,47 screens). Additional65 affected storage, derivation, repair and legacy-caller checks passed. All25 changed/new goldens inspected. Final synthetic native runs passed on iPhone15Pro and iPhone13mini,107 PNGs each; every PNG inspected. Evidence: `build/ui-review/naps-final-20260919` and `build/ui-review/naps-mini-final-20260919`, including run.json/frames.json/index.html. Paper list/editor/state variants compared directly with native renders. Shared page header, ink actions and paired time wells use canonical dimensions.
+
+The initial rejected nap layout and failed unknown-state fixture are superseded by those final runs. Remaining older2x stage-legend/tab wrapping and redundant sleep/calendar copy are recorded in the continuation queue. No personal data, physical phone, Bluetooth or physiological validation was used.

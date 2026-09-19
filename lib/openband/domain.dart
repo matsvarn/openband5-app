@@ -177,6 +177,65 @@ class SleepCorrection {
   });
 }
 
+enum NapSource { detected, manual }
+
+class NapSession {
+  final DateTime start, end;
+  final NapSource source;
+  final int? durationMin;
+  final int? originStartTs, originEndTs;
+  const NapSession({
+    required this.start,
+    required this.end,
+    required this.source,
+    this.durationMin,
+    this.originStartTs,
+    this.originEndTs,
+  });
+  int get startTs => start.millisecondsSinceEpoch ~/ 1000;
+  int get endTs => end.millisecondsSinceEpoch ~/ 1000;
+  bool get fromDetected =>
+      source == NapSource.detected || originStartTs != null;
+}
+
+class NapJob {
+  final String day;
+  final int revision;
+  final CorrectionState state;
+  final DateTime requestedAt;
+  final String? error;
+  const NapJob({
+    required this.day,
+    required this.revision,
+    required this.state,
+    required this.requestedAt,
+    this.error,
+  });
+}
+
+/// Selected-day nap list. [judged] is detector coverage, not whether the user
+/// logged anything: manuals on an unjudged day must not claim a measured zero.
+class NapDay {
+  final String day;
+  final bool judged;
+  final List<NapSession> sessions;
+  final int? totalMin;
+  final List<NapSession> rejected;
+  final NapJob? job;
+  final String? recordingTimezone;
+  final String? note;
+  const NapDay({
+    required this.day,
+    this.judged = false,
+    this.sessions = const [],
+    this.totalMin,
+    this.rejected = const [],
+    this.job,
+    this.recordingTimezone,
+    this.note,
+  });
+}
+
 class StepInterval {
   final DateTime start, end;
   final double steps;
@@ -683,4 +742,19 @@ abstract interface class OpenBandRepository {
   Future<SleepCorrection> saveCorrection(SleepDraft draft);
   Future<void> recalculate(SleepCorrection correction);
   Future<void> restoreAutomatic(String day);
+  Future<NapDay> readNaps(String day);
+  Future<int> addNap({
+    required String day,
+    required DateTime start,
+    required DateTime end,
+  });
+  Future<int> editNap({
+    required String day,
+    required NapSession original,
+    required DateTime start,
+    required DateTime end,
+  });
+  Future<int> removeNap({required String day, required NapSession session});
+  Future<int> restoreNap({required String day, required NapSession rejected});
+  Future<void> recalculateNaps({required String day, required int revision});
 }

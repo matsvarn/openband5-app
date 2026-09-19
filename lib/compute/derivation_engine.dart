@@ -2323,8 +2323,9 @@ class DerivationEngine {
         heavy = true;
         _diag['mode'] = 'profile-change';
       }
-      final scope = await _deriveScope(
+      var scope = await _deriveScope(
         heavy: heavy, force: force, revisitFinalized: profileChanged);
+      scope = await _unionNapPendingScope(scope);
       _diag
         ..['scope_days'] = scope.targetDays.length
         ..['scope_reason'] = scope.reason;
@@ -2342,6 +2343,8 @@ class DerivationEngine {
         ...await LocalDb.sleepOverrideDays(),
         // A nap edit on a finalized day has to take effect too — same reason.
         ...await LocalDb.napEditDays(),
+        // Last-delete leaves no sleep_nap row; the pending job is the token.
+        ...await LocalDb.napRecalcPendingDays(),
       };
       final todoDays = [
         for (final day in scope.targetDays)
@@ -3393,6 +3396,28 @@ class DerivationEngine {
     }
   }
 
+  /// Last-delete pending jobs are not in [napEditDays]. Light/heavy scope
+  /// only lists recent raw days, so a finalized older day must be unioned
+  /// back in while it still has substrate. Failed jobs stay explicit-retry.
+  Future<_DeriveScope> _unionNapPendingScope(_DeriveScope scope) async {
+    if (scope.rawDays.isEmpty) return scope;
+    final extra = await LocalDb.napRecalcPendingDays();
+    if (extra.isEmpty) return scope;
+    final raw = scope.rawDays.toSet();
+    final targets = {...scope.targetDays};
+    var changed = false;
+    for (final day in extra) {
+      if (raw.contains(day) && targets.add(day)) changed = true;
+    }
+    if (!changed) return scope;
+    return _DeriveScope(
+      fullHistory: scope.fullHistory,
+      targetDays: targets.toList()..sort(),
+      reason: scope.reason,
+      rawDays: scope.rawDays,
+    );
+  }
+
   Future<_DeriveScope> _deriveScope({
     required bool heavy,
     required bool force,
@@ -3850,6 +3875,10 @@ class DerivationEngine {
     bool forceFinalize = false,
     Future<bool> Function(String day)? shouldPersist,
   }) async {
+    // Capture before isolate work so a newer nap edit cannot be overwritten
+    // by this pass. Checked again inside putDayResult's transaction.
+    final expectedNapRevision =
+        (await LocalDb.napRecalcJob(day.date))?['revision'] as num? ?? 0;
     final profile = personalProfile.forDate(DateTime.parse(day.date));
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
@@ -4423,6 +4452,7 @@ class DerivationEngine {
     }
     await LocalDb.putDayResult(
       expectedSleepCorrectionRevision: day.sleepCorrectionRevision,
+      expectedNapRevision: expectedNapRevision.toInt(),
       dayId: day.date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),

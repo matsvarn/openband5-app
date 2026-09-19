@@ -2239,11 +2239,87 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Re-derive after a nap edit. Same machinery as a sleep-override change —
-  /// nap minutes feed sleep need and sleep debt, so an edit is a recompute
-  /// rather than a redraw, and the engine force-includes nap-edit days even
-  /// when they are finalized.
-  Future<void> reanalyzeForNapEdit() => _reanalyzeForOverride();
+  /// Strict, revision-checked nap recalculation. Independent of night
+  /// correction jobs. Never swallows; n!=1 / skipped / partial / stale is
+  /// failure. Committed sleep_nap rows and the job survive a failed run.
+  Future<void> recalculateNaps({
+    required String day,
+    required int revision,
+  }) async {
+    final current = await LocalDb.napRecalcJob(day);
+    if (current == null || (current['revision'] as num?)?.toInt() != revision) {
+      throw StateError('Nap recalculation is stale.');
+    }
+    if (current['status'] == 'complete') return;
+    final claimed = await LocalDb.updateNapRecalcJob(
+      dayId: day,
+      revision: revision,
+      status: 'calculating',
+      fromStatuses: const {'pending', 'failed'},
+    );
+    if (!claimed) {
+      throw StateError('Nap recalculation is already running or stale.');
+    }
+
+    try {
+      final n = await _derive.runDays(
+        _profile,
+        {day},
+        force: true,
+        shouldPersist: (_) async {
+          final latest = await LocalDb.napRecalcJob(day);
+          return (latest?['revision'] as num?)?.toInt() == revision;
+        },
+      );
+      if (n != 1) {
+        throw StateError(
+          n == 0
+              ? 'Selected day could not be recalculated from retained source data.'
+              : 'Recalculation did not resolve exactly the selected day.',
+        );
+      }
+      final latest = await LocalDb.napRecalcJob(day);
+      if ((latest?['revision'] as num?)?.toInt() != revision) {
+        throw StateError('A newer nap edit replaced this calculation.');
+      }
+      final result = await LocalDb.dayResult(day);
+      final requestedAt = (current['requested_at'] as num?)?.toInt() ?? 0;
+      final computedAt = (result?['computed_at'] as num?)?.toInt() ?? 0;
+      if (result == null ||
+          (result['algo_version'] as num?)?.toInt() != kAlgoVersion ||
+          result['skipped'] == 1 ||
+          result['partial'] == 1 ||
+          computedAt < requestedAt) {
+        throw StateError(
+          'Recalculation did not produce a fresh complete result.',
+        );
+      }
+      final completed = await LocalDb.updateNapRecalcJob(
+        dayId: day,
+        revision: revision,
+        status: 'complete',
+        resultAlgoVersion: kAlgoVersion,
+        resultComputedAt: computedAt,
+        fromStatuses: const {'calculating'},
+      );
+      if (!completed) {
+        throw StateError('A newer nap edit won the race.');
+      }
+      await LocalDb.refreshComputeFreshness();
+      bumpInsights();
+    } catch (e) {
+      await LocalDb.updateNapRecalcJob(
+        dayId: day,
+        revision: revision,
+        status: 'failed',
+        error: e.toString(),
+        fromStatuses: const {'calculating'},
+      );
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
 
   Future<List<Map<String, dynamic>>> dataHistoryDays() =>
       LocalDb.dataHistoryDays();

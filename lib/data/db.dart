@@ -184,6 +184,7 @@ class LocalDb {
     'openband_sleep_correction',
     'openband_calculation_job',
     'sleep_nap',
+    'nap_recalc_job',
     'breathing_session',
     'sessions',
     'workout_route',
@@ -346,7 +347,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 54;
+  static const int schemaVersion = 55;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -462,6 +463,7 @@ class LocalDb {
         await _createOpenBandPlans(db);
         await _createOpenBandLaps(db);
         await _createSleepNap(db);
+        await _createNapRecalcJob(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createAlarmSchedule(db);
@@ -1058,11 +1060,18 @@ class LocalDb {
           // User lap marks for live distance activities; additive.
           await _createOpenBandLaps(db);
         }
+        if (oldV < 55) {
+          // Independent nap recalculation job. Must not share
+          // openband_calculation_job.day_id with night corrections.
+          await _createNapRecalcJob(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
         // No calculation isolate survives a process restart.
         await db.update('openband_calculation_job', {'status': 'pending', 'error': null},
+            where: "status = 'calculating'");
+        await db.update('nap_recalc_job', {'status': 'pending', 'error': null},
             where: "status = 'calculating'");
       },
       version: schemaVersion,
@@ -1133,6 +1142,7 @@ class LocalDb {
     await _createOpenBandPlans(db);
     await _createOpenBandLaps(db);
     await _createSleepNap(db);
+    await _createNapRecalcJob(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
     await _createWorkoutSplit(db);
@@ -1640,7 +1650,29 @@ class LocalDb {
         end_ts INTEGER NOT NULL,
         source TEXT NOT NULL,
         created_at INTEGER NOT NULL,
+        origin_start_ts INTEGER,
+        origin_end_ts INTEGER,
         PRIMARY KEY (day_id, start_ts)
+      )
+    ''');
+    await _addColumnIfMissing(db, 'sleep_nap', 'origin_start_ts', 'INTEGER');
+    await _addColumnIfMissing(db, 'sleep_nap', 'origin_end_ts', 'INTEGER');
+  }
+
+  /// Per-day nap recalculation receipt. Independent of
+  /// [openband_calculation_job] because that table is keyed on day_id and
+  /// already hosts the night-correction job.
+  static Future<void> _createNapRecalcJob(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS nap_recalc_job (
+        day_id TEXT PRIMARY KEY,
+        revision INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        requested_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error TEXT,
+        result_algo_version INTEGER,
+        result_computed_at INTEGER
       )
     ''');
   }
@@ -7759,6 +7791,7 @@ class LocalDb {
     // rather than renaming a shipped column.
     String? priorityHash,
     int? expectedSleepCorrectionRevision,
+    int? expectedNapRevision,
   }) async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -7775,6 +7808,14 @@ class LocalDb {
         final current = rows.isEmpty ? 0 : (rows.single['revision'] as num).toInt();
         if (current != expectedSleepCorrectionRevision) {
           throw StateError('Sleep correction changed while this day was calculated.');
+        }
+      }
+      if (expectedNapRevision != null) {
+        final rows = await txn.query('nap_recalc_job',
+            columns: ['revision'], where: 'day_id = ?', whereArgs: [dayId], limit: 1);
+        final current = rows.isEmpty ? 0 : (rows.single['revision'] as num).toInt();
+        if (current != expectedNapRevision) {
+          throw StateError('Nap revision changed while this day was calculated.');
         }
       }
       await txn.insert('day_result', {
@@ -8529,6 +8570,7 @@ class LocalDb {
       await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
+      await deleteByIn(txn, 'nap_recalc_job', 'day_id', sorted);
     });
     return deleted;
   }
@@ -8813,6 +8855,7 @@ class LocalDb {
       // and lose every one they logged.
       'sleep_override',
       'sleep_nap',
+      'nap_recalc_job',
       'samples',
       'events',
       'decoded_onehz',
@@ -10375,29 +10418,137 @@ class LocalDb {
   // ── nap edits ─────────────────────────────────────────────────────────────
 
   /// Log a nap the detector missed, or suppress one it invented.
-  static Future<void> putNapEdit({
+  /// Writes the ledger row and enqueues a new nap job revision in one
+  /// transaction so deleting the last edit still force-includes the day.
+  static Future<int> putNapEdit({
     required String dayId,
     required int startTs,
     required int endTs,
     required String source,
+    int? originStartTs,
+    int? originEndTs,
+  }) => commitNapLedger(
+        dayId: dayId,
+        puts: [
+          (
+            startTs: startTs,
+            endTs: endTs,
+            source: source,
+            originStartTs: originStartTs,
+            originEndTs: originEndTs,
+          ),
+        ],
+      );
+
+  static Future<int> deleteNapEdit(String dayId, int startTs) =>
+      commitNapLedger(dayId: dayId, deletes: [startTs]);
+
+  /// Atomic nap-ledger mutation + pending recalculation job.
+  static Future<int> commitNapLedger({
+    required String dayId,
+    List<
+      ({
+        int startTs,
+        int endTs,
+        String source,
+        int? originStartTs,
+        int? originEndTs,
+      })
+    >
+    puts = const [],
+    List<int> deletes = const [],
   }) async {
     final db = await instance;
-    await db.insert('sleep_nap', {
-      'day_id': dayId,
-      'start_ts': startTs,
-      'end_ts': endTs,
-      'source': source,
-      'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return db.transaction((txn) async {
+      for (final startTs in deletes) {
+        await txn.delete(
+          'sleep_nap',
+          where: 'day_id = ? AND start_ts = ?',
+          whereArgs: [dayId, startTs],
+        );
+      }
+      const sources = {'manual', 'rejected'};
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final row in puts) {
+        if (!sources.contains(row.source)) {
+          throw ArgumentError('Ungültige Quelle.');
+        }
+        await txn.insert('sleep_nap', {
+          'day_id': dayId,
+          'start_ts': row.startTs,
+          'end_ts': row.endTs,
+          'source': row.source,
+          'created_at': now ~/ 1000,
+          'origin_start_ts': row.originStartTs,
+          'origin_end_ts': row.originEndTs,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      final current = await txn.query(
+        'nap_recalc_job',
+        columns: ['revision'],
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+        limit: 1,
+      );
+      final revision = current.isEmpty
+          ? 1
+          : ((current.first['revision'] as num?)?.toInt() ?? 0) + 1;
+      await txn.insert('nap_recalc_job', {
+        'day_id': dayId,
+        'revision': revision,
+        'status': 'pending',
+        'requested_at': now,
+        'updated_at': now,
+        'error': null,
+        'result_algo_version': null,
+        'result_computed_at': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return revision;
+    });
   }
 
-  static Future<void> deleteNapEdit(String dayId, int startTs) async {
+  static Future<Map<String, dynamic>?> napRecalcJob(String dayId) async {
     final db = await instance;
-    await db.delete(
-      'sleep_nap',
-      where: 'day_id = ? AND start_ts = ?',
-      whereArgs: [dayId, startTs],
+    final rows = await db.query(
+      'nap_recalc_job',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+      limit: 1,
     );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<bool> updateNapRecalcJob({
+    required String dayId,
+    required int revision,
+    required String status,
+    String? error,
+    int? resultAlgoVersion,
+    int? resultComputedAt,
+    Set<String>? fromStatuses,
+  }) async {
+    final db = await instance;
+    final where = StringBuffer('day_id = ? AND revision = ?');
+    final args = <Object?>[dayId, revision];
+    if (fromStatuses != null && fromStatuses.isNotEmpty) {
+      where.write(
+        ' AND status IN (${List.filled(fromStatuses.length, '?').join(',')})',
+      );
+      args.addAll(fromStatuses);
+    }
+    final changed = await db.update(
+      'nap_recalc_job',
+      {
+        'status': status,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'error': error,
+        'result_algo_version': resultAlgoVersion,
+        'result_computed_at': resultComputedAt,
+      },
+      where: where.toString(),
+      whereArgs: args,
+    );
+    return changed == 1;
   }
 
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
@@ -10415,6 +10566,18 @@ class LocalDb {
   static Future<Set<String>> napEditDays() async {
     final db = await instance;
     final rows = await db.query('sleep_nap', columns: ['day_id']);
+    return {for (final r in rows) r['day_id'] as String};
+  }
+
+  /// Days with a pending nap job, including last-delete with an empty ledger.
+  /// Failed jobs stay explicit-retry only.
+  static Future<Set<String>> napRecalcPendingDays() async {
+    final db = await instance;
+    final rows = await db.query(
+      'nap_recalc_job',
+      columns: ['day_id'],
+      where: "status = 'pending'",
+    );
     return {for (final r in rows) r['day_id'] as String};
   }
 

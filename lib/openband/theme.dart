@@ -162,51 +162,69 @@ class OBPageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    Widget circle(IconData icon, String tooltip, VoidCallback onPressed) =>
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: Material(
+            color: p.card,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: IconButton(
+              tooltip: tooltip,
+              onPressed: onPressed,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+              icon: Icon(icon, size: 20, color: p.ink),
+            ),
+          ),
+        );
     final heading = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           title,
           textAlign: TextAlign.center,
-          style: p.text(18, weight: FontWeight.w600),
+          style: p.text(18, weight: FontWeight.w600).copyWith(height: 24 / 18),
         ),
         if (subtitle.isNotEmpty) ...[
           const SizedBox(height: 2),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: p.text(12, color: p.muted),
+            style: p.text(12, color: p.muted).copyWith(height: 16 / 12),
           ),
         ],
       ],
     );
     return Padding(
       padding: const EdgeInsets.only(top: 2, bottom: 12),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: backLabel,
-            onPressed: onBack ?? () => Navigator.maybePop(context),
-            icon: const Icon(LucideIcons.chevronLeft, size: 20),
-          ),
-          Expanded(
-            child: onDate == null
-                ? heading
-                : TextButton(
-                    onPressed: onDate,
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                    child: heading,
-                  ),
-          ),
-          if (onInfo == null)
-            const SizedBox(width: 44)
-          else
-            IconButton(
-              tooltip: infoLabel,
-              onPressed: onInfo,
-              icon: Icon(LucideIcons.info, size: 20, color: p.muted),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 50),
+        child: Row(
+          children: [
+            circle(
+              LucideIcons.chevronLeft,
+              backLabel,
+              onBack ?? () => Navigator.maybePop(context),
             ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: onDate == null
+                  ? heading
+                  : TextButton(
+                      onPressed: onDate,
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                      child: heading,
+                    ),
+            ),
+            const SizedBox(width: 12),
+            if (onInfo == null)
+              const SizedBox(width: 44, height: 44)
+            else
+              circle(LucideIcons.info, infoLabel, onInfo!),
+          ],
+        ),
       ),
     );
   }
@@ -330,38 +348,287 @@ class OBAction extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool secondary;
   final bool destructive;
+  final bool ink;
+  final IconData? icon;
   const OBAction(
     this.label, {
     super.key,
     this.onPressed,
     this.secondary = false,
     this.destructive = false,
+    this.ink = false,
+    this.icon,
   });
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: double.infinity,
-    child: secondary
-        ? FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              backgroundColor: OB.of(context).card,
-              foregroundColor: destructive
-                  ? OB.of(context).danger
-                  : OB.of(context).action,
-            ),
-            onPressed: onPressed,
-            child: Text(label, textAlign: TextAlign.center),
-          )
-        : FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: OB.of(context).action,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: OB.of(
-                context,
-              ).action.withValues(alpha: 0.4),
-              disabledForegroundColor: Colors.white,
-            ),
-            onPressed: onPressed,
-            child: Text(label, textAlign: TextAlign.center),
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    if (!ink) {
+      return SizedBox(
+        width: double.infinity,
+        child: secondary
+            ? FilledButton.tonal(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.card,
+                  foregroundColor: destructive ? p.danger : p.action,
+                ),
+                onPressed: onPressed,
+                child: Text(label, textAlign: TextAlign.center),
+              )
+            : FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.action,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: p.action.withValues(alpha: 0.4),
+                  disabledForegroundColor: Colors.white,
+                ),
+                onPressed: onPressed,
+                child: Text(label, textAlign: TextAlign.center),
+              ),
+      );
+    }
+    final background = secondary ? p.card : p.ink;
+    final foreground = secondary
+        ? (destructive ? p.danger : p.ink)
+        : (p.dark ? p.canvas : Colors.white);
+    final labelStyle = p
+        .text(15, weight: FontWeight.w600)
+        .copyWith(height: 18 / 15, color: foreground);
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: background,
+          foregroundColor: foreground,
+          disabledBackgroundColor: background.withValues(alpha: 0.4),
+          disabledForegroundColor: foreground,
+          minimumSize: const Size(48, 48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-  );
+          textStyle: labelStyle,
+        ),
+        onPressed: onPressed,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18, color: foreground),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: labelStyle,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Beginn/Ende time control. Wraps the clock onto its own line when the
+/// scaled value no longer fits beside the label — a fixed-width row clips
+/// "23:25" at 2× text.
+class OBTimeField extends StatelessWidget {
+  final String label;
+  final String? dateText;
+  final VoidCallback? onDate;
+  final TextEditingController? controller;
+  final FocusNode? focusNode;
+  final Key? fieldKey;
+  final String value;
+  final bool enabled;
+  final String? semanticsLabel;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+  final TextInputAction textInputAction;
+  final bool well;
+  const OBTimeField({
+    super.key,
+    required this.label,
+    required this.value,
+    this.dateText,
+    this.onDate,
+    this.controller,
+    this.focusNode,
+    this.fieldKey,
+    this.enabled = true,
+    this.semanticsLabel,
+    this.onChanged,
+    this.onSubmitted,
+    this.textInputAction = TextInputAction.next,
+    this.well = false,
+  });
+  const OBTimeField.well({
+    super.key,
+    required this.label,
+    required this.value,
+    this.dateText,
+    this.onDate,
+    this.controller,
+    this.focusNode,
+    this.fieldKey,
+    this.enabled = true,
+    this.semanticsLabel,
+    this.onChanged,
+    this.onSubmitted,
+    this.textInputAction = TextInputAction.next,
+  }) : well = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    if (well) return _well(p);
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final timeWidth = (110.0 * scale).clamp(110.0, 240.0);
+    final style = p.text(24, weight: FontWeight.w700, display: true);
+    final clock = enabled && controller != null
+        ? Semantics(
+            label: semanticsLabel,
+            child: SizedBox(
+              width: timeWidth,
+              child: TextField(
+                key: fieldKey,
+                controller: controller,
+                focusNode: focusNode,
+                keyboardType: TextInputType.datetime,
+                textInputAction: textInputAction,
+                textAlign: TextAlign.end,
+                style: style,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  hintText: 'HH:mm',
+                ),
+                onChanged: onChanged,
+                onSubmitted: onSubmitted,
+              ),
+            ),
+          )
+        : Text(value, style: style);
+    final labelColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: p.text(13, weight: FontWeight.w600, color: p.muted),
+        ),
+        if (dateText != null) ...[
+          const SizedBox(height: 4),
+          if (enabled && onDate != null)
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 0),
+                minimumSize: const Size(44, 44),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: onDate,
+              child: Text(dateText!, style: p.text(12, color: p.action)),
+            )
+          else
+            Text(dateText!, style: p.text(12, color: p.muted)),
+        ],
+      ],
+    );
+    final trailing = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        clock,
+        const SizedBox(width: 6),
+        Icon(LucideIcons.chevronRight, size: 14, color: p.gap),
+      ],
+    );
+    return OBCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final fits = constraints.maxWidth >= timeWidth + 140;
+          if (fits) {
+            return Row(
+              children: [
+                Expanded(child: labelColumn),
+                trailing,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              labelColumn,
+              const SizedBox(height: 8),
+              Align(alignment: Alignment.centerRight, child: trailing),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _well(OB p) {
+    final style = p
+        .text(28, weight: FontWeight.w600, display: true)
+        .copyWith(height: 34 / 28);
+    final clock = enabled && controller != null
+        ? Semantics(
+            label: semanticsLabel,
+            child: TextField(
+              key: fieldKey,
+              controller: controller,
+              focusNode: focusNode,
+              enabled: enabled,
+              keyboardType: TextInputType.datetime,
+              textInputAction: textInputAction,
+              style: style,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+                hintText: 'HH:mm',
+              ),
+              onChanged: onChanged,
+              onSubmitted: onSubmitted,
+            ),
+          )
+        : Text(value, style: style);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
+        ),
+        if (dateText != null) ...[
+          const SizedBox(height: 4),
+          if (enabled && onDate != null)
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(44, 44),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                alignment: Alignment.centerLeft,
+              ),
+              onPressed: onDate,
+              child: Text(dateText!, style: p.text(12, color: p.action)),
+            )
+          else
+            Text(dateText!, style: p.text(12, color: p.muted)),
+        ],
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: p.well,
+            borderRadius: BorderRadius.circular(AlpRadius.well),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: clock,
+        ),
+      ],
+    );
+  }
 }

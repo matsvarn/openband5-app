@@ -10,6 +10,7 @@ import 'health.dart';
 import 'metric_detail.dart';
 import 'night_signals.dart';
 import '../ui2/profile/profile.dart' show SetRow;
+import 'naps.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
 
@@ -1124,18 +1125,33 @@ class OpenBandSleep extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 OBCard(
-                  child: SetRow(
-                    LucideIcons.chartNoAxesCombined,
-                    p.sleep,
-                    'Nachtverlauf',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => OpenBandNightSignals(
-                          repository: controller.repository,
-                          day: controller.selectedDay,
+                  child: Column(
+                    children: [
+                      SetRow(
+                        LucideIcons.chartNoAxesCombined,
+                        p.sleep,
+                        'Nachtverlauf',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => OpenBandNightSignals(
+                              repository: controller.repository,
+                              day: controller.selectedDay,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      SetRow(
+                        LucideIcons.moon,
+                        p.sleep,
+                        'Nickerchen',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                OpenBandNaps(controller: controller),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),

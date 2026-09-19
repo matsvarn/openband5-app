@@ -594,10 +594,7 @@ class _SleepDetailState extends State<SleepDetail> {
   /// anywhere in the app, so the derive engine's user-window restage path could
   /// never run and a mis-staged night was uncorrectable.
   ///
-  /// NAP EDITS ARE DELIBERATELY NOT HERE. `applyNapEdits` reads a `nap_edits`
-  /// table that nothing in the app writes either; a control that appeared to
-  /// edit naps while the edits went nowhere would be worse than the absence.
-  /// It needs a writer first.
+  /// NAP EDITS live on the Alpin Nickerchen list (`OpenBandNaps`), not here.
   List<Widget>? _windowCard(
       BuildContext c, P p, SleepData d, Map<String, dynamic> n) {
     final l = AppLocalizations.of(c);

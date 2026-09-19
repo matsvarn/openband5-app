@@ -6,6 +6,7 @@ import '../data/nutrition_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
+import '../compute/nap_edits.dart';
 import '../state/app_state.dart';
 import 'domain.dart';
 import 'theme.dart';
@@ -857,6 +858,465 @@ class LocalOpenBandRepository implements OpenBandRepository {
       day: day,
       correctionId: row['correction_id'] as String,
       revision: (row['revision'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<NapDay> readNaps(String day) async {
+    _requireDay(day);
+    final row = await LocalDb.dayResult(day);
+    final rawPayload = row?['payload_json'];
+    final payload = _payload(rawPayload);
+    // Unreadable derived output must not hide the durable ledger.
+    final payloadUnreadable =
+        row != null && rawPayload != null && '$rawPayload'.isNotEmpty && payload == null;
+    final usable =
+        row != null &&
+        row['skipped'] != 1 &&
+        row['partial'] != 1 &&
+        payload != null;
+    final block = payload?['naps'];
+    final value = block is Map ? block['value'] : null;
+    final inputs = block is Map ? block['inputs_used'] : null;
+    final userOnly =
+        inputs is List && inputs.length == 1 && '${inputs.first}' == 'user';
+    var listCorrupt = false;
+    final derivedDetected = <NapMap>[];
+    if (usable && value is List) {
+      for (final n in value) {
+        if (n is! Map) {
+          listCorrupt = true;
+          continue;
+        }
+        final parsed = _detectedFromResult(n.cast<String, dynamic>());
+        if (parsed == null) {
+          if (n['source'] != 'manual') listCorrupt = true;
+          continue;
+        }
+        derivedDetected.add(parsed);
+      }
+    } else if (usable && value != null) {
+      listCorrupt = true;
+    }
+    // Detector coverage from a complete, well-formed result only. Manuals on
+    // an unjudged day, skipped/partial rows, and corrupt lists never claim a
+    // measured empty day.
+    final judged = usable && value is List && !userOnly && !listCorrupt;
+    const String? zone = null;
+    final edits = await LocalDb.napEdits(day);
+    final ledger = _ledgerEdits(edits);
+    final merged = applyNapEdits(judged ? derivedDetected : const [], ledger);
+    final originByStart = <int, (int, int)>{
+      for (final r in edits)
+        if (r['source'] == 'manual' &&
+            _epochSec(r['start_ts']) != null &&
+            _epochSec(r['origin_start_ts']) != null &&
+            _epochSec(r['origin_end_ts']) != null)
+          _epochSec(r['start_ts'])!: (
+            _epochSec(r['origin_start_ts'])!,
+            _epochSec(r['origin_end_ts'])!,
+          ),
+    };
+    final job = _napJob(await LocalDb.napRecalcJob(day));
+    final open =
+        job != null && job.state != CorrectionState.complete;
+    final scalars = payload?['scalars'];
+    final storedTotal = scalars is Map
+        ? _durationMin(scalars['nap_min'])
+        : null;
+    return NapDay(
+      day: day,
+      judged: judged,
+      sessions: [
+        for (final n in merged)
+          ?_sessionFromMerged(
+            n,
+            zone,
+            originByStart[_epochSec(n['start'])],
+          ),
+      ],
+      totalMin: judged && !open ? storedTotal : null,
+      rejected: [
+        for (final r in edits)
+          if (r['source'] == 'rejected')
+            ?_sessionFromEdit(r, zone, NapSource.detected),
+      ],
+      job: job,
+      recordingTimezone: zone,
+      note: payloadUnreadable
+          ? 'Auswertung unlesbar.'
+          : (block is Map ? block['note']?.toString() : null),
+    );
+  }
+
+  @override
+  Future<int> addNap({
+    required String day,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    _requireDay(day);
+    await _validateNapWindow(day, start, end);
+    return LocalDb.putNapEdit(
+      dayId: day,
+      startTs: start.millisecondsSinceEpoch ~/ 1000,
+      endTs: end.millisecondsSinceEpoch ~/ 1000,
+      source: 'manual',
+    );
+  }
+
+  @override
+  Future<int> editNap({
+    required String day,
+    required NapSession original,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    _requireDay(day);
+    await _validateNapWindow(
+      day,
+      start,
+      end,
+      ignoringStartTs: original.startTs,
+    );
+    final originStart =
+        original.originStartTs ??
+        (original.source == NapSource.detected ? original.startTs : null);
+    final originEnd =
+        original.originEndTs ??
+        (original.source == NapSource.detected ? original.endTs : null);
+    final newStart = start.millisecondsSinceEpoch ~/ 1000;
+    final newEnd = end.millisecondsSinceEpoch ~/ 1000;
+    final deletes = [
+      if (original.startTs != newStart) original.startTs,
+    ];
+    // Detected lineage is always origin + optional override. Same-start
+    // override is a manual at the origin PK (rejection cannot coexist).
+    // A moved override is rejected-at-origin plus manual-at-new. Moving
+    // back onto origin replaces that rejection with the manual.
+    if (originStart != null && originEnd != null) {
+      if (newStart == originStart) {
+        return LocalDb.commitNapLedger(
+          dayId: day,
+          deletes: deletes,
+          puts: [
+            (
+              startTs: newStart,
+              endTs: newEnd,
+              source: 'manual',
+              originStartTs: originStart,
+              originEndTs: originEnd,
+            ),
+          ],
+        );
+      }
+      return LocalDb.commitNapLedger(
+        dayId: day,
+        deletes: deletes,
+        puts: [
+          (
+            startTs: originStart,
+            endTs: originEnd,
+            source: 'rejected',
+            originStartTs: null,
+            originEndTs: null,
+          ),
+          (
+            startTs: newStart,
+            endTs: newEnd,
+            source: 'manual',
+            originStartTs: originStart,
+            originEndTs: originEnd,
+          ),
+        ],
+      );
+    }
+    return LocalDb.commitNapLedger(
+      dayId: day,
+      deletes: deletes,
+      puts: [
+        (
+          startTs: newStart,
+          endTs: newEnd,
+          source: 'manual',
+          originStartTs: null,
+          originEndTs: null,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<int> removeNap({
+    required String day,
+    required NapSession session,
+  }) async {
+    _requireDay(day);
+    if (!session.fromDetected) {
+      return LocalDb.deleteNapEdit(day, session.startTs);
+    }
+    final originStart = session.originStartTs ?? session.startTs;
+    final originEnd = session.originEndTs ?? session.endTs;
+    if (session.startTs == originStart) {
+      return LocalDb.putNapEdit(
+        dayId: day,
+        startTs: originStart,
+        endTs: originEnd,
+        source: 'rejected',
+      );
+    }
+    return LocalDb.commitNapLedger(
+      dayId: day,
+      deletes: [session.startTs],
+      puts: [
+        (
+          startTs: originStart,
+          endTs: originEnd,
+          source: 'rejected',
+          originStartTs: null,
+          originEndTs: null,
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<int> restoreNap({
+    required String day,
+    required NapSession rejected,
+  }) async {
+    _requireDay(day);
+    return LocalDb.deleteNapEdit(day, rejected.startTs);
+  }
+
+  @override
+  Future<void> recalculateNaps({
+    required String day,
+    required int revision,
+  }) async {
+    _requireDay(day);
+    await app.recalculateNaps(day: day, revision: revision);
+  }
+
+  Future<void> _validateNapWindow(
+    String day,
+    DateTime start,
+    DateTime end, {
+    int? ignoringStartTs,
+  }) async {
+    // Pipeline day keys are device-local. Do not use a night-correction zone.
+    if (dayLabelOf(start) != day) {
+      throw ArgumentError('Gehört zu einem anderen Tag.');
+    }
+    final startTs = start.millisecondsSinceEpoch ~/ 1000;
+    final endTs = end.millisecondsSinceEpoch ~/ 1000;
+    if (!manualNapWindowIsValid(startTs, endTs)) {
+      throw ArgumentError('5 Minuten bis 6 Stunden.');
+    }
+    final others = <NapMap>[];
+    for (final label in _neighborDays(day)) {
+      others.addAll(
+        await _napWindowsOn(
+          label,
+          ignoringStartTs: label == day ? ignoringStartTs : null,
+        ),
+      );
+    }
+    if (napOverlapsExisting(startTs, endTs, others)) {
+      throw ArgumentError('Überlappt ein Nickerchen.');
+    }
+    if (await _overlapsMainSleep(day, startTs, endTs)) {
+      throw ArgumentError('Überlappt den Nachtschlaf.');
+    }
+  }
+
+  Future<List<NapMap>> _napWindowsOn(
+    String day, {
+    int? ignoringStartTs,
+  }) async {
+    final row = await LocalDb.dayResult(day);
+    final payload = _payload(row?['payload_json']);
+    final usable =
+        row != null &&
+        row['skipped'] != 1 &&
+        row['partial'] != 1 &&
+        payload != null;
+    final value = payload?['naps'] is Map ? payload!['naps']['value'] : null;
+    final detected = <NapMap>[
+      if (usable && value is List)
+        for (final n in value)
+          if (n is Map)
+            if (_detectedFromResult(n.cast<String, dynamic>()) case final d?)
+              if (_epochSec(d['start']) != ignoringStartTs) d,
+    ];
+    final edits = [
+      for (final e in _ledgerEdits(await LocalDb.napEdits(day)))
+        if (!(e.kind == NapEditKind.added && e.startSec == ignoringStartTs))
+          e,
+    ];
+    return applyNapEdits(detected, edits);
+  }
+
+  Future<bool> _overlapsMainSleep(String day, int startTs, int endTs) async {
+    for (final label in _neighborDays(day)) {
+      final bounds = await _storedSleepBounds(label);
+      if (bounds != null && startTs < bounds.$2 && bounds.$1 < endTs) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<(int, int)?> _storedSleepBounds(String day) async {
+    final override = await LocalDb.getSleepOverride(day);
+    if (override != null && override['source'] != 'rejected') {
+      final a = _epochSec(override['onset_ts']);
+      final b = _epochSec(override['offset_ts']);
+      if (a != null && b != null && b > a) return (a, b);
+    }
+    final correction = await LocalDb.openBandSleepCorrection(day);
+    if (correction != null && correction['action'] != 'automatic') {
+      final onsetMs = _epochSec(correction['onset_ms']);
+      final wakeMs = _epochSec(correction['wake_ms']);
+      if (onsetMs != null && wakeMs != null && wakeMs > onsetMs) {
+        return (onsetMs ~/ 1000, wakeMs ~/ 1000);
+      }
+    }
+    final row = await LocalDb.dayResult(day);
+    if (row == null || row['skipped'] == 1) return null;
+    final payload = _payload(row['payload_json']);
+    final onsetMs = _numAt(payload, 'sleep.window.value.onset_ms');
+    final offsetMs = _numAt(payload, 'sleep.window.value.offset_ms');
+    if (onsetMs == null || offsetMs == null) return null;
+    final a = (onsetMs / 1000).round();
+    final b = (offsetMs / 1000).round();
+    if (b <= a) return null;
+    return (a, b);
+  }
+
+  static List<String> _neighborDays(String day) {
+    final p = DateTime.parse(day);
+    return [
+      dayLabelOf(DateTime(p.year, p.month, p.day - 1)),
+      day,
+      dayLabelOf(DateTime(p.year, p.month, p.day + 1)),
+    ];
+  }
+
+  static List<NapEdit> _ledgerEdits(List<Map<String, dynamic>> rows) => [
+    for (final r in rows)
+      if ((r['source'] == 'manual' || r['source'] == 'rejected') &&
+          _epochSec(r['start_ts']) != null &&
+          _epochSec(r['end_ts']) != null &&
+          _epochSec(r['end_ts'])! > _epochSec(r['start_ts'])!)
+        NapEdit(
+          kind: r['source'] == 'rejected'
+              ? NapEditKind.rejected
+              : NapEditKind.added,
+          startSec: _epochSec(r['start_ts'])!,
+          endSec: _epochSec(r['end_ts'])!,
+        ),
+  ];
+
+  static NapMap? _detectedFromResult(Map<String, dynamic> n) {
+    if (n['source'] == 'manual') return null;
+    final start = _epochSec(n['start']);
+    final end = _epochSec(n['end']);
+    if (start == null || end == null || end <= start) return null;
+    if (n.containsKey('duration_min') && n['duration_min'] != null) {
+      final dur = _durationMin(n['duration_min'], maxSec: end - start);
+      if (dur == null) return null;
+      return {'start': start, 'end': end, 'duration_min': dur};
+    }
+    return {'start': start, 'end': end};
+  }
+
+  static NapSession? _sessionFromMerged(
+    NapMap n,
+    String? zone,
+    (int, int)? origin,
+  ) {
+    final start = _epochSec(n['start']);
+    final end = _epochSec(n['end']);
+    if (start == null || end == null || end <= start) return null;
+    final manual = n['source'] == 'manual';
+    final stored = n.containsKey('duration_min')
+        ? _durationMin(n['duration_min'], maxSec: end - start)
+        : null;
+    if (n.containsKey('duration_min') &&
+        n['duration_min'] != null &&
+        stored == null) {
+      return null;
+    }
+    return NapSession(
+      start: recordedTime(
+        DateTime.fromMillisecondsSinceEpoch(start * 1000),
+        zone,
+      ),
+      end: recordedTime(
+        DateTime.fromMillisecondsSinceEpoch(end * 1000),
+        zone,
+      ),
+      source: manual ? NapSource.manual : NapSource.detected,
+      durationMin: manual ? (stored ?? ((end - start) / 60).round()) : stored,
+      originStartTs: origin?.$1,
+      originEndTs: origin?.$2,
+    );
+  }
+
+  static NapSession? _sessionFromEdit(
+    Map<String, dynamic> row,
+    String? zone,
+    NapSource source,
+  ) {
+    final start = _epochSec(row['start_ts']);
+    final end = _epochSec(row['end_ts']);
+    if (start == null || end == null || end <= start) return null;
+    return NapSession(
+      start: recordedTime(
+        DateTime.fromMillisecondsSinceEpoch(start * 1000),
+        zone,
+      ),
+      end: recordedTime(
+        DateTime.fromMillisecondsSinceEpoch(end * 1000),
+        zone,
+      ),
+      source: source,
+      durationMin: source == NapSource.manual
+          ? ((end - start) / 60).round()
+          : null,
+    );
+  }
+
+  static int? _epochSec(Object? v) {
+    if (v is! num || !v.isFinite) return null;
+    return v.toInt();
+  }
+
+  static int? _durationMin(Object? v, {int? maxSec}) {
+    if (v is! num || !v.isFinite) return null;
+    final n = v.round();
+    if (n < 0) return null;
+    if (maxSec != null && n * 60 > maxSec) return null;
+    return n;
+  }
+
+  static NapJob? _napJob(Map<String, dynamic>? row) {
+    if (row == null) return null;
+    final status = row['status']?.toString() ?? 'pending';
+    return NapJob(
+      day: row['day_id'] as String,
+      revision: (row['revision'] as num).toInt(),
+      requestedAt: DateTime.fromMillisecondsSinceEpoch(
+        (row['requested_at'] as num).toInt(),
+      ),
+      state: switch (status) {
+        'calculating' => CorrectionState.calculating,
+        'complete' => CorrectionState.complete,
+        'failed' => CorrectionState.failed,
+        _ => CorrectionState.pending,
+      },
+      error: row['error']?.toString(),
     );
   }
 

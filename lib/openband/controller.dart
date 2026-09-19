@@ -18,8 +18,11 @@ class OpenBandController extends ChangeNotifier {
   bool _disposed = false;
   final Set<String> _calculating = {};
   final Map<String, SleepCorrection> _queued = {};
+  final Set<String> _napCalculating = {};
+  final Map<String, int> _queuedNap = {};
   Future<void> _persistWrite = Future.value();
   final Map<String, String> calculationErrors = {};
+  final Map<String, String> napCalculationErrors = {};
 
   OpenBandController({
     required this.repository,
@@ -30,6 +33,7 @@ class OpenBandController extends ChangeNotifier {
   }) : selectedDay = initialDay ?? todayLabel();
 
   bool get calculating => _calculating.contains(selectedDay);
+  bool get napCalculating => _napCalculating.contains(selectedDay);
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -102,6 +106,28 @@ class OpenBandController extends ChangeNotifier {
       if (next != null &&
           (next.id != correction.id || next.revision != correction.revision)) {
         await calculate(next);
+      }
+    }
+  }
+
+  Future<void> calculateNaps({required String day, required int revision}) async {
+    if (!_napCalculating.add(day)) {
+      _queuedNap[day] = revision;
+      return;
+    }
+    napCalculationErrors.remove(day);
+    _notify();
+    try {
+      await repository.recalculateNaps(day: day, revision: revision);
+    } catch (_) {
+      napCalculationErrors[day] = 'Gespeichert · Auswertung offen';
+    } finally {
+      _napCalculating.remove(day);
+      if (day == selectedDay && !_disposed) await refresh();
+      _notify();
+      final next = _queuedNap.remove(day);
+      if (next != null && next != revision) {
+        await calculateNaps(day: day, revision: next);
       }
     }
   }

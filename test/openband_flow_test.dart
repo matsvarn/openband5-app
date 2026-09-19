@@ -170,6 +170,11 @@ void main() {
       expect(find.byTooltip('Schlafzeiten ändern'), findsNothing);
       shell.select(ShellDomain.home);
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byTooltip('Schlafzeiten ändern'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byTooltip('Schlafzeiten ändern'), findsOneWidget);
       expect(controller.selectedDay, '2026-09-15');
     },
@@ -233,7 +238,7 @@ void main() {
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
       expect(
-        find.text('Speichern fehlgeschlagen. Dein Entwurf bleibt erhalten.'),
+        find.text('Speichern fehlgeschlagen.'),
         findsOneWidget,
       );
       await expectLater(
@@ -312,11 +317,16 @@ void main() {
       expect(find.text('Effizienz'), findsOneWidget);
       expect(find.text('Im Bett'), findsOneWidget);
       expect(find.text('Schlafdauer'), findsOneWidget);
-      expect(find.text('Zeiten korrigieren'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-partial.png'),
       );
+      await tester.scrollUntilVisible(
+        find.text('Zeiten korrigieren'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Zeiten korrigieren'), findsOneWidget);
       expect(
         find.bySemanticsLabel(RegExp('02:10 bis 02:34: Keine Daten')),
         findsWidgets,
@@ -516,17 +526,36 @@ void main() {
       await tester.ensureVisible(find.text('14'));
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('14. September ansehen'));
-      await tester.tap(find.text('14. September ansehen'));
+      final previousDay = find.widgetWithText(
+        FilledButton,
+        '14. September ansehen',
+      );
+      await tester.scrollUntilVisible(
+        previousDay,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(previousDay);
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-14');
       await tester.tap(find.text(obDayTitle('2026-09-14')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('15. September ansehen'), 200);
-      await tester.tap(find.text('15. September ansehen'));
+      final selectedDay = find.widgetWithText(
+        FilledButton,
+        '15. September ansehen',
+      );
+      await tester.scrollUntilVisible(
+        selectedDay,
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.pumpAndSettle();
+      await tester.tap(selectedDay);
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-15');
       await tester.scrollUntilVisible(
         find.bySemanticsLabel(RegExp('^Schritte ')),
         300,

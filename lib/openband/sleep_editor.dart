@@ -243,7 +243,7 @@ class _SleepEditorState extends State<SleepEditor> {
         setState(() {
           busy = false;
           saveFailed = true;
-          error = 'Speichern fehlgeschlagen. Dein Entwurf bleibt erhalten.';
+          error = 'Speichern fehlgeschlagen.';
         });
       }
     }
@@ -313,8 +313,6 @@ class _SleepEditorState extends State<SleepEditor> {
                 : failed
                 ? 'Auswertung offen'
                 : 'Zeiten gespeichert'
-          : saveFailed
-          ? 'Nicht gespeichert'
           : preview
           ? 'Änderung prüfen'
           : 'Schlafzeiten ändern';
@@ -351,37 +349,13 @@ class _SleepEditorState extends State<SleepEditor> {
                           Semantics(
                             liveRegion: true,
                             child: OBCard(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        LucideIcons.circleX,
-                                        size: 18,
-                                        color: p.danger,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          saveFailed
-                                              ? 'Änderung nicht gespeichert'
-                                              : 'Zeitfenster prüfen',
-                                          style: p.text(
-                                            14,
-                                            weight: FontWeight.w500,
-                                            color: p.danger,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    error!,
-                                    style: p.text(13, color: p.muted),
-                                  ),
-                                ],
+                              child: Text(
+                                error!,
+                                style: p.text(
+                                  14,
+                                  weight: FontWeight.w500,
+                                  color: p.danger,
+                                ),
                               ),
                             ),
                           ),
@@ -800,93 +774,28 @@ class _SleepEditorState extends State<SleepEditor> {
   }
 
   Widget _timeField(bool start) {
-    final p = OB.of(context);
     final value = start ? draft!.onset : draft!.wake;
     final enabled = receipt == null && !preview && !busy;
-    return OBCard(
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  start ? 'Eingeschlafen' : 'Aufgewacht',
-                  style: p.text(
-                    13,
-                    weight: FontWeight.w600,
-                    color: p.muted,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (enabled)
-                  TextButton(
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      alignment: Alignment.centerLeft,
-                    ),
-                    onPressed: () => _date(start),
-                    child: Text(
-                      obDate(dayLabelOf(value)),
-                      style: p.text(12, color: p.action),
-                    ),
-                  )
-                else
-                  Text(
-                    obDate(dayLabelOf(value)),
-                    style: p.text(12, color: p.muted),
-                  ),
-              ],
-            ),
-          ),
-          if (enabled)
-            Semantics(
-              label: start ? 'Beginn der Nacht' : 'Ende der Nacht',
-              child: SizedBox(
-                width: 110,
-                child: TextField(
-                  key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
-                  controller: start ? startText : endText,
-                  focusNode: start ? null : endFocus,
-                  keyboardType: TextInputType.datetime,
-                  textInputAction: start
-                      ? TextInputAction.next
-                      : TextInputAction.done,
-                  textAlign: TextAlign.end,
-                  style: p.text(
-                    24,
-                    weight: FontWeight.w700,
-                    display: true,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(vertical: 8),
-                    hintText: 'HH:mm',
-                  ),
-                  onChanged: (_) => _update(),
-                  onSubmitted: (_) {
-                    _update();
-                    if (start) {
-                      endFocus.requestFocus();
-                    } else {
-                      FocusScope.of(context).unfocus();
-                    }
-                  },
-                ),
-              ),
-            )
-          else
-            Text(
-              obTime(value),
-              style: p.text(24, weight: FontWeight.w700, display: true),
-            ),
-          const SizedBox(width: 6),
-          Icon(LucideIcons.chevronRight, size: 14, color: p.gap),
-        ],
-      ),
+    return OBTimeField(
+      label: start ? 'Eingeschlafen' : 'Aufgewacht',
+      dateText: obDate(dayLabelOf(value)),
+      onDate: () => _date(start),
+      controller: start ? startText : endText,
+      focusNode: start ? null : endFocus,
+      fieldKey: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
+      value: obTime(value),
+      enabled: enabled,
+      semanticsLabel: start ? 'Beginn der Nacht' : 'Ende der Nacht',
+      textInputAction: start ? TextInputAction.next : TextInputAction.done,
+      onChanged: (_) => _update(),
+      onSubmitted: (_) {
+        _update();
+        if (start) {
+          endFocus.requestFocus();
+        } else {
+          FocusScope.of(context).unfocus();
+        }
+      },
     );
   }
 }
@@ -899,10 +808,8 @@ Future<bool> restoreAutomaticSleep(
   final yes = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
-      title: const Text('Korrektur zurücknehmen?'),
-      content: const Text(
-        'Die automatische Erkennung wird wieder verwendet. Deine Originaldaten bleiben erhalten; Schlaf und Erholung werden neu berechnet.',
-      ),
+      title: const Text('Automatische Zeiten wiederherstellen?'),
+      content: const Text('Schlaf und Erholung werden neu berechnet.'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(c, false),

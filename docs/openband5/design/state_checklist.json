@@ -668,6 +668,46 @@
         "evidence": "test/openband_night_contract_test.dart; test/openband_night_signals_test.dart; integration_test/openband_review_test.dart",
         "note": "Unions stored calendar bundles intersecting the absolute night window, including pre-midnight readings. Uses the selected served algorithm version; pending/failed corrections, skipped and corrupt bundles are refused. Equal duplicates collapse; conflicts retain null gaps. Candidate reads include timezone/DST bounds; all populated curves remain partial because downsampled readings do not prove continuous coverage. SQLite and synthetic simulator proof; no band or physiological validation.",
         "nativeReview": "build/ui-review/night-coverage-20260919: iPhone 15 Pro, light/dark, selected gap, missing HRV, info, 2x text; synthetic; all 87 capture PNGs inspected"
+      },
+      "Nickerchen": {
+        "status": "implemented",
+        "paperNode": "3KI7-0",
+        "source": "lib/openband/naps.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
+        "note": "Stored results and durable manual ledger feed typed NapDay. No detected naps is distinct from unable to determine; missing durations keep the total unknown.",
+        "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Nickerchen entfernen": {
+        "status": "implemented",
+        "paperNode": "3KR8-0",
+        "source": "lib/openband/naps.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
+        "note": "Remove and restore retain original source bounds. Saving is atomic with pending recalculation; failed recalculation preserves saved edits and supports retry.",
+        "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Nacht und Nickerchen": {
+        "status": "implemented",
+        "paperNode": "3KI7-0",
+        "source": "lib/openband/naps.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
+        "note": "Sleep hub opens the selected day’s nap list; main-night and nap bounds remain distinct. Superseded legacy nap destination and callers migrated.",
+        "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Schlaf ergänzen, Nickerchen": {
+        "status": "implemented",
+        "paperNode": "3KL6-0",
+        "source": "lib/openband/naps.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
+        "note": "Add and edit actual clock bounds using the recorded zone when known. Device-time fallback is disclosed; invalid or ambiguous DST input is refused.",
+        "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Schlaf ergänzen, Überschneidung prüfen": {
+        "status": "implemented",
+        "paperNode": "3KL6-0",
+        "source": "lib/openband/naps.dart; lib/openband/local_repository.dart; lib/data/db.dart; lib/state/app_state.dart",
+        "evidence": "test/openband_naps_test.dart; test/openband_naps_storage_test.dart; test/openband_naps_recalculation_test.dart; integration_test/openband_review_test.dart",
+        "note": "Reject overlaps with the main night and active nap ledger, including adjacent days and repeated moves; no new algorithm or invented restaging.",
+        "nativeReview": "build/ui-review/naps-final-20260919; build/ui-review/naps-mini-final-20260919: 107 PNGs each, all inspected; light/dark, empty/unknown, edit, remove/restore, recalculation failure/retry, keyboard and 2x text. Synthetic simulator proof."
       }
     }
   }

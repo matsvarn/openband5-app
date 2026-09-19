@@ -9,21 +9,29 @@
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
+
+import 'dart:convert';
 
 import '../../compute/findings.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
+import '../../data/series_codec.dart';
 import '../../data/lab_catalogue.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../openband/controller.dart';
+import '../../openband/local_repository.dart';
+import '../../openband/naps.dart';
+import '../../state/app_state.dart';
+import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
 import 'circadian_detail.dart';
 import 'findings_log.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
 import 'metric_detail.dart';
-import 'naps.dart';
 
 /// A read this screen can live without. The wear block and the nap block are
 /// ADDITIONS to the repository interface, so an implementation written before
@@ -41,6 +49,107 @@ Future<Map<String, dynamic>> _soft(
     return await read();
   } catch (_) {
     return const {};
+  }
+}
+
+Future<void> _openAlpinNaps(BuildContext c, String day) async {
+  AppState? app;
+  try {
+    app = c.read<AppState>();
+  } catch (_) {
+    app = null;
+  }
+  if (app == null) {
+    if (repoOf(c) == null) return;
+    throw StateError('Nickerchen konnte nicht geöffnet werden.');
+  }
+  if (app.repo == null) {
+    throw StateError('Nickerchen konnte nicht geöffnet werden.');
+  }
+  final label = RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day) ? day : null;
+  final controller = OpenBandController(
+    repository: LocalOpenBandRepository(app),
+    initialDay: label,
+  );
+  try {
+    await controller.refresh();
+    if (!c.mounted) return;
+    await Navigator.of(c).push(
+      themedRoute(
+        (_) => OpenBandNaps(controller: controller),
+        name: 'OpenBandNaps',
+      ),
+    );
+  } finally {
+    controller.dispose();
+  }
+}
+
+/// Detector coverage + open-job guard. Stale or corrupt payload must not
+/// publish a measured total.
+Future<({int? min, int? count})> _healthNapFigures(
+  String day,
+  Map<String, dynamic> naps,
+) async {
+  try {
+    final job = await LocalDb.napRecalcJob(day);
+    if (job != null && job['status'] != 'complete') {
+      return (min: null, count: null);
+    }
+    if (naps['naps'] is! List) return (min: null, count: null);
+    final row = await LocalDb.dayResult(day);
+    if (row == null || row['skipped'] == 1 || row['partial'] == 1) {
+      return (min: null, count: null);
+    }
+    final raw = row['payload_json'];
+    if (raw is! String || raw.isEmpty) return (min: null, count: null);
+    Map<String, dynamic>? payload;
+    try {
+      payload = SeriesCodec.decodePayloadJson(raw);
+    } catch (_) {
+      try {
+        final decoded = jsonDecode(raw);
+        payload = decoded is Map ? decoded.cast<String, dynamic>() : null;
+      } catch (_) {
+        return (min: null, count: null);
+      }
+    }
+    if (payload == null) return (min: null, count: null);
+    final block = payload['naps'];
+    final value = block is Map ? block['value'] : null;
+    final inputs = block is Map ? block['inputs_used'] : null;
+    if (inputs is List && inputs.length == 1 && '${inputs.first}' == 'user') {
+      return (min: null, count: null);
+    }
+    if (value is! List) return (min: null, count: null);
+    for (final n in value) {
+      if (n is! Map) return (min: null, count: null);
+      if (n['source'] == 'manual') continue;
+      final start = n['start'];
+      final end = n['end'];
+      if (start is! num ||
+          end is! num ||
+          !start.isFinite ||
+          !end.isFinite ||
+          end <= start) {
+        return (min: null, count: null);
+      }
+      final dur = n['duration_min'];
+      if (dur != null) {
+        if (dur is! num || !dur.isFinite || dur < 0) {
+          return (min: null, count: null);
+        }
+        if (dur.round() * 60 > (end - start).toInt()) {
+          return (min: null, count: null);
+        }
+      }
+    }
+    return (
+      min: (naps['nap_min'] as num?)?.round(),
+      count: (naps['naps'] as List).length,
+    );
+  } catch (_) {
+    return (min: null, count: null);
   }
 }
 
@@ -201,6 +310,7 @@ class HealthData {
     // today has usually not derived yet.
     final napDay = days.isEmpty ? todayLabel() : days.first;
     final naps = await _soft(() => repo.getDayNaps(napDay));
+    final figures = await _healthNapFigures(napDay, naps);
 
     return HealthData(
       today: today,
@@ -212,8 +322,8 @@ class HealthData {
           unit: 'min'),
       insightsStale: staleReasonOf(cd),
       nightGap: gap,
-      napMin: (naps['nap_min'] as num?)?.round(),
-      napCount: (naps['naps'] as List?)?.length,
+      napMin: figures.min,
+      napCount: figures.count,
       napDay: napDay,
       findings:
           findingsHistory(cd, readiness: ready, irregularDays: irregular),
@@ -894,11 +1004,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                       : '${l?.healthNapCountLabel(d.napCount!) ?? '${d.napCount} '
                               'nap${d.napCount == 1 ? '' : 's'}'} · '
                           '${prettyDay(d.napDay)}',
-                  onTap: () => go(c, NapsScreen(day: d.napDay)),
+                  onTap: () => _openAlpinNaps(c, d.napDay),
                 ),
               ),
         action: l?.healthAddOrCorrect ?? 'Add or correct',
-        onAction: () => go(c, NapsScreen(day: d.napDay)),
+        onAction: () => _openAlpinNaps(c, d.napDay),
       ),
 
       // THERE IS NO "BODY COMPOSITION" SECTION, AND THE NEXT PERSON SHOULD NOT

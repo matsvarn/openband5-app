@@ -25,12 +25,17 @@ enum SyntheticScenario {
 class SyntheticOpenBandRepository implements OpenBandRepository {
   SyntheticScenario scenario;
   Future<void>? calculationBarrier;
+  Future<void>? restoreBarrier;
+  final List<({String day, int revision})> napRecalcCalls = [];
 
   final Map<String, dynamic> _summary;
   final Map<String, dynamic> _detail;
   final Map? activity;
   final Map<String, SleepDraft> _drafts = {};
   final Map<String, SleepCorrection> _corrections = {};
+  final Map<String, NapDay> _naps = {};
+  final Map<String, List<NapSession>> _napRejected = {};
+  int _napRevision = 0;
   final Map<String, SleepNight> _applied = {};
   final Map<String, double> _sleepByDay = {};
   final Map<String, double> _hrvByDay = {};
@@ -710,6 +715,254 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _drafts.remove(day);
     _corrections.remove(day);
     _applied.remove(day);
+  }
+
+  NapDay _defaultNaps(String day) {
+    if (scenario == SyntheticScenario.missing) {
+      return NapDay(day: day, recordingTimezone: _timezone);
+    }
+    final start = _at(day, '14:10');
+    final end = _at(day, '14:42');
+    return NapDay(
+      day: day,
+      judged: true,
+      sessions: [
+        NapSession(
+          start: start,
+          end: end,
+          source: NapSource.detected,
+          durationMin: 32,
+        ),
+      ],
+      totalMin: 32,
+      recordingTimezone: _timezone,
+    );
+  }
+
+  @override
+  Future<NapDay> readNaps(String day) async {
+    final stored = _naps[day] ?? _defaultNaps(day);
+    final open =
+        stored.job != null && stored.job!.state != CorrectionState.complete;
+    return NapDay(
+      day: stored.day,
+      judged: stored.judged,
+      sessions: stored.sessions,
+      totalMin: stored.judged && !open ? stored.totalMin : null,
+      rejected: List.unmodifiable(_napRejected[day] ?? const []),
+      job: stored.job,
+      recordingTimezone: stored.recordingTimezone ?? _timezone,
+      note: stored.note,
+    );
+  }
+
+  void seedNaps(NapDay day) => _naps[day.day] = day;
+
+  NapDay _withJob(
+    NapDay day,
+    int revision,
+    CorrectionState state, {
+    String? error,
+  }) => NapDay(
+    day: day.day,
+    judged: day.judged,
+    sessions: day.sessions,
+    totalMin:
+        day.judged &&
+            state == CorrectionState.complete &&
+            day.sessions.every((session) => session.durationMin != null)
+        ? day.sessions.fold<int>(
+            0,
+            (total, session) => total + session.durationMin!,
+          )
+        : null,
+    rejected: day.rejected,
+    job: NapJob(
+      day: day.day,
+      revision: revision,
+      state: state,
+      requestedAt: _at(_day, '07:48'),
+      error: error,
+    ),
+    recordingTimezone: day.recordingTimezone ?? _timezone,
+    note: day.note,
+  );
+
+  void _ensureNaps(String day) {
+    _naps[day] ??= _defaultNaps(day);
+  }
+
+  Future<int> _commitSyntheticNap(String day, NapDay next) async {
+    if (scenario == SyntheticScenario.saveFailure) {
+      throw StateError('synthetic save failure');
+    }
+    _napRevision += 1;
+    _naps[day] = _withJob(next, _napRevision, CorrectionState.pending);
+    return _napRevision;
+  }
+
+  @override
+  Future<int> addNap({
+    required String day,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    _ensureNaps(day);
+    final current = await readNaps(day);
+    final session = NapSession(
+      start: start,
+      end: end,
+      source: NapSource.manual,
+      durationMin: end.difference(start).inMinutes,
+    );
+    return _commitSyntheticNap(
+      day,
+      NapDay(
+        day: day,
+        judged: current.judged,
+        sessions: [...current.sessions, session]
+          ..sort((a, b) => a.start.compareTo(b.start)),
+        totalMin: current.totalMin,
+        recordingTimezone: current.recordingTimezone,
+        note: current.note,
+      ),
+    );
+  }
+
+  @override
+  Future<int> editNap({
+    required String day,
+    required NapSession original,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    _ensureNaps(day);
+    final current = await readNaps(day);
+    final originStart =
+        original.originStartTs ??
+        (original.source == NapSource.detected ? original.startTs : null);
+    final originEnd =
+        original.originEndTs ??
+        (original.source == NapSource.detected ? original.endTs : null);
+    final edited = NapSession(
+      start: start,
+      end: end,
+      source: NapSource.manual,
+      durationMin: end.difference(start).inMinutes,
+      originStartTs: originStart,
+      originEndTs: originEnd,
+    );
+    var rejected = [
+      for (final r in current.rejected)
+        if (r.startTs != original.startTs && r.startTs != originStart) r,
+    ];
+    if (originStart != null &&
+        originEnd != null &&
+        edited.startTs != originStart) {
+      rejected.add(
+        NapSession(
+          start: DateTime.fromMillisecondsSinceEpoch(originStart * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch(originEnd * 1000),
+          source: NapSource.detected,
+        ),
+      );
+    }
+    _napRejected[day] = rejected;
+    final sessions = [
+      for (final n in current.sessions)
+        if (n.startTs != original.startTs) n,
+      edited,
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    return _commitSyntheticNap(
+      day,
+      NapDay(
+        day: day,
+        judged: current.judged,
+        sessions: sessions,
+        recordingTimezone: current.recordingTimezone,
+        note: current.note,
+      ),
+    );
+  }
+
+  @override
+  Future<int> removeNap({
+    required String day,
+    required NapSession session,
+  }) async {
+    _ensureNaps(day);
+    final current = await readNaps(day);
+    if (session.fromDetected) {
+      final originStart = session.originStartTs ?? session.startTs;
+      final originEnd = session.originEndTs ?? session.endTs;
+      _napRejected[day] = [
+        for (final r in current.rejected)
+          if (r.startTs != originStart) r,
+        NapSession(
+          start: DateTime.fromMillisecondsSinceEpoch(originStart * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch(originEnd * 1000),
+          source: NapSource.detected,
+        ),
+      ];
+    }
+    return _commitSyntheticNap(
+      day,
+      NapDay(
+        day: day,
+        judged: current.judged,
+        sessions: [
+          for (final n in current.sessions)
+            if (n.startTs != session.startTs) n,
+        ],
+        recordingTimezone: current.recordingTimezone,
+        note: current.note,
+      ),
+    );
+  }
+
+  @override
+  Future<int> restoreNap({
+    required String day,
+    required NapSession rejected,
+  }) async {
+    await restoreBarrier;
+    _ensureNaps(day);
+    final current = await readNaps(day);
+    _napRejected[day] = [
+      for (final n in _napRejected[day] ?? const <NapSession>[])
+        if (n.startTs != rejected.startTs) n,
+    ];
+    return _commitSyntheticNap(
+      day,
+      NapDay(
+        day: day,
+        judged: current.judged,
+        sessions: [...current.sessions, rejected]
+          ..sort((a, b) => a.start.compareTo(b.start)),
+        recordingTimezone: current.recordingTimezone,
+        note: current.note,
+      ),
+    );
+  }
+
+  @override
+  Future<void> recalculateNaps({
+    required String day,
+    required int revision,
+  }) async {
+    napRecalcCalls.add((day: day, revision: revision));
+    await calculationBarrier;
+    final current = _naps[day] ?? _defaultNaps(day);
+    if (scenario == SyntheticScenario.calculationFailure) {
+      _naps[day] = _withJob(
+        current,
+        revision,
+        CorrectionState.failed,
+        error: 'synthetic calculation failure',
+      );
+      throw StateError('synthetic calculation failure');
+    }
+    _naps[day] = _withJob(current, revision, CorrectionState.complete);
   }
 
   List<NightSegment> get _denseSegments {

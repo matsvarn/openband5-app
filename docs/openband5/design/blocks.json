@@ -52,7 +52,15 @@
     "3KZR-0": "A08 Alarm · Dunkel",
     "3L1Y-0": "A08 Alarm · Bestätigung offen",
     "3L45-0": "A08 Alarm · nicht verbunden",
-    "3L6C-0": "A08 Alarm · kein gespeicherter Termin"
+    "3L6C-0": "A08 Alarm · kein gespeicherter Termin",
+    "3KI7-0": "A02 Nickerchen · Tag",
+    "3KJW-0": "A02 Nickerchen · Dunkel",
+    "3KL6-0": "A02 Nickerchen ergänzen",
+    "3KQ3-0": "A02 Nickerchen ergänzen · Dunkel",
+    "3KR8-0": "A02 Nickerchen bearbeiten",
+    "3KME-0": "A02 Nickerchen · Auswertung fehlgeschlagen",
+    "3KNU-0": "A02 Nickerchen · keine erkannt",
+    "3KP4-0": "A02 Nickerchen · nicht bestimmbar"
   },
   "blocks": [
     {
@@ -89,8 +97,17 @@
         "3IW8-0",
         "3IXY-0",
         "3IZO-0",
-        "3J78-0"
-      ]
+        "3J78-0",
+        "3KI7-0",
+        "3KJW-0",
+        "3KL6-0",
+        "3KQ3-0",
+        "3KR8-0",
+        "3KME-0",
+        "3KNU-0",
+        "3KP4-0"
+      ],
+      "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
     {
       "name": "OBBandCapsule",
@@ -113,7 +130,7 @@
       "usedIn": [
         "*"
       ],
-      "notes": "No OBIconButton class; overview uses _CircleButton. Headers use stock IconButton via theme.dart IconButtonTheme."
+      "notes": "Overview uses _CircleButton; OBPageHeader owns the canonical 44-point card-circle detail controls."
     },
     {
       "name": "OBTabBar",
@@ -961,6 +978,61 @@
       "widget": "OBSettingsToggleRow",
       "file": "settings_controls.dart",
       "note": "Shared setting control; notification screen integration remains pending."
+    },
+    {
+      "name": "OBNapRow",
+      "paperNode": "3KJ3-0",
+      "widget": "_NapRow",
+      "file": "naps.dart",
+      "usedIn": [
+        "3KI7-0",
+        "3KJW-0",
+        "3KME-0"
+      ],
+      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —."
+    },
+    {
+      "name": "OBActionSecondary.inkIcon",
+      "paperNode": "3M8Z-0",
+      "widget": "OBAction",
+      "file": "theme.dart",
+      "variant": "secondary ink icon",
+      "usedIn": [
+        "3KI7-0",
+        "3KJW-0",
+        "3KL6-0",
+        "3KQ3-0",
+        "3KR8-0",
+        "3KME-0",
+        "3KNU-0",
+        "3KP4-0"
+      ],
+      "notes": "48-point minimum, 16 radius, 15/18 semibold, optional Lucide icon; expands for accessibility text."
+    },
+    {
+      "name": "OBActionPrimary.ink",
+      "paperNode": "3M94-0",
+      "widget": "OBAction",
+      "file": "theme.dart",
+      "variant": "primary ink",
+      "usedIn": [
+        "3KL6-0",
+        "3KQ3-0",
+        "3KR8-0"
+      ]
+    },
+    {
+      "name": "OBTimeField.well",
+      "paperNode": "3M98-0",
+      "widget": "OBTimeField",
+      "file": "theme.dart",
+      "variant": "well",
+      "usedIn": [
+        "3KL6-0",
+        "3KQ3-0",
+        "3KR8-0"
+      ],
+      "notes": "Shared controller-backed time field; paired wells stack when text needs more width."
     }
   ],
   "openBlocks": [
@@ -988,12 +1060,14 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 54,
+    "version": 55,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
       "openband_session_detail",
-      "openband_lap"
+      "openband_lap",
+      "sleep_nap",
+      "nap_recalc_job"
     ]
   },
   "research": {
