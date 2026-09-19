@@ -318,13 +318,13 @@ class _SleepEditorState extends State<SleepEditor> {
           : preview
           ? 'Änderung prüfen'
           : 'Schlafzeiten ändern';
-      final large = MediaQuery.textScalerOf(context).scale(14) > 20;
       return PopScope(
         canPop: !busy && !preview && draftError == null || receipt != null,
         onPopInvokedWithResult: (didPop, result) {
           if (!didPop) _leave();
         },
         child: Scaffold(
+          backgroundColor: p.canvas,
           body: SafeArea(
             child: loading
                 ? const Center(child: CircularProgressIndicator.adaptive())
@@ -345,7 +345,7 @@ class _SleepEditorState extends State<SleepEditor> {
                           onInfo: _showDetails,
                           infoLabel: 'Zeitfenster und Auswertung',
                         ),
-                        if (completed) _resultCard() else _windowCard(large),
+                        if (completed) _resultCard() else _windowCard(),
                         const SizedBox(height: 12),
                         if (error != null) ...[
                           Semantics(
@@ -359,7 +359,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                       Icon(
                                         LucideIcons.circleX,
                                         size: 18,
-                                        color: p.pulse,
+                                        color: p.danger,
                                       ),
                                       const SizedBox(width: 8),
                                       Expanded(
@@ -370,7 +370,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                           style: p.text(
                                             14,
                                             weight: FontWeight.w500,
-                                            color: p.pulse,
+                                            color: p.danger,
                                           ),
                                         ),
                                       ),
@@ -427,11 +427,13 @@ class _SleepEditorState extends State<SleepEditor> {
                                     }),
                             ),
                             const SizedBox(height: 12),
-                            _actionRow(
-                              'Änderung verwerfen',
-                              LucideIcons.trash2,
-                              p.pulse,
-                              busy ? null : _discard,
+                            OBCard(
+                              child: _actionRow(
+                                'Änderung verwerfen',
+                                LucideIcons.trash2,
+                                p.danger,
+                                busy ? null : _discard,
+                              ),
                             ),
                           ] else ...[
                             OBCard(
@@ -534,10 +536,11 @@ class _SleepEditorState extends State<SleepEditor> {
                                   ),
                             ),
                             const SizedBox(height: 12),
-                            _actionRow(
-                              'Automatische Zeiten wiederherstellen',
-                              LucideIcons.refreshCw,
-                              p.action,
+                            OBCard(
+                              child: _actionRow(
+                                'Automatische Zeiten wiederherstellen',
+                                LucideIcons.refreshCw,
+                                p.action,
                               () async {
                                 final restored = await restoreAutomaticSleep(
                                   context,
@@ -548,6 +551,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                   Navigator.pop(context);
                                 }
                               },
+                              ),
                             ),
                             const SizedBox(height: 8),
                           ],
@@ -580,7 +584,7 @@ class _SleepEditorState extends State<SleepEditor> {
     }
   }
 
-  Widget _windowCard(bool large) {
+  Widget _windowCard() {
     final p = OB.of(context);
     final delta = original.bedMinutes == null
         ? null
@@ -597,10 +601,21 @@ class _SleepEditorState extends State<SleepEditor> {
                   children: [
                     Text(
                       obDuration(draft!.timeInBed.inMinutes),
-                      style: p.text(36, weight: FontWeight.w600),
+                      style: p.text(
+                        34,
+                        weight: FontWeight.w800,
+                        display: true,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Text('im Bett', style: p.text(13, color: p.muted)),
+                    Text(
+                      'im Bett',
+                      style: p.text(
+                        13,
+                        weight: FontWeight.w600,
+                        color: p.muted,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -626,28 +641,24 @@ class _SleepEditorState extends State<SleepEditor> {
             ],
           ),
           const SizedBox(height: 10),
-          if (large)
-            Column(
-              children: [
-                _timeField(true),
-                const SizedBox(height: 10),
-                _timeField(false),
-              ],
-            )
-          else
-            Row(
-              children: [
-                Expanded(child: _timeField(true)),
-                const SizedBox(width: 10),
-                Expanded(child: _timeField(false)),
-              ],
-            ),
+          _timeField(true),
+          const SizedBox(height: 10),
+          _timeField(false),
           if (original.segments.isNotEmpty) ...[
             const SizedBox(height: 10),
-            NightChart(
-              night: original,
-              selectedOnset: draft!.onset,
-              selectedWake: draft!.wake,
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: p.well,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: NightChart(
+                night: original,
+                labels: false,
+                showGapCaption: false,
+                selectedOnset: draft!.onset,
+                selectedWake: draft!.wake,
+              ),
             ),
           ],
           if (receipt == null && !saveFailed) ...[
@@ -685,7 +696,7 @@ class _SleepEditorState extends State<SleepEditor> {
           children: [
             Text(
               obDuration(night.duration.value),
-              style: p.text(38, weight: FontWeight.w600),
+              style: p.text(34, weight: FontWeight.w800, display: true),
             ),
             const SizedBox(height: 4),
             Text('Schlaf', style: p.text(13, color: p.muted)),
@@ -782,7 +793,7 @@ class _SleepEditorState extends State<SleepEditor> {
             ),
           ),
           const SizedBox(width: 6),
-          Icon(LucideIcons.chevronRight, size: 14, color: p.muted),
+          Icon(LucideIcons.chevronRight, size: 14, color: p.gap),
         ],
       ),
     );
@@ -792,67 +803,88 @@ class _SleepEditorState extends State<SleepEditor> {
     final p = OB.of(context);
     final value = start ? draft!.onset : draft!.wake;
     final enabled = receipt == null && !preview && !busy;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: p.dark ? p.canvas : const Color(0xFFF4F6FB),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return OBCard(
+      child: Row(
         children: [
-          Text(start ? 'Beginn' : 'Ende', style: p.text(12, color: p.muted)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  start ? 'Eingeschlafen' : 'Aufgewacht',
+                  style: p.text(
+                    13,
+                    weight: FontWeight.w600,
+                    color: p.muted,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (enabled)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      alignment: Alignment.centerLeft,
+                    ),
+                    onPressed: () => _date(start),
+                    child: Text(
+                      obDate(dayLabelOf(value)),
+                      style: p.text(12, color: p.action),
+                    ),
+                  )
+                else
+                  Text(
+                    obDate(dayLabelOf(value)),
+                    style: p.text(12, color: p.muted),
+                  ),
+              ],
+            ),
+          ),
           if (enabled)
             Semantics(
               label: start ? 'Beginn der Nacht' : 'Ende der Nacht',
-              child: TextField(
-                key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
-                controller: start ? startText : endText,
-                focusNode: start ? null : endFocus,
-                keyboardType: TextInputType.datetime,
-                textInputAction: start
-                    ? TextInputAction.next
-                    : TextInputAction.done,
-                style: p.text(24, weight: FontWeight.w600),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  hintText: 'HH:mm',
+              child: SizedBox(
+                width: 110,
+                child: TextField(
+                  key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
+                  controller: start ? startText : endText,
+                  focusNode: start ? null : endFocus,
+                  keyboardType: TextInputType.datetime,
+                  textInputAction: start
+                      ? TextInputAction.next
+                      : TextInputAction.done,
+                  textAlign: TextAlign.end,
+                  style: p.text(
+                    24,
+                    weight: FontWeight.w700,
+                    display: true,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(vertical: 8),
+                    hintText: 'HH:mm',
+                  ),
+                  onChanged: (_) => _update(),
+                  onSubmitted: (_) {
+                    _update();
+                    if (start) {
+                      endFocus.requestFocus();
+                    } else {
+                      FocusScope.of(context).unfocus();
+                    }
+                  },
                 ),
-                onChanged: (_) => _update(),
-                onSubmitted: (_) {
-                  _update();
-                  if (start) {
-                    endFocus.requestFocus();
-                  } else {
-                    FocusScope.of(context).unfocus();
-                  }
-                },
               ),
             )
           else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Text(
-                obTime(value),
-                style: p.text(24, weight: FontWeight.w600),
-              ),
+            Text(
+              obTime(value),
+              style: p.text(24, weight: FontWeight.w700, display: true),
             ),
-          if (enabled)
-            TextButton(
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                alignment: Alignment.centerLeft,
-              ),
-              onPressed: () => _date(start),
-              child: Text(
-                obDate(dayLabelOf(value)),
-                style: p.text(12, color: p.action),
-              ),
-            )
-          else
-            Text(obDate(dayLabelOf(value)), style: p.text(12, color: p.muted)),
+          const SizedBox(width: 6),
+          Icon(LucideIcons.chevronRight, size: 14, color: p.gap),
         ],
       ),
     );
