@@ -64,6 +64,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     repository: widget.repository,
     initialDay: '2026-09-15',
     band: widget.repository.band,
+    now: () => DateTime(2026, 9, 18, 9, 41),
   );
   late bool dark = widget.initialBrightness == Brightness.dark;
   late double? scale = widget.initialTextScale;

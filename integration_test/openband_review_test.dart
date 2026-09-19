@@ -6,6 +6,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/theme.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +54,19 @@ void main() {
         );
         await tester.pumpAndSettle();
         return repository;
+      }
+
+      Future<void> pop() async {
+        final back = find.byType(BackButton);
+        if (back.evaluate().isNotEmpty) {
+          await tester.tap(back);
+        } else {
+          await tester
+              .element(find.byType(Scaffold).first)
+              .findAncestorStateOfType<NavigatorState>()
+              ?.maybePop();
+        }
+        await tester.pumpAndSettle();
       }
 
       Future<void> capture(String name) async {
@@ -149,7 +163,7 @@ void main() {
       }
 
       await mount();
-      await tester.tap(find.text('15. September').first);
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       await capture('date-selection');
       await tester.tap(find.byTooltip('Abbrechen'));
@@ -204,7 +218,7 @@ void main() {
       expect(find.text('7h18'), findsOneWidget);
 
       await mount();
-      await tester.tap(find.text('15. September').first);
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       await press('14');
       await capture('date-selected-night');
@@ -283,12 +297,76 @@ void main() {
       await press('Schlafzeiten speichern');
       await capture('correction-large-complete');
       await press('Zur Übersicht');
-      await tester.tap(find.text('15. September').first);
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       await capture('date-large-text');
       await press('14');
       await press('14. September ansehen');
       expect(find.bySemanticsLabel('Schlaf, 7h02 '), findsOneWidget);
+
+      // ── Hub- und Flow-Captures der neuen Oberflächen ──
+      await mount();
+      await press('Gesundheit');
+      await capture('health-hub');
+      await press('30 Nächte');
+      await capture('health-30');
+
+      await press('Training');
+      await capture('training-hub');
+      await tester.tap(find.text('Starten'));
+      await tester.pump(const Duration(seconds: 1));
+      await capture('strength-live');
+      await tester.tap(find.byTooltip('Einklappen'));
+      await tester.pumpAndSettle();
+      // 'Laufen' trifft Quick-Start-Tile und Zuletzt-Zeile; die Zeile ist letztere.
+      await tester.ensureVisible(find.text('Laufen').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Laufen').last);
+      await tester.pumpAndSettle();
+      await capture('session-run');
+      await pop();
+      // Das Quick-Start-Tile liegt über der Liste; erst ganz nach oben
+      // flingen (die Liste lädt Zeilen lazy — 'Laufen' allein trifft
+      // sonst wieder die Zuletzt-Zeile).
+      for (var i = 0; i < 5; i++) {
+        await tester.fling(
+          find.byType(Scrollable).last,
+          const Offset(0, 500),
+          3000,
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Laufen').first);
+      await tester.pumpAndSettle();
+      await capture('run-live');
+      await tester.tap(find.byTooltip('Einklappen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Neue Vorlage'));
+      await tester.pumpAndSettle();
+      await capture('template-editor');
+      await pop();
+      await tester.pumpAndSettle();
+
+      await press('Journal');
+      await capture('journal-hub');
+      await tester.tap(find.bySemanticsLabel('Gut'));
+      await tester.pumpAndSettle();
+      await capture('journal-answered');
+      await tester.tap(find.text('Ernährung').first);
+      await tester.pumpAndSettle();
+      await capture('nutrition-day');
+      await tester.tap(find.byTooltip('Frühstück ergänzen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'hafer');
+      await tester.pumpAndSettle();
+      await capture('food-search');
+      await tester.tap(find.text('Haferflocken'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übernehmen'));
+      await tester.pumpAndSettle();
+      await capture('meal-draft-preview');
+      await tester.tap(find.text('Entwurf behalten'));
+      await tester.pumpAndSettle();
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();
