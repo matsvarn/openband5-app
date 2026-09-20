@@ -828,17 +828,17 @@ void main() {
     expect(find.text('620'), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('Ernährung'));
     await tester.pump();
-    await repo.commitMealDraft(
-      MealDraft(
-        id: 'd-return',
-        day: '2026-09-15',
-        meal: 'dinner',
-        entries: const [
-          MealDraftEntry(id: 'e-return', label: 'Reis', kcal: 300),
-        ],
-        updatedAt: DateTime(2026, 9, 15, 19),
-      ),
+    final draft = MealDraft(
+      id: 'd-return',
+      day: '2026-09-15',
+      meal: 'dinner',
+      entries: const [
+        MealDraftEntry(id: 'e-return', label: 'Reis', kcal: 300),
+      ],
+      updatedAt: DateTime(2026, 9, 15, 19),
     );
+    await repo.saveMealDraft(draft);
+    await repo.commitMealDraft(draft);
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('920'), findsOneWidget);

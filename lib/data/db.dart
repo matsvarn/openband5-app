@@ -133,6 +133,11 @@ String derivableSourceSql([String col = 'source']) => kDerivableSources.isEmpty
 /// widen [derivableSourceSql] and must NOT widen this one.
 const String kPrimaryBandSourceSql = 'source IS NULL';
 
+class _OpenBandFoodCasConflict implements Exception {
+  const _OpenBandFoodCasConflict(this.current);
+  final FoodEntry? current;
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -2374,27 +2379,238 @@ class LocalDb {
     );
   }
 
-  /// Commit a meal draft: every entry row is inserted and the draft deleted
-  /// in one transaction. A failed insert leaves the draft untouched.
-  static Future<void> commitOpenBandMealDraft(
-    String draftId,
-    List<Map<String, Object?>> entryRows,
-  ) async {
+  static Future<FoodEntry?> openBandFoodEntry(String id) async {
     final db = await instance;
-    await db.transaction((txn) async {
-      for (final row in entryRows) {
-        await txn.insert(
-          'food_entry',
-          row,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+    return _foodEntryById(db, id);
+  }
+
+  static Future<FoodEntry?> _foodEntryById(
+    DatabaseExecutor db,
+    String id,
+  ) async {
+    final rows = await db.query(
+      'food_entry',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return FoodEntry.fromRow(rows.first);
+  }
+
+  /// Full persisted comparison, including unknown source wire. [ledger]
+  /// includes created/updated stamps so a clock-tied edit still conflicts.
+  static bool foodEntrySnapshotsEqual(
+    FoodEntry a,
+    FoodEntry b, {
+    bool ledger = true,
+  }) =>
+      a.id == b.id &&
+      a.date == b.date &&
+      a.meal == b.meal &&
+      a.label == b.label &&
+      a.atTs == b.atTs &&
+      a.foodKey == b.foodKey &&
+      a.quantity == b.quantity &&
+      a.unit == b.unit &&
+      a.kcal == b.kcal &&
+      a.proteinG == b.proteinG &&
+      a.carbsG == b.carbsG &&
+      a.fatG == b.fatG &&
+      a.fibreG == b.fibreG &&
+      a.sugarG == b.sugarG &&
+      a.satFatG == b.satFatG &&
+      a.sodiumMg == b.sodiumMg &&
+      a.ironMg == b.ironMg &&
+      a.calciumMg == b.calciumMg &&
+      a.sourceCode == b.sourceCode &&
+      a.confirmed == b.confirmed &&
+      a.note == b.note &&
+      (!ledger ||
+          (a.createdAt == b.createdAt && a.updatedAt == b.updatedAt));
+
+  static Map<String, Object?> _foodWriteRow(
+    FoodEntry e,
+    int now, {
+    int? createdAt,
+    int? updatedAt,
+  }) {
+    final clean = e.sanitised;
+    return {
+      ...clean.toRow(now),
+      'created_at': createdAt ?? clean.createdAt ?? now,
+      'updated_at': updatedAt ?? now,
+    };
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  saveOpenBandFoodEntryIfUnchanged({
+    required FoodEntry expected,
+    required FoodEntry next,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, expected.id);
+      if (current == null ||
+          !foodEntrySnapshotsEqual(current, expected)) {
+        return (conflict: true, current: current);
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.insert(
+        'food_entry',
+        _foodWriteRow(
+          next,
+          now,
+          createdAt: current.createdAt ?? now,
+          updatedAt: now,
+        ),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return (conflict: false, current: await _foodEntryById(txn, expected.id));
+    });
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  deleteOpenBandFoodEntryIfUnchanged(FoodEntry expected) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, expected.id);
+      if (current == null ||
+          !foodEntrySnapshotsEqual(current, expected)) {
+        return (conflict: true, current: current);
       }
       await txn.delete(
-        'openband_meal_draft',
-        where: 'draft_id = ?',
-        whereArgs: [draftId],
+        'food_entry',
+        where: 'id = ?',
+        whereArgs: [expected.id],
       );
+      return (conflict: false, current: current);
     });
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  restoreOpenBandFoodEntry(FoodEntry snapshot) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, snapshot.id);
+      if (current != null) {
+        if (foodEntrySnapshotsEqual(current, snapshot.sanitised)) {
+          return (conflict: false, current: current);
+        }
+        return (conflict: true, current: current);
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final clean = snapshot.sanitised;
+      await txn.insert(
+        'food_entry',
+        _foodWriteRow(
+          snapshot,
+          now,
+          createdAt: clean.createdAt ?? snapshot.createdAt ?? now,
+          updatedAt: clean.updatedAt ?? snapshot.updatedAt ?? now,
+        ),
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+      return (conflict: false, current: await _foodEntryById(txn, snapshot.id));
+    });
+  }
+
+  /// Commit a meal draft. New inserts require a present matching retained
+  /// draft. If that draft is already gone, the call succeeds only when every
+  /// corresponding saved row already matches the committed content, with no
+  /// writes — a replay after delete must not resurrect a row.
+  static Future<({bool conflict, FoodEntry? current})>
+  commitOpenBandMealDraft({
+    required String draftId,
+    required List<FoodEntry> entries,
+    List<Object?>? expectedEntries,
+    String? expectedDay,
+    String? expectedMeal,
+  }) async {
+    final db = await instance;
+    try {
+      await db.transaction((txn) async {
+        final draftRows = await txn.query(
+          'openband_meal_draft',
+          where: 'draft_id = ?',
+          whereArgs: [draftId],
+          limit: 1,
+        );
+        var allowInsert = false;
+        if (draftRows.isNotEmpty) {
+          final stored = draftRows.first;
+          if (expectedDay != null && stored['day_id'] != expectedDay) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (expectedMeal != null && stored['meal'] != expectedMeal) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (expectedEntries != null) {
+            final raw = jsonDecode(stored['entries_json'] as String);
+            final expected = jsonDecode(jsonEncode(expectedEntries));
+            if (!_jsonEquals(raw, expected)) {
+              throw const _OpenBandFoodCasConflict(null);
+            }
+          }
+          allowInsert = true;
+        }
+        final now = DateTime.now().millisecondsSinceEpoch;
+        for (final entry in entries) {
+          final current = await _foodEntryById(txn, entry.id);
+          if (current == null) {
+            if (!allowInsert) {
+              throw const _OpenBandFoodCasConflict(null);
+            }
+            await txn.insert(
+              'food_entry',
+              _foodWriteRow(entry, now),
+              conflictAlgorithm: ConflictAlgorithm.abort,
+            );
+            continue;
+          }
+          if (foodEntrySnapshotsEqual(
+            current,
+            entry.sanitised,
+            ledger: false,
+          )) {
+            continue;
+          }
+          throw _OpenBandFoodCasConflict(current);
+        }
+        if (allowInsert) {
+          await txn.delete(
+            'openband_meal_draft',
+            where: 'draft_id = ?',
+            whereArgs: [draftId],
+          );
+        }
+      });
+      return (conflict: false, current: null);
+    } on _OpenBandFoodCasConflict catch (e) {
+      return (conflict: true, current: e.current);
+    }
+  }
+
+  static bool _jsonEquals(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_jsonEquals(a[key], b[key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_jsonEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    if (a is num && b is num) return a == b;
+    return a == b;
   }
 
   static Future<void> deleteOpenBandMealDraft(String draftId) async {

@@ -2,7 +2,11 @@
 library;
 
 import '../data/journal_fields.dart';
+import '../data/nutrition_store.dart';
 import 'package:uuid/uuid.dart';
+
+export '../data/nutrition_store.dart'
+    show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
 
 enum MetricReadiness {
   available,
@@ -852,6 +856,122 @@ WorkoutTemplate copyWorkoutTemplate(WorkoutTemplate source, {DateTime? at}) {
   );
 }
 
+/// Known enum wins over a conflicting [sourceCode]. [FoodSource.unknown]
+/// uses the exact code, which may itself be a known name (`photo`).
+({FoodSource source, String code}) canonicalFoodSource(
+  FoodSource source, {
+  String? sourceCode,
+}) {
+  final entry = FoodEntry(
+    id: '_',
+    date: '2000-01-01',
+    meal: 'snack',
+    label: '_',
+    source: source,
+    sourceCode: sourceCode,
+  );
+  return (source: entry.source, code: entry.sourceCode);
+}
+
+/// Decode stored `source` TEXT through [FoodEntry]. Null is the schema
+/// default (`manual`); empty and any other unknown string stay unknown with
+/// that exact code.
+({FoodSource source, String code}) decodeFoodSource(String? raw) =>
+    canonicalFoodSource(
+      raw == null ? FoodSource.manual : FoodSource.unknown,
+      sourceCode: raw,
+    );
+
+/// Exact persisted comparison. [ledger] includes created/updated stamps.
+/// Source equality is the wire code, including future unknown values.
+bool foodEntriesEqual(FoodEntry a, FoodEntry b, {bool ledger = true}) =>
+    a.id == b.id &&
+    a.date == b.date &&
+    a.meal == b.meal &&
+    a.label == b.label &&
+    a.atTs == b.atTs &&
+    a.foodKey == b.foodKey &&
+    a.quantity == b.quantity &&
+    a.unit == b.unit &&
+    a.kcal == b.kcal &&
+    a.proteinG == b.proteinG &&
+    a.carbsG == b.carbsG &&
+    a.fatG == b.fatG &&
+    a.fibreG == b.fibreG &&
+    a.sugarG == b.sugarG &&
+    a.satFatG == b.satFatG &&
+    a.sodiumMg == b.sodiumMg &&
+    a.ironMg == b.ironMg &&
+    a.calciumMg == b.calciumMg &&
+    a.sourceCode == b.sourceCode &&
+    a.confirmed == b.confirmed &&
+    a.note == b.note &&
+    (!ledger || (a.createdAt == b.createdAt && a.updatedAt == b.updatedAt));
+
+void requireFoodEntryWrite(FoodEntry e) {
+  if (e.id.trim().isEmpty) {
+    throw ArgumentError.value(e.id, 'id', 'Food id is required.');
+  }
+  if (e.label.trim().isEmpty) {
+    throw ArgumentError.value(e.label, 'label', 'Food label is required.');
+  }
+  if (e.meal.trim().isEmpty) {
+    throw ArgumentError.value(e.meal, 'meal', 'Meal is required.');
+  }
+  if (!isLabCalendarDay(e.date)) {
+    throw ArgumentError.value(e.date, 'date', 'Expected a real YYYY-MM-DD day.');
+  }
+  if (e.unit.trim().isEmpty) {
+    throw ArgumentError.value(e.unit, 'unit', 'Unit is required.');
+  }
+  if (e.atTs != null && e.atTs! < 0) {
+    throw ArgumentError.value(e.atTs, 'atTs', 'Consumed-at must be nonnegative.');
+  }
+  void amount(double? value, String name) {
+    if (value == null) return;
+    if (!value.isFinite || value < 0) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'Quantity and nutrients must be finite and nonnegative when set.',
+      );
+    }
+  }
+
+  amount(e.quantity, 'quantity');
+  amount(e.kcal, 'kcal');
+  amount(e.proteinG, 'proteinG');
+  amount(e.carbsG, 'carbsG');
+  amount(e.fatG, 'fatG');
+  amount(e.fibreG, 'fibreG');
+  amount(e.sugarG, 'sugarG');
+  amount(e.satFatG, 'satFatG');
+  amount(e.sodiumMg, 'sodiumMg');
+  amount(e.ironMg, 'ironMg');
+  amount(e.calciumMg, 'calciumMg');
+}
+
+enum FoodSnapshotStatus { saved, conflict }
+
+/// Optimistic food-row outcome. Missing is [conflict] with no [current].
+/// A thrown read/write error is distinct.
+class FoodSnapshotResult {
+  final FoodSnapshotStatus status;
+  final FoodEntry? current;
+  const FoodSnapshotResult._(this.status, this.current);
+  const FoodSnapshotResult.saved([FoodEntry? current])
+    : this._(FoodSnapshotStatus.saved, current);
+  const FoodSnapshotResult.conflict([FoodEntry? current])
+    : this._(FoodSnapshotStatus.conflict, current);
+  bool get saved => status == FoodSnapshotStatus.saved;
+  bool get conflict => status == FoodSnapshotStatus.conflict;
+  bool get missing => conflict && current == null;
+}
+
+/// Outcome of [OpenBandRepository.commitMealDraft]. Distinct from
+/// [FoodSnapshotResult]: draft drift is [conflict], never a missing food row.
+enum MealDraftCommitResult { saved, conflict }
+
 /// Entries of one meal staged before an atomic save (B05). Nothing in a
 /// draft counts toward the day until [OpenBandRepository.commitMealDraft].
 class MealDraft {
@@ -872,7 +992,13 @@ class MealDraftEntry {
   final double? quantity;
   final String unit;
   final double? kcal, proteinG, carbsG, fatG;
+  final double? fibreG, sugarG, satFatG, sodiumMg, ironMg, calciumMg;
   final String? foodKey;
+  final FoodSource? source;
+  final String? sourceCode;
+  final bool? confirmed;
+  final String? note;
+  final int? atTs, createdAt, updatedAt;
   const MealDraftEntry({
     required this.id,
     required this.label,
@@ -882,19 +1008,63 @@ class MealDraftEntry {
     this.proteinG,
     this.carbsG,
     this.fatG,
+    this.fibreG,
+    this.sugarG,
+    this.satFatG,
+    this.sodiumMg,
+    this.ironMg,
+    this.calciumMg,
     this.foodKey,
+    this.source,
+    this.sourceCode,
+    this.confirmed,
+    this.note,
+    this.atTs,
+    this.createdAt,
+    this.updatedAt,
   });
-  factory MealDraftEntry.fromJson(Map<String, dynamic> j) => MealDraftEntry(
-    id: j['id'] as String,
-    label: j['label'] as String,
-    quantity: (j['quantity'] as num?)?.toDouble(),
-    unit: j['unit'] as String? ?? 'g',
-    kcal: (j['kcal'] as num?)?.toDouble(),
-    proteinG: (j['proteinG'] as num?)?.toDouble(),
-    carbsG: (j['carbsG'] as num?)?.toDouble(),
-    fatG: (j['fatG'] as num?)?.toDouble(),
-    foodKey: j['foodKey'] as String?,
-  );
+  factory MealDraftEntry.fromJson(Map<String, dynamic> j) {
+    double? d(String k) => (j[k] as num?)?.toDouble();
+    int? i(String k) => (j[k] as num?)?.toInt();
+    FoodSource? source;
+    String? sourceCode;
+    if (j.containsKey('source')) {
+      final decoded = decodeFoodSource(j['source'] as String?);
+      source = decoded.source;
+      sourceCode = decoded.code;
+    }
+    bool? confirmed;
+    final rawConfirmed = j['confirmed'];
+    if (rawConfirmed is bool) {
+      confirmed = rawConfirmed;
+    } else if (rawConfirmed is num) {
+      confirmed = rawConfirmed != 0;
+    }
+    return MealDraftEntry(
+      id: j['id'] as String,
+      label: j['label'] as String,
+      quantity: d('quantity'),
+      unit: j['unit'] as String? ?? 'g',
+      kcal: d('kcal'),
+      proteinG: d('proteinG'),
+      carbsG: d('carbsG'),
+      fatG: d('fatG'),
+      fibreG: d('fibreG'),
+      sugarG: d('sugarG'),
+      satFatG: d('satFatG'),
+      sodiumMg: d('sodiumMg'),
+      ironMg: d('ironMg'),
+      calciumMg: d('calciumMg'),
+      foodKey: j['foodKey'] as String?,
+      source: source,
+      sourceCode: sourceCode,
+      confirmed: confirmed,
+      note: j['note'] as String?,
+      atTs: i('atTs'),
+      createdAt: i('createdAt'),
+      updatedAt: i('updatedAt'),
+    );
+  }
   Map<String, dynamic> toJson() => {
     'id': id,
     'label': label,
@@ -905,7 +1075,111 @@ class MealDraftEntry {
     'carbsG': carbsG,
     'fatG': fatG,
     'foodKey': foodKey,
+    if (fibreG != null) 'fibreG': fibreG,
+    if (sugarG != null) 'sugarG': sugarG,
+    if (satFatG != null) 'satFatG': satFatG,
+    if (sodiumMg != null) 'sodiumMg': sodiumMg,
+    if (ironMg != null) 'ironMg': ironMg,
+    if (calciumMg != null) 'calciumMg': calciumMg,
+    if (source != null || sourceCode != null)
+      'source': canonicalFoodSource(
+        source ?? FoodSource.unknown,
+        sourceCode: sourceCode,
+      ).code,
+    if (confirmed != null) 'confirmed': confirmed,
+    if (note != null) 'note': note,
+    if (atTs != null) 'atTs': atTs,
+    if (createdAt != null) 'createdAt': createdAt,
+    if (updatedAt != null) 'updatedAt': updatedAt,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      other is MealDraftEntry &&
+      other.id == id &&
+      other.label == label &&
+      other.quantity == quantity &&
+      other.unit == unit &&
+      other.kcal == kcal &&
+      other.proteinG == proteinG &&
+      other.carbsG == carbsG &&
+      other.fatG == fatG &&
+      other.fibreG == fibreG &&
+      other.sugarG == sugarG &&
+      other.satFatG == satFatG &&
+      other.sodiumMg == sodiumMg &&
+      other.ironMg == ironMg &&
+      other.calciumMg == calciumMg &&
+      other.foodKey == foodKey &&
+      other.source == source &&
+      other.sourceCode == sourceCode &&
+      other.confirmed == confirmed &&
+      other.note == note &&
+      other.atTs == atTs &&
+      other.createdAt == createdAt &&
+      other.updatedAt == updatedAt;
+
+  @override
+  int get hashCode => Object.hashAll([
+    id,
+    label,
+    quantity,
+    unit,
+    kcal,
+    proteinG,
+    carbsG,
+    fatG,
+    fibreG,
+    sugarG,
+    satFatG,
+    sodiumMg,
+    ironMg,
+    calciumMg,
+    foodKey,
+    source,
+    sourceCode,
+    confirmed,
+    note,
+    atTs,
+    createdAt,
+    updatedAt,
+  ]);
+}
+
+FoodEntry foodEntryFromDraft(MealDraft draft, MealDraftEntry e) {
+  final uiManual = e.source == null && e.sourceCode == null;
+  final decoded = uiManual
+      ? (source: FoodSource.manual, code: 'manual')
+      : canonicalFoodSource(
+          e.source ?? FoodSource.unknown,
+          sourceCode: e.sourceCode,
+        );
+  return FoodEntry(
+    id: e.id,
+    date: draft.day,
+    meal: draft.meal,
+    label: e.label,
+    atTs: e.atTs,
+    foodKey: e.foodKey,
+    quantity: e.quantity,
+    unit: e.unit,
+    kcal: e.kcal,
+    proteinG: e.proteinG,
+    carbsG: e.carbsG,
+    fatG: e.fatG,
+    fibreG: e.fibreG,
+    sugarG: e.sugarG,
+    satFatG: e.satFatG,
+    sodiumMg: e.sodiumMg,
+    ironMg: e.ironMg,
+    calciumMg: e.calciumMg,
+    source: decoded.source,
+    sourceCode: decoded.code,
+    confirmed: e.confirmed ?? uiManual,
+    note: e.note ?? '',
+    createdAt: e.createdAt,
+    updatedAt: e.updatedAt,
+  );
 }
 
 /// Saved food entries of one day, grouped by meal, with per-nutrient totals
@@ -913,6 +1187,15 @@ class MealDraftEntry {
 class MealEntry {
   final String id, meal, label;
   final double? kcal, proteinG, carbsG, fatG;
+  final double? fibreG, sugarG, satFatG, sodiumMg, ironMg, calciumMg;
+  final String? foodKey;
+  final double? quantity;
+  final String unit;
+  final FoodSource source;
+  final String sourceCode;
+  final bool confirmed;
+  final String note;
+  final int? atTs, createdAt, updatedAt;
   const MealEntry({
     required this.id,
     required this.meal,
@@ -921,7 +1204,49 @@ class MealEntry {
     this.proteinG,
     this.carbsG,
     this.fatG,
+    this.fibreG,
+    this.sugarG,
+    this.satFatG,
+    this.sodiumMg,
+    this.ironMg,
+    this.calciumMg,
+    this.foodKey,
+    this.quantity,
+    this.unit = 'g',
+    this.source = FoodSource.manual,
+    this.sourceCode = 'manual',
+    this.confirmed = false,
+    this.note = '',
+    this.atTs,
+    this.createdAt,
+    this.updatedAt,
   });
+
+  factory MealEntry.fromFood(FoodEntry e) => MealEntry(
+    id: e.id,
+    meal: e.meal,
+    label: e.label,
+    kcal: e.kcal,
+    proteinG: e.proteinG,
+    carbsG: e.carbsG,
+    fatG: e.fatG,
+    fibreG: e.fibreG,
+    sugarG: e.sugarG,
+    satFatG: e.satFatG,
+    sodiumMg: e.sodiumMg,
+    ironMg: e.ironMg,
+    calciumMg: e.calciumMg,
+    foodKey: e.foodKey,
+    quantity: e.quantity,
+    unit: e.unit,
+    source: e.source,
+    sourceCode: e.sourceCode,
+    confirmed: e.confirmed,
+    note: e.note,
+    atTs: e.atTs,
+    createdAt: e.createdAt,
+    updatedAt: e.updatedAt,
+  );
 }
 
 class NutrientSum {
@@ -1101,20 +1426,67 @@ class MuscleLoad {
 }
 
 class FoodHit {
-  final String key, label, brand;
-  final double? servingG, kcal100, proteinG100, carbsG100, fatG100;
+  final String key, label, brand, servingLabel;
+  final double? servingG,
+      kcal100,
+      proteinG100,
+      carbsG100,
+      fatG100,
+      fibreG100,
+      sugarG100,
+      satFatG100,
+      sodiumMg100,
+      ironMg100,
+      calciumMg100;
+  final FoodSource source;
+  final String sourceCode;
   const FoodHit({
     required this.key,
     required this.label,
     this.brand = '',
     this.servingG,
+    this.servingLabel = '',
     this.kcal100,
     this.proteinG100,
     this.carbsG100,
     this.fatG100,
+    this.fibreG100,
+    this.sugarG100,
+    this.satFatG100,
+    this.sodiumMg100,
+    this.ironMg100,
+    this.calciumMg100,
+    this.source = FoodSource.manual,
+    this.sourceCode = 'manual',
   });
+
+  factory FoodHit.fromDef(Map<String, Object?> r) {
+    double? d(String k) => (r[k] as num?)?.toDouble();
+    final decoded = decodeFoodSource(r['source'] as String?);
+    return FoodHit(
+      key: r['key'] as String,
+      label: r['label'] as String,
+      brand: r['brand'] as String? ?? '',
+      servingG: d('serving_g'),
+      servingLabel: r['serving_label'] as String? ?? '',
+      kcal100: d('kcal_100'),
+      proteinG100: d('protein_g_100'),
+      carbsG100: d('carbs_g_100'),
+      fatG100: d('fat_g_100'),
+      fibreG100: d('fibre_g_100'),
+      sugarG100: d('sugar_g_100'),
+      satFatG100: d('sat_fat_g_100'),
+      sodiumMg100: d('sodium_mg_100'),
+      ironMg100: d('iron_mg_100'),
+      calciumMg100: d('calcium_mg_100'),
+      source: decoded.source,
+      sourceCode: decoded.code,
+    );
+  }
+
   MealDraftEntry portion(String id, double grams) {
     double? per(double? v100) => v100 == null ? null : v100 * grams / 100;
+    final decoded = canonicalFoodSource(source, sourceCode: sourceCode);
     return MealDraftEntry(
       id: id,
       label: label,
@@ -1124,7 +1496,16 @@ class FoodHit {
       proteinG: per(proteinG100),
       carbsG: per(carbsG100),
       fatG: per(fatG100),
+      fibreG: per(fibreG100),
+      sugarG: per(sugarG100),
+      satFatG: per(satFatG100),
+      sodiumMg: per(sodiumMg100),
+      ironMg: per(ironMg100),
+      calciumMg: per(calciumMg100),
       foodKey: key,
+      source: decoded.source,
+      sourceCode: decoded.code,
+      confirmed: true,
     );
   }
 }
@@ -1492,10 +1873,20 @@ abstract interface class OpenBandRepository {
   Future<String?> readPinnedTemplateId();
   Future<void> pinTemplate(String? id);
   Future<DayMeals> readMeals(String day);
+  Future<NutritionWindow> readNutritionWindow(String endDay, {int days = 7});
+  Future<List<FoodEntry>> readRecentFoods({int limit = 12});
+  Future<FoodSnapshotResult> readFoodEntry(String id);
+  Future<FoodSnapshotResult> saveFoodEntry(FoodEntry expected, FoodEntry next);
+  Future<FoodSnapshotResult> removeFoodEntry(FoodEntry expected);
+  Future<FoodSnapshotResult> restoreFoodEntry(FoodEntry snapshot);
   Future<MealDraft?> readMealDraft(String day, String meal);
   Future<void> saveMealDraft(MealDraft draft);
   Future<void> discardMealDraft(String draftId);
-  Future<void> commitMealDraft(MealDraft draft);
+  /// New inserts need a present matching retained draft. If the draft is
+  /// already gone, succeeds only when every saved row already matches, with
+  /// no writes. Draft mismatch is [MealDraftCommitResult.conflict], not a
+  /// missing food row, and this result does not carry a [FoodEntry].
+  Future<MealDraftCommitResult> commitMealDraft(MealDraft draft);
   Future<SessionDetail?> readSessionDetail(String sessionId);
   Future<void> recordLap(String sessionId, Lap lap);
   Future<List<Lap>> readLaps(String sessionId);

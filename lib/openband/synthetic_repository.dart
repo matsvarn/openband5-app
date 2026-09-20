@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
 
@@ -8,6 +9,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
+import 'package:openstrap_edge/data/nutrition_store.dart';
 import 'package:openstrap_edge/data/nutrition_targets.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -101,6 +103,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   String? _caffeineSleepPatternRequest;
   int _caffeineSleepPatternGeneration = 0;
   bool failMealsRead = false;
+  bool failFoodRead = false;
+  bool failFoodWrite = false;
+  Future<void>? foodWriteBarrier;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -394,7 +399,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Set<String> _archivedTemplates = {};
   String? _pinnedTemplateId;
   final Map<String, MealDraft> _mealDrafts = {};
-  final Map<String, List<MealEntry>> _meals = {};
+  final Map<String, FoodEntry> _foodEntries = {};
   bool _seeded = false;
 
   void _seedPlans() {
@@ -565,27 +570,46 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
               plannedSetId: 'plank-3',
             ),
           ]);
-    _meals[_day] = [
-      const MealEntry(
-        id: 'm1',
-        meal: 'breakfast',
-        label: 'Haferflocken mit Milch',
-        kcal: 380,
-        proteinG: 14,
-        carbsG: 58,
-        fatG: 9,
-      ),
-      const MealEntry(id: 'm2', meal: 'breakfast', label: 'Kaffee'),
-      const MealEntry(
-        id: 'm3',
-        meal: 'lunch',
-        label: 'Linsensalat',
-        kcal: 240,
-        proteinG: 12,
-        carbsG: 30,
-        fatG: 6,
-      ),
-    ];
+    _foodEntries['m1'] = FoodEntry(
+      id: 'm1',
+      date: _day,
+      meal: 'breakfast',
+      label: 'Haferflocken mit Milch',
+      kcal: 380,
+      proteinG: 14,
+      carbsG: 58,
+      fatG: 9,
+      source: FoodSource.manual,
+      sourceCode: 'manual',
+      confirmed: true,
+      createdAt: 1,
+      updatedAt: 1,
+    );
+    _foodEntries['m2'] = FoodEntry(
+      id: 'm2',
+      date: _day,
+      meal: 'breakfast',
+      label: 'Kaffee',
+      source: FoodSource.manual,
+      sourceCode: 'manual',
+      createdAt: 2,
+      updatedAt: 2,
+    );
+    _foodEntries['m3'] = FoodEntry(
+      id: 'm3',
+      date: _day,
+      meal: 'lunch',
+      label: 'Linsensalat',
+      kcal: 240,
+      proteinG: 12,
+      carbsG: 30,
+      fatG: 6,
+      source: FoodSource.manual,
+      sourceCode: 'manual',
+      confirmed: true,
+      createdAt: 3,
+      updatedAt: 3,
+    );
   }
 
   final Map<String, List<RecordedSet>> _liveSets = {};
@@ -807,6 +831,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       proteinG100: 13.5,
       carbsG100: 58.7,
       fatG100: 7,
+      fibreG100: 10.6,
+      ironMg100: 4.7,
+      source: FoodSource.verified,
+      sourceCode: 'verified',
     ),
     FoodHit(
       key: 'milk',
@@ -1182,15 +1210,32 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _pinnedTemplateId = null;
   }
 
+  List<FoodEntry> _entriesOn(String day) => [
+    for (final e in _foodEntries.values)
+      if (e.date == day) e,
+  ]..sort((a, b) {
+    // Match NutritionDb.entriesForDay: at_ts ASC (NULL first), created_at ASC.
+    // Do not coalesce epoch seconds with ledger milliseconds.
+    if (a.atTs == null && b.atTs != null) return -1;
+    if (a.atTs != null && b.atTs == null) return 1;
+    if (a.atTs != null && b.atTs != null) {
+      final at = a.atTs!.compareTo(b.atTs!);
+      if (at != 0) return at;
+    }
+    final created = (a.createdAt ?? 0).compareTo(b.createdAt ?? 0);
+    if (created != 0) return created;
+    return a.id.compareTo(b.id);
+  });
+
   @override
   Future<DayMeals> readMeals(String day) async {
     if (failMealsRead) throw StateError('synthetic meals read failure');
     _seedPlans();
-    final entries = _meals[day] ?? const [];
-    NutrientSum sum(double? Function(MealEntry) pick) {
+    final foods = _entriesOn(day);
+    NutrientSum sum(double? Function(FoodEntry) pick) {
       var known = 0, unknown = 0;
       double total = 0;
-      for (final e in entries) {
+      for (final e in foods) {
         final v = pick(e);
         if (v == null) {
           unknown++;
@@ -1204,7 +1249,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
     return DayMeals(
       day: day,
-      entries: entries,
+      entries: [for (final e in foods) MealEntry.fromFood(e)],
       kcal: sum((e) => e.kcal),
       proteinG: sum((e) => e.proteinG),
       carbsG: sum((e) => e.carbsG),
@@ -1213,12 +1258,203 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<NutritionWindow> readNutritionWindow(
+    String endDay, {
+    int days = 7,
+  }) async {
+    if (failMealsRead) throw StateError('synthetic meals read failure');
+    if (!isLabCalendarDay(endDay)) {
+      throw ArgumentError.value(endDay, 'endDay', 'Expected a real YYYY-MM-DD day.');
+    }
+    if (days < 1) {
+      throw ArgumentError.value(days, 'days', 'Window length must be at least 1.');
+    }
+    _seedPlans();
+    final labels = openBandDaysEnding(endDay, days);
+    final today = nutritionToday();
+    return NutritionWindow([
+      for (final label in labels)
+        rollupDay(label, _entriesOn(label), today: today),
+    ]);
+  }
+
+  @override
+  Future<List<FoodEntry>> readRecentFoods({int limit = 12}) async {
+    if (failFoodRead) throw StateError('synthetic food read failure');
+    _seedPlans();
+    final rows = _foodEntries.values.toList()
+      ..sort((a, b) {
+        final created = (b.createdAt ?? 0).compareTo(a.createdAt ?? 0);
+        if (created != 0) return created;
+        return a.id.compareTo(b.id);
+      });
+    final out = <FoodEntry>[];
+    final seen = <String>{};
+    for (final e in rows) {
+      final key = (e.foodKey != null && e.foodKey!.isNotEmpty)
+          ? 'k:${e.foodKey}'
+          : 'l:${e.label}\u0000${e.sourceCode}';
+      if (!seen.add(key)) continue;
+      out.add(e);
+      if (out.length == limit) break;
+    }
+    return out;
+  }
+
+  @override
+  Future<FoodSnapshotResult> readFoodEntry(String id) async {
+    if (failFoodRead) throw StateError('synthetic food read failure');
+    if (id.trim().isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Food id is required.');
+    }
+    _seedPlans();
+    final current = _foodEntries[id];
+    if (current == null) return const FoodSnapshotResult.conflict();
+    return FoodSnapshotResult.saved(current);
+  }
+
+  @override
+  Future<FoodSnapshotResult> saveFoodEntry(
+    FoodEntry expected,
+    FoodEntry next,
+  ) async {
+    if (foodWriteBarrier != null) await foodWriteBarrier;
+    if (failFoodWrite) throw StateError('synthetic food write failure');
+    if (next.id != expected.id) {
+      throw ArgumentError.value(next.id, 'id', 'Edited snapshot id must match.');
+    }
+    requireFoodEntryWrite(next);
+    _seedPlans();
+    final current = _foodEntries[expected.id];
+    if (current == null || !foodEntriesEqual(current, expected)) {
+      return FoodSnapshotResult.conflict(current);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final clean = next.sanitised;
+    final saved = FoodEntry(
+      id: clean.id,
+      date: clean.date,
+      meal: clean.meal,
+      label: clean.label,
+      atTs: clean.atTs,
+      foodKey: clean.foodKey,
+      quantity: clean.quantity,
+      unit: clean.unit,
+      kcal: clean.kcal,
+      proteinG: clean.proteinG,
+      carbsG: clean.carbsG,
+      fatG: clean.fatG,
+      fibreG: clean.fibreG,
+      sugarG: clean.sugarG,
+      satFatG: clean.satFatG,
+      sodiumMg: clean.sodiumMg,
+      ironMg: clean.ironMg,
+      calciumMg: clean.calciumMg,
+      source: clean.source,
+      sourceCode: clean.sourceCode,
+      confirmed: clean.confirmed,
+      note: clean.note,
+      createdAt: current.createdAt ?? now,
+      updatedAt: now,
+    );
+    _foodEntries[saved.id] = saved;
+    return FoodSnapshotResult.saved(saved);
+  }
+
+  @override
+  Future<FoodSnapshotResult> removeFoodEntry(FoodEntry expected) async {
+    if (foodWriteBarrier != null) await foodWriteBarrier;
+    if (failFoodWrite) throw StateError('synthetic food write failure');
+    if (expected.id.trim().isEmpty) {
+      throw ArgumentError.value(expected.id, 'id', 'Food id is required.');
+    }
+    _seedPlans();
+    final current = _foodEntries[expected.id];
+    if (current == null || !foodEntriesEqual(current, expected)) {
+      return FoodSnapshotResult.conflict(current);
+    }
+    _foodEntries.remove(expected.id);
+    return FoodSnapshotResult.saved(current);
+  }
+
+  @override
+  Future<FoodSnapshotResult> restoreFoodEntry(FoodEntry snapshot) async {
+    if (foodWriteBarrier != null) await foodWriteBarrier;
+    if (failFoodWrite) throw StateError('synthetic food write failure');
+    requireFoodEntryWrite(snapshot);
+    _seedPlans();
+    final current = _foodEntries[snapshot.id];
+    final clean = snapshot.sanitised;
+    if (current != null) {
+      if (foodEntriesEqual(current, snapshot.sanitised)) {
+        return FoodSnapshotResult.saved(current);
+      }
+      return FoodSnapshotResult.conflict(current);
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final saved = FoodEntry(
+      id: clean.id,
+      date: clean.date,
+      meal: clean.meal,
+      label: clean.label,
+      atTs: clean.atTs,
+      foodKey: clean.foodKey,
+      quantity: clean.quantity,
+      unit: clean.unit,
+      kcal: clean.kcal,
+      proteinG: clean.proteinG,
+      carbsG: clean.carbsG,
+      fatG: clean.fatG,
+      fibreG: clean.fibreG,
+      sugarG: clean.sugarG,
+      satFatG: clean.satFatG,
+      sodiumMg: clean.sodiumMg,
+      ironMg: clean.ironMg,
+      calciumMg: clean.calciumMg,
+      source: clean.source,
+      sourceCode: clean.sourceCode,
+      confirmed: clean.confirmed,
+      note: clean.note,
+      createdAt: clean.createdAt ?? snapshot.createdAt ?? now,
+      updatedAt: clean.updatedAt ?? snapshot.updatedAt ?? now,
+    );
+    _foodEntries[saved.id] = saved;
+    return FoodSnapshotResult.saved(saved);
+  }
+
+  void seedFoodEntry(FoodEntry entry) {
+    _seedPlans();
+    _foodEntries[entry.id] = entry;
+  }
+
+  @override
   Future<MealDraft?> readMealDraft(String day, String meal) async =>
       _mealDrafts['$day/$meal'];
 
   @override
   Future<void> saveMealDraft(MealDraft draft) async {
-    _mealDrafts['${draft.day}/${draft.meal}'] = draft;
+    if (!isLabCalendarDay(draft.day)) {
+      throw ArgumentError.value(draft.day, 'day', 'Expected a real YYYY-MM-DD day.');
+    }
+    if (draft.id.trim().isEmpty) {
+      throw ArgumentError.value(draft.id, 'id', 'Draft id is required.');
+    }
+    for (final entry in draft.entries) {
+      requireFoodEntryWrite(foodEntryFromDraft(draft, entry));
+    }
+    final persisted = jsonDecode(
+      jsonEncode([for (final e in draft.entries) e.toJson()]),
+    );
+    _mealDrafts['${draft.day}/${draft.meal}'] = MealDraft(
+      id: draft.id,
+      day: draft.day,
+      meal: draft.meal,
+      entries: [
+        for (final e in persisted as List)
+          MealDraftEntry.fromJson(e as Map<String, dynamic>),
+      ],
+      updatedAt: draft.updatedAt,
+    );
   }
 
   @override
@@ -1227,27 +1463,95 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   @override
-  Future<void> commitMealDraft(MealDraft draft) async {
+  Future<MealDraftCommitResult> commitMealDraft(MealDraft draft) async {
     _seedPlans();
+    if (draft.id.trim().isEmpty) {
+      throw ArgumentError.value(draft.id, 'id', 'Draft id is required.');
+    }
     if (draft.entries.isEmpty) {
       throw ArgumentError('Ein leerer Entwurf wird nicht gespeichert.');
     }
     if (scenario == SyntheticScenario.saveFailure) {
       throw StateError('Speichern schlägt fehl.');
     }
-    (_meals[draft.day] ??= []).addAll([
-      for (final e in draft.entries)
-        MealEntry(
-          id: e.id,
-          meal: draft.meal,
-          label: e.label,
-          kcal: e.kcal,
-          proteinG: e.proteinG,
-          carbsG: e.carbsG,
-          fatG: e.fatG,
-        ),
-    ]);
-    _mealDrafts.remove('${draft.day}/${draft.meal}');
+    if (foodWriteBarrier != null) await foodWriteBarrier;
+    if (failFoodWrite) throw StateError('synthetic food write failure');
+    if (!isLabCalendarDay(draft.day)) {
+      throw ArgumentError.value(draft.day, 'day', 'Expected a real YYYY-MM-DD day.');
+    }
+    final entries = [
+      for (final e in draft.entries) foodEntryFromDraft(draft, e),
+    ];
+    for (final entry in entries) {
+      requireFoodEntryWrite(entry);
+    }
+    MealDraft? stored;
+    for (final d in _mealDrafts.values) {
+      if (d.id == draft.id) {
+        stored = d;
+        break;
+      }
+    }
+    var allowInsert = false;
+    if (stored != null) {
+      if (stored.day != draft.day || stored.meal != draft.meal) {
+        return MealDraftCommitResult.conflict;
+      }
+      final storedJson = jsonEncode([for (final e in stored.entries) e.toJson()]);
+      final expectedJson = jsonEncode([
+        for (final e in draft.entries) e.toJson(),
+      ]);
+      if (storedJson != expectedJson) {
+        return MealDraftCommitResult.conflict;
+      }
+      allowInsert = true;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final pending = <String, FoodEntry>{};
+    for (final entry in entries) {
+      final clean = entry.sanitised;
+      final current = _foodEntries[entry.id];
+      if (current == null) {
+        if (!allowInsert) {
+          return MealDraftCommitResult.conflict;
+        }
+        pending[clean.id] = FoodEntry(
+          id: clean.id,
+          date: clean.date,
+          meal: clean.meal,
+          label: clean.label,
+          atTs: clean.atTs,
+          foodKey: clean.foodKey,
+          quantity: clean.quantity,
+          unit: clean.unit,
+          kcal: clean.kcal,
+          proteinG: clean.proteinG,
+          carbsG: clean.carbsG,
+          fatG: clean.fatG,
+          fibreG: clean.fibreG,
+          sugarG: clean.sugarG,
+          satFatG: clean.satFatG,
+          sodiumMg: clean.sodiumMg,
+          ironMg: clean.ironMg,
+          calciumMg: clean.calciumMg,
+          source: clean.source,
+          sourceCode: clean.sourceCode,
+          confirmed: clean.confirmed,
+          note: clean.note,
+          createdAt: clean.createdAt ?? now,
+          updatedAt: now,
+        );
+        continue;
+      }
+      if (!foodEntriesEqual(current, clean, ledger: false)) {
+        return MealDraftCommitResult.conflict;
+      }
+    }
+    if (allowInsert) {
+      _foodEntries.addAll(pending);
+      _mealDrafts.removeWhere((_, d) => d.id == draft.id);
+    }
+    return MealDraftCommitResult.saved;
   }
 
   @override

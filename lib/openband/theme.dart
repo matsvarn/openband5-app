@@ -148,6 +148,7 @@ class OBPageHeader extends StatelessWidget {
   final String backLabel;
   final VoidCallback? onBack, onInfo, onDate;
   final String infoLabel;
+  final IconData infoIcon;
   const OBPageHeader({
     super.key,
     required this.title,
@@ -157,6 +158,7 @@ class OBPageHeader extends StatelessWidget {
     this.onInfo,
     this.onDate,
     this.infoLabel = 'Information',
+    this.infoIcon = LucideIcons.info,
   });
 
   @override
@@ -222,7 +224,7 @@ class OBPageHeader extends StatelessWidget {
             if (onInfo == null)
               const SizedBox(width: 44, height: 44)
             else
-              circle(LucideIcons.info, infoLabel, onInfo!),
+              circle(infoIcon, infoLabel, onInfo!),
           ],
         ),
       ),
@@ -499,11 +501,12 @@ class OBTimeField extends StatelessWidget {
                 textInputAction: textInputAction,
                 textAlign: TextAlign.end,
                 style: style,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                   hintText: 'HH:mm',
+                  hintStyle: style.copyWith(color: p.muted),
                 ),
                 onChanged: onChanged,
                 onSubmitted: onSubmitted,
@@ -584,11 +587,12 @@ class OBTimeField extends StatelessWidget {
               keyboardType: TextInputType.datetime,
               textInputAction: textInputAction,
               style: style,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
                 hintText: 'HH:mm',
+                hintStyle: style.copyWith(color: p.muted),
               ),
               onChanged: onChanged,
               onSubmitted: onSubmitted,

@@ -45,14 +45,19 @@ DateTime? parseRecordedTime(
       t.hour == hour &&
       t.minute == minute;
   if (!matches(candidate)) return null;
-  if (location == null) return candidate;
   final alternatives = <DateTime>[candidate];
   for (final delta in [-120, -60, -30, 30, 60, 120]) {
-    final other = tz.TZDateTime.from(
-      candidate.add(Duration(minutes: delta)),
-      location,
-    );
-    if (matches(other)) alternatives.add(other);
+    final shifted = candidate.add(Duration(minutes: delta));
+    final other = location == null
+        ? shifted
+        : tz.TZDateTime.from(shifted, location);
+    if (!matches(other)) continue;
+    if (alternatives.any(
+      (value) => value.millisecondsSinceEpoch == other.millisecondsSinceEpoch,
+    )) {
+      continue;
+    }
+    alternatives.add(other);
   }
   if (alternatives.length == 1) return candidate;
   if (previous == null) return null;

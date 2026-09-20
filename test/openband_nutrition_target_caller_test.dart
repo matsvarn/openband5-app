@@ -322,17 +322,17 @@ void main() {
     await mount(
       tester,
       onAdd: (meal) async {
-        await repo.commitMealDraft(
-          MealDraft(
-            id: 'd-dinner',
-            day: '2026-09-15',
-            meal: meal,
-            entries: const [
-              MealDraftEntry(id: 'e-rice', label: 'Reis', kcal: 300, carbsG: 65),
-            ],
-            updatedAt: DateTime(2026, 9, 15, 19),
-          ),
+        final draft = MealDraft(
+          id: 'd-dinner',
+          day: '2026-09-15',
+          meal: meal,
+          entries: const [
+            MealDraftEntry(id: 'e-rice', label: 'Reis', kcal: 300, carbsG: 65),
+          ],
+          updatedAt: DateTime(2026, 9, 15, 19),
         );
+        await repo.saveMealDraft(draft);
+        await repo.commitMealDraft(draft);
       },
     );
     await tester.pumpAndSettle();

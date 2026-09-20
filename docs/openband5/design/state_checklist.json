@@ -1157,6 +1157,86 @@
         "status": "partial",
         "paperNode": "3VAZ-0",
         "note": "Energy and macro overview/edit/history/removal are implemented. Fibre and other nutrient targets, minimum/maximum semantics and wider nutrient contributions remain open supported work."
+      },
+      "Mahlzeit · Aktionen für gespeicherten Eintrag": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40J9-0",
+        "note": "Saved-row detail, edit, nutrients, quantity/time and removal are reachable from Alpin day rows. Full snapshot conflicts do not overwrite another edit. Legacy whole nutrition destination remains for the following migration."
+      },
+      "Mahlzeit · Eintrag löschen bestätigen": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40W9-0",
+        "note": "Shared confirmation removes the expected exact snapshot; cancellation retains it. Parent Undo restores all stored fields and separates restored-write success from subsequent read failure."
+      },
+      "Mahlzeit · Nährwerte bearbeiten": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40R7-0",
+        "note": "All ten stored nutrients are editable for the selected saved entry. Unknown and zero stay distinct; photo numbers remain unconfirmed until explicit confirmation. Aggregate meal-nutrient overview is a different open state."
+      },
+      "Ernährung · Joghurt gespeicherter Verzehr": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40J9-0",
+        "note": "Archive fixture name reconciled to generic saved-food detail. Verified with oats: known nutrient values, real quantity/time or dash, original source and exact edit/remove/restore. No food-specific screen is needed."
+      },
+      "Ernährung · Kaffee gespeicherter Eintrag mit offenen Werten": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40J9-0",
+        "note": "Actual parent coffee fixture opens saved entry with absent energy/macros/time, retained fibre/sodium and exact unknown source code. Missing numbers remain dash."
+      },
+      "Ernährung · Speichern fehlgeschlagen": {
+        "status": "implemented",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40Y3-0",
+        "note": "Saved-entry and retained-draft failures preserve entered values and offer retry. Conflicts require explicit reload. Draft replay cannot resurrect removed foods."
+      },
+      "Mahlzeit · Rückgängig": {
+        "status": "partial",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "41IF-0",
+        "note": "Saved-row removal/Undo is implemented. Frozen archive325P/327L/329H/32BD describes draft-row removal/Undo; that separate behavior remains open."
+      },
+      "Mahlzeit · neue Portion": {
+        "status": "partial",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "41DS-0",
+        "note": "Saved-row quantity editing and explicit proportional nutrient scaling are implemented. Multi-entry draft portion editing remains open."
+      },
+      "Mahlzeit · Portion Tastatur": {
+        "status": "partial",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "41DS-0",
+        "note": "Saved-row quantity keyboard is verified at2x on both dedicated simulators. Archive draft portion keyboard remains open."
+      },
+      "Mahlzeit · Nährwertübersicht": {
+        "status": "partial",
+        "source": "lib/openband/meal_entry.dart; lib/openband/nutrition.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/openband/synthetic_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_meal_contract_test.dart; test/openband_meal_lifecycle_test.dart; test/openband_meal_entry_ui_test.dart; test/openband_meal_draft_ui_test.dart; integration_test/openband_review_test.dart",
+        "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
+        "paperNode": "40R7-0",
+        "note": "Single saved-food nutrients implemented. Archive H03 aggregates multiple draft foods and coverage; this remains open."
       }
     }
   }

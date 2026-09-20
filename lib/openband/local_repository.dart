@@ -645,16 +645,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final db = await LocalDb.instance;
     return [
       for (final r in await NutritionDb.searchFoods(db, query))
-        FoodHit(
-          key: r['key'] as String,
-          label: r['label'] as String,
-          brand: r['brand'] as String? ?? '',
-          servingG: (r['serving_g'] as num?)?.toDouble(),
-          kcal100: (r['kcal_100'] as num?)?.toDouble(),
-          proteinG100: (r['protein_g_100'] as num?)?.toDouble(),
-          carbsG100: (r['carbs_g_100'] as num?)?.toDouble(),
-          fatG100: (r['fat_g_100'] as num?)?.toDouble(),
-        ),
+        FoodHit.fromDef(r),
     ];
   }
 
@@ -726,23 +717,85 @@ class LocalOpenBandRepository implements OpenBandRepository {
         NutrientSum(t.value, t.known, t.unknown);
     return DayMeals(
       day: day,
-      entries: [
-        for (final e in rollup.entries)
-          MealEntry(
-            id: e.id,
-            meal: e.meal,
-            label: e.label,
-            kcal: e.kcal,
-            proteinG: e.proteinG,
-            carbsG: e.carbsG,
-            fatG: e.fatG,
-          ),
-      ],
+      entries: [for (final e in rollup.entries) MealEntry.fromFood(e)],
       kcal: sum(rollup.kcal),
       proteinG: sum(rollup.protein),
       carbsG: sum(rollup.carbs),
       fatG: sum(rollup.fat),
     );
+  }
+
+  @override
+  Future<NutritionWindow> readNutritionWindow(
+    String endDay, {
+    int days = 7,
+  }) async {
+    _requireDay(endDay);
+    if (days < 1) {
+      throw ArgumentError.value(days, 'days', 'Window length must be at least 1.');
+    }
+    final labels = openBandDaysEnding(endDay, days);
+    final db = await LocalDb.instance;
+    final byDay = await NutritionDb.entriesSince(db, labels.first);
+    final today = todayLabel();
+    return NutritionWindow([
+      for (final label in labels)
+        rollupDay(label, byDay[label] ?? const [], today: today),
+    ]);
+  }
+
+  @override
+  Future<List<FoodEntry>> readRecentFoods({int limit = 12}) async {
+    final db = await LocalDb.instance;
+    return NutritionDb.recent(db, limit: limit);
+  }
+
+  @override
+  Future<FoodSnapshotResult> readFoodEntry(String id) async {
+    if (id.trim().isEmpty) {
+      throw ArgumentError.value(id, 'id', 'Food id is required.');
+    }
+    final current = await LocalDb.openBandFoodEntry(id);
+    if (current == null) return const FoodSnapshotResult.conflict();
+    return FoodSnapshotResult.saved(current);
+  }
+
+  @override
+  Future<FoodSnapshotResult> saveFoodEntry(
+    FoodEntry expected,
+    FoodEntry next,
+  ) async {
+    if (next.id != expected.id) {
+      throw ArgumentError.value(next.id, 'id', 'Edited snapshot id must match.');
+    }
+    requireFoodEntryWrite(next);
+    final result = await LocalDb.saveOpenBandFoodEntryIfUnchanged(
+      expected: expected,
+      next: next,
+    );
+    return result.conflict
+        ? FoodSnapshotResult.conflict(result.current)
+        : FoodSnapshotResult.saved(result.current);
+  }
+
+  @override
+  Future<FoodSnapshotResult> removeFoodEntry(FoodEntry expected) async {
+    if (expected.id.trim().isEmpty) {
+      throw ArgumentError.value(expected.id, 'id', 'Food id is required.');
+    }
+    final result = await LocalDb.deleteOpenBandFoodEntryIfUnchanged(expected);
+    return result.conflict
+        ? FoodSnapshotResult.conflict(result.current)
+        : FoodSnapshotResult.saved(result.current);
+  }
+
+  @override
+  Future<FoodSnapshotResult> restoreFoodEntry(FoodEntry snapshot) async {
+    requireFoodEntryWrite(snapshot);
+    final result = await LocalDb.restoreOpenBandFoodEntry(snapshot);
+    return result.conflict
+        ? FoodSnapshotResult.conflict(result.current)
+        : FoodSnapshotResult.saved(result.current);
   }
 
   @override
@@ -762,41 +815,55 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
-  Future<void> saveMealDraft(MealDraft draft) => LocalDb.putOpenBandMealDraft({
-    'draft_id': draft.id,
-    'day_id': draft.day,
-    'meal': draft.meal,
-    'entries_json': jsonEncode([for (final e in draft.entries) e.toJson()]),
-    'updated_at': DateTime.now().millisecondsSinceEpoch,
-  });
+  Future<void> saveMealDraft(MealDraft draft) {
+    _requireDay(draft.day);
+    if (draft.id.trim().isEmpty) {
+      throw ArgumentError.value(draft.id, 'id', 'Draft id is required.');
+    }
+    if (draft.meal.trim().isEmpty) {
+      throw ArgumentError.value(draft.meal, 'meal', 'Meal is required.');
+    }
+    for (final entry in draft.entries) {
+      requireFoodEntryWrite(foodEntryFromDraft(draft, entry));
+    }
+    return LocalDb.putOpenBandMealDraft({
+      'draft_id': draft.id,
+      'day_id': draft.day,
+      'meal': draft.meal,
+      'entries_json': jsonEncode([for (final e in draft.entries) e.toJson()]),
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
 
   @override
   Future<void> discardMealDraft(String draftId) =>
       LocalDb.deleteOpenBandMealDraft(draftId);
 
   @override
-  Future<void> commitMealDraft(MealDraft draft) async {
+  Future<MealDraftCommitResult> commitMealDraft(MealDraft draft) async {
+    _requireDay(draft.day);
+    if (draft.id.trim().isEmpty) {
+      throw ArgumentError.value(draft.id, 'id', 'Draft id is required.');
+    }
     if (draft.entries.isEmpty) {
       throw ArgumentError('Ein leerer Entwurf wird nicht gespeichert.');
     }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await LocalDb.commitOpenBandMealDraft(draft.id, [
-      for (final e in draft.entries)
-        FoodEntry(
-          id: e.id,
-          date: draft.day,
-          meal: draft.meal,
-          label: e.label,
-          foodKey: e.foodKey,
-          quantity: e.quantity,
-          unit: e.unit,
-          kcal: e.kcal,
-          proteinG: e.proteinG,
-          carbsG: e.carbsG,
-          fatG: e.fatG,
-          confirmed: true,
-        ).toRow(now),
-    ]);
+    final entries = [
+      for (final e in draft.entries) foodEntryFromDraft(draft, e),
+    ];
+    for (final entry in entries) {
+      requireFoodEntryWrite(entry);
+    }
+    final result = await LocalDb.commitOpenBandMealDraft(
+      draftId: draft.id,
+      entries: entries,
+      expectedEntries: [for (final e in draft.entries) e.toJson()],
+      expectedDay: draft.day,
+      expectedMeal: draft.meal,
+    );
+    return result.conflict
+        ? MealDraftCommitResult.conflict
+        : MealDraftCommitResult.saved;
   }
 
   @override

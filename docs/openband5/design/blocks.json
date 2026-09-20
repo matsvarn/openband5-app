@@ -223,7 +223,43 @@
     "3ZPA-0": "A07a Journal · Ziele nicht geladen",
     "3ZTC-0": "A07a Journal · Ziele nicht geladen · Dunkel",
     "4069-0": "A07a Journal · Vergleich verstehen · Große Schrift",
-    "40BJ-0": "A07a Journal · Vergleich verstehen · Große Schrift · Dunkel"
+    "40BJ-0": "A07a Journal · Vergleich verstehen · Große Schrift · Dunkel",
+    "40J9-0": "A07b Ernährung · Gespeicherter Eintrag",
+    "40L6-0": "A07b Ernährung · Gespeicherter Eintrag · Dunkel",
+    "40MT-0": "A07b Ernährung · Eintrag bearbeiten",
+    "40OR-0": "A07b Ernährung · Eintrag bearbeiten · Dunkel",
+    "40R7-0": "A07b Ernährung · Nährwerte bearbeiten",
+    "40TQ-0": "A07b Ernährung · Nährwerte bearbeiten · Dunkel",
+    "40W9-0": "A07b Ernährung · Eintrag entfernen bestätigen",
+    "40Y3-0": "A07b Ernährung · Eintrag speichern fehlgeschlagen",
+    "418N-0": "A07b Ernährung · Eintrag geändert",
+    "41AF-0": "A07b Ernährung · Eintrag nicht geladen",
+    "41CF-0": "A07b Ernährung · Eintrag nicht geladen · Dunkel",
+    "41BG-0": "A07b Ernährung · Eintrag nicht gefunden",
+    "4121-0": "A07b Ernährung · Eintrag bearbeiten · Große Schrift",
+    "413O-0": "A07b Ernährung · Eintrag bearbeiten · Große Schrift · Dunkel",
+    "40ZW-0": "A07b Ernährung · Nährwerte bearbeiten · Große Schrift",
+    "415P-0": "A07b Ernährung · Nährwerte bearbeiten · Große Schrift · Dunkel",
+    "41DS-0": "A07b Ernährung · Menge anpassen",
+    "41G6-0": "A07b Ernährung · Menge offen",
+    "41MB-0": "A07b Ernährung · Menge anpassen · Dunkel",
+    "42XJ-0": "A07b Ernährung · Menge anpassen · Große Schrift",
+    "41IF-0": "A07b Ernährung · Eintrag entfernt · Rückgängig",
+    "41PJ-0": "A07b Ernährung · Foto · Nährwerte bestätigen",
+    "42HZ-0": "A07b Ernährung · Foto · Nährwerte bestätigen · Dunkel",
+    "41RR-0": "A07b Ernährung · Mahlzeit speichern",
+    "420H-0": "A07b Ernährung · Mahlzeit speichern · Dunkel",
+    "41W3-0": "A07b Ernährung · Entwurf geändert",
+    "424S-0": "A07b Ernährung · Mahlzeit speichern fehlgeschlagen",
+    "4295-0": "A07b Ernährung · Entwurf nicht geladen",
+    "42DI-0": "A07b Ernährung · Entwurf nicht gefunden",
+    "42K7-0": "A07b Ernährung · Mahlzeit speichern · Große Schrift",
+    "42OF-0": "A07b Ernährung · Uhrzeit bearbeiten",
+    "42VA-0": "A07b Ernährung · Uhrzeit bearbeiten · Dunkel",
+    "42QT-0": "A07b Ernährung · Uhrzeit offen",
+    "42SZ-0": "A07b Ernährung · Uhrzeit ungültig",
+    "430B-0": "A07b Ernährung · Gespeicherter Eintrag · Große Schrift",
+    "431T-0": "A07b Ernährung · Gespeicherter Eintrag · Große Schrift · Dunkel"
   },
   "blocks": [
     {
@@ -288,7 +324,25 @@
         "3O01-0",
         "3O17-0",
         "3OSU-0",
-        "3OTU-0"
+        "3OTU-0",
+        "40J9-0",
+        "40L6-0",
+        "40MT-0",
+        "40OR-0",
+        "40R7-0",
+        "40TQ-0",
+        "418N-0",
+        "41AF-0",
+        "41CF-0",
+        "41BG-0",
+        "4121-0",
+        "413O-0",
+        "40ZW-0",
+        "415P-0",
+        "41PJ-0",
+        "42HZ-0",
+        "430B-0",
+        "431T-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -1408,7 +1462,11 @@
       "usedIn": [
         "3KL6-0",
         "3KQ3-0",
-        "3KR8-0"
+        "3KR8-0",
+        "42OF-0",
+        "42VA-0",
+        "42QT-0",
+        "42SZ-0"
       ],
       "notes": "Shared controller-backed time field; paired wells stack when text needs more width."
     },
@@ -1751,7 +1809,8 @@
         "3SLH-0",
         "3SQ9-0",
         "3W0Y-0",
-        "3W2F-0"
+        "3W2F-0",
+        "40W9-0"
       ],
       "notes": "Shared discard/remove sheet; optional short body explains which dated target boundary will change. Close/cancel retain draft."
     },
@@ -1892,6 +1951,113 @@
         "3VR4-0"
       ],
       "notes": "Actual dated boundaries, including empty removal boundaries and future planned changes. No synthetic historical origin for undated preferences."
+    },
+    {
+      "name": "OBFoodEntrySummary",
+      "paperNode": "40K3-0",
+      "widget": "_OpenBandFoodEntryState._detail",
+      "file": "meal_entry.dart",
+      "usedIn": [
+        "40J9-0",
+        "40L6-0",
+        "430B-0",
+        "431T-0"
+      ],
+      "notes": "Stored energy and macros only; unknown values remain absent. Three columns at normal width, aligned label/value rows at large text or small width.",
+      "variantPaperNodes": {
+        "large": "430S-0",
+        "largeDark": "432A-0"
+      }
+    },
+    {
+      "name": "OBFoodEntryEditor",
+      "paperNode": "40NG-0",
+      "widget": "_OpenBandFoodEntryState._editor",
+      "file": "meal_entry.dart",
+      "usedIn": [
+        "40MT-0",
+        "40OR-0",
+        "4121-0",
+        "413O-0",
+        "40Y3-0",
+        "418N-0"
+      ],
+      "notes": "One retained draft for name, meal, date, quantity, consumed time, note and all ten nutrients. CAS conflicts require explicit reload; no source conversion."
+    },
+    {
+      "name": "OBFoodNutrientEditor",
+      "paperNode": "40RV-0",
+      "widget": "_OpenBandFoodEntryState._nutrientEditor",
+      "file": "meal_entry.dart",
+      "usedIn": [
+        "40R7-0",
+        "40TQ-0",
+        "40ZW-0",
+        "415P-0",
+        "41PJ-0",
+        "42HZ-0"
+      ],
+      "notes": "Shared nutrient row preserves zero, unknowns and stored precision. Photo values require explicit confirmation before final save."
+    },
+    {
+      "name": "OBFoodQuantitySheet",
+      "paperNode": "41FG-0",
+      "widget": "_FoodQuantitySheet",
+      "file": "meal_entry.dart",
+      "usedIn": [
+        "41DS-0",
+        "41G6-0",
+        "41MB-0",
+        "42XJ-0"
+      ],
+      "notes": "Quantity and unit are explicit. Nutrient scaling is opt-in and requires a known positive original quantity and unchanged unit."
+    },
+    {
+      "name": "OBFoodEditSheet",
+      "paperNode": "42OH-0",
+      "widget": "_FoodSheetScaffold",
+      "file": "meal_entry.dart",
+      "usedIn": [
+        "41DS-0",
+        "41G6-0",
+        "41MB-0",
+        "42XJ-0",
+        "42OF-0",
+        "42VA-0",
+        "42QT-0",
+        "42SZ-0"
+      ],
+      "notes": "Shared bounded sheet frame for quantity and time; pinned header/action, scrolling body and keyboard clearance. Missing time has no default."
+    },
+    {
+      "name": "OBMealDraftSheet",
+      "paperNode": "41VK-0",
+      "widget": "OBMealDraftSheet",
+      "file": "nutrition.dart",
+      "usedIn": [
+        "41RR-0",
+        "420H-0",
+        "41W3-0",
+        "424S-0",
+        "4295-0",
+        "42DI-0",
+        "42K7-0"
+      ],
+      "notes": "Atomic retained-draft commit distinguishes save failure, conflict, missing draft and failed reload. Read failure hides unverified old rows; save failure keeps the draft visible."
+    },
+    {
+      "name": "OBFoodUndo",
+      "paperNode": "41M7-0",
+      "widget": "_OpenBandNutritionState._showFoodSnack",
+      "file": "nutrition.dart",
+      "usedIn": [
+        "41IF-0"
+      ],
+      "notes": "Exact deleted snapshot belongs to its repository/day/operation. Successful restore and failed subsequent read have separate retries. Whole nutrition-day backdrop remains an open migration. At large text the message precedes a wrapping action row. Normal total height56 with intrinsic action aligned16 from the right.",
+      "variantPaperNodes": {
+        "large": "438J-0",
+        "large.dark": "43C9-0"
+      }
     }
   ],
   "openBlocks": [
@@ -1919,7 +2085,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 60,
+    "version": 61,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -1931,7 +2097,8 @@
       "lab_result",
       "lab_marker_def",
       "openband_pinned_template",
-      "openband_strength_session"
+      "openband_strength_session",
+      "nutrition_target_period"
     ]
   },
   "research": {
