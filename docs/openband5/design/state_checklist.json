@@ -712,6 +712,42 @@
         "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
         "note": "Imperial choice persists and survives reopen; failure keeps the saved choice and supports retry.",
         "nativeReview": "build/ui-review/units-v4-20260919 and build/ui-review/units-v4-mini-20260919: 219 PNGs each, all inspected; frames/index reconciled. Light/dark, 2x text, failure/retry/reopen. Synthetic simulator proof."
+      },
+      "Health · Glukoseübernahme": {
+        "status": "implemented",
+        "paperNode": "4ABA-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "PhoneImport routes glucose into the canonical Alpin flow and no longer renders raw glucose outside exclusion rules. Other three imported kinds and the existing four-kind import remain intact. This closes the glucose action only, not the full legacy PhoneImport redesign.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Health · Glukoseübernahme beendet": {
+        "status": "implemented",
+        "paperNode": "4A6P-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Successful import refreshes stored values and query/import timestamps; unchanged reread retains original import time. Saved import survives failed refresh, empty/failing reads preserve old rows. No claimed Health grant from an empty iOS result.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose · Quelle ausschließen": {
+        "status": "implemented",
+        "paperNode": "4ABA-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Shared Verwenden control persists source exclusion; source keys keep legacy identities separate. Existing history remains available.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose · Quelle ausgeschlossen": {
+        "status": "implemented",
+        "paperNode": "4ATL-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Off state and inline Ausgeblendet confirmed in light/dark; restoring uses the same persistent setting. No deletion or invented empty history.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
       }
     },
     "A02 · Schlaf": {
@@ -1041,6 +1077,87 @@
         "evidence": "test/openband_labs_test.dart; test/lab_result_store_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
         "note": "Missing report bounds remain unknown. Catalogue guidance is labeled separately and never substituted for a report or unknown-sex reference range.",
         "nativeReview": "build/ui-review/labs-v3-20260919 (138 PNGs); build/ui-review/labs-mini-v3-20260919 (139 PNGs). Every PNG inspected; light/dark, empty, CRUD, failures/retry, missing report bounds, keyboard and 2x text. Synthetic simulator proof."
+      },
+      "Glukose Quelle": {
+        "status": "implemented",
+        "paperNode": "4ABA-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Source-key selection and provider identity; stored measurement/import/query timestamps remain distinct. Multi-source picker uses stable keys even when names match.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose Zugriff": {
+        "status": "implemented",
+        "paperNode": "4ABA-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Explicit manual Health read through the shared importer. Android proven denial differs from request failure; iOS empty reads do not establish permission state. Permission/source details stay in disclosure.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose Health nicht lesbar": {
+        "status": "implemented",
+        "paperNode": "4AJN-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Read/request/persistence failures retain saved readings. Retry does not replace failed storage reads with an empty history. Separate durable import outcome and refresh failure.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Über Glukosewerte": {
+        "status": "implemented",
+        "paperNode": "4AR4-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Shared Alpin info sheet explains source, original unit, actual points/gaps and timestamp meanings. Dark and large-text body scrolling verified.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose erste Werte": {
+        "status": "implemented",
+        "paperNode": "4A6P-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Stored latest value and full latest local-day points share one source and actual unit. No physiological thresholds, target band, smoothing or inferred coverage. Unknown newest unit leaves plot absent.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose ausgeschlossen": {
+        "status": "implemented",
+        "paperNode": "4B6B-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Excluded source hides headline/plot, retains history and stops new Health imports for that stable source. Re-enable restores visibility; failed save leaves switch state unchanged.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose Verlauf": {
+        "status": "implemented",
+        "paperNode": "4AHG-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Newest200 readings with more in200-row windows; failed pagination retains rows and retries the same window. Actual local dates, older years and raw units retained; source-separated history stays available when excluded.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukosequelle": {
+        "status": "implemented",
+        "paperNode": "4ABA-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "Alias of Glukose Quelle; one canonical source screen, no duplicate destination.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Glukose offen": {
+        "status": "implemented",
+        "paperNode": "4AF8-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/glucose.dart; lib/openband/glucose_chart.dart; lib/openband/local_repository.dart; lib/health/glucose_contract.dart; lib/health/health_measurement_import.dart; lib/data/db.dart; lib/ui2/profile/phone_import.dart",
+        "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
+        "note": "No stored readings shows — and Jetzt lesen. An empty completed query is distinct from an unreadable store or failed request; no fallback glucose value.",
+        "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
       }
     },
     "A04 · System": {

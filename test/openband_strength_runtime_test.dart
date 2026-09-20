@@ -130,8 +130,8 @@ void main() {
     repo = LocalOpenBandRepository(app);
   }
 
-  test('schema 63 is on create, upgrade, and repair', () async {
-    expect(LocalDb.schemaVersion, 63);
+  test('schema 64 is on create, upgrade, and repair', () async {
+    expect(LocalDb.schemaVersion, 64);
     final db = await LocalDb.instance;
     expect(
       await db.rawQuery(
@@ -171,7 +171,7 @@ void main() {
     final upgraded = await LocalDb.instance;
     expect(
       (await upgraded.rawQuery('PRAGMA user_version')).first.values.first,
-      63,
+      64,
     );
     expect(
       await upgraded.rawQuery(

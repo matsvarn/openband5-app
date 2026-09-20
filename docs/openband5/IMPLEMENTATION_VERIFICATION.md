@@ -303,3 +303,25 @@ Lead inspected actual production/test diffs and independent review findings. Dat
 - Paper definition47SX/47WB, count48L1/48NV, plan48R1/48SX, live48V9/48ZU, mixed units49SD/49UR, mixed bases49X5/49ZJ, assistance4A1X/4A4B and all required variants registered. Canonical count49OR/49OZ, shared settings rows and live heading ink reconciled. Exact exports: `/private/tmp/openband-alpin-20260919/custom-exercise-paper/`.
 
 This is local and synthetic simulator proof. No personal-data, physical-device, Bluetooth or physiological claim. Nothing pushed.
+
+
+## Glucose · 21 September 2026
+
+Stored Health glucose is reachable from Gesundheit and PhoneImport through one Alpin flow: original source/unit, latest reading, actual points from the complete latest local day, paged history, manual read and durable exclusion/restoration. Exclusion preserves history and rejects new imports for that source. Empty query, unknown iOS authorization, request/read/write failures and saved-import/failed-refresh are separate states. The old raw PhoneImport glucose display is removed; the other three imported kinds remain.
+
+Schema64 adds nullable measurement import/source fields and durable per-kind receipts/source settings, with same-version repair and backup inclusion. Legacy import timing remains unknown. Source inventory is independent of the bounded visible window. Corrupt lookahead rows, numeric timestamps and import stamps remain partial without removing readable siblings; explicit legacy keys and fallback names match consistently. Timestamp/UUID ties select the same newest unit across SQL, synthetic data, hero and plot. Unknown newest unit or an unrepresentable chart/day range leaves the plot absent. No unit conversion, interpolation, physiological target, new algorithm or sibling change.
+
+Paper Designphase3:24 light/dark, empty, partial, excluded, error and375/2x variants registered in blocks.json, canonical chart4BDG and Health entry4BAP. Real UI reuses shared header, card, setting rows, toggle, action, error card and info sheet. Explanations remain behind info; source/timing/partial indicators stay visible. Older-year dates include the year and use the local view clock. Large finite values and unknown raw units wrap at readable sizes, without shrinking accessibility text.
+
+Verification with Flutter3.41.6:
+
+- Required `flutter test --no-pub test/openband_*_test.dart`: **1241 passed**.
+- Required `flutter analyze --no-pub lib test/openband_*.dart integration_test/openband_review_test.dart`: **72 items, no issues**.
+- Affected Health import, paged DB import/export, import safety, no-op backup, imported baseline exclusion and CSV export suites: **81 passed**.
+- Manifest: **122 blocks /375 screens**; schema64. `git diff --check` clean.
+- Worker focused DATA:71 tests/10-file analysis; UI33 tests/scoped analysis; chart14 tests/scoped analysis. Lead inspected source/diffs and regression evidence. Fresh independent Grok review117689d3 found no remaining consequential defects in the correction set; earlier findings were returned to the responsible workers. Final unreachable count-helper deletion was separately reviewed and analyzed; it changes no exercised behavior.
+- **22 new goldens** under test/openband_goldens/: every PNG inspected, including dark, missing, partial, store-read failure and375/2x extreme-value/source/chart layouts. No test/goldens directory created.
+- Native Pro `build/ui-review/glucose-pro-final-20260921`: **34 frames, PASS128.23s**, iPhone15Pro393×852, final DATA71/UI33/chart source. Mini `build/ui-review/glucose-mini-ui33-20260921`: **34 frames, PASS142.53s**, iPhone13mini375×812, UI33 and identical chart/fixture with DATA62 before the later corrupt-input corrections. The final Pro covers the integrated data corrections. All68 PNGs, both run.json/frames.json and indexes inspected; actual navigation, exclusion/restoration, empty query, retries, retained result after failed refresh, disclosure scrolling and large-text controls exercised. Native headers verified against actual PNG pixels where contact-sheet display was ambiguous.
+- Earlier harness runs failed on offscreen lazy children and a non-interactive toggle wrapper. Fixed the real scroll/hit-test targets; did not relax assertions or widen timeouts. No UI defect remains from those failures.
+
+Synthetic simulator and temp-SQLite proof only. Actual Health provider permission/read behavior, physical Bluetooth and physiological validity were not exercised. App0.9.31+67, algorithm90 and full dependency pins remain unchanged and match the lockfile. No push/merge/deploy.

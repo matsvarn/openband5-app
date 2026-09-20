@@ -15,6 +15,7 @@ import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../compute/nap_edits.dart';
+import '../health/health_measurement_import.dart';
 import '../state/app_state.dart';
 import 'domain.dart';
 import 'theme.dart';
@@ -23,9 +24,16 @@ import 'time.dart';
 /// SQLite-backed boundary for the first OpenBand daily/sleep-correction flow.
 /// All legacy Map payloads are decoded here; callers only see typed values.
 class LocalOpenBandRepository implements OpenBandRepository {
-  LocalOpenBandRepository(this.app);
+  LocalOpenBandRepository(
+    this.app, {
+    ImportedMeasurementImporter? measurementImporter,
+    Future<GlucoseSnapshot> Function()? glucoseRefresh,
+  })  : _measurementImporter = measurementImporter,
+        _glucoseRefresh = glucoseRefresh;
 
   final AppState app;
+  final ImportedMeasurementImporter? _measurementImporter;
+  final Future<GlucoseSnapshot> Function()? _glucoseRefresh;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -2817,6 +2825,144 @@ class LocalOpenBandRepository implements OpenBandRepository {
       throw ArgumentError('Untere Grenze liegt über der oberen.');
     }
   }
+
+  @override
+  Future<GlucoseSnapshot> readGlucose({String? sourceKey, int? limit}) async {
+    if (limit != null && limit < 1) {
+      throw ArgumentError.value(limit, 'limit', 'Must be at least 1.');
+    }
+    final read = await LocalDb.importedMeasurementGlucoseRead(
+      kind: kKindGlucose,
+      sourceKey: sourceKey,
+      limit: limit,
+    );
+    return _glucoseSnapshotFromRead(read, limit: limit);
+  }
+
+  @override
+  Future<GlucoseImportResult> importGlucose({DateTime? now}) async {
+    final importer = _measurementImporter ?? ImportedMeasurementImporter();
+    final outcome = await importer.sync(
+      types: ImportedMeasurementImporter.glucoseOnly,
+      now: now,
+    );
+    try {
+      final snapshot =
+          await (_glucoseRefresh ?? () => readGlucose(limit: 1))();
+      return GlucoseImportResult(outcome: outcome, snapshot: snapshot);
+    } catch (_) {
+      return GlucoseImportResult(outcome: outcome, refreshFailed: true);
+    }
+  }
+
+  @override
+  Future<void> setGlucoseSourceIncluded(
+    String sourceKey, {
+    required bool included,
+  }) async {
+    if (sourceKey.isEmpty) {
+      throw ArgumentError.value(sourceKey, 'sourceKey', 'Required.');
+    }
+    await LocalDb.setImportedMeasurementSourceExcluded(
+      kind: kKindGlucose,
+      sourceKey: sourceKey,
+      excluded: !included,
+    );
+  }
+}
+
+GlucoseSnapshot _glucoseSnapshotFromRead(
+  ImportedGlucoseRead read, {
+  required int? limit,
+}) {
+  var unreadable = read.identityUnreadable + read.importedAtUnreadable;
+  final unreadTokens = <Object>{};
+  void markUnread(Map<String, dynamic> row) {
+    unreadTokens.add((row['uuid'], row['ts'], row['source_key']));
+  }
+
+  final excluded = <String>{};
+  for (final s in read.settings) {
+    final key = s['source_key'];
+    if (key is! String) {
+      if (key != null) unreadable++;
+      continue;
+    }
+    if (key.isEmpty) continue;
+    if (s['excluded'] == 1 || s['excluded'] == '1') excluded.add(key);
+  }
+
+  final byKey = <String, GlucoseSourceInventoryItem>{};
+  for (final g in read.groups) {
+    final row = read.latestRows[g.key];
+    final latest = row == null ? null : glucoseReadingFromStored(row);
+    if (row != null && latest == null) markUnread(row);
+    byKey[g.key] = GlucoseSourceInventoryItem(
+      source: latest?.source ??
+          glucoseSourceFromStored(sourceKey: g.key, sourceName: ''),
+      excluded: excluded.contains(g.key),
+      lastMeasuredAt: latest?.measuredAt,
+      lastImportedAt: glucoseDateTimeFromEpochSeconds(g.lastImportedAt),
+      readingCount: g.storedCount,
+    );
+  }
+  for (final key in excluded) {
+    byKey.putIfAbsent(
+      key,
+      () => GlucoseSourceInventoryItem(
+        source: glucoseSourceFromStored(sourceKey: key, sourceName: ''),
+        excluded: true,
+      ),
+    );
+  }
+
+  final history = <GlucoseReading>[];
+  for (final row in read.historyRows) {
+    final r = glucoseReadingFromStored(row);
+    if (r == null) {
+      markUnread(row);
+      continue;
+    }
+    if (limit != null && history.length >= limit) break;
+    history.add(r);
+  }
+
+  for (final row in read.historyLookaheadUnread) {
+    markUnread(row);
+  }
+
+  final dayReadings = <GlucoseReading>[];
+  for (final row in read.dayRows) {
+    final r = glucoseReadingFromStored(row);
+    if (r == null) {
+      markUnread(row);
+      continue;
+    }
+    dayReadings.add(r);
+  }
+  dayReadings.sort(compareGlucoseNewestFirst);
+
+  final selectedKey = read.selectedKey;
+  final selectedExcluded =
+      selectedKey != null && excluded.contains(selectedKey);
+  final sources = byKey.values.toList()
+    ..sort((a, b) => a.source.key.compareTo(b.source.key));
+  final receipt = decodeGlucoseReceipt(read.receipt);
+
+  return assembleBoundedGlucoseSnapshot(
+    sources: sources,
+    history: history,
+    dayReadings: dayReadings,
+    receiptAttempt: receipt,
+    selected: selectedKey == null
+        ? null
+        : (byKey[selectedKey]?.source ??
+            glucoseSourceFromStored(sourceKey: selectedKey, sourceName: '')),
+    selectedKey: selectedKey,
+    selectedExcluded: selectedExcluded,
+    truncated: read.historyTruncated,
+    unreadableCount: unreadable + unreadTokens.length + receipt.unreadable,
+  );
 }
 
 /// Isolate entry: one field × one outcome, lag 1. Returns a sendable map.

@@ -364,7 +364,31 @@
     "49X5-0": "A06c Krafttraining · unterschiedliche Lastbasis",
     "49ZJ-0": "A06c Krafttraining · unterschiedliche Lastbasis · Dunkel",
     "4A1X-0": "A06c Krafttraining · Unterstützung",
-    "4A4B-0": "A06c Krafttraining · Unterstützung · Dunkel"
+    "4A4B-0": "A06c Krafttraining · Unterstützung · Dunkel",
+    "4A6P-0": "A05 Glukose · Synthetische Daten (glucose.dart)",
+    "4A97-0": "A05 Glukose · Dunkel · Synthetische Daten (glucose.dart)",
+    "4ABA-0": "A05 Glukosequelle · Synthetische Daten (glucose.dart)",
+    "4ADV-0": "A05 Glukosequelle · Dunkel · Synthetische Daten (glucose.dart)",
+    "4AF8-0": "A05 Glukose · keine gespeicherten Werte · Synthetische Daten (glucose.dart)",
+    "4ALU-0": "A05 Glukose · keine gespeicherten Werte · Dunkel · Synthetische Daten (glucose.dart)",
+    "4AHG-0": "A05 Glukose · Messungen · Synthetische Daten (glucose.dart)",
+    "4AMW-0": "A05 Glukose · Messungen · Dunkel · Synthetische Daten (glucose.dart)",
+    "4AJN-0": "A05 Glukose · Health-Lesefehler · Synthetische Daten (glucose.dart)",
+    "4AOX-0": "A05 Glukose · Health-Lesefehler · Dunkel · Synthetische Daten (glucose.dart)",
+    "4AR4-0": "A05 Glukose · Erklärung · Synthetische Daten (glucose.dart)",
+    "4AWV-0": "A05 Glukose · Erklärung · Dunkel · Synthetische Daten (glucose.dart)",
+    "4ATL-0": "A05 Glukosequelle · ausgeschlossen · Synthetische Daten (glucose.dart)",
+    "4AZB-0": "A05 Glukosequelle · ausgeschlossen · Dunkel · Synthetische Daten (glucose.dart)",
+    "4AUY-0": "A05 Glukosequelle · 375 / große Schrift · Synthetische Daten (glucose.dart)",
+    "4B0O-0": "A05 Glukosequelle · 375 / große Schrift · Dunkel · Synthetische Daten (glucose.dart)",
+    "4B21-0": "A05 Glukose · teilweise lesbar · Synthetische Daten (glucose.dart)",
+    "4B46-0": "A05 Glukose · teilweise lesbar · Dunkel · Synthetische Daten (glucose.dart)",
+    "4B6B-0": "A05 Glukose · Quelle ausgeblendet · Synthetische Daten (glucose.dart)",
+    "4B8G-0": "A05 Glukose · Quelle ausgeblendet · Dunkel · Synthetische Daten (glucose.dart)",
+    "4BAZ-0": "A05 Glukose · 375 / große Schrift · Synthetische Daten (glucose.dart)",
+    "4BE5-0": "A05 Glukose · 375 / große Schrift · Dunkel · Synthetische Daten (glucose.dart)",
+    "4BH0-0": "A05 Glukose · Speicher-Lesefehler · Synthetische Daten (glucose.dart)",
+    "4BJ7-0": "A05 Glukose · Speicher-Lesefehler · Dunkel · Synthetische Daten (glucose.dart)"
   },
   "blocks": [
     {
@@ -477,7 +501,31 @@
         "47JR-0",
         "47LT-0",
         "47OT-0",
-        "47QP-0"
+        "47QP-0",
+        "4A6P-0",
+        "4A97-0",
+        "4ABA-0",
+        "4ADV-0",
+        "4AF8-0",
+        "4ALU-0",
+        "4AHG-0",
+        "4AMW-0",
+        "4AJN-0",
+        "4AOX-0",
+        "4AR4-0",
+        "4AWV-0",
+        "4ATL-0",
+        "4AZB-0",
+        "4AUY-0",
+        "4B0O-0",
+        "4B21-0",
+        "4B46-0",
+        "4B6B-0",
+        "4B8G-0",
+        "4BAZ-0",
+        "4BE5-0",
+        "4BH0-0",
+        "4BJ7-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -692,7 +740,31 @@
       "usedIn": [
         "3FDB-0",
         "3FVE-0",
-        "3FVD-0"
+        "3FVD-0",
+        "4A6P-0",
+        "4A97-0",
+        "4ABA-0",
+        "4ADV-0",
+        "4AF8-0",
+        "4ALU-0",
+        "4AHG-0",
+        "4AMW-0",
+        "4AJN-0",
+        "4AOX-0",
+        "4AR4-0",
+        "4AWV-0",
+        "4ATL-0",
+        "4AZB-0",
+        "4AUY-0",
+        "4B0O-0",
+        "4B21-0",
+        "4B46-0",
+        "4B6B-0",
+        "4B8G-0",
+        "4BAZ-0",
+        "4BE5-0",
+        "4BH0-0",
+        "4BJ7-0"
       ],
       "notes": "List grouping uses OBCard; no OBListCard class."
     },
@@ -1272,8 +1344,12 @@
       "implemented": "SetRow in ui2/profile/profile.dart",
       "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture).",
       "usedIn": [
-        "3G8S-0"
-      ]
+        "3G8S-0",
+        "3FVE-0"
+      ],
+      "variantPaperNodes": {
+        "glucoseEntry": "4BAP-0"
+      }
     },
     {
       "name": "OBCardRow",
@@ -1552,7 +1628,13 @@
         "3MDT-0",
         "3MGR-0",
         "3MZ0-0",
-        "3N2G-0"
+        "3N2G-0",
+        "4ABA-0",
+        "4ADV-0",
+        "4ATL-0",
+        "4AZB-0",
+        "4AUY-0",
+        "4B0O-0"
       ],
       "notes": "Canonical 56-point toggle row with a 44-point switch target; schedule variant remains64. Dark off track uses alp-line. Large text stacks controls."
     },
@@ -1611,7 +1693,15 @@
         "3LUN-0",
         "3LW8-0",
         "3LXY-0",
-        "3LZI-0"
+        "3LZI-0",
+        "4ABA-0",
+        "4ADV-0",
+        "4ATL-0",
+        "4AZB-0",
+        "4AUY-0",
+        "4B0O-0",
+        "4AR4-0",
+        "4AWV-0"
       ]
     },
     {
@@ -1692,7 +1782,27 @@
         "49BF-0",
         "49DI-0",
         "49KD-0",
-        "49MG-0"
+        "49MG-0",
+        "4ABA-0",
+        "4ADV-0",
+        "4ATL-0",
+        "4AZB-0",
+        "4AUY-0",
+        "4B0O-0",
+        "4A6P-0",
+        "4A97-0",
+        "4AF8-0",
+        "4ALU-0",
+        "4AJN-0",
+        "4AOX-0",
+        "4B21-0",
+        "4B46-0",
+        "4B6B-0",
+        "4B8G-0",
+        "4BAZ-0",
+        "4BE5-0",
+        "4BH0-0",
+        "4BJ7-0"
       ],
       "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit.",
       "variantPaperNodes": {
@@ -1739,7 +1849,11 @@
         "3O01-0",
         "3O17-0",
         "3OSU-0",
-        "3OTU-0"
+        "3OTU-0",
+        "4AJN-0",
+        "4AOX-0",
+        "4BH0-0",
+        "4BJ7-0"
       ],
       "notes": "Shared notification/appearance retry card:14 pad,24 radius,14 danger text,8 gap,48 secondary ink action. No optimistic save success."
     },
@@ -2061,7 +2175,9 @@
         "4069-0",
         "40BJ-0",
         "45ID-0",
-        "45OR-0"
+        "45OR-0",
+        "4AR4-0",
+        "4AWV-0"
       ],
       "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x. Body width is bounded; shared action radius16 matches OBAction."
     },
@@ -2467,6 +2583,32 @@
         "dark": "49OZ-0"
       },
       "notes": "Shared strict positive-integer sheet: raw invalid signs/fractions are refused, never stripped; keyboard and safe-area aware. Canonical block artboards49OX/49OY."
+    },
+    {
+      "name": "OBGlucoseChart",
+      "paperNode": "4BDG-0",
+      "widget": "OBGlucoseChart",
+      "file": "glucose_chart.dart",
+      "usedIn": [
+        "4A6P-0",
+        "4A97-0",
+        "4AF8-0",
+        "4ALU-0",
+        "4AJN-0",
+        "4AOX-0",
+        "4B21-0",
+        "4B46-0",
+        "4BAZ-0",
+        "4BE5-0"
+      ],
+      "variants": [
+        "light",
+        "dark",
+        "missing",
+        "partial",
+        "375 / large text"
+      ],
+      "notes": "Stored individual readings at actual elapsed timestamps, in their original common unit. No interpolation, target band, physiological bounds or invented coverage. Quiet numeric guides; finite viewport safeguards; unknown unit or unrepresentable viewport leaves the plot absent. Raw readings remain available in history."
     }
   ],
   "openBlocks": [
@@ -2493,7 +2635,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 63,
+    "version": 64,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -2508,7 +2650,10 @@
       "openband_strength_session",
       "nutrition_target_period",
       "exercise_def",
-      "strength_set"
+      "strength_set",
+      "imported_measurement",
+      "imported_measurement_receipt",
+      "imported_measurement_source_setting"
     ]
   },
   "research": {

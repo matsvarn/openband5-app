@@ -312,6 +312,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         updatedAt: 1,
       ),
     ]);
+    _seedFixtureGlucose();
   }
 
   BandSnapshot get band {
@@ -638,6 +639,88 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   Future<void> Function()? beforeStrengthWrite;
 
   void seedLabDraw(LabDraw draw) => _labResults.add(draw);
+
+  static const _glucoseFixtureValues = <double?>[
+    5.0,
+    5.1,
+    5.2,
+    5.1,
+    5.3,
+    null,
+    null,
+    5.8,
+    6.3,
+    5.9,
+    5.6,
+    5.4,
+    5.2,
+  ];
+
+  static const _glucoseFixtureSourceName =
+      'Sensor-App (synthetisch) via Apple Health';
+  static const glucoseFixtureSourceKey = 'synthetic:glucose-source';
+
+  final List<GlucoseReading> _glucoseReadings = [];
+  final Set<String> _glucoseExcluded = {};
+  GlucoseAttempt _glucoseAttempt = GlucoseAttempt.none;
+  bool failGlucoseReads = false;
+  bool failGlucoseImport = false;
+  bool emptyGlucoseImport = false;
+  bool failGlucoseExclusionWrite = false;
+  HealthMeasurementImportStatus? glucoseImportFailureStatus;
+
+  void seedGlucoseReading(GlucoseReading reading) =>
+      _glucoseReadings.add(reading);
+
+  void clearGlucoseReadings() => _glucoseReadings.clear();
+
+  void retagGlucoseUnit(String uuid, String rawUnit) {
+    final i = _glucoseReadings.indexWhere((r) => r.uuid == uuid);
+    if (i < 0) return;
+    final r = _glucoseReadings[i];
+    _glucoseReadings[i] = GlucoseReading(
+      uuid: r.uuid,
+      measuredAt: r.measuredAt,
+      value: r.value,
+      rawUnit: rawUnit,
+      unitKind: glucoseUnitKind(rawUnit),
+      source: r.source,
+      importedAt: r.importedAt,
+    );
+  }
+
+  void _seedFixtureGlucose() {
+    final imported = DateTime(2026, 9, 15, 9, 40);
+    final query = DateTime(2026, 9, 15, 9, 41);
+    const source = GlucoseSourceIdentity(
+      key: glucoseFixtureSourceKey,
+      sourceName: _glucoseFixtureSourceName,
+      provenance: GlucoseSourceProvenance.synthetic,
+    );
+    for (var i = 0; i < _glucoseFixtureValues.length; i++) {
+      final v = _glucoseFixtureValues[i];
+      if (v == null) continue;
+      final at = DateTime(2026, 9, 15, 7, i * 5);
+      _glucoseReadings.add(
+        GlucoseReading(
+          uuid: 'glucose-fixture-${at.hour.toString().padLeft(2, '0')}'
+              '${at.minute.toString().padLeft(2, '0')}',
+          measuredAt: at,
+          value: v,
+          rawUnit: kGlucoseUnitMillimolePerLiter,
+          unitKind: GlucoseUnitKind.millimolePerLiter,
+          source: source,
+          importedAt: imported,
+        ),
+      );
+    }
+    _glucoseAttempt = GlucoseAttempt(
+      status: HealthMeasurementImportStatus.stored,
+      attemptedAt: query,
+      storedCount: 11,
+      writtenCount: 11,
+    );
+  }
 
   /// Writes bounded journal × stored-SOL maps. Does not return a canned result.
   void seedCaffeineSleepPattern(
@@ -2450,6 +2533,118 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw StateError('lab marker still has results');
     }
     _labDefs.remove(key);
+  }
+
+  @override
+  Future<GlucoseSnapshot> readGlucose({String? sourceKey, int? limit}) async {
+    if (failGlucoseReads) throw StateError('synthetic glucose read failure');
+    if (limit != null && limit < 1) {
+      throw ArgumentError.value(limit, 'limit', 'Must be at least 1.');
+    }
+    final settings = [
+      for (final key in _glucoseExcluded)
+        {'source_key': key, 'excluded': 1},
+    ];
+    return buildGlucoseSnapshot(
+      rows: [
+        for (final r in _glucoseReadings) _syntheticGlucoseRow(r),
+      ],
+      settings: settings,
+      receipt: _syntheticGlucoseReceipt(),
+      sourceKey: sourceKey,
+      limit: limit,
+    );
+  }
+
+  @override
+  Future<GlucoseImportResult> importGlucose({DateTime? now}) async {
+    final attemptedAt = now ?? DateTime(2026, 9, 15, 9, 41);
+    late final HealthMeasurementImportOutcome outcome;
+    if (failGlucoseImport) {
+      final status = glucoseImportFailureStatus ??
+          HealthMeasurementImportStatus.readFailed;
+      _glucoseAttempt = GlucoseAttempt(
+        status: status,
+        attemptedAt: attemptedAt,
+      );
+      outcome = HealthMeasurementImportOutcome(
+        status: status,
+        attemptedAt: attemptedAt,
+      );
+    } else if (emptyGlucoseImport) {
+      _glucoseAttempt = GlucoseAttempt(
+        status: HealthMeasurementImportStatus.empty,
+        attemptedAt: attemptedAt,
+      );
+      outcome = HealthMeasurementImportOutcome(
+        status: HealthMeasurementImportStatus.empty,
+        attemptedAt: attemptedAt,
+      );
+    } else {
+      _glucoseAttempt = GlucoseAttempt(
+        status: HealthMeasurementImportStatus.stored,
+        attemptedAt: attemptedAt,
+        storedCount: _glucoseReadings.length,
+      );
+      outcome = HealthMeasurementImportOutcome(
+        status: HealthMeasurementImportStatus.stored,
+        attemptedAt: attemptedAt,
+        storedCount: _glucoseReadings.length,
+      );
+    }
+    try {
+      final snapshot = await readGlucose(limit: 1);
+      return GlucoseImportResult(outcome: outcome, snapshot: snapshot);
+    } catch (_) {
+      return GlucoseImportResult(outcome: outcome, refreshFailed: true);
+    }
+  }
+
+  @override
+  Future<void> setGlucoseSourceIncluded(
+    String sourceKey, {
+    required bool included,
+  }) async {
+    if (failGlucoseExclusionWrite) {
+      throw StateError('synthetic glucose exclusion write failure');
+    }
+    if (sourceKey.isEmpty) {
+      throw ArgumentError.value(sourceKey, 'sourceKey', 'Required.');
+    }
+    if (included) {
+      _glucoseExcluded.remove(sourceKey);
+    } else {
+      _glucoseExcluded.add(sourceKey);
+    }
+  }
+
+  Map<String, dynamic> _syntheticGlucoseRow(GlucoseReading r) => {
+        'uuid': r.uuid,
+        'ts': r.measuredAt.millisecondsSinceEpoch ~/ 1000,
+        'kind': 'glucose',
+        'value': r.value,
+        'unit': r.rawUnit,
+        'source': r.source.sourceName,
+        'source_id': r.source.sourceId,
+        'source_key': r.source.key,
+        'imported_at': r.importedAt == null
+            ? null
+            : r.importedAt!.millisecondsSinceEpoch ~/ 1000,
+      };
+
+  Map<String, dynamic>? _syntheticGlucoseReceipt() {
+    if (_glucoseAttempt.status == HealthMeasurementImportStatus.notAttempted) {
+      return null;
+    }
+    final at = _glucoseAttempt.attemptedAt;
+    return {
+      'outcome': _glucoseAttempt.status.name,
+      'last_attempt_at': at == null ? null : at.millisecondsSinceEpoch ~/ 1000,
+      'stored_count': _glucoseAttempt.storedCount,
+      'written_count': _glucoseAttempt.writtenCount,
+      'invalid_count': _glucoseAttempt.invalidCount,
+      'ignored_count': _glucoseAttempt.ignoredCount,
+    };
   }
 
   int _labIndex(String marker, String takenOn) =>

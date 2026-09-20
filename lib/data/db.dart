@@ -29,6 +29,7 @@ import '../coach/coach_db.dart' show CoachDb;
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../ble/adapters/adapter.dart' show NeutralSample;
 import '../ble/adapters/signals.dart' show InputSignal;
+import '../health/glucose_contract.dart';
 import '../import/import_container.dart';
 import 'coverage_resolver.dart' show CoverageInterval;
 import 'day_label.dart';
@@ -51,6 +52,90 @@ typedef DbRebuild = ({
   String quarantinePath,
   Map<String, int> salvaged,
 });
+
+class ImportedMeasurementCommitInput {
+  final List<Map<String, Object?>> rows;
+  final List<String> kinds;
+
+  /// Query/authorization start. Written to [last_attempt_at].
+  final DateTime attemptedAt;
+
+  /// Persist wall time after Health I/O. Stamps [imported_at] / [last_success_at].
+  /// Null means the write is the attempt ([putImportedMeasurements]).
+  final DateTime? storedAt;
+
+  /// When set, every requested kind gets this outcome (auth/read/persist fail).
+  final String? forcedOutcome;
+  final Map<String, int> invalidByKind;
+  final Map<String, int> ignoredByKind;
+  final bool persistRows;
+  const ImportedMeasurementCommitInput({
+    required this.rows,
+    required this.kinds,
+    required this.attemptedAt,
+    this.storedAt,
+    this.forcedOutcome,
+    this.invalidByKind = const {},
+    this.ignoredByKind = const {},
+    this.persistRows = true,
+  });
+}
+
+class ImportedMeasurementCommitResult {
+  final int storedCount;
+  final int writtenCount;
+  final int skippedExcluded;
+  const ImportedMeasurementCommitResult({
+    required this.storedCount,
+    required this.writtenCount,
+    this.skippedExcluded = 0,
+  });
+}
+
+class ImportedGlucoseRead {
+  final List<Map<String, dynamic>> settings;
+  final Map<String, dynamic>? receipt;
+  final List<({String key, int storedCount, int? lastImportedAt})> groups;
+  final Map<String, Map<String, dynamic>> latestRows;
+  final List<Map<String, dynamic>> historyRows;
+  final List<Map<String, dynamic>> dayRows;
+  final int identityUnreadable;
+  final int importedAtUnreadable;
+  final String? selectedKey;
+  final bool historyTruncated;
+
+  /// Unreadable rows inspected after the visible newest-N window, used to
+  /// prove truncation without entering [historyRows].
+  final List<Map<String, dynamic>> historyLookaheadUnread;
+  const ImportedGlucoseRead({
+    required this.settings,
+    required this.receipt,
+    required this.groups,
+    required this.latestRows,
+    required this.historyRows,
+    required this.dayRows,
+    required this.identityUnreadable,
+    this.importedAtUnreadable = 0,
+    required this.selectedKey,
+    this.historyTruncated = false,
+    this.historyLookaheadUnread = const [],
+  });
+}
+
+/// Serializes imported-measurement Health I/O through the matching commit.
+class _SerialGate {
+  Future<void> _tail = Future.value();
+
+  Future<T> run<T>(Future<T> Function() job) {
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    return previous.catchError((_) {}).then((_) => job()).whenComplete(() {
+      if (!done.isCompleted) done.complete();
+    });
+  }
+}
+
 
 // ── SUBSTRATE ADMISSION — the one predicate that decides what may become a
 //    number ───────────────────────────────────────────────────────────────────
@@ -359,7 +444,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 63;
+  static const int schemaVersion = 64;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1115,6 +1200,11 @@ class LocalDb {
         if (oldV < 63) {
           // Original load + frozen definition snapshot on recorded sets.
           await _ensureStrengthSetLoadMetadata(db);
+        }
+        if (oldV < 64) {
+          // Glucose/import receipts + source exclusion. Additive columns only;
+          // legacy imported_at stays NULL — never backfilled.
+          await _createImportedMeasurement(db);
         }
       },
       onOpen: (db) async {
@@ -3367,48 +3457,763 @@ class LocalDb {
         kind TEXT NOT NULL,
         value REAL NOT NULL,
         unit TEXT NOT NULL,
-        source TEXT NOT NULL
+        source TEXT NOT NULL,
+        imported_at INTEGER,
+        source_id TEXT,
+        source_key TEXT
       )
     ''');
+    await _addColumnIfMissing(
+      db,
+      'imported_measurement',
+      'imported_at',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(db, 'imported_measurement', 'source_id', 'TEXT');
+    await _addColumnIfMissing(db, 'imported_measurement', 'source_key', 'TEXT');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_imported_measurement_kind '
       'ON imported_measurement(kind, ts)',
     );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_imported_measurement_source '
+      'ON imported_measurement(kind, source_key, ts)',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS imported_measurement_receipt (
+        kind TEXT PRIMARY KEY,
+        last_attempt_at INTEGER NOT NULL,
+        last_success_at INTEGER,
+        outcome TEXT NOT NULL,
+        stored_count INTEGER NOT NULL DEFAULT 0,
+        written_count INTEGER NOT NULL DEFAULT 0,
+        invalid_count INTEGER NOT NULL DEFAULT 0,
+        ignored_count INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS imported_measurement_source_setting (
+        kind TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        excluded INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (kind, source_key)
+      )
+    ''');
+  }
+
+  /// Serializes imported-measurement Health reads and writes process-wide.
+  /// [commitImportedMeasurements] must be called from inside this gate or from
+  /// a caller that already holds it — it is not itself a second queue.
+  static Future<T> runImportedMeasurementOp<T>(Future<T> Function() job) =>
+      _importedWriteGate.run(job);
+
+  /// Input to one atomic imported-measurement commit (rows + receipts).
+  /// [persistRows] false records an attempt without touching stored readings.
+  static Future<ImportedMeasurementCommitResult> commitImportedMeasurements(
+    ImportedMeasurementCommitInput input,
+  ) => _commitImportedMeasurements(input);
+
+  static final _SerialGate _importedWriteGate = _SerialGate();
+
+  static Future<ImportedMeasurementCommitResult> _commitImportedMeasurements(
+    ImportedMeasurementCommitInput input,
+  ) async {
+    final db = await instance;
+    final attemptedSec = input.attemptedAt.millisecondsSinceEpoch ~/ 1000;
+    final storedSec =
+        (input.storedAt ?? input.attemptedAt).millisecondsSinceEpoch ~/ 1000;
+    var inserted = 0;
+    var replaced = 0;
+    var unchanged = 0;
+    var skippedExcluded = 0;
+    await db.transaction((txn) async {
+      final excluded = <String>{};
+      if (input.persistRows && input.rows.isNotEmpty) {
+        final settings = await txn.query(
+          'imported_measurement_source_setting',
+          columns: ['kind', 'source_key'],
+          where: 'excluded = 1',
+        );
+        for (final s in settings) {
+          excluded.add('${s['kind']}|${s['source_key']}');
+        }
+      }
+
+      final acceptedByKind = <String, List<Map<String, Object?>>>{
+        for (final kind in input.kinds) kind: <Map<String, Object?>>[],
+      };
+      final skippedByKind = <String, int>{};
+      if (input.persistRows) {
+        for (final r in input.rows) {
+          final kind = '${r['kind'] ?? ''}';
+          final key = '${r['source_key'] ?? ''}';
+          if (excluded.contains('$kind|$key')) {
+            skippedExcluded++;
+            skippedByKind[kind] = (skippedByKind[kind] ?? 0) + 1;
+            continue;
+          }
+          acceptedByKind.putIfAbsent(kind, () => []).add(r);
+        }
+      }
+
+      for (final kind in input.kinds) {
+        var kindInserted = 0;
+        var kindReplaced = 0;
+        var kindUnchanged = 0;
+        final accepted = acceptedByKind[kind] ?? const [];
+        if (input.persistRows && accepted.isNotEmpty) {
+          final counts = await _upsertImportedMeasurementRows(
+            txn,
+            accepted,
+            importedAt: storedSec,
+          );
+          kindInserted = counts.inserted;
+          kindReplaced = counts.replaced;
+          kindUnchanged = counts.unchanged;
+        }
+        inserted += kindInserted;
+        replaced += kindReplaced;
+        unchanged += kindUnchanged;
+        final written = kindInserted + kindReplaced;
+        final stored = written + kindUnchanged;
+        final invalid = input.invalidByKind[kind] ?? 0;
+        final ignored =
+            (input.ignoredByKind[kind] ?? 0) + (skippedByKind[kind] ?? 0);
+        final outcome =
+            input.forcedOutcome ??
+            (invalid > 0
+                ? 'partial'
+                : stored > 0
+                ? 'stored'
+                : 'empty');
+        await _upsertImportedMeasurementReceipt(
+          txn,
+          kind: kind,
+          attemptedAt: attemptedSec,
+          outcome: outcome,
+          storedCount: stored,
+          writtenCount: written,
+          invalidCount: invalid,
+          ignoredCount: ignored,
+          successAt: written > 0 ? storedSec : null,
+        );
+      }
+    });
+    final written = inserted + replaced;
+    return ImportedMeasurementCommitResult(
+      storedCount: written + unchanged,
+      writtenCount: written,
+      skippedExcluded: skippedExcluded,
+    );
+  }
+
+  static Future<({int inserted, int replaced, int unchanged})>
+  _upsertImportedMeasurementRows(
+    DatabaseExecutor txn,
+    List<Map<String, Object?>> rows, {
+    required int importedAt,
+  }) async {
+    var inserted = 0;
+    var replaced = 0;
+    var unchanged = 0;
+    for (final chunk in _sqlVarChunks(rows)) {
+      final uuids = [for (final r in chunk) r['uuid']];
+      final existingRows = await txn.query(
+        'imported_measurement',
+        where: 'uuid IN (${List.filled(uuids.length, '?').join(',')})',
+        whereArgs: uuids,
+      );
+      final existing = {for (final e in existingRows) '${e['uuid']}': e};
+      final batch = txn.batch();
+      for (final r in chunk) {
+        final uuid = '${r['uuid']}';
+        final prev = existing[uuid];
+        if (prev != null && _importedMeasurementUnchanged(prev, r)) {
+          unchanged++;
+          continue;
+        }
+        final row = Map<String, Object?>.from(r);
+        row['imported_at'] = importedAt;
+        if (row['source'] == null) row['source'] = '';
+        batch.insert(
+          'imported_measurement',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        if (prev == null) {
+          inserted++;
+        } else {
+          replaced++;
+        }
+      }
+      await batch.commit(noResult: true);
+    }
+    return (inserted: inserted, replaced: replaced, unchanged: unchanged);
+  }
+
+  static bool _importedMeasurementUnchanged(
+    Map<String, Object?> existing,
+    Map<String, Object?> incoming,
+  ) {
+    num? n(Object? v) => v is num ? v : null;
+    return n(existing['ts'])?.toInt() == n(incoming['ts'])?.toInt() &&
+        '${existing['kind']}' == '${incoming['kind']}' &&
+        n(existing['value'])?.toDouble() == n(incoming['value'])?.toDouble() &&
+        '${existing['unit']}' == '${incoming['unit']}' &&
+        '${existing['source'] ?? ''}' == '${incoming['source'] ?? ''}' &&
+        '${existing['source_id'] ?? ''}' == '${incoming['source_id'] ?? ''}' &&
+        '${existing['source_key'] ?? ''}' == '${incoming['source_key'] ?? ''}';
+  }
+
+  static Future<void> _upsertImportedMeasurementReceipt(
+    DatabaseExecutor txn, {
+    required String kind,
+    required int attemptedAt,
+    required String outcome,
+    required int storedCount,
+    required int writtenCount,
+    required int invalidCount,
+    required int ignoredCount,
+    int? successAt,
+  }) async {
+    final prev = await txn.query(
+      'imported_measurement_receipt',
+      where: 'kind = ?',
+      whereArgs: [kind],
+      limit: 1,
+    );
+    if (prev.isNotEmpty) {
+      final last = (prev.first['last_attempt_at'] as num?)?.toInt() ?? 0;
+      if (last > attemptedAt) return;
+    }
+    final lastSuccess =
+        successAt ??
+        (prev.isEmpty
+            ? null
+            : (prev.first['last_success_at'] as num?)?.toInt());
+    await txn.insert('imported_measurement_receipt', {
+      'kind': kind,
+      'last_attempt_at': attemptedAt,
+      'last_success_at': lastSuccess,
+      'outcome': outcome,
+      'stored_count': storedCount,
+      'written_count': writtenCount,
+      'invalid_count': invalidCount,
+      'ignored_count': ignoredCount,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Upsert imported readings. Idempotent on the source store's uuid.
+  /// Unchanged reread keeps [imported_at]; a changed record stamps replacement.
   static Future<int> putImportedMeasurements(
-    List<Map<String, Object?>> rows,
-  ) async {
+    List<Map<String, Object?>> rows, {
+    DateTime? now,
+  }) async {
     if (rows.isEmpty) return 0;
-    final db = await instance;
-    await db.transaction((txn) async {
-      final batch = txn.batch();
-      for (final r in rows) {
-        batch.insert(
-          'imported_measurement',
-          r,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-      await batch.commit(noResult: true);
-    });
-    return rows.length;
+    final attemptedAt = now ?? DateTime.now();
+    final kinds = <String>{
+      for (final r in rows)
+        if (r['kind'] is String) r['kind'] as String,
+    };
+    final result = await runImportedMeasurementOp(
+      () => _commitImportedMeasurements(
+        ImportedMeasurementCommitInput(
+          rows: rows,
+          kinds: kinds.toList(),
+          attemptedAt: attemptedAt,
+          persistRows: true,
+        ),
+      ),
+    );
+    return result.storedCount;
   }
 
-  /// Imported readings of one kind, newest first. The caller renders the
-  /// `source` with the value; a row without its source is not renderable.
+  /// Imported readings of one kind, newest first. [limit] null returns the
+  /// full retained set. A positive limit is a most-recent window, never the
+  /// oldest N.
   static Future<List<Map<String, dynamic>>> importedMeasurements(
     String kind, {
-    int limit = 200,
+    int? limit,
+    String? sourceKey,
   }) async {
     final db = await instance;
+    final where = StringBuffer('kind = ?');
+    final args = <Object?>[kind];
+    if (sourceKey != null) {
+      if (sourceKey.startsWith('legacy:')) {
+        where.write(
+          ' AND ((source_key IS NULL OR source_key = \'\') AND source = ? '
+          'OR source_key = ?)',
+        );
+        args.add(sourceKey.substring('legacy:'.length));
+        args.add(sourceKey);
+      } else {
+        where.write(' AND source_key = ?');
+        args.add(sourceKey);
+      }
+    }
     return db.query(
       'imported_measurement',
-      where: 'kind = ?',
-      whereArgs: [kind],
+      where: where.toString(),
+      whereArgs: args,
       orderBy: 'ts DESC',
       limit: limit,
+    );
+  }
+
+  /// Bounded glucose read: inventory aggregates, newest-[limit] history for
+  /// the selected source, and every row on that source's latest local day.
+  /// One transaction. Null [limit] is an explicit full-source history request.
+  static Future<ImportedGlucoseRead> importedMeasurementGlucoseRead({
+    required String kind,
+    String? sourceKey,
+    int? limit,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final settings = await txn.query(
+        'imported_measurement_source_setting',
+        where: 'kind = ?',
+        whereArgs: [kind],
+      );
+      final rec = await txn.query(
+        'imported_measurement_receipt',
+        where: 'kind = ?',
+        whereArgs: [kind],
+        limit: 1,
+      );
+      const identity = _importedIdentitySql;
+      final groups = await txn.rawQuery(
+        'SELECT $identity AS src_key, COUNT(*) AS n, '
+        'MAX(CASE WHEN $_importedFiniteImportedAtSql '
+        'THEN imported_at END) AS last_imported_at '
+        'FROM imported_measurement WHERE kind = ? '
+        'AND typeof(uuid) = \'text\' AND uuid != \'\' '
+        'AND typeof(ts) IN (\'integer\', \'real\') '
+        'GROUP BY src_key HAVING src_key IS NOT NULL',
+        [kind],
+      );
+      final badIdentity = await txn.rawQuery(
+        'SELECT COUNT(*) AS n FROM imported_measurement WHERE kind = ? '
+        'AND (($identity) IS NULL '
+        'OR typeof(uuid) != \'text\' OR uuid = \'\' '
+        'OR NOT ($_importedFiniteTsSql))',
+        [kind],
+      );
+      final identityUnreadable = (badIdentity.first['n'] as num?)?.toInt() ?? 0;
+      final badImportedAt = await txn.rawQuery(
+        'SELECT COUNT(*) AS n FROM imported_measurement WHERE kind = ? '
+        'AND imported_at IS NOT NULL AND NOT ($_importedFiniteImportedAtSql)',
+        [kind],
+      );
+      final importedAtUnreadable =
+          (badImportedAt.first['n'] as num?)?.toInt() ?? 0;
+
+      final excluded = <String>{};
+      for (final s in settings) {
+        final key = s['source_key'];
+        if (key is String &&
+            key.isNotEmpty &&
+            (s['excluded'] == 1 || s['excluded'] == '1')) {
+          excluded.add(key);
+        }
+      }
+
+      final keys = [
+        for (final g in groups)
+          if (g['src_key'] is String) g['src_key'] as String,
+      ];
+      for (final k in excluded) {
+        if (!keys.contains(k)) keys.add(k);
+      }
+      keys.sort();
+
+      var selected = sourceKey;
+      if (selected == null) {
+        final included = [
+          for (final k in keys)
+            if (!excluded.contains(k)) k,
+        ];
+        selected = included.isNotEmpty
+            ? included.first
+            : (keys.isEmpty ? null : keys.first);
+      }
+
+      final latestRows = <String, Map<String, dynamic>>{};
+      for (final key in keys) {
+        final row = await _importedNewestRow(txn, kind: kind, sourceKey: key);
+        if (row != null) latestRows[key] = row;
+      }
+
+      var historyRows = const <Map<String, dynamic>>[];
+      var historyTruncated = false;
+      var historyLookaheadUnread = const <Map<String, dynamic>>[];
+      if (selected != null) {
+        final window = await _importedNewestWindow(
+          txn,
+          kind: kind,
+          sourceKey: selected,
+          limit: limit,
+        );
+        historyRows = window.rows;
+        historyTruncated = window.truncated;
+        historyLookaheadUnread = window.lookaheadUnread;
+      }
+
+      var dayRows = const <Map<String, dynamic>>[];
+      if (selected != null && !excluded.contains(selected)) {
+        GlucoseReading? latest;
+        for (final row in historyRows) {
+          latest = glucoseReadingFromStored(row);
+          if (latest != null) break;
+        }
+        if (latest == null) {
+          final row = latestRows[selected];
+          latest = row == null ? null : glucoseReadingFromStored(row);
+        }
+        if (latest != null) {
+          final day = glucoseLocalDayWindow(latest.measuredAt);
+          if (day != null) {
+            dayRows = await _importedDayRows(
+              txn,
+              kind: kind,
+              sourceKey: selected,
+              startSec: day.start.millisecondsSinceEpoch ~/ 1000,
+              endSec: day.end.millisecondsSinceEpoch ~/ 1000,
+            );
+          }
+        }
+      }
+
+      return ImportedGlucoseRead(
+        settings: settings,
+        receipt: rec.isEmpty ? null : rec.first,
+        groups: [
+          for (final g in groups)
+            if (g['src_key'] is String)
+              (
+                key: g['src_key'] as String,
+                storedCount: (g['n'] as num?)?.toInt() ?? 0,
+                lastImportedAt: _importedFiniteEpochSec(g['last_imported_at']),
+              ),
+        ],
+        latestRows: latestRows,
+        historyRows: historyRows,
+        dayRows: dayRows,
+        identityUnreadable: identityUnreadable,
+        importedAtUnreadable: importedAtUnreadable,
+        selectedKey: selected,
+        historyTruncated: historyTruncated,
+        historyLookaheadUnread: historyLookaheadUnread,
+      );
+    });
+  }
+
+  static const _importedIdentitySql =
+      'CASE '
+      'WHEN typeof(source_key) = \'text\' AND source_key != \'\' THEN source_key '
+      'WHEN (source_key IS NULL OR source_key = \'\') AND typeof(source) = \'text\' '
+      'THEN \'legacy:\' || source '
+      'ELSE NULL END';
+
+  static const _importedFiniteTsSql =
+      'typeof(ts) IN (\'integer\', \'real\') AND ts = ts '
+      'AND ts >= -$kGlucoseEpochSecMax AND ts <= $kGlucoseEpochSecMax';
+
+  static const _importedFiniteImportedAtSql =
+      'typeof(imported_at) IN (\'integer\', \'real\') '
+      'AND imported_at = imported_at '
+      'AND imported_at >= -$kGlucoseEpochSecMax '
+      'AND imported_at <= $kGlucoseEpochSecMax';
+
+  static int? _importedFiniteEpochSec(Object? v) {
+    if (v is! num || !v.isFinite) return null;
+    final sec = v.toInt();
+    if (sec < -kGlucoseEpochSecMax || sec > kGlucoseEpochSecMax) return null;
+    return sec;
+  }
+
+  static void _appendImportedSourceMatch(
+    StringBuffer where,
+    List<Object?> args,
+    String sourceKey,
+  ) {
+    if (sourceKey.startsWith('legacy:')) {
+      where.write(
+        ' AND ('
+        '(typeof(source_key) = \'text\' AND source_key = ?) OR '
+        '((source_key IS NULL OR source_key = \'\') '
+        'AND typeof(source) = \'text\' AND source = ?)'
+        ')',
+      );
+      args.add(sourceKey);
+      args.add(sourceKey.substring('legacy:'.length));
+    } else {
+      where.write(' AND typeof(source_key) = \'text\' AND source_key = ?');
+      args.add(sourceKey);
+    }
+    where.write(
+      ' AND ($_importedIdentitySql) IS NOT NULL '
+      'AND typeof(uuid) = \'text\' AND uuid != \'\'',
+    );
+  }
+
+  static const _importedPage = 32;
+
+  static void _appendImportedNewestCursor(
+    StringBuffer where,
+    List<Object?> args,
+    ({num ts, String uuid})? cursor,
+  ) {
+    where.write(' AND $_importedFiniteTsSql');
+    if (cursor != null) {
+      where.write(' AND (ts < ? OR (ts = ? AND uuid < ?))');
+      args.addAll([cursor.ts, cursor.ts, cursor.uuid]);
+    }
+  }
+
+  static ({num ts, String uuid})? _importedCursorOf(Map<String, dynamic> row) {
+    final ts = row['ts'];
+    final uuid = row['uuid'];
+    if (ts is! num || !ts.isFinite || uuid is! String || uuid.isEmpty) {
+      return null;
+    }
+    return (ts: ts, uuid: uuid);
+  }
+
+  static Future<List<Map<String, dynamic>>> _importedNewestPage(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required ({num ts, String uuid})? cursor,
+    int? take,
+  }) {
+    final where = StringBuffer('kind = ?');
+    final args = <Object?>[kind];
+    _appendImportedSourceMatch(where, args, sourceKey);
+    _appendImportedNewestCursor(where, args, cursor);
+    return txn.query(
+      'imported_measurement',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'ts DESC, uuid DESC',
+      limit: take,
+    );
+  }
+
+  static Future<Map<String, dynamic>?> _importedNewestRow(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+  }) async {
+    ({num ts, String uuid})? cursor;
+    while (true) {
+      final rows = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: cursor,
+        take: _importedPage,
+      );
+      if (rows.isEmpty) return null;
+      for (final row in rows) {
+        if (glucoseReadingFromStored(row) != null) return row;
+      }
+      final next = _importedCursorOf(rows.last);
+      if (next == null ||
+          rows.length < _importedPage ||
+          (cursor != null &&
+              cursor.ts == next.ts &&
+              cursor.uuid == next.uuid)) {
+        return null;
+      }
+      cursor = next;
+    }
+  }
+
+  /// Newest [limit] readable rows, paging 32 at a time. Unreadable rows inside
+  /// the filled window stay in [rows]. Lookahead unread rows are returned
+  /// separately so truncation evidence is preserved without entering history.
+  static Future<
+    ({
+      List<Map<String, dynamic>> rows,
+      bool truncated,
+      List<Map<String, dynamic>> lookaheadUnread,
+    })
+  >
+  _importedNewestWindow(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required int? limit,
+  }) async {
+    if (limit == null) {
+      final rows = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: null,
+      );
+      return (
+        rows: rows,
+        truncated: false,
+        lookaheadUnread: const <Map<String, dynamic>>[],
+      );
+    }
+    final out = <Map<String, dynamic>>[];
+    var readable = 0;
+    ({num ts, String uuid})? cursor;
+    while (readable < limit) {
+      final remaining = limit - readable + 1;
+      final take = remaining > _importedPage ? remaining : _importedPage;
+      final chunk = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: cursor,
+        take: take,
+      );
+      if (chunk.isEmpty) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: const <Map<String, dynamic>>[],
+        );
+      }
+      for (final row in chunk) {
+        out.add(row);
+        if (glucoseReadingFromStored(row) != null) readable++;
+        if (readable >= limit) {
+          cursor = _importedCursorOf(row);
+          break;
+        }
+      }
+      if (readable >= limit) break;
+      final next = _importedCursorOf(chunk.last);
+      if (next == null ||
+          chunk.length < take ||
+          (cursor != null &&
+              cursor.ts == next.ts &&
+              cursor.uuid == next.uuid)) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: const <Map<String, dynamic>>[],
+        );
+      }
+      cursor = next;
+    }
+    if (cursor == null) {
+      return (
+        rows: out,
+        truncated: false,
+        lookaheadUnread: const <Map<String, dynamic>>[],
+      );
+    }
+    final lookaheadUnread = <Map<String, dynamic>>[];
+    var after = cursor;
+    while (true) {
+      final chunk = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: after,
+        take: _importedPage,
+      );
+      if (chunk.isEmpty) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: lookaheadUnread,
+        );
+      }
+      for (final row in chunk) {
+        if (glucoseReadingFromStored(row) != null) {
+          return (
+            rows: out,
+            truncated: true,
+            lookaheadUnread: lookaheadUnread,
+          );
+        }
+        lookaheadUnread.add(row);
+      }
+      final next = _importedCursorOf(chunk.last);
+      if (next == null ||
+          chunk.length < _importedPage ||
+          (after.ts == next.ts && after.uuid == next.uuid)) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: lookaheadUnread,
+        );
+      }
+      after = next;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _importedDayRows(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required int startSec,
+    required int endSec,
+  }) async {
+    final where = StringBuffer(
+      'kind = ? AND $_importedFiniteTsSql '
+      'AND ts >= ? AND ts < ?',
+    );
+    final args = <Object?>[kind, startSec, endSec];
+    _appendImportedSourceMatch(where, args, sourceKey);
+    return txn.query(
+      'imported_measurement',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'ts DESC, uuid DESC',
+    );
+  }
+
+  static Future<Map<String, dynamic>?> importedMeasurementReceipt(
+    String kind,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'imported_measurement_receipt',
+      where: 'kind = ?',
+      whereArgs: [kind],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> importedMeasurementSourceSettings(
+    String kind,
+  ) async {
+    final db = await instance;
+    return db.query(
+      'imported_measurement_source_setting',
+      where: 'kind = ?',
+      whereArgs: [kind],
+    );
+  }
+
+  static Future<void> setImportedMeasurementSourceExcluded({
+    required String kind,
+    required String sourceKey,
+    required bool excluded,
+    DateTime? now,
+  }) async {
+    final db = await instance;
+    final at = (now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+    await db.insert(
+      'imported_measurement_source_setting',
+      {
+        'kind': kind,
+        'source_key': sourceKey,
+        'excluded': excluded ? 1 : 0,
+        'updated_at': at,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
@@ -10232,6 +11037,8 @@ class LocalDb {
       // Re-readable from the health store, but only for as long as that app is
       // installed and that permission is granted — cheaper to carry.
       'imported_measurement',
+      'imported_measurement_receipt',
+      'imported_measurement_source_setting',
       // Same reasoning, and more so: a route is thousands of points that the
       // source app may have deleted since. `workout_route` is already in this
       // list above and carries the imported routes too.
@@ -10363,7 +11170,7 @@ class LocalDb {
           // orphan guard is still queued in the SAME transaction as the row it
           // guards — the invariant that matters is per-row, not per-table.
           while (page.isNotEmpty) {
-            await db.transaction((txn) async {
+            Future<void> writePage() => db.transaction((txn) async {
               // CHUNKED, for the same reason commitSyncBatch chunks: sqflite
               // serialises a whole batch's args into ONE platform message, and
               // the orphan guard below adds an op per decoded_onehz row on top.
@@ -10510,6 +11317,13 @@ class LocalDb {
               }
               await flush();
             });
+            if (t == 'imported_measurement' ||
+                t == 'imported_measurement_receipt' ||
+                t == 'imported_measurement_source_setting') {
+              await runImportedMeasurementOp(writePage);
+            } else {
+              await writePage();
+            }
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
@@ -10724,6 +11538,8 @@ class LocalDb {
       'band_backlog',
       'external_hr',
       'imported_measurement',
+      'imported_measurement_receipt',
+      'imported_measurement_source_setting',
       'imported_workout',
       'observation',
       'device',

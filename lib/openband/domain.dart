@@ -3,6 +3,7 @@ library;
 
 import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
+import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
@@ -10,6 +11,7 @@ import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
+export '../health/glucose_contract.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
 export 'sleep_plan_data.dart';
@@ -2212,4 +2214,17 @@ abstract interface class OpenBandRepository {
   Future<void> deleteLabDraw(String marker, String takenOn);
   Future<void> saveLabMarkerDef(LabMarkerDef def, {bool create = false});
   Future<void> deleteLabMarkerDef(String key);
+  /// Newest [limit] history rows for the selected source. Null [limit] is an
+  /// explicit full-source request. Series is the latest local calendar day,
+  /// independent of [limit]. Inventory counts are all-time stored rows.
+  Future<GlucoseSnapshot> readGlucose({String? sourceKey, int? limit});
+  /// Durable import result is [GlucoseImportResult.outcome] even when the
+  /// optional snapshot refresh fails. [GlucoseImportResult.refreshFailed]
+  /// means stored rows were not reread; it is not an empty history. Snapshot
+  /// refresh uses the hero history window (`limit: 1`), not a full-source scan.
+  Future<GlucoseImportResult> importGlucose({DateTime? now});
+  Future<void> setGlucoseSourceIncluded(
+    String sourceKey, {
+    required bool included,
+  });
 }

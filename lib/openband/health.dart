@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'controller.dart';
 import 'domain.dart';
 import '../ui2/profile/profile.dart' show SetRow;
+import 'glucose.dart';
 import 'labs.dart';
 import 'metric_detail.dart';
 import 'screens.dart';
@@ -164,6 +165,21 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   context,
                   repository: c.repository,
                   now: c.now,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OBCard(
+              child: SetRow(
+                LucideIcons.droplet,
+                p.muted,
+                'Glukose',
+                key: const ValueKey('glukose'),
+                onTap: () => OpenBandGlucose.push(
+                  context,
+                  repository: c.repository,
+                  now: c.now,
+                  synthetic: c.day?.synthetic == true,
                 ),
               ),
             ),

@@ -248,7 +248,7 @@ void main() {
     expect(cat.byId('broken'), isNull);
   });
 
-  test('schema 62 upgrades to 63 and repair keeps historic totals', () async {
+  test('schema 62 upgrades to 64 and repair keeps historic totals', () async {
     const name = 'custom_ex_from_62.db';
     created.add(name);
     final path = await _dbPath(name);
@@ -324,8 +324,8 @@ void main() {
       await LocalDb.close();
       LocalDb.dbName = name;
       final db = await LocalDb.instance;
-      expect(LocalDb.schemaVersion, 63);
-      expect((await db.rawQuery('PRAGMA user_version')).first.values.first, 63);
+      expect(LocalDb.schemaVersion, 64);
+      expect((await db.rawQuery('PRAGMA user_version')).first.values.first, 64);
       final cols = {
         for (final c in await db.rawQuery('PRAGMA table_info(strength_set)'))
           c['name'] as String,

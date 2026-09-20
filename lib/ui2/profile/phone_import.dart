@@ -32,14 +32,20 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
 import '../../health/health_import_state.dart';
 import '../../health/health_measurement_import.dart';
 import '../../health/health_rhr_seed.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/domain.dart';
+import '../../openband/glucose.dart';
+import '../../openband/local_repository.dart';
+import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'devices.dart' show formatDayTime;
+import 'profile.dart' show SetRow;
 
 /// The kinds SD-12 imports, in the order they are shown, with the label and the
 /// unit each is stored in.
@@ -62,7 +68,8 @@ Map<String, String> _kindLabels(BuildContext c) {
 }
 
 class PhoneImport extends StatefulWidget {
-  const PhoneImport({super.key});
+  final OpenBandRepository? repository;
+  const PhoneImport({super.key, this.repository});
 
   @override
   State<PhoneImport> createState() => _PhoneImportState();
@@ -90,6 +97,7 @@ class _PhoneImportState extends State<PhoneImport> {
     final compare = await RhrSeedImporter.compareAgainstBand();
     final latest = <String, Map<String, dynamic>>{};
     for (final (kind, _) in kImportedKindLabels) {
+      if (kind == kKindGlucose) continue;
       final rows = await LocalDb.importedMeasurements(kind, limit: 1);
       if (rows.isNotEmpty) latest[kind] = rows.first;
     }
@@ -160,28 +168,60 @@ class _PhoneImportState extends State<PhoneImport> {
 
   Future<(String, bool)> _syncMeasurements() async {
     final l = AppLocalizations.of(context);
-    final importer = ImportedMeasurementImporter();
-    if (!await importer.requestPermission()) {
-      return (
-        l?.phoneImportMeasurementsDenied(storeName) ??
-            '$storeName did not grant those readings. Nothing was read.',
-        true,
-      );
+    final outcome = await ImportedMeasurementImporter().sync();
+    switch (outcome.status) {
+      case HealthMeasurementImportStatus.authorizationDenied:
+        return (
+          l?.phoneImportMeasurementsDenied(storeName) ??
+              '$storeName did not grant those readings. Nothing was read.',
+          true,
+        );
+      case HealthMeasurementImportStatus.authorizationRequestFailed:
+        return (
+          '$storeName could not be asked for those readings. Nothing was read.',
+          true,
+        );
+      case HealthMeasurementImportStatus.readFailed:
+        return (
+          'Those readings could not be read. Nothing stored was changed.',
+          true,
+        );
+      case HealthMeasurementImportStatus.persistenceFailed:
+        return (
+          'Those readings could not be saved. Nothing stored was changed.',
+          true,
+        );
+      case HealthMeasurementImportStatus.empty:
+      case HealthMeasurementImportStatus.authorizationUnknown:
+      case HealthMeasurementImportStatus.notAttempted:
+        return (
+          l?.phoneImportNothingCameBack(storeName) ??
+              'Nothing came back. $storeName holds no readings of these kinds, '
+                  'or none inside the window it will share.',
+          false,
+        );
+      case HealthMeasurementImportStatus.partial:
+        return (
+          '${outcome.storedCount} reading'
+              '${outcome.storedCount == 1 ? '' : 's'} stored. '
+              '${outcome.invalidCount} could not be used.',
+          false,
+        );
+      case HealthMeasurementImportStatus.stored:
+        return (
+          l?.phoneImportReadingsStored(outcome.storedCount) ??
+              '${outcome.storedCount} reading'
+                  '${outcome.storedCount == 1 ? '' : 's'} stored, each with the '
+                  'app that recorded it.',
+          false,
+        );
     }
-    final n = await importer.sync();
-    return n == 0
-        ? (
-            l?.phoneImportNothingCameBack(storeName) ??
-                'Nothing came back. $storeName holds no readings of these kinds, '
-                    'or none inside the window it will share.',
-            false,
-          )
-        : (
-            l?.phoneImportReadingsStored(n) ??
-                '$n reading${n == 1 ? '' : 's'} stored, each with the app that '
-                    'recorded it.',
-            false,
-          );
+  }
+
+  void _openGlucose() {
+    final repo =
+        widget.repository ?? LocalOpenBandRepository(context.read<AppState>());
+    OpenBandGlucose.push(context, repository: repo);
   }
 
   @override
@@ -342,18 +382,27 @@ class _PhoneImportState extends State<PhoneImport> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: S.x3),
+                  SetRow(
+                    LucideIcons.droplet,
+                    C.teal,
+                    labels[kKindGlucose]!,
+                    key: const ValueKey('phone-import-glucose'),
+                    onTap: _openGlucose,
+                  ),
                   for (final (kind, _) in kImportedKindLabels)
-                    if (_latest[kind] case final row?) ...[
-                      const SizedBox(height: S.x3),
-                      MetricRow(
-                        LucideIcons.clipboardList,
-                        C.teal,
-                        labels[kind]!,
-                        _formatValue(row['value']),
-                        unit: '${row['unit'] ?? ''}',
-                        sub: _sourceLine(row),
-                      ),
-                    ],
+                    if (kind != kKindGlucose)
+                      if (_latest[kind] case final row?) ...[
+                        const SizedBox(height: S.x3),
+                        MetricRow(
+                          LucideIcons.clipboardList,
+                          C.teal,
+                          labels[kind]!,
+                          _formatValue(row['value']),
+                          unit: '${row['unit'] ?? ''}',
+                          sub: _sourceLine(row),
+                        ),
+                      ],
                   const SizedBox(height: S.x5),
                   // The two reads that MOVED, said once, so somebody who
                   // remembers them being here is not left hunting.
