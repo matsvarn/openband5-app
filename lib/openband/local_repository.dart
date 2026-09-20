@@ -836,6 +836,37 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<MealDraftSaveResult> compareAndSaveMealDraft({
+    required MealDraft? expected,
+    required MealDraft draft,
+  }) async {
+    requireMealDraftCompare(expected: expected, draft: draft);
+    final saved = await LocalDb.compareAndSaveOpenBandMealDraft(
+      row: {
+        'draft_id': draft.id,
+        'day_id': draft.day,
+        'meal': draft.meal,
+        'entries_json': jsonEncode([
+          for (final e in draft.entries) e.toJson(),
+        ]),
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      expected: expected == null
+          ? null
+          : {
+              'draft_id': expected.id,
+              'day_id': expected.day,
+              'meal': expected.meal,
+              'entries_json': jsonEncode([
+                for (final e in expected.entries) e.toJson(),
+              ]),
+              'updated_at': expected.updatedAt.millisecondsSinceEpoch,
+            },
+    );
+    return saved ? MealDraftSaveResult.saved : MealDraftSaveResult.conflict;
+  }
+
+  @override
   Future<void> discardMealDraft(String draftId) =>
       LocalDb.deleteOpenBandMealDraft(draftId);
 
@@ -1257,6 +1288,24 @@ class LocalOpenBandRepository implements OpenBandRepository {
       throw StateError('Local repository is not initialized.');
     }
     await repository.patchJournalDay(patch);
+  }
+
+  @override
+  Future<double?> adjustWater(String day, double deltaMl) async {
+    _requireDay(day);
+    if (!deltaMl.isFinite) {
+      throw ArgumentError.value(
+        deltaMl,
+        'deltaMl',
+        'Water delta must be finite.',
+      );
+    }
+    return LocalDb.applyJournalMetricDelta(
+      date: day,
+      field: 'water_ml',
+      delta: deltaMl,
+      max: kJournalFieldsByKey['water_ml']!.max,
+    );
   }
 
   @override

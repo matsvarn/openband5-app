@@ -972,6 +972,10 @@ class FoodSnapshotResult {
 /// [FoodSnapshotResult]: draft drift is [conflict], never a missing food row.
 enum MealDraftCommitResult { saved, conflict }
 
+/// Outcome of [OpenBandRepository.compareAndSaveMealDraft]. Conflict writes
+/// nothing; [saved] means the durable retained row is committed.
+enum MealDraftSaveResult { saved, conflict }
+
 /// Entries of one meal staged before an atomic save (B05). Nothing in a
 /// draft counts toward the day until [OpenBandRepository.commitMealDraft].
 class MealDraft {
@@ -1180,6 +1184,74 @@ FoodEntry foodEntryFromDraft(MealDraft draft, MealDraftEntry e) {
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   );
+}
+
+void requireMealDraftWrite(MealDraft draft) {
+  if (!isLabCalendarDay(draft.day)) {
+    throw ArgumentError.value(
+      draft.day,
+      'day',
+      'Expected a real YYYY-MM-DD day.',
+    );
+  }
+  if (draft.id.trim().isEmpty) {
+    throw ArgumentError.value(draft.id, 'id', 'Draft id is required.');
+  }
+  if (draft.meal.trim().isEmpty) {
+    throw ArgumentError.value(draft.meal, 'meal', 'Meal is required.');
+  }
+  final seen = <String>{};
+  for (final entry in draft.entries) {
+    requireFoodEntryWrite(foodEntryFromDraft(draft, entry));
+    if (!seen.add(entry.id)) {
+      throw ArgumentError.value(
+        entry.id,
+        'id',
+        'Draft entry ids must be unique.',
+      );
+    }
+  }
+}
+
+void requireMealDraftCompare({
+  required MealDraft? expected,
+  required MealDraft draft,
+}) {
+  requireMealDraftWrite(draft);
+  if (expected != null &&
+      (expected.day != draft.day || expected.meal != draft.meal)) {
+    throw ArgumentError(
+      'Draft day and meal must match the expected slot.',
+    );
+  }
+}
+
+/// Persisted draft revision: never equal or behind the row we just observed.
+int nextMealDraftRevision(int? storedRevision, int clockNow) {
+  if (storedRevision == null) return clockNow;
+  return clockNow > storedRevision ? clockNow : storedRevision + 1;
+}
+
+/// Canonical retained-draft comparison: slot identity, revision timestamp,
+/// and full entry snapshots after [MealDraftEntry.toJson] round-trip.
+/// Legacy omitted optional keys match a reread; extra unknown JSON keys are
+/// not part of the typed snapshot. Invalid JSON must throw, not save.
+bool mealDraftRevisionMatches(MealDraft expected, MealDraft observed) {
+  if (expected.id != observed.id ||
+      expected.day != observed.day ||
+      expected.meal != observed.meal ||
+      expected.updatedAt.millisecondsSinceEpoch !=
+          observed.updatedAt.millisecondsSinceEpoch ||
+      expected.entries.length != observed.entries.length) {
+    return false;
+  }
+  for (var i = 0; i < expected.entries.length; i++) {
+    if (MealDraftEntry.fromJson(expected.entries[i].toJson()) !=
+        MealDraftEntry.fromJson(observed.entries[i].toJson())) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Saved food entries of one day, grouped by meal, with per-nutrient totals
@@ -1881,6 +1953,14 @@ abstract interface class OpenBandRepository {
   Future<FoodSnapshotResult> restoreFoodEntry(FoodEntry snapshot);
   Future<MealDraft?> readMealDraft(String day, String meal);
   Future<void> saveMealDraft(MealDraft draft);
+  /// Compare-and-save the retained draft for one day+meal slot.
+  /// [expected] null means the slot must be absent. Non-null [expected] must
+  /// match the retained snapshot. [saved] means the row is committed; reread
+  /// for the persisted revision timestamp. Conflict writes nothing.
+  Future<MealDraftSaveResult> compareAndSaveMealDraft({
+    required MealDraft? expected,
+    required MealDraft draft,
+  });
   Future<void> discardMealDraft(String draftId);
   /// New inserts need a present matching retained draft. If the draft is
   /// already gone, succeeds only when every saved row already matches, with
@@ -1899,6 +1979,9 @@ abstract interface class OpenBandRepository {
   Future<void> writeJournal(String day, String key, double value);
   Future<JournalDaySnapshot> readJournalDay(String day);
   Future<void> patchJournalDay(JournalDayPatch patch);
+  /// Signed `journal_metric.water_ml` delta. Returns the committed amount
+  /// without a follow-up read; null means the field is absent.
+  Future<double?> adjustWater(String day, double deltaMl);
   Future<List<JournalFieldSpec>> listJournalFields({bool includeHidden = false});
   Future<JournalFieldSpec> createJournalField(JournalFieldSpec spec);
   Future<void> hideJournalField(String key);

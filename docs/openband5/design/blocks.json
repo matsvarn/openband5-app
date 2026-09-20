@@ -2043,7 +2043,7 @@
         "42DI-0",
         "42K7-0"
       ],
-      "notes": "Atomic retained-draft commit distinguishes save failure, conflict, missing draft and failed reload. Read failure hides unverified old rows; save failure keeps the draft visible."
+      "notes": "Atomic retained-draft commit distinguishes save failure, conflict, missing draft and failed reload. Read failure hides unverified old rows; save failure keeps the draft visible. Retained-draft CAS creation/append is available with atomic slot/full-snapshot comparison, cross-slot ID refusal and strictly advancing revisions; parent callers are the next integration unit."
     },
     {
       "name": "OBFoodUndo",

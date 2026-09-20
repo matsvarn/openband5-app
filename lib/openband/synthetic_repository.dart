@@ -1458,6 +1458,51 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<MealDraftSaveResult> compareAndSaveMealDraft({
+    required MealDraft? expected,
+    required MealDraft draft,
+  }) async {
+    requireMealDraftCompare(expected: expected, draft: draft);
+    if (scenario == SyntheticScenario.saveFailure) {
+      throw StateError('Speichern schlägt fehl.');
+    }
+    if (foodWriteBarrier != null) await foodWriteBarrier;
+    if (failFoodWrite) throw StateError('synthetic food write failure');
+    final key = '${draft.day}/${draft.meal}';
+    final stored = _mealDrafts[key];
+    if (expected == null) {
+      if (stored != null) return MealDraftSaveResult.conflict;
+    } else if (stored == null ||
+        !mealDraftRevisionMatches(expected, stored)) {
+      return MealDraftSaveResult.conflict;
+    }
+    for (final other in _mealDrafts.values) {
+      if (other.id == draft.id &&
+          (other.day != draft.day || other.meal != draft.meal)) {
+        return MealDraftSaveResult.conflict;
+      }
+    }
+    final persisted = jsonDecode(
+      jsonEncode([for (final e in draft.entries) e.toJson()]),
+    );
+    final nextRev = nextMealDraftRevision(
+      stored?.updatedAt.millisecondsSinceEpoch,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    _mealDrafts[key] = MealDraft(
+      id: draft.id,
+      day: draft.day,
+      meal: draft.meal,
+      entries: [
+        for (final e in persisted as List)
+          MealDraftEntry.fromJson(e as Map<String, dynamic>),
+      ],
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(nextRev),
+    );
+    return MealDraftSaveResult.saved;
+  }
+
+  @override
   Future<void> discardMealDraft(String draftId) async {
     _mealDrafts.removeWhere((_, d) => d.id == draftId);
   }
@@ -1809,6 +1854,47 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       if (patch.note != null) row.note = patch.note!;
       row.journalUpdatedAt = _nextJournalRev(row.journalUpdatedAt);
     }
+  }
+
+  @override
+  Future<double?> adjustWater(String day, double deltaMl) async {
+    if (!isJournalDayId(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    if (!deltaMl.isFinite) {
+      throw ArgumentError.value(
+        deltaMl,
+        'deltaMl',
+        'Water delta must be finite.',
+      );
+    }
+    if (journalPatchBarrier != null) await journalPatchBarrier;
+    if (failJournalPatch) throw StateError('synthetic journal save failure');
+    final max = kJournalFieldsByKey['water_ml']!.max;
+    final row = _journal[day];
+    final stored = row?.metrics['water_ml'];
+    if (stored == null) {
+      if (deltaMl <= 0) return null;
+      final value = deltaMl.clamp(0.0, max).toDouble();
+      final created = _journal[day] ??= _SynthJournalDay();
+      created.metrics['water_ml'] = JournalMetricValue(value);
+      created.metricUpdatedAt['water_ml'] = _nextJournalRev(0);
+      return value;
+    }
+    if (stored.value == 0 && deltaMl < 0) {
+      row!.metrics.remove('water_ml');
+      row.metricUpdatedAt.remove('water_ml');
+      return null;
+    }
+    final value = (stored.value + deltaMl).clamp(0.0, max).toDouble();
+    row!.metrics['water_ml'] = JournalMetricValue(
+      value,
+      atMinuteOfDay: stored.atMinuteOfDay,
+    );
+    row.metricUpdatedAt['water_ml'] = _nextJournalRev(
+      row.metricUpdatedAt['water_ml'] ?? 0,
+    );
+    return value;
   }
 
   int _nextJournalRev(int stored) {

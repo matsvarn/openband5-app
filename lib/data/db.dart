@@ -38,6 +38,7 @@ import 'med_store.dart';
 import 'models.dart';
 import 'nutrition_store.dart';
 import 'nutrition_targets.dart';
+import '../openband/domain.dart' show MealDraftEntry, nextMealDraftRevision;
 import 'observation.dart';
 import 'series_codec.dart';
 
@@ -2377,6 +2378,104 @@ class LocalDb {
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  /// Compare-and-save one retained meal-draft slot inside a single
+  /// transaction. [expected] null means the day+meal slot must be absent.
+  /// A non-null [expected] must match draft_id/day/meal/updated_at and the
+  /// typed entries snapshot. Cross-slot draft_id collision is conflict.
+  /// Revision is max(clockNow, stored+1) inside the transaction.
+  static Future<bool> compareAndSaveOpenBandMealDraft({
+    required Map<String, Object?> row,
+    Map<String, Object?>? expected,
+  }) async {
+    final db = await instance;
+    try {
+      await db.transaction((txn) async {
+        final dayId = row['day_id'];
+        final meal = row['meal'];
+        final rows = await txn.query(
+          'openband_meal_draft',
+          where: 'day_id = ? AND meal = ?',
+          whereArgs: [dayId, meal],
+          limit: 1,
+        );
+        int? storedRev;
+        if (expected == null) {
+          if (rows.isNotEmpty) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+        } else {
+          if (rows.isEmpty) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          final stored = rows.first;
+          if (stored['draft_id'] != expected['draft_id'] ||
+              stored['day_id'] != expected['day_id'] ||
+              stored['meal'] != expected['meal'] ||
+              stored['updated_at'] != expected['updated_at']) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (!_jsonEquals(
+            _canonicalMealDraftEntries(stored['entries_json'] as String),
+            _canonicalMealDraftEntries(expected['entries_json'] as String),
+          )) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          storedRev = (stored['updated_at'] as num).toInt();
+        }
+        final idRows = await txn.query(
+          'openband_meal_draft',
+          where: 'draft_id = ?',
+          whereArgs: [row['draft_id']],
+          limit: 1,
+        );
+        if (idRows.isNotEmpty) {
+          final other = idRows.first;
+          if (other['day_id'] != dayId || other['meal'] != meal) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+        }
+        final nextRev = nextMealDraftRevision(
+          storedRev,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        final written = Map<String, Object?>.from(row);
+        written['updated_at'] = nextRev;
+        if (rows.isEmpty) {
+          await txn.insert(
+            'openband_meal_draft',
+            written,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        } else {
+          await txn.update(
+            'openband_meal_draft',
+            {
+              'draft_id': written['draft_id'],
+              'entries_json': written['entries_json'],
+              'updated_at': nextRev,
+            },
+            where: 'day_id = ? AND meal = ?',
+            whereArgs: [dayId, meal],
+          );
+        }
+      });
+      return true;
+    } on _OpenBandFoodCasConflict {
+      return false;
+    }
+  }
+
+  static List<Object?> _canonicalMealDraftEntries(String entriesJson) {
+    final raw = jsonDecode(entriesJson);
+    if (raw is! List) {
+      throw const FormatException('Meal draft entries must be a list.');
+    }
+    return [
+      for (final e in raw)
+        MealDraftEntry.fromJson(Map<String, dynamic>.from(e as Map)).toJson(),
+    ];
   }
 
   static Future<FoodEntry?> openBandFoodEntry(String id) async {
