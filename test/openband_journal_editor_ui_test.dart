@@ -81,6 +81,7 @@ void main() {
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(scale),
             padding: const EdgeInsets.only(top: 59, bottom: 34),
+            viewPadding: const EdgeInsets.only(top: 59, bottom: 34),
             disableAnimations: true,
           ),
           child: child!,
@@ -1006,6 +1007,185 @@ void main() {
     expect((await repo.readJournalDay('2026-09-15')).metrics['mood']!.value, 5);
   });
 
+  testWidgets('saving freezes editing and pops only the editor route', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(filled: true, withCustom: true);
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
+    await tester.pump();
+    final gate = Completer<void>();
+    repo.journalPatchBarrier = gate.future;
+    await tester.tap(find.byKey(const ValueKey('journal-save')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.descendant(
+              of: find.byKey(const ValueKey('journal-save')),
+              matching: find.byType(FilledButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.ensureVisible(find.text('Wasser'));
+    await tester.tap(find.text('Wasser'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('journal-value-sheet')), findsNothing);
+    await tester.ensureVisible(find.text('Eigene Felder'));
+    await tester.tap(find.text('Eigene Felder'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.text('Ausblenden'), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('journal-note')));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('journal-note')))
+          .enabled,
+      isFalse,
+    );
+    await tester.tap(
+      find.bySemanticsLabel('Koffein nach 14 Uhr: Nein'),
+      warnIfMissed: false,
+    );
+    await tester.pump();
+    gate.complete();
+    repo.journalPatchBarrier = null;
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandJournalEditor), findsNothing);
+    expect(find.byKey(const ValueKey('journal-value-sheet')), findsNothing);
+    expect((await repo.readJournalDay('2026-09-15')).metrics['mood']!.value, 5);
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['caffeine_late']!.value,
+      1,
+    );
+  });
+
+  testWidgets('conflict discard keeps draft when reload fails', (tester) async {
+    repo.seedJournalEditor(filled: true);
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
+    await tester.pump();
+    final other = await repo.readJournalDay('2026-09-15');
+    await repo.patchJournalDay(
+      JournalDayPatch.fromBase(
+        other,
+        metrics: const {'mood': JournalMetricValue(2)},
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('journal-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Eintrag wurde inzwischen geändert.'), findsOneWidget);
+    await tester.tap(find.text('Neu laden'));
+    await tester.pumpAndSettle();
+    repo.failJournalRead = true;
+    await tester.tap(find.byKey(const ValueKey('ob-confirm-yes')));
+    await tester.pumpAndSettle();
+    expect(find.text('Laden fehlgeschlagen'), findsOneWidget);
+    expect(find.text('Eintrag wurde inzwischen geändert.'), findsOneWidget);
+    expect(find.text('Neu laden'), findsOneWidget);
+    expect(find.bySemanticsLabel('Stimmung Sehr gut'), findsOneWidget);
+    repo.failJournalRead = false;
+    expect((await repo.readJournalDay('2026-09-15')).metrics['mood']!.value, 2);
+    await tester.tap(find.text('Neu laden'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ob-confirm-yes')));
+    await tester.pumpAndSettle();
+    expect(find.text('Laden fehlgeschlagen'), findsNothing);
+    expect(find.text('Eintrag wurde inzwischen geändert.'), findsNothing);
+    expect(find.byKey(const ValueKey('journal-save')), findsOneWidget);
+  });
+
+  testWidgets('pending conflict reload freezes edits; failed read re-enables', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(filled: true, withCustom: true);
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
+    await tester.pump();
+    final other = await repo.readJournalDay('2026-09-15');
+    await repo.patchJournalDay(
+      JournalDayPatch.fromBase(
+        other,
+        metrics: const {'mood': JournalMetricValue(2)},
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('journal-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Neu laden'));
+    await tester.pumpAndSettle();
+    final gate = Completer<void>();
+    repo.journalReadBarrier = gate.future;
+    await tester.tap(find.byKey(const ValueKey('ob-confirm-yes')));
+    await tester.pump();
+    final reload = find.widgetWithText(FilledButton, 'Neu laden');
+    expect(tester.widget<FilledButton>(reload).onPressed, isNull);
+    await tester.ensureVisible(find.text('Wasser'));
+    await tester.tap(find.text('Wasser'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('journal-value-sheet')), findsNothing);
+    await tester.ensureVisible(find.text('Eigene Felder'));
+    await tester.tap(find.text('Eigene Felder'), warnIfMissed: false);
+    await tester.pump();
+    expect(find.text('Ausblenden'), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('journal-note')));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('journal-note')))
+          .enabled,
+      isFalse,
+    );
+    await tester.tap(
+      find.bySemanticsLabel('Koffein nach 14 Uhr: Nein'),
+      warnIfMissed: false,
+    );
+    await tester.pump();
+    repo.failJournalRead = true;
+    gate.complete();
+    repo.journalReadBarrier = null;
+    await tester.pumpAndSettle();
+    expect(find.text('Laden fehlgeschlagen'), findsOneWidget);
+    expect(find.text('Eintrag wurde inzwischen geändert.'), findsOneWidget);
+    expect(find.bySemanticsLabel('Stimmung Sehr gut'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('journal-note')))
+          .enabled,
+      isTrue,
+    );
+    expect(tester.widget<FilledButton>(reload).onPressed, isNotNull);
+  });
+
+  testWidgets('journal amount sheet stays a local draft', (tester) async {
+    repo.seedJournalEditor(filled: true);
+    await mount(tester);
+    await tester.ensureVisible(find.text('Wasser'));
+    await tester.tap(find.text('Wasser'));
+    await tester.pumpAndSettle();
+    final sheet = find.byKey(const ValueKey('journal-value-sheet'));
+    expect(
+      find.descendant(of: sheet, matching: find.text('Übernehmen')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: sheet, matching: find.text('Speichern')),
+      findsNothing,
+    );
+    await tester.enterText(find.byKey(const ValueKey('journal-value')), '900');
+    await tester.tap(find.text('Übernehmen'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['water_ml']!.value,
+      750,
+    );
+    await tester.tap(find.byKey(const ValueKey('journal-save')));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['water_ml']!.value,
+      900,
+    );
+  });
+
   testWidgets('info discloses day and time, not implementation', (
     tester,
   ) async {
@@ -1096,4 +1276,119 @@ void main() {
     await tester.pumpAndSettle();
     expect(opened, '2026-09-15');
   });
+
+  testWidgets('amount-only value sheet omits Menge; time fields keep it', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(filled: true);
+    await mount(tester);
+    await tester.ensureVisible(find.text('Wasser'));
+    await tester.tap(find.text('Wasser'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('journal-value-sheet')), findsOneWidget);
+    expect(find.text('Menge'), findsNothing);
+    expect(find.text('Zuletzt'), findsNothing);
+    expect(find.text('Übernehmen'), findsOneWidget);
+    await tester.tap(find.byTooltip('Schließen'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Koffein').last);
+    await tester.tap(find.text('Koffein').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Menge'), findsOneWidget);
+    expect(find.text('Zuletzt'), findsOneWidget);
+    expect(find.text('Übernehmen'), findsOneWidget);
+  });
+
+  testWidgets('hasTime value fields sit side by side at normal size', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(filled: true);
+    await mount(tester);
+    await tester.ensureVisible(find.text('Koffein').last);
+    await tester.tap(find.text('Koffein').last);
+    await tester.pumpAndSettle();
+    final amount = tester.getRect(
+      find.byKey(const ValueKey('journal-value-amount')),
+    );
+    final time = tester.getRect(
+      find.byKey(const ValueKey('journal-value-time')),
+    );
+    expect(amount.width, closeTo(time.width, 1));
+    expect(time.left - amount.right, closeTo(12, 1));
+    expect(amount.top, closeTo(time.top, 1));
+    expect(find.text('10:30').hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('journal-value')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byKey(const ValueKey('journal-value-sheet')),
+      matchesGoldenFile('openband_goldens/journal-value-sheet-3q5h.png'),
+    );
+  });
+
+  testWidgets('hasTime value fields stack at 2x without clipping', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(filled: true);
+    await mount(tester, scale: 2, width: 375, height: 812);
+    await tester.ensureVisible(find.text('Koffein').last);
+    await tester.tap(find.text('Koffein').last);
+    await tester.pumpAndSettle();
+    final amount = tester.getRect(
+      find.byKey(const ValueKey('journal-value-amount')),
+    );
+    final time = tester.getRect(
+      find.byKey(const ValueKey('journal-value-time')),
+    );
+    expect(time.top, greaterThan(amount.bottom - 0.5));
+    expect(amount.left, closeTo(time.left, 1));
+    expect(amount.width, closeTo(time.width, 1));
+    expect(find.text('Menge').hitTestable(), findsOneWidget);
+    expect(find.text('Zuletzt').hitTestable(), findsOneWidget);
+    expect(find.text('10:30').hitTestable(), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('journal-value')).hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byKey(const ValueKey('journal-value-sheet')),
+      matchesGoldenFile('openband_goldens/journal-value-sheet-3q5h-2x.png'),
+    );
+  });
+
+  testWidgets(
+    'public value sheet keeps header and apply inside 375 2x keyboard',
+    (tester) async {
+      repo.seedJournalEditor(filled: true);
+      await mount(tester, scale: 2, width: 375, height: 812);
+      await tester.ensureVisible(find.text('Wasser'));
+      await tester.tap(find.text('Wasser'));
+      await tester.pumpAndSettle();
+      final sheet = find.byKey(const ValueKey('journal-value-sheet'));
+      expect(sheet, findsOneWidget);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 308);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      const safeTop = 59.0;
+      const visibleBottom = 812.0 - 308.0;
+      expect(tester.getRect(sheet).top, greaterThanOrEqualTo(safeTop));
+      for (final target in [
+        find.descendant(of: sheet, matching: find.text('Wasser')),
+        find.descendant(of: sheet, matching: find.byTooltip('Schließen')),
+        find.widgetWithText(FilledButton, 'Übernehmen'),
+      ]) {
+        expect(target.hitTestable(), findsOneWidget);
+        final rect = tester.getRect(target);
+        expect(rect.top, greaterThanOrEqualTo(safeTop));
+        expect(rect.bottom, lessThanOrEqualTo(visibleBottom + 0.5));
+      }
+      expect(
+        find.byKey(const ValueKey('journal-value')).hitTestable(),
+        findsOneWidget,
+      );
+    },
+  );
 }

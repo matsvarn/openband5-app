@@ -39,6 +39,9 @@ import '../../data/nutrition_store.dart';
 import '../../ai/nightly_sweep.dart' show SweepFinding;
 import '../../compute/findings.dart';
 import '../../models/metric.dart';
+import '../../openband/domain.dart' as ob;
+import '../../openband/nutrition.dart';
+import '../../openband/theme.dart';
 import '../activity/catalogue.dart';
 import '../activity/live.dart';
 import '../activity/picker.dart' show ActivityPicker, ActivityRow;
@@ -487,17 +490,51 @@ Map<String, Widget> _nutritionAndWellnessCases() {
       carbsG: 62,
       fatG: 9,
       confirmed: true);
+  const meals = ob.DayMeals(
+    day: '2026-08-14',
+    entries: [
+      ob.MealEntry(
+        id: 'b',
+        meal: 'breakfast',
+        label: 'Porridge and berries',
+        kcal: 420,
+        proteinG: 14,
+        carbsG: 62,
+        fatG: 9,
+        confirmed: true,
+      ),
+      ob.MealEntry(id: 'a', meal: 'dinner', label: 'Dinner'),
+    ],
+    kcal: ob.NutrientSum(420, 1, 1),
+    proteinG: ob.NutrientSum(14, 1, 1),
+    carbsG: ob.NutrientSum(62, 1, 1),
+    fatG: ob.NutrientSum(9, 1, 1),
+  );
+  Widget alpin(Widget child) => Theme(
+        data: openBandTheme(Brightness.light),
+        child: child,
+      );
   return {
-    // A day that summed past an unknown: the number is a FLOOR and says so.
-    'day_energy_floor': DayEnergyCard(
-      day: rollupDay('2026-08-14', const [known, bare], today: '2026-08-15'),
-      burned: const Metric(
-          value: 2350, unit: 'kcal', confidence: .6, tier: MetricTier.estimate),
+    'day_energy_floor': alpin(const OBMacroBars(meals: meals)),
+    'meal_row': alpin(
+      const Column(
+        children: [
+          OBMealSection(
+            meal: 'breakfast',
+            label: 'Frühstück',
+            entries: [
+              ob.MealEntry(
+                id: 'b',
+                meal: 'breakfast',
+                label: 'Porridge and berries',
+                kcal: 420,
+              ),
+            ],
+          ),
+          OBMealSection(meal: 'dinner', label: 'Abend', entries: []),
+        ],
+      ),
     ),
-    'meal_row': const Column(children: [
-      MealRow(meal: 'breakfast', entries: [known]),
-      MealRow(meal: 'dinner', entries: []),
-    ]),
     'food_row': const Surface(
         pad: EdgeInsets.symmetric(horizontal: S.x4),
         child: Column(children: [

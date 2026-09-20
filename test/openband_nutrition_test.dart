@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/nutrition.dart';
+import 'package:openstrap_edge/openband/nutrition_browser.dart' hide obMeals;
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -90,15 +91,79 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('day meals: lower-bound totals and unknown entries', (
+  Finder mealSection(String label) => find.ancestor(
+    of: find.text(label),
+    matching: find.byType(OBMealSection),
+  );
+
+  Future<void> restoreTop(WidgetTester tester) async {
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .jumpTo(0);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> expectEmptyMeal(WidgetTester tester, String label) async {
+    final title = find.text(label);
+    await tester.scrollUntilVisible(
+      title,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final section = mealSection(label);
+    expect(
+      find.descendant(of: section, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: section, matching: find.text('Teilweise')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: section, matching: find.byType(OpenBandFoodEnergyRow)),
+      findsNothing,
+    );
+  }
+
+  testWidgets('day meals: partial totals, unknown entries, and empty meals', (
     tester,
   ) async {
     await mount(tester);
     expect(find.text('620'), findsOneWidget);
     expect(find.text('1 Eintrag unvollständig'), findsOneWidget);
-    expect(find.text('mind. 380 kcal'), findsOneWidget);
-    expect(find.text('240 kcal'), findsOneWidget);
-    expect(find.text('Noch nichts erfasst'), findsNWidgets(2));
+    expect(find.textContaining('mind.'), findsNothing);
+    expect(find.text('380 kcal'), findsNWidgets(2));
+    expect(find.text('240 kcal'), findsNWidgets(2));
+    expect(find.text('Noch nichts erfasst'), findsNothing);
+
+    final breakfast = mealSection('Frühstück');
+    expect(
+      find.descendant(of: breakfast, matching: find.text('Teilweise')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: breakfast, matching: find.text('380 kcal')),
+      findsNWidgets(2),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('food-row-m2')),
+        matching: find.text('—'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: mealSection('Mittag'), matching: find.text('240 kcal')),
+      findsNWidgets(2),
+    );
+    expect(find.text('Teilweise'), findsOneWidget);
+
+    await expectEmptyMeal(tester, 'Abend');
+    await expectEmptyMeal(tester, 'Zwischendurch');
+    await restoreTop(tester);
+
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),

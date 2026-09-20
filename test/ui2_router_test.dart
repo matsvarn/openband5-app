@@ -21,8 +21,10 @@ import 'package:provider/provider.dart';
 
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/models.dart' show DeviceState;
 import 'package:openstrap_edge/notify/tap_router.dart';
+import 'package:openstrap_edge/openband/nutrition_route.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
 import 'package:openstrap_edge/import/backup_crypto.dart';
@@ -32,7 +34,6 @@ import 'package:openstrap_edge/ui2/onboarding/welcome.dart'
     show isEncryptedBackup;
 import 'package:openstrap_edge/ui2/screens/log_workout.dart'
     show WorkoutSuggestionScreen;
-import 'package:openstrap_edge/ui2/screens/nutrition_screen.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -243,7 +244,14 @@ void main() {
       // The water reminder lands on Nutrition now — the water tile there
       // steps and clears in place, and the single-field screen it used to
       // open was reachable from nowhere else.
-      expect(screenForRoute(kRouteWater), isA<NutritionScreen>());
+      final beforeWaterRoute = todayLabel();
+      final waterRoute = screenForRoute(kRouteWater);
+      final afterWaterRoute = todayLabel();
+      expect(waterRoute, isA<OpenBandNutritionRoute>());
+      expect(
+        (waterRoute! as OpenBandNutritionRoute).date,
+        anyOf(beforeWaterRoute, afterWaterRoute),
+      );
       // Payload routes that predate the five-tab shell, and that
       // `resolveTapRoute` does not carry yet — the destinations exist here so
       // they stop landing on Home the moment it does.

@@ -104,6 +104,7 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     FutureOr<void> Function(String meal)? onAdd,
+    int revision = 0,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(393, 852);
@@ -122,7 +123,11 @@ void main() {
           ),
           child: child!,
         ),
-        home: OpenBandNutrition(controller: controller, onAdd: onAdd),
+        home: OpenBandNutrition(
+          controller: controller,
+          onAdd: onAdd,
+          revision: revision,
+        ),
       ),
     );
   }
@@ -171,7 +176,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Haferflocken mit Milch'), findsOneWidget);
     expect(find.text('620'), findsOneWidget);
-    expect(find.text('Noch nichts erfasst'), findsNWidgets(2));
+    expect(find.text('Noch nichts erfasst'), findsNothing);
+    expect(find.textContaining('Teilweise'), findsOneWidget);
     expect(find.text('Kein Ziel'), findsNothing);
     expect(find.text('Ziel 2.000'), findsNothing);
     expect(find.text('Ziel —'), findsOneWidget);
@@ -205,7 +211,7 @@ void main() {
     expect(find.text('Haferflocken mit Milch'), findsNothing);
     expect(find.text('Kein Ziel'), findsNothing);
     expect(find.text('Ziel —'), findsNothing);
-    expect(find.text('Erneut'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Erneut'), findsOneWidget);
   });
 
   testWidgets('late prior-day target read cannot replace the selected day', (
@@ -337,9 +343,79 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Reis'), findsNothing);
-    await tester.tap(find.byTooltip('Abend ergänzen'));
+    final dinnerAdd = find.byTooltip('Abend ergänzen');
+    await tester.scrollUntilVisible(
+      dinnerAdd,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final list = find.byType(ListView).first;
+    final item = tester.getRect(dinnerAdd);
+    final view = tester.getRect(list);
+    if (item.bottom > view.bottom - 24) {
+      await tester.drag(list, Offset(0, view.bottom - 24 - item.bottom));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(dinnerAdd);
     await tester.pumpAndSettle();
     expect(find.text('Reis'), findsOneWidget);
-    expect(find.text('300 kcal'), findsOneWidget);
+    expect(find.text('300 kcal'), findsWidgets);
+  });
+
+  testWidgets('same-day revision rereads targets without a controller notify', (
+    tester,
+  ) async {
+    await repo.seedNutritionGoals(withFuture: false);
+    var revision = 0;
+    late StateSetter setHost;
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 59, bottom: 34),
+            disableAnimations: true,
+          ),
+          child: child!,
+        ),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHost = setState;
+            return OpenBandNutrition(
+              controller: controller,
+              revision: revision,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ziel 2.000'), findsOneWidget);
+    final reads = repo.targetReads.length;
+    controller.updateBand(controller.band);
+    await tester.pump();
+    expect(repo.targetReads.length, reads);
+
+    await repo.saveNutritionTargets(
+      '2026-09-15',
+      const NutritionTargetValues(energyKcal: 1800, proteinG: 110),
+      expectedRevision: 1,
+    );
+    setHost(() => revision += 1);
+    await tester.pumpAndSettle();
+    expect(find.text('Ziel 1.800'), findsOneWidget);
+    expect(find.text('26 / 110 g'), findsOneWidget);
+    expect(find.text('Ziel 2.000'), findsNothing);
+    expect(repo.targetReads.length, greaterThan(reads));
   });
 }

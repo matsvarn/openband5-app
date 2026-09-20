@@ -5,7 +5,7 @@ import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
-import 'openband/nutrition.dart';
+import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/screens.dart';
 import 'openband/session.dart';
@@ -47,7 +47,7 @@ import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
 import 'ui2/screens/log_workout.dart';
-import 'ui2/screens/nutrition_screen.dart';
+import 'ui2/screens/log_food.dart';
 import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
@@ -430,6 +430,9 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 ///
 /// `/ai/*` used to be in that list too. It now lands on the briefing itself,
 /// which also carries the exact snapshot that was sent to produce it.
+Future<void> _nutritionBarcode(BuildContext context, String day, String meal) =>
+    LogFoodSheet.show(context, date: day, meal: meal);
+
 Widget? screenForRoute(String route) => switch (routePath(route)) {
   kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
   kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
@@ -440,7 +443,10 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
   // a whole screen for this one field; it was reachable ONLY from here,
   // which is how the tile that everybody actually used stayed add-only for
   // so long — the thing that could clear a value was behind a notification.
-  kRouteWater => const NutritionScreen(),
+  kRouteWater => OpenBandNutritionRoute(
+    date: todayLabel(),
+    onBarcode: _nutritionBarcode,
+  ),
   // The detected bout, with the three answers to it: log it, adjust the
   // times first, or say it never happened.
   // The medication reminder pushes NOTHING, and still lands on the
@@ -662,9 +668,13 @@ class _ShellState extends State<_Shell> {
             c,
           ).push(MaterialPageRoute<void>(builder: (_) => const ProfileHome())),
           onJournal: () => _go(ShellDomain.wellness),
-          onNutrition: () => _shellKey.currentState?.open(
-            ShellDomain.wellness,
-            const NutritionScreen(),
+          onNutrition: () => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandNutritionRoute(
+                controller: _day,
+                onBarcode: _nutritionBarcode,
+              ),
+            ),
           ),
           onTraining: () => _go(ShellDomain.workout),
           onSync: () => _app!.openSession(),
@@ -708,9 +718,9 @@ class _ShellState extends State<_Shell> {
           },
           onNutrition: () => Navigator.of(c).push(
             MaterialPageRoute<void>(
-              builder: (ctx) => OpenBandNutrition(
+              builder: (_) => OpenBandNutritionRoute(
                 controller: _day,
-                onAdd: (meal) => _addFood(ctx, meal),
+                onBarcode: _nutritionBarcode,
               ),
             ),
           ),
@@ -758,7 +768,10 @@ class _ShellState extends State<_Shell> {
         await app.startWorkout(type: 'running');
       } catch (_) {
         if (c.mounted) {
-          showRetryableActivityStart(c, () => unawaited(_startActivity(c, type)));
+          showRetryableActivityStart(
+            c,
+            () => unawaited(_startActivity(c, type)),
+          );
         }
         return;
       }
@@ -807,35 +820,6 @@ class _ShellState extends State<_Shell> {
       ),
     );
     feed.dispose();
-  }
-
-  Future<void> _addFood(BuildContext ctx, String meal) async {
-    final repo = _day.repository;
-    final day = _day.selectedDay;
-    final existing = await repo.readMealDraft(day, meal);
-    if (!ctx.mounted) return;
-    final draft = await showModalBottomSheet<MealDraft>(
-      context: ctx,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => OBFoodSearchSheet(
-        repository: repo,
-        draft:
-            existing ??
-            MealDraft(
-              id: 'draft-$day-$meal',
-              day: day,
-              meal: meal,
-              entries: const [],
-              updatedAt: DateTime.now(),
-            ),
-      ),
-    );
-    if (draft == null || !ctx.mounted) return;
-    await repo.saveMealDraft(draft);
-    if (!ctx.mounted) return;
-    final saved = await showOpenBandMealDraft(ctx, repo, draft);
-    if (saved == true) _day.refresh();
   }
 }
 
@@ -924,11 +908,7 @@ class _LiveSessionBar extends StatelessWidget {
       activityByName(LiveDraft.current?.activityKey ?? app.activeWorkout?.type);
 
   Future<void> _resume(BuildContext c) async {
-    await resumeLiveSession(
-      c,
-      repository: repository,
-      onFinished: onFinished,
-    );
+    await resumeLiveSession(c, repository: repository, onFinished: onFinished);
   }
 
   @override
@@ -1034,9 +1014,7 @@ Future<void> resumeLiveSession(
 }) async {
   final app = context.read<AppState>();
   final draft = LiveDraft.current;
-  final a = activityByName(
-    draft?.activityKey ?? app.activeWorkout?.type,
-  );
+  final a = activityByName(draft?.activityKey ?? app.activeWorkout?.type);
   if (a != null && a.track != Track.sets) {
     final page = await _activityLive(app, a, draft);
     if (!context.mounted) return;
@@ -1092,9 +1070,9 @@ Future<Widget> _activityLive(AppState app, Activity a, LiveDraft? draft) async {
 
 Future<void> _pushResumedLive(BuildContext context, Widget page) async {
   if (!context.mounted) return;
-  await Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => page),
-  );
+  await Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => page));
 }
 
 void showRetryableNotice(

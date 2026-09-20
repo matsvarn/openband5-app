@@ -9,7 +9,7 @@ import 'openband/health.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/domain.dart';
-import 'openband/nutrition.dart';
+import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/strength_live.dart';
 import 'openband/template_editor.dart';
@@ -174,6 +174,14 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ShellDomain.home => OpenBandOverview(
         controller: controller,
         onProfile: () => _options(context),
+        onNutrition: () => Navigator.of(c).push(
+          MaterialPageRoute<void>(
+            builder: (_) => OpenBandNutritionRoute(
+              controller: controller,
+              onBarcode: _syntheticBarcode,
+            ),
+          ),
+        ),
         onSync: () {
           widget.repository.scenario = SyntheticScenario.complete;
           controller.updateBand(widget.repository.band);
@@ -258,9 +266,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         },
         onNutrition: () => Navigator.of(c).push(
           MaterialPageRoute<void>(
-            builder: (ctx) => OpenBandNutrition(
+            builder: (_) => OpenBandNutritionRoute(
               controller: controller,
-              onAdd: (meal) => _addFood(ctx, meal),
+              onBarcode: _syntheticBarcode,
             ),
           ),
         ),
@@ -287,32 +295,19 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     controller.refresh();
   }
 
-  Future<void> _addFood(BuildContext ctx, String meal) async {
-    final day = controller.selectedDay;
-    final existing = await widget.repository.readMealDraft(day, meal);
+  Future<void> _syntheticBarcode(
+    BuildContext ctx,
+    String day,
+    String meal,
+  ) async {
     if (!ctx.mounted) return;
-    final draft = await showModalBottomSheet<MealDraft>(
-      context: ctx,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => OBFoodSearchSheet(
-        repository: widget.repository,
-        draft:
-            existing ??
-            MealDraft(
-              id: 'draft-$day-$meal',
-              day: day,
-              meal: meal,
-              entries: const [],
-              updatedAt: DateTime.now(),
-            ),
+    final messenger = ScaffoldMessenger.maybeOf(ctx);
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text('Galerie: Barcode-Scan nicht verfügbar · $meal · $day'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
-    if (draft == null || !ctx.mounted) return;
-    await widget.repository.saveMealDraft(draft);
-    if (!ctx.mounted) return;
-    final saved = await showOpenBandMealDraft(ctx, widget.repository, draft);
-    if (saved == true) controller.refresh();
   }
 
   Future<void> _options(BuildContext context) => showModalBottomSheet<void>(
@@ -361,9 +356,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               title: Text(entry.$1),
               onTap: () {
                 Navigator.pop(c);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => entry.$2),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
               },
             ),
           ),
@@ -373,9 +368,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               title: Text(entry.$1),
               onTap: () {
                 Navigator.pop(c);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => entry.$2),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
               },
             ),
           ),
@@ -757,17 +752,11 @@ List<(String, Widget)> _unitsGalleryStates() {
   return [
     (
       'Einheiten · Metrisch',
-      const UnitsSettingsView(
-        selected: UnitSystem.metric,
-        synthetic: true,
-      ),
+      const UnitsSettingsView(selected: UnitSystem.metric, synthetic: true),
     ),
     (
       'Einheiten · Imperial',
-      const UnitsSettingsView(
-        selected: UnitSystem.imperial,
-        synthetic: true,
-      ),
+      const UnitsSettingsView(selected: UnitSystem.imperial, synthetic: true),
     ),
     (
       'Einheiten · Dunkel',
@@ -848,10 +837,8 @@ class _UnitsGallerySessionState extends State<UnitsGallerySession> {
   }
 
   @override
-  Widget build(BuildContext context) => UnitsSettings(
-    controller: units,
-    synthetic: true,
-  );
+  Widget build(BuildContext context) =>
+      UnitsSettings(controller: units, synthetic: true);
 }
 
 /// Isolated host so gallery retry uses [ThemeController] and the page

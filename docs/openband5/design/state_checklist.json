@@ -1409,6 +1409,70 @@
         "nativeReview": "Synthetic native nutrition-entry-pro-v4-20260920 (139.71s) and nutrition-entry-mini-v5-20260920 (189.56s):53 PNGs each, every PNG inspected; exact run/frames/index IDs. Light/dark, missing/unknown/zero, conflicts, save/read failures, Undo, keyboard and2x. Whole nutrition-day backdrop remains a separate migration.",
         "paperNode": "40R7-0",
         "note": "Single saved-food nutrients implemented. Archive H03 aggregates multiple draft foods and coverage; this remains open."
+      },
+      "Ernährung · Tagesübersicht": {
+        "status": "implemented",
+        "paperNode": "433T-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Stored day meals, dated target, water, food detail and retained draft are reachable through one Alpin route. Partial totals stay labelled; no minimum prefix or invented target.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Ernährung · Dunkel": {
+        "status": "implemented",
+        "paperNode": "43ID-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Shared dark tokens across day, week, recent foods, water and failure recovery. Narrow and2x layouts inspected.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Ernährung · vor erstem Wert": {
+        "status": "implemented",
+        "paperNode": "43CD-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Unknown water and nutrients remain absent; stored zero is distinct. Empty meals do not manufacture progress.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Ernährung · Wochenübersicht mit Lücken": {
+        "status": "implemented",
+        "paperNode": "3ZYY-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Saved trailing seven-day window. Empty day, unknown energy, stored zero and partial totals remain distinct. Positive bars have real height and source ratios; historical day returns to real Journal.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Wasser · overview": {
+        "status": "implemented",
+        "paperNode": "433T-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Shared card reads journal water with explicit unknown/zero/known states; revision refresh keeps it current.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Wasser · draft": {
+        "status": "implemented",
+        "paperNode": "43DL-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Shared amount editor preserves saved precision and unsaved edits; conflict requires explicit reload; controls lock during write/reload.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Wasser · saved": {
+        "status": "implemented",
+        "paperNode": "433T-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Atomic delta/manual write followed by read-back. Failed refresh retries read only and never replays mutation.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
+      },
+      "Wasser · empty": {
+        "status": "implemented",
+        "paperNode": "43CD-0",
+        "source": "lib/openband/nutrition.dart; lib/openband/nutrition_browser.dart; lib/openband/nutrition_route.dart; lib/openband/water.dart; lib/openband/journal_value_editor.dart",
+        "evidence": "test/openband_nutrition_parent_test.dart; test/openband_nutrition_browser_test.dart; test/openband_nutrition_route_test.dart; test/openband_water_ui_test.dart; integration_test/openband_review_test.dart. Required949tests/analyze/manifest pass2026-09-20.",
+        "note": "Unknown remains —; minus is disabled until a stored value exists. Explicit zero remains0; removal restores unknown.",
+        "nativeReview": "build/ui-review/nutrition-parent-pro-final-20260920 (108.4s) and build/ui-review/nutrition-parent-mini-v2-20260920 (145.97s),38PNGs each, everyPNG inspected; run/frames/index match. Synthetic simulator proof only."
       }
     },
     "A01 · Übersicht": {

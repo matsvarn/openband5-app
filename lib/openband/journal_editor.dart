@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -15,9 +14,9 @@ import 'confirm_sheet.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
 import 'journal_fields.dart';
+import 'journal_value_editor.dart';
 import 'local_repository.dart';
 import 'theme.dart';
-import 'time_picker.dart';
 
 const _tagLabels = <String, String>{
   'caffeine': 'Koffein',
@@ -86,9 +85,12 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   bool _loading = true;
   bool _loadError = false;
   bool _saving = false;
+  bool _reloading = false;
   bool _conflict = false;
   String? _saveError;
   String? _fieldsError;
+
+  bool get _busy => _saving || _reloading;
 
   bool get _dirty {
     final base = _base;
@@ -121,10 +123,8 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
 
   Future<void> _load({bool discardDraft = false}) async {
     setState(() {
-      _loading = true;
-      _loadError = false;
-      _conflict = false;
-      _saveError = null;
+      _loading = _base == null;
+      if (_base == null) _loadError = false;
     });
     try {
       final snap = await widget.repository.readJournalDay(day);
@@ -140,13 +140,16 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
           _note.text = snap.note;
         }
         _loading = false;
+        _loadError = false;
+        _conflict = false;
+        _saveError = null;
       });
       unawaited(_refreshDefs());
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        if (_base == null) _loadError = true;
+        _loadError = true;
       });
     }
   }
@@ -224,6 +227,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   }
 
   void _setMetric(String key, JournalMetricValue? value) {
+    if (_busy) return;
     setState(() {
       if (value == null) {
         _values.remove(key);
@@ -236,7 +240,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   }
 
   Future<void> _leave() async {
-    if (_saving) return;
+    if (_busy) return;
     if (!_dirty) {
       Navigator.pop(context);
       return;
@@ -250,12 +254,14 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
 
   Future<void> _save() async {
     final base = _base;
-    if (base == null || _saving) return;
+    if (base == null || _busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _saving = true;
       _saveError = null;
       _conflict = false;
     });
+    var popped = false;
     try {
       final metrics = <String, JournalMetricValue?>{};
       for (final k in {...base.metrics.keys, ..._values.keys}) {
@@ -276,24 +282,24 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
           ),
         );
       }
-      if (mounted) Navigator.pop(context, true);
+      if (!mounted) return;
+      if (ModalRoute.of(context)?.isCurrent == true) {
+        Navigator.pop(context, true);
+        popped = true;
+      }
     } on JournalConflict {
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _conflict = true;
-      });
+      setState(() => _conflict = true);
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _saveError = 'Speichern fehlgeschlagen';
-      });
+      setState(() => _saveError = 'Speichern fehlgeschlagen');
+    } finally {
+      if (!popped && mounted) setState(() => _saving = false);
     }
   }
 
   Future<void> _reloadConflict() async {
-    if (_saving) return;
+    if (_busy) return;
     if (_dirty) {
       final discard = await showOpenBandConfirmSheet(
         context: context,
@@ -302,10 +308,17 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
       );
       if (discard != true || !mounted) return;
     }
-    await _load(discardDraft: true);
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _reloading = true);
+    try {
+      await _load(discardDraft: true);
+    } finally {
+      if (mounted) setState(() => _reloading = false);
+    }
   }
 
   Future<void> _openFields() async {
+    if (_busy) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) =>
@@ -317,6 +330,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   }
 
   Future<void> _openRating(JournalFieldSpec spec) async {
+    if (_busy) return;
     final current = _values[spec.key];
     final result = await showModalBottomSheet<_SheetResult>(
       context: context,
@@ -329,18 +343,19 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   }
 
   Future<void> _openValue(JournalFieldSpec spec) async {
+    if (_busy) return;
     final current = _values[spec.key];
-    final result = await showModalBottomSheet<_SheetResult>(
+    final result = await showOpenBandJournalValueSheet(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => _ValueSheet(spec: spec, metric: current),
+      spec: spec,
+      metric: current,
     );
     if (!mounted || result == null) return;
     _setMetric(spec.key, result.value);
   }
 
   Future<void> _openTags() async {
+    if (_busy) return;
     final result = await showModalBottomSheet<List<String>>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -359,7 +374,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     return PopScope(
-      canPop: !_dirty && !_saving,
+      canPop: !_dirty && !_busy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _leave();
       },
@@ -373,23 +388,25 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
                 child: OBPageHeader(
                   title: 'Tagesjournal',
                   subtitle: obDate(day),
-                  onBack: _saving
+                  onBack: _busy
                       ? null
                       : () {
                           _leave();
                         },
-                  onInfo: () => showOpenBandJournalInfo(
-                    context,
-                    title: 'Tagesjournal',
-                    body:
-                        'Felder gelten für diesen Kalendertag. Eine Menge behält die letzte Uhrzeit, bis du sie änderst.',
-                  ),
+                  onInfo: _busy
+                      ? null
+                      : () => showOpenBandJournalInfo(
+                          context,
+                          title: 'Tagesjournal',
+                          body:
+                              'Felder gelten für diesen Kalendertag. Eine Menge behält die letzte Uhrzeit, bis du sie änderst.',
+                        ),
                 ),
               ),
               Expanded(
-                child: _loading
+                child: _loading && _base == null
                     ? const Center(child: CircularProgressIndicator.adaptive())
-                    : _loadError
+                    : _loadError && _base == null
                     ? ListView(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         children: [
@@ -413,118 +430,124 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
                           ),
                         ],
                       )
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _MoodCard(
-                              value: _values['mood']?.value.round(),
-                              onChanged: (v) => _setMetric(
-                                'mood',
-                                v == null
-                                    ? null
-                                    : JournalMetricValue(
-                                        v.toDouble(),
-                                        atMinuteOfDay:
-                                            _values['mood']?.atMinuteOfDay,
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _groupCard(
-                              context,
-                              _specsFor(
-                                (s) =>
-                                    s.key != 'mood' &&
-                                    s.kind == JournalFieldKind.rating,
-                              ),
-                              (spec) => _MetricRow(
-                                spec: spec,
-                                value: _formatValue(spec, _values[spec.key]),
-                                hiddenDraft: _isHiddenDraft(spec),
-                                onTap: () => _openRating(spec),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _groupCard(
-                              context,
-                              _specsFor(
-                                (s) => s.kind == JournalFieldKind.yesNo,
-                              ),
-                              (spec) => OBJournalYesNo(
-                                label: journalFieldTitle(spec),
-                                icon: journalFieldIcon(spec),
-                                value: switch (_values[spec.key]?.value) {
-                                  null => null,
-                                  final v => v >= 0.5,
-                                },
-                                hiddenDraft: _isHiddenDraft(spec),
-                                onChanged: (yes) => _setMetric(
-                                  spec.key,
-                                  yes == null
+                    : IgnorePointer(
+                        ignoring: _busy,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _MoodCard(
+                                value: _values['mood']?.value.round(),
+                                onChanged: (v) => _setMetric(
+                                  'mood',
+                                  v == null
                                       ? null
                                       : JournalMetricValue(
-                                          yes ? 1 : 0,
+                                          v.toDouble(),
                                           atMinuteOfDay:
-                                              _values[spec.key]?.atMinuteOfDay,
+                                              _values['mood']?.atMinuteOfDay,
                                         ),
                                 ),
                               ),
-                              insetDividers: true,
-                            ),
-                            const SizedBox(height: 12),
-                            _groupCard(
-                              context,
-                              _specsFor(
-                                (s) =>
-                                    s.kind == JournalFieldKind.dose ||
-                                    s.kind == JournalFieldKind.duration,
-                              ),
-                              (spec) => _MetricRow(
-                                spec: spec,
-                                value: _formatValue(spec, _values[spec.key]),
-                                hiddenDraft: _isHiddenDraft(spec),
-                                onTap: () => _openValue(spec),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _NoteCard(
-                              controller: _note,
-                              onChanged: (_) => setState(() {}),
-                            ),
-                            const SizedBox(height: 12),
-                            _TagsRow(tags: _tags, onTap: _openTags),
-                            const SizedBox(height: 12),
-                            _NavCard(
-                              label: 'Eigene Felder',
-                              onTap: _openFields,
-                            ),
-                            if (_fieldsError != null) ...[
                               const SizedBox(height: 12),
-                              OBCard(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  spacing: 8,
-                                  children: [
-                                    Text(
-                                      _fieldsError!,
-                                      style: p.text(14, color: p.danger),
-                                    ),
-                                    OBAction(
-                                      'Erneut',
-                                      ink: true,
-                                      onPressed: _refreshDefs,
-                                    ),
-                                  ],
+                              _groupCard(
+                                context,
+                                _specsFor(
+                                  (s) =>
+                                      s.key != 'mood' &&
+                                      s.kind == JournalFieldKind.rating,
+                                ),
+                                (spec) => _MetricRow(
+                                  spec: spec,
+                                  value: _formatValue(spec, _values[spec.key]),
+                                  hiddenDraft: _isHiddenDraft(spec),
+                                  onTap: () => _openRating(spec),
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              _groupCard(
+                                context,
+                                _specsFor(
+                                  (s) => s.kind == JournalFieldKind.yesNo,
+                                ),
+                                (spec) => OBJournalYesNo(
+                                  label: journalFieldTitle(spec),
+                                  icon: journalFieldIcon(spec),
+                                  value: switch (_values[spec.key]?.value) {
+                                    null => null,
+                                    final v => v >= 0.5,
+                                  },
+                                  hiddenDraft: _isHiddenDraft(spec),
+                                  enabled: !_busy,
+                                  onChanged: (yes) => _setMetric(
+                                    spec.key,
+                                    yes == null
+                                        ? null
+                                        : JournalMetricValue(
+                                            yes ? 1 : 0,
+                                            atMinuteOfDay: _values[spec.key]
+                                                ?.atMinuteOfDay,
+                                          ),
+                                  ),
+                                ),
+                                insetDividers: true,
+                              ),
+                              const SizedBox(height: 12),
+                              _groupCard(
+                                context,
+                                _specsFor(
+                                  (s) =>
+                                      s.kind == JournalFieldKind.dose ||
+                                      s.kind == JournalFieldKind.duration,
+                                ),
+                                (spec) => _MetricRow(
+                                  spec: spec,
+                                  value: _formatValue(spec, _values[spec.key]),
+                                  hiddenDraft: _isHiddenDraft(spec),
+                                  onTap: () => _openValue(spec),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _NoteCard(
+                                controller: _note,
+                                enabled: !_busy,
+                                onChanged: (_) => setState(() {}),
+                              ),
+                              const SizedBox(height: 12),
+                              _TagsRow(tags: _tags, onTap: _openTags),
+                              const SizedBox(height: 12),
+                              _NavCard(
+                                label: 'Eigene Felder',
+                                onTap: _openFields,
+                              ),
+                              if (_fieldsError != null) ...[
+                                const SizedBox(height: 12),
+                                OBCard(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    spacing: 8,
+                                    children: [
+                                      Text(
+                                        _fieldsError!,
+                                        style: p.text(14, color: p.danger),
+                                      ),
+                                      OBAction(
+                                        'Erneut',
+                                        ink: true,
+                                        onPressed: _refreshDefs,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
               ),
-              if (!_loadError && !_loading)
+              if (_base != null)
                 ColoredBox(
                   color: p.canvas,
                   child: Padding(
@@ -533,6 +556,11 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       spacing: 8,
                       children: [
+                        if (_loadError)
+                          Text(
+                            'Laden fehlgeschlagen',
+                            style: p.text(14, color: p.danger),
+                          ),
                         if (_saveError != null)
                           Text(_saveError!, style: p.text(14, color: p.danger)),
                         if (_conflict) ...[
@@ -543,14 +571,14 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
                           OBAction(
                             'Neu laden',
                             ink: true,
-                            onPressed: _saving ? null : _reloadConflict,
+                            onPressed: _busy ? null : _reloadConflict,
                           ),
                         ] else
                           OBAction(
                             key: const ValueKey('journal-save'),
                             'Speichern',
                             ink: true,
-                            onPressed: _saving ? null : _save,
+                            onPressed: _busy ? null : _save,
                           ),
                       ],
                     ),
@@ -686,7 +714,12 @@ class _MetricRow extends StatelessWidget {
 class _NoteCard extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
-  const _NoteCard({required this.controller, required this.onChanged});
+  final bool enabled;
+  const _NoteCard({
+    required this.controller,
+    required this.onChanged,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -714,6 +747,8 @@ class _NoteCard extends StatelessWidget {
                 child: TextField(
                   key: const ValueKey('journal-note'),
                   controller: controller,
+                  enabled: enabled,
+                  readOnly: !enabled,
                   minLines: 3,
                   maxLines: 8,
                   onChanged: onChanged,
@@ -965,203 +1000,6 @@ class _RatingSheetState extends State<_RatingSheet> {
                       ),
                     ),
             ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context, const _SheetResult(null)),
-              child: Text('Wert entfernen', style: p.text(15, color: p.danger)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ValueSheet extends StatefulWidget {
-  final JournalFieldSpec spec;
-  final JournalMetricValue? metric;
-  const _ValueSheet({required this.spec, required this.metric});
-
-  @override
-  State<_ValueSheet> createState() => _ValueSheetState();
-}
-
-class _ValueSheetState extends State<_ValueSheet> {
-  late final TextEditingController _value = TextEditingController(
-    text: widget.metric == null
-        ? ''
-        : journalMetricEditableText(widget.metric!.value),
-  );
-  int? _minute;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _minute = widget.metric?.atMinuteOfDay;
-  }
-
-  @override
-  void dispose() {
-    _value.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickTime() async {
-    final initial = _minute == null
-        ? const TimeOfDay(hour: 0, minute: 0)
-        : TimeOfDay(hour: _minute! ~/ 60, minute: _minute! % 60);
-    final picked = await showOpenBandTimePicker(
-      context: context,
-      initialTime: initial,
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _minute = picked.hour * 60 + picked.minute);
-  }
-
-  void _apply() {
-    final raw = _value.text.trim().replaceAll(',', '.');
-    if (raw.isEmpty) {
-      Navigator.pop(context, const _SheetResult(null));
-      return;
-    }
-    final parsed = double.tryParse(raw);
-    if (parsed == null) {
-      setState(() => _error = 'Wert ist keine Zahl.');
-      return;
-    }
-    final rangeError = journalMetricRangeError(widget.spec, parsed);
-    if (rangeError != null) {
-      setState(() => _error = rangeError);
-      return;
-    }
-    final original = widget.metric?.value;
-    final amount = original != null && original == parsed ? original : parsed;
-    Navigator.pop(
-      context,
-      _SheetResult(JournalMetricValue(amount, atMinuteOfDay: _minute)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final unit = journalFieldUnitLabel(widget.spec);
-    final display = p
-        .text(28, weight: FontWeight.w700, display: true)
-        .copyWith(height: 34 / 28);
-    Widget well(Widget child) => DecoratedBox(
-      decoration: BoxDecoration(
-        color: p.well,
-        borderRadius: BorderRadius.circular(AlpRadius.well),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: child,
-        ),
-      ),
-    );
-    return Material(
-      color: p.card,
-      borderRadius: const BorderRadius.vertical(
-        top: Radius.circular(AlpRadius.card),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          12 +
-              MediaQuery.viewInsetsOf(context).bottom +
-              MediaQuery.paddingOf(context).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      journalFieldTitle(widget.spec),
-                      style: p
-                          .text(18, weight: FontWeight.w600)
-                          .copyWith(height: 24 / 18),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 44,
-                    height: 44,
-                    child: IconButton(
-                      tooltip: 'Schließen',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(LucideIcons.x, size: 20, color: p.ink),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Text('Menge', style: p.text(13, color: p.muted)),
-            const SizedBox(height: 8),
-            well(
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: const ValueKey('journal-value'),
-                      controller: _value,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,\-]')),
-                      ],
-                      style: display,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        isDense: true,
-                        hintText: '—',
-                        hintStyle: display.copyWith(color: p.muted),
-                      ),
-                    ),
-                  ),
-                  if (unit.isNotEmpty)
-                    Text(unit, style: p.text(15, color: p.muted)),
-                ],
-              ),
-            ),
-            if (widget.spec.hasTime) ...[
-              const SizedBox(height: 12),
-              Text('Zuletzt', style: p.text(13, color: p.muted)),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: _pickTime,
-                borderRadius: BorderRadius.circular(AlpRadius.well),
-                child: well(
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      _minute == null ? '—' : journalMinuteLabel(_minute!),
-                      style: display.copyWith(
-                        color: _minute == null ? p.muted : p.ink,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: p.text(14, color: p.danger)),
-            ],
-            const SizedBox(height: 16),
-            OBAction('Übernehmen', ink: true, onPressed: _apply),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(context, const _SheetResult(null)),

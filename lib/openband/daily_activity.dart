@@ -38,19 +38,19 @@ class StepsCard extends StatelessWidget {
               const SizedBox(height: 16),
               if (intake) ...[
                 Text(
-                  '${day.intake.kcalIsFloor ? 'Mindestens ' : ''}${obNumber(day.intake.kcal)} kcal erfasst',
+                  '${obNumber(day.intake.kcal)} kcal erfasst',
                   style: p.text(24, weight: FontWeight.w600),
                 ),
+                if (day.intake.kcalIsFloor) ...[
+                  const SizedBox(height: 8),
+                  Text('Teilweise', style: p.text(13, color: p.muted)),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   '${obNumber(day.intake.waterMl)} ml Wasser erfasst',
                   style: p.text(18),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Die Angaben stammen aus deinen Einträgen. Fehlende Mengen bleiben offen.',
-                ),
-                if (onNutrition != null && day.day == todayLabel()) ...[
+                if (onNutrition != null) ...[
                   const SizedBox(height: 16),
                   OBAction(
                     'Ernährung öffnen',

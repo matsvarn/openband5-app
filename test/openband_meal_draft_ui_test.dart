@@ -538,7 +538,29 @@ void main() {
   }
 
   Future<void> tapSnackAction(WidgetTester tester, String label) async {
-    await tester.tap(find.widgetWithText(TextButton, label));
+    final inBar = find.descendant(
+      of: find.byType(SnackBar),
+      matching: find.widgetWithText(TextButton, label),
+    );
+    await tester.tap(inBar.evaluate().isEmpty ? find.widgetWithText(TextButton, label) : inBar);
+  }
+
+  Future<void> tapDayFood(WidgetTester tester, String label) async {
+    final finder = find.text(label);
+    await tester.scrollUntilVisible(
+      finder,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    final list = find.byType(ListView).first;
+    final item = tester.getRect(finder);
+    final view = tester.getRect(list);
+    if (item.bottom > view.bottom - 24) {
+      await tester.drag(list, Offset(0, view.bottom - 24 - item.bottom));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(finder);
   }
 
   testWidgets('row opens food entry; add stays on add', (tester) async {
@@ -626,7 +648,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     await mountDay(tester);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -681,7 +703,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     await mountDay(tester);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -706,7 +728,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     await mountDay(tester);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -746,7 +768,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     await mountDay(tester, scale: 2, width: 375, height: 1600);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('food-entry-remove')));
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
@@ -793,7 +815,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     await mountDay(tester);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -808,6 +830,11 @@ void main() {
     repo.failMealsRead = false;
     await tapSnackAction(tester, 'Erneut');
     await pumpShown(tester);
+    await tester.scrollUntilVisible(
+      find.text('Guess'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Guess'), findsOneWidget);
     expect(repo.restores, 1);
   });
@@ -832,7 +859,7 @@ void main() {
   ) async {
     repo.seedFoodEntry(unknownSnack());
     final controller = await mountDay(tester);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -903,7 +930,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Guess'));
+      await tapDayFood(tester, 'Guess');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
       await tester.pumpAndSettle();
@@ -925,7 +952,7 @@ void main() {
     (tester) async {
       repo.seedFoodEntry(unknownSnack());
       await mountDay(tester);
-      await tester.tap(find.text('Guess'));
+      await tapDayFood(tester, 'Guess');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
       await tester.pumpAndSettle();
@@ -967,7 +994,7 @@ void main() {
     (tester) async {
       repo.seedFoodEntry(unknownSnack());
       final controller = await mountDay(tester);
-      await tester.tap(find.text('Guess'));
+      await tapDayFood(tester, 'Guess');
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
       await tester.pumpAndSettle();
@@ -995,6 +1022,70 @@ void main() {
     },
   );
 
+  testWidgets('same-day revision keeps Undo and does not drop the receipt', (
+    tester,
+  ) async {
+    repo.seedFoodEntry(unknownSnack());
+    var revision = 0;
+    late StateSetter setHost;
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-15',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 15, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 59, bottom: 34),
+            disableAnimations: true,
+          ),
+          child: child!,
+        ),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            setHost = setState;
+            return OpenBandNutrition(
+              controller: controller,
+              revision: revision,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tapDayFood(tester, 'Guess');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ob-confirm-yes')));
+    await pumpShown(tester);
+    expect(find.text('Eintrag entfernt'), findsOneWidget);
+    expect(find.text('Rückgängig'), findsOneWidget);
+    setHost(() => revision += 1);
+    await tester.pumpAndSettle();
+    expect(find.text('Eintrag entfernt'), findsOneWidget);
+    expect(find.text('Rückgängig'), findsOneWidget);
+    await tapSnackAction(tester, 'Rückgängig');
+    await pumpShown(tester);
+    expect((await repo.readFoodEntry('unk-1')).current?.fibreG, 8.1);
+    expect(find.text('Guess'), findsOneWidget);
+    expect(repo.restores, 1);
+  });
+
   testWidgets('refresh throw after restore retries read only', (tester) async {
     repo.seedFoodEntry(unknownSnack());
     final controller = _RefreshThrowController(
@@ -1005,7 +1096,7 @@ void main() {
     );
     addTearDown(controller.dispose);
     await mountDay(tester, existing: controller);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));
     await tester.pumpAndSettle();
@@ -1039,7 +1130,7 @@ void main() {
     );
     addTearDown(controller.dispose);
     await mountDay(tester, existing: controller);
-    await tester.tap(find.text('Guess'));
+    await tapDayFood(tester, 'Guess');
     await tester.pumpAndSettle();
     controller.throwRefresh = true;
     await tester.tap(find.byKey(const ValueKey('food-entry-remove')));

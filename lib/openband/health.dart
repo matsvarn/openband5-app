@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
 import '../ui2/profile/profile.dart' show SetRow;
@@ -280,67 +279,184 @@ class OBSegmented extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      height: (MediaQuery.textScalerOf(context).scale(14) * 1.36 + 8).clamp(
-        40,
-        double.infinity,
-      ),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: p.card,
-        borderRadius: BorderRadius.circular(AlpRadius.row),
-      ),
-      child: Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scaler = MediaQuery.textScalerOf(context);
+        final stacked =
+            constraints.maxWidth.isFinite &&
+            !_fitsEqualColumns(constraints.maxWidth, scaler, p, context);
+        return stacked
+            ? _stacked(p, scaler)
+            : _horizontal(p, scaler, constraints.maxWidth);
+      },
+    );
+  }
+
+  TextStyle _plainStyle(OB p, bool chosen) => p
+      .text(
+        14,
+        weight: chosen ? FontWeight.w600 : FontWeight.w500,
+        color: chosen ? (p.dark ? p.canvas : Colors.white) : p.muted,
+      )
+      .copyWith(height: 18 / 14);
+
+  // Text fontSize 14 + height 18/14 follows scaler.scale(14) * 18/14.
+  // scaler.scale(18) diverges on nonlinear accessibility scalers and clips.
+  double _lineHeight(TextScaler scaler) => scaler.scale(14) * 18 / 14;
+
+  bool _fitsEqualColumns(
+    double maxWidth,
+    TextScaler scaler,
+    OB p,
+    BuildContext context,
+  ) {
+    if (labels.isEmpty) return true;
+    const wellPad = 3.0;
+    const gap = 2.0;
+    const side = 4.0;
+    final inner = maxWidth - wellPad * 2 - gap * (labels.length - 1);
+    if (inner <= 0) return false;
+    final col = inner / labels.length;
+    final dir = Directionality.of(context);
+    final fitStyle = _plainStyle(p, true);
+    for (final label in labels) {
+      final painter = TextPainter(
+        text: TextSpan(text: label, style: fitStyle),
+        textDirection: dir,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      if (width + side * 2 > col) return false;
+    }
+    return true;
+  }
+
+  Widget _horizontal(OB p, TextScaler scaler, double maxWidth) {
+    final line = _lineHeight(scaler);
+    final inner = line > 34 ? line : 34.0;
+    final wellH = inner + 6;
+    final rowH = wellH < 44 ? 44.0 : wellH;
+    return SizedBox(
+      width: maxWidth.isFinite ? maxWidth : null,
+      height: rowH,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          for (final (i, label) in labels.indexed)
-            Expanded(
-              child: _segment(p, i, label, inner: null, radius: 14),
+          IgnorePointer(
+            child: Container(
+              width: maxWidth.isFinite ? maxWidth : null,
+              height: wellH,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: p.card,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  for (final (i, _) in labels.indexed) ...[
+                    if (i > 0) const SizedBox(width: 2),
+                    Expanded(
+                      child: Opacity(
+                        opacity: _on(i) ? 1 : 0.38,
+                        child: Container(
+                          height: inner,
+                          decoration: BoxDecoration(
+                            color: i == selected ? p.ink : null,
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, label) in labels.indexed) ...[
+                  if (i > 0) const SizedBox(width: 2),
+                  Expanded(
+                    child: Semantics(
+                      button: true,
+                      selected: i == selected,
+                      enabled: _on(i),
+                      child: InkWell(
+                        onTap: _on(i) ? () => onChanged(i) : null,
+                        borderRadius: BorderRadius.circular(11),
+                        child: Align(
+                          child: Opacity(
+                            opacity: _on(i) ? 1 : 0.38,
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              softWrap: false,
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.visible,
+                              style: _plainStyle(p, i == selected),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _segment(
-    OB p,
-    int i,
-    String label, {
-    required double? inner,
-    required double radius,
-    bool compact = false,
-  }) {
-    final on = enabled == null || (i < enabled!.length && enabled![i]);
-    final chosen = i == selected;
-    return Semantics(
-      button: true,
-      selected: chosen,
-      enabled: on,
-      child: Opacity(
-        opacity: on ? 1 : 0.38,
-        child: InkWell(
-          onTap: on ? () => onChanged(i) : null,
-          borderRadius: BorderRadius.circular(radius),
-          child: Container(
-            height: inner,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: chosen ? p.ink : null,
-              borderRadius: BorderRadius.circular(radius),
+  Widget _stacked(OB p, TextScaler scaler) {
+    final line = _lineHeight(scaler);
+    final rowMin = 16 + line < 44 ? 44.0 : 16 + line;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: 2,
+        children: [
+          for (final (i, label) in labels.indexed)
+            Semantics(
+              button: true,
+              selected: i == selected,
+              enabled: _on(i),
+              child: Opacity(
+                opacity: _on(i) ? 1 : 0.38,
+                child: InkWell(
+                  onTap: _on(i) ? () => onChanged(i) : null,
+                  borderRadius: BorderRadius.circular(11),
+                  child: Container(
+                    constraints: BoxConstraints(minHeight: rowMin),
+                    padding: const EdgeInsets.all(8),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: i == selected ? p.ink : null,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.visible,
+                      style: _plainStyle(p, i == selected),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            child: Text(
-              label,
-              style: p
-                  .text(
-                    14,
-                    weight: !compact || chosen
-                        ? FontWeight.w600
-                        : FontWeight.w500,
-                    color: chosen ? p.card : p.muted,
-                  )
-                  .copyWith(height: compact ? 18 / 14 : null),
-            ),
-          ),
-        ),
+        ],
       ),
     );
   }

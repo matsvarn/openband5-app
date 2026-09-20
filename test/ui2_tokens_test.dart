@@ -258,7 +258,7 @@ const _notComponents = {
   // asserts the copy is not truncated and nothing overflows.
   'StartCard',
   // tabs and drill-downs
-  'HomeScreen', 'HealthScreen', 'WorkoutScreen', 'NutritionScreen',
+  'HomeScreen', 'HealthScreen', 'WorkoutScreen',
   'WellnessScreen', 'CycleTab', 'MetricDetail', 'ReadinessDetail',
   'SleepDetail', 'CircadianDetail', 'DayStrainDetail', 'DayStepsDetail',
   'ZonesDetail',

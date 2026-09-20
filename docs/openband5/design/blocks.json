@@ -259,7 +259,26 @@
     "42QT-0": "A07b Ernährung · Uhrzeit offen",
     "42SZ-0": "A07b Ernährung · Uhrzeit ungültig",
     "430B-0": "A07b Ernährung · Gespeicherter Eintrag · Große Schrift",
-    "431T-0": "A07b Ernährung · Gespeicherter Eintrag · Große Schrift · Dunkel"
+    "431T-0": "A07b Ernährung · Gespeicherter Eintrag · Große Schrift · Dunkel",
+    "433T-0": "A07b Ernährung · Tag mit Wasser",
+    "43ID-0": "A07b Ernährung · Tag mit Wasser · Dunkel",
+    "3ZYY-0": "A07b Ernährung · Woche",
+    "401D-0": "A07b Ernährung · Woche · Dunkel",
+    "403Q-0": "A07b Ernährung · Zuletzt verwendet",
+    "40H3-0": "A07b Ernährung · Zuletzt verwendet · Dunkel",
+    "43W1-0": "A07b Ernährung · Mahlzeit wählen",
+    "440Z-0": "A07b Ernährung · Mahlzeit wählen · Dunkel",
+    "43DL-0": "A07b Ernährung · Wasser bearbeiten",
+    "43MJ-0": "A07b Ernährung · Wasser bearbeiten · Dunkel",
+    "43R9-0": "A07b Ernährung · Wasser · Speichern fehlgeschlagen",
+    "44BN-0": "A07b Ernährung · Tag · Große Schrift",
+    "44I8-0": "A07b Ernährung · Tag · Große Schrift · Dunkel",
+    "44NR-0": "A07b Ernährung · Mahlzeiten · Große Schrift",
+    "44RX-0": "A07b Ernährung · Mahlzeiten · Große Schrift · Dunkel",
+    "44Y4-0": "A07b Ernährung · Entwurf nicht gespeichert",
+    "44ZZ-0": "A07b Ernährung · Entwurf nicht gespeichert · Dunkel",
+    "4528-0": "A07b Ernährung · Tag · 375",
+    "456E-0": "A07b Ernährung · Tag · 375 Dunkel"
   },
   "blocks": [
     {
@@ -635,7 +654,7 @@
         "3W5M-0"
       ],
       "implemented": "health.dart",
-      "notes": "Existing full-width selector plus compact g/% variant. Labels centered; explicit disabled mode,44-point outer area and text-scaled height."
+      "notes": "Shared full-width 40-point visual well inside a 44-point target; centered 14/18 labels. Measurement uses selected weight. Stacks at narrow width or large text; compact g/% retains its own sizing."
     },
     {
       "name": "OBChip",
@@ -841,7 +860,9 @@
         "large-text": "3X2V-0",
         "320": "3X7Z-0",
         "375": "3Z45-0",
-        "unavailable": "3YPM-0"
+        "unavailable": "3YPM-0",
+        "compact": "454T-0",
+        "compactDark": "458Z-0"
       }
     },
     {
@@ -856,13 +877,17 @@
         "OBMealHeader",
         "OBFoodRow"
       ],
-      "implemented": "nutrition.dart"
+      "implemented": "nutrition.dart",
+      "variantPaperNodes": {
+        "large": "44H9-0"
+      },
+      "notes": "Shared meal header: 44-point action target around a 28-point visual plus; two rows at large text. Known energy leads row two when no partial label exists."
     },
     {
       "name": "OBFoodRow",
       "paperNode": "3FKQ-0",
-      "widget": "OBMealSection",
-      "file": "nutrition.dart",
+      "widget": "OpenBandFoodEnergyRow",
+      "file": "nutrition_browser.dart",
       "variants": [
         "known",
         "unknown"
@@ -870,8 +895,11 @@
       "children": [
         "OBMacroInline"
       ],
-      "implemented": "nutrition.dart (row inside OBMealSection)",
-      "notes": "Food rows are inline in OBMealSection; no OBFoodRow class."
+      "implemented": "nutrition_browser.dart",
+      "notes": "One row for saved meals and recent foods; fixed normal energy lane, stacked label/value at large text; unknown energy remains —.",
+      "variantPaperNodes": {
+        "large": "44HS-0"
+      }
     },
     {
       "name": "OBFoodSearch",
@@ -1792,13 +1820,17 @@
     {
       "name": "OBJournalValueSheet",
       "paperNode": "3Q5H-0",
-      "widget": "_ValueSheet",
-      "file": "journal_editor.dart",
+      "widget": "OBJournalValueSheet",
+      "file": "journal_value_editor.dart",
       "usedIn": [
         "3PV8-0",
         "3Q0P-0"
       ],
-      "notes": "Shared amount and optional time editing; blank remains absent. No rounding on opening or saving."
+      "notes": "Shared amount and optional time editing; blank remains absent. Stored precision is retained. Amount-only water uses no redundant caption. Persistence, conflict reload and local Journal apply stay distinct; controls lock while either write or reload is pending.",
+      "variantPaperNodes": {
+        "large": "44W4-0",
+        "largeDark": "44WP-0"
+      }
     },
     {
       "name": "OBConfirmSheet",
@@ -2043,7 +2075,7 @@
         "42DI-0",
         "42K7-0"
       ],
-      "notes": "Atomic retained-draft commit distinguishes save failure, conflict, missing draft and failed reload. Read failure hides unverified old rows; save failure keeps the draft visible. Retained-draft CAS creation/append is available with atomic slot/full-snapshot comparison, cross-slot ID refusal and strictly advancing revisions; parent callers are the next integration unit."
+      "notes": "Retained draft commit and append use atomic CAS. Pending additions merge over latest base without resurrecting concurrent removals. Failure retains intent and retry until explicit cancellation; committed reload is read-only."
     },
     {
       "name": "OBFoodUndo",
@@ -2053,11 +2085,93 @@
       "usedIn": [
         "41IF-0"
       ],
-      "notes": "Exact deleted snapshot belongs to its repository/day/operation. Successful restore and failed subsequent read have separate retries. Whole nutrition-day backdrop remains an open migration. At large text the message precedes a wrapping action row. Normal total height56 with intrinsic action aligned16 from the right.",
+      "notes": "Exact deleted snapshot belongs to its repository/day/operation. Successful restore and failed subsequent read have separate retries. At large text the message precedes a wrapping action row.",
       "variantPaperNodes": {
         "large": "438J-0",
         "large.dark": "43C9-0"
       }
+    },
+    {
+      "name": "OBNutritionWeek",
+      "paperNode": "3ZZW-0",
+      "widget": "OpenBandNutritionWeek",
+      "file": "nutrition_browser.dart",
+      "notes": "Saved seven-day window only; empty, unknown energy, stored zero and partial totals remain distinct. Positive bars use actual recorded energy ratios.",
+      "usedIn": [
+        "3ZYY-0",
+        "401D-0"
+      ]
+    },
+    {
+      "name": "OBRecentFoods",
+      "paperNode": "404O-0",
+      "widget": "OpenBandRecentFoods",
+      "file": "nutrition_browser.dart",
+      "notes": "Deduplicated stored foods; reuse creates a new entry identity and clears consumed/source-capture timestamps while retaining nutrient source.",
+      "usedIn": [
+        "403Q-0",
+        "40H3-0",
+        "44Y4-0",
+        "44ZZ-0"
+      ]
+    },
+    {
+      "name": "OBNutritionFooter",
+      "paperNode": "433V-0",
+      "widget": "OpenBandNutritionFooter",
+      "file": "nutrition_browser.dart",
+      "notes": "Search, barcode and add actions; 44-point tap targets, 52-point normal and 60-point large-text surface with bottom safe-area clearance. Hidden on week.",
+      "usedIn": [
+        "433T-0",
+        "43ID-0",
+        "403Q-0",
+        "40H3-0",
+        "44Y4-0",
+        "44ZZ-0",
+        "44BN-0",
+        "44I8-0"
+      ]
+    },
+    {
+      "name": "OBMealPickerSheet",
+      "paperNode": "43W3-0",
+      "widget": "OpenBandMealPickerSheet",
+      "file": "nutrition_browser.dart",
+      "notes": "No guessed meal selection. Four choices, contiguous 48-point rows and scrolling when text/height requires it.",
+      "usedIn": [
+        "43W1-0",
+        "440Z-0"
+      ]
+    },
+    {
+      "name": "OBWaterCard",
+      "paperNode": "42ZV-0",
+      "widget": "OpenBandWaterCard",
+      "file": "water.dart",
+      "notes": "Stored journal water value; unknown is not zero. Atomic delta, explicit manual amount, removal and conflict reload. Read failure after successful save retries only the read.",
+      "usedIn": [
+        "433T-0",
+        "43ID-0",
+        "43DL-0",
+        "43MJ-0",
+        "43R9-0"
+      ]
+    },
+    {
+      "name": "OBFoodFeedback.pending",
+      "paperNode": "44XD-0",
+      "widget": "_OpenBandNutritionState._showPendingError",
+      "file": "nutrition.dart",
+      "notes": "Persistent failed intent with retry/cancel, immutable original day and operation identity. No silent expiry or duplicate append.",
+      "variantPaperNodes": {
+        "dark": "44XM-0",
+        "large": "44XT-0"
+      },
+      "variant": "pending",
+      "usedIn": [
+        "44Y4-0",
+        "44ZZ-0"
+      ]
     }
   ],
   "openBlocks": [
