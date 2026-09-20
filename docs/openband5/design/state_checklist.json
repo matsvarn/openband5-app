@@ -691,7 +691,7 @@
       },
       "Entfernung · Meilen mit Vorschau": {
         "status": "implemented",
-        "paperNode": "3UKA-0",
+        "paperNode": "3UIZ-0",
         "source": "lib/openband/units.dart; lib/state/units_controller.dart; lib/ui2/profile/settings.dart",
         "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
         "note": "Explicit metric/imperial choices with converted examples; no personal measurements invented.",
@@ -707,7 +707,7 @@
       },
       "Einheiten · Meilen gespeichert": {
         "status": "implemented",
-        "paperNode": "3UKA-0",
+        "paperNode": "3UIZ-0",
         "source": "lib/openband/units.dart; lib/state/units_controller.dart; lib/ui2/profile/settings.dart",
         "evidence": "test/openband_units_test.dart; test/units_controller_test.dart; integration_test/openband_review_test.dart",
         "note": "Imperial choice persists and survives reopen; failure keeps the saved choice and supports retry.",
@@ -1052,6 +1052,61 @@
         "evidence": "test/openband_journal_editor_test.dart; test/openband_journal_storage_test.dart; test/openband_journal_fields_test.dart; test/openband_journal_editor_ui_test.dart; test/openband_journal_fields_ui_test.dart; test/coach_engine_test.dart; integration_test/openband_review_test.dart",
         "note": "Daily rating selection/clear is implemented with shared mood scale. Archive timed mood moments, optional feelings/context and multiple entries remain open.",
         "nativeReview": "Focused native journal-editor-v4-20260920 Pro109.9s and journal-editor-v4-mini-20260920 mini143.73s:37 PNGs each, every PNG inspected; run/frames/index exact, flow=journal. Full v3 Pro+mini251 captures each passed before bounded keyboard repair. Synthetic only."
+      },
+      "Journal · Tagesübersicht": {
+        "status": "implemented",
+        "paperNode": "3G8R-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Selected-day hub, saved mood and nullable habits, actual stored pattern and nutrition navigation. Inline writes retain values across reload failure and guard editor navigation.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · Tagesübersicht · Dunkel": {
+        "status": "implemented",
+        "paperNode": "3NBJ-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Dark variant uses the same production flow and shared controls.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · Muster brauchen mehr Daten": {
+        "status": "implemented",
+        "paperNode": "3SVS-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Insufficient observed pairs are distinct from unavailable data and a computed nonmeaningful comparison.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · berechnetes Langzeitbeispiel": {
+        "status": "implemented",
+        "paperNode": "3G8R-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Pinned analytics compares actual caffeine answers with next-night stored sleep-onset latency; lag, sample counts and partial exclusions retained. Synthetic fixture uses that producer.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · Muster erklären": {
+        "status": "implemented",
+        "paperNode": "3TXE-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Method, period, group counts and correlation limitation remain available in the shared info sheet. Header and close/footer stay fixed; body scrolls at 2x.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · kein klares Muster": {
+        "status": "implemented",
+        "paperNode": "3TEO-0",
+        "source": "lib/openband/journal.dart; lib/openband/journal_controls.dart; lib/openband/local_repository.dart; lib/openband/domain.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; test/openband_journal_test.dart; test/openband_tabbar_test.dart; integration_test/openband_review_test.dart",
+        "note": "Computed nonmeaningful result remains distinct from missing/insufficient inputs; no fabricated group mean or effect.",
+        "nativeReview": "20260920-journal-hub-pro-final 101.88s and 20260920-journal-hub-mini-final 150.07s; 46 PNGs each, every PNG inspected, exact run/frames/index reconciliation. Light/dark, missing/partial/error/retry/conflict and 2x. Synthetic only."
+      },
+      "Journal · verwendete Tag-Nacht-Paare": {
+        "status": "partial",
+        "paperNode": "3TXE-0",
+        "source": "lib/openband/journal.dart; lib/openband/local_repository.dart",
+        "evidence": "test/openband_journal_pattern_test.dart; frozen archive 30Y8-0",
+        "note": "Actual comparison, period and counts are implemented. The archive requires a dated answer/night/value list; current method disclosure does not implement that list. Remains open."
       }
     },
     "A07b · Ernährung": {

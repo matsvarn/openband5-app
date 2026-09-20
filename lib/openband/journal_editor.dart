@@ -452,14 +452,15 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
                               _specsFor(
                                 (s) => s.kind == JournalFieldKind.yesNo,
                               ),
-                              (spec) => _YesNoRow(
-                                spec: spec,
-                                answer: switch (_values[spec.key]?.value) {
+                              (spec) => OBJournalYesNo(
+                                label: journalFieldTitle(spec),
+                                icon: journalFieldIcon(spec),
+                                value: switch (_values[spec.key]?.value) {
                                   null => null,
                                   final v => v >= 0.5,
                                 },
                                 hiddenDraft: _isHiddenDraft(spec),
-                                onAnswer: (yes) => _setMetric(
+                                onChanged: (yes) => _setMetric(
                                   spec.key,
                                   yes == null
                                       ? null
@@ -679,134 +680,6 @@ class _MetricRow extends StatelessWidget {
               ),
             ),
     );
-  }
-}
-
-class _YesNoRow extends StatelessWidget {
-  final JournalFieldSpec spec;
-  final bool? answer;
-  final bool hiddenDraft;
-  final ValueChanged<bool?> onAnswer;
-  const _YesNoRow({
-    required this.spec,
-    required this.answer,
-    required this.hiddenDraft,
-    required this.onAnswer,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final label = journalFieldTitle(spec);
-    final stacked =
-        MediaQuery.textScalerOf(context).scale(15) > 20 ||
-        MediaQuery.sizeOf(context).width < 360;
-    final line = MediaQuery.textScalerOf(context).scale(18);
-    final visualHeight = stacked ? (line > 32 ? line : 32.0) : 32.0;
-    final hitHeight = stacked
-        ? (visualHeight > 44 ? visualHeight : 44.0)
-        : 44.0;
-    Widget pill(String text, bool yes) {
-      final selected = answer == yes;
-      return Semantics(
-        button: true,
-        selected: selected,
-        label: '$label: $text',
-        child: InkWell(
-          onTap: () => onAnswer(selected ? null : yes),
-          customBorder: const StadiumBorder(),
-          child: ExcludeSemantics(
-            child: SizedBox(
-              height: hitHeight,
-              child: Center(
-                child: Container(
-                  key: yes ? const ValueKey('journal-yesno-capsule') : null,
-                  height: visualHeight,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: selected ? p.ink : p.well,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    text,
-                    style: p
-                        .text(
-                          13,
-                          weight: FontWeight.w600,
-                          color: selected ? p.card : p.ink,
-                        )
-                        .copyWith(height: 18 / 13),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    final icon = Container(
-      width: 32,
-      height: 32,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: p.foodTint,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(journalFieldIcon(spec), size: 16, color: p.food),
-    );
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(label, style: p.text(15, weight: FontWeight.w500)),
-        if (hiddenDraft)
-          Text('Ausgeblendet', style: p.text(12, color: p.muted)),
-      ],
-    );
-    final pills = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        pill('Ja', true),
-        const SizedBox(width: 6),
-        pill('Nein', false),
-      ],
-    );
-
-    return stacked
-        ? Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    icon,
-                    const SizedBox(width: 12),
-                    Expanded(child: title),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                pills,
-              ],
-            ),
-          )
-        : SizedBox(
-            height: 56,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  icon,
-                  const SizedBox(width: 12),
-                  Expanded(child: title),
-                  pills,
-                ],
-              ),
-            ),
-          );
   }
 }
 

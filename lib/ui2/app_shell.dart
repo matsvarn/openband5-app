@@ -115,8 +115,9 @@ class AppShellState extends State<AppShell> {
                   child: SafeArea(
                     top: false,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 0),
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           for (final domain in ShellDomain.values)
                             Expanded(child: _tab(context, domain)),
@@ -132,11 +133,12 @@ class AppShellState extends State<AppShell> {
 
   Widget _tab(BuildContext context, ShellDomain domain) {
     final p = OB.of(context);
-    final color = domain == _current ? p.action : p.muted;
+    final selected = domain == _current;
+    final color = selected ? p.action : p.muted;
     return Semantics(
       excludeSemantics: true,
       onTap: () => select(domain),
-      selected: domain == _current,
+      selected: selected,
       button: true,
       label: domain.label,
       child: Pressable(
@@ -144,17 +146,27 @@ class AppShellState extends State<AppShell> {
         child: ExcludeSemantics(
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 44),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(domain.icon, size: 22, color: color),
-                const SizedBox(height: 4),
-                Text(
-                  domain.label,
-                  style: p.text(12, weight: FontWeight.w500, color: color),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(domain.icon, size: 24, color: color),
+                  const SizedBox(height: 4),
+                  Text(
+                    domain.label,
+                    textAlign: TextAlign.center,
+                    textScaler: TextScaler.noScaling,
+                    style: p
+                        .text(
+                          11,
+                          weight: selected ? FontWeight.w600 : FontWeight.w500,
+                          color: color,
+                        )
+                        .copyWith(height: 13 / 11),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

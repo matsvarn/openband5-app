@@ -95,7 +95,7 @@ void main() {
   ) async {
     await mount(tester);
     expect(find.text('620'), findsOneWidget);
-    expect(find.text('1 Eintrag ohne Nährwerte'), findsOneWidget);
+    expect(find.text('1 Eintrag unvollständig'), findsOneWidget);
     expect(find.text('mind. 380 kcal'), findsOneWidget);
     expect(find.text('240 kcal'), findsOneWidget);
     expect(find.text('Noch nichts erfasst'), findsNWidgets(2));

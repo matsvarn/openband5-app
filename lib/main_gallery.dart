@@ -54,6 +54,7 @@ Future<SyntheticOpenBandRepository> loadGalleryRepository() async {
     run: await load('run-detail'),
   );
   await repo.seedNutritionGoals();
+  repo.seedCaffeineSleepPattern('2026-09-15');
   return repo;
 }
 

@@ -194,7 +194,36 @@
     "3XQA-0": "A07b Ernährungsziele · Entfernen Konflikt",
     "3XRR-0": "A07b Ernährungsziele · Entfernen Konflikt · Dunkel",
     "3XTI-0": "A07b Ernährungsziele · Entfernen Fehler",
-    "3XV2-0": "A07b Ernährungsziele · Entfernen Fehler · Dunkel"
+    "3XV2-0": "A07b Ernährungsziele · Entfernen Fehler · Dunkel",
+    "3NBJ-0": "A07a Journal · Hub · Dunkel",
+    "3Z4Y-0": "A07a Journal · Offene Antworten",
+    "3Z9O-0": "A07a Journal · Offene Antworten · Dunkel",
+    "3YQF-0": "A07a Journal · Hub · Große Schrift 2×",
+    "3YWT-0": "A07a Journal · Hub · Große Schrift 2× · Dunkel",
+    "3SVS-0": "A07a Journal · Zu wenige Nächte",
+    "3T0I-0": "A07a Journal · Zu wenige Nächte · Dunkel",
+    "3T5G-0": "A07a Journal · Kein Vergleich",
+    "3TA2-0": "A07a Journal · Kein Vergleich · Dunkel",
+    "3TEO-0": "A07a Journal · Kein klares Muster",
+    "3TJA-0": "A07a Journal · Kein klares Muster · Dunkel",
+    "3TNW-0": "A07a Journal · Vergleich Ladefehler",
+    "3TSI-0": "A07a Journal · Vergleich Ladefehler · Dunkel",
+    "3TXE-0": "A07a Journal · Vergleich verstehen",
+    "3U2N-0": "A07a Journal · Vergleich verstehen · Dunkel",
+    "3U7T-0": "A07a Journal · Teilweise auswertbar",
+    "3UCJ-0": "A07a Journal · Teilweise auswertbar · Dunkel",
+    "3XWM-0": "A07a Journal · Antwort inzwischen geändert",
+    "3Y1C-0": "A07a Journal · Antwort inzwischen geändert · Dunkel",
+    "3Y6A-0": "A07a Journal · Eintrag Lesefehler",
+    "3YB4-0": "A07a Journal · Eintrag Lesefehler · Dunkel",
+    "3YFY-0": "A07a Journal · Antwort Schreibfehler",
+    "3YKS-0": "A07a Journal · Antwort Schreibfehler · Dunkel",
+    "3ZFK-0": "A07a Journal · Ernährung nicht geladen",
+    "3ZKA-0": "A07a Journal · Ernährung nicht geladen · Dunkel",
+    "3ZPA-0": "A07a Journal · Ziele nicht geladen",
+    "3ZTC-0": "A07a Journal · Ziele nicht geladen · Dunkel",
+    "4069-0": "A07a Journal · Vergleich verstehen · Große Schrift",
+    "40BJ-0": "A07a Journal · Vergleich verstehen · Große Schrift · Dunkel"
   },
   "blocks": [
     {
@@ -298,7 +327,7 @@
         "3FVD-0",
         "3G8R-0"
       ],
-      "notes": "Active tab = alp-action icon + 600 label; inactive = alp-muted + 500."
+      "notes": "Canonical 11/13 px single-line navigation labels with fixed text scale; screen content still respects text settings. Lucide 24 px, active alp-action/600, inactive alp-muted/500; equal >=44-point targets and safe-area inset."
     },
     {
       "name": "OBRingTrio",
@@ -714,10 +743,52 @@
       "file": "nutrition.dart",
       "usedIn": [
         "3FLZ-0",
-        "3G8R-0"
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZPA-0",
+        "3ZTC-0"
       ],
-      "notes": "kcal bar carries a dashed segment for entries with unknown nutrition.",
-      "implemented": "nutrition.dart"
+      "notes": "Known nutrient sums only; entries missing any displayed nutrient are counted as unvollständig below. A progress track requires a saved target. Unset and unreadable targets differ. Equal columns are used only when every label/value pair fits; compact width and large text stack full-width rows.",
+      "implemented": "nutrition.dart",
+      "variants": [
+        "targets",
+        "unset",
+        "unavailable",
+        "missing",
+        "320",
+        "375",
+        "large-text"
+      ],
+      "variantPaperNodes": {
+        "unset": "3X19-0",
+        "missing": "3X22-0",
+        "large-text": "3X2V-0",
+        "320": "3X7Z-0",
+        "375": "3Z45-0",
+        "unavailable": "3YPM-0"
+      }
     },
     {
       "name": "OBMealSection",
@@ -764,11 +835,38 @@
       "widget": "OBCheckinCard",
       "file": "journal.dart",
       "usedIn": [
-        "3G8R-0"
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZFK-0",
+        "3ZKA-0",
+        "3ZPA-0",
+        "3ZTC-0"
       ],
       "children": [
         "OBCheckinScale",
-        "OBHabitRow"
+        "OBJournalYesNoRow"
       ],
       "implemented": "journal.dart"
     },
@@ -778,10 +876,52 @@
       "widget": "OBPatternCard",
       "file": "journal.dart",
       "usedIn": [
-        "3G8R-0"
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZFK-0",
+        "3ZKA-0",
+        "3ZPA-0",
+        "3ZTC-0",
+        "4069-0",
+        "40BJ-0"
       ],
-      "notes": "Two bars (with / without habit), mean outcome each, pair counts. Keep the 'Zusammenhang, kein Beweis' line.",
-      "implemented": "journal.dart"
+      "notes": "Stored, eligible SOL on wake day D+1 paired with caffeine answer on D. Pinned analytics owns the comparison; show its delta and counts, never invented group means. Partial and refusal states stay visible; methodology and correlation limits live in the info sheet. The shared info sheet pins its header and close action while its methodology body scrolls at large text.",
+      "implemented": "journal.dart",
+      "variants": [
+        "meaningful",
+        "insufficient",
+        "unavailable",
+        "nonmeaningful",
+        "partial",
+        "error",
+        "large-text"
+      ],
+      "variantPaperNodes": {
+        "large-text": "3ZEQ-0",
+        "large-text-dark": "3ZF5-0"
+      }
     },
     {
       "name": "OBSleepHero",
@@ -1484,7 +1624,35 @@
         "3ROA-0",
         "3RT3-0",
         "3V3G-0",
-        "3V88-0"
+        "3V88-0",
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZFK-0",
+        "3ZKA-0",
+        "3ZPA-0",
+        "3ZTC-0"
       ],
       "notes": "Five labelled Lucide faces; unselected is unknown, tapping the selection clears it. Shared52-point wells and ink selection."
     },
@@ -1513,8 +1681,8 @@
     {
       "name": "OBJournalYesNoRow",
       "paperNode": "3PDD-0",
-      "widget": "_YesNoRow",
-      "file": "journal_editor.dart",
+      "widget": "OBJournalYesNo",
+      "file": "journal_controls.dart",
       "usedIn": [
         "3PAS-0",
         "3PGA-0",
@@ -1528,9 +1696,40 @@
         "3ROA-0",
         "3RT3-0",
         "3V3G-0",
-        "3V88-0"
+        "3V88-0",
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZFK-0",
+        "3ZKA-0",
+        "3ZPA-0",
+        "3ZTC-0"
       ],
-      "notes": "Unknown is unselected; yes/no selections can be cleared.44-point hit areas and centered pill labels, stacked at large text."
+      "notes": "Unknown is unselected; yes/no selections can be cleared.44-point hit areas and centered pill labels, stacked at large text.",
+      "variantPaperNodes": {
+        "hub": "3GCN-0"
+      }
     },
     {
       "name": "OBJournalValueSheet",
@@ -1583,9 +1782,13 @@
         "3R9V-0",
         "3X8S-0",
         "3XDK-0",
-        "3XIC-0"
+        "3XIC-0",
+        "3TXE-0",
+        "3U2N-0",
+        "4069-0",
+        "40BJ-0"
       ],
-      "notes": "Shared disclosure sheet with44-point close target,15/22 body, adaptive safe-area padding and scrolling at large text. Shared production Journal and nutrition-goal disclosures."
+      "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x."
     },
     {
       "name": "OBJournalChip",

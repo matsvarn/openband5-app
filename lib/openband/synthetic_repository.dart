@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:isolate';
+import 'dart:math' as math;
+
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
@@ -20,6 +25,27 @@ enum SyntheticScenario {
   draftFailure,
   saveFailure,
   calculationFailure,
+}
+
+/// Isolated Paper inputs for [SyntheticOpenBandRepository.seedCaffeineSleepPattern].
+///
+/// Last wake is the selected [endDay]; journal `caffeine_late` sits on D and
+/// stored `sol_min` on D+1. Read still goes through the public producer.
+enum SyntheticCaffeineSleepSeed {
+  /// 7× Ja then 11× Nein, SOL 24 vs 12 (producer delta +12). Needs nights ≥ 18.
+  paperMeaningful,
+
+  /// One Ja on the day before [endDay], no stored SOL.
+  unavailable,
+
+  /// Five lag-1 pairs 1,0,1,0,1 at 24/12 — below producer floors.
+  insufficient,
+
+  /// Eighteen even/odd flags, SOL 20 + Random(11)×8. Needs nights ≥ 18.
+  nonmeaningful,
+
+  /// Paper 18 eligible pairs plus one rejected lag-1 wake. Needs nights ≥ 18.
+  partialMeaningful,
 }
 
 /// Isolated in-memory [OpenBandRepository] driven by design fixtures.
@@ -65,10 +91,16 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failPinRead = false;
   Future<void>? templateWriteBarrier;
   bool failJournalRead = false;
+  Future<void>? journalReadBarrier;
   bool failJournalPatch = false;
   bool failJournalFieldsList = false;
   bool failJournalFieldsCreate = false;
   Future<void>? journalPatchBarrier;
+  bool failCaffeineSleepPattern = false;
+  Future<CaffeineSleepPattern>? caffeineSleepPatternPending;
+  String? _caffeineSleepPatternRequest;
+  int _caffeineSleepPatternGeneration = 0;
+  bool failMealsRead = false;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -300,6 +332,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, _SynthJournalDay> _journal = {};
   final Map<String, JournalFieldSpec> _journalFieldDefs = {};
   int _journalClock = 0;
+  final Map<String, double?> _solMin = {};
+  final Map<String, String> _solIneligible = {};
 
   void seedJournalEditor({
     String? day,
@@ -430,98 +464,107 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     );
     final priorDay = _shift(_day, -2);
     final priorAt = _at(priorDay, '18:10');
-    _strength['synthetic-$priorDay-weight_training'] = _SyntheticStrength(
-      plan: _templates['tpl-ganzkoerper-a']!,
-      startedAt: priorAt,
-    )..finished = true
-     ..recorded.addAll([
-      hist('bench_press', 1, priorAt, reps: 8, loadKg: 37.5, plannedSetId: 'bp-1'),
-      hist(
-        'bench_press',
-        2,
-        priorAt.add(const Duration(minutes: 3)),
-        reps: 8,
-        loadKg: 37.5,
-        plannedSetId: 'bp-2',
-      ),
-      hist(
-        'bench_press',
-        3,
-        priorAt.add(const Duration(minutes: 6)),
-        reps: 8,
-        loadKg: 37.5,
-        plannedSetId: 'bp-3',
-      ),
-      hist(
-        'row',
-        1,
-        priorAt.add(const Duration(minutes: 10)),
-        reps: 10,
-        loadKg: 32.5,
-        plannedSetId: 'row-1',
-      ),
-      hist(
-        'row',
-        2,
-        priorAt.add(const Duration(minutes: 13)),
-        reps: 10,
-        loadKg: 32.5,
-        plannedSetId: 'row-2',
-      ),
-      hist(
-        'row',
-        3,
-        priorAt.add(const Duration(minutes: 16)),
-        reps: 10,
-        loadKg: 32.5,
-        plannedSetId: 'row-3',
-      ),
-      hist(
-        'squat',
-        1,
-        priorAt.add(const Duration(minutes: 20)),
-        reps: 8,
-        loadKg: 62.5,
-        plannedSetId: 'sq-1',
-      ),
-      hist(
-        'squat',
-        2,
-        priorAt.add(const Duration(minutes: 23)),
-        reps: 8,
-        loadKg: 62.5,
-        plannedSetId: 'sq-2',
-      ),
-      hist(
-        'squat',
-        3,
-        priorAt.add(const Duration(minutes: 26)),
-        reps: 8,
-        loadKg: 62.5,
-        plannedSetId: 'sq-3',
-      ),
-      hist(
-        'plank',
-        1,
-        priorAt.add(const Duration(minutes: 30)),
-        seconds: 40,
-        plannedSetId: 'plank-1',
-      ),
-      hist(
-        'plank',
-        2,
-        priorAt.add(const Duration(minutes: 32)),
-        seconds: 40,
-        plannedSetId: 'plank-2',
-      ),
-      hist(
-        'plank',
-        3,
-        priorAt.add(const Duration(minutes: 34)),
-        seconds: 40,
-        plannedSetId: 'plank-3',
-      ),
-    ]);
+    _strength['synthetic-$priorDay-weight_training'] =
+        _SyntheticStrength(
+            plan: _templates['tpl-ganzkoerper-a']!,
+            startedAt: priorAt,
+          )
+          ..finished = true
+          ..recorded.addAll([
+            hist(
+              'bench_press',
+              1,
+              priorAt,
+              reps: 8,
+              loadKg: 37.5,
+              plannedSetId: 'bp-1',
+            ),
+            hist(
+              'bench_press',
+              2,
+              priorAt.add(const Duration(minutes: 3)),
+              reps: 8,
+              loadKg: 37.5,
+              plannedSetId: 'bp-2',
+            ),
+            hist(
+              'bench_press',
+              3,
+              priorAt.add(const Duration(minutes: 6)),
+              reps: 8,
+              loadKg: 37.5,
+              plannedSetId: 'bp-3',
+            ),
+            hist(
+              'row',
+              1,
+              priorAt.add(const Duration(minutes: 10)),
+              reps: 10,
+              loadKg: 32.5,
+              plannedSetId: 'row-1',
+            ),
+            hist(
+              'row',
+              2,
+              priorAt.add(const Duration(minutes: 13)),
+              reps: 10,
+              loadKg: 32.5,
+              plannedSetId: 'row-2',
+            ),
+            hist(
+              'row',
+              3,
+              priorAt.add(const Duration(minutes: 16)),
+              reps: 10,
+              loadKg: 32.5,
+              plannedSetId: 'row-3',
+            ),
+            hist(
+              'squat',
+              1,
+              priorAt.add(const Duration(minutes: 20)),
+              reps: 8,
+              loadKg: 62.5,
+              plannedSetId: 'sq-1',
+            ),
+            hist(
+              'squat',
+              2,
+              priorAt.add(const Duration(minutes: 23)),
+              reps: 8,
+              loadKg: 62.5,
+              plannedSetId: 'sq-2',
+            ),
+            hist(
+              'squat',
+              3,
+              priorAt.add(const Duration(minutes: 26)),
+              reps: 8,
+              loadKg: 62.5,
+              plannedSetId: 'sq-3',
+            ),
+            hist(
+              'plank',
+              1,
+              priorAt.add(const Duration(minutes: 30)),
+              seconds: 40,
+              plannedSetId: 'plank-1',
+            ),
+            hist(
+              'plank',
+              2,
+              priorAt.add(const Duration(minutes: 32)),
+              seconds: 40,
+              plannedSetId: 'plank-2',
+            ),
+            hist(
+              'plank',
+              3,
+              priorAt.add(const Duration(minutes: 34)),
+              seconds: 40,
+              plannedSetId: 'plank-3',
+            ),
+          ]);
     _meals[_day] = [
       const MealEntry(
         id: 'm1',
@@ -566,6 +609,80 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   void seedLabDraw(LabDraw draw) => _labResults.add(draw);
 
+  /// Writes bounded journal × stored-SOL maps. Does not return a canned result.
+  void seedCaffeineSleepPattern(
+    String endDay, {
+    SyntheticCaffeineSleepSeed seed =
+        SyntheticCaffeineSleepSeed.paperMeaningful,
+  }) {
+    _invalidateCaffeineSleepPattern();
+    for (final day in _journal.values) {
+      day.metrics.remove(CaffeineSleepPattern.field);
+      day.metricUpdatedAt.remove(CaffeineSleepPattern.field);
+    }
+    _solMin.clear();
+    _solIneligible.clear();
+    switch (seed) {
+      case SyntheticCaffeineSleepSeed.paperMeaningful:
+        _seedPaperMeaningfulPairs(endDay);
+      case SyntheticCaffeineSleepSeed.unavailable:
+        _setCaffeine(openBandDaysEnding(endDay, 2).first, 1);
+      case SyntheticCaffeineSleepSeed.insufficient:
+        _seedCaffeineSleepLag1(
+          endDay,
+          flags: const [1.0, 0.0, 1.0, 0.0, 1.0],
+          sols: const [24.0, 12.0, 24.0, 12.0, 24.0],
+        );
+      case SyntheticCaffeineSleepSeed.nonmeaningful:
+        final rng = math.Random(11);
+        _seedCaffeineSleepLag1(
+          endDay,
+          flags: [for (var i = 0; i < 18; i++) i.isEven ? 1.0 : 0.0],
+          sols: [for (var i = 0; i < 18; i++) 20 + rng.nextDouble() * 8],
+        );
+      case SyntheticCaffeineSleepSeed.partialMeaningful:
+        _seedPaperMeaningfulPairs(endDay);
+        final extra = openBandDaysEnding(endDay, 20);
+        _setCaffeine(extra.first, 1);
+        _solMin[extra[1]] = 40;
+        _solIneligible[extra[1]] = 'rejected';
+    }
+  }
+
+  void _seedPaperMeaningfulPairs(String endDay) {
+    _seedCaffeineSleepLag1(
+      endDay,
+      flags: [
+        for (var i = 0; i < 7; i++) 1.0,
+        for (var i = 0; i < 11; i++) 0.0,
+      ],
+      sols: [
+        for (var i = 0; i < 7; i++) 24.0,
+        for (var i = 0; i < 11; i++) 12.0,
+      ],
+    );
+  }
+
+  void _seedCaffeineSleepLag1(
+    String endDay, {
+    required List<double> flags,
+    required List<double> sols,
+  }) {
+    final days = openBandDaysEnding(endDay, flags.length + 1);
+    for (var i = 0; i < flags.length; i++) {
+      _setCaffeine(days[i], flags[i]);
+      _solMin[days[i + 1]] = sols[i];
+    }
+  }
+
+  void _setCaffeine(String day, double value) {
+    final row = _journal[day] ??= _SynthJournalDay();
+    row.metrics[CaffeineSleepPattern.field] = JournalMetricValue(value);
+    row.metricUpdatedAt[CaffeineSleepPattern.field] = _nextJournalRev(
+      row.metricUpdatedAt[CaffeineSleepPattern.field] ?? 0,
+    );
+  }
+
   /// Paper live proof: Bankdrücken 4× with two confirmed sets and 1:24 of a
   /// 2:00 rest remaining, Kniebeuge 4× with no history. Uses the same start
   /// and record path as production.
@@ -607,39 +724,38 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       updatedAt: startedAt,
     );
     final priorAt = startedAt.subtract(const Duration(days: 1));
-    _strength['synthetic-paper-prior'] = _SyntheticStrength(
-      plan: paper,
-      startedAt: priorAt,
-    )..finished = true
-     ..recorded.addAll([
-      RecordedSet(
-        exerciseKey: 'bench_press',
-        setIndex: 1,
-        reps: 8,
-        loadKg: 60,
-        at: priorAt,
-        plannedSetId: 'paper-bp-1',
-        exerciseId: bench.id,
-      ),
-      RecordedSet(
-        exerciseKey: 'bench_press',
-        setIndex: 2,
-        reps: 8,
-        loadKg: 60,
-        at: priorAt.add(const Duration(minutes: 3)),
-        plannedSetId: 'paper-bp-2',
-        exerciseId: bench.id,
-      ),
-      RecordedSet(
-        exerciseKey: 'bench_press',
-        setIndex: 3,
-        reps: 7,
-        loadKg: 60,
-        at: priorAt.add(const Duration(minutes: 6)),
-        plannedSetId: 'paper-bp-3',
-        exerciseId: bench.id,
-      ),
-    ]);
+    _strength['synthetic-paper-prior'] =
+        _SyntheticStrength(plan: paper, startedAt: priorAt)
+          ..finished = true
+          ..recorded.addAll([
+            RecordedSet(
+              exerciseKey: 'bench_press',
+              setIndex: 1,
+              reps: 8,
+              loadKg: 60,
+              at: priorAt,
+              plannedSetId: 'paper-bp-1',
+              exerciseId: bench.id,
+            ),
+            RecordedSet(
+              exerciseKey: 'bench_press',
+              setIndex: 2,
+              reps: 8,
+              loadKg: 60,
+              at: priorAt.add(const Duration(minutes: 3)),
+              plannedSetId: 'paper-bp-2',
+              exerciseId: bench.id,
+            ),
+            RecordedSet(
+              exerciseKey: 'bench_press',
+              setIndex: 3,
+              reps: 7,
+              loadKg: 60,
+              at: priorAt.add(const Duration(minutes: 6)),
+              plannedSetId: 'paper-bp-3',
+              exerciseId: bench.id,
+            ),
+          ]);
     final previousNow = strengthNow;
     strengthNow = () => startedAt;
     final id = await startStrengthSession(paper);
@@ -676,6 +792,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   void seedCorruptActiveStrength({String sessionId = 'synthetic-corrupt'}) {
     _activeStrengthId = sessionId;
   }
+
   static const _muscles = {
     'bench_press': ['Brust', 'Trizeps'],
     'row': ['Rücken', 'Bizeps'],
@@ -930,7 +1047,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     );
   }
 
-  ({Set<String> setIds, Map<String, String> setExercise, Map<String, int?> restBySet})
+  ({
+    Set<String> setIds,
+    Map<String, String> setExercise,
+    Map<String, int?> restBySet,
+  })
   _syntheticPlanLookup(_SyntheticStrength runtime) {
     final setIds = <String>{};
     final setExercise = <String, String>{};
@@ -1063,6 +1184,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<DayMeals> readMeals(String day) async {
+    if (failMealsRead) throw StateError('synthetic meals read failure');
     _seedPlans();
     final entries = _meals[day] ?? const [];
     NutrientSum sum(double? Function(MealEntry) pick) {
@@ -1177,21 +1299,107 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       List.unmodifiable(_laps[sessionId] ?? const []);
 
   @override
-  Future<PatternSummary> readPattern(
-    String habitKey,
-    MetricKey outcome,
+  Future<CaffeineSleepPattern> readCaffeineSleepPattern(
+    String endDay,
+    int nights,
+  ) {
+    final request =
+        '$endDay/$nights/$_caffeineSleepPatternGeneration/$failCaffeineSleepPattern';
+    if (_caffeineSleepPatternRequest == request &&
+        caffeineSleepPatternPending != null) {
+      return caffeineSleepPatternPending!;
+    }
+    final Future<CaffeineSleepPattern> pending;
+    if (nights < 1) {
+      pending = Future<CaffeineSleepPattern>.error(
+        ArgumentError.value(nights, 'nights', 'Expected at least 1 night.'),
+      )..ignore();
+    } else if (failCaffeineSleepPattern) {
+      pending = Future<CaffeineSleepPattern>.error(
+        StateError('synthetic caffeine sleep pattern failure'),
+      )..ignore();
+    } else {
+      pending = Zone.root.run(
+        () => _produceCaffeineSleepPattern(endDay, nights),
+      );
+    }
+    _caffeineSleepPatternRequest = request;
+    caffeineSleepPatternPending = pending;
+    return pending;
+  }
+
+  void _invalidateCaffeineSleepPattern() {
+    _caffeineSleepPatternGeneration++;
+    _caffeineSleepPatternRequest = null;
+    caffeineSleepPatternPending = null;
+  }
+
+  Future<CaffeineSleepPattern> _produceCaffeineSleepPattern(
     String endDay,
     int nights,
   ) async {
+    if (failCaffeineSleepPattern) {
+      throw StateError('synthetic caffeine sleep pattern failure');
+    }
+    if (nights < 1) {
+      throw ArgumentError.value(nights, 'nights', 'Expected at least 1 night.');
+    }
     final days = openBandDaysEnding(endDay, nights + 1);
-    final series = {
-      for (final p in await readMetricHistory(outcome, endDay, nights + 1))
-        p.day: p.value,
-    };
-    return summarizePattern(
-      {for (final d in days) d: _journal[d]?.metrics[habitKey]?.value},
-      series,
-      days,
+    final journal = [
+      for (final d in days)
+        if (_journal[d]?.metrics[CaffeineSleepPattern.field]?.value
+            case final v? when v == 0.0 || v == 1.0)
+          {
+            'date': d,
+            'values': {CaffeineSleepPattern.field: v},
+          },
+    ];
+    final outcomes = [
+      for (final d in days) _solIneligible.containsKey(d) ? null : _solMin[d],
+    ];
+    final availableOutcomes = [
+      for (var i = 1; i < outcomes.length; i++)
+        if (outcomes[i] != null) i,
+    ].length;
+    final partial = days.any(_solIneligible.containsKey);
+    if (journal.isEmpty || availableOutcomes == 0) {
+      return CaffeineSleepPattern.fromProducer(
+        empty: true,
+        binary: false,
+        insufficient: true,
+        meaningful: false,
+        n: 0,
+        endDay: endDay,
+        startDay: days.first,
+        nights: nights,
+        algoVersion: kAlgoVersion,
+        partial: partial,
+        availableOutcomes: availableOutcomes,
+      );
+    }
+    final produced = await Isolate.run(
+      () => _syntheticCaffeineSleepCorrelate({
+        'dates': days,
+        'journal': journal,
+        'sol': outcomes,
+      }),
+    );
+    return CaffeineSleepPattern.fromProducer(
+      empty: produced['empty'] == true,
+      binary: produced['binary'] == true,
+      insufficient: produced['insufficient'] == true,
+      meaningful: produced['meaningful'] == true,
+      n: (produced['n'] as num?)?.toInt() ?? 0,
+      nWith: (produced['nWith'] as num?)?.toInt(),
+      nWithout: (produced['nWithout'] as num?)?.toInt(),
+      delta: (produced['delta'] as num?)?.toDouble(),
+      note: produced['note'] as String?,
+      endDay: endDay,
+      startDay: days.first,
+      nights: nights,
+      algoVersion: kAlgoVersion,
+      partial: partial,
+      availableOutcomes: availableOutcomes,
     );
   }
 
@@ -1203,6 +1411,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<void> writeJournal(String day, String key, double value) async {
+    if (key == CaffeineSleepPattern.field) _invalidateCaffeineSleepPattern();
     final row = _journal[day] ??= _SynthJournalDay();
     final prev = row.metrics[key];
     row.metrics[key] = JournalMetricValue(
@@ -1214,6 +1423,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<JournalDaySnapshot> readJournalDay(String day) async {
+    if (journalReadBarrier != null) await journalReadBarrier;
     if (failJournalRead) throw StateError('synthetic journal read failure');
     final row = _journal[day];
     return JournalDaySnapshot(
@@ -1233,7 +1443,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw ArgumentError.value(patch.day, 'day', 'Expected YYYY-MM-DD.');
     }
     final fields = <String, JournalFieldSpec>{
-      for (final f in [...kJournalFields, ..._journalFieldDefs.values]) f.key: f,
+      for (final f in [...kJournalFields, ..._journalFieldDefs.values])
+        f.key: f,
     };
     for (final e in patch.metrics.entries) {
       if (e.key.isEmpty || !fields.containsKey(e.key)) {
@@ -1274,6 +1485,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
     if (conflicts.isNotEmpty) {
       throw JournalConflict(patch.day, fields: conflicts);
+    }
+    if (patch.metrics.containsKey(CaffeineSleepPattern.field)) {
+      _invalidateCaffeineSleepPattern();
     }
     for (final e in patch.metrics.entries) {
       if (e.value == null) {
@@ -2457,4 +2671,46 @@ class _SynthJournalDay {
   List<String> tags = [];
   String note = '';
   int journalUpdatedAt = 0;
+}
+
+Map<String, Object?> _syntheticCaffeineSleepCorrelate(
+  Map<String, Object?> input,
+) {
+  final dates = (input['dates'] as List).cast<String>();
+  final journal = [
+    for (final row in input['journal'] as List)
+      ana.JournalNumericDay((row as Map)['date'] as String, {
+        for (final e in (row['values'] as Map).entries)
+          e.key as String: (e.value as num).toDouble(),
+      }),
+  ];
+  final corr = ana.journalNumericCorrelations(
+    journal: journal,
+    dates: dates,
+    outcomes: {
+      CaffeineSleepPattern.outcome: [
+        for (final v in input['sol'] as List) (v as num?)?.toDouble(),
+      ],
+    },
+    fieldLagDays: const {
+      CaffeineSleepPattern.field: CaffeineSleepPattern.lagDays,
+    },
+  );
+  if (corr.isEmpty || corr.first.effects.isEmpty) {
+    return const {'empty': true, 'n': 0};
+  }
+  final field = corr.first;
+  final effect = field.effects.first;
+  return {
+    'empty': false,
+    'binary': effect.binary,
+    'insufficient': effect.insufficient,
+    'meaningful': effect.meaningful,
+    'n': effect.n,
+    'nWith': effect.nWith,
+    'nWithout': effect.nWithout,
+    'delta': effect.delta,
+    'note': effect.note,
+    'lagDays': field.lagDays,
+  };
 }

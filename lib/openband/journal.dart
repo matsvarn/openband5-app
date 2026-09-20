@@ -1,17 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../data/journal_fields.dart';
 import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
+import 'journal_controls.dart';
+import 'nutrition.dart';
 import 'theme.dart';
+
+const _kPatternNights = 30;
 
 class OpenBandJournal extends StatefulWidget {
   final OpenBandController controller;
   final FutureOr<void> Function(String day)? onEdit;
-  final VoidCallback? onNutrition;
+  final FutureOr<void> Function()? onNutrition;
   const OpenBandJournal({
     super.key,
     required this.controller,
@@ -23,42 +29,295 @@ class OpenBandJournal extends StatefulWidget {
 }
 
 class _OpenBandJournalState extends State<OpenBandJournal> {
-  late Future<List<JournalEntry>> _entries = _load();
   String? _loadedDay;
+  JournalDaySnapshot? _base;
+  Map<String, JournalMetricValue> _values = {};
+  bool _loading = true;
+  bool _loadError = false;
+  bool _conflict = false;
   bool _saving = false;
   String? _saveError;
+  Future<DayMeals>? _meals;
+  Object? _mealsError;
+  Future<NutritionTargetSnapshot>? _targets;
+  Object? _targetsError;
+  Future<CaffeineSleepPattern>? _pattern;
+  Object? _patternError;
+  int _journalSeq = 0;
+  int _mealsSeq = 0;
+  int _targetsSeq = 0;
+  int _patternSeq = 0;
+  int _writeSeq = 0;
 
-  Future<List<JournalEntry>> _load() {
-    _loadedDay = widget.controller.selectedDay;
-    return widget.controller.repository.readJournal(_loadedDay!);
+  OpenBandController get _c => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _c.addListener(_onController);
+    _reload(_c.selectedDay);
   }
 
-  Future<void> _write(String key, double value) async {
-    final day = widget.controller.selectedDay;
+  @override
+  void didUpdateWidget(OpenBandJournal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onController);
+      widget.controller.addListener(_onController);
+      _reload(_c.selectedDay);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.removeListener(_onController);
+    super.dispose();
+  }
+
+  void _onController() {
+    if (_loadedDay != _c.selectedDay) _reload(_c.selectedDay);
+  }
+
+  Future<void> _reload(
+    String day, {
+    bool journal = true,
+    bool meals = true,
+    bool targets = true,
+    bool pattern = true,
+  }) {
+    final dayChanged = _loadedDay != day;
+    _loadedDay = day;
+    final tasks = <Future<void>>[];
+    if (journal) {
+      final seq = ++_journalSeq;
+      _writeSeq++;
+      _loading = true;
+      _loadError = false;
+      _conflict = false;
+      _saveError = null;
+      _saving = false;
+      if (dayChanged) {
+        _base = null;
+        _values = {};
+      }
+      tasks.add(_loadJournal(day, seq));
+    }
+    if (meals) {
+      final seq = ++_mealsSeq;
+      _meals = null;
+      _mealsError = null;
+      tasks.add(_loadMeals(day, seq));
+    }
+    if (targets) {
+      final seq = ++_targetsSeq;
+      _targets = null;
+      _targetsError = null;
+      tasks.add(_loadTargets(day, seq));
+    }
+    if (pattern) {
+      final seq = ++_patternSeq;
+      _pattern = null;
+      _patternError = null;
+      tasks.add(_loadPattern(day, seq));
+    }
+    if (mounted) setState(() {});
+    return Future.wait(tasks);
+  }
+
+  Future<void> _loadJournal(String day, int seq) async {
+    try {
+      final snap = await _c.repository.readJournalDay(day);
+      if (!mounted || seq != _journalSeq || _loadedDay != day) return;
+      setState(() {
+        _base = snap;
+        _values = {...snap.metrics};
+        _loading = false;
+        _loadError = false;
+      });
+    } catch (_) {
+      if (!mounted || seq != _journalSeq || _loadedDay != day) return;
+      setState(() {
+        _loading = false;
+        _loadError = true;
+      });
+    }
+  }
+
+  Future<void> _loadMeals(String day, int seq) async {
+    try {
+      final future = _c.repository.readMeals(day);
+      if (!mounted || seq != _mealsSeq || _loadedDay != day) return;
+      setState(() {
+        _meals = future;
+        _mealsError = null;
+      });
+      await future;
+    } catch (e) {
+      if (!mounted || seq != _mealsSeq || _loadedDay != day) return;
+      setState(() {
+        _meals = null;
+        _mealsError = e;
+      });
+    }
+  }
+
+  Future<void> _loadTargets(String day, int seq) async {
+    try {
+      final future = _c.repository.readNutritionTargets(day);
+      if (!mounted || seq != _targetsSeq || _loadedDay != day) return;
+      setState(() {
+        _targets = future;
+        _targetsError = null;
+      });
+      await future;
+    } catch (e) {
+      if (!mounted || seq != _targetsSeq || _loadedDay != day) return;
+      setState(() {
+        _targets = null;
+        _targetsError = e;
+      });
+    }
+  }
+
+  Future<void> _loadPattern(String day, int seq) async {
+    try {
+      final future = _c.repository.readCaffeineSleepPattern(
+        day,
+        _kPatternNights,
+      );
+      if (!mounted || seq != _patternSeq || _loadedDay != day) return;
+      setState(() {
+        _pattern = future;
+        _patternError = null;
+      });
+      await future;
+    } catch (e) {
+      if (!mounted || seq != _patternSeq || _loadedDay != day) return;
+      setState(() {
+        _pattern = null;
+        _patternError = e;
+      });
+    }
+  }
+
+  JournalMetricValue? _metric(String key) => _values[key];
+
+  int? _mood() {
+    final v = _metric('mood')?.value;
+    if (v == null) return null;
+    final n = v.round();
+    if (n < 1 || n > 5 || v != n) return null;
+    return n;
+  }
+
+  bool? _yesNo(String key) {
+    final v = _metric(key)?.value;
+    if (v == 1) return true;
+    if (v == 0) return false;
+    return null;
+  }
+
+  Future<void> _write(String key, JournalMetricValue? next) async {
+    final day = _loadedDay;
+    final base = _base;
+    if (day == null ||
+        base == null ||
+        base.day != day ||
+        _saving ||
+        _loading ||
+        _loadError ||
+        _conflict) {
+      return;
+    }
+    final writeSeq = ++_writeSeq;
     setState(() {
       _saving = true;
+      _conflict = false;
       _saveError = null;
     });
     try {
-      await widget.controller.repository.writeJournal(day, key, value);
+      await _c.repository.patchJournalDay(
+        JournalDayPatch.fromBase(base, metrics: {key: next}),
+      );
+      if (!mounted || writeSeq != _writeSeq) return;
+      if (_loadedDay != day) {
+        setState(() => _saving = false);
+        return;
+      }
+      setState(() {
+        if (next == null) {
+          _values.remove(key);
+        } else {
+          _values[key] = next;
+        }
+      });
+      try {
+        final snap = await _c.repository.readJournalDay(day);
+        if (!mounted || writeSeq != _writeSeq) return;
+        if (_loadedDay != day) {
+          setState(() => _saving = false);
+          return;
+        }
+        setState(() {
+          _base = snap;
+          _values = {...snap.metrics};
+          _saving = false;
+          _loadError = false;
+          _conflict = false;
+        });
+        if (key == CaffeineSleepPattern.field) {
+          await _loadPattern(day, ++_patternSeq);
+        }
+      } catch (_) {
+        if (!mounted || writeSeq != _writeSeq) return;
+        setState(() {
+          _saving = false;
+          if (_loadedDay == day) _loadError = true;
+        });
+      }
+    } on JournalConflict {
+      if (!mounted || writeSeq != _writeSeq) return;
+      setState(() {
+        _saving = false;
+        if (_loadedDay == day) {
+          _conflict = true;
+          _saveError = null;
+        }
+      });
     } catch (_) {
-      _saveError = 'Antwort konnte nicht gespeichert werden.';
+      if (!mounted || writeSeq != _writeSeq) return;
+      setState(() {
+        _saving = false;
+        if (_loadedDay == day) {
+          _saveError = 'Speichern fehlgeschlagen.';
+        }
+      });
     }
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _entries = _load();
-    });
+  }
+
+  Future<void> _openEditor() async {
+    final onEdit = widget.onEdit;
+    if (onEdit == null || _saving) return;
+    final day = _c.selectedDay;
+    await onEdit(day);
+    if (!mounted || _loadedDay != day || _saving) return;
+    await _reload(day, meals: false, targets: false);
+  }
+
+  Future<void> _openNutrition() async {
+    final onNutrition = widget.onNutrition;
+    if (onNutrition == null) return;
+    final day = _c.selectedDay;
+    await onNutrition();
+    if (!mounted || _loadedDay != day) return;
+    await _reload(day, journal: false, pattern: false);
   }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-    animation: widget.controller,
+    animation: _c,
     builder: (context, _) {
       final p = OB.of(context);
-      final c = widget.controller;
-      if (_loadedDay != c.selectedDay) _entries = _load();
-      final day = c.day;
       return ColoredBox(
         color: p.canvas,
         child: ListView(
@@ -66,59 +325,104 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
             Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Text(
-                'Journal',
-                style: p.text(30, weight: FontWeight.w800, display: true),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Journal',
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
+                      style: p
+                          .text(30, weight: FontWeight.w800, display: true)
+                          .copyWith(height: 34 / 30),
+                    ),
+                  ),
+                  if (widget.onEdit != null)
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: IconButton(
+                        key: const ValueKey('journal-edit'),
+                        tooltip: 'Journal bearbeiten',
+                        onPressed: _saving ? null : _openEditor,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 44,
+                          height: 44,
+                        ),
+                        icon: Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: p.card,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            LucideIcons.slidersHorizontal,
+                            size: 20,
+                            color: p.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            FutureBuilder<List<JournalEntry>>(
-              future: _entries,
-              builder: (context, snapshot) {
-                final byKey = {
-                  for (final e in snapshot.data ?? const <JournalEntry>[])
-                    e.key: e.value,
-                };
-                return OBCheckinCard(
-                  mood: byKey['mood'],
-                  entries: byKey,
-                  busy: _saving || !snapshot.hasData,
-                  error: snapshot.hasError
-                      ? 'Journal konnte nicht geladen werden.'
-                      : _saveError,
-                  onMood: (v) => _write('mood', v),
-                  onAnswer: (key, yes) => _write(key, yes ? 1 : 0),
-                  onEdit: widget.onEdit == null
-                      ? null
-                      : (_) async {
-                          final editDay = c.selectedDay;
-                          await widget.onEdit!(editDay);
-                          if (!mounted) return;
-                          setState(() {
-                            _entries = _load();
-                          });
-                        },
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            if (day != null)
-              _NutritionRow(intake: day.intake, onTap: widget.onNutrition),
-            const SizedBox(height: 10),
-            FutureBuilder<PatternSummary>(
-              key: ValueKey('pattern-${c.selectedDay}-${_entries.hashCode}'),
-              future: c.repository.readPattern(
+            const SizedBox(height: 14),
+            OBCheckinCard(
+              mood: _mood(),
+              caffeineLate: _yesNo('caffeine_late'),
+              alcoholEvening: _yesNo('alcohol_evening'),
+              readBeforeBed: _yesNo('read_before_bed'),
+              busy: _saving || _loading || _conflict || _loadError,
+              error: _loadError
+                  ? 'Journal nicht geladen.'
+                  : _conflict
+                  ? 'Antwort inzwischen geändert.'
+                  : _saveError,
+              onMood: (v) => _write(
+                'mood',
+                v == null ? null : JournalMetricValue(v.toDouble()),
+              ),
+              onCaffeine: (v) => _write(
                 'caffeine_late',
-                MetricKey.hrv,
-                c.selectedDay,
-                30,
+                v == null ? null : JournalMetricValue(v ? 1 : 0),
               ),
-              builder: (context, snapshot) => OBPatternCard(
-                title: 'HRV nach Koffein nach 14 Uhr',
-                unit: 'ms',
-                summary: snapshot.data,
-                error: snapshot.hasError,
+              onAlcohol: (v) => _write(
+                'alcohol_evening',
+                v == null ? null : JournalMetricValue(v ? 1 : 0),
+              ),
+              onRead: (v) => _write(
+                'read_before_bed',
+                v == null ? null : JournalMetricValue(v ? 1 : 0),
+              ),
+              onRetry: _loadError || _conflict
+                  ? () => _reload(_c.selectedDay, meals: false, targets: false)
+                  : null,
+              retryLabel: _conflict ? 'Neu laden' : null,
+            ),
+            const SizedBox(height: 10),
+            _HubNutrition(
+              meals: _meals,
+              mealsError: _mealsError,
+              targets: _targets,
+              targetsError: _targetsError,
+              onTap: widget.onNutrition == null ? null : _openNutrition,
+              onRetry: () =>
+                  _reload(_c.selectedDay, journal: false, pattern: false),
+            ),
+            const SizedBox(height: 10),
+            _HubPattern(
+              future: _pattern,
+              error: _patternError,
+              onRetry: () => _reload(
+                _c.selectedDay,
+                journal: false,
+                meals: false,
+                targets: false,
               ),
             ),
           ],
@@ -128,408 +432,432 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
   );
 }
 
-const _moodLabels = ['Erschöpft', 'Müde', 'Okay', 'Gut', 'Sehr gut'];
-
 class OBCheckinCard extends StatelessWidget {
-  final double? mood;
-  final Map<String, double> entries;
+  final int? mood;
+  final bool? caffeineLate, alcoholEvening, readBeforeBed;
   final bool busy;
   final String? error;
-  final ValueChanged<double> onMood;
-  final void Function(String key, bool yes) onAnswer;
-  final FutureOr<void> Function(String day)? onEdit;
+  final ValueChanged<int?> onMood;
+  final ValueChanged<bool?> onCaffeine, onAlcohol, onRead;
+  final VoidCallback? onRetry;
+  final String? retryLabel;
   const OBCheckinCard({
     super.key,
     required this.mood,
-    required this.entries,
+    required this.caffeineLate,
+    required this.alcoholEvening,
+    required this.readBeforeBed,
     required this.busy,
     this.error,
     required this.onMood,
-    required this.onAnswer,
-    this.onEdit,
+    required this.onCaffeine,
+    required this.onAlcohol,
+    required this.onRead,
+    this.onRetry,
+    this.retryLabel,
   });
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    Widget habit({
+      required String label,
+      required IconData icon,
+      required bool? value,
+      required ValueChanged<bool?> onChanged,
+    }) => DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: p.line)),
+      ),
+      child: OBJournalYesNo(
+        label: label,
+        icon: icon,
+        value: value,
+        enabled: !busy,
+        onChanged: onChanged,
+      ),
+    );
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Wie fühlst du dich?',
-            style: p.text(15, weight: FontWeight.w600),
+            style: p
+                .text(15, weight: FontWeight.w600)
+                .copyWith(height: 20 / 15),
           ),
           const SizedBox(height: 12),
-          Row(
-            spacing: 8,
-            children: [
-              for (var i = 1; i <= 5; i++)
-                Expanded(
-                  child: Semantics(
-                    button: true,
-                    selected: mood == i,
-                    label: _moodLabels[i - 1],
-                    child: InkWell(
-                      onTap: busy ? null : () => onMood(i.toDouble()),
-                      borderRadius: BorderRadius.circular(14),
-                      child: ExcludeSemantics(
-                        child: Container(
-                          height: 56,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: mood == i ? p.food : p.well,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(
-                            '$i',
-                            style: p.text(
-                              18,
-                              weight: FontWeight.w700,
-                              display: true,
-                              color: mood == i ? p.card : p.ink,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+          IgnorePointer(
+            ignoring: busy,
+            child: OBJournalMoodScale(value: mood, onChanged: onMood),
+          ),
+          const SizedBox(height: 12),
+          habit(
+            label: 'Koffein nach 14 Uhr',
+            icon: LucideIcons.coffee,
+            value: caffeineLate,
+            onChanged: onCaffeine,
+          ),
+          habit(
+            label: 'Alkohol',
+            icon: LucideIcons.wine,
+            value: alcoholEvening,
+            onChanged: onAlcohol,
+          ),
+          habit(
+            label: 'Abends gelesen',
+            icon: LucideIcons.bookOpen,
+            value: readBeforeBed,
+            onChanged: onRead,
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!,
+              style: p.text(13, color: p.danger).copyWith(height: 18 / 13),
+            ),
+            if (onRetry != null) ...[
+              const SizedBox(height: 8),
+              OBAction(
+                retryLabel ?? CaffeineSleepPattern.retryLabel,
+                ink: true,
+                onPressed: onRetry,
+              ),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            error ??
-                (mood == null
-                    ? 'Noch keine Antwort'
-                    : _moodLabels[mood!.round().clamp(1, 5) - 1]),
-            style: p.text(
-              13,
-              weight: FontWeight.w600,
-              color: error != null
-                  ? p.danger
-                  : mood == null
-                  ? p.muted
-                  : p.foodText,
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (final (key, label, icon) in [
-            ('caffeine_late', 'Koffein nach 14 Uhr', LucideIcons.coffee),
-            ('alcohol_evening', 'Alkohol am Abend', LucideIcons.wine),
-            ('read_before_bed', 'Gelesen', LucideIcons.bookOpen),
-          ])
-            OBHabitRow(
-              label: label,
-              icon: icon,
-              answer: switch (entries[key]) {
-                null => null,
-                final v => v >= .5,
-              },
-              busy: busy,
-              onAnswer: (yes) => onAnswer(key, yes),
-            ),
-          if (onEdit != null)
-            _HabitRow(
-              label: 'Weitere Angaben',
-              icon: LucideIcons.listPlus,
-              value: switch ([
-                'caffeine_mg',
-                'alcohol_units',
-                'screens_min',
-              ].where(entries.containsKey).length) {
-                0 => null,
-                final n => '$n erfasst',
-              },
-              onTap: () => onEdit!(''),
-            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class OBHabitRow extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool? answer;
-  final bool busy;
-  final ValueChanged<bool> onAnswer;
-  const OBHabitRow({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.answer,
-    required this.busy,
-    required this.onAnswer,
+class _HubNutrition extends StatelessWidget {
+  final Future<DayMeals>? meals;
+  final Object? mealsError;
+  final Future<NutritionTargetSnapshot>? targets;
+  final Object? targetsError;
+  final FutureOr<void> Function()? onTap;
+  final VoidCallback? onRetry;
+  const _HubNutrition({
+    required this.meals,
+    required this.mealsError,
+    required this.targets,
+    required this.targetsError,
+    this.onTap,
+    this.onRetry,
   });
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    Widget pill(String text, bool yes) {
-      final selected = answer == yes;
-      return Semantics(
-        button: true,
-        selected: selected,
-        label: '$label: $text',
-        child: InkWell(
-          onTap: busy ? null : () => onAnswer(yes),
-          borderRadius: BorderRadius.circular(16),
-          child: ExcludeSemantics(
-            child: Container(
-              height: 32,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? p.ink : p.well,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                text,
-                style: p.text(
-                  13,
-                  weight: FontWeight.w600,
-                  color: selected ? p.card : p.ink,
-                ),
-              ),
+    if (mealsError != null) {
+      return OBCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 12,
+          children: [
+            Text(
+              'Einträge konnten nicht geladen werden.',
+              style: p.text(15).copyWith(height: 21 / 15),
             ),
-          ),
+            OBAction(
+              CaffeineSleepPattern.retryLabel,
+              ink: true,
+              onPressed: onRetry,
+            ),
+          ],
         ),
       );
     }
-
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: p.line)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: p.well,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 16, color: p.ink),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(label, style: p.text(15, weight: FontWeight.w500)),
-          ),
-          pill('Ja', true),
-          const SizedBox(width: 6),
-          pill('Nein', false),
-        ],
-      ),
-    );
-  }
-}
-
-class _HabitRow extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final String? value;
-  final VoidCallback? onTap;
-  const _HabitRow({
-    required this.label,
-    required this.icon,
-    required this.value,
-    this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: p.line)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: p.well,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 16, color: p.ink),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(label, style: p.text(15, weight: FontWeight.w500)),
-            ),
-            Text(
-              value ?? '—',
-              style: p.text(
-                15,
-                weight: FontWeight.w600,
-                color: value == null ? p.muted : p.ink,
-              ),
-            ),
-            if (onTap != null) ...[
-              const SizedBox(width: 6),
-              Icon(LucideIcons.chevronRight, size: 16, color: p.gap),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NutritionRow extends StatelessWidget {
-  final DayIntake intake;
-  final VoidCallback? onTap;
-  const _NutritionRow({required this.intake, this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AlpRadius.card),
-      child: OBCard(
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: p.foodTint,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(LucideIcons.utensils, size: 18, color: p.food),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Ernährung', style: p.text(15, weight: FontWeight.w600)),
-                  Text(
-                    intake.kcal == null && intake.waterMl == null
-                        ? 'Noch nichts erfasst'
-                        : [
-                            if (intake.kcal case final k?)
-                              '${obNumber(k)} kcal',
-                            if (intake.waterMl case final w?)
-                              '${obNumber(w / 1000, digits: 2)} l Wasser',
-                          ].join(' · '),
-                    style: p.text(13, color: p.muted),
+    return FutureBuilder<DayMeals>(
+      future: meals,
+      builder: (context, mealSnap) {
+        if (!mealSnap.hasData) {
+          return const SizedBox.shrink();
+        }
+        return FutureBuilder<NutritionTargetSnapshot>(
+          future: targets,
+          builder: (context, targetSnap) {
+            if (targetsError == null && !targetSnap.hasData) {
+              return const SizedBox.shrink();
+            }
+            final NutritionTargetValues? values = targetsError != null
+                ? null
+                : targetSnap.data?.values;
+            final card = OBMacroBars(
+              meals: mealSnap.data!,
+              targets: values,
+              targetsUnavailable: targetsError != null,
+            );
+            final tappable = onTap == null
+                ? card
+                : Semantics(
+                    button: true,
+                    label: 'Ernährung',
+                    child: InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(AlpRadius.card),
+                      child: card,
+                    ),
+                  );
+            if (targetsError == null) return tappable;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 10,
+              children: [
+                OBCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    spacing: 12,
+                    children: [
+                      Text(
+                        'Ziele konnten nicht geladen werden.',
+                        style: p.text(15).copyWith(height: 21 / 15),
+                      ),
+                      OBAction(
+                        CaffeineSleepPattern.retryLabel,
+                        ink: true,
+                        onPressed: onRetry,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            if (onTap != null)
-              Icon(LucideIcons.chevronRight, size: 16, color: p.gap),
-          ],
-        ),
-      ),
+                ),
+                tappable,
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _HubPattern extends StatelessWidget {
+  final Future<CaffeineSleepPattern>? future;
+  final Object? error;
+  final VoidCallback? onRetry;
+  const _HubPattern({required this.future, this.error, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    if (error != null) {
+      return OBPatternCard(error: true, onRetry: onRetry);
+    }
+    return FutureBuilder<CaffeineSleepPattern>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return OBPatternCard(error: true, onRetry: onRetry);
+        }
+        return OBPatternCard(pattern: snapshot.data);
+      },
     );
   }
 }
 
 class OBPatternCard extends StatelessWidget {
-  static const minNights = 3;
-  final String title, unit;
-  final PatternSummary? summary;
+  final CaffeineSleepPattern? pattern;
   final bool error;
+  final VoidCallback? onRetry;
   const OBPatternCard({
     super.key,
-    required this.title,
-    required this.unit,
-    required this.summary,
+    this.pattern,
     this.error = false,
+    this.onRetry,
   });
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final s = summary;
-    final enough =
-        s != null && s.yes.nights >= minNights && s.no.nights >= minNights;
-    final max = !enough
-        ? 0.0
-        : [s.yes.mean!, s.no.mean!].reduce((a, b) => a > b ? a : b);
-    Widget bar(String label, PatternGroup g, Color color) => Row(
-      children: [
-        SizedBox(
-          width: 72,
-          child: Text(
-            '$label · ${g.nights}',
-            style: p.text(13, weight: FontWeight.w600, color: p.muted),
-          ),
-        ),
-        Expanded(
-          child: Container(
-            height: 14,
-            alignment: Alignment.centerLeft,
-            decoration: BoxDecoration(
-              color: p.well,
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: FractionallySizedBox(
-              widthFactor: enough && max > 0 ? g.mean! / max : 0,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(7),
-                ),
+    final s = pattern;
+    Widget info() => SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        tooltip: 'Information',
+        onPressed: s == null
+            ? null
+            : () => showOpenBandJournalInfo(
+                context,
+                title: CaffeineSleepPattern.infoTitle,
+                body: _patternInfoBody(s),
               ),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+        icon: Icon(LucideIcons.info, size: 20, color: p.muted),
+      ),
+    );
+    Widget header() {
+      final opsz = MediaQuery.textScalerOf(context).scale(15).clamp(14.0, 32.0);
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              CaffeineSleepPattern.title,
+              style: p
+                  .text(15, weight: FontWeight.w600)
+                  .copyWith(
+                    height: 20 / 15,
+                    fontVariations: [FontVariation('opsz', opsz)],
+                  ),
             ),
           ),
+          info(),
+        ],
+      );
+    }
+    if (error) {
+      return OBCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 10,
+          children: [
+            header(),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 12,
+              children: [
+                Text(
+                  CaffeineSleepPattern.loadError,
+                  style: p.text(15).copyWith(height: 21 / 15),
+                ),
+                OBAction(
+                  CaffeineSleepPattern.retryLabel,
+                  ink: true,
+                  onPressed: onRetry,
+                ),
+              ],
+            ),
+          ],
         ),
-        SizedBox(
-          width: 64,
-          child: Text(
-            enough ? '${obNumber(g.mean)} $unit' : '—',
-            textAlign: TextAlign.right,
-            style: p.text(15, weight: FontWeight.w700, display: true),
-          ),
-        ),
-      ],
-    );
+      );
+    }
+    if (s == null) return const SizedBox.shrink();
+    final Widget body = switch (s.kind) {
+      CaffeineSleepPatternKind.meaningful => _meaningfulBody(context, p, s),
+      CaffeineSleepPatternKind.nonmeaningful => _statusBody(
+        p,
+        CaffeineSleepPattern.noClearPattern,
+        '${s.pairedN} ${CaffeineSleepPattern.nightsWithEntry}',
+      ),
+      CaffeineSleepPatternKind.insufficient => _statusBody(
+        p,
+        CaffeineSleepPattern.tooFewNights,
+        '${s.pairedN} ${CaffeineSleepPattern.nightsWithEntry}',
+      ),
+      CaffeineSleepPatternKind.unavailable => _statusBody(
+        p,
+        CaffeineSleepPattern.unavailableTitle,
+        CaffeineSleepPattern.unavailableDetail,
+      ),
+    };
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 10,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(title, style: p.text(15, weight: FontWeight.w600)),
-              ),
-              Text(
-                '30 Nächte',
-                style: p.text(13, weight: FontWeight.w500, color: p.muted),
-              ),
-            ],
-          ),
-          if (s != null) ...[
-            bar('Ja', s.yes, p.food),
-            bar('Nein', s.no, p.gap),
-          ],
-          Text(
-            error
-                ? 'Zusammenhang konnte nicht geladen werden.'
-                : s == null
-                ? ''
-                : enough
-                ? 'Ø der folgenden Nacht · Zusammenhang, kein Beweis'
-                : 'Noch zu wenige Nächte mit Antwort (mindestens $minNights je Seite)',
-            style: p.text(
-              12,
-              weight: FontWeight.w500,
-              color: error ? p.danger : p.muted,
+          header(),
+          body,
+          if (s.partial)
+            Text(
+              CaffeineSleepPattern.partialLabel,
+              style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
             ),
-          ),
         ],
       ),
     );
   }
+
+  Widget _statusBody(OB p, String title, String detail) => Padding(
+    padding: const EdgeInsets.only(top: 4, bottom: 2),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 8,
+      children: [
+        Text(
+          title,
+          style: p.text(17, weight: FontWeight.w600).copyWith(height: 24 / 17),
+        ),
+        Text(
+          detail,
+          style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
+        ),
+      ],
+    ),
+  );
+
+  Widget _meaningfulBody(BuildContext context, OB p, CaffeineSleepPattern s) {
+    final nightStyle = p.text(13, color: p.muted).copyWith(height: 18 / 13);
+    final comparisonStyle = p.text(13, color: p.muted).copyWith(height: 18 / 13);
+    final stacked =
+        MediaQuery.textScalerOf(context).scale(13) > 20 ||
+        MediaQuery.sizeOf(context).width < 360;
+    final delta = Text(
+      _patternDeltaLabel(s.delta),
+      style: p
+          .text(34, weight: FontWeight.w700, display: true)
+          .copyWith(height: 40 / 34),
+    );
+    final comparison = Text(
+      CaffeineSleepPattern.comparisonLabel,
+      style: comparisonStyle,
+    );
+    final ja = Text('Ja · ${s.yesNights} Nächte', style: nightStyle);
+    final nein = Text('Nein · ${s.noNights} Nächte', style: nightStyle);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: 12,
+      children: [
+        stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [delta, comparison],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  delta,
+                  const SizedBox(width: 12),
+                  Expanded(child: comparison),
+                ],
+              ),
+        stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 8,
+                children: [ja, nein],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [ja, nein],
+              ),
+      ],
+    );
+  }
+}
+
+String _patternDeltaLabel(double? delta) {
+  if (delta == null || !delta.isFinite) return '—';
+  final digits = delta == delta.roundToDouble() ? 0 : 1;
+  final magnitude = obNumber(delta.abs(), digits: digits);
+  if (delta > 0) return '+$magnitude Min.';
+  if (delta < 0) return '−$magnitude Min.';
+  return '$magnitude Min.';
+}
+
+String _patternInfoBody(CaffeineSleepPattern s) {
+  final windowStart = openBandDaysEnding(s.endDay, s.nights).first;
+  final start = DateFormat(
+    'd. MMMM',
+    'de_DE',
+  ).format(DateTime.parse(windowStart));
+  final end = DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(s.endDay));
+  final n = s.pairedN;
+  return '$start–$end · $n Nächte\n'
+      '${CaffeineSleepPattern.infoComparison}\n'
+      '${CaffeineSleepPattern.infoEligibility}\n'
+      '${CaffeineSleepPattern.infoCausation}';
 }

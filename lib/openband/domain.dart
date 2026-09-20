@@ -360,37 +360,150 @@ class JournalEntry {
   const JournalEntry(this.key, this.value);
 }
 
-class PatternGroup {
+/// Fixed hypothesis: `caffeine_late` on journal day D versus stored `sol_min`
+/// on wake day D+1. Group means are not on the producer and are never filled.
+enum CaffeineSleepPatternKind {
+  /// No supported pairs (empty/misaligned series, or a non-binary field).
+  unavailable,
+
+  /// Pairs exist but floors (minN / minPerSide / permutation history) refuse.
+  insufficient,
+
+  /// Binary comparison ran; size + FDR did not clear.
+  nonmeaningful,
+
+  /// Binary comparison ran and survived size + FDR.
+  meaningful,
+}
+
+class CaffeineSleepPattern {
+  static const field = 'caffeine_late';
+  static const outcome = 'sol_min';
+  static const lagDays = 1;
+  static const title = 'Einschlafen · Koffein nach 14 Uhr';
+  static const comparisonLabel = 'Ja gegenüber Nein';
+  static const noClearPattern = 'Kein klares Muster';
+  static const tooFewNights = 'Noch zu wenige Nächte';
+  static const unavailableTitle = 'Noch kein Vergleich';
+  static const unavailableDetail = 'Keine auswertbaren Nächte mit Eintrag';
+  static const nightsWithEntry = 'Nächte mit Eintrag';
+  static const partialLabel = 'Teilweise auswertbar';
+  static const loadError = 'Vergleich konnte nicht geladen werden.';
+  static const retryLabel = 'Erneut';
+  static const infoTitle = 'Vergleich verstehen';
+  static const infoComparison =
+      'Verglichen wird die Einschlafdauer nach „Ja“ und „Nein“ zu Koffein nach 14 Uhr am Vortag.';
+  static const infoEligibility =
+      'Nur bestätigte oder korrigierte Nächte mit verfügbarer Einschlafdauer zählen. Fehlende Antworten bleiben offen.';
+  static const infoCausation = 'Ein Zusammenhang belegt keine Ursache.';
+
+  final CaffeineSleepPatternKind kind;
+  final int pairedN;
+  final int? yesNights;
+  final int? noNights;
+  final double? delta;
+  final String? note;
+  final String endDay;
+  final String startDay;
   final int nights;
-  final double? mean;
-  const PatternGroup(this.nights, this.mean);
-}
+  final int algoVersion;
 
-/// Outcome of the night that FOLLOWS a yes/no journal answer, split by the
-/// answer. A journal day D is paired with the metric dated D+1 (the wake
-/// day of that night). Nights without an answer or without the metric are
-/// not counted anywhere.
-class PatternSummary {
-  final PatternGroup yes, no;
-  const PatternSummary({required this.yes, required this.no});
-}
+  /// True when some window inputs were rejected or ineligible.
+  final bool partial;
+  final int availableOutcomes;
 
-PatternSummary summarizePattern(
-  Map<String, double?> answers,
-  Map<String, double?> outcomes,
-  List<String> days,
-) {
-  final yes = <double>[], no = <double>[];
-  for (var i = 0; i + 1 < days.length; i++) {
-    final answer = answers[days[i]], outcome = outcomes[days[i + 1]];
-    if (answer == null || outcome == null) continue;
-    (answer >= .5 ? yes : no).add(outcome);
+  const CaffeineSleepPattern({
+    required this.kind,
+    required this.pairedN,
+    this.yesNights,
+    this.noNights,
+    this.delta,
+    this.note,
+    required this.endDay,
+    required this.startDay,
+    required this.nights,
+    required this.algoVersion,
+    this.partial = false,
+    this.availableOutcomes = 0,
+  });
+
+  /// Map one producer effect. Never invents yes/no counts or group means.
+  factory CaffeineSleepPattern.fromProducer({
+    required bool empty,
+    required bool binary,
+    required bool insufficient,
+    required bool meaningful,
+    required int n,
+    int? nWith,
+    int? nWithout,
+    double? delta,
+    String? note,
+    required String endDay,
+    required String startDay,
+    required int nights,
+    required int algoVersion,
+    bool partial = false,
+    int availableOutcomes = 0,
+  }) {
+    final countsOk = binary && nWith != null && nWithout != null;
+    final kind = empty || n == 0 || (!binary && !insufficient)
+        ? CaffeineSleepPatternKind.unavailable
+        : insufficient
+        ? CaffeineSleepPatternKind.insufficient
+        : meaningful
+        ? CaffeineSleepPatternKind.meaningful
+        : CaffeineSleepPatternKind.nonmeaningful;
+    final showSplit =
+        countsOk &&
+        (kind == CaffeineSleepPatternKind.meaningful ||
+            kind == CaffeineSleepPatternKind.nonmeaningful);
+    return CaffeineSleepPattern(
+      kind: kind,
+      pairedN: n,
+      yesNights: showSplit ? nWith : null,
+      noNights: showSplit ? nWithout : null,
+      delta: showSplit ? delta : null,
+      note: kind == CaffeineSleepPatternKind.insufficient ? note : null,
+      endDay: endDay,
+      startDay: startDay,
+      nights: nights,
+      algoVersion: algoVersion,
+      partial: partial,
+      availableOutcomes: availableOutcomes,
+    );
   }
-  PatternGroup group(List<double> v) => PatternGroup(
-    v.length,
-    v.isEmpty ? null : v.reduce((a, b) => a + b) / v.length,
+
+  @override
+  bool operator ==(Object other) =>
+      other is CaffeineSleepPattern &&
+      other.kind == kind &&
+      other.pairedN == pairedN &&
+      other.yesNights == yesNights &&
+      other.noNights == noNights &&
+      other.delta == delta &&
+      other.note == note &&
+      other.endDay == endDay &&
+      other.startDay == startDay &&
+      other.nights == nights &&
+      other.algoVersion == algoVersion &&
+      other.partial == partial &&
+      other.availableOutcomes == availableOutcomes;
+
+  @override
+  int get hashCode => Object.hash(
+    kind,
+    pairedN,
+    yesNights,
+    noNights,
+    delta,
+    note,
+    endDay,
+    startDay,
+    nights,
+    algoVersion,
+    partial,
+    availableOutcomes,
   );
-  return PatternSummary(yes: group(yes), no: group(no));
 }
 
 class PlannedSet {
@@ -1386,9 +1499,8 @@ abstract interface class OpenBandRepository {
   Future<SessionDetail?> readSessionDetail(String sessionId);
   Future<void> recordLap(String sessionId, Lap lap);
   Future<List<Lap>> readLaps(String sessionId);
-  Future<PatternSummary> readPattern(
-    String habitKey,
-    MetricKey outcome,
+  /// Caffeine × stored SOL. [nights] must be at least 1.
+  Future<CaffeineSleepPattern> readCaffeineSleepPattern(
     String endDay,
     int nights,
   );

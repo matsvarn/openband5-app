@@ -36,12 +36,12 @@ Nach einem Token-Export aus Paper: `tokens.json` ersetzen, `source.tokensContent
 ## Gestaltungsregeln
 
 - Nur die `alp`-Tokenfamilie. `alp-well` ist die Seitenfläche, `#FFFFFF` die Karte. Keine Schatten auf Karten, keine Verläufe.
-- `alp-ink` nur für Text und gewählte Segmente, nie als Fläche.
+- `alp-ink` für Text, Auswahlzustände und die kanonischen primären Aktionen. Karten und Seiten behalten ihre eigenen Flächentoken.
 - Metrikfarben (`sleep`, `recovery`, `strain`, `pulse`, `food`) nur auf Daten und ihren `-tint`-Flächen. `alp-action` nur auf Bedienelementen.
 - Kein Text wiederholt, was ein Bild auf demselben Screen bereits zeigt. Kopf zeigt `Heute` bzw. `Di, 15. Sep.`, keine Erklärzeile.
-- Fehlende Eingaben erscheinen als `—` oder entfallen. Untergrenzen werden nicht mit `≥` markiert; der kcal-Balken zeigt ein gestricheltes Segment für Einträge ohne Nährwerte.
+- Fehlende Eingaben erscheinen als `—` oder entfallen. Teilwerte tragen eine Kennzeichnung, bei Ernährung die Anzahl unvollständiger Einträge. Keine `≥`-Präfixe und keine erfundene Balkenlänge für unbekannte Mengen. Fortschritt braucht ein tatsächlich gespeichertes Ziel; ein nicht geladenes Ziel ist kein leeres Ziel.
 - Symbole: Lucide 1.33.0 aus dem Asset-Paket, 24-Raster, 2 px Strich. Sport-Piktogramme kommen aus Tabler Icons 3.46.0 (MIT, gleiches Raster); Zuordnung in `../assets/icons/sport/MANIFEST.json`.
 
 ## Stand
 
-`blocks.json` listet 54 Bausteine und 11 neu aufgebaute Screens (Übersicht ×2, Gesundheit, Training, Journal, Schlaf, Kraft live, Laufen live, Lauf Ergebnis, Ernährung Tag, Profil). Offene Bausteine stehen unter `openBlocks`. In Flutter umgesetzt: `OB`-Palette aus `AlpColor`, Übersicht (Kopf, Ringe, Tageskarte, Messwertkarten), Gesundheit (`health.dart`), Training (`training.dart`), Journal (`journal.dart`) mit Verträgen `readMetricHistory`, `readSessions`, `readJournal`/`writeJournal`. Der Block `implemented` in `blocks.json` nennt die Datei; `status.deferred` die offenen Bausteine.
+`blocks.json` führt die aktuellen Bausteine, Screens und Varianten. `check_design_manifest.py` prüft die Quellenzuordnung und nennt die Anzahl. `state_checklist.json` hält die ursprünglichen Archivnamen und ihre belegten Dispositionen; eine registrierte Variante allein bedeutet keine abgeschlossene Funktion. Abgenommene Einheiten und Prüfnachweise stehen in `../IMPLEMENTATION_VERIFICATION.md`, laufende Arbeit in `../IMPLEMENTATION_PLAN.md`.

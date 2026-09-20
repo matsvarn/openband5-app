@@ -1092,7 +1092,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Weitere Angaben'));
+    await tester.tap(find.byKey(const ValueKey('journal-edit')));
     await tester.pumpAndSettle();
     expect(opened, '2026-09-15');
   });

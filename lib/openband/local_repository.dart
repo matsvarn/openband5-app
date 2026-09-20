@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:isolate';
+
+import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -882,25 +885,259 @@ class LocalOpenBandRepository implements OpenBandRepository {
   ];
 
   @override
-  Future<PatternSummary> readPattern(
-    String habitKey,
-    MetricKey outcome,
+  Future<CaffeineSleepPattern> readCaffeineSleepPattern(
     String endDay,
     int nights,
   ) async {
     _requireDay(endDay);
+    if (nights < 1) {
+      throw ArgumentError.value(nights, 'nights', 'Expected at least 1 night.');
+    }
     final days = openBandDaysEnding(endDay, nights + 1);
-    final journal = await LocalDb.journalMetricsByDay(
-      sinceDaysEpoch: days.first,
+    final startDay = days.first;
+    final daySet = days.toSet();
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final journalRows = await txn.query(
+        'journal_metric',
+        columns: ['date', 'value'],
+        where: 'field = ? AND date >= ? AND date <= ?',
+        whereArgs: [CaffeineSleepPattern.field, startDay, endDay],
+      );
+      final solRows = await txn.rawQuery(
+        'SELECT date, value FROM metric_series '
+        'WHERE key = ? AND value IS NOT NULL '
+        'AND date >= ? AND date <= ? '
+        'AND date NOT IN ('
+        'SELECT date FROM metric_series_version '
+        'WHERE date >= ? AND date <= ? '
+        "AND date IS NOT NULL AND source IS NOT NULL AND source <> 'band' "
+        'UNION '
+        'SELECT r.day_id FROM day_result r '
+        'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result '
+        'WHERE algo_version <= ? AND day_id >= ? AND day_id <= ? '
+        'GROUP BY day_id) m '
+        'ON r.day_id = m.day_id AND r.algo_version = m.v '
+        'WHERE r.day_id >= ? AND r.day_id <= ? '
+        "AND r.day_id IS NOT NULL AND r.payload_json LIKE '%\"imported\":true%'"
+        ')',
+        [
+          CaffeineSleepPattern.outcome,
+          startDay,
+          endDay,
+          startDay,
+          endDay,
+          kAlgoVersion,
+          startDay,
+          endDay,
+          startDay,
+          endDay,
+        ],
+      );
+      final versionRows = await txn.query(
+        'metric_series_version',
+        columns: ['date', 'algo_version'],
+        where: 'date >= ? AND date <= ?',
+        whereArgs: [startDay, endDay],
+      );
+      final dayRows = await txn.rawQuery(
+        'SELECT day_id, skipped, partial, '
+        'json_valid(payload_json) AS payload_valid, '
+        'CASE WHEN json_valid(payload_json) = 1 '
+        "THEN json_extract(payload_json, '\$.sleep_source') END "
+        'AS sleep_source '
+        'FROM day_result '
+        'WHERE day_id >= ? AND day_id <= ? AND algo_version = ?',
+        [startDay, endDay, kAlgoVersion],
+      );
+      final correctionRows = await txn.rawQuery(
+        'SELECT c.day_id AS day_id, '
+        'c.correction_id AS correction_id, '
+        'c.revision AS revision, '
+        'j.correction_id AS job_correction_id, '
+        'j.revision AS job_revision, '
+        'j.status AS status, '
+        'j.result_algo_version AS result_algo_version, '
+        'j.result_computed_at AS result_computed_at '
+        'FROM openband_sleep_correction c '
+        'LEFT JOIN openband_calculation_job j '
+        'ON j.day_id = c.day_id '
+        'AND j.correction_id = c.correction_id '
+        'AND j.revision = c.revision '
+        'WHERE c.day_id >= ? AND c.day_id <= ?',
+        [startDay, endDay],
+      );
+      return (
+        journalRows: journalRows,
+        solRows: solRows,
+        versionRows: versionRows,
+        dayRows: dayRows,
+        correctionRows: correctionRows,
+      );
+    });
+
+    final stampAlgo = <String, int>{};
+    for (final r in snapshot.versionRows) {
+      final date = r['date'];
+      final version = (r['algo_version'] as num?)?.toInt();
+      if (date is String && version != null && daySet.contains(date)) {
+        stampAlgo[date] = version;
+      }
+    }
+    final blockedJob = <String>{};
+    for (final r in snapshot.correctionRows) {
+      final date = r['day_id'];
+      if (date is! String || !daySet.contains(date)) continue;
+      if (!_currentCompleteSleepJob(r)) blockedJob.add(date);
+    }
+    const knownSources = {
+      'auto',
+      'auto_fallback',
+      'manual',
+      'confirmed',
+      'none',
+      'rejected',
+    };
+    final currentDays =
+        <
+          String,
+          ({bool skipped, bool partial, bool corrupt, String? source})
+        >{};
+    var partial = false;
+    for (final r in snapshot.dayRows) {
+      final date = r['day_id'];
+      if (date is! String || !daySet.contains(date)) continue;
+      final valid = r['payload_valid'] == 1;
+      final source = r['sleep_source']?.toString();
+      final sourceInvalid =
+          valid && source != null && !knownSources.contains(source);
+      if (!valid || sourceInvalid) {
+        partial = true;
+        currentDays[date] = (
+          skipped: r['skipped'] == 1,
+          partial: r['partial'] == 1,
+          corrupt: true,
+          source: source,
+        );
+        continue;
+      }
+      currentDays[date] = (
+        skipped: r['skipped'] == 1,
+        partial: r['partial'] == 1,
+        corrupt: false,
+        source: source,
+      );
+    }
+
+    final solByDay = <String, double>{};
+    for (final r in snapshot.solRows) {
+      final date = r['date'];
+      final value = (r['value'] as num?)?.toDouble();
+      if (date is! String || !daySet.contains(date)) continue;
+      if (value == null || !value.isFinite || value < 0) {
+        partial = true;
+        continue;
+      }
+      solByDay[date] = value;
+    }
+
+    bool eligible(String day) {
+      if (stampAlgo[day] != kAlgoVersion) return false;
+      final row = currentDays[day];
+      if (row == null || row.skipped || row.partial || row.corrupt) {
+        return false;
+      }
+      if (row.source != 'manual' && row.source != 'confirmed') return false;
+      if (blockedJob.contains(day)) return false;
+      return true;
+    }
+
+    final outcomes = [for (final d in days) eligible(d) ? solByDay[d] : null];
+    final availableOutcomes = [
+      for (var i = 1; i < days.length; i++)
+        if (outcomes[i] != null) i,
+    ].length;
+
+    final caffeineByDay = <String, double>{};
+    for (final r in snapshot.journalRows) {
+      final date = r['date'];
+      final value = (r['value'] as num?)?.toDouble();
+      if (date is! String || !daySet.contains(date) || value == null) continue;
+      if (value != 0.0 && value != 1.0) continue;
+      caffeineByDay[date] = value;
+    }
+
+    // Omitting a stored SOL or answered night for eligibility / version /
+    // correction / corrupt input is partial. Empty calendar days are not.
+    for (var i = 0; i + 1 < days.length; i++) {
+      if (caffeineByDay[days[i]] == null || outcomes[i + 1] != null) {
+        continue;
+      }
+      final wake = days[i + 1];
+      final row = currentDays[wake];
+      final stamp = stampAlgo[wake];
+      final gated =
+          blockedJob.contains(wake) ||
+          (stamp != null && stamp != kAlgoVersion) ||
+          (row != null &&
+              (row.skipped ||
+                  row.partial ||
+                  row.corrupt ||
+                  (row.source != 'manual' && row.source != 'confirmed')));
+      if (solByDay[wake] != null || gated) {
+        partial = true;
+        break;
+      }
+    }
+
+    final journal = <Map<String, Object>>[
+      for (final d in days)
+        if (caffeineByDay[d] case final v?)
+          {
+            'date': d,
+            'values': {CaffeineSleepPattern.field: v},
+          },
+    ];
+
+    if (journal.isEmpty || availableOutcomes == 0) {
+      return CaffeineSleepPattern.fromProducer(
+        empty: true,
+        binary: false,
+        insufficient: true,
+        meaningful: false,
+        n: 0,
+        endDay: endDay,
+        startDay: startDay,
+        nights: nights,
+        algoVersion: kAlgoVersion,
+        partial: partial,
+        availableOutcomes: availableOutcomes,
+      );
+    }
+
+    final produced = await Isolate.run(
+      () => _caffeineSleepCorrelate({
+        'dates': days,
+        'journal': journal,
+        'sol': outcomes,
+      }),
     );
-    final rows = await LocalDb.metricSeries(outcome.series);
-    return summarizePattern(
-      {for (final e in journal.entries) e.key: e.value[habitKey]?.value},
-      {
-        for (final r in rows)
-          r['date'] as String: (r['value'] as num?)?.toDouble(),
-      },
-      days,
+    return CaffeineSleepPattern.fromProducer(
+      empty: produced['empty'] == true,
+      binary: produced['binary'] == true,
+      insufficient: produced['insufficient'] == true,
+      meaningful: produced['meaningful'] == true,
+      n: (produced['n'] as num?)?.toInt() ?? 0,
+      nWith: (produced['nWith'] as num?)?.toInt(),
+      nWithout: (produced['nWithout'] as num?)?.toInt(),
+      delta: (produced['delta'] as num?)?.toDouble(),
+      note: produced['note'] as String?,
+      endDay: endDay,
+      startDay: startDay,
+      nights: nights,
+      algoVersion: kAlgoVersion,
+      partial: partial,
+      availableOutcomes: availableOutcomes,
     );
   }
 
@@ -1079,6 +1316,27 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (status == 'complete') return null;
     if (status == 'failed') return SetupEvalState.failed;
     return SetupEvalState.pending;
+  }
+
+  /// A stored SOL is current only when the matching job receipt is complete at
+  /// this build's algo, with a computed timestamp. Missing job, revision
+  /// mismatch, or complete-without-receipt is unknown recalculation state.
+  static bool _currentCompleteSleepJob(Map<String, dynamic> row) {
+    final jobId = row['job_correction_id']?.toString();
+    final correctionId = row['correction_id']?.toString();
+    final jobRev = (row['job_revision'] as num?)?.toInt();
+    final corrRev = (row['revision'] as num?)?.toInt();
+    final status = row['status']?.toString();
+    final resultAlgo = (row['result_algo_version'] as num?)?.toInt();
+    final resultAt = (row['result_computed_at'] as num?)?.toInt();
+    return jobId != null &&
+        jobId == correctionId &&
+        jobRev != null &&
+        jobRev == corrRev &&
+        status == 'complete' &&
+        resultAlgo == kAlgoVersion &&
+        resultAt != null &&
+        resultAt > 0;
   }
 
   static DateTime? _computedAt(int? ms) {
@@ -2227,4 +2485,45 @@ class LocalOpenBandRepository implements OpenBandRepository {
       throw ArgumentError('Untere Grenze liegt über der oberen.');
     }
   }
+}
+
+/// Isolate entry: one field × one outcome, lag 1. Returns a sendable map.
+Map<String, Object?> _caffeineSleepCorrelate(Map<String, Object?> input) {
+  final dates = (input['dates'] as List).cast<String>();
+  final journal = [
+    for (final row in input['journal'] as List)
+      ana.JournalNumericDay((row as Map)['date'] as String, {
+        for (final e in (row['values'] as Map).entries)
+          e.key as String: (e.value as num).toDouble(),
+      }),
+  ];
+  final corr = ana.journalNumericCorrelations(
+    journal: journal,
+    dates: dates,
+    outcomes: {
+      CaffeineSleepPattern.outcome: [
+        for (final v in input['sol'] as List) (v as num?)?.toDouble(),
+      ],
+    },
+    fieldLagDays: const {
+      CaffeineSleepPattern.field: CaffeineSleepPattern.lagDays,
+    },
+  );
+  if (corr.isEmpty || corr.first.effects.isEmpty) {
+    return const {'empty': true, 'n': 0};
+  }
+  final field = corr.first;
+  final effect = field.effects.first;
+  return {
+    'empty': false,
+    'binary': effect.binary,
+    'insufficient': effect.insufficient,
+    'meaningful': effect.meaningful,
+    'n': effect.n,
+    'nWith': effect.nWith,
+    'nWithout': effect.nWithout,
+    'delta': effect.delta,
+    'note': effect.note,
+    'lagDays': field.lagDays,
+  };
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -14,51 +16,174 @@ const obMeals = [
   ('snack', 'Zwischendurch'),
 ];
 
-class OpenBandNutrition extends StatelessWidget {
+class OpenBandNutrition extends StatefulWidget {
   final OpenBandController controller;
-  final ValueChanged<String>? onAdd;
+  final FutureOr<void> Function(String meal)? onAdd;
   const OpenBandNutrition({super.key, required this.controller, this.onAdd});
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: controller,
-    builder: (context, _) {
-      final p = OB.of(context);
-      return Scaffold(
+  State<OpenBandNutrition> createState() => _OpenBandNutritionState();
+}
+
+class _OpenBandNutritionState extends State<OpenBandNutrition> {
+  late String _day = controller.selectedDay;
+  DayMeals? _meals;
+  Object? _mealsError;
+  NutritionTargetValues? _targets;
+  bool _targetsReady = false;
+  bool _targetsUnavailable = false;
+  bool _targetsLoading = true;
+  int _mealRead = 0;
+  int _targetRead = 0;
+
+  OpenBandController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onController);
+    _loadMeals(_day);
+    _loadTargets(_day);
+  }
+
+  @override
+  void didUpdateWidget(covariant OpenBandNutrition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == controller) return;
+    oldWidget.controller.removeListener(_onController);
+    controller.addListener(_onController);
+    _syncDay();
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onController);
+    super.dispose();
+  }
+
+  void _onController() {
+    if (!mounted) return;
+    if (controller.selectedDay != _day) {
+      _syncDay();
+      return;
+    }
+    setState(() {});
+  }
+
+  void _syncDay() {
+    final day = controller.selectedDay;
+    setState(() {
+      _day = day;
+      _meals = null;
+      _mealsError = null;
+      _targets = null;
+      _targetsReady = false;
+      _targetsUnavailable = false;
+      _targetsLoading = true;
+    });
+    _loadMeals(day);
+    _loadTargets(day);
+  }
+
+  bool _live(int token, int current, String day) =>
+      mounted && token == current && controller.selectedDay == day;
+
+  Future<void> _loadMeals(String day) async {
+    final token = ++_mealRead;
+    try {
+      final meals = await controller.repository.readMeals(day);
+      if (!_live(token, _mealRead, day)) return;
+      setState(() {
+        _meals = meals;
+        _mealsError = null;
+      });
+    } catch (e) {
+      if (!_live(token, _mealRead, day)) return;
+      setState(() {
+        _meals = null;
+        _mealsError = e;
+      });
+    }
+  }
+
+  Future<void> _loadTargets(String day) async {
+    final token = ++_targetRead;
+    try {
+      final snap = await controller.repository.readNutritionTargets(day);
+      if (!_live(token, _targetRead, day)) return;
+      setState(() {
+        _targets = snap.values;
+        _targetsReady = true;
+        _targetsUnavailable = false;
+        _targetsLoading = false;
+      });
+    } catch (_) {
+      if (!_live(token, _targetRead, day)) return;
+      setState(() {
+        _targets = null;
+        _targetsReady = false;
+        _targetsUnavailable = true;
+        _targetsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _retryTargets() async {
+    if (_targetsLoading) return;
+    final day = controller.selectedDay;
+    setState(() => _targetsLoading = true);
+    await _loadTargets(day);
+  }
+
+  Future<void> _openGoals() async {
+    final day = controller.selectedDay;
+    await openOpenBandNutritionGoals(
+      context,
+      repository: controller.repository,
+      day: day,
+      now: controller.day?.synthetic == true
+          ? () => DateTime(2026, 9, 15, 9, 41)
+          : controller.now,
+      synthetic: controller.day?.synthetic == true,
+    );
+    if (!mounted || controller.selectedDay != day) return;
+    await _loadTargets(day);
+  }
+
+  Future<void> _onAdd(String meal) async {
+    final day = controller.selectedDay;
+    await widget.onAdd?.call(meal);
+    if (!mounted || controller.selectedDay != day) return;
+    await _loadMeals(day);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final meals = _meals;
+    return Scaffold(
+      backgroundColor: p.canvas,
+      appBar: AppBar(
         backgroundColor: p.canvas,
-        appBar: AppBar(
-          backgroundColor: p.canvas,
-          title: Text('Ernährung', style: p.text(18, weight: FontWeight.w600)),
-          centerTitle: true,
-          actions: [
-            IconButton(
-              tooltip: 'Ernährungsziele',
-              onPressed: () => openOpenBandNutritionGoals(
-                context,
-                repository: controller.repository,
-                day: controller.selectedDay,
-                now: controller.day?.synthetic == true
-                    ? () => DateTime(2026, 9, 15, 9, 41)
-                    : controller.now,
-                synthetic: controller.day?.synthetic == true,
+        title: Text('Ernährung', style: p.text(18, weight: FontWeight.w600)),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Ernährungsziele',
+            onPressed: _openGoals,
+            icon: Icon(LucideIcons.settings, size: 20, color: p.ink),
+          ),
+        ],
+      ),
+      body: _mealsError != null
+          ? Center(
+              child: Text(
+                'Einträge konnten nicht geladen werden.',
+                style: p.text(14, color: p.danger),
               ),
-              icon: Icon(LucideIcons.settings, size: 20, color: p.ink),
-            ),
-          ],
-        ),
-        body: FutureBuilder<DayMeals>(
-          future: controller.repository.readMeals(controller.selectedDay),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Einträge konnten nicht geladen werden.',
-                  style: p.text(14, color: p.danger),
-                ),
-              );
-            }
-            final meals = snapshot.data;
-            if (meals == null) return const SizedBox.shrink();
-            return ListView(
+            )
+          : meals == null
+          ? const SizedBox.shrink()
+          : ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
               children: [
                 Padding(
@@ -68,8 +193,31 @@ class OpenBandNutrition extends StatelessWidget {
                     style: p.text(30, weight: FontWeight.w800, display: true),
                   ),
                 ),
-                OBMacroBars(meals: meals),
-                const SizedBox(height: 10),
+                if (_targetsUnavailable || _targetsReady) ...[
+                  OBMacroBars(
+                    meals: meals,
+                    targets: _targetsUnavailable ? null : _targets,
+                    targetsUnavailable: _targetsUnavailable,
+                  ),
+                  if (_targetsUnavailable)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: _targetsLoading ? null : _retryTargets,
+                        style: TextButton.styleFrom(
+                          foregroundColor: p.ink,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(44, 44),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'Erneut',
+                          style: p.text(13, weight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                ],
                 for (final (key, label) in obMeals)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -79,100 +227,426 @@ class OpenBandNutrition extends StatelessWidget {
                       entries: meals.entries
                           .where((e) => e.meal == key)
                           .toList(),
-                      onAdd: onAdd == null ? null : () => onAdd!(key),
+                      onAdd: widget.onAdd == null ? null : () => _onAdd(key),
                     ),
                   ),
               ],
-            );
-          },
-        ),
-      );
-    },
-  );
+            ),
+    );
+  }
 }
 
-String _sum(NutrientSum s, {int digits = 0}) =>
-    s.value == null ? '—' : obNumber(s.value, digits: digits);
+String _nutritionQty(double? value) {
+  if (value == null || !value.isFinite) return '—';
+  if (value == value.roundToDouble()) return obNumber(value);
+  var text = obNumber(value, digits: 2);
+  if (text.contains(',')) {
+    text = text.replaceFirst(RegExp(r'0+$'), '');
+    if (text.endsWith(',')) text = text.substring(0, text.length - 1);
+  }
+  return text;
+}
+
+int _missingShownNutrientCount(DayMeals meals) {
+  var n = 0;
+  for (final e in meals.entries) {
+    if (e.kcal == null ||
+        e.proteinG == null ||
+        e.fatG == null ||
+        e.carbsG == null) {
+      n++;
+    }
+  }
+  return n;
+}
+
+String _macroGramsLine(NutrientSum sum, double? target) {
+  final actual = _nutritionQty(sum.value);
+  if (target == null || !target.isFinite) return '$actual g';
+  return '$actual / ${_nutritionQty(target)} g';
+}
+
+String _missingNutrientLabel(int count) =>
+    '$count ${count == 1 ? 'Eintrag' : 'Einträge'} unvollständig';
+
+bool _positiveTarget(double? value) =>
+    value != null && value.isFinite && value > 0;
+
+bool _savedGramTarget(double? value) => value != null && value.isFinite;
+
+bool _largeMacroType(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(15) > 20;
+
+const _kMacroColGap = 10.0;
+const _kMacroPairGap = 4.0;
+const _kMacroHeaderGap = 12.0;
+const _kMacroKcalUnitGap = 6.0;
+
+TextStyle _macroLabelStyle(OB p) =>
+    p.text(12, weight: FontWeight.w600, color: p.muted).copyWith(height: 16 / 12);
+
+TextStyle _macroValueStyle(OB p) => p
+    .text(13, weight: FontWeight.w700, display: true)
+    .copyWith(
+      height: 16 / 13,
+      letterSpacing: 0,
+      fontFeatures: const [FontFeature.proportionalFigures()],
+    );
+
+double _macroPaintWidth(
+  String text,
+  TextStyle style, {
+  required TextScaler scaler,
+  required Locale locale,
+}) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: scaler,
+    maxLines: 1,
+    locale: locale,
+  )..layout();
+  return painter.width;
+}
+
+bool _macroRowFitsThree({
+  required double maxWidth,
+  required List<(String label, String value)> items,
+  required TextStyle labelStyle,
+  required TextStyle valueStyle,
+  required TextScaler scaler,
+  required Locale locale,
+}) {
+  if (items.isEmpty) return true;
+  final columnWidth =
+      (maxWidth - _kMacroColGap * (items.length - 1)) / items.length;
+  if (columnWidth <= 0) return false;
+  for (final (label, value) in items) {
+    final needed =
+        _macroPaintWidth(label, labelStyle, scaler: scaler, locale: locale) +
+        _kMacroPairGap +
+        _macroPaintWidth(value, valueStyle, scaler: scaler, locale: locale);
+    if (needed > columnWidth) return false;
+  }
+  return true;
+}
+
+bool _macroHeaderFits({
+  required double maxWidth,
+  required String kcal,
+  required String ziel,
+  required TextStyle kcalStyle,
+  required TextStyle unitStyle,
+  required TextStyle zielStyle,
+  required TextScaler scaler,
+  required Locale locale,
+}) {
+  final kcalWidth =
+      _macroPaintWidth(kcal, kcalStyle, scaler: scaler, locale: locale) +
+      _kMacroKcalUnitGap +
+      _macroPaintWidth('kcal', unitStyle, scaler: scaler, locale: locale);
+  final zielWidth = _macroPaintWidth(
+    ziel,
+    zielStyle,
+    scaler: scaler,
+    locale: locale,
+  );
+  return kcalWidth + _kMacroHeaderGap + zielWidth <= maxWidth;
+}
 
 class OBMacroBars extends StatelessWidget {
   final DayMeals meals;
-  const OBMacroBars({super.key, required this.meals});
+  final NutritionTargetValues? targets;
+  final bool targetsUnavailable;
+  const OBMacroBars({
+    super.key,
+    required this.meals,
+    this.targets,
+    this.targetsUnavailable = false,
+  });
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final unknown = meals.kcal.unknown;
-    Widget macro(String label, NutrientSum s, Color color) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 4,
+    final t = targetsUnavailable
+        ? const NutritionTargetValues()
+        : targets ?? const NutritionTargetValues();
+    final large = _largeMacroType(context);
+    final energyTarget = _positiveTarget(t.energyKcal) ? t.energyKcal : null;
+    final energyLabel = targetsUnavailable
+        ? 'Ziel —'
+        : energyTarget == null
+        ? 'Kein Ziel'
+        : 'Ziel ${_nutritionQty(energyTarget)}';
+    final missing = _missingShownNutrientCount(meals);
+    final labelStyle = _macroLabelStyle(p);
+    final valueStyle = _macroValueStyle(p);
+    final macros = [
+      (
+        name: 'protein',
+        label: 'Eiweiß',
+        semantic: 'Eiweiß',
+        sum: meals.proteinG,
+        target: t.proteinG,
+        color: p.pulse,
+      ),
+      (
+        name: 'fat',
+        label: 'Fett',
+        semantic: 'Fett',
+        sum: meals.fatG,
+        target: t.fatG,
+        color: p.food,
+      ),
+      (
+        name: 'carbs',
+        label: large ? 'Kohlenhydrate' : 'KH',
+        semantic: 'Kohlenhydrate',
+        sum: meals.carbsG,
+        target: t.carbohydrateG,
+        color: p.strain,
+      ),
+    ];
+    final headline = p
+        .text(34, weight: FontWeight.w800, display: true)
+        .copyWith(height: 36 / 34);
+    final unitStyle = p
+        .text(14, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 18 / 14);
+    final zielStyle = p
+        .text(13, weight: FontWeight.w600, color: p.muted)
+        .copyWith(height: 18 / 13);
+    final missingStyle = p.text(12, color: p.muted).copyWith(height: 16 / 12);
+    final semantics = [
+      '${_nutritionQty(meals.kcal.value)} kcal',
+      energyLabel,
+      for (final m in macros)
+        '${m.semantic} ${_macroGramsLine(m.sum, _savedGramTarget(m.target) ? m.target : null)}',
+      if (missing > 0) _missingNutrientLabel(missing),
+    ].join('. ');
+
+    Widget column({
+      required String name,
+      required String label,
+      required NutrientSum sum,
+      required double? target,
+      required Color color,
+    }) {
+      final saved = _savedGramTarget(target);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 6,
         children: [
-          Text(
-            label,
-            style: p.text(12, weight: FontWeight.w600, color: p.muted),
-          ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                _sum(s),
-                style: p.text(20, weight: FontWeight.w800, display: true),
-              ),
-              const SizedBox(width: 2),
-              Text(
-                'g',
-                style: p.text(12, weight: FontWeight.w500, color: p.muted),
+              Text(label, style: labelStyle),
+              const SizedBox(width: _kMacroPairGap),
+              Expanded(
+                child: Text(
+                  _macroGramsLine(sum, saved ? target : null),
+                  textAlign: TextAlign.right,
+                  style: valueStyle,
+                ),
               ),
             ],
           ),
-          Container(
-            height: 4,
-            decoration: BoxDecoration(
-              color: s.value == null ? p.well : color,
-              borderRadius: BorderRadius.circular(2),
+          if (saved)
+            _MacroFillTrack(
+              name: name,
+              height: 6,
+              radius: 3,
+              fillColor: color,
+              actual: sum.value,
+              target: target,
             ),
-          ),
         ],
+      );
+    }
+
+    return Semantics(
+      container: true,
+      label: semantics,
+      child: ExcludeSemantics(
+        child: OBCard(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scaler = MediaQuery.textScalerOf(context);
+              final locale = Localizations.localeOf(context);
+              final kcalText = _nutritionQty(meals.kcal.value);
+              final headerBeside =
+                  !large &&
+                  _macroHeaderFits(
+                    maxWidth: constraints.maxWidth,
+                    kcal: kcalText,
+                    ziel: energyLabel,
+                    kcalStyle: headline,
+                    unitStyle: unitStyle,
+                    zielStyle: zielStyle,
+                    scaler: scaler,
+                    locale: locale,
+                  );
+              final stacked =
+                  large ||
+                  !_macroRowFitsThree(
+                    maxWidth: constraints.maxWidth,
+                    items: [
+                      for (final m in macros)
+                        (
+                          m.label,
+                          _macroGramsLine(
+                            m.sum,
+                            _savedGramTarget(m.target) ? m.target : null,
+                          ),
+                        ),
+                    ],
+                    labelStyle: labelStyle,
+                    valueStyle: valueStyle,
+                    scaler: scaler,
+                    locale: locale,
+                  );
+              final kcalRow = Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(kcalText, style: headline),
+                  const SizedBox(width: _kMacroKcalUnitGap),
+                  Text('kcal', style: unitStyle),
+                ],
+              );
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 12,
+                children: [
+                  if (headerBeside)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        kcalRow,
+                        Expanded(
+                          child: Text(
+                            energyLabel,
+                            textAlign: TextAlign.right,
+                            style: zielStyle,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 8,
+                      children: [
+                        kcalRow,
+                        Text(energyLabel, style: zielStyle),
+                      ],
+                    ),
+                  if (energyTarget != null)
+                    _MacroFillTrack(
+                      name: 'energy',
+                      height: 8,
+                      radius: 4,
+                      fillColor: p.ink,
+                      actual: meals.kcal.value,
+                      target: energyTarget,
+                    ),
+                  if (stacked)
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: 12,
+                      children: [
+                        for (final m in macros)
+                          column(
+                            name: m.name,
+                            label: m.label,
+                            sum: m.sum,
+                            target: m.target,
+                            color: m.color,
+                          ),
+                      ],
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: _kMacroColGap,
+                      children: [
+                        for (final m in macros)
+                          Expanded(
+                            child: column(
+                              name: m.name,
+                              label: m.label,
+                              sum: m.sum,
+                              target: m.target,
+                              color: m.color,
+                            ),
+                          ),
+                      ],
+                    ),
+                  if (missing > 0)
+                    Text(_missingNutrientLabel(missing), style: missingStyle),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
-    return OBCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 12,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                _sum(meals.kcal),
-                style: p.text(34, weight: FontWeight.w800, display: true),
+  }
+}
+
+class _MacroFillTrack extends StatelessWidget {
+  final String name;
+  final double height;
+  final double radius;
+  final Color fillColor;
+  final double? actual;
+  final double? target;
+  const _MacroFillTrack({
+    required this.name,
+    required this.height,
+    required this.radius,
+    required this.fillColor,
+    required this.actual,
+    required this.target,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final canFill =
+        actual != null &&
+        actual!.isFinite &&
+        target != null &&
+        target!.isFinite &&
+        target! > 0;
+    final factor = canFill ? (actual! / target!).clamp(0.0, 1.0) : 0.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox(
+        key: ValueKey('macro-$name-track'),
+        height: height,
+        width: double.infinity,
+        child: ColoredBox(
+          color: p.well,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                key: ValueKey('macro-$name-fill'),
+                width: constraints.maxWidth * factor,
+                height: height,
+                child: ColoredBox(color: fillColor),
               ),
-              const SizedBox(width: 4),
-              Text(
-                'kcal',
-                style: p.text(14, weight: FontWeight.w500, color: p.muted),
-              ),
-              if (unknown > 0) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '$unknown ${unknown == 1 ? 'Eintrag' : 'Einträge'} ohne Nährwerte',
-                    style: p.text(13, weight: FontWeight.w600, color: p.muted),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
-          Row(
-            spacing: 12,
-            children: [
-              macro('Eiweiß', meals.proteinG, p.pulse),
-              macro('Kohlenhydrate', meals.carbsG, p.strain),
-              macro('Fett', meals.fatG, p.food),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
