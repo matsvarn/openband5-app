@@ -642,6 +642,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<ExerciseCatalogue> readExerciseCatalogue() async =>
+      assembleExerciseCatalogue(await LocalDb.exerciseDefRows());
+
+  @override
   Future<List<FoodHit>> searchFoods(String query) async {
     final db = await LocalDb.instance;
     return [

@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'action_sheet.dart';
 import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
@@ -851,75 +852,6 @@ bool _templateRowShouldStack({
   } finally {
     painter.dispose();
   }
-}
-
-Future<TemplateMenuChoice?> showTemplateActionSheet(
-  BuildContext context, {
-  required WorkoutTemplate template,
-  required bool pinned,
-}) {
-  final p = OB.of(context);
-  return showModalBottomSheet<TemplateMenuChoice>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: p.card,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (c) {
-      final sheet = OB.of(c);
-      Widget action(
-        String label,
-        TemplateMenuChoice value, {
-        bool danger = false,
-      }) => InkWell(
-        onTap: () => Navigator.pop(c, value),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              label,
-              style: sheet
-                  .text(15, color: danger ? sheet.danger : sheet.ink)
-                  .copyWith(height: 20 / 15),
-            ),
-          ),
-        ),
-      );
-      return SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(c).height * 0.7,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  template.name,
-                  style: sheet
-                      .text(18, weight: FontWeight.w600)
-                      .copyWith(height: 24 / 18),
-                ),
-                const SizedBox(height: 12),
-                action('Bearbeiten', TemplateMenuChoice.edit),
-                action('Duplizieren', TemplateMenuChoice.duplicate),
-                action(
-                  pinned ? 'Nicht mehr anheften' : 'Anheften',
-                  pinned ? TemplateMenuChoice.unpin : TemplateMenuChoice.pin,
-                ),
-                action('Archivieren', TemplateMenuChoice.archive, danger: true),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
 }
 
 class OBMuscleBars extends StatelessWidget {

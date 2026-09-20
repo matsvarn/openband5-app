@@ -446,6 +446,8 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Oberkörper B');
     await tester.tap(find.text('Übung hinzufügen'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Eigene Übung'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).at(1), 'Klimmzug');
     await tester.enterText(find.byType(TextField).at(3), '6');
     await tester.pumpAndSettle();
@@ -469,7 +471,7 @@ void main() {
       ),
     );
     expect(saved?.exercises.single.exerciseKey, isNot('klimmzug'));
-    expect(saved?.exercises.single.sets.length, 3);
+    expect(saved?.exercises.single.sets.length, 1);
     expect(saved?.exercises.single.sets.first.reps, 6);
     expect(saved?.exercises.single.sets.first.loadKg, isNull);
     expect((await repo.readTemplates()).length, 3);

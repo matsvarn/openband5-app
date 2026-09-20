@@ -1093,6 +1093,102 @@
         "evidence": "test/openband_templates_test.dart; test/openband_template_storage_test.dart; test/openband_strength_live_test.dart; test/openband_strength_runtime_test.dart; integration_test/openband_review_test.dart",
         "note": "The persisted pin selects the hub template. An archived template clears its pin without deleting prior sessions.",
         "nativeReview": "build/ui-review/training-v6-20260919 and build/ui-review/training-v6-mini-20260919: 207 PNGs each, every PNG inspected; run/frames/index reconciled. Light/dark, missing history, error/retry, resume, skip/add/rest, 375 width and 2x text. Synthetic simulator proof."
+      },
+      "Übungsfilter · Muskeln": {
+        "status": "implemented",
+        "paperNode": "469R-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Primary and secondary categorical muscles filter the actual catalogue; OR within group, AND across groups/search. Apply/cancel retain draft selection.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übungsfilter · Geräte": {
+        "status": "implemented",
+        "paperNode": "469R-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Explicit known equipment and unknown category filters; no equipment guessed for legacy definitions.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übungsbibliothek · aktive Filter": {
+        "status": "implemented",
+        "paperNode": "46BT-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Active filters and hidden-selection count stay visible; selection survives filtering and details.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übung hinzufügen · Auswahl prüfen": {
+        "status": "implemented",
+        "paperNode": "45ZZ-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Separate details and plus/check. Confirm returns selected definitions to this template draft only; already-in-plan repetition requires confirmation.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übung hinzufügen · Bibliothek durchsuchen": {
+        "status": "partial",
+        "paperNode": "45ZZ-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Preset and stored registry search, translated labels/aliases and stable snapshots are implemented. Creating a custom definition from this context and live-session target integration remain B26/B36 work.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übung hinzufügen · kein Suchtreffer": {
+        "status": "partial",
+        "paperNode": "465N-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Actual empty search differs from failed load and offers clear-search. Creating a definition without losing search/filter/selection is next B26 work.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Vorlage · Übung hinzugefügt": {
+        "status": "implemented",
+        "paperNode": "4739-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Each confirmed selection adds one empty planned set with fresh position ID and frozen stable definition identity. No values or performed sets invented. Save/reopen preserves explicit empty timed mode.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Trainingsvorlage · anlegen leer": {
+        "status": "implemented",
+        "paperNode": "478P-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "New template starts empty, explicit add menu reaches library or retained ad hoc entry. Empty plan cannot save. Library addition and durable template save are distinct.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Trainingsvorlage · weiter gescrollt": {
+        "status": "implemented",
+        "paperNode": "47FZ-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Scroll content exposes the last Add control at375/2x while Save remains accessible; action-sheet round trip and save/reopen exercised.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Vorlage · bearbeiten": {
+        "status": "partial",
+        "paperNode": "4739-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Alpin editor, library selection, name/load/count edits and save/reopen preserve stored type/rest/notes/identity/snapshots/precision. Mixed legacy reps+seconds cannot silently switch mode when seconds cleared. Reordering/grouping/set-type actions remain open.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Übungsdetail · Bankdrücken": {
+        "status": "partial",
+        "paperNode": "46DV-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Canonical definition, equipment, mode and categorical muscle details plus explicit selection are implemented. Historical exercise development and definition management remain separate open flows.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Plank · geplante Haltezeiten": {
+        "status": "partial",
+        "paperNode": "4739-0",
+        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
+        "note": "Explicit time mode persists through empty planned set, template save/reopen/start. Duration application to several sets remains open.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
       }
     },
     "A06b · Training": {

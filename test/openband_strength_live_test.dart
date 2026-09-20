@@ -983,6 +983,43 @@ void main() {
     expect(find.byType(FittedBox), findsNothing);
   });
 
+  testWidgets('empty timed plan starts live in time mode without invented duration', (
+    tester,
+  ) async {
+    await mount(
+      tester,
+      template: _template(
+        exercises: const [
+          PlannedExercise(
+            id: 'ex-plank',
+            exerciseKey: 'plank',
+            name: 'Plank',
+            sets: [
+              PlannedSet(id: 'pl-1', mode: PlannedSetMode.time),
+            ],
+          ),
+        ],
+      ),
+    );
+    expect(find.text('SEK'), findsOneWidget);
+    expect(find.text('WDH'), findsNothing);
+    expect(find.text('KG'), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller?.text,
+      '',
+    );
+    await tester.tap(find.byKey(const ValueKey('confirm-pl-1')));
+    await tester.pump();
+    expect(find.text('Sekunden fehlen.'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '40');
+    await tester.tap(find.byKey(const ValueKey('confirm-pl-1')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    final live = await repo.readActiveStrengthSession() as ActiveStrengthSession;
+    expect(live.recorded.single.seconds, 40);
+    expect(live.recorded.single.reps, isNull);
+  });
+
   testWidgets('large text timed row uses Sek, not kg or reps', (tester) async {
     await mount(
       tester,

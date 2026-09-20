@@ -975,6 +975,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         name: runtime.added[i].name,
         sets: [...runtime.added[i].sets, set],
         note: runtime.added[i].note,
+        definition: runtime.added[i].definition,
       );
     } else {
       runtime.added.add(
@@ -984,6 +985,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           name: exercise.name,
           sets: [set],
           note: exercise.note,
+          definition: exercise.definition,
         ),
       );
     }
@@ -1133,6 +1135,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
     return MuscleLoad(byMuscle, 0);
   }
+
+  @override
+  Future<ExerciseCatalogue> readExerciseCatalogue() async =>
+      assembleExerciseCatalogue(const []);
 
   @override
   Future<List<FoodHit>> searchFoods(String query) async {

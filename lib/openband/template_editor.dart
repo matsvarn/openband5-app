@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:uuid/uuid.dart';
 
-import 'alp_tokens.dart';
+import 'action_sheet.dart';
 import 'domain.dart';
+import 'exercise_picker.dart';
 import 'theme.dart';
 
 String _newId() => const Uuid().v4();
@@ -34,7 +35,7 @@ double? _savedLoad(_SetDraft s) {
 
 ({int? value, bool bad}) _parseCount(String raw, {required bool timed}) {
   final s = raw.trim();
-  if (s.isEmpty) return (value: null, bad: timed);
+  if (s.isEmpty) return (value: null, bad: false);
   final v = int.tryParse(s);
   if (v == null || (timed ? v <= 0 : v < 0)) return (value: null, bad: true);
   return (value: v, bad: false);
@@ -79,8 +80,15 @@ class _ExerciseDraft {
   final String note;
   final TextEditingController name;
   final List<_SetDraft> sets;
-  _ExerciseDraft(this.id, this.key, String label, this.sets, {this.note = ''})
-    : name = TextEditingController(text: label);
+  final ExerciseDefinitionSnapshot? definition;
+  _ExerciseDraft(
+    this.id,
+    this.key,
+    String label,
+    this.sets, {
+    this.note = '',
+    this.definition,
+  }) : name = TextEditingController(text: label);
 }
 
 class _SetDraft {
@@ -89,12 +97,18 @@ class _SetDraft {
   final String type;
   final int? restSec;
   final double? storedLoad;
+  final PlannedSetMode? mode;
+  final int? retainedReps;
+  final int? retainedSeconds;
   final TextEditingController count, load;
   _SetDraft(
     this.id, {
     required this.timed,
     this.type = 'work',
     this.restSec,
+    this.mode,
+    this.retainedReps,
+    this.retainedSeconds,
     int? count,
     double? load,
   }) : storedLoad = load,
@@ -112,26 +126,87 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
         for (final s in e.sets)
           _SetDraft(
             s.id,
-            timed: s.seconds != null,
+            timed: s.isTimed,
             type: s.type,
             restSec: s.restSec,
-            count: s.seconds ?? s.reps,
+            mode: s.mode,
+            retainedReps: s.mode == null && s.isTimed ? s.reps : null,
+            retainedSeconds: s.mode == null && !s.isTimed ? s.seconds : null,
+            count: s.isTimed ? s.seconds : s.reps,
             load: s.loadKg,
           ),
-      ], note: e.note),
+      ], note: e.note, definition: e.definition),
   ];
   late final String _id = widget.template?.id ?? _newId();
   bool _saving = false;
+  bool _adding = false;
   String? _error;
 
-  void _addExercise({bool timed = false}) => setState(() {
+  void _addExercise({bool timed = false}) {
     _exercises.add(
       _ExerciseDraft(_newId(), _newId(), '', [
-        for (var i = 0; i < 3; i++)
-          _SetDraft(_newId(), timed: timed, restSec: 90),
+        _SetDraft(
+          _newId(),
+          timed: timed,
+          mode: timed ? PlannedSetMode.time : PlannedSetMode.repetitions,
+        ),
       ]),
     );
-  });
+  }
+
+  _ExerciseDraft _draftFromCatalogue(ExerciseCatalogueEntry entry) {
+    final timed = entry.mode == ExerciseCaptureMode.time;
+    return _ExerciseDraft(
+      _newId(),
+      entry.id,
+      entry.label,
+      [
+        _SetDraft(
+          _newId(),
+          timed: timed,
+          mode: timed ? PlannedSetMode.time : PlannedSetMode.repetitions,
+        ),
+      ],
+      definition: entry.snapshot(),
+    );
+  }
+
+  Future<void> _showAdd() async {
+    if (_adding || _saving) return;
+    _adding = true;
+    try {
+      final choice = await showAddExerciseSheet(context);
+      if (!mounted || choice == null) return;
+      switch (choice) {
+        case AddExerciseChoice.library:
+          await _addFromLibrary();
+        case AddExerciseChoice.custom:
+          setState(() => _addExercise());
+        case AddExerciseChoice.customTimed:
+          setState(() => _addExercise(timed: true));
+      }
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
+  Future<void> _addFromLibrary() async {
+    final picked = await Navigator.of(context)
+        .push<List<ExerciseCatalogueEntry>>(
+      MaterialPageRoute(
+        builder: (_) => OpenBandExercisePicker(
+          repository: widget.repository,
+          existingExerciseIds: {for (final e in _exercises) e.key},
+        ),
+      ),
+    );
+    if (!mounted || picked == null || picked.isEmpty) return;
+    setState(() {
+      for (final entry in picked) {
+        _exercises.add(_draftFromCatalogue(entry));
+      }
+    });
+  }
 
   void _addSet(_ExerciseDraft exercise) {
     final last = exercise.sets.last;
@@ -141,8 +216,22 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
         timed: last.timed,
         type: last.type,
         restSec: last.restSec,
+        mode:
+            last.mode ??
+            (last.timed ? PlannedSetMode.time : PlannedSetMode.repetitions),
       ),
     );
+  }
+
+  bool _mixedLegacy(_SetDraft s) =>
+      s.timed && s.mode == null && s.retainedReps != null;
+
+  bool _countInvalid(_SetDraft s) {
+    final parsed = _parseCount(s.count.text, timed: s.timed);
+    if (parsed.bad) return true;
+    // Ambiguous historic reps+seconds cannot go blank; that would reopen as reps.
+    if (_mixedLegacy(s) && parsed.value == null) return true;
+    return false;
   }
 
   bool get _valid {
@@ -150,11 +239,41 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
     for (final e in _exercises) {
       if (e.name.text.trim().isEmpty || e.sets.isEmpty) return false;
       for (final s in e.sets) {
-        if (_parseCount(s.count.text, timed: s.timed).bad) return false;
+        if (_countInvalid(s)) return false;
         if (!s.timed && _parseLoadText(s.load.text).bad) return false;
       }
     }
     return true;
+  }
+
+  String? _durationError(_SetDraft s) {
+    if (_mixedLegacy(s) &&
+        _parseCount(s.count.text, timed: true).value == null) {
+      return 'Dauer fehlt.';
+    }
+    return null;
+  }
+
+  PlannedSet _savedSet(_SetDraft s) {
+    final count = _parseCount(s.count.text, timed: s.timed).value;
+    final reps = s.timed ? s.retainedReps : count;
+    final seconds = s.timed ? count : s.retainedSeconds;
+    var mode = s.mode;
+    // Legacy time-only (no mode, no retained reps): clearing seconds must
+    // keep time identity. Historic reps+seconds stays modeless and cannot
+    // save a blank duration.
+    if (mode == null && s.timed && s.retainedReps == null && seconds == null) {
+      mode = PlannedSetMode.time;
+    }
+    return PlannedSet(
+      id: s.id,
+      type: s.type,
+      reps: reps,
+      seconds: seconds,
+      loadKg: _savedLoad(s),
+      restSec: s.restSec,
+      mode: mode,
+    );
   }
 
   Future<void> _save() async {
@@ -176,20 +295,10 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                 exerciseKey: e.key,
                 name: e.name.text.trim(),
                 note: e.note,
+                definition: e.definition,
                 sets: [
                   for (final s in e.sets)
-                    PlannedSet(
-                      id: s.id,
-                      type: s.type,
-                      reps: s.timed
-                          ? null
-                          : _parseCount(s.count.text, timed: false).value,
-                      seconds: s.timed
-                          ? _parseCount(s.count.text, timed: true).value
-                          : null,
-                      loadKg: _savedLoad(s),
-                      restSec: s.restSec,
-                    ),
+                    _savedSet(s),
                 ],
               ),
           ],
@@ -223,176 +332,284 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    InputDecoration deco(String hint) => InputDecoration(
+    InputDecoration wellDeco({
+      required String hint,
+      EdgeInsetsGeometry padding = const EdgeInsets.all(10),
+    }) => InputDecoration(
       hintText: hint,
+      hintStyle: p.text(16, color: p.muted).copyWith(height: 22 / 16),
       isDense: true,
       filled: true,
       fillColor: p.well,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      contentPadding: padding,
     );
     return Scaffold(
-      backgroundColor: p.canvas,
-      appBar: AppBar(
-        backgroundColor: p.canvas,
-        centerTitle: true,
-        title: Text(
-          widget.template == null ? 'Neue Vorlage' : 'Vorlage bearbeiten',
-          style: p.text(18, weight: FontWeight.w600),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
-        children: [
-          OBCard(
-            child: TextField(
-              controller: _name,
-              onChanged: (_) => setState(() {}),
-              style: p.text(20, weight: FontWeight.w700, display: true),
-              decoration: const InputDecoration(
-                hintText: 'Name der Vorlage',
-                border: InputBorder.none,
-                isDense: true,
+      backgroundColor: p.well,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OBPageHeader(
+                title: widget.template == null
+                    ? 'Neue Vorlage'
+                    : 'Vorlage bearbeiten',
+                subtitle: '',
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          for (final (ei, e) in _exercises.indexed)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: OBCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 8,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: e.name,
-                            onChanged: (_) => setState(() {}),
-                            style: p.text(15, weight: FontWeight.w600),
-                            decoration: deco('Übung'),
-                          ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                children: [
+                  OBCard(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 32),
+                      child: TextField(
+                        controller: _name,
+                        onChanged: (_) => setState(() {}),
+                        style: p
+                            .text(20, weight: FontWeight.w700, display: true)
+                            .copyWith(height: 27 / 20),
+                        decoration: const InputDecoration(
+                          hintText: 'Name der Vorlage',
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
                         ),
-                        IconButton(
-                          tooltip: 'Übung entfernen',
-                          onPressed: () =>
-                              setState(() => _exercises.removeAt(ei)),
-                          icon: Icon(
-                            LucideIcons.trash2,
-                            size: 18,
-                            color: p.danger,
-                          ),
-                        ),
-                      ],
-                    ),
-                    for (final (si, s) in e.sets.indexed)
-                      Row(
-                        spacing: 8,
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            child: Text(
-                              '${si + 1}',
-                              style: p.text(
-                                14,
-                                weight: FontWeight.w700,
-                                display: true,
-                                color: p.muted,
-                              ),
-                            ),
-                          ),
-                          if (!s.timed)
-                            Expanded(
-                              child: TextField(
-                                controller: s.load,
-                                onChanged: (_) => setState(() {}),
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                textAlign: TextAlign.center,
-                                decoration: deco('kg'),
-                              ),
-                            ),
-                          Expanded(
-                            child: TextField(
-                              controller: s.count,
-                              onChanged: (_) => setState(() {}),
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.center,
-                              decoration: deco(s.timed ? 'Sek.' : 'Wdh.'),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Satz ${si + 1} entfernen',
-                            onPressed: e.sets.length == 1
-                                ? null
-                                : () => setState(() => e.sets.removeAt(si)),
-                            icon: Icon(
-                              LucideIcons.minus,
-                              size: 18,
-                              color: p.muted,
-                            ),
-                          ),
-                        ],
                       ),
-                    TextButton.icon(
-                      onPressed: () => setState(() => _addSet(e)),
-                      icon: const Icon(LucideIcons.plus, size: 16),
-                      label: const Text('Satz hinzufügen'),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final (ei, e) in _exercises.indexed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: OBCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minHeight: 44,
+                                    ),
+                                    child: TextField(
+                                      controller: e.name,
+                                      onChanged: (_) => setState(() {}),
+                                      style: p
+                                          .text(15, weight: FontWeight.w600)
+                                          .copyWith(height: 20 / 15),
+                                      decoration: wellDeco(hint: 'Übung'),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: IconButton(
+                                    tooltip: 'Übung entfernen',
+                                    onPressed: () => setState(
+                                      () => _exercises.removeAt(ei),
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    icon: Icon(
+                                      LucideIcons.trash2,
+                                      size: 18,
+                                      color: p.danger,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            for (final (si, s) in e.sets.indexed) ...[
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 28,
+                                    child: Text(
+                                      '${si + 1}',
+                                      style: p
+                                          .text(
+                                            14,
+                                            weight: FontWeight.w700,
+                                            display: true,
+                                            color: p.muted,
+                                          )
+                                          .copyWith(height: 19 / 14),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (!s.timed) ...[
+                                    Expanded(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          minHeight: 48,
+                                        ),
+                                        child: TextField(
+                                          controller: s.load,
+                                          onChanged: (_) => setState(() {}),
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          textAlign: TextAlign.center,
+                                          style: p
+                                              .text(16)
+                                              .copyWith(height: 22 / 16),
+                                          decoration: wellDeco(
+                                            hint: 'kg',
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Expanded(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(
+                                        minHeight: 48,
+                                      ),
+                                      child: TextField(
+                                        controller: s.count,
+                                        onChanged: (_) => setState(() {}),
+                                        keyboardType: TextInputType.number,
+                                        textAlign: TextAlign.center,
+                                        style: p
+                                            .text(16)
+                                            .copyWith(height: 22 / 16),
+                                        decoration: wellDeco(
+                                          hint: s.timed ? 'Sek.' : 'Wdh.',
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 44,
+                                    height: 44,
+                                    child: IconButton(
+                                      tooltip: 'Satz ${si + 1} entfernen',
+                                      onPressed: e.sets.length == 1
+                                          ? null
+                                          : () => setState(
+                                              () => e.sets.removeAt(si),
+                                            ),
+                                      padding: EdgeInsets.zero,
+                                      icon: Icon(
+                                        LucideIcons.minus,
+                                        size: 18,
+                                        color: p.muted,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_durationError(s) case final err?) ...[
+                                const SizedBox(height: 4),
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    left: 36,
+                                    right: 52,
+                                  ),
+                                  child: Text(
+                                    err,
+                                    style: p
+                                        .text(12, color: p.danger)
+                                        .copyWith(height: 16 / 12),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                            ],
+                            InkWell(
+                              onTap: () => setState(() => _addSet(e)),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minHeight: 44,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        LucideIcons.plus,
+                                        size: 16,
+                                        color: p.ink,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          'Satz hinzufügen',
+                                          style: p
+                                              .text(
+                                                14,
+                                                weight: FontWeight.w600,
+                                              )
+                                              .copyWith(height: 19 / 14),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  OBAction(
+                    'Übung hinzufügen',
+                    secondary: true,
+                    ink: true,
+                    onPressed: _adding || _saving ? null : _showAdd,
+                  ),
+                ],
               ),
             ),
-          Row(
-            spacing: 10,
-            children: [
-              Expanded(
-                child: OBAction(
-                  'Übung hinzufügen',
-                  secondary: true,
-                  onPressed: _addExercise,
-                ),
-              ),
-              Expanded(
-                child: OBAction(
-                  'Zeitübung hinzufügen',
-                  secondary: true,
-                  onPressed: () => _addExercise(timed: true),
-                ),
-              ),
-            ],
-          ),
-          if (_error case final err?)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                err,
-                style: p.text(13, weight: FontWeight.w600, color: p.danger),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_error case final err?)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        err,
+                        style: p.text(
+                          13,
+                          weight: FontWeight.w600,
+                          color: p.danger,
+                        ),
+                      ),
+                    ),
+                  OBAction(
+                    _saving ? 'Wird gespeichert…' : 'Vorlage speichern',
+                    ink: true,
+                    onPressed: _valid && !_saving ? _save : null,
+                  ),
+                ],
               ),
             ),
-        ],
-      ),
-      bottomSheet: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: p.card,
-              borderRadius: BorderRadius.circular(AlpRadius.card),
-            ),
-            child: OBAction(
-              _saving ? 'Wird gespeichert…' : 'Vorlage speichern',
-              onPressed: _valid && !_saving ? _save : null,
-            ),
-          ),
+          ],
         ),
       ),
     );

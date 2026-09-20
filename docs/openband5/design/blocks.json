@@ -298,7 +298,37 @@
     "45V6-0": "A02 Schlaf · Heute Nacht · Nicht lesbar",
     "45WC-0": "A02 Schlaf · Heute Nacht · Nicht lesbar Dunkel",
     "45XI-0": "A02 Schlaf · Heute Nacht · Belastung fehlt",
-    "45YO-0": "A02 Schlaf · Heute Nacht · Belastung fehlt Dunkel"
+    "45YO-0": "A02 Schlaf · Heute Nacht · Belastung fehlt Dunkel",
+    "45ZZ-0": "A06a Bibliothek · Auswahl",
+    "462O-0": "A06a Bibliothek · Auswahl · Dunkel",
+    "465N-0": "A06a Bibliothek · kein Suchtreffer",
+    "467P-0": "A06a Bibliothek · Ladefehler",
+    "469R-0": "A06a Bibliothek · Filter",
+    "46BT-0": "A06a Bibliothek · Auswahl außerhalb des Filters",
+    "46DV-0": "A06a Übung · Details",
+    "46FX-0": "A06a Bibliothek · 375 große Schrift",
+    "46WT-0": "A06a Bibliothek · teilweise lesbar",
+    "46KM-0": "A06a Bibliothek · kein Suchtreffer · Dunkel",
+    "46MB-0": "A06a Bibliothek · Ladefehler · Dunkel",
+    "46O0-0": "A06a Bibliothek · Filter · Dunkel",
+    "46Q6-0": "A06a Bibliothek · Auswahl außerhalb des Filters · Dunkel",
+    "46S4-0": "A06a Übung · Details · Dunkel",
+    "46TR-0": "A06a Bibliothek · 375 große Schrift · Dunkel",
+    "46YV-0": "A06a Bibliothek · teilweise lesbar · Dunkel",
+    "470X-0": "A06a Übung · Erfassung offen",
+    "4723-0": "A06a Übung · Erfassung offen · Dunkel",
+    "4739-0": "A06a Vorlage · Übungen hinzugefügt",
+    "475G-0": "A06a Vorlage · Übungen hinzugefügt · Dunkel",
+    "478P-0": "A06a Vorlage · Übung hinzufügen",
+    "47B6-0": "A06a Vorlage · Übung hinzufügen · Dunkel",
+    "47DN-0": "A06a Übung · ausgewählt",
+    "47ET-0": "A06a Übung · ausgewählt · Dunkel",
+    "47FZ-0": "A06a Vorlage · 375 große Schrift",
+    "47HV-0": "A06a Vorlage · 375 große Schrift · Dunkel",
+    "47JR-0": "A06a Bibliothek · erneut hinzufügen",
+    "47LT-0": "A06a Bibliothek · erneut hinzufügen · Dunkel",
+    "47OT-0": "A06a Vorlage · alte gemischte Erfassung · Dauer fehlt",
+    "47QP-0": "A06a Vorlage · alte gemischte Erfassung · Dauer fehlt · Dunkel"
   },
   "blocks": [
     {
@@ -381,7 +411,37 @@
         "41PJ-0",
         "42HZ-0",
         "430B-0",
-        "431T-0"
+        "431T-0",
+        "45ZZ-0",
+        "462O-0",
+        "465N-0",
+        "467P-0",
+        "469R-0",
+        "46BT-0",
+        "46DV-0",
+        "46FX-0",
+        "46WT-0",
+        "46KM-0",
+        "46MB-0",
+        "46O0-0",
+        "46Q6-0",
+        "46S4-0",
+        "46TR-0",
+        "46YV-0",
+        "470X-0",
+        "4723-0",
+        "4739-0",
+        "475G-0",
+        "478P-0",
+        "47B6-0",
+        "47DN-0",
+        "47ET-0",
+        "47FZ-0",
+        "47HV-0",
+        "47JR-0",
+        "47LT-0",
+        "47OT-0",
+        "47QP-0"
       ],
       "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
     },
@@ -1563,7 +1623,13 @@
         "45V6-0",
         "45WC-0",
         "45XI-0",
-        "45YO-0"
+        "45YO-0",
+        "46DV-0",
+        "46S4-0",
+        "470X-0",
+        "4723-0",
+        "47DN-0",
+        "47ET-0"
       ],
       "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron.",
       "variantPaperNodes": {
@@ -1707,7 +1773,7 @@
       "name": "OBTemplateActionSheet",
       "paperNode": "3MRM-0",
       "widget": "showTemplateActionSheet",
-      "file": "training.dart",
+      "file": "action_sheet.dart",
       "usedIn": [
         "3MT7-0",
         "3MV8-0"
@@ -1885,9 +1951,11 @@
         "3SQ9-0",
         "3W0Y-0",
         "3W2F-0",
-        "40W9-0"
+        "40W9-0",
+        "47JR-0",
+        "47LT-0"
       ],
-      "notes": "Shared discard/remove sheet; optional short body explains which dated target boundary will change. Close/cancel retain draft."
+      "notes": "Shared discard/remove sheet; optional short body explains which dated target boundary will change. Close/cancel retain draft. Paper canonical and Journal/goal clones reconciled to source:32% scrim and12px content bottom plus34px example safe area; no Flutter confirmation behavior changed."
     },
     {
       "name": "OBJournalFieldRow",
@@ -1936,7 +2004,9 @@
         "3R3K-0",
         "3RF3-0",
         "3S0O-0",
-        "3XOL-0"
+        "3XOL-0",
+        "469R-0",
+        "46O0-0"
       ],
       "notes": "Content-width44-point pills shared by tags and field kinds; centered14/19 text, ink selection, long labels wrap."
     },
@@ -2275,6 +2345,39 @@
         "45YO-0"
       ],
       "notes": "Stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
+    },
+    {
+      "name": "OBExercisePickerRow",
+      "paperNode": "45ZY-0",
+      "widget": "_ExerciseRow",
+      "file": "exercise_picker.dart",
+      "usedIn": [
+        "45ZZ-0",
+        "462O-0",
+        "46BT-0",
+        "46Q6-0",
+        "46WT-0",
+        "46YV-0",
+        "46FX-0",
+        "46TR-0",
+        "47JR-0",
+        "47LT-0"
+      ],
+      "notes": "Canonical catalogue row: source labels and actual capture mode, fixed44 selection action, no invented metrics. Selection is local to the template draft."
+    },
+    {
+      "name": "OBAddExerciseSheet",
+      "paperNode": "46JW-0",
+      "widget": "showAddExerciseSheet",
+      "file": "action_sheet.dart",
+      "usedIn": [
+        "478P-0",
+        "47B6-0"
+      ],
+      "variants": {
+        "dark": "478B-0"
+      },
+      "notes": "Shared showOpenBandActionSheet also owns migrated template actions. Library and retained ad hoc repetition/time entry remain reachable; saved custom definitions are a separate open unit."
     }
   ],
   "openBlocks": [
@@ -2301,7 +2404,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 61,
+    "version": 62,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -2314,7 +2417,8 @@
       "lab_marker_def",
       "openband_pinned_template",
       "openband_strength_session",
-      "nutrition_target_period"
+      "nutrition_target_period",
+      "exercise_def"
     ]
   },
   "research": {

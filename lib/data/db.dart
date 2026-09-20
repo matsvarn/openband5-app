@@ -357,7 +357,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 61;
+  static const int schemaVersion = 62;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1106,6 +1106,10 @@ class LocalDb {
           // Empty targets end the prior period without deleting history.
           await _createNutritionTargetPeriod(db);
         }
+        if (oldV < 62) {
+          // Typed exercise registry snapshot. Additive columns only.
+          await _ensureExerciseDefRegistry(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1195,6 +1199,7 @@ class LocalDb {
     await _ensureBreathingWindowColumns(db);
     await _ensureLabResultReportRange(db);
     await _ensureJournalFieldDefHidden(db);
+    await _ensureExerciseDefRegistry(db);
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
@@ -5260,9 +5265,25 @@ class LocalDb {
         equipment TEXT NOT NULL DEFAULT '',
         unilateral INTEGER NOT NULL DEFAULT 0,
         custom INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        source TEXT,
+        version INTEGER,
+        definition_json TEXT
       )
     ''');
+    await _ensureExerciseDefRegistry(db);
+  }
+
+  /// Additive registry columns. Never seed presets; never rewrite timestamps.
+  static Future<void> _ensureExerciseDefRegistry(Database db) async {
+    await _addColumnIfMissing(db, 'exercise_def', 'source', 'TEXT');
+    await _addColumnIfMissing(db, 'exercise_def', 'version', 'INTEGER');
+    await _addColumnIfMissing(db, 'exercise_def', 'definition_json', 'TEXT');
+  }
+
+  static Future<List<Map<String, Object?>>> exerciseDefRows() async {
+    final db = await instance;
+    return db.query('exercise_def');
   }
 
   /// Append the sets of one strength session, in log order. Idempotent by

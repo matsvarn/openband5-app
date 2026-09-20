@@ -320,6 +320,7 @@ class _OpenBandStrengthLiveState extends State<OpenBandStrengthLive> {
       seconds: last?.seconds,
       restSec: last?.restSec,
       loadKg: last?.loadKg,
+      mode: last?.mode,
     );
     await _run(
       () => widget.repository.addPlannedSet(session.sessionId, exercise, added),

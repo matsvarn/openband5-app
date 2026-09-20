@@ -4,10 +4,12 @@ library;
 import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import 'package:uuid/uuid.dart';
+import 'exercise_catalogue.dart';
 import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
+export 'exercise_catalogue.dart';
 export 'sleep_plan_data.dart';
 
 enum MetricReadiness {
@@ -512,11 +514,14 @@ class CaffeineSleepPattern {
   );
 }
 
+enum PlannedSetMode { repetitions, time }
+
 class PlannedSet {
   final String id;
   final String type;
   final int? reps, seconds, restSec;
   final double? loadKg;
+  final PlannedSetMode? mode;
   const PlannedSet({
     required this.id,
     this.type = 'work',
@@ -524,19 +529,48 @@ class PlannedSet {
     this.seconds,
     this.restSec,
     this.loadKg,
+    this.mode,
   });
+
+  /// Explicit mode wins. Legacy JSON without [mode] is timed only when
+  /// [seconds] is actually present; otherwise prior reps behavior stands.
+  PlannedSetMode? get effectiveMode {
+    if (mode != null) return mode;
+    if (seconds != null) return PlannedSetMode.time;
+    return null;
+  }
+
+  bool get isTimed => effectiveMode == PlannedSetMode.time;
+
   factory PlannedSet.fromJson(Map<String, dynamic> j) {
     final id = j['id'] as String? ?? '';
     if (id.isEmpty) {
       throw const FormatException('Planned set is missing a stable id.');
     }
+    final reps = (j['reps'] as num?)?.toInt();
+    final seconds = (j['seconds'] as num?)?.toInt();
+    final mode = _parsePlannedSetMode(j['mode']);
+    // Historical JSON without mode keeps both values. Reinterpreting
+    // reps+seconds as one mode would invent a typed choice the row never had.
+    if (mode != null) {
+      if (reps != null && seconds != null) {
+        throw const FormatException('Planned set has contradictory reps+time.');
+      }
+      if (mode == PlannedSetMode.repetitions && seconds != null) {
+        throw const FormatException('Planned set has contradictory reps+time.');
+      }
+      if (mode == PlannedSetMode.time && reps != null) {
+        throw const FormatException('Planned set has contradictory reps+time.');
+      }
+    }
     return PlannedSet(
       id: id,
       type: j['type'] as String? ?? 'work',
-      reps: (j['reps'] as num?)?.toInt(),
-      seconds: (j['seconds'] as num?)?.toInt(),
+      reps: reps,
+      seconds: seconds,
       restSec: (j['restSec'] as num?)?.toInt(),
       loadKg: (j['loadKg'] as num?)?.toDouble(),
+      mode: mode,
     );
   }
   Map<String, dynamic> toJson() => {
@@ -546,6 +580,19 @@ class PlannedSet {
     'seconds': seconds,
     'restSec': restSec,
     'loadKg': loadKg,
+    if (mode != null) 'mode': mode!.name,
+  };
+}
+
+PlannedSetMode? _parsePlannedSetMode(Object? raw) {
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw const FormatException('Planned set mode is unreadable.');
+  }
+  return switch (raw) {
+    'repetitions' => PlannedSetMode.repetitions,
+    'time' => PlannedSetMode.time,
+    _ => throw const FormatException('Planned set mode is unreadable.'),
   };
 }
 
@@ -553,12 +600,14 @@ class PlannedExercise {
   final String id, exerciseKey, name;
   final List<PlannedSet> sets;
   final String note;
+  final ExerciseDefinitionSnapshot? definition;
   const PlannedExercise({
     required this.id,
     required this.exerciseKey,
     required this.name,
     required this.sets,
     this.note = '',
+    this.definition,
   });
   factory PlannedExercise.fromJson(Map<String, dynamic> j) {
     final id = j['id'] as String? ?? '';
@@ -571,6 +620,21 @@ class PlannedExercise {
     if (rawSets is! List || rawSets.isEmpty) {
       throw const FormatException('Planned exercise has no sets.');
     }
+    final rawDefinition = j['definition'];
+    ExerciseDefinitionSnapshot? definition;
+    if (rawDefinition != null) {
+      if (rawDefinition is! Map) {
+        throw const FormatException('Exercise definition snapshot is unreadable.');
+      }
+      definition = ExerciseDefinitionSnapshot.fromJson(
+        Map<String, dynamic>.from(rawDefinition),
+      );
+      if (definition.id != exerciseKey) {
+        throw const FormatException(
+          'Exercise definition snapshot is unreadable.',
+        );
+      }
+    }
     return PlannedExercise(
       id: id,
       exerciseKey: exerciseKey,
@@ -579,6 +643,7 @@ class PlannedExercise {
         for (final s in rawSets) PlannedSet.fromJson(s as Map<String, dynamic>),
       ],
       note: j['note'] as String? ?? '',
+      definition: definition,
     );
   }
   Map<String, dynamic> toJson() => {
@@ -587,6 +652,7 @@ class PlannedExercise {
     'name': name,
     'sets': [for (final s in sets) s.toJson()],
     'note': note,
+    if (definition != null) 'definition': definition!.toJson(),
   };
 }
 
@@ -681,7 +747,7 @@ List<StrengthPlanSlot> strengthPlanSlots(
           exerciseKey: e.exerciseKey,
           exerciseId: e.id,
           setIndex: n,
-          timed: s.seconds != null,
+          timed: s.isTimed,
         ));
       }
       counts[e.id] = n;
@@ -841,6 +907,7 @@ WorkoutTemplate copyWorkoutTemplate(WorkoutTemplate source, {DateTime? at}) {
           exerciseKey: e.exerciseKey,
           name: e.name,
           note: e.note,
+          definition: e.definition,
           sets: [
             for (final s in e.sets)
               PlannedSet(
@@ -850,6 +917,7 @@ WorkoutTemplate copyWorkoutTemplate(WorkoutTemplate source, {DateTime? at}) {
                 seconds: s.seconds,
                 restSec: s.restSec,
                 loadKg: s.loadKg,
+                mode: s.mode,
               ),
           ],
         ),
@@ -1940,6 +2008,7 @@ abstract interface class OpenBandRepository {
   Future<Map<String, RecordedSet>> readPreviousStrengthSets(String sessionId);
   Future<void> finishStrengthSession(String sessionId);
   Future<MuscleLoad> readMuscleLoad(String endDay, int days);
+  Future<ExerciseCatalogue> readExerciseCatalogue();
   Future<List<FoodHit>> searchFoods(String query);
   Future<List<WorkoutTemplate>> readTemplates();
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template);
