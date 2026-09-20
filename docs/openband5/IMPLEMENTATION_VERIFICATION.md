@@ -325,3 +325,9 @@ Verification with Flutter3.41.6:
 - Earlier harness runs failed on offscreen lazy children and a non-interactive toggle wrapper. Fixed the real scroll/hit-test targets; did not relax assertions or widen timeouts. No UI defect remains from those failures.
 
 Synthetic simulator and temp-SQLite proof only. Actual Health provider permission/read behavior, physical Bluetooth and physiological validity were not exercised. App0.9.31+67, algorithm90 and full dependency pins remain unchanged and match the lockfile. No push/merge/deploy.
+
+## Checklist alias reconciliation · 21 September 2026
+
+A05 Eigener Marker and A08 Übertragung · unterbrochen reuse accepted lab-editor and overview-sync implementations. Read-only Mats worker e68e0ada/4e134dc6 traced production routes, registered Phase 3 nodes, tests and existing native artifacts. Lead inspected save/collision/failure source, interrupted-state mapping and resume action, successful run metadata, and actual labs-custom-marker / overview-interrupted-light PNGs. The prior Labor and notifications entries retain the full light/dark, mini and failure-state evidence.
+
+The A08 archive full page is intentionally consolidated into the canonical overview row. This does not establish pixel parity with the frozen archive or physical Bluetooth recovery. Other transfer states remain open. Documentation-only change after glucose commit 5295d34; no generated images or production code changed. JSON/design-manifest and whitespace checks passed.

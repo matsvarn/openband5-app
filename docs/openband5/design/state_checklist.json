@@ -748,6 +748,15 @@
         "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
         "note": "Off state and inline Ausgeblendet confirmed in light/dark; restoring uses the same persistent setting. No deletion or invented empty history.",
         "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Übertragung · unterbrochen": {
+        "status": "implemented",
+        "paperNode": "3I3P-0",
+        "source": "lib/openband/screens.dart: OBSyncState; lib/openband/domain.dart: TransferState.interrupted; lib/openband/local_repository.dart: readBand; lib/app.dart: onSync → openSession",
+        "evidence": "test/openband_flow_test.dart: interrupted transfer shows the sync pill with a resume action; test/openband_goldens/interrupted-light.png; test/openband_goldens/interrupted-dark.png; integration_test/openband_review_test.dart; build/ui-review/notifications-picker-final-20260919/overview-interrupted-light.png and overview-interrupted-dark.png",
+        "note": "Alias of A01 Übertragung unterbrochen. Phase 3 consolidates interrupted transfer into the overview sync row, with stored frontier and Fortsetzen. Archive 1E0M-0 is not a separate production destination. This records the accepted navigation change, not pixel parity with the frozen archive. First sync, running/completed transfer and storage-full states remain separate. Synthetic UI proof only; physical interruption/recovery remains open.",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "nativeReview": "build/ui-review/notifications-picker-final-20260919 (PASS, 368.15s) and notifications-picker-mini-final-20260919 (PASS, 529.58s), overview-interrupted-light/dark. Existing accepted captures; lead rechecked native light render and run metadata on 21 September."
       }
     },
     "A02 · Schlaf": {
@@ -1158,6 +1167,15 @@
         "evidence": "test/openband_glucose_contract_test.dart; test/openband_glucose_import_test.dart; test/openband_glucose_test.dart; test/openband_glucose_chart_test.dart; integration_test/openband_review_test.dart glucose flow",
         "note": "No stored readings shows — and Jetzt lesen. An empty completed query is distinct from an unreadable store or failed request; no fallback glucose value.",
         "nativeReview": "build/ui-review/glucose-pro-final-20260921 (34 frames, success true, 128.23s); build/ui-review/glucose-mini-ui33-20260921 (34 frames, success true, 142.53s). All68 PNGs inspected, including light/dark, errors, partial/missing, exclusion and2x. Simulator synthetic proof only; no live Health/device validation."
+      },
+      "Eigener Marker": {
+        "status": "implemented",
+        "paperNode": "3LXY-0",
+        "source": "lib/openband/labs.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_labs_test.dart; test/lab_result_store_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Alias of the implemented Labormarker custom editor. Gesundheit → Laborwerte → Eigene Marker → Marker anlegen opens Eigener Marker. Phase 3 light/dark 3LXY-0 / 3LZI-0. Existing native runs and tests cover save, collisions, retained draft on failure and repeated taps. Lead rechecked production source and the native editor on 21 September; no second implementation.",
+        "nativeReview": "build/ui-review/labs-v3-20260919 (138 PNGs); build/ui-review/labs-mini-v3-20260919 (139 PNGs). Every PNG inspected; light/dark, empty, CRUD, failures/retry, missing report bounds, keyboard and 2x text. Synthetic simulator proof.",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY"
       }
     },
     "A04 · System": {
