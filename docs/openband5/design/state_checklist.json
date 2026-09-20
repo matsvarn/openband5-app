@@ -810,6 +810,178 @@
         "evidence": "test/openband_sleep_goal_test.dart; test/openband_sleep_goal_widget_test.dart; integration_test/openband_review_test.dart",
         "note": "Saved target read back from dated persistence. Removal writes a dated boundary rather than deleting past targets.",
         "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
+      },
+      "Übersicht und Planung": {
+        "status": "open",
+        "paperNode": "22EJ-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep; lib/compute/crossday_pipeline.dart: sleep_coach",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Night, naps and user goal routes exist; combined planning hub and stored bedtime/need presentation remain open. Do not rebuild completed routes."
+      },
+      "Nachtbild · Dunkel": {
+        "status": "partial",
+        "paperNode": "22J7-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Existing dark night hub renders; full archive hub/session distinction and final Paper/native parity remain open.",
+        "nativeReview": "Existing build/ui-review/notifications-picker-final-20260919 sleep-complete-dark, sleep-partial-light, sleep-missing-light, sleep-phases PNGs inspected 2026-09-20. Synthetic simulator evidence; identifies remaining parity gaps, not complete-flow acceptance."
+      },
+      "Nacht 14./15. September": {
+        "status": "partial",
+        "paperNode": "2D4D-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Selected wake-day night, timing, stages and corrections exist. Full session/detail split remains open."
+      },
+      "Schlafphasen ausgewählt": {
+        "status": "partial",
+        "paperNode": "2DBR-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/charts.dart: NightChart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Tapping opens a readable segment list including gaps. The selected interval in the hypnogram and matching archive detail composition remain open.",
+        "nativeReview": "Existing build/ui-review/notifications-picker-final-20260919 sleep-complete-dark, sleep-partial-light, sleep-missing-light, sleep-phases PNGs inspected 2026-09-20. Synthetic simulator evidence; identifies remaining parity gaps, not complete-flow acceptance."
+      },
+      "24 Minuten ohne Daten": {
+        "status": "partial",
+        "paperNode": "22NU-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep; lib/openband/charts.dart: NightChart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Stored gap is hatched and listed as 02:10–02:34, 24 minutes; no >= prefix. Main card hides its gap caption, so visible partial-coverage labeling and the data-status action remain open.",
+        "nativeReview": "Existing build/ui-review/notifications-picker-final-20260919 sleep-complete-dark, sleep-partial-light, sleep-missing-light, sleep-phases PNGs inspected 2026-09-20. Synthetic simulator evidence; identifies remaining parity gaps, not complete-flow acceptance."
+      },
+      "Noch keine Nacht": {
+        "status": "partial",
+        "paperNode": "24BE-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep; lib/openband/sleep_editor.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Missing night is not replaced by prior-night values; historical trend is separate. Archive data-status and explicit manual-night entry paths need end-to-end reconciliation.",
+        "nativeReview": "Existing build/ui-review/notifications-picker-final-20260919 sleep-complete-dark, sleep-partial-light, sleep-missing-light, sleep-phases PNGs inspected 2026-09-20. Synthetic simulator evidence; identifies remaining parity gaps, not complete-flow acceptance."
+      },
+      "Dein Ruhepuls": {
+        "status": "partial",
+        "paperNode": "25NI-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart; lib/openband/metric_detail.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Actual stored resting-HR card/detail is reachable from sleep. Full archive state and shared method/source/coverage detail parity remain open."
+      },
+      "Deine Schlafdauer": {
+        "status": "partial",
+        "paperNode": "26GE-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep, OBTrendCard",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Stored duration and 30-night trend exist. Dedicated duration detail and history interactions remain open."
+      },
+      "Erholung offen": {
+        "status": "partial",
+        "paperNode": "27CM-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandOverview, OpenBandSleep",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Overview retains missing recovery honestly. Matching sleep-hub open-recovery state and source navigation remain open."
+      },
+      "Einschlafdauer": {
+        "status": "open",
+        "paperNode": "2DMZ-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/compute/onehz_pipeline.dart: _sleepRuns, sol_min; lib/openband/local_repository.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Stored latency exists only for manual/confirmed windows with observed lead-in. Sleep-hub typed source/version/correction gating and route remain open; sleep_onset_sec is not latency."
+      },
+      "Schlafwerte Erklärung": {
+        "status": "partial",
+        "paperNode": "2DOO-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: _sleepMethod",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Disclosure exists, but archive stage composition/share detail is not migrated. Current copy refers to a ring absent from the redesigned hub; reconcile copy and visual before acceptance."
+      },
+      "Verlauf": {
+        "status": "partial",
+        "paperNode": "2DQK-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OBTrendCard; lib/openband/local_repository.dart: readMetricHistory",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Trailing duration chart exists. Full dated history/detail interaction and missing/error variants remain open."
+      },
+      "Basis fehlt": {
+        "status": "partial",
+        "paperNode": "2DSG-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/metric_detail.dart; lib/openband/screens.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Unknown baseline is preserved in current metric cards. Dedicated sleep-basis state and source-backed explanation require visual/route acceptance."
+      },
+      "Schlafanteil": {
+        "status": "partial",
+        "paperNode": "2DZE-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep, _sleepEfficiency",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Observed stage facts and efficiency exist. Dedicated share view and interpretation under unobserved intervals remain open."
+      },
+      "Schlafdauer Erklärung": {
+        "status": "partial",
+        "paperNode": "2E15-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: _sleepMethod",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Current disclosure separates observed duration from score; dedicated duration explanation and removal of stale ring wording remain open."
+      },
+      "Schlafbedarf": {
+        "status": "open",
+        "paperNode": "2DWM-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/compute/crossday_pipeline.dart: sleep_coach.need; lib/openband/sleep_goal.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Stored learned estimate is separate from implemented user goal/weekend p75. Selected-day/version gating and wrong-night attainment B136 must be resolved before this flow is implemented."
+      },
+      "Abendplanung": {
+        "status": "open",
+        "paperNode": "2DY0-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/compute/crossday_pipeline.dart: sleep_coach.bedtime, sleep_coach.wake",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Stored bedtime/wake envelopes exist with missing-input refusal. Typed dated read and Alpin route remain open; do not calculate a bedtime from the user target in UI."
+      },
+      "Nachtverlauf SpO₂": {
+        "status": "open",
+        "paperNode": "2DLB-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/compute/onehz_pipeline.dart: disabled spo2Block; lib/openband/domain.dart: NightSignalKind",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "No supported oxygen curve: producer explicitly disables SpO2/ODI; retained red/IR values are raw LED ADCs. Honest unavailable source explanation remains open in edge. Enabling physiology requires sibling algorithm work and evidence outside this UI scope."
+      },
+      "Messwerte": {
+        "status": "partial",
+        "paperNode": "2D7X-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/screens.dart: OpenBandSleep; lib/openband/night_signals.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "HRV/RHR details and three supported night-signal routes exist. Full archive measurement selector/details remain open."
+      },
+      "Zeitzone prüfen": {
+        "status": "partial",
+        "paperNode": "27Q5-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/sleep_editor.dart: recordingTimezone; lib/openband/time.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Editor carries recording zone and per-endpoint time handling. Archive recording-zone versus current-phone-zone comparison has not been implemented as a reviewable flow."
+      },
+      "Schlafzeiten prüfen, Hauptschlaf": {
+        "status": "partial",
+        "paperNode": "28YC-0",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "source": "lib/openband/sleep_editor.dart; lib/openband/controller.dart",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
+        "note": "Durable correction, failed-recalculation retention and restoration already implemented. Preserve that flow; reconcile remaining full main-sleep/session design and timezone comparison rather than rebuild storage."
       }
     },
     "A05 · Gesundheit": {
