@@ -1238,6 +1238,120 @@
         "paperNode": "40R7-0",
         "note": "Single saved-food nutrients implemented. Archive H03 aggregates multiple draft foods and coverage; this remains open."
       }
+    },
+    "A01 · Übersicht": {
+      "Übertragung unterbrochen": {
+        "status": "implemented",
+        "paperNode": "3I3P-0",
+        "source": "lib/openband/screens.dart: OBSyncState; lib/openband/domain.dart: TransferState.interrupted",
+        "evidence": "test/openband_flow_test.dart: interrupted transfer shows the sync pill with a resume action; test/openband_goldens/interrupted-light.png; test/openband_goldens/interrupted-dark.png; integration_test/openband_review_test.dart; build/ui-review/notifications-picker-final-20260919/overview-interrupted-light.png and overview-interrupted-dark.png",
+        "note": "Archive Alpin20LD reconciled with Designphase3 shared sync row. Stored results stay visible and Fortsetzen is exposed when a resume callback exists. Lead inspected actual archived Paper and both successful synthetic native captures. UI proof only; physical interruption/recovery remains separate.",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY"
+      },
+      "historischer Tag": {
+        "status": "partial",
+        "paperNode": "3F5T-0",
+        "source": "lib/openband/day_picker.dart; lib/openband/controller.dart: selectDay; lib/openband/screens.dart",
+        "evidence": "test/openband_flow_test.dart; integration_test/openband_review_test.dart: overview-historical; build/ui-review/notifications-picker-final-20260919/overview-historical.png",
+        "note": "Selected-day navigation/persistence and historical metric absence already work; lead inspected existing native capture. Archive21Z1 full lower feed/customization is not fully implemented. Do not rebuild the day selector.",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY"
+      },
+      "20. August keine gespeicherten Daten": {
+        "status": "partial",
+        "paperNode": "219N-0",
+        "source": "lib/openband/day_picker.dart; lib/openband/controller.dart; lib/openband/synthetic_repository.dart: readDay",
+        "evidence": "test/openband_flow_test.dart missing variants; test/openband_synthetic_test.dart; frozen Designphase2 archive219N inspected",
+        "note": "Historical empty-day selection and missing metrics exist, but the archived empty-history actions Schlaf hinzufügen/Essen eintragen/Notiz hinzufügen/Zu heute are not all exposed and verified together. Missing-today captures do not close this requirement.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "laufendes Training": {
+        "status": "partial",
+        "paperNode": "1ZJN-0",
+        "source": "lib/app.dart: _LiveSessionBar, resumeLiveSession; lib/openband/strength_live.dart",
+        "evidence": "test/openband_strength_live_test.dart; live run/strength route tests; frozen Designphase2 archive1ZJN inspected",
+        "note": "Active workout resumption exists in the shell. The Alpin overview chip with actual session identity/elapsed time and its native placement remain open; current shell bar is not accepted as visual parity.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Herzintervalle unzuverlässig": {
+        "status": "open",
+        "paperNode": "1ZYF-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "MetricReadiness.unreliable exists for night interpretation. Overview-specific honest readiness/HRV absence state, fixture and native proof remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Trainingspause": {
+        "status": "open",
+        "paperNode": "1ZPB-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Archive chosen training-pause status differs from pausing a live workout; persisted chosen status and overview presentation remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Übersicht anpassen Entwurf": {
+        "status": "open",
+        "paperNode": "21GY-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Designphase3 customize block3HFC is explicitly Paper-only. Draft layout editing remains open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Karte hinzufügen": {
+        "status": "open",
+        "paperNode": "21P0-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Supported card catalogue and draft insertion remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Karte hinzugefügt": {
+        "status": "open",
+        "paperNode": "21M1-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Draft layout including the added card remains open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "zusätzliche Karte gespeichert": {
+        "status": "open",
+        "paperNode": "21Q7-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Atomic persisted overview layout and reopen proof remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Kartenmenü": {
+        "status": "open",
+        "paperNode": "226D-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Alpin move/hide card actions remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Journal nach oben verschoben": {
+        "status": "open",
+        "paperNode": "21JH-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Draft overview ordering and move interaction remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Reihenfolge gespeichert": {
+        "status": "open",
+        "paperNode": "22AE-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Persisted overview order and reopen verification remain open. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      },
+      "Eintrag hinzufügen": {
+        "status": "open",
+        "paperNode": "227X-0",
+        "source": "lib/openband/screens.dart; docs/openband5/design/blocks.json; docs/openband5/IMPLEMENTATION_PLAN.md WP1/WP6",
+        "evidence": "A01 source/route reconciliation; frozen Designphase2 A01 artboard inventory",
+        "note": "Overview add-entry chooser remains open. Existing Journal/Training destinations do not implement this chooser. Original archive node is a reference, not an assertion of Designphase3 implementation.",
+        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
+      }
     }
   }
 }
