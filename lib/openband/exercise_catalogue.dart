@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+
+import 'exercise_load.dart';
 
 /// Typed exercise registry: 18 shipped presets plus stored `exercise_def` rows.
 ///
@@ -10,6 +13,9 @@ import 'package:flutter/foundation.dart';
 
 const kExerciseRegistryVersion = 1;
 
+/// Column/definition `source` written for definitions created by this API.
+const kCustomExerciseSource = 'custom';
+
 enum ExerciseCaptureMode { repetitions, time }
 
 enum ExerciseEquipmentCategory {
@@ -18,11 +24,15 @@ enum ExerciseEquipmentCategory {
   cable,
   bodyweight,
   machine,
+  other,
 }
 
 enum ExerciseDefinitionSource { preset, stored }
 
-/// Equipment-filter key for rows with no known category (Ohne Zuordnung).
+enum CustomExerciseWriteStatus { saved, conflict }
+
+/// Equipment-filter key for rows with no known category (legacy missing).
+/// Distinct from explicit [ExerciseEquipmentCategory.other].
 const kExerciseEquipmentUnknown = 'unknown';
 
 @immutable
@@ -35,6 +45,10 @@ class ExerciseCatalogueEntry {
     List<String> primaryMuscles = const [],
     List<String> secondaryMuscles = const [],
     this.equipment,
+    this.equipmentRef,
+    this.loadBasis,
+    this.deviceCount,
+    this.repetitionBasis,
     required this.source,
     this.version,
     this.loadIncrement,
@@ -51,6 +65,10 @@ class ExerciseCatalogueEntry {
   final List<String> primaryMuscles;
   final List<String> secondaryMuscles;
   final ExerciseEquipmentCategory? equipment;
+  final String? equipmentRef;
+  final ExerciseLoadBasis? loadBasis;
+  final int? deviceCount;
+  final ExerciseRepetitionBasis? repetitionBasis;
   final ExerciseDefinitionSource source;
   final int? version;
   final double? loadIncrement;
@@ -67,6 +85,10 @@ class ExerciseCatalogueEntry {
     primaryMuscles: primaryMuscles,
     secondaryMuscles: secondaryMuscles,
     equipment: equipment,
+    equipmentRef: equipmentRef,
+    loadBasis: loadBasis,
+    deviceCount: deviceCount,
+    repetitionBasis: repetitionBasis,
     retained: retained,
   );
 }
@@ -100,6 +122,10 @@ class ExerciseDefinitionSnapshot {
     List<String> primaryMuscles = const [],
     List<String> secondaryMuscles = const [],
     this.equipment,
+    this.equipmentRef,
+    this.loadBasis,
+    this.deviceCount,
+    this.repetitionBasis,
     Map<String, Object?> retained = const {},
   }) : primaryMuscles = _freezeStrings(primaryMuscles),
        secondaryMuscles = _freezeStrings(secondaryMuscles),
@@ -113,6 +139,10 @@ class ExerciseDefinitionSnapshot {
   final List<String> primaryMuscles;
   final List<String> secondaryMuscles;
   final ExerciseEquipmentCategory? equipment;
+  final String? equipmentRef;
+  final ExerciseLoadBasis? loadBasis;
+  final int? deviceCount;
+  final ExerciseRepetitionBasis? repetitionBasis;
   final Map<String, Object?> retained;
 
   factory ExerciseDefinitionSnapshot.fromJson(Map<String, dynamic> j) {
@@ -122,19 +152,6 @@ class ExerciseDefinitionSnapshot {
       throw const FormatException('Exercise definition snapshot is unreadable.');
     }
     final retained = Map<String, Object?>.from(_snapshotRetained(j));
-    ExerciseEquipmentCategory? equipment;
-    if (j.containsKey('equipment')) {
-      final raw = j['equipment'];
-      if (raw != null && raw is! String) {
-        throw const FormatException(
-          'Exercise definition snapshot is unreadable.',
-        );
-      }
-      equipment = _parseEquipment(raw);
-      if (equipment == null && raw is String && raw.isNotEmpty) {
-        retained['equipment'] = raw;
-      }
-    }
     return ExerciseDefinitionSnapshot(
       id: id,
       label: label,
@@ -143,7 +160,11 @@ class ExerciseDefinitionSnapshot {
       mode: _parseMode(j['mode']),
       primaryMuscles: _stringList(j['primaryMuscles']),
       secondaryMuscles: _stringList(j['secondaryMuscles']),
-      equipment: equipment,
+      equipment: _takeEquipment(j, retained),
+      equipmentRef: _optionalString(j['equipmentRef']),
+      loadBasis: _takeLoadBasis(j, retained),
+      deviceCount: _optionalDeviceCount(j['deviceCount']),
+      repetitionBasis: _takeRepetitionBasis(j, retained),
       retained: retained,
     );
   }
@@ -157,8 +178,36 @@ class ExerciseDefinitionSnapshot {
     'primaryMuscles': primaryMuscles,
     'secondaryMuscles': secondaryMuscles,
     if (equipment != null) 'equipment': equipment!.name,
+    if (equipmentRef != null) 'equipmentRef': equipmentRef,
+    if (loadBasis != null) 'loadBasis': loadBasis!.name,
+    if (deviceCount != null) 'deviceCount': deviceCount,
+    if (repetitionBasis != null) 'repetitionBasis': repetitionBasis!.name,
     if (retained.isNotEmpty) 'retained': retained,
   };
+
+  String encode() => jsonEncode(toJson());
+}
+
+/// Validate optional stored `definition_json`. Null is a historic row.
+/// Identity must match [exerciseKey]; retained unknown fields are not rewritten.
+void requireStoredExerciseDefinitionJson(
+  Object? definitionJson,
+  String exerciseKey,
+) {
+  if (definitionJson == null) return;
+  if (definitionJson is! String || definitionJson.isEmpty) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
+  final decoded = jsonDecode(definitionJson);
+  if (decoded is! Map) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
+  final snap = ExerciseDefinitionSnapshot.fromJson(
+    Map<String, dynamic>.from(decoded),
+  );
+  if (snap.id != exerciseKey) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
 }
 
 @immutable
@@ -499,6 +548,12 @@ ExerciseCatalogueEntry parseStoredExerciseDef(Map<String, Object?> row) {
     primaryMuscles: _stringList(definition?['primaryMuscles']),
     secondaryMuscles: _stringList(definition?['secondaryMuscles']),
     equipment: jsonHasEquipment ? jsonEquipment : columnCategory,
+    equipmentRef: _optionalString(definition?['equipmentRef']),
+    loadBasis: definition == null ? null : _takeLoadBasis(definition, retained),
+    deviceCount: _optionalDeviceCount(definition?['deviceCount']),
+    repetitionBasis: definition == null
+        ? null
+        : _takeRepetitionBasis(definition, retained),
     source: ExerciseDefinitionSource.stored,
     version:
         _optionalVersion(row['version']) ??
@@ -506,6 +561,228 @@ ExerciseCatalogueEntry parseStoredExerciseDef(Map<String, Object?> row) {
     loadIncrement: _optionalLoadIncrement(definition?['loadIncrement']),
     retained: retained,
   );
+}
+
+/// Fields a person confirmed when creating or updating a custom definition.
+/// Saving this writes only [exercise_def], never a planned or recorded set.
+@immutable
+class CustomExerciseDraft {
+  CustomExerciseDraft({
+    this.id,
+    required this.label,
+    required this.mode,
+    required this.equipment,
+    this.equipmentRef,
+    required this.loadBasis,
+    this.deviceCount,
+    this.repetitionBasis,
+    List<String> primaryMuscles = const [],
+    List<String> secondaryMuscles = const [],
+    Map<String, Object?> retained = const {},
+  }) : primaryMuscles = _freezeStrings(primaryMuscles),
+       secondaryMuscles = _freezeStrings(secondaryMuscles),
+       retained = _freezeMap(retained);
+
+  final String? id;
+  final String label;
+  final ExerciseCaptureMode mode;
+  final ExerciseEquipmentCategory equipment;
+  final String? equipmentRef;
+  final ExerciseLoadBasis loadBasis;
+  final int? deviceCount;
+  final ExerciseRepetitionBasis? repetitionBasis;
+  final List<String> primaryMuscles;
+  final List<String> secondaryMuscles;
+  final Map<String, Object?> retained;
+}
+
+@immutable
+class CustomExerciseWriteResult {
+  const CustomExerciseWriteResult._(this.status, this.current);
+  const CustomExerciseWriteResult.saved(ExerciseCatalogueEntry current)
+    : this._(CustomExerciseWriteStatus.saved, current);
+  const CustomExerciseWriteResult.conflict([this.current])
+    : status = CustomExerciseWriteStatus.conflict;
+
+  final CustomExerciseWriteStatus status;
+  final ExerciseCatalogueEntry? current;
+  bool get saved => status == CustomExerciseWriteStatus.saved;
+  bool get conflict => status == CustomExerciseWriteStatus.conflict;
+}
+
+String newCustomExerciseId() => const Uuid().v4();
+
+void requireCustomExerciseDraft(CustomExerciseDraft draft) {
+  final label = draft.label.trim();
+  if (label.isEmpty) {
+    throw ArgumentError.value(draft.label, 'label');
+  }
+  if (draft.id != null && draft.id!.isEmpty) {
+    throw ArgumentError.value(draft.id, 'id');
+  }
+  if (draft.id != null && exercisePresetById(draft.id!) != null) {
+    throw ArgumentError.value(draft.id, 'id');
+  }
+  _requireMuscleNames(draft.primaryMuscles, 'primaryMuscles');
+  _requireMuscleNames(draft.secondaryMuscles, 'secondaryMuscles');
+  final primary = {for (final m in draft.primaryMuscles) m};
+  for (final m in draft.secondaryMuscles) {
+    if (primary.contains(m)) {
+      throw ArgumentError.value(m, 'secondaryMuscles');
+    }
+  }
+  final ref = draft.equipmentRef?.trim();
+  if (draft.equipmentRef != null && (ref == null || ref.isEmpty)) {
+    throw ArgumentError.value(draft.equipmentRef, 'equipmentRef');
+  }
+  switch (draft.loadBasis) {
+    case ExerciseLoadBasis.perDevice:
+      if (draft.deviceCount == null || draft.deviceCount! < 1) {
+        throw ArgumentError.value(draft.deviceCount, 'deviceCount');
+      }
+    case ExerciseLoadBasis.total:
+    case ExerciseLoadBasis.bodyweight:
+    case ExerciseLoadBasis.addedLoad:
+    case ExerciseLoadBasis.assistance:
+      if (draft.deviceCount != null) {
+        throw ArgumentError.value(draft.deviceCount, 'deviceCount');
+      }
+  }
+  switch (draft.mode) {
+    case ExerciseCaptureMode.repetitions:
+      if (draft.repetitionBasis == null) {
+        throw ArgumentError.notNull('repetitionBasis');
+      }
+    case ExerciseCaptureMode.time:
+      if (draft.repetitionBasis != null) {
+        throw ArgumentError.value(draft.repetitionBasis, 'repetitionBasis');
+      }
+  }
+}
+
+bool isExplicitCustomExerciseRow(Map<String, Object?> row) {
+  final custom = row['custom'];
+  final source = row['source'];
+  return custom == 1 && source == kCustomExerciseSource;
+}
+
+/// Same explicit custom id + identical creation payload after an uncertain
+/// first reply: return the existing row. Never overwrite created_at/version.
+bool isReplayableCustomExerciseCreate({
+  required Map<String, Object?> existing,
+  required CustomExerciseDraft draft,
+  required String id,
+}) {
+  if (!isExplicitCustomExerciseRow(existing)) return false;
+  if (existing['version'] != 1) return false;
+  final createdAt = (existing['created_at'] as num?)?.toInt();
+  if (createdAt == null) return false;
+  final candidate = encodeCustomExerciseRow(
+    draft: draft,
+    id: id,
+    version: 1,
+    createdAt: createdAt,
+  );
+  return existing['definition_json'] == candidate['definition_json'] &&
+      existing['label'] == candidate['label'] &&
+      existing['equipment'] == candidate['equipment'] &&
+      existing['source'] == candidate['source'] &&
+      existing['custom'] == candidate['custom'] &&
+      existing['version'] == candidate['version'];
+}
+
+/// Occupied create id: identical custom v1 payload is a safe saved replay;
+/// anything else is a distinguishable conflict and does not write.
+CustomExerciseWriteResult customExerciseCreateAgainstExisting({
+  required Map<String, Object?> existing,
+  required CustomExerciseDraft draft,
+  required String id,
+}) {
+  if (isReplayableCustomExerciseCreate(
+    existing: existing,
+    draft: draft,
+    id: id,
+  )) {
+    return CustomExerciseWriteResult.saved(parseStoredExerciseDef(existing));
+  }
+  try {
+    return CustomExerciseWriteResult.conflict(parseStoredExerciseDef(existing));
+  } on FormatException {
+    return const CustomExerciseWriteResult.conflict();
+  }
+}
+
+bool customExerciseSnapshotsEqual(
+  ExerciseDefinitionSnapshot a,
+  ExerciseDefinitionSnapshot b,
+) => jsonEncode(a.toJson()) == jsonEncode(b.toJson());
+
+Map<String, Object?> encodeCustomExerciseRow({
+  required CustomExerciseDraft draft,
+  required String id,
+  required int version,
+  required int createdAt,
+  Map<String, Object?> retained = const {},
+}) {
+  requireCustomExerciseDraft(
+    CustomExerciseDraft(
+      id: id,
+      label: draft.label,
+      mode: draft.mode,
+      equipment: draft.equipment,
+      equipmentRef: draft.equipmentRef,
+      loadBasis: draft.loadBasis,
+      deviceCount: draft.deviceCount,
+      repetitionBasis: draft.repetitionBasis,
+      primaryMuscles: draft.primaryMuscles,
+      secondaryMuscles: draft.secondaryMuscles,
+      retained: draft.retained,
+    ),
+  );
+  final label = draft.label.trim();
+  final mergedRetained = <String, Object?>{...retained, ...draft.retained};
+  for (final key in _definitionKnownKeys) {
+    mergedRetained.remove(key);
+  }
+  mergedRetained.remove('muscles_json');
+  mergedRetained.remove('unilateral');
+  mergedRetained.remove('custom');
+  mergedRetained.remove('created_at');
+  mergedRetained.remove('definition_source');
+  final definition = <String, Object?>{
+    'id': id,
+    'label': label,
+    'mode': draft.mode.name,
+    'equipment': draft.equipment.name,
+    if (draft.equipmentRef != null) 'equipmentRef': draft.equipmentRef!.trim(),
+    'loadBasis': draft.loadBasis.name,
+    if (draft.deviceCount != null) 'deviceCount': draft.deviceCount,
+    if (draft.repetitionBasis != null)
+      'repetitionBasis': draft.repetitionBasis!.name,
+    'primaryMuscles': draft.primaryMuscles,
+    'secondaryMuscles': draft.secondaryMuscles,
+    'source': kCustomExerciseSource,
+    'version': version,
+    ...mergedRetained,
+  };
+  return {
+    'key': id,
+    'label': label,
+    'equipment': draft.equipment.name,
+    'custom': 1,
+    'created_at': createdAt,
+    'source': kCustomExerciseSource,
+    'version': version,
+    'definition_json': jsonEncode(definition),
+  };
+}
+
+void _requireMuscleNames(List<String> names, String field) {
+  for (final name in names) {
+    if (name.trim().isEmpty) {
+      throw ArgumentError.value(name, field);
+    }
+  }
 }
 
 List<ExerciseCatalogueEntry> filterExerciseCatalogue(
@@ -534,6 +811,10 @@ const _definitionKnownKeys = {
   'primaryMuscles',
   'secondaryMuscles',
   'equipment',
+  'equipmentRef',
+  'loadBasis',
+  'deviceCount',
+  'repetitionBasis',
   'source',
   'version',
   'loadIncrement',
@@ -548,6 +829,10 @@ const _snapshotKnownKeys = {
   'primaryMuscles',
   'secondaryMuscles',
   'equipment',
+  'equipmentRef',
+  'loadBasis',
+  'deviceCount',
+  'repetitionBasis',
   'retained',
 };
 
@@ -602,8 +887,82 @@ ExerciseEquipmentCategory? _parseEquipment(Object? raw) {
     'cable' => ExerciseEquipmentCategory.cable,
     'bodyweight' => ExerciseEquipmentCategory.bodyweight,
     'machine' => ExerciseEquipmentCategory.machine,
+    'other' => ExerciseEquipmentCategory.other,
     _ => null,
   };
+}
+
+ExerciseEquipmentCategory? _takeEquipment(
+  Map<String, dynamic> j,
+  Map<String, Object?> retained,
+) {
+  if (!j.containsKey('equipment')) return null;
+  final raw = j['equipment'];
+  if (raw != null && raw is! String) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
+  final equipment = _parseEquipment(raw);
+  if (equipment == null && raw is String && raw.isNotEmpty) {
+    retained['equipment'] = raw;
+  }
+  return equipment;
+}
+
+ExerciseLoadBasis? _takeLoadBasis(
+  Map<String, dynamic> j,
+  Map<String, Object?> retained,
+) {
+  if (!j.containsKey('loadBasis')) return null;
+  final raw = j['loadBasis'];
+  if (raw != null && raw is! String) {
+    throw const FormatException('Exercise definition is unreadable.');
+  }
+  if (raw == null) return null;
+  return switch (raw) {
+    'total' => ExerciseLoadBasis.total,
+    'perDevice' => ExerciseLoadBasis.perDevice,
+    'bodyweight' => ExerciseLoadBasis.bodyweight,
+    'addedLoad' => ExerciseLoadBasis.addedLoad,
+    'assistance' => ExerciseLoadBasis.assistance,
+    _ => () {
+      if ((raw as String).isEmpty) {
+        throw const FormatException('Exercise definition is unreadable.');
+      }
+      retained['loadBasis'] = raw;
+      return null;
+    }(),
+  };
+}
+
+ExerciseRepetitionBasis? _takeRepetitionBasis(
+  Map<String, dynamic> j,
+  Map<String, Object?> retained,
+) {
+  if (!j.containsKey('repetitionBasis')) return null;
+  final raw = j['repetitionBasis'];
+  if (raw != null && raw is! String) {
+    throw const FormatException('Exercise definition is unreadable.');
+  }
+  if (raw == null) return null;
+  return switch (raw) {
+    'total' => ExerciseRepetitionBasis.total,
+    'perSide' => ExerciseRepetitionBasis.perSide,
+    _ => () {
+      if ((raw as String).isEmpty) {
+        throw const FormatException('Exercise definition is unreadable.');
+      }
+      retained['repetitionBasis'] = raw;
+      return null;
+    }(),
+  };
+}
+
+int? _optionalDeviceCount(Object? raw) {
+  if (raw == null) return null;
+  if (raw is! num || !raw.isFinite || raw != raw.truncateToDouble() || raw < 1) {
+    throw const FormatException('Exercise definition is unreadable.');
+  }
+  return raw.toInt();
 }
 
 ExerciseDefinitionSource _requireSource(Object? raw) {

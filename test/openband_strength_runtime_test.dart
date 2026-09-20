@@ -130,8 +130,8 @@ void main() {
     repo = LocalOpenBandRepository(app);
   }
 
-  test('schema 62 is on create, upgrade, and repair', () async {
-    expect(LocalDb.schemaVersion, 62);
+  test('schema 63 is on create, upgrade, and repair', () async {
+    expect(LocalDb.schemaVersion, 63);
     final db = await LocalDb.instance;
     expect(
       await db.rawQuery(
@@ -141,7 +141,10 @@ void main() {
       isNotEmpty,
     );
     final cols = await db.rawQuery('PRAGMA table_info(strength_set)');
-    expect(cols.map((c) => c['name']), containsAll(['planned_set_id', 'exercise_id']));
+    expect(
+      cols.map((c) => c['name']),
+      containsAll(['planned_set_id', 'exercise_id', 'load_json', 'definition_json']),
+    );
     final snapCols = await db.rawQuery(
       'PRAGMA table_info(openband_strength_session)',
     );
@@ -168,7 +171,7 @@ void main() {
     final upgraded = await LocalDb.instance;
     expect(
       (await upgraded.rawQuery('PRAGMA user_version')).first.values.first,
-      62,
+      63,
     );
     expect(
       await upgraded.rawQuery(
@@ -1355,4 +1358,320 @@ void main() {
       expect(copyPrev['copy-row']!.reps, 10);
     },
   );
+
+  test('recorded original load and definition snapshot survive reopen', () async {
+    final curl = ExerciseDefinitionSnapshot(
+      id: 'curl-custom',
+      label: 'Kurzhantel-Curl',
+      source: ExerciseDefinitionSource.stored,
+      version: 1,
+      mode: ExerciseCaptureMode.repetitions,
+      equipment: ExerciseEquipmentCategory.dumbbell,
+      loadBasis: ExerciseLoadBasis.perDevice,
+      deviceCount: 2,
+      repetitionBasis: ExerciseRepetitionBasis.perSide,
+    );
+    final plan = WorkoutTemplate(
+      id: 'tpl-curl',
+      name: 'Arme',
+      version: 1,
+      exercises: [
+        PlannedExercise(
+          id: 'ex-curl',
+          exerciseKey: 'curl-custom',
+          name: 'Kurzhantel-Curl',
+          definition: curl,
+          sets: [
+            PlannedSet(
+              id: 'set-curl-1',
+              reps: 8,
+              loadKg: 20,
+              restSec: 90,
+              load: OriginalLoadInput(
+                value: 10,
+                unit: ExerciseLoadUnit.kg,
+                basis: ExerciseLoadBasis.perDevice,
+                deviceCount: 2,
+                repetitionBasis: ExerciseRepetitionBasis.perSide,
+              ),
+            ),
+          ],
+        ),
+      ],
+      updatedAt: DateTime(2026, 9, 20),
+    );
+    final id = await repo.startStrengthSession(plan);
+    await repo.recordSet(
+      id,
+      RecordedSet(
+        exerciseKey: 'curl-custom',
+        setIndex: 1,
+        reps: 8,
+        loadKg: 20,
+        at: DateTime(2026, 9, 20, 18),
+        plannedSetId: 'set-curl-1',
+        exerciseId: 'ex-curl',
+        load: OriginalLoadInput(
+          value: 10,
+          unit: ExerciseLoadUnit.kg,
+          basis: ExerciseLoadBasis.perDevice,
+          deviceCount: 2,
+          repetitionBasis: ExerciseRepetitionBasis.perSide,
+        ),
+      ),
+    );
+    await reopen();
+    final live = await repo.readActiveStrengthSession() as ActiveStrengthSession;
+    expect(live.recorded.single.loadKg, 20);
+    expect(live.recorded.single.loadKg! * live.recorded.single.reps!, 160);
+    expect(live.recorded.single.load!.value, 10);
+    expect(live.recorded.single.load!.basis, ExerciseLoadBasis.perDevice);
+    expect(live.recorded.single.load!.deviceCount, 2);
+    expect(live.recorded.single.definition!.id, 'curl-custom');
+    expect(live.recorded.single.definition!.label, 'Kurzhantel-Curl');
+    expect(live.plan.exercises.single.sets.single.loadKg, 20);
+    expect(live.plan.exercises.single.sets.single.load!.value, 10);
+  });
+
+  test('contradictory recorded total is rejected and precise legacy load stays', () async {
+    final id = await repo.startStrengthSession(_template());
+    await expectLater(
+      repo.recordSet(
+        id,
+        RecordedSet(
+          exerciseKey: 'bench_press',
+          setIndex: 1,
+          reps: 8,
+          loadKg: 10,
+          at: DateTime(2026, 9, 20, 18),
+          plannedSetId: 'set-a1',
+          exerciseId: 'ex-bench-a',
+          load: OriginalLoadInput(
+            value: 10,
+            unit: ExerciseLoadUnit.kg,
+            basis: ExerciseLoadBasis.perDevice,
+            deviceCount: 2,
+          ),
+        ),
+      ),
+      throwsA(isA<FormatException>()),
+    );
+    expect(
+      (await repo.readActiveStrengthSession() as ActiveStrengthSession).recorded,
+      isEmpty,
+    );
+
+    await LocalDb.saveStrengthSets('legacy-sess', [
+      {
+        'exercise_key': 'incline_db_press',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 62.55,
+        'at_ts': 1770000000,
+      },
+    ]);
+    final rows = await LocalDb.strengthSets('legacy-sess');
+    expect(rows.single['load_kg'], 62.55);
+    expect(rows.single['load_json'], isNull);
+    expect(rows.single['definition_json'], isNull);
+
+    await LocalDb.saveStrengthSets('meta-sess', [
+      {
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 20,
+        'at_ts': 1770000100,
+        'load_json': jsonEncode({
+          'value': 10,
+          'unit': 'kg',
+          'basis': 'perDevice',
+          'deviceCount': 2,
+        }),
+        'definition_json': jsonEncode({
+          'id': 'curl',
+          'label': 'Curl',
+          'source': 'stored',
+        }),
+      },
+    ]);
+    final meta = await LocalDb.strengthSets('meta-sess');
+    expect(meta.single['load_kg'], 20);
+    expect(jsonDecode(meta.single['load_json'] as String)['value'], 10);
+    expect(jsonDecode(meta.single['definition_json'] as String)['id'], 'curl');
+  });
+
+  test('saveStrengthSets rejects contradictory or malformed metadata atomically', () async {
+    await expectLater(
+      LocalDb.saveStrengthSets('bad-meta', [
+        {
+          'exercise_key': 'curl',
+          'set_index': 1,
+          'reps': 8,
+          'load_kg': 10,
+          'at_ts': 1,
+          'load_json': jsonEncode({
+            'value': 10,
+            'unit': 'kg',
+            'basis': 'perDevice',
+            'deviceCount': 2,
+          }),
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await LocalDb.strengthSets('bad-meta'), isEmpty);
+
+    await expectLater(
+      LocalDb.saveStrengthSets('malformed-meta', [
+        {
+          'exercise_key': 'curl',
+          'set_index': 1,
+          'reps': 8,
+          'load_kg': 20,
+          'at_ts': 1,
+          'load_json': '{',
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await LocalDb.strengthSets('malformed-meta'), isEmpty);
+
+    await expectLater(
+      LocalDb.saveStrengthSets('bad-def', [
+        {
+          'exercise_key': 'curl',
+          'set_index': 1,
+          'reps': 8,
+          'load_kg': 20,
+          'at_ts': 1,
+          'definition_json': jsonEncode({
+            'id': 'other',
+            'label': 'Curl',
+            'source': 'stored',
+          }),
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await LocalDb.strengthSets('bad-def'), isEmpty);
+
+    await expectLater(
+      LocalDb.saveStrengthSets('mix-meta', [
+        {
+          'exercise_key': 'incline_db_press',
+          'set_index': 1,
+          'reps': 8,
+          'load_kg': 62.55,
+          'at_ts': 1,
+        },
+        {
+          'exercise_key': 'curl',
+          'set_index': 2,
+          'reps': 8,
+          'load_kg': 10,
+          'at_ts': 2,
+          'load_json': jsonEncode({
+            'value': 10,
+            'unit': 'kg',
+            'basis': 'perDevice',
+            'deviceCount': 2,
+          }),
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+    expect(await LocalDb.strengthSets('mix-meta'), isEmpty);
+
+    await LocalDb.saveStrengthSets('ok-meta', [
+      {
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 8,
+        'at_ts': 3,
+        'note': 'keep',
+        'rpe': 7,
+        'load_json': jsonEncode({
+          'value': 10,
+          'unit': 'kg',
+          'basis': 'perDevice',
+          'deviceCount': 2,
+          'mystery': true,
+        }),
+        'definition_json': jsonEncode({
+          'id': 'curl',
+          'label': 'Curl',
+          'source': 'stored',
+          'copiedFrom': 'import-x',
+        }),
+      },
+    ]);
+    final ok = (await LocalDb.strengthSets('ok-meta')).single;
+    expect(ok['load_kg'], 20);
+    expect(ok['note'], 'keep');
+    expect(ok['rpe'], 7);
+    expect(jsonDecode(ok['load_json'] as String)['mystery'], isTrue);
+    expect(jsonDecode(ok['definition_json'] as String)['copiedFrom'], 'import-x');
+  });
+
+  test('saveStrengthSets omitted metadata keeps origin; load contradiction is atomic', () async {
+    await LocalDb.saveStrengthSets('re-save', [
+      {
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 20,
+        'at_ts': 1,
+        'note': '',
+        'load_json': jsonEncode({
+          'value': 10,
+          'unit': 'kg',
+          'basis': 'perDevice',
+          'deviceCount': 2,
+        }),
+        'definition_json': jsonEncode({
+          'id': 'curl',
+          'label': 'Curl',
+          'source': 'stored',
+          'copiedFrom': 'import-x',
+        }),
+      },
+    ]);
+    await LocalDb.saveStrengthSets('re-save', [
+      {
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 9,
+        'load_kg': 20,
+        'at_ts': 1,
+        'note': 'updated',
+      },
+    ]);
+    var row = (await LocalDb.strengthSets('re-save')).single;
+    expect(row['reps'], 9);
+    expect(row['note'], 'updated');
+    expect(row['load_kg'], 20);
+    expect(jsonDecode(row['load_json'] as String)['deviceCount'], 2);
+    expect(jsonDecode(row['definition_json'] as String)['copiedFrom'], 'import-x');
+
+    await expectLater(
+      LocalDb.saveStrengthSets('re-save', [
+        {
+          'exercise_key': 'curl',
+          'set_index': 1,
+          'reps': 10,
+          'load_kg': 10,
+          'at_ts': 1,
+          'note': 'bad',
+        },
+      ]),
+      throwsA(isA<FormatException>()),
+    );
+    row = (await LocalDb.strengthSets('re-save')).single;
+    expect(row['reps'], 9);
+    expect(row['note'], 'updated');
+    expect(row['load_kg'], 20);
+    expect(jsonDecode(row['load_json'] as String)['value'], 10);
+    expect(jsonDecode(row['definition_json'] as String)['id'], 'curl');
+  });
 }

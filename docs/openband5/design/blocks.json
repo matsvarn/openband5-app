@@ -328,7 +328,43 @@
     "47JR-0": "A06a Bibliothek · erneut hinzufügen",
     "47LT-0": "A06a Bibliothek · erneut hinzufügen · Dunkel",
     "47OT-0": "A06a Vorlage · alte gemischte Erfassung · Dauer fehlt",
-    "47QP-0": "A06a Vorlage · alte gemischte Erfassung · Dauer fehlt · Dunkel"
+    "47QP-0": "A06a Vorlage · alte gemischte Erfassung · Dauer fehlt · Dunkel",
+    "47SX-0": "A06a Eigene Übung · Definition",
+    "47WB-0": "A06a Eigene Übung · Definition · Dunkel",
+    "47YE-0": "A06a Eigene Übung · unvollständig",
+    "485H-0": "A06a Eigene Übung · unvollständig · Dunkel",
+    "483C-0": "A06a Eigene Übung · Speichern fehlgeschlagen",
+    "487K-0": "A06a Eigene Übung · Speichern fehlgeschlagen · Dunkel",
+    "480H-0": "A06a Eigene Übung · Gerät wählen",
+    "489P-0": "A06a Eigene Übung · Gerät wählen · Dunkel",
+    "48CK-0": "A06a Eigene Übung · Gewichtsangabe",
+    "48FE-0": "A06a Eigene Übung · Gewichtsangabe · Dunkel",
+    "48I8-0": "A06a Eigene Übung · Bibliothek ungewählt",
+    "48JI-0": "A06a Eigene Übung · Bibliothek ungewählt · Dunkel",
+    "48L1-0": "A06a Eigene Übung · Geräteanzahl",
+    "48NV-0": "A06a Eigene Übung · Geräteanzahl · Dunkel",
+    "48R1-0": "A06a Vorlage · ursprüngliche Gewichtsangabe",
+    "48SX-0": "A06a Vorlage · ursprüngliche Gewichtsangabe · Dunkel",
+    "48V9-0": "A06a Kraft · ursprüngliche Gewichtsangabe",
+    "48ZU-0": "A06a Kraft · ursprüngliche Gewichtsangabe · Dunkel",
+    "4927-0": "A06a Eigene Übung · Wiederholungsbasis",
+    "4951-0": "A06a Eigene Übung · Wiederholungsbasis · Dunkel",
+    "497V-0": "A06a Eigene Übung · Muskelgruppen",
+    "499K-0": "A06a Eigene Übung · Muskelgruppen · Dunkel",
+    "49BF-0": "A06a Eigene Übung · 375px Text 2x",
+    "49DI-0": "A06a Eigene Übung · 375px Text 2x · Dunkel",
+    "49FL-0": "A06a Eigene Übung · Erfassung",
+    "49HZ-0": "A06a Eigene Übung · Erfassung · Dunkel",
+    "49KD-0": "A06a Eigene Übung · Haltezeit und Eigengewicht",
+    "49MG-0": "A06a Eigene Übung · Haltezeit und Eigengewicht · Dunkel",
+    "49P5-0": "A06a Eigene Übung · gespeichert außerhalb Filter",
+    "49QF-0": "A06a Eigene Übung · gespeichert außerhalb Filter · Dunkel",
+    "49SD-0": "A06c Krafttraining · Lasten in kg und lb",
+    "49UR-0": "A06c Krafttraining · Lasten in kg und lb · Dunkel",
+    "49X5-0": "A06c Krafttraining · unterschiedliche Lastbasis",
+    "49ZJ-0": "A06c Krafttraining · unterschiedliche Lastbasis · Dunkel",
+    "4A1X-0": "A06c Krafttraining · Unterstützung",
+    "4A4B-0": "A06c Krafttraining · Unterstützung · Dunkel"
   },
   "blocks": [
     {
@@ -796,14 +832,23 @@
         "3OV4-0",
         "3OZE-0",
         "3O3E-0",
-        "3O80-0"
+        "3O80-0",
+        "48V9-0",
+        "48ZU-0",
+        "49SD-0",
+        "49UR-0",
+        "49X5-0",
+        "49ZJ-0",
+        "4A1X-0",
+        "4A4B-0"
       ],
       "children": [
         "OBSetHeader",
         "OBSetRow",
         "OBAddSet"
       ],
-      "implemented": "strength_live.dart"
+      "implemented": "strength_live.dart",
+      "notes": "Shared load caption only for compatible stored row semantics. Mixed bases use per-row labels; mixed units remain explicit beside each value. Historical load_kg remains normalized total kg. No inferred per-side or per-device history."
     },
     {
       "name": "OBSetRow",
@@ -829,7 +874,15 @@
         "3OV4-0",
         "3OZE-0",
         "3O3E-0",
-        "3O80-0"
+        "3O80-0",
+        "48V9-0",
+        "48ZU-0",
+        "49SD-0",
+        "49UR-0",
+        "49X5-0",
+        "49ZJ-0",
+        "4A1X-0",
+        "4A4B-0"
       ],
       "notes": "Actual previous recorded set only. At large text, set index/history and labeled inputs stack; no shrinking. Skip is labeled Übersprungen rather than an unexplained X."
     },
@@ -1629,9 +1682,19 @@
         "470X-0",
         "4723-0",
         "47DN-0",
-        "47ET-0"
+        "47ET-0",
+        "47SX-0",
+        "47WB-0",
+        "47YE-0",
+        "485H-0",
+        "483C-0",
+        "487K-0",
+        "49BF-0",
+        "49DI-0",
+        "49KD-0",
+        "49MG-0"
       ],
-      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron.",
+      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit.",
       "variantPaperNodes": {
         "comfortable": "45C7-0"
       }
@@ -1639,8 +1702,8 @@
     {
       "name": "OBSettingsChoiceSheet",
       "paperNode": "3MC1-0",
-      "widget": "_ChoiceSheet",
-      "file": "notification_settings.dart",
+      "widget": "OBSettingsChoiceSheet",
+      "file": "settings_controls.dart",
       "usedIn": [
         "3L8J-0",
         "3LCD-0",
@@ -1648,9 +1711,17 @@
         "3MDT-0",
         "3MGR-0",
         "3MZ0-0",
-        "3N2G-0"
+        "3N2G-0",
+        "480H-0",
+        "489P-0",
+        "48CK-0",
+        "48FE-0",
+        "4927-0",
+        "4951-0",
+        "49FL-0",
+        "49HZ-0"
       ],
-      "notes": "One option per44+ point row; only current selection checked. Shared by battery threshold and water interval."
+      "notes": "Canonical generic choice sheet shared by notification thresholds and explicit exercise equipment, capture mode, load and repetition basis; selected choice only, fixed check lane."
     },
     {
       "name": "OBSettingsError",
@@ -2361,9 +2432,13 @@
         "46FX-0",
         "46TR-0",
         "47JR-0",
-        "47LT-0"
+        "47LT-0",
+        "48I8-0",
+        "48JI-0",
+        "49P5-0",
+        "49QF-0"
       ],
-      "notes": "Canonical catalogue row: source labels and actual capture mode, fixed44 selection action, no invented metrics. Selection is local to the template draft."
+      "notes": "Canonical catalogue row: source labels and actual capture mode, fixed44 selection action, no invented metrics. Selection is local to the template draft. Saved custom definitions retain explicit load and repetition semantics and return unselected."
     },
     {
       "name": "OBAddExerciseSheet",
@@ -2377,7 +2452,21 @@
       "variants": {
         "dark": "478B-0"
       },
-      "notes": "Shared showOpenBandActionSheet also owns migrated template actions. Library and retained ad hoc repetition/time entry remain reachable; saved custom definitions are a separate open unit."
+      "notes": "Shared showOpenBandActionSheet owns template actions. Library and custom repetition/time entries lead to the same persisted definition editor and return to the unselected library; selection and template saving remain separate actions."
+    },
+    {
+      "name": "OBSettingsCountSheet",
+      "paperNode": "49OR-0",
+      "widget": "OBSettingsCountSheet",
+      "file": "settings_controls.dart",
+      "usedIn": [
+        "48L1-0",
+        "48NV-0"
+      ],
+      "variantPaperNodes": {
+        "dark": "49OZ-0"
+      },
+      "notes": "Shared strict positive-integer sheet: raw invalid signs/fractions are refused, never stripped; keyboard and safe-area aware. Canonical block artboards49OX/49OY."
     }
   ],
   "openBlocks": [
@@ -2404,7 +2493,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 62,
+    "version": 63,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -2418,7 +2507,8 @@
       "openband_pinned_template",
       "openband_strength_session",
       "nutrition_target_period",
-      "exercise_def"
+      "exercise_def",
+      "strength_set"
     ]
   },
   "research": {

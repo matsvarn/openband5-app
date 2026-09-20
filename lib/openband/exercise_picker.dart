@@ -4,20 +4,10 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'alp_tokens.dart';
 import 'confirm_sheet.dart';
 import 'domain.dart';
+import 'exercise_definition_editor.dart';
 import 'journal_controls.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
-
-const _muscleOrder = [
-  'chest',
-  'back',
-  'shoulders',
-  'biceps',
-  'triceps',
-  'legs',
-  'glutes',
-  'core',
-];
 
 const _equipmentOrder = [
   'barbell',
@@ -28,27 +18,17 @@ const _equipmentOrder = [
   kExerciseEquipmentUnknown,
 ];
 
-const _muscleLabels = {
-  'chest': 'Brust',
-  'back': 'Rücken',
-  'shoulders': 'Schultern',
-  'biceps': 'Bizeps',
-  'triceps': 'Trizeps',
-  'legs': 'Beine',
-  'glutes': 'Po',
-  'core': 'Rumpf',
-};
-
 const _equipmentLabels = {
   'barbell': 'Langhantel',
   'dumbbell': 'Kurzhanteln',
   'cable': 'Kabelzug',
   'machine': 'Maschine',
   'bodyweight': 'Eigengewicht',
+  'other': 'Andere / ohne Zuordnung',
   kExerciseEquipmentUnknown: 'Ohne Zuordnung',
 };
 
-String _muscleLabel(String id) => _muscleLabels[id] ?? id;
+String _muscleLabel(String id) => exerciseMuscleLabel(id);
 
 String _equipmentLabel(String? id) {
   if (id == null || id.isEmpty) return '—';
@@ -78,6 +58,11 @@ String _joinLabels(Iterable<String> ids, String Function(String) labelOf) {
 }
 
 String _rowSubtitle(ExerciseCatalogueEntry entry, {required bool inPlan}) {
+  final custom = customExerciseLibrarySubtitle(entry);
+  if (custom != null) {
+    if (inPlan) return '$custom\nIm Plan';
+    return custom;
+  }
   final parts = <String>[
     if (entry.equipment != null) _equipmentLabel(entry.equipment!.name),
     if (entry.mode != null) _modeLabel(entry.mode) else 'Erfassungsart offen',
@@ -98,10 +83,14 @@ class OpenBandExercisePicker extends StatefulWidget {
     super.key,
     required this.repository,
     this.existingExerciseIds = const {},
+    this.createOnOpen = false,
+    this.initialCreateMode,
   });
 
   final OpenBandRepository repository;
   final Set<String> existingExerciseIds;
+  final bool createOnOpen;
+  final ExerciseCaptureMode? initialCreateMode;
 
   @override
   State<OpenBandExercisePicker> createState() => _OpenBandExercisePickerState();
@@ -117,6 +106,9 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
   bool _error = false;
   bool _busy = false;
   bool _toggling = false;
+  bool _refreshError = false;
+  bool _openedCreate = false;
+  ExerciseCatalogueEntry? _hiddenCreated;
   int _loadToken = 0;
 
   @override
@@ -136,6 +128,7 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
     setState(() {
       _loading = true;
       _error = false;
+      _refreshError = false;
     });
     try {
       final catalogue = await widget.repository.readExerciseCatalogue();
@@ -145,6 +138,7 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
         _loading = false;
         _error = false;
       });
+      _scheduleCreateOnOpen();
     } catch (_) {
       if (!mounted || token != _loadToken) return;
       setState(() {
@@ -153,6 +147,112 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
         _catalogue = null;
       });
     }
+  }
+
+  void _scheduleCreateOnOpen() {
+    if (!widget.createOnOpen || _openedCreate) return;
+    _openedCreate = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _error) return;
+      _openCreate(initialMode: widget.initialCreateMode);
+    });
+  }
+
+  ExerciseCatalogue _retainKnown(
+    ExerciseCatalogue? current,
+    ExerciseCatalogueEntry known,
+  ) {
+    final entries = current?.entries ?? const <ExerciseCatalogueEntry>[];
+    if (entries.any((e) => e.id == known.id)) {
+      return current ?? ExerciseCatalogue(entries: entries);
+    }
+    return ExerciseCatalogue(
+      entries: [...entries, known],
+      unreadableCount: current?.unreadableCount ?? 0,
+    );
+  }
+
+  Future<void> _reloadCatalogue({ExerciseCatalogueEntry? known}) async {
+    final token = ++_loadToken;
+    try {
+      final catalogue = await widget.repository.readExerciseCatalogue();
+      if (!mounted || token != _loadToken) return;
+      setState(() {
+        _catalogue = catalogue;
+        _error = false;
+        _refreshError = false;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || token != _loadToken) return;
+      setState(() {
+        if (known != null) {
+          _catalogue = _retainKnown(_catalogue, known);
+        }
+        _refreshError = true;
+        _loading = false;
+        _error = false;
+      });
+    }
+  }
+
+  bool _entryVisible(ExerciseCatalogueEntry entry) {
+    return filterExerciseCatalogue(
+      [entry],
+      query: _query.text,
+      muscles: _muscles,
+      equipment: _equipment,
+    ).isNotEmpty;
+  }
+
+  void _dropHiddenIfVisible() {
+    final hidden = _hiddenCreated;
+    if (hidden != null && _entryVisible(hidden)) {
+      _hiddenCreated = null;
+    }
+  }
+
+  void _reveal(ExerciseCatalogueEntry entry) {
+    setState(() {
+      if (filterExerciseCatalogue([entry], query: _query.text).isEmpty) {
+        _query.text = entry.label;
+      }
+      if (filterExerciseCatalogue(
+        [entry],
+        query: _query.text,
+        muscles: _muscles,
+      ).isEmpty) {
+        _muscles = {};
+      }
+      if (filterExerciseCatalogue(
+        [entry],
+        query: _query.text,
+        muscles: _muscles,
+        equipment: _equipment,
+      ).isEmpty) {
+        _equipment = {};
+      }
+      _hiddenCreated = null;
+    });
+  }
+
+  Future<void> _openCreate({ExerciseCaptureMode? initialMode}) async {
+    if (_busy || _error) return;
+    final created = await Navigator.of(context).push<ExerciseCatalogueEntry>(
+      MaterialPageRoute(
+        builder: (_) => OpenBandExerciseDefinitionEditor(
+          repository: widget.repository,
+          initialMode: initialMode,
+        ),
+      ),
+    );
+    if (!mounted || created == null) return;
+    await _reloadCatalogue(known: created);
+    if (!mounted) return;
+    final current = _catalogue?.byId(created.id) ?? created;
+    setState(() {
+      _hiddenCreated = _entryVisible(current) ? null : current;
+    });
   }
 
   List<ExerciseCatalogueEntry> get _visible {
@@ -247,10 +347,14 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
     setState(() {
       _muscles = applied.$1;
       _equipment = applied.$2;
+      _dropHiddenIfVisible();
     });
   }
 
-  void _clearSearch() => setState(() => _query.clear());
+  void _clearSearch() => setState(() {
+    _query.clear();
+    _dropHiddenIfVisible();
+  });
 
   void _confirm() {
     if (_busy || _selected.isEmpty || _catalogue == null) return;
@@ -287,9 +391,15 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(title: 'Übungen', subtitle: ''),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OBPageHeader(
+                title: 'Übungen',
+                subtitle: '',
+                onInfo: loaded ? _openCreate : null,
+                infoIcon: LucideIcons.plus,
+                infoLabel: 'Eigene Übung',
+              ),
             ),
             Expanded(
               child: ListView(
@@ -299,7 +409,7 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
                     _SearchField(
                       controller: _query,
                       enabled: loaded,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(_dropHiddenIfVisible),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -322,6 +432,15 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
                             .copyWith(height: 18 / 13),
                       ),
                     ),
+                    if (_refreshError) ...[
+                      const SizedBox(height: 12),
+                      OBSettingsErrorCard(
+                        key: const ValueKey('exercise-refresh-error'),
+                        message: 'Aktualisieren fehlgeschlagen',
+                        retryLabel: 'Erneut laden',
+                        onRetry: () => _reloadCatalogue(),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     if (_visible.isNotEmpty)
                       OBCard(
@@ -382,19 +501,53 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: _error
-                  ? OBAction('Erneut laden', ink: true, onPressed: _load)
-                  : searchMiss
-                  ? OBAction('Suche löschen', ink: true, onPressed: _clearSearch)
-                  : OBAction(
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * 0.45,
+              ),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                children: [
+                  if (_hiddenCreated != null) ...[
+                    _HiddenCreatedNotice(
+                      key: const ValueKey('custom-exercise-saved'),
+                      label: _hiddenCreated!.label,
+                      onShow: () => _reveal(_hiddenCreated!),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_error)
+                    OBAction('Erneut laden', ink: true, onPressed: _load)
+                  else if (searchMiss)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        OBAction(
+                          key: const ValueKey('exercise-create-search'),
+                          'Übung erstellen',
+                          ink: true,
+                          onPressed: _openCreate,
+                        ),
+                        const SizedBox(height: 8),
+                        OBAction(
+                          'Suche löschen',
+                          ink: true,
+                          secondary: true,
+                          onPressed: _clearSearch,
+                        ),
+                      ],
+                    )
+                  else
+                    OBAction(
                       _addLabel(_selected.length),
                       ink: true,
                       onPressed: !loaded || _selected.isEmpty || _busy
                           ? null
                           : _confirm,
                     ),
+                ],
+              ),
             ),
           ],
         ),
@@ -673,7 +826,7 @@ class _ExerciseFilterPageState extends State<_ExerciseFilterPage> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        for (final id in _muscleOrder)
+                        for (final id in kExerciseMuscleIds)
                           OBJournalChip(
                             key: ValueKey('filter-muscle-$id'),
                             label: _muscleLabel(id),
@@ -775,6 +928,21 @@ class _ExerciseDetailPage extends StatelessWidget {
     final rows = [
       ('Gerät', _equipmentLabel(entry.equipment?.name)),
       ('Erfassung', _modeLabel(entry.mode)),
+      if (entry.loadBasis != null)
+        (
+          'Gewichtsangabe',
+          loadBasisChoiceLabel(entry.loadBasis!, entry.equipment),
+        ),
+      if (entry.deviceCount != null)
+        (deviceCountRowLabel(entry.equipment), '${entry.deviceCount}'),
+      if (entry.mode == ExerciseCaptureMode.repetitions &&
+          entry.repetitionBasis != null)
+        (
+          'Wiederholungen',
+          entry.repetitionBasis == ExerciseRepetitionBasis.perSide
+              ? 'Je Seite'
+              : 'Gesamt',
+        ),
       ('Primär', _joinLabels(entry.primaryMuscles, _muscleLabel)),
       ('Sekundär', _joinLabels(entry.secondaryMuscles, _muscleLabel)),
     ];
@@ -856,6 +1024,68 @@ class _ExerciseDetailPage extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HiddenCreatedNotice extends StatelessWidget {
+  final String label;
+  final VoidCallback onShow;
+  const _HiddenCreatedNotice({
+    super.key,
+    required this.label,
+    required this.onShow,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
+    final name = Text(
+      label,
+      style: p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15),
+    );
+    final action = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onShow,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+          child: Align(
+            alignment: stacked
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            child: Text(
+              'Anzeigen',
+              style: p
+                  .text(15, weight: FontWeight.w600)
+                  .copyWith(height: 20 / 15),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Material(
+      color: p.card,
+      borderRadius: BorderRadius.circular(16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [name, action],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: name),
+                    const SizedBox(width: 12),
+                    action,
+                  ],
+                ),
         ),
       ),
     );

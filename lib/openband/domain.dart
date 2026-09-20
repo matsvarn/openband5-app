@@ -5,11 +5,13 @@ import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import 'package:uuid/uuid.dart';
 import 'exercise_catalogue.dart';
+import 'exercise_load.dart';
 import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
 export 'exercise_catalogue.dart';
+export 'exercise_load.dart';
 export 'sleep_plan_data.dart';
 
 enum MetricReadiness {
@@ -522,6 +524,7 @@ class PlannedSet {
   final int? reps, seconds, restSec;
   final double? loadKg;
   final PlannedSetMode? mode;
+  final OriginalLoadInput? load;
   const PlannedSet({
     required this.id,
     this.type = 'work',
@@ -530,6 +533,7 @@ class PlannedSet {
     this.restSec,
     this.loadKg,
     this.mode,
+    this.load,
   });
 
   /// Explicit mode wins. Legacy JSON without [mode] is timed only when
@@ -563,14 +567,22 @@ class PlannedSet {
         throw const FormatException('Planned set has contradictory reps+time.');
       }
     }
+    final load = _parseOriginalLoad(j['load']);
+    final statedKg = _optionalFiniteLoad(j['loadKg']);
+    final loadKg = load == null
+        ? statedKg
+        : load.basis == null
+        ? statedKg
+        : resolveStoredLoadKg(input: load, loadKg: statedKg);
     return PlannedSet(
       id: id,
       type: j['type'] as String? ?? 'work',
       reps: reps,
       seconds: seconds,
       restSec: (j['restSec'] as num?)?.toInt(),
-      loadKg: (j['loadKg'] as num?)?.toDouble(),
+      loadKg: loadKg,
       mode: mode,
+      load: load,
     );
   }
   Map<String, dynamic> toJson() => {
@@ -581,7 +593,24 @@ class PlannedSet {
     'restSec': restSec,
     'loadKg': loadKg,
     if (mode != null) 'mode': mode!.name,
+    if (load != null) 'load': load!.toJson(),
   };
+}
+
+OriginalLoadInput? _parseOriginalLoad(Object? raw) {
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw const FormatException('Original load is unreadable.');
+  }
+  return OriginalLoadInput.fromJson(Map<String, dynamic>.from(raw));
+}
+
+double? _optionalFiniteLoad(Object? raw) {
+  if (raw == null) return null;
+  if (raw is! num || !raw.isFinite) {
+    throw const FormatException('Planned set load is unreadable.');
+  }
+  return raw.toDouble();
 }
 
 PlannedSetMode? _parsePlannedSetMode(Object? raw) {
@@ -918,6 +947,7 @@ WorkoutTemplate copyWorkoutTemplate(WorkoutTemplate source, {DateTime? at}) {
                 restSec: s.restSec,
                 loadKg: s.loadKg,
                 mode: s.mode,
+                load: s.load,
               ),
           ],
         ),
@@ -1545,6 +1575,8 @@ class RecordedSet {
   final double? loadKg;
   final DateTime at;
   final String? plannedSetId, exerciseId;
+  final OriginalLoadInput? load;
+  final ExerciseDefinitionSnapshot? definition;
   const RecordedSet({
     required this.exerciseKey,
     required this.setIndex,
@@ -1555,7 +1587,69 @@ class RecordedSet {
     this.plannedSetId,
     this.exerciseId,
     this.restSec,
+    this.load,
+    this.definition,
   });
+}
+
+/// Copy the plan snapshot onto a live set and resolve [loadKg] from original
+/// input. Identified sets must match the plan exercise; later definition
+/// edits cannot rewrite this snapshot.
+RecordedSet bindRecordedStrengthSet({
+  required RecordedSet set,
+  String? planExerciseId,
+  String? planExerciseKey,
+  ExerciseDefinitionSnapshot? planDefinition,
+}) {
+  final identity = set.plannedSetId != null && set.plannedSetId!.isNotEmpty;
+  if (identity &&
+      set.exerciseId != null &&
+      planExerciseId != null &&
+      set.exerciseId != planExerciseId) {
+    throw ArgumentError.value(set.exerciseId, 'exerciseId');
+  }
+  if (identity &&
+      planExerciseKey != null &&
+      set.exerciseKey != planExerciseKey) {
+    throw ArgumentError.value(set.exerciseKey, 'exerciseKey');
+  }
+  if (set.definition != null &&
+      set.definition!.id != set.exerciseKey) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
+  if (planDefinition != null && planDefinition.id != set.exerciseKey) {
+    throw const FormatException('Exercise definition snapshot is unreadable.');
+  }
+  ExerciseDefinitionSnapshot? definition;
+  if (identity && planDefinition != null) {
+    if (set.definition != null &&
+        !customExerciseSnapshotsEqual(set.definition!, planDefinition)) {
+      throw const FormatException(
+        'Recorded definition contradicts the plan snapshot.',
+      );
+    }
+    definition = planDefinition;
+  } else {
+    definition = set.definition ?? planDefinition;
+  }
+  final loadKg = set.load == null
+      ? set.loadKg
+      : set.load!.basis == null
+      ? set.loadKg
+      : resolveStoredLoadKg(input: set.load, loadKg: set.loadKg);
+  return RecordedSet(
+    exerciseKey: set.exerciseKey,
+    setIndex: set.setIndex,
+    reps: set.reps,
+    seconds: set.seconds,
+    loadKg: loadKg,
+    at: set.at,
+    plannedSetId: set.plannedSetId,
+    exerciseId: set.exerciseId,
+    restSec: set.restSec,
+    load: set.load,
+    definition: definition,
+  );
 }
 
 /// Work sets per muscle over a window, from recorded sets joined to the
@@ -2009,6 +2103,13 @@ abstract interface class OpenBandRepository {
   Future<void> finishStrengthSession(String sessionId);
   Future<MuscleLoad> readMuscleLoad(String endDay, int days);
   Future<ExerciseCatalogue> readExerciseCatalogue();
+  Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft,
+  );
+  Future<CustomExerciseWriteResult> updateCustomExercise({
+    required ExerciseDefinitionSnapshot expected,
+    required CustomExerciseDraft draft,
+  });
   Future<List<FoodHit>> searchFoods(String query);
   Future<List<WorkoutTemplate>> readTemplates();
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template);

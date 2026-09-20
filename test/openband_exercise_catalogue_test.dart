@@ -199,7 +199,7 @@ void main() {
   });
 
   test(
-    'old schema 61 upgrades to 62 and two repairs keep user rows',
+    'old schema 61 upgrades to 63 and two repairs keep user rows',
     () async {
       const name = 'exercise_def_old_schema.db';
       created.add(name);
@@ -248,8 +248,11 @@ void main() {
         await LocalDb.close();
         LocalDb.dbName = name;
         final db = await LocalDb.instance;
-        expect(LocalDb.schemaVersion, 62);
-        expect((await db.rawQuery('PRAGMA user_version')).first.values.first, 62);
+        expect(LocalDb.schemaVersion, 63);
+        expect(
+          (await db.rawQuery('PRAGMA user_version')).first.values.first,
+          63,
+        );
         final cols = {
           for (final c in await db.rawQuery('PRAGMA table_info(exercise_def)'))
             c['name'] as String,

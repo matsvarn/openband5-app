@@ -106,6 +106,7 @@ class OBSettingsValueRow extends StatelessWidget {
   final bool interactive;
   final bool chevron;
   final bool comfortable;
+  final bool mutedValue;
   final VoidCallback? onTap;
 
   const OBSettingsValueRow({
@@ -115,6 +116,7 @@ class OBSettingsValueRow extends StatelessWidget {
     this.interactive = true,
     this.chevron = false,
     this.comfortable = false,
+    this.mutedValue = false,
     this.onTap,
   });
 
@@ -129,11 +131,24 @@ class OBSettingsValueRow extends StatelessWidget {
           ? p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15)
           : p.text(15, weight: FontWeight.w500),
     );
-    final trailing = Row(
-      mainAxisSize: MainAxisSize.min,
+    final valueStyle = p.text(
+      15,
+      weight: FontWeight.w600,
+      color: mutedValue ? p.muted : null,
+    );
+    Widget trailing({required bool expanded}) => Row(
+      mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
       children: [
         if (value.isNotEmpty)
-          Text(value, style: p.text(15, weight: FontWeight.w600)),
+          expanded
+              ? Expanded(child: Text(value, style: valueStyle))
+              : Flexible(
+                  child: Text(
+                    value,
+                    style: valueStyle,
+                    textAlign: TextAlign.end,
+                  ),
+                ),
         if (chevron) ...[
           if (value.isNotEmpty) const SizedBox(width: 4),
           Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
@@ -150,15 +165,30 @@ class OBSettingsValueRow extends StatelessWidget {
               : const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           child: stacked
               ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [labelText, const SizedBox(height: 8), trailing],
-                )
-              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(child: labelText),
-                    const SizedBox(width: 12),
-                    trailing,
+                    labelText,
+                    const SizedBox(height: 8),
+                    trailing(expanded: true),
                   ],
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    const gap = 12.0;
+                    const minLabel = 64.0;
+                    final maxTrailing = (constraints.maxWidth - gap - minLabel)
+                        .clamp(0.0, double.infinity);
+                    return Row(
+                      children: [
+                        Expanded(child: labelText),
+                        const SizedBox(width: gap),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxTrailing),
+                          child: trailing(expanded: false),
+                        ),
+                      ],
+                    );
+                  },
                 ),
         ),
       ),
@@ -413,6 +443,240 @@ class _OBSettingsSwitch extends StatelessWidget {
             thumbColor: p.dark ? p.canvas : AlpColor.canvas,
             inactiveTrackColor: p.line,
             inactiveThumbColor: p.dark ? p.ink : AlpColor.canvas,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<T?> showOpenBandSettingsChoiceSheet<T>({
+  required BuildContext context,
+  required String title,
+  required List<(T value, String label)> choices,
+  T? selected,
+  Key? sheetKey,
+  Key Function(T value)? choiceKey,
+  Color? barrierColor,
+}) {
+  final p = OB.of(context);
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: p.card,
+    barrierColor: barrierColor,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AlpRadius.card)),
+    ),
+    builder: (sheet) => OBSettingsChoiceSheet<T>(
+      title: title,
+      choices: choices,
+      selected: selected,
+      sheetKey: sheetKey,
+      choiceKey: choiceKey,
+    ),
+  );
+}
+
+/// Shared choice list. Notification battery/interval keep their keys via
+/// [sheetKey] / [choiceKey].
+class OBSettingsChoiceSheet<T> extends StatelessWidget {
+  final String title;
+  final List<(T value, String label)> choices;
+  final T? selected;
+  final Key? sheetKey;
+  final Key Function(T value)? choiceKey;
+
+  const OBSettingsChoiceSheet({
+    super.key,
+    required this.title,
+    required this.choices,
+    this.selected,
+    this.sheetKey,
+    this.choiceKey,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final maxH = MediaQuery.sizeOf(context).height * 0.75;
+    return SafeArea(
+      key: sheetKey,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: p.text(18, weight: FontWeight.w600).copyWith(
+                  height: 24 / 18,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: choices.length,
+                  itemBuilder: (context, i) {
+                    final choice = choices[i];
+                    final on = choice.$1 == selected;
+                    return OBSettingsChoiceRow(
+                      key: choiceKey?.call(choice.$1),
+                      label: choice.$2,
+                      selected: on,
+                      onTap: () => Navigator.pop(context, choice.$1),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<int?> showOpenBandSettingsCountSheet({
+  required BuildContext context,
+  required String title,
+  int? value,
+  Key? sheetKey,
+}) {
+  final p = OB.of(context);
+  return showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: p.card,
+    barrierColor: const Color(0x52000000),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(AlpRadius.card)),
+    ),
+    builder: (sheet) => OBSettingsCountSheet(
+      title: title,
+      value: value,
+      sheetKey: sheetKey,
+    ),
+  );
+}
+
+class OBSettingsCountSheet extends StatefulWidget {
+  final String title;
+  final int? value;
+  final Key? sheetKey;
+
+  const OBSettingsCountSheet({
+    super.key,
+    required this.title,
+    this.value,
+    this.sheetKey,
+  });
+
+  @override
+  State<OBSettingsCountSheet> createState() => _OBSettingsCountSheetState();
+}
+
+/// Strict positive integer. Fractions, signs, and other non-digits are
+/// rejected as a whole; characters are never stripped.
+int? parseOpenBandPositiveCount(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty || !RegExp(r'^[0-9]+$').hasMatch(text)) return null;
+  final value = int.tryParse(text, radix: 10);
+  if (value == null || value < 1) return null;
+  return value;
+}
+
+class _OBSettingsCountSheetState extends State<OBSettingsCountSheet> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.value == null ? '' : '${widget.value}',
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  int? get _parsed => parseOpenBandPositiveCount(_controller.text);
+
+  void _apply() {
+    final value = _parsed;
+    if (value == null) return;
+    Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final maxH = media.size.height * 0.75;
+    return Padding(
+      key: widget.sheetKey,
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: SafeArea(
+        top: false,
+        bottom: keyboard == 0,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxH),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    widget.title,
+                    style: p.text(18, weight: FontWeight.w600).copyWith(
+                      height: 24 / 18,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: p.well,
+                      borderRadius: BorderRadius.circular(AlpRadius.well),
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 52),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 14,
+                        ),
+                        child: TextField(
+                          key: const ValueKey('settings-count-field'),
+                          controller: _controller,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          style: p
+                              .text(20, weight: FontWeight.w600)
+                              .copyWith(height: 28 / 20),
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) => _apply(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OBAction(
+                    'Übernehmen',
+                    ink: true,
+                    onPressed: _parsed == null ? null : _apply,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

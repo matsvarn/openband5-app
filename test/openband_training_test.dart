@@ -440,6 +440,12 @@ void main() {
         ),
       ),
     );
+    Finder hinted(String hint) => find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.hintText == hint,
+    );
+    final existingIds = {
+      for (final e in (await repo.readExerciseCatalogue()).entries) e.id,
+    };
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
     expect(find.text('Vorlage speichern'), findsOneWidget);
@@ -448,8 +454,51 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Eigene Übung'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).at(1), 'Klimmzug');
-    await tester.enterText(find.byType(TextField).at(3), '6');
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-exercise-name')),
+      'Klimmzug',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('custom-exercise-equipment-bodyweight')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('custom-exercise-mode-repetitions')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-load')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('custom-exercise-load-bodyweight')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps-total')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    final created = (await repo.readExerciseCatalogue()).entries.firstWhere(
+      (e) => !existingIds.contains(e.id),
+    );
+    expect(created.label, 'Klimmzug');
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Klimmzug',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('exercise-select-${created.id}')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('1 Übung hinzufügen'));
+    await tester.tap(find.text('1 Übung hinzufügen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(hinted('Wdh.'), '6');
     await tester.pumpAndSettle();
     await expectLater(
       find.byKey(const ValueKey('capture')).evaluate().isEmpty
@@ -461,6 +510,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved?.name, 'Oberkörper B');
     expect(saved?.version, 1);
+    expect(saved?.exercises.single.exerciseKey, created.id);
     expect(
       saved?.exercises.single.exerciseKey,
       matches(

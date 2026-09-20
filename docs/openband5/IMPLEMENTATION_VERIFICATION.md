@@ -284,3 +284,22 @@ Lead inspected actual source/diffs and independent findings. Data owner a67282aa
 - Paper row45ZY and add sheet46JW, selected45ZZ/dark462O, filter469R, details46DV, error/partial/unknown variants, parent4739 and large-text variants registered. Large-text line breaks and button heights reconciled with native. Shared confirmation Paper copies now match32% scrim and12+34 safe bottom inset. Exact final JSX exports are in `/private/tmp/openband-alpin-20260919/exercise-picker-paper/`.
 
 This accepts existing/preset selection into templates. B26 custom definition creation/load-basis semantics, live target selection, deeper template actions and exercise history remain open. Per-template corruption isolation remains genuine integrity work; existing all-or-error reads were not silently weakened. Synthetic simulator evidence is separate from physical-device, Bluetooth and physiological proof. Nothing was pushed.
+
+
+## 20 September 2026 · Custom exercise definitions and original load semantics
+
+The library now creates durable custom definitions with explicit equipment, capture mode, load basis, device count and repetition basis. Muscle roles are optional and disjoint. Saving returns to the current filtered library unselected; hidden creation has an explicit reveal action. Legacy quick-add callers use the same editor. Shared settings choice/count controls replace private variants.
+
+Templates and live sets retain original values, units and frozen definitions.10kg per2 devices normalizes to20kg;8 repetitions per side remain8, yielding160 external volume. Left/right records use1 device. Bodyweight and assistance never fabricate external load. Persisted metadata-free rows do not inherit current definition semantics, and unchanged precise legacy values round-trip without rounding. Mixed units/bases have explicit row labels. Recorded retry returns the committed row before validating a changed retry payload. Legacy writes retain omitted original metadata and reject contradictions atomically.
+
+Schema63 adds original-load and frozen-definition JSON to strength_set with additive upgrade and same-version repair. CSV preserves load_kg and adds six original fields. Algorithm90, full dependency pins and app0.9.31+67 are unchanged. Definition management, copy/archive, live catalogue selection and deeper template actions remain open.
+
+Lead inspected actual production/test diffs and independent review findings. Data7e8d757e/325f9262 and review0bfabf7f/b0dd160f; UI76e44b3a/32c87a12 and review0f2c1a92/e833d6a2; load e23a15fe/83525b49 plus suffix2cf18d1e and independent52cd9347/a341e898. Test successorab53b16d/2f865ab9 migrated the actual creation/selection flow and schema expectation; its out-of-scope strength golden failure was resolved by the already-reviewed main golden. Uncertain timed-out workers were reconciled and retired, never counted as clean reviews.
+
+- Required OpenBand suite: **1134 passed**. Required analysis plus integration test: **68 items, clean**. Additional CSV suite: **22 passed**.
+- Manifest: **121 blocks,351 screens**, schema63. All **51 new/changed golden PNGs** inspected, including every regenerated revision; committed under test/openband_goldens.
+- Final native definition Pro `build/ui-review/custom-exercise-pro-settled-20260920`:129.47s; mini `custom-exercise-mini-settled-20260920`:154.84s.23 states each.
+- Final native load Pro `build/ui-review/custom-load-pro-final-20260920`:134.72s; mini `custom-load-mini-final-20260920`:154.78s.23 states each. **All92 final PNGs inspected**; run/frames/index reconciled. Actual controls, retry, keyboard, settled2x top and scrolled states, unknown/blank data, bodyweight/assistance and mixed units/bases exercised. Every earlier failed/superseded capture PNG was also inspected.
+- Paper definition47SX/47WB, count48L1/48NV, plan48R1/48SX, live48V9/48ZU, mixed units49SD/49UR, mixed bases49X5/49ZJ, assistance4A1X/4A4B and all required variants registered. Canonical count49OR/49OZ, shared settings rows and live heading ink reconciled. Exact exports: `/private/tmp/openband-alpin-20260919/custom-exercise-paper/`.
+
+This is local and synthetic simulator proof. No personal-data, physical-device, Bluetooth or physiological claim. Nothing pushed.

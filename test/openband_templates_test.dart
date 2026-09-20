@@ -244,10 +244,18 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'Oberkörper');
       await tester.tap(find.text('Übung hinzufügen'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Eigene Übung'));
+      await tester.tap(find.text('Bibliothek'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).at(1), 'Klimmzug');
-      await tester.enterText(find.byType(TextField).at(3), '6');
+      await tester.tap(find.byTooltip('Auswahl Bankdrücken'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1 Übung hinzufügen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == 'Wdh.',
+        ),
+        '6',
+      );
       await tester.tap(find.text('Vorlage speichern'));
       await tester.pumpAndSettle();
       expect(find.text('Oberkörper'), findsOneWidget);

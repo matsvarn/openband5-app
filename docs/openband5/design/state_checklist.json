@@ -1130,17 +1130,17 @@
         "status": "partial",
         "paperNode": "45ZZ-0",
         "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
-        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
-        "note": "Preset and stored registry search, translated labels/aliases and stable snapshots are implemented. Creating a custom definition from this context and live-session target integration remain B26/B36 work.",
-        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart; test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Preset and stored registry search, translated labels/aliases, stable snapshots and custom creation are implemented. Adding from the library directly into an active session remains open.",
+        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof. build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
       },
       "Übung hinzufügen · kein Suchtreffer": {
-        "status": "partial",
+        "status": "implemented",
         "paperNode": "465N-0",
-        "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
-        "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
-        "note": "Actual empty search differs from failed load and offers clear-search. Creating a definition without losing search/filter/selection is next B26 work.",
-        "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Empty search offers creation without losing search/filter/selection. Save returns the new definition unselected; Anzeigen reveals a result hidden by filters.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
       },
       "Vorlage · Übung hinzugefügt": {
         "status": "implemented",
@@ -1155,7 +1155,7 @@
         "paperNode": "478P-0",
         "source": "lib/openband/exercise_catalogue.dart; lib/openband/exercise_picker.dart; lib/openband/template_editor.dart; lib/openband/action_sheet.dart; lib/openband/domain.dart; lib/openband/local_repository.dart; lib/data/db.dart",
         "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
-        "note": "New template starts empty, explicit add menu reaches library or retained ad hoc entry. Empty plan cannot save. Library addition and durable template save are distinct.",
+        "note": "New template starts empty; add menu reaches the shared library/full typed definition editor. Empty plan cannot save. Definition creation, explicit library addition and durable template save are separate writes.",
         "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
       },
       "Trainingsvorlage · weiter gescrollt": {
@@ -1189,6 +1189,46 @@
         "evidence": "test/openband_exercise_catalogue_test.dart; test/openband_exercise_picker_test.dart; test/openband_template_editor_fidelity_test.dart; test/openband_strength_live_test.dart; integration_test/openband_review_test.dart",
         "note": "Explicit time mode persists through empty planned set, template save/reopen/start. Duration application to several sets remains open.",
         "nativeReview": "build/ui-review/exercise-picker-pro-accepted-20260920 and exercise-picker-mini-accepted-20260920: 26 PNGs each, all52 inspected; run/frames/index match. Light/dark, empty/partial/error/retry/unknown mode, duplicate confirmation, draft save/reopen, mixed legacy preservation, 375 width and2x. Full last controls revealed and tapped. Synthetic simulator proof."
+      },
+      "Eigene Übung · Curl neutraler Griff": {
+        "status": "implemented",
+        "paperNode": "47SX-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Creates a durable UUID definition with explicit equipment, capture mode, load basis, device count and repetition basis; optional primary/secondary muscle roles stay disjoint.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
+      },
+      "Eigene Übung · noch unvollständig": {
+        "status": "implemented",
+        "paperNode": "47YE-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Required semantics remain unselected; save stays disabled. Explicit time mode does not request a repetition basis.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
+      },
+      "Eigene Übung · gespeichert in der Bibliothek": {
+        "status": "implemented",
+        "paperNode": "48I8-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Saved definition returns to the same filtered library without auto-selection. Hidden creation offers Anzeigen; explicit selection and template save remain separate writes.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
+      },
+      "Eigene Übung · Definition": {
+        "status": "implemented",
+        "paperNode": "47SX-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Definition creation, validation, conflict/retry and original load semantics are implemented. Definition management/copy/archive are separate open states.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
+      },
+      "Eigene Übung · Gerät wählen": {
+        "status": "implemented",
+        "paperNode": "480H-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
+        "note": "Canonical choice sheet selects equipment; per-device load requires a positive integer device count. No equipment or count is inferred.",
+        "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
       }
     },
     "A06b · Training": {

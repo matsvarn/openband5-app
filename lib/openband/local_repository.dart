@@ -413,6 +413,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
       plannedSetId: set.plannedSetId,
       exerciseId: set.exerciseId,
       restSec: set.restSec,
+      loadJson: set.load == null ? null : jsonEncode(set.load!.toJson()),
+      definitionJson: set.definition == null
+          ? null
+          : jsonEncode(set.definition!.toJson()),
     );
   }
 
@@ -577,7 +581,38 @@ class LocalOpenBandRepository implements OpenBandRepository {
       plannedSetId: row['planned_set_id'] as String?,
       exerciseId: row['exercise_id'] as String?,
       restSec: (row['rest_sec'] as num?)?.toInt(),
+      load: _loadFromRow(row['load_json']),
+      definition: _definitionFromRow(row['definition_json'], exerciseKey),
     );
+  }
+
+  static OriginalLoadInput? _loadFromRow(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! String || raw.isEmpty) {
+      throw const FormatException('Recorded set is unreadable.');
+    }
+    return OriginalLoadInput.decode(raw);
+  }
+
+  static ExerciseDefinitionSnapshot? _definitionFromRow(
+    Object? raw,
+    String exerciseKey,
+  ) {
+    if (raw == null) return null;
+    if (raw is! String || raw.isEmpty) {
+      throw const FormatException('Recorded set is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) {
+      throw const FormatException('Exercise definition snapshot is unreadable.');
+    }
+    final snap = ExerciseDefinitionSnapshot.fromJson(
+      Map<String, dynamic>.from(decoded),
+    );
+    if (snap.id != exerciseKey) {
+      throw const FormatException('Exercise definition snapshot is unreadable.');
+    }
+    return snap;
   }
 
   static Set<String> _stringSet(Object? raw) {
@@ -644,6 +679,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<ExerciseCatalogue> readExerciseCatalogue() async =>
       assembleExerciseCatalogue(await LocalDb.exerciseDefRows());
+
+  @override
+  Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft,
+  ) => LocalDb.createCustomExercise(draft);
+
+  @override
+  Future<CustomExerciseWriteResult> updateCustomExercise({
+    required ExerciseDefinitionSnapshot expected,
+    required CustomExerciseDraft draft,
+  }) => LocalDb.updateCustomExercise(expected: expected, draft: draft);
 
   @override
   Future<List<FoodHit>> searchFoods(String query) async {

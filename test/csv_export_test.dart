@@ -5,6 +5,7 @@
 // once the file is in a spreadsheet, and a column of zeroes where a metric was
 // never computed is a fabrication the user will then average.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -387,6 +388,74 @@ void main() {
       expect(csv, contains('2026-09-15,ferritin,52,ng/mL,,30,400'));
       expect(csv, contains('2026-09-15,vitamin_d,37,ng/mL,,,'));
       expect(csv, isNot(contains('null')));
+    } finally {
+      await LocalDb.close();
+    }
+  });
+
+  test('strength export keeps load_kg and adds original input fields', () async {
+    LocalDb.dbName = 'openstrap_csv_strength_load_test.db';
+    await LocalDb.close();
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      final db = await LocalDb.instance;
+      await db.insert('strength_set', {
+        'session_id': 's1',
+        'seq': 0,
+        'exercise_key': 'incline_db_press',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 62.55,
+        'at_ts': 1,
+        'note': '',
+      });
+      await db.insert('strength_set', {
+        'session_id': 's1',
+        'seq': 1,
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 20,
+        'at_ts': 2,
+        'note': '',
+        'load_json': jsonEncode({
+          'value': 10,
+          'unit': 'kg',
+          'basis': 'perDevice',
+          'deviceCount': 2,
+          'repetitionBasis': 'perSide',
+          'side': 'both',
+        }),
+      });
+      final strength = kCsvExportSets.firstWhere((s) => s.name == 'strength');
+      expect(
+        strength.columns,
+        containsAll([
+          'load_kg',
+          'original_load',
+          'original_unit',
+          'load_basis',
+          'device_count',
+          'repetition_basis',
+          'side',
+        ]),
+      );
+      final rows = await db.rawQuery(strength.sql);
+      expect(rows, hasLength(2));
+      expect(rows.first['load_kg'], 62.55);
+      expect(rows.first['original_load'], isNull);
+      expect(rows.last['load_kg'], 20);
+      expect(rows.last['original_load'], 10);
+      expect(rows.last['original_unit'], 'kg');
+      expect(rows.last['load_basis'], 'perDevice');
+      expect(rows.last['device_count'], 2);
+      expect(rows.last['repetition_basis'], 'perSide');
+      expect(rows.last['side'], 'both');
+      final csv = renderCsv(strength.columns, rows);
+      expect(csv, contains('62.55'));
+      expect(csv.split('\n').first, contains('original_load'));
     } finally {
       await LocalDb.close();
     }

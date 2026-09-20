@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import 'action_sheet.dart';
 import 'domain.dart';
+import 'exercise_input.dart';
 import 'exercise_picker.dart';
 import 'theme.dart';
 
@@ -20,17 +21,6 @@ String _loadFieldText(double? kg) {
     s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
   }
   return s.replaceAll('.', ',');
-}
-
-double? _savedLoad(_SetDraft s) {
-  if (s.timed) return s.storedLoad;
-  final text = s.load.text.trim();
-  if (text.isEmpty) return null;
-  if (s.storedLoad != null && text == _loadFieldText(s.storedLoad)) {
-    return s.storedLoad;
-  }
-  final parsed = _parseLoadText(s.load.text);
-  return parsed.bad ? null : parsed.value;
 }
 
 ({int? value, bool bad}) _parseCount(String raw, {required bool timed}) {
@@ -100,6 +90,12 @@ class _SetDraft {
   final PlannedSetMode? mode;
   final int? retainedReps;
   final int? retainedSeconds;
+  final OriginalLoadInput? original;
+  final bool typed;
+  ExerciseLoadUnit unit;
+  ExerciseSetSide side;
+  bool loadChanged = false;
+  bool semanticsChanged = false;
   final TextEditingController count, load;
   _SetDraft(
     this.id, {
@@ -109,11 +105,21 @@ class _SetDraft {
     this.mode,
     this.retainedReps,
     this.retainedSeconds,
+    this.original,
+    bool typed = false,
+    ExerciseLoadUnit? unit,
+    this.side = ExerciseSetSide.both,
     int? count,
     double? load,
   }) : storedLoad = load,
+       typed = typed || original?.basis != null,
+       unit = unit ?? original?.unit ?? ExerciseLoadUnit.kg,
        count = TextEditingController(text: count?.toString() ?? ''),
-       load = TextEditingController(text: _loadFieldText(load));
+       load = TextEditingController(
+         text: (typed || original?.basis != null)
+             ? formatOriginalLoadValue(original?.value)
+             : _loadFieldText(load),
+       );
 }
 
 class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
@@ -122,53 +128,46 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
   );
   late final List<_ExerciseDraft> _exercises = [
     for (final e in widget.template?.exercises ?? const <PlannedExercise>[])
-      _ExerciseDraft(e.id, e.exerciseKey, e.name, [
-        for (final s in e.sets)
-          _SetDraft(
-            s.id,
-            timed: s.isTimed,
-            type: s.type,
-            restSec: s.restSec,
-            mode: s.mode,
-            retainedReps: s.mode == null && s.isTimed ? s.reps : null,
-            retainedSeconds: s.mode == null && !s.isTimed ? s.seconds : null,
-            count: s.isTimed ? s.seconds : s.reps,
-            load: s.loadKg,
-          ),
-      ], note: e.note, definition: e.definition),
+      _ExerciseDraft(
+        e.id,
+        e.exerciseKey,
+        e.name,
+        [
+          for (final s in e.sets)
+            _SetDraft(
+              s.id,
+              timed: s.isTimed,
+              type: s.type,
+              restSec: s.restSec,
+              mode: s.mode,
+              retainedReps: s.mode == null && s.isTimed ? s.reps : null,
+              retainedSeconds: s.mode == null && !s.isTimed ? s.seconds : null,
+              count: s.isTimed ? s.seconds : s.reps,
+              load: s.loadKg,
+              original: s.load,
+              typed: s.load?.basis != null,
+              side: s.load?.side ?? ExerciseSetSide.both,
+            ),
+        ],
+        note: e.note,
+        definition: e.definition,
+      ),
   ];
   late final String _id = widget.template?.id ?? _newId();
   bool _saving = false;
   bool _adding = false;
   String? _error;
 
-  void _addExercise({bool timed = false}) {
-    _exercises.add(
-      _ExerciseDraft(_newId(), _newId(), '', [
-        _SetDraft(
-          _newId(),
-          timed: timed,
-          mode: timed ? PlannedSetMode.time : PlannedSetMode.repetitions,
-        ),
-      ]),
-    );
-  }
-
   _ExerciseDraft _draftFromCatalogue(ExerciseCatalogueEntry entry) {
     final timed = entry.mode == ExerciseCaptureMode.time;
-    return _ExerciseDraft(
-      _newId(),
-      entry.id,
-      entry.label,
-      [
-        _SetDraft(
-          _newId(),
-          timed: timed,
-          mode: timed ? PlannedSetMode.time : PlannedSetMode.repetitions,
-        ),
-      ],
-      definition: entry.snapshot(),
-    );
+    return _ExerciseDraft(_newId(), entry.id, entry.label, [
+      _SetDraft(
+        _newId(),
+        timed: timed,
+        mode: timed ? PlannedSetMode.time : PlannedSetMode.repetitions,
+        typed: entry.loadBasis != null,
+      ),
+    ], definition: entry.snapshot());
   }
 
   Future<void> _showAdd() async {
@@ -181,25 +180,36 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
         case AddExerciseChoice.library:
           await _addFromLibrary();
         case AddExerciseChoice.custom:
-          setState(() => _addExercise());
+          await _addFromLibrary(
+            createOnOpen: true,
+            initialCreateMode: ExerciseCaptureMode.repetitions,
+          );
         case AddExerciseChoice.customTimed:
-          setState(() => _addExercise(timed: true));
+          await _addFromLibrary(
+            createOnOpen: true,
+            initialCreateMode: ExerciseCaptureMode.time,
+          );
       }
     } finally {
       if (mounted) setState(() => _adding = false);
     }
   }
 
-  Future<void> _addFromLibrary() async {
+  Future<void> _addFromLibrary({
+    bool createOnOpen = false,
+    ExerciseCaptureMode? initialCreateMode,
+  }) async {
     final picked = await Navigator.of(context)
         .push<List<ExerciseCatalogueEntry>>(
-      MaterialPageRoute(
-        builder: (_) => OpenBandExercisePicker(
-          repository: widget.repository,
-          existingExerciseIds: {for (final e in _exercises) e.key},
-        ),
-      ),
-    );
+          MaterialPageRoute(
+            builder: (_) => OpenBandExercisePicker(
+              repository: widget.repository,
+              existingExerciseIds: {for (final e in _exercises) e.key},
+              createOnOpen: createOnOpen,
+              initialCreateMode: initialCreateMode,
+            ),
+          ),
+        );
     if (!mounted || picked == null || picked.isEmpty) return;
     setState(() {
       for (final entry in picked) {
@@ -219,6 +229,9 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
         mode:
             last.mode ??
             (last.timed ? PlannedSetMode.time : PlannedSetMode.repetitions),
+        typed: last.typed || exercise.definition?.loadBasis != null,
+        unit: last.unit,
+        side: last.side,
       ),
     );
   }
@@ -234,13 +247,70 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
     return false;
   }
 
+  ExerciseDefinitionSnapshot? _frozen(_ExerciseDraft e, _SetDraft s) =>
+      frozenDefinition(
+        load: s.original,
+        typed: s.typed,
+        definition: e.definition,
+      );
+
+  ExerciseBlockLoadLabels _loadLabels(_ExerciseDraft e) =>
+      exerciseBlockLoadLabels(
+        definition: e.definition,
+        rows: [
+          for (final s in e.sets)
+            ExerciseLoadRowView(
+              load: s.original,
+              typed: s.typed,
+              historicKg: s.storedLoad,
+              chosenUnit: s.unit,
+            ),
+        ],
+      );
+
+  bool _showsLoad(_ExerciseDraft e, _SetDraft s) => showsExternalLoad(
+    definition: _frozen(e, s),
+    load: s.original,
+    timed: s.timed,
+    historicLoadKg: s.storedLoad,
+  );
+
+  bool _showsSide(_ExerciseDraft e, _SetDraft s) =>
+      showsSideControl(definition: _frozen(e, s), load: s.original);
+
+  bool _loadInvalid(_ExerciseDraft e, _SetDraft s) {
+    if (!_showsLoad(e, s)) return false;
+    final parsed = _parseLoadText(s.load.text);
+    if (parsed.bad) return true;
+    if (!capturesOriginalLoad(
+      typed: s.typed,
+      existing: s.original,
+      definition: _frozen(e, s),
+    )) {
+      return false;
+    }
+    try {
+      captureOriginalLoad(
+        definition: e.definition,
+        existing: s.original,
+        typed: s.typed,
+        value: parsed.value,
+        unit: s.unit,
+        side: s.side,
+      );
+    } catch (_) {
+      return true;
+    }
+    return false;
+  }
+
   bool get _valid {
     if (_name.text.trim().isEmpty || _exercises.isEmpty) return false;
     for (final e in _exercises) {
       if (e.name.text.trim().isEmpty || e.sets.isEmpty) return false;
       for (final s in e.sets) {
         if (_countInvalid(s)) return false;
-        if (!s.timed && _parseLoadText(s.load.text).bad) return false;
+        if (_loadInvalid(e, s)) return false;
       }
     }
     return true;
@@ -254,7 +324,18 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
     return null;
   }
 
-  PlannedSet _savedSet(_SetDraft s) {
+  double? _historicLoad(_SetDraft s, {required bool showLoad}) {
+    if (s.timed && !showLoad) return s.storedLoad;
+    final text = s.load.text.trim();
+    if (text.isEmpty) return null;
+    if (s.storedLoad != null && text == _loadFieldText(s.storedLoad)) {
+      return s.storedLoad;
+    }
+    final parsed = _parseLoadText(s.load.text);
+    return parsed.bad ? null : parsed.value;
+  }
+
+  PlannedSet _savedSet(_SetDraft s, _ExerciseDraft e) {
     final count = _parseCount(s.count.text, timed: s.timed).value;
     final reps = s.timed ? s.retainedReps : count;
     final seconds = s.timed ? count : s.retainedSeconds;
@@ -265,14 +346,48 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
     if (mode == null && s.timed && s.retainedReps == null && seconds == null) {
       mode = PlannedSetMode.time;
     }
+    final showLoad = _showsLoad(e, s);
+    final parsed = showLoad
+        ? _parseLoadText(s.load.text)
+        : (value: null, bad: false);
+    final OriginalLoadInput? captured;
+    final double? loadKg;
+    if (s.original != null && !s.loadChanged && !s.semanticsChanged) {
+      captured = s.original;
+      loadKg = s.storedLoad;
+    } else if (hasUnsupportedLoadMetadata(
+      definition: _frozen(e, s),
+      load: s.original,
+    )) {
+      captured = s.original;
+      loadKg = s.storedLoad;
+    } else if (capturesOriginalLoad(
+      typed: s.typed,
+      existing: s.original,
+      definition: e.definition,
+    )) {
+      captured = captureOriginalLoad(
+        definition: e.definition,
+        existing: s.original,
+        typed: s.typed,
+        value: parsed.value,
+        unit: s.unit,
+        side: s.side,
+      );
+      loadKg = resolvedLoadKg(captured, null);
+    } else {
+      captured = s.original;
+      loadKg = _historicLoad(s, showLoad: showLoad);
+    }
     return PlannedSet(
       id: s.id,
       type: s.type,
       reps: reps,
       seconds: seconds,
-      loadKg: _savedLoad(s),
+      loadKg: loadKg,
       restSec: s.restSec,
       mode: mode,
+      load: captured,
     );
   }
 
@@ -296,10 +411,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                 name: e.name.text.trim(),
                 note: e.note,
                 definition: e.definition,
-                sets: [
-                  for (final s in e.sets)
-                    _savedSet(s),
-                ],
+                sets: [for (final s in e.sets) _savedSet(s, e)],
               ),
           ],
           updatedAt: DateTime.now(),
@@ -327,6 +439,69 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
       }
     }
     super.dispose();
+  }
+
+  Widget _exerciseNameField(
+    OB p,
+    _ExerciseDraft e, {
+    required InputDecoration nameDeco,
+  }) {
+    final caption = _loadLabels(e).caption;
+    if (caption == null) {
+      return TextField(
+        controller: e.name,
+        onChanged: (_) => setState(() {}),
+        style: p.text(15, weight: FontWeight.w600).copyWith(height: 20 / 15),
+        decoration: nameDeco,
+      );
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: p.well,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: e.name,
+              onChanged: (_) => setState(() {}),
+              style: p
+                  .text(15, weight: FontWeight.w600)
+                  .copyWith(height: 20 / 15),
+              decoration: InputDecoration(
+                hintText: 'Übung',
+                hintStyle: p.text(16, color: p.muted).copyWith(height: 22 / 16),
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              caption,
+              style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickSide(_SetDraft s) async {
+    final picked = await showExerciseInputChoice<ExerciseSetSide>(
+      context: context,
+      title: 'Seite',
+      choices: exerciseSideChoices,
+      selected: s.side,
+    );
+    if (!mounted || picked == null || picked == s.side) return;
+    setState(() {
+      s.side = picked;
+      s.semanticsChanged = true;
+    });
   }
 
   @override
@@ -399,13 +574,10 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                                     constraints: const BoxConstraints(
                                       minHeight: 44,
                                     ),
-                                    child: TextField(
-                                      controller: e.name,
-                                      onChanged: (_) => setState(() {}),
-                                      style: p
-                                          .text(15, weight: FontWeight.w600)
-                                          .copyWith(height: 20 / 15),
-                                      decoration: wellDeco(hint: 'Übung'),
+                                    child: _exerciseNameField(
+                                      p,
+                                      e,
+                                      nameDeco: wellDeco(hint: 'Übung'),
                                     ),
                                   ),
                                 ),
@@ -415,9 +587,8 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                                   height: 44,
                                   child: IconButton(
                                     tooltip: 'Übung entfernen',
-                                    onPressed: () => setState(
-                                      () => _exercises.removeAt(ei),
-                                    ),
+                                    onPressed: () =>
+                                        setState(() => _exercises.removeAt(ei)),
                                     padding: EdgeInsets.zero,
                                     icon: Icon(
                                       LucideIcons.trash2,
@@ -430,42 +601,77 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                             ),
                             const SizedBox(height: 8),
                             for (final (si, s) in e.sets.indexed) ...[
-                              Row(
-                                children: [
-                                  SizedBox(
-                                    width: 28,
-                                    child: Text(
-                                      '${si + 1}',
-                                      style: p
-                                          .text(
-                                            14,
-                                            weight: FontWeight.w700,
-                                            display: true,
-                                            color: p.muted,
-                                          )
-                                          .copyWith(height: 19 / 14),
+                              MediaQuery.withClampedTextScaling(
+                                maxScaleFactor: 1.3,
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 28,
+                                      child: Text(
+                                        '${si + 1}',
+                                        style: p
+                                            .text(
+                                              14,
+                                              weight: FontWeight.w700,
+                                              display: true,
+                                              color: p.muted,
+                                            )
+                                            .copyWith(height: 19 / 14),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  if (!s.timed) ...[
+                                    const SizedBox(width: 8),
+                                    if (_showsLoad(e, s)) ...[
+                                      Expanded(
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            minHeight: 48,
+                                          ),
+                                          child: TextField(
+                                            controller: s.load,
+                                            enabled:
+                                                !hasUnsupportedLoadMetadata(
+                                                  definition: _frozen(e, s),
+                                                  load: s.original,
+                                                ),
+                                            onChanged: (_) => setState(
+                                              () => s.loadChanged = true,
+                                            ),
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            textAlign: TextAlign.center,
+                                            style: p
+                                                .text(16)
+                                                .copyWith(height: 22 / 16),
+                                            decoration: wellDeco(
+                                              hint: loadUnitLabel(s.unit),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                    ],
                                     Expanded(
                                       child: ConstrainedBox(
                                         constraints: const BoxConstraints(
                                           minHeight: 48,
                                         ),
                                         child: TextField(
-                                          controller: s.load,
+                                          controller: s.count,
                                           onChanged: (_) => setState(() {}),
-                                          keyboardType:
-                                              const TextInputType.numberWithOptions(
-                                                decimal: true,
-                                              ),
+                                          keyboardType: TextInputType.number,
                                           textAlign: TextAlign.center,
                                           style: p
                                               .text(16)
                                               .copyWith(height: 22 / 16),
                                           decoration: wellDeco(
-                                            hint: 'kg',
+                                            hint: s.timed ? 'Sek.' : 'Wdh.',
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 10,
                                               vertical: 12,
@@ -475,64 +681,112 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                  ],
-                                  Expanded(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        minHeight: 48,
-                                      ),
-                                      child: TextField(
-                                        controller: s.count,
-                                        onChanged: (_) => setState(() {}),
-                                        keyboardType: TextInputType.number,
-                                        textAlign: TextAlign.center,
-                                        style: p
-                                            .text(16)
-                                            .copyWith(height: 22 / 16),
-                                        decoration: wellDeco(
-                                          hint: s.timed ? 'Sek.' : 'Wdh.',
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 12,
-                                          ),
+                                    SizedBox(
+                                      key: ValueKey('set-remove-${s.id}'),
+                                      width: 44,
+                                      height: 44,
+                                      child: IconButton(
+                                        tooltip: 'Satz ${si + 1} entfernen',
+                                        onPressed: e.sets.length == 1
+                                            ? null
+                                            : () => setState(
+                                                () => e.sets.removeAt(si),
+                                              ),
+                                        padding: EdgeInsets.zero,
+                                        icon: Icon(
+                                          LucideIcons.minus,
+                                          size: 18,
+                                          color: p.muted,
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  SizedBox(
-                                    width: 44,
-                                    height: 44,
-                                    child: IconButton(
-                                      tooltip: 'Satz ${si + 1} entfernen',
-                                      onPressed: e.sets.length == 1
-                                          ? null
-                                          : () => setState(
-                                              () => e.sets.removeAt(si),
+                                  ],
+                                ),
+                              ),
+                              if (_loadLabels(e).mixedSemantics ||
+                                  _showsSide(e, s))
+                                InkWell(
+                                  key: _showsSide(e, s)
+                                      ? ValueKey('side-${s.id}')
+                                      : null,
+                                  onTap: _showsSide(e, s)
+                                      ? () => _pickSide(s)
+                                      : null,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minHeight: _showsSide(e, s) ? 44 : 24,
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(
+                                        left: 36,
+                                        right: 12,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          if (_loadLabels(e).mixedSemantics)
+                                            Text(
+                                              exerciseRowLoadCaption(
+                                                    definition: e.definition,
+                                                    load: s.original,
+                                                    typed: s.typed,
+                                                    historicLoadKg:
+                                                        s.storedLoad,
+                                                  ) ??
+                                                  '',
+                                              style: p
+                                                  .text(
+                                                    13,
+                                                    weight: FontWeight.w500,
+                                                    color: p.muted,
+                                                  )
+                                                  .copyWith(height: 18 / 13),
                                             ),
-                                      padding: EdgeInsets.zero,
-                                      icon: Icon(
-                                        LucideIcons.minus,
-                                        size: 18,
-                                        color: p.muted,
+                                          if (_showsSide(e, s))
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  exerciseSideLabel(s.side),
+                                                  style: p
+                                                      .text(13)
+                                                      .copyWith(
+                                                        height: 18 / 13,
+                                                      ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Icon(
+                                                  LucideIcons.chevronDown,
+                                                  size: 16,
+                                                  color: p.muted,
+                                                ),
+                                              ],
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
                               if (_durationError(s) case final err?) ...[
                                 const SizedBox(height: 4),
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    left: 36,
-                                    right: 52,
-                                  ),
-                                  child: Text(
-                                    err,
-                                    style: p
-                                        .text(12, color: p.danger)
-                                        .copyWith(height: 16 / 12),
-                                  ),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(width: 36),
+                                    if (_showsLoad(e, s)) ...[
+                                      const Expanded(child: SizedBox.shrink()),
+                                      const SizedBox(width: 8),
+                                    ],
+                                    Expanded(
+                                      child: Text(
+                                        err,
+                                        style: p
+                                            .text(12, color: p.danger)
+                                            .copyWith(height: 16 / 12),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 52),
+                                  ],
                                 ),
                               ],
                               const SizedBox(height: 8),
@@ -559,10 +813,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
                                         child: Text(
                                           'Satz hinzufügen',
                                           style: p
-                                              .text(
-                                                14,
-                                                weight: FontWeight.w600,
-                                              )
+                                              .text(14, weight: FontWeight.w600)
                                               .copyWith(height: 19 / 14),
                                         ),
                                       ),

@@ -971,16 +971,13 @@ class NotificationSettingsView extends StatelessWidget {
     apply,
   }) async {
     if (busy) return;
-    final p = OB.of(context);
-    final picked = await showModalBottomSheet<int>(
+    final picked = await showOpenBandSettingsChoiceSheet<int>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: p.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheet) =>
-          _ChoiceSheet(title: title, choices: choices, selected: selected),
+      title: title,
+      choices: choices,
+      selected: selected,
+      sheetKey: const ValueKey('notification-choice'),
+      choiceKey: (value) => ValueKey('notification-choice-$value'),
     );
     if (!context.mounted || picked == null) return;
     _set((current) => apply(current, picked));
@@ -1244,57 +1241,6 @@ class _LoadingCard extends StatelessWidget {
             width: 22,
             height: 22,
             child: CircularProgressIndicator(strokeWidth: 2, color: p.muted),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ChoiceSheet extends StatelessWidget {
-  final String title;
-  final List<(int value, String label)> choices;
-  final int selected;
-
-  const _ChoiceSheet({
-    required this.title,
-    required this.choices,
-    required this.selected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final maxH = MediaQuery.sizeOf(context).height * 0.75;
-    return SafeArea(
-      key: const ValueKey('notification-choice'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxH),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: p.text(18, weight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: choices.length,
-                  itemBuilder: (context, i) {
-                    final choice = choices[i];
-                    final on = choice.$1 == selected;
-                    return OBSettingsChoiceRow(
-                      key: ValueKey('notification-choice-${choice.$1}'),
-                      label: choice.$2,
-                      selected: on,
-                      onTap: () => Navigator.pop(context, choice.$1),
-                    );
-                  },
-                ),
-              ),
-            ],
           ),
         ),
       ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -17,7 +18,24 @@ final _uuid = RegExp(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUpAll(() => initializeDateFormatting('de_DE'));
+  setUpAll(() async {
+    await initializeDateFormatting('de_DE');
+    for (final (family, path) in [
+      ('Inter', 'assets/fonts/Inter/Inter.ttf'),
+      ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
+    ]) {
+      final loader = FontLoader(family)
+        ..addFont(
+          Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+        );
+      await loader.load();
+    }
+    final icons = FontLoader('packages/lucide_icons_flutter/Lucide')
+      ..addFont(
+        rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+      );
+    await icons.load();
+  });
 
   late SyntheticOpenBandRepository repo;
 
@@ -113,23 +131,27 @@ void main() {
     double scale = 1,
     double width = 393,
     double height = 852,
+    double dpr = 1,
+    Brightness brightness = Brightness.light,
   }) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = Size(width, height);
+    tester.view.devicePixelRatio = dpr;
+    tester.view.physicalSize = Size(width * dpr, height * dpr);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       MaterialApp(
+        key: UniqueKey(),
+        debugShowCheckedModeBanner: false,
         locale: const Locale('de'),
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         supportedLocales: const [Locale('de')],
-        theme: openBandTheme(Brightness.light),
+        theme: openBandTheme(brightness).copyWith(platform: TargetPlatform.iOS),
         builder: scale == 1
             ? null
             : (context, child) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaler: TextScaler.linear(scale),
-                ),
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
                 child: child!,
               ),
         home: Builder(
@@ -154,6 +176,32 @@ void main() {
       ),
     );
     await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> addFromLibrary(
+    WidgetTester tester,
+    String label, {
+    bool confirmDuplicate = false,
+  }) async {
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      label,
+    );
+    await tester.pumpAndSettle();
+    final selection = find.byTooltip('Auswahl $label');
+    await tester.scrollUntilVisible(
+      selection,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(selection);
+    await tester.pumpAndSettle();
+    if (confirmDuplicate) {
+      await tester.tap(find.text('Hinzufügen'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('1 Übung hinzufügen'));
     await tester.pumpAndSettle();
   }
 
@@ -288,10 +336,7 @@ void main() {
     repo.failTemplateWrite = true;
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Speichern fehlgeschlagen.'),
-      findsOneWidget,
-    );
+    expect(find.text('Speichern fehlgeschlagen.'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Retry'), findsOneWidget);
     expect(find.widgetWithText(TextField, '25'), findsOneWidget);
     expect((await stored('tpl-mixed')).name, 'Gemischt');
@@ -314,10 +359,15 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Oberkörper B');
     await tester.tap(find.text('Übung hinzufügen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Eigene Übung'));
+    await tester.tap(find.text('Bibliothek'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).at(1), 'Klimmzug');
-    await tester.enterText(find.byType(TextField).at(3), '6');
+    await addFromLibrary(tester, 'Bankdrücken');
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == 'Wdh.',
+      ),
+      '6',
+    );
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();
 
@@ -327,8 +377,7 @@ void main() {
     expect(saved.id, matches(_uuid));
     expect(saved.version, 1);
     expect(saved.exercises.single.id, matches(_uuid));
-    expect(saved.exercises.single.exerciseKey, matches(_uuid));
-    expect(saved.exercises.single.exerciseKey, isNot('klimmzug'));
+    expect(saved.exercises.single.exerciseKey, 'bench_press');
     expect(
       saved.exercises.single.exerciseKey,
       isNot(saved.exercises.single.id),
@@ -348,21 +397,19 @@ void main() {
     (w) => w is TextField && w.decoration?.hintText == hint,
   );
 
-  testWidgets('duplicate new labels keep distinct stable keys', (tester) async {
+  testWidgets('duplicate catalogue exercise keeps distinct plan identities', (
+    tester,
+  ) async {
     await openEditor(tester);
     await tester.enterText(find.byType(TextField).first, 'Doppel');
-    await tester.tap(find.text('Übung hinzufügen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Eigene Übung'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Übung hinzufügen'));
-    await tester.tap(find.text('Übung hinzufügen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Eigene Übung'));
-    await tester.pumpAndSettle();
-    await tester.enterText(hinted('Übung').at(0), 'Klimmzug');
-    await tester.enterText(hinted('Übung').at(1), 'Klimmzug');
-    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.ensureVisible(find.text('Übung hinzufügen'));
+      await tester.tap(find.text('Übung hinzufügen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bibliothek'));
+      await tester.pumpAndSettle();
+      await addFromLibrary(tester, 'Bankdrücken', confirmDuplicate: i == 1);
+    }
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();
 
@@ -370,17 +417,10 @@ void main() {
       (t) => t.name == 'Doppel',
     );
     expect(saved.exercises, hasLength(2));
-    expect(saved.exercises.map((e) => e.name), ['Klimmzug', 'Klimmzug']);
-    expect(saved.exercises[0].exerciseKey, matches(_uuid));
-    expect(saved.exercises[1].exerciseKey, matches(_uuid));
-    expect(
-      saved.exercises[0].exerciseKey,
-      isNot(saved.exercises[1].exerciseKey),
-    );
-    expect(
-      saved.exercises.map((e) => e.exerciseKey),
-      isNot(contains('klimmzug')),
-    );
+    expect(saved.exercises.map((e) => e.exerciseKey), [
+      'bench_press',
+      'bench_press',
+    ]);
     expect(saved.exercises[0].id, isNot(saved.exercises[1].id));
   });
 
@@ -421,10 +461,7 @@ void main() {
     repo.failTemplateWrite = true;
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Speichern fehlgeschlagen.'),
-      findsOneWidget,
-    );
+    expect(find.text('Speichern fehlgeschlagen.'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Retry'), findsOneWidget);
     expect(find.widgetWithText(TextField, '2,75'), findsOneWidget);
     expect(find.widgetWithText(TextField, '62,55'), findsOneWidget);
@@ -452,10 +489,9 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Halt');
     await tester.tap(find.text('Übung hinzufügen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Eigene Zeitübung'));
+    await tester.tap(find.text('Bibliothek'));
     await tester.pumpAndSettle();
-    await tester.enterText(hinted('Übung'), 'Plank');
-    await tester.pumpAndSettle();
+    await addFromLibrary(tester, 'Unterarmstütz');
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();
 
@@ -641,73 +677,74 @@ void main() {
     },
   );
 
-  testWidgets('legacy both reps+seconds, snapshot and mode survive name-only save', (
-    tester,
-  ) async {
-    final snapshot = ExerciseDefinitionSnapshot(
-      id: 'bench_press',
-      label: 'Bankdrücken',
-      source: ExerciseDefinitionSource.preset,
-      mode: ExerciseCaptureMode.repetitions,
-    );
-    final original = await repo.saveTemplate(
-      WorkoutTemplate(
-        id: 'tpl-legacy',
-        name: 'Alt',
-        version: 2,
-        exercises: [
-          PlannedExercise(
-            id: 'ex-both',
-            exerciseKey: 'bench_press',
-            name: 'Bankdrücken',
-            definition: snapshot,
-            sets: [
-              PlannedSet(
-                id: 'set-both',
-                reps: 8,
-                seconds: 40,
-                loadKg: 62.55,
-                restSec: 90,
-              ),
-            ],
-          ),
-          PlannedExercise(
-            id: 'ex-mode',
-            exerciseKey: 'plank',
-            name: 'Plank',
-            sets: [
-              PlannedSet(
-                id: 'set-mode',
-                mode: PlannedSetMode.time,
-                seconds: 45,
-                restSec: 60,
-              ),
-            ],
-          ),
-        ],
-        updatedAt: DateTime(2026, 9, 1),
-      ),
-    );
-    await openEditor(tester, template: original);
-    await tester.enterText(find.widgetWithText(TextField, 'Alt'), 'Alt+');
-    await tester.tap(find.text('Vorlage speichern'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'legacy both reps+seconds, snapshot and mode survive name-only save',
+    (tester) async {
+      final snapshot = ExerciseDefinitionSnapshot(
+        id: 'bench_press',
+        label: 'Bankdrücken',
+        source: ExerciseDefinitionSource.preset,
+        mode: ExerciseCaptureMode.repetitions,
+      );
+      final original = await repo.saveTemplate(
+        WorkoutTemplate(
+          id: 'tpl-legacy',
+          name: 'Alt',
+          version: 2,
+          exercises: [
+            PlannedExercise(
+              id: 'ex-both',
+              exerciseKey: 'bench_press',
+              name: 'Bankdrücken',
+              definition: snapshot,
+              sets: [
+                PlannedSet(
+                  id: 'set-both',
+                  reps: 8,
+                  seconds: 40,
+                  loadKg: 62.55,
+                  restSec: 90,
+                ),
+              ],
+            ),
+            PlannedExercise(
+              id: 'ex-mode',
+              exerciseKey: 'plank',
+              name: 'Plank',
+              sets: [
+                PlannedSet(
+                  id: 'set-mode',
+                  mode: PlannedSetMode.time,
+                  seconds: 45,
+                  restSec: 60,
+                ),
+              ],
+            ),
+          ],
+          updatedAt: DateTime(2026, 9, 1),
+        ),
+      );
+      await openEditor(tester, template: original);
+      await tester.enterText(find.widgetWithText(TextField, 'Alt'), 'Alt+');
+      await tester.tap(find.text('Vorlage speichern'));
+      await tester.pumpAndSettle();
 
-    final saved = await stored('tpl-legacy');
-    expect(saved.name, 'Alt+');
-    final both = saved.exercises.first;
-    expect(both.definition?.id, 'bench_press');
-    expect(both.definition?.label, 'Bankdrücken');
-    expect(both.sets.single.reps, 8);
-    expect(both.sets.single.seconds, 40);
-    expect(both.sets.single.mode, isNull);
-    expect(both.sets.single.loadKg, 62.55);
-    expect(both.sets.single.restSec, 90);
-    final timed = saved.exercises.last.sets.single;
-    expect(timed.mode, PlannedSetMode.time);
-    expect(timed.seconds, 45);
-    expect(timed.reps, isNull);
-  });
+      final saved = await stored('tpl-legacy');
+      expect(saved.name, 'Alt+');
+      final both = saved.exercises.first;
+      expect(both.definition?.id, 'bench_press');
+      expect(both.definition?.label, 'Bankdrücken');
+      expect(both.sets.single.reps, 8);
+      expect(both.sets.single.seconds, 40);
+      expect(both.sets.single.mode, isNull);
+      expect(both.sets.single.loadKg, 62.55);
+      expect(both.sets.single.restSec, 90);
+      final timed = saved.exercises.last.sets.single;
+      expect(timed.mode, PlannedSetMode.time);
+      expect(timed.seconds, 45);
+      expect(timed.reps, isNull);
+    },
+  );
 
   testWidgets('clearing legacy timed seconds keeps time identity on reopen', (
     tester,
@@ -722,9 +759,7 @@ void main() {
             id: 'ex-plank',
             exerciseKey: 'plank',
             name: 'Plank',
-            sets: [
-              PlannedSet(id: 'set-plank', seconds: 40, restSec: 60),
-            ],
+            sets: [PlannedSet(id: 'set-plank', seconds: 40, restSec: 60)],
           ),
         ],
         updatedAt: DateTime(2026, 9, 1),
@@ -748,104 +783,285 @@ void main() {
     expect(hinted('Wdh.'), findsNothing);
   });
 
-  testWidgets('clearing mixed legacy duration blocks save and keeps the record', (
-    tester,
-  ) async {
-    final original = await repo.saveTemplate(
-      WorkoutTemplate(
-        id: 'tpl-mixed-time',
-        name: 'Gemischt',
-        version: 1,
-        exercises: [
-          PlannedExercise(
-            id: 'ex-both',
-            exerciseKey: 'bench_press',
-            name: 'Bankdrücken',
-            sets: [
-              PlannedSet(
-                id: 'set-both',
-                reps: 8,
-                seconds: 40,
-                loadKg: 62.55,
-                restSec: 90,
-              ),
-            ],
-          ),
-        ],
-        updatedAt: DateTime(2026, 9, 1),
-      ),
-    );
-    await openEditor(tester, template: original);
-    expect(hinted('Sek.'), findsOneWidget);
-    expect(hinted('Wdh.'), findsNothing);
-    await tester.enterText(hinted('Sek.'), '');
-    await tester.pumpAndSettle();
-    expect(find.text('Dauer fehlt.'), findsOneWidget);
-    await tester.tap(find.text('Vorlage speichern'));
-    await tester.pumpAndSettle();
-    expect(find.byType(OpenBandTemplateEditor), findsOneWidget);
-    expect(find.text('Dauer fehlt.'), findsOneWidget);
-    final blocked = await stored('tpl-mixed-time');
-    expect(blocked.exercises.single.sets.single.reps, 8);
-    expect(blocked.exercises.single.sets.single.seconds, 40);
-    expect(blocked.exercises.single.sets.single.mode, isNull);
-    expect(blocked.exercises.single.sets.single.loadKg, 62.55);
+  testWidgets(
+    'clearing mixed legacy duration blocks save and keeps the record',
+    (tester) async {
+      final original = await repo.saveTemplate(
+        WorkoutTemplate(
+          id: 'tpl-mixed-time',
+          name: 'Gemischt',
+          version: 1,
+          exercises: [
+            PlannedExercise(
+              id: 'ex-both',
+              exerciseKey: 'bench_press',
+              name: 'Bankdrücken',
+              sets: [
+                PlannedSet(
+                  id: 'set-both',
+                  reps: 8,
+                  seconds: 40,
+                  loadKg: 62.55,
+                  restSec: 90,
+                ),
+              ],
+            ),
+          ],
+          updatedAt: DateTime(2026, 9, 1),
+        ),
+      );
+      await openEditor(tester, template: original);
+      expect(hinted('Sek.'), findsOneWidget);
+      expect(hinted('Wdh.'), findsNothing);
+      await tester.enterText(hinted('Sek.'), '');
+      await tester.pumpAndSettle();
+      expect(find.text('Dauer fehlt.'), findsOneWidget);
+      await tester.tap(find.text('Vorlage speichern'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OpenBandTemplateEditor), findsOneWidget);
+      expect(find.text('Dauer fehlt.'), findsOneWidget);
+      final blocked = await stored('tpl-mixed-time');
+      expect(blocked.exercises.single.sets.single.reps, 8);
+      expect(blocked.exercises.single.sets.single.seconds, 40);
+      expect(blocked.exercises.single.sets.single.mode, isNull);
+      expect(blocked.exercises.single.sets.single.loadKg, 62.55);
 
-    await tester.enterText(hinted('Sek.'), '40');
-    await tester.pumpAndSettle();
-    expect(find.text('Dauer fehlt.'), findsNothing);
-    await tester.tap(find.text('Vorlage speichern'));
-    await tester.pumpAndSettle();
-    final saved = await stored('tpl-mixed-time');
-    expect(saved.exercises.single.sets.single.reps, 8);
-    expect(saved.exercises.single.sets.single.seconds, 40);
-    expect(saved.exercises.single.sets.single.mode, isNull);
-    expect(saved.exercises.single.sets.single.loadKg, 62.55);
+      await tester.enterText(hinted('Sek.'), '40');
+      await tester.pumpAndSettle();
+      expect(find.text('Dauer fehlt.'), findsNothing);
+      await tester.tap(find.text('Vorlage speichern'));
+      await tester.pumpAndSettle();
+      final saved = await stored('tpl-mixed-time');
+      expect(saved.exercises.single.sets.single.reps, 8);
+      expect(saved.exercises.single.sets.single.seconds, 40);
+      expect(saved.exercises.single.sets.single.mode, isNull);
+      expect(saved.exercises.single.sets.single.loadKg, 62.55);
+    },
+  );
+
+  testWidgets(
+    'mixed kg and lb originals roundtrip per row without relabeling',
+    (tester) async {
+      final definition = ExerciseDefinitionSnapshot(
+        id: 'custom-mixed-units',
+        label: 'Curls',
+        source: ExerciseDefinitionSource.stored,
+        version: 1,
+        mode: ExerciseCaptureMode.repetitions,
+        equipment: ExerciseEquipmentCategory.dumbbell,
+        loadBasis: ExerciseLoadBasis.perDevice,
+        deviceCount: 2,
+        repetitionBasis: ExerciseRepetitionBasis.total,
+      );
+      final pounds = 10 / kKilogramsPerPound;
+      final original = await repo.saveTemplate(
+        WorkoutTemplate(
+          id: 'tpl-mixed-units',
+          name: 'Einheiten',
+          version: 1,
+          exercises: [
+            PlannedExercise(
+              id: 'ex-mixed-units',
+              exerciseKey: definition.id,
+              name: definition.label,
+              definition: definition,
+              sets: [
+                PlannedSet(
+                  id: 'set-kg',
+                  reps: 8,
+                  loadKg: 20,
+                  load: OriginalLoadInput(
+                    value: 10,
+                    unit: ExerciseLoadUnit.kg,
+                    basis: ExerciseLoadBasis.perDevice,
+                    deviceCount: 2,
+                    repetitionBasis: ExerciseRepetitionBasis.total,
+                  ),
+                ),
+                PlannedSet(
+                  id: 'set-lb',
+                  reps: 8,
+                  loadKg: 20,
+                  load: OriginalLoadInput(
+                    value: pounds,
+                    unit: ExerciseLoadUnit.lb,
+                    basis: ExerciseLoadBasis.perDevice,
+                    deviceCount: 2,
+                    repetitionBasis: ExerciseRepetitionBasis.total,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          updatedAt: DateTime(2026, 9, 19),
+        ),
+      );
+
+      await openEditor(tester, template: original);
+      expect(find.widgetWithText(TextField, '10'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.controller?.text.startsWith('22,046') == true,
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('kg je Hantel'), findsNothing);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Einheiten'),
+        'Einheiten+',
+      );
+      await tester.tap(find.text('Vorlage speichern'));
+      await tester.pumpAndSettle();
+
+      final saved = await stored('tpl-mixed-units');
+      expect(saved.exercises.single.sets[0].load?.unit, ExerciseLoadUnit.kg);
+      expect(saved.exercises.single.sets[0].load?.value, 10);
+      expect(saved.exercises.single.sets[1].load?.unit, ExerciseLoadUnit.lb);
+      expect(saved.exercises.single.sets[1].load?.value, pounds);
+      expect(saved.exercises.single.sets.map((s) => s.loadKg), [20, 20]);
+    },
+  );
+
+  testWidgets('custom load template Paper states', (tester) async {
+    final definition = ExerciseDefinitionSnapshot(
+      id: 'custom-paper-curl',
+      label: 'Kurzhantel-Curl',
+      source: ExerciseDefinitionSource.stored,
+      version: 1,
+      mode: ExerciseCaptureMode.repetitions,
+      equipment: ExerciseEquipmentCategory.dumbbell,
+      loadBasis: ExerciseLoadBasis.perDevice,
+      deviceCount: 2,
+      repetitionBasis: ExerciseRepetitionBasis.perSide,
+    );
+    final template = WorkoutTemplate(
+      id: 'custom-paper-template',
+      name: 'Kurztraining',
+      version: 1,
+      exercises: [
+        PlannedExercise(
+          id: 'custom-paper-exercise',
+          exerciseKey: definition.id,
+          name: definition.label,
+          definition: definition,
+          sets: [
+            PlannedSet(
+              id: 'custom-paper-set',
+              reps: 8,
+              loadKg: 20,
+              load: OriginalLoadInput(
+                value: 10,
+                unit: ExerciseLoadUnit.kg,
+                basis: ExerciseLoadBasis.perDevice,
+                deviceCount: 2,
+                repetitionBasis: ExerciseRepetitionBasis.perSide,
+                side: ExerciseSetSide.both,
+              ),
+            ),
+          ],
+        ),
+      ],
+      updatedAt: DateTime(2026, 9, 19),
+    );
+    for (final state in [
+      ('light', Brightness.light, 393.0, 852.0, 1.0, 1.0),
+      ('dark', Brightness.dark, 393.0, 852.0, 1.0, 1.0),
+      ('375-2x', Brightness.light, 375.0, 812.0, 2.0, 2.0),
+    ]) {
+      await openEditor(
+        tester,
+        template: template,
+        brightness: state.$2,
+        width: state.$3,
+        height: state.$4,
+        scale: state.$5,
+        dpr: state.$6,
+      );
+      expect(find.text('Kurztraining'), findsOneWidget);
+      expect(find.text('Kurzhantel-Curl'), findsOneWidget);
+      expect(find.text('kg je Hantel · Wdh. je Seite'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '10'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '8'), findsOneWidget);
+      expect(find.text('Beide Seiten'), findsOneWidget);
+      expect(find.text('Vorlage speichern'), findsOneWidget);
+      if (state.$1 == '375-2x') {
+        final screen = tester.getRect(find.byType(MaterialApp));
+        final caption = tester.getRect(
+          find.text('kg je Hantel · Wdh. je Seite'),
+        );
+        final load = tester.getRect(find.widgetWithText(TextField, '10'));
+        final reps = tester.getRect(find.widgetWithText(TextField, '8'));
+        final minus = tester.getRect(
+          find.byKey(const ValueKey('set-remove-custom-paper-set')),
+        );
+        final save = tester.getRect(find.text('Vorlage speichern'));
+        expect(caption.right, lessThanOrEqualTo(screen.right + 0.5));
+        expect(caption.bottom, lessThanOrEqualTo(screen.bottom + 0.5));
+        expect(load.right, lessThanOrEqualTo(screen.right + 0.5));
+        expect(reps.right, lessThanOrEqualTo(screen.right + 0.5));
+        expect(minus.right, lessThanOrEqualTo(screen.right + 0.5));
+        expect((load.center.dy - minus.center.dy).abs(), lessThan(1));
+        expect((reps.center.dy - minus.center.dy).abs(), lessThan(1));
+        expect(save.bottom, lessThanOrEqualTo(screen.bottom + 0.5));
+        expect(save.right, lessThanOrEqualTo(screen.right + 0.5));
+      }
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile(
+          'openband_goldens/custom-load-template-${state.$1}.png',
+        ),
+      );
+    }
   });
 
-  testWidgets('2x mixed duration error stays below field; minus stays centered', (
-    tester,
-  ) async {
-    final original = await repo.saveTemplate(
-      WorkoutTemplate(
-        id: 'tpl-2x',
-        name: 'Altbestand',
-        version: 1,
-        exercises: [
-          PlannedExercise(
-            id: 'ex-both',
-            exerciseKey: 'bench_press',
-            name: 'Halten',
-            sets: [
-              PlannedSet(
-                id: 'set-both',
-                reps: 8,
-                seconds: 40,
-                loadKg: 62.55,
-                restSec: 90,
-              ),
-            ],
-          ),
-        ],
-        updatedAt: DateTime(2026, 9, 1),
-      ),
-    );
-    await openEditor(
-      tester,
-      template: original,
-      scale: 2,
-      width: 375,
-      height: 812,
-    );
-    await tester.enterText(hinted('Sek.'), '');
-    await tester.pumpAndSettle();
-    expect(find.text('Dauer fehlt.'), findsOneWidget);
-    final field = tester.getRect(hinted('Sek.'));
-    final minus = tester.getRect(find.byTooltip('Satz 1 entfernen'));
-    final err = tester.getRect(find.text('Dauer fehlt.'));
-    expect((field.center.dy - minus.center.dy).abs(), lessThan(1));
-    expect(err.top, greaterThan(field.bottom - 0.5));
-    expect(err.left, closeTo(field.left, 0.5));
-    expect(err.right, lessThanOrEqualTo(minus.left + 0.5));
-  });
+  testWidgets(
+    '2x mixed duration error stays below field; minus stays centered',
+    (tester) async {
+      final original = await repo.saveTemplate(
+        WorkoutTemplate(
+          id: 'tpl-2x',
+          name: 'Altbestand',
+          version: 1,
+          exercises: [
+            PlannedExercise(
+              id: 'ex-both',
+              exerciseKey: 'bench_press',
+              name: 'Halten',
+              sets: [
+                PlannedSet(
+                  id: 'set-both',
+                  reps: 8,
+                  seconds: 40,
+                  loadKg: 62.55,
+                  restSec: 90,
+                ),
+              ],
+            ),
+          ],
+          updatedAt: DateTime(2026, 9, 1),
+        ),
+      );
+      await openEditor(
+        tester,
+        template: original,
+        scale: 2,
+        width: 375,
+        height: 812,
+      );
+      await tester.enterText(hinted('Sek.'), '');
+      await tester.pumpAndSettle();
+      expect(find.text('Dauer fehlt.'), findsOneWidget);
+      final field = tester.getRect(hinted('Sek.'));
+      final minus = tester.getRect(
+        find.byKey(const ValueKey('set-remove-set-both')),
+      );
+      final err = tester.getRect(find.text('Dauer fehlt.'));
+      expect((field.center.dy - minus.center.dy).abs(), lessThan(1));
+      expect(err.top, greaterThan(field.bottom - 0.5));
+      expect(err.left, closeTo(field.left, 0.5));
+      expect(err.right, lessThanOrEqualTo(minus.left + 0.5));
+    },
+  );
 }

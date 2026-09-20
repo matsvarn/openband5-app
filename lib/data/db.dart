@@ -39,6 +39,8 @@ import 'models.dart';
 import 'nutrition_store.dart';
 import 'nutrition_targets.dart';
 import '../openband/domain.dart' show MealDraftEntry, nextMealDraftRevision;
+import '../openband/exercise_catalogue.dart';
+import '../openband/exercise_load.dart';
 import 'observation.dart';
 import 'series_codec.dart';
 
@@ -357,7 +359,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 62;
+  static const int schemaVersion = 63;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1110,6 +1112,10 @@ class LocalDb {
           // Typed exercise registry snapshot. Additive columns only.
           await _ensureExerciseDefRegistry(db);
         }
+        if (oldV < 63) {
+          // Original load + frozen definition snapshot on recorded sets.
+          await _ensureStrengthSetLoadMetadata(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1200,6 +1206,7 @@ class LocalDb {
     await _ensureLabResultReportRange(db);
     await _ensureJournalFieldDefHidden(db);
     await _ensureExerciseDefRegistry(db);
+    await _ensureStrengthSetLoadMetadata(db);
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
@@ -2017,10 +2024,18 @@ class LocalDb {
 
   /// Plan + added set/exercise ids. Throws [FormatException] on unreadable
   /// JSON instead of coercing to empty.
-  static ({Set<String> setIds, Map<String, String> setExercise, int? restSec})
+  static ({
+    Set<String> setIds,
+    Map<String, String> setExercise,
+    Map<String, String> setExerciseKey,
+    Map<String, Map<String, dynamic>> setDefinition,
+    int? restSec,
+  })
   _strengthPlanLookup(String planJson, String addedJson, String? setId) {
     final setIds = <String>{};
     final setExercise = <String, String>{};
+    final setExerciseKey = <String, String>{};
+    final setDefinition = <String, Map<String, dynamic>>{};
     final restBySet = <String, int?>{};
     void walk(Object? raw, {required bool requireExercises}) {
       final exercises = raw is Map ? raw['exercises'] : raw;
@@ -2034,6 +2049,17 @@ class LocalDb {
         final eid = e['id'] as String? ?? '';
         if (eid.isEmpty) {
           throw const FormatException('Planned exercise is missing identity.');
+        }
+        final exerciseKey = e['exerciseKey'] as String? ?? '';
+        final rawDefinition = e['definition'];
+        Map<String, dynamic>? definition;
+        if (rawDefinition != null) {
+          if (rawDefinition is! Map) {
+            throw const FormatException(
+              'Exercise definition snapshot is unreadable.',
+            );
+          }
+          definition = Map<String, dynamic>.from(rawDefinition);
         }
         final sets = e['sets'];
         if (sets is! List) {
@@ -2051,6 +2077,8 @@ class LocalDb {
             throw const FormatException('Strength plan has duplicate set ids.');
           }
           setExercise[sid] = eid;
+          setExerciseKey[sid] = exerciseKey;
+          if (definition != null) setDefinition[sid] = definition;
           restBySet[sid] = (s['restSec'] as num?)?.toInt();
         }
       }
@@ -2065,6 +2093,8 @@ class LocalDb {
     return (
       setIds: setIds,
       setExercise: setExercise,
+      setExerciseKey: setExerciseKey,
+      setDefinition: setDefinition,
       restSec: setId == null ? null : restBySet[setId],
     );
   }
@@ -2207,6 +2237,8 @@ class LocalDb {
     String? plannedSetId,
     String? exerciseId,
     int? restSec,
+    String? loadJson,
+    String? definitionJson,
   }) async {
     final db = await instance;
     await db.transaction((txn) async {
@@ -2228,6 +2260,13 @@ class LocalDb {
           exerciseId != expectedEx) {
         throw ArgumentError.value(exerciseId, 'exerciseId');
       }
+      final expectedKey = identity ? lookup.setExerciseKey[plannedSetId] : null;
+      if (identity &&
+          expectedKey != null &&
+          expectedKey.isNotEmpty &&
+          exerciseKey != expectedKey) {
+        throw ArgumentError.value(exerciseKey, 'exerciseKey');
+      }
       if (identity) {
         final existing = await txn.query(
           'strength_set',
@@ -2237,6 +2276,51 @@ class LocalDb {
           limit: 1,
         );
         if (existing.isNotEmpty) return;
+      }
+      OriginalLoadInput? load;
+      if (loadJson != null) {
+        load = OriginalLoadInput.decode(loadJson);
+      }
+      final resolvedKg = load == null
+          ? loadKg
+          : load.basis == null
+          ? loadKg
+          : resolveStoredLoadKg(input: load, loadKg: loadKg);
+      final planDefinition = identity ? lookup.setDefinition[plannedSetId] : null;
+      ExerciseDefinitionSnapshot? clientDefinition;
+      if (definitionJson != null) {
+        final decoded = jsonDecode(definitionJson);
+        if (decoded is! Map) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+        clientDefinition = ExerciseDefinitionSnapshot.fromJson(
+          Map<String, dynamic>.from(decoded),
+        );
+        if (clientDefinition.id != exerciseKey) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+      }
+      String? storedDefinitionJson;
+      if (identity && planDefinition != null) {
+        final planSnap = ExerciseDefinitionSnapshot.fromJson(planDefinition);
+        if (planSnap.id != exerciseKey) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+        if (clientDefinition != null &&
+            !customExerciseSnapshotsEqual(clientDefinition, planSnap)) {
+          throw const FormatException(
+            'Recorded definition contradicts the plan snapshot.',
+          );
+        }
+        storedDefinitionJson = jsonEncode(planSnap.toJson());
+      } else if (clientDefinition != null) {
+        storedDefinitionJson = jsonEncode(clientDefinition.toJson());
       }
       final maxRows = await txn.rawQuery(
         'SELECT MAX(seq) AS m FROM strength_set WHERE session_id = ?',
@@ -2251,12 +2335,14 @@ class LocalDb {
         'set_index': setIndex,
         'reps': reps,
         'hold_sec': holdSec,
-        'load_kg': loadKg,
+        'load_kg': resolvedKg,
         'at_ts': atTs,
         'rest_sec': resolvedRest,
         'planned_set_id': identity ? plannedSetId : null,
         'exercise_id': identity ? (exerciseId ?? expectedEx) : exerciseId,
         'note': '',
+        'load_json': loadJson,
+        'definition_json': storedDefinitionJson,
       });
       if (n == 0) {
         throw StateError('Diese Einheit läuft nicht mehr.');
@@ -5250,6 +5336,8 @@ class LocalDb {
         note TEXT NOT NULL DEFAULT '',
         planned_set_id TEXT,
         exercise_id TEXT,
+        load_json TEXT,
+        definition_json TEXT,
         PRIMARY KEY (session_id, seq)
       )
     ''');
@@ -5272,6 +5360,7 @@ class LocalDb {
       )
     ''');
     await _ensureExerciseDefRegistry(db);
+    await _ensureStrengthSetLoadMetadata(db);
   }
 
   /// Additive registry columns. Never seed presets; never rewrite timestamps.
@@ -5281,9 +5370,137 @@ class LocalDb {
     await _addColumnIfMissing(db, 'exercise_def', 'definition_json', 'TEXT');
   }
 
+  /// Additive original-load + definition snapshot on recorded sets.
+  static Future<void> _ensureStrengthSetLoadMetadata(Database db) async {
+    await _addColumnIfMissing(db, 'strength_set', 'load_json', 'TEXT');
+    await _addColumnIfMissing(db, 'strength_set', 'definition_json', 'TEXT');
+  }
+
   static Future<List<Map<String, Object?>>> exerciseDefRows() async {
     final db = await instance;
     return db.query('exercise_def');
+  }
+
+  static Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft, {
+    int? nowSec,
+  }) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? newCustomExerciseId();
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    final createdAt = nowSec ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final row = encodeCustomExerciseRow(
+      draft: draft,
+      id: id,
+      version: 1,
+      createdAt: createdAt,
+    );
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        return customExerciseCreateAgainstExisting(
+          existing: Map<String, Object?>.from(existing.first),
+          draft: draft,
+          id: id,
+        );
+      }
+      await txn.insert('exercise_def', row);
+      final stored = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      return CustomExerciseWriteResult.saved(
+        parseStoredExerciseDef(Map<String, Object?>.from(stored.first)),
+      );
+    });
+  }
+
+  static Future<CustomExerciseWriteResult> updateCustomExercise({
+    required ExerciseDefinitionSnapshot expected,
+    required CustomExerciseDraft draft,
+  }) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? expected.id;
+    if (id != expected.id) {
+      throw ArgumentError.value(draft.id, 'id');
+    }
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    final expectedVersion = expected.version;
+    if (expectedVersion == null) {
+      throw ArgumentError.notNull('expected.version');
+    }
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        return const CustomExerciseWriteResult.conflict();
+      }
+      final currentRow = Map<String, Object?>.from(existing.first);
+      ExerciseCatalogueEntry current;
+      try {
+        current = parseStoredExerciseDef(currentRow);
+      } on FormatException {
+        return const CustomExerciseWriteResult.conflict();
+      }
+      if (!isExplicitCustomExerciseRow(currentRow)) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final currentSnap = current.snapshot();
+      if (current.version != expectedVersion ||
+          !customExerciseSnapshotsEqual(currentSnap, expected)) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final createdAt = (currentRow['created_at'] as num?)?.toInt();
+      if (createdAt == null) {
+        throw const FormatException('Exercise definition is unreadable.');
+      }
+      final next = encodeCustomExerciseRow(
+        draft: draft,
+        id: id,
+        version: expectedVersion + 1,
+        createdAt: createdAt,
+        retained: current.retained,
+      );
+      next.remove('muscles_json');
+      next.remove('unilateral');
+      next.remove('key');
+      next.remove('created_at');
+      final n = await txn.update(
+        'exercise_def',
+        next,
+        where: 'key = ? AND version = ? AND source = ? AND custom = 1',
+        whereArgs: [id, expectedVersion, kCustomExerciseSource],
+      );
+      if (n != 1) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final stored = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      return CustomExerciseWriteResult.saved(
+        parseStoredExerciseDef(Map<String, Object?>.from(stored.first)),
+      );
+    });
   }
 
   /// Append the sets of one strength session, in log order. Idempotent by
@@ -5296,14 +5513,75 @@ class LocalDb {
     if (sets.isEmpty) return;
     final db = await instance;
     await db.transaction((txn) async {
+      final existingBySeq = {
+        for (final r in await txn.query(
+          'strength_set',
+          where: 'session_id = ?',
+          whereArgs: [sessionId],
+        ))
+          (r['seq'] as num).toInt(): r,
+      };
       for (var i = 0; i < sets.length; i++) {
         await txn.insert('strength_set', {
-          ...sets[i],
+          ..._preparedStrengthSetRow(
+            _mergeOmittedStrengthMetadata(sets[i], existingBySeq[i]),
+          ),
           'session_id': sessionId,
           'seq': i,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+  }
+
+  /// Omitted load/definition JSON keeps the stored origin. Explicit new JSON
+  /// replaces it. Preserved metadata is then checked against the write.
+  static Map<String, Object?> _mergeOmittedStrengthMetadata(
+    Map<String, Object?> incoming,
+    Map<String, Object?>? existing,
+  ) {
+    if (existing == null) return incoming;
+    final row = Map<String, Object?>.from(incoming);
+    if (row['load_json'] == null && existing['load_json'] != null) {
+      row['load_json'] = existing['load_json'];
+    }
+    if (row['definition_json'] == null && existing['definition_json'] != null) {
+      row['definition_json'] = existing['definition_json'];
+    }
+    return row;
+  }
+
+  /// Historic maps without metadata are unchanged. New load/definition JSON
+  /// is checked with the shared persist helpers; contradiction or malformed
+  /// input fails the whole transaction.
+  static Map<String, Object?> _preparedStrengthSetRow(Map<String, Object?> set) {
+    final row = Map<String, Object?>.from(set);
+    final loadJson = row['load_json'];
+    final definitionJson = row['definition_json'];
+    if (loadJson == null && definitionJson == null) return row;
+    if (loadJson != null) {
+      row['load_kg'] = resolveLoadKgFromStoredJson(
+        loadJson: loadJson,
+        loadKg: _strengthSetRowLoadKg(row['load_kg']),
+      );
+    }
+    if (definitionJson != null) {
+      final key = row['exercise_key'];
+      if (key is! String || key.isEmpty) {
+        throw const FormatException(
+          'Exercise definition snapshot is unreadable.',
+        );
+      }
+      requireStoredExerciseDefinitionJson(definitionJson, key);
+    }
+    return row;
+  }
+
+  static double? _strengthSetRowLoadKg(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! num || !raw.isFinite) {
+      throw const FormatException('Recorded load is unreadable.');
+    }
+    return raw.toDouble();
   }
 
   static Future<List<Map<String, Object?>>> strengthSets(
@@ -5333,6 +5611,7 @@ class LocalDb {
       '''
       SELECT st.exercise_key, st.set_index, st.reps, st.load_kg, st.hold_sec,
              st.rest_sec, st.at_ts, st.planned_set_id, st.exercise_id,
+             st.load_json, st.definition_json,
              s.id AS prior_session_id, s.start_ts AS prior_start_ts
       FROM strength_set st
       INNER JOIN sessions s ON s.id = st.session_id

@@ -618,6 +618,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   final Map<String, List<RecordedSet>> _liveSets = {};
+  final Map<String, Map<String, Object?>> _exerciseDefs = {};
   final Map<String, _SyntheticStrength> _strength = {};
   String? _activeStrengthId;
   final List<LabDraw> _labResults = [];
@@ -904,6 +905,12 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw ArgumentError.value(set.exerciseId, 'exerciseId');
     }
     if (identity &&
+        lookup.setExerciseKey[set.plannedSetId] != null &&
+        lookup.setExerciseKey[set.plannedSetId]!.isNotEmpty &&
+        set.exerciseKey != lookup.setExerciseKey[set.plannedSetId]) {
+      throw ArgumentError.value(set.exerciseKey, 'exerciseKey');
+    }
+    if (identity &&
         runtime.recorded.any((s) => s.plannedSetId == set.plannedSetId)) {
       return;
     }
@@ -911,18 +918,26 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     if (restSec == null && identity) {
       restSec = lookup.restBySet[set.plannedSetId!];
     }
+    final bound = bindRecordedStrengthSet(
+      set: set,
+      planExerciseId: identity ? lookup.setExercise[set.plannedSetId] : null,
+      planExerciseKey: identity ? lookup.setExerciseKey[set.plannedSetId] : null,
+      planDefinition: identity ? lookup.setDefinition[set.plannedSetId] : null,
+    );
     final stored = RecordedSet(
-      exerciseKey: set.exerciseKey,
-      setIndex: set.setIndex,
-      reps: set.reps,
-      seconds: set.seconds,
-      loadKg: set.loadKg,
-      at: set.at,
-      plannedSetId: identity ? set.plannedSetId : null,
+      exerciseKey: bound.exerciseKey,
+      setIndex: bound.setIndex,
+      reps: bound.reps,
+      seconds: bound.seconds,
+      loadKg: bound.loadKg,
+      at: bound.at,
+      plannedSetId: identity ? bound.plannedSetId : null,
       exerciseId: identity
-          ? (set.exerciseId ?? lookup.setExercise[set.plannedSetId])
-          : set.exerciseId,
+          ? (bound.exerciseId ?? lookup.setExercise[set.plannedSetId])
+          : bound.exerciseId,
       restSec: restSec,
+      load: bound.load,
+      definition: bound.definition,
     );
     runtime.recorded.add(stored);
     runtime.restEndsAt = restSec != null && restSec > 0
@@ -1085,20 +1100,32 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   ({
     Set<String> setIds,
     Map<String, String> setExercise,
+    Map<String, String> setExerciseKey,
+    Map<String, ExerciseDefinitionSnapshot> setDefinition,
     Map<String, int?> restBySet,
   })
   _syntheticPlanLookup(_SyntheticStrength runtime) {
     final setIds = <String>{};
     final setExercise = <String, String>{};
+    final setExerciseKey = <String, String>{};
+    final setDefinition = <String, ExerciseDefinitionSnapshot>{};
     final restBySet = <String, int?>{};
     for (final e in [...runtime.plan.exercises, ...runtime.added]) {
       for (final s in e.sets) {
         setIds.add(s.id);
         setExercise[s.id] = e.id;
+        setExerciseKey[s.id] = e.exerciseKey;
+        if (e.definition != null) setDefinition[s.id] = e.definition!;
         restBySet[s.id] = s.restSec;
       }
     }
-    return (setIds: setIds, setExercise: setExercise, restBySet: restBySet);
+    return (
+      setIds: setIds,
+      setExercise: setExercise,
+      setExerciseKey: setExerciseKey,
+      setDefinition: setDefinition,
+      restBySet: restBySet,
+    );
   }
 
   @override
@@ -1138,7 +1165,84 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<ExerciseCatalogue> readExerciseCatalogue() async =>
-      assembleExerciseCatalogue(const []);
+      assembleExerciseCatalogue(_exerciseDefs.values);
+
+  @override
+  Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft,
+  ) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? newCustomExerciseId();
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    if (_exerciseDefs.containsKey(id)) {
+      return customExerciseCreateAgainstExisting(
+        existing: _exerciseDefs[id]!,
+        draft: draft,
+        id: id,
+      );
+    }
+    final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final row = encodeCustomExerciseRow(
+      draft: draft,
+      id: id,
+      version: 1,
+      createdAt: createdAt,
+    );
+    _exerciseDefs[id] = row;
+    return CustomExerciseWriteResult.saved(parseStoredExerciseDef(row));
+  }
+
+  @override
+  Future<CustomExerciseWriteResult> updateCustomExercise({
+    required ExerciseDefinitionSnapshot expected,
+    required CustomExerciseDraft draft,
+  }) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? expected.id;
+    if (id != expected.id) {
+      throw ArgumentError.value(draft.id, 'id');
+    }
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    final expectedVersion = expected.version;
+    if (expectedVersion == null) {
+      throw ArgumentError.notNull('expected.version');
+    }
+    final currentRow = _exerciseDefs[id];
+    if (currentRow == null) {
+      return const CustomExerciseWriteResult.conflict();
+    }
+    ExerciseCatalogueEntry current;
+    try {
+      current = parseStoredExerciseDef(currentRow);
+    } on FormatException {
+      return const CustomExerciseWriteResult.conflict();
+    }
+    if (!isExplicitCustomExerciseRow(currentRow)) {
+      return CustomExerciseWriteResult.conflict(current);
+    }
+    if (current.version != expectedVersion ||
+        !customExerciseSnapshotsEqual(current.snapshot(), expected)) {
+      return CustomExerciseWriteResult.conflict(current);
+    }
+    final createdAt = (currentRow['created_at'] as num?)?.toInt();
+    if (createdAt == null) {
+      throw const FormatException('Exercise definition is unreadable.');
+    }
+    final next = encodeCustomExerciseRow(
+      draft: draft,
+      id: id,
+      version: expectedVersion + 1,
+      createdAt: createdAt,
+      retained: current.retained,
+    );
+    next['created_at'] = createdAt;
+    _exerciseDefs[id] = next;
+    return CustomExerciseWriteResult.saved(parseStoredExerciseDef(next));
+  }
 
   @override
   Future<List<FoodHit>> searchFoods(String query) async {

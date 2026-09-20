@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/template_editor.dart';
@@ -75,6 +76,24 @@ class _CatRepo extends SyntheticOpenBandRepository {
     if (failCatalogue) throw StateError('fail');
     return catalogue;
   }
+
+  @override
+  Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft,
+  ) async {
+    final result = await super.createCustomExercise(draft);
+    if (result.saved && result.current != null) {
+      catalogue = ExerciseCatalogue(
+        entries: [
+          for (final e in catalogue.entries)
+            if (e.id != result.current!.id) e,
+          result.current!,
+        ],
+        unreadableCount: catalogue.unreadableCount,
+      );
+    }
+    return result;
+  }
 }
 
 void main() {
@@ -107,6 +126,8 @@ void main() {
     double width = 393,
     double height = 852,
     double dpr = 1,
+    bool createOnOpen = false,
+    ExerciseCaptureMode? initialCreateMode,
   }) async {
     repo ??= _CatRepo();
     tester.view.devicePixelRatio = dpr;
@@ -132,6 +153,8 @@ void main() {
         home: OpenBandExercisePicker(
           repository: repo,
           existingExerciseIds: existing,
+          createOnOpen: createOnOpen,
+          initialCreateMode: initialCreateMode,
         ),
       ),
     );
@@ -861,5 +884,70 @@ void main() {
       find.byType(OpenBandTemplateEditor),
       matchesGoldenFile('openband_goldens/exercise-legacy-error-dark.png'),
     );
+  });
+
+  testWidgets('header plus and empty search open the editor', (tester) async {
+    await pumpPicker(tester);
+    await tester.tap(find.byTooltip('Eigene Übung'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsOneWidget);
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Ausfallschritte',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exercise-create-search')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsOneWidget);
+  });
+
+  testWidgets('createOnOpen pushes typed editor once then returns unselected', (
+    tester,
+  ) async {
+    await pumpPicker(
+      tester,
+      createOnOpen: true,
+      initialCreateMode: ExerciseCaptureMode.time,
+    );
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsOneWidget);
+    expect(find.text('Haltezeit'), findsOneWidget);
+    expect(find.byKey(const ValueKey('custom-exercise-reps')), findsNothing);
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExercisePicker), findsOneWidget);
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsNothing);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    await tester.tap(find.byTooltip('Eigene Übung'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsOneWidget);
+    expect(find.text('Haltezeit'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('custom-exercise-mode')),
+        matching: find.text('Auswählen'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('generic picker does not auto-open the editor', (tester) async {
+    await pumpPicker(tester);
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsNothing);
+    expect(find.byType(OpenBandExercisePicker), findsOneWidget);
+  });
+
+  testWidgets('unknown row still omits invented load lines', (tester) async {
+    await pumpPicker(
+      tester,
+      repo: _CatRepo(catalogue: fiveCatalogue(extra: [unknownRow()])),
+    );
+    expect(find.textContaining('je Hantel'), findsNothing);
+    expect(find.textContaining('Wdh.'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('exercise-open-imported_row')));
+    await tester.pumpAndSettle();
+    expect(find.text('Gewichtsangabe'), findsNothing);
+    expect(find.text('Nicht festgelegt'), findsOneWidget);
   });
 }
