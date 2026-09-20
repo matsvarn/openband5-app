@@ -278,7 +278,27 @@
     "44Y4-0": "A07b Ernährung · Entwurf nicht gespeichert",
     "44ZZ-0": "A07b Ernährung · Entwurf nicht gespeichert · Dunkel",
     "4528-0": "A07b Ernährung · Tag · 375",
-    "456E-0": "A07b Ernährung · Tag · 375 Dunkel"
+    "456E-0": "A07b Ernährung · Tag · 375 Dunkel",
+    "45B3-0": "A02 Schlaf · Heute Nacht",
+    "45CE-0": "A02 Schlaf · Heute Nacht · Dunkel",
+    "45DK-0": "A02 Schlaf · Heute Nacht · Fehlend",
+    "45L6-0": "A02 Schlaf · Heute Nacht · Fehlend Dunkel",
+    "45EQ-0": "A02 Schlaf · Heute Nacht · Teilweise",
+    "45MC-0": "A02 Schlaf · Heute Nacht · Teilweise Dunkel",
+    "45H4-0": "A02 Schlaf · Heute Nacht · Ladefehler",
+    "45NJ-0": "A02 Schlaf · Heute Nacht · Ladefehler Dunkel",
+    "45FY-0": "A02 Schlaf · Heute Nacht · Große Schrift",
+    "45K0-0": "A02 Schlaf · Heute Nacht · Große Schrift Dunkel",
+    "45ID-0": "A02 Schlaf · Heute Nacht · Info",
+    "45OR-0": "A02 Schlaf · Heute Nacht · Info Dunkel",
+    "45QI-0": "A02 Schlaf · Heute Nacht · Veraltet",
+    "45RO-0": "A02 Schlaf · Heute Nacht · Veraltet Dunkel",
+    "45SU-0": "A02 Schlaf · Heute Nacht · Aktualität unbekannt",
+    "45U0-0": "A02 Schlaf · Heute Nacht · Aktualität unbekannt Dunkel",
+    "45V6-0": "A02 Schlaf · Heute Nacht · Nicht lesbar",
+    "45WC-0": "A02 Schlaf · Heute Nacht · Nicht lesbar Dunkel",
+    "45XI-0": "A02 Schlaf · Heute Nacht · Belastung fehlt",
+    "45YO-0": "A02 Schlaf · Heute Nacht · Belastung fehlt Dunkel"
   },
   "blocks": [
     {
@@ -1514,8 +1534,8 @@
     {
       "name": "OBSettingsRow.value",
       "paperNode": "3MB6-0",
-      "widget": "_ValueRow",
-      "file": "notification_settings.dart",
+      "widget": "OBSettingsValueRow",
+      "file": "settings_controls.dart",
       "usedIn": [
         "3L8J-0",
         "3LCD-0",
@@ -1523,9 +1543,32 @@
         "3MDT-0",
         "3MGR-0",
         "3MZ0-0",
-        "3N2G-0"
+        "3N2G-0",
+        "45B3-0",
+        "45CE-0",
+        "45DK-0",
+        "45L6-0",
+        "45EQ-0",
+        "45MC-0",
+        "45H4-0",
+        "45NJ-0",
+        "45FY-0",
+        "45K0-0",
+        "45ID-0",
+        "45OR-0",
+        "45QI-0",
+        "45RO-0",
+        "45SU-0",
+        "45U0-0",
+        "45V6-0",
+        "45WC-0",
+        "45XI-0",
+        "45YO-0"
       ],
-      "notes": "Value row opens an explicit choice sheet; no hidden cycling."
+      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron.",
+      "variantPaperNodes": {
+        "comfortable": "45C7-0"
+      }
     },
     {
       "name": "OBSettingsChoiceSheet",
@@ -1877,9 +1920,11 @@
         "3TXE-0",
         "3U2N-0",
         "4069-0",
-        "40BJ-0"
+        "40BJ-0",
+        "45ID-0",
+        "45OR-0"
       ],
-      "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x."
+      "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x. Body width is bounded; shared action radius16 matches OBAction."
     },
     {
       "name": "OBJournalChip",
@@ -2172,10 +2217,67 @@
         "44Y4-0",
         "44ZZ-0"
       ]
+    },
+    {
+      "name": "OBSleepNeedSummary",
+      "paperNode": "45AL-0",
+      "widget": "OpenBandSleepPlan",
+      "file": "sleep_plan.dart",
+      "usedIn": [
+        "45B3-0",
+        "45CE-0",
+        "45DK-0",
+        "45L6-0",
+        "45EQ-0",
+        "45MC-0",
+        "45H4-0",
+        "45NJ-0",
+        "45FY-0",
+        "45K0-0",
+        "45ID-0",
+        "45OR-0",
+        "45QI-0",
+        "45RO-0",
+        "45SU-0",
+        "45U0-0",
+        "45V6-0",
+        "45WC-0",
+        "45XI-0",
+        "45YO-0"
+      ],
+      "notes": "Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Unknowns, partial contributions and stale data remain explicit. No prior-night attainment."
+    },
+    {
+      "name": "OBSleepSchedule",
+      "paperNode": "45AS-0",
+      "widget": "_TimesRow",
+      "file": "sleep_plan.dart",
+      "usedIn": [
+        "45B3-0",
+        "45CE-0",
+        "45DK-0",
+        "45L6-0",
+        "45EQ-0",
+        "45MC-0",
+        "45H4-0",
+        "45NJ-0",
+        "45FY-0",
+        "45K0-0",
+        "45ID-0",
+        "45OR-0",
+        "45QI-0",
+        "45RO-0",
+        "45SU-0",
+        "45U0-0",
+        "45V6-0",
+        "45WC-0",
+        "45XI-0",
+        "45YO-0"
+      ],
+      "notes": "Stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
     }
   ],
   "openBlocks": [
-    "OBSleepSchedule",
     "Sport pictogram set (custom, Lucide grid)"
   ],
   "status": {

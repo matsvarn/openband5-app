@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
 
 import '../data/db.dart';
 import '../data/journal_fields.dart';
@@ -1624,6 +1625,171 @@ class LocalOpenBandRepository implements OpenBandRepository {
           (row['updated_at'] as num).toInt(),
         ),
       );
+
+  @override
+  Future<SleepPlanSnapshot> readSleepPlan(String day, {DateTime? now}) async {
+    _requireDay(day);
+    final clock = now ?? DateTime.now();
+    final today = todayLabel(clock);
+    if (day != today) {
+      return SleepPlanSnapshot.unavailable(day, today);
+    }
+    final db = await LocalDb.instance;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday'],
+        limit: 1,
+      );
+      Map<String, dynamic>? artifact;
+      var unreadable = false;
+      if (rows.isEmpty) {
+        artifact = null;
+      } else {
+        final raw = rows.first['payload_json'];
+        if (raw is! String || raw.isEmpty) {
+          unreadable = true;
+        } else {
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map<String, dynamic>) {
+              artifact = decoded;
+            } else if (decoded is Map) {
+              artifact = decoded.cast<String, dynamic>();
+            } else {
+              unreadable = true;
+            }
+          } on FormatException {
+            unreadable = true;
+          }
+        }
+      }
+      final window = sleepPlanContributingDays(artifact, planDay: today);
+      final observations = await _sleepPlanObservations(txn, window ?? const []);
+      final fetchDays = [
+        for (final row in observations)
+          if (row.inFetchWindow) row.day,
+      ];
+      final sleepDays = <String>{
+        ...?window,
+        ...fetchDays,
+      }.toList();
+      final jobs = await _sleepPlanJobs(
+        txn,
+        sleepDays: sleepDays,
+        napDay: today,
+      );
+      return sleepPlanFromStoredCrossday(
+        requestedDay: day,
+        now: clock,
+        algoVersion: kAlgoVersion,
+        artifact: artifact,
+        unreadable: unreadable,
+        jobs: jobs,
+        contributingDays: window,
+        observations: observations,
+      );
+    });
+  }
+
+  Future<List<SleepPlanDayObservation>> _sleepPlanObservations(
+    DatabaseExecutor txn,
+    List<String> contributing,
+  ) async {
+    const servedJoin =
+        'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result '
+        'WHERE algo_version <= ? GROUP BY day_id) m '
+        'ON r.day_id = m.day_id AND r.algo_version = m.v';
+    const columns = 'SELECT r.day_id, r.computed_at, r.skipped FROM day_result r ';
+    final fetch = await txn.rawQuery(
+      '$columns $servedJoin ORDER BY r.day_id DESC LIMIT ?',
+      [kAlgoVersion, kSleepPlanProducerFetchLimit],
+    );
+    final byDay = <String, SleepPlanDayObservation>{};
+    void add(Map<String, Object?> row, {required bool inFetchWindow}) {
+      final dayId = row['day_id'];
+      if (dayId is! String || dayId.isEmpty) return;
+      final prev = byDay[dayId];
+      byDay[dayId] = SleepPlanDayObservation(
+        day: dayId,
+        computedAtMs: sleepPlanMillis(row['computed_at']),
+        skipped: (row['skipped'] as num?)?.toInt() == 1,
+        inFetchWindow: inFetchWindow || (prev?.inFetchWindow ?? false),
+      );
+    }
+
+    for (final row in fetch) {
+      add(row, inFetchWindow: true);
+    }
+    final extra = [
+      for (final day in contributing)
+        if (!byDay.containsKey(day)) day,
+    ];
+    if (extra.isNotEmpty) {
+      final placeholders = List.filled(extra.length, '?').join(',');
+      final rows = await txn.rawQuery(
+        '$columns $servedJoin WHERE r.day_id IN ($placeholders)',
+        [kAlgoVersion, ...extra],
+      );
+      for (final row in rows) {
+        add(row, inFetchWindow: false);
+      }
+    }
+    return byDay.values.toList();
+  }
+
+  Future<List<SleepPlanInputJob>> _sleepPlanJobs(
+    DatabaseExecutor txn, {
+    required List<String> sleepDays,
+    required String napDay,
+  }) async {
+    final jobs = <SleepPlanInputJob>[];
+    if (sleepDays.isNotEmpty) {
+      final placeholders = List.filled(sleepDays.length, '?').join(',');
+      final corrections = await txn.rawQuery(
+        'SELECT c.day_id AS day_id, j.status AS status, '
+        'j.result_computed_at AS result_computed_at '
+        'FROM openband_sleep_correction c '
+        'LEFT JOIN openband_calculation_job j ON j.day_id = c.day_id '
+        'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+        'WHERE c.day_id IN ($placeholders)',
+        sleepDays,
+      );
+      final allowed = sleepDays.toSet();
+      for (final row in corrections) {
+        final dayId = row['day_id'];
+        if (dayId is! String || !allowed.contains(dayId)) continue;
+        jobs.add(
+          SleepPlanInputJob(
+            day: dayId,
+            kind: SleepPlanJobKind.sleepCorrection,
+            status: row['status']?.toString() ?? 'pending',
+            resultComputedAtMs: sleepPlanMillis(row['result_computed_at']),
+          ),
+        );
+      }
+    }
+    final naps = await txn.query(
+      'nap_recalc_job',
+      columns: ['day_id', 'status', 'result_computed_at'],
+      where: 'day_id = ?',
+      whereArgs: [napDay],
+    );
+    for (final row in naps) {
+      final dayId = row['day_id'];
+      if (dayId is! String || dayId != napDay) continue;
+      jobs.add(
+        SleepPlanInputJob(
+          day: dayId,
+          kind: SleepPlanJobKind.napRecalc,
+          status: row['status']?.toString() ?? 'pending',
+          resultComputedAtMs: sleepPlanMillis(row['result_computed_at']),
+        ),
+      );
+    }
+    return jobs;
+  }
 
   @override
   Future<NutritionTargetSnapshot> readNutritionTargets(String day) async {

@@ -1926,6 +1926,14 @@ class _DeriveScope {
 /// One (date, value) sample of a baseline series.
 typedef _DatedValue = ({String date, double value});
 
+/// The exact day-result snapshot handed to the cross-day producer.
+///
+/// [readStartedAtMs] is captured before the source query, not when the compact
+/// artifact is encoded or when the output is built. Keeping it beside [days]
+/// prevents cached input reuse from silently replacing the source boundary.
+typedef _CrossDayInputSnapshot =
+    ({List<Map<String, dynamic>> days, int readStartedAtMs});
+
 class _BaselineHistoryCache {
   _BaselineHistoryCache(this._series);
 
@@ -4865,28 +4873,99 @@ class DerivationEngine {
   ///
   /// An artifact with no `built_for_day` (written before this field existed)
   /// cannot be SHOWN to be fresh, so it is rebuilt rather than assumed fresh.
-  static bool crossDayArtifactUsableToday(Object? decoded, String today) {
-    if (decoded is! Map) return false;
-    if (decoded['days'] is! List) return false;
+  static bool crossDayArtifactUsableToday(
+    Object? decoded,
+    String today, {
+    int? nowMs,
+  }) =>
+      crossDayInputReadStartedAtMs(decoded, today, nowMs: nowMs) != null;
+
+  /// The source-read boundary carried by a reusable cross-day input artifact.
+  ///
+  /// Returning the value (rather than only a boolean) lets the cache consumer
+  /// carry the exact persisted boundary forward without re-stamping it. The
+  /// optional clock is a narrow deterministic seam for boundary tests.
+  @visibleForTesting
+  static int? crossDayInputReadStartedAtMs(
+    Object? decoded,
+    String today, {
+    int? nowMs,
+  }) {
+    if (decoded is! Map) return null;
+    if (decoded['days'] is! List) return null;
     // The artifact stamps `algo_version` and this gate used to ignore it, so a
     // version bump that CHANGES THE ROW SHAPE (a new per-day field, e.g.
     // `hourly_hr`) was served from the pre-bump artifact for the rest of the
     // day — the new cross-day family silently saw nothing on the very pass the
     // bump existed to trigger. A shape the current code did not write is not
     // reusable, whatever day it was built for.
-    if ((decoded['algo_version'] as num?)?.toInt() != kAlgoVersion) return false;
+    final algoVersion = decoded['algo_version'];
+    if (algoVersion is! num || algoVersion != kAlgoVersion) return null;
     final builtFor = decoded['built_for_day'];
-    return builtFor is String && builtFor.isNotEmpty && builtFor == today;
+    if (builtFor is! String || builtFor.isEmpty || builtFor != today) return null;
+    final clockMs = nowMs ?? DateTime.now().millisecondsSinceEpoch;
+    final readStartedAtMs = _positiveWholeMs(
+      decoded['input_read_started_at_ms'],
+    );
+    if (readStartedAtMs == null ||
+        !_crossDayReadBoundaryUsable(readStartedAtMs, today, clockMs)) {
+      return null;
+    }
+    return readStartedAtMs;
   }
+
+  static int? _positiveWholeMs(Object? value) {
+    if (value is! num || !value.isFinite || value <= 0) return null;
+    if (value != value.roundToDouble()) return null;
+    return value.toInt();
+  }
+
+  static bool _crossDayReadBoundaryUsable(
+    int readStartedAtMs,
+    String day,
+    int clockMs,
+  ) {
+    if (readStartedAtMs <= 0 || readStartedAtMs > clockMs) return false;
+    final readDay = dayLabelOf(
+      DateTime.fromMillisecondsSinceEpoch(readStartedAtMs),
+    );
+    final clockDay = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(clockMs));
+    return readDay == day && clockDay == day;
+  }
+
+  /// Runs the real cached-input/output orchestration in provenance tests.
+  @visibleForTesting
+  Future<void> debugRunCrossDay(PersonalProfile profile) =>
+      _runCrossDay(profile);
 
   Future<void> _runCrossDay(PersonalProfile profile) async {
     try {
-      final days = await _crossDayInputDays();
+      final input = await _crossDayInputDays();
+      final days = input.days;
       if (days.length < 3) {
         _log('crossday: only ${days.length} usable day(s) — skip');
         return;
       }
-      final profileMap = profile.forDate(DateTime.parse(LocalDb.localDayLabelNow())).toMap();
+      // This is the output build boundary, kept in milliseconds for provenance
+      // validation even though the existing public build stamp stays seconds.
+      // Comparing the source ms stamp to `built_at_epoch * 1000` would reject a
+      // legitimate read and build in the same second due to truncation.
+      final outputBuildStartedAtMs = DateTime.now().millisecondsSinceEpoch;
+      final builtForDay = dayLabelOf(
+        DateTime.fromMillisecondsSinceEpoch(outputBuildStartedAtMs),
+      );
+      if (!_crossDayReadBoundaryUsable(
+        input.readStartedAtMs,
+        builtForDay,
+        outputBuildStartedAtMs,
+      )) {
+        throw StateError(
+          'crossday input read boundary is future or from another local day',
+        );
+      }
+      final profileMap = profile
+          .forDate(DateTime.parse(builtForDay))
+          .toMap();
       // Her own logged cycle starts. Read on the DB-owning isolate (sqflite),
       // passed in as plain strings so the bundle stays pure. Only `start`
       // markers — the other kinds are not what a cycle is counted from.
@@ -4911,8 +4990,7 @@ class DerivationEngine {
       // PREVIOUS version's answers with nothing on screen to say so. Same
       // defect as `crossDayArtifactUsableToday` guards on the INPUT artifact,
       // one layer up on the output.
-      final builtForDay = LocalDb.localDayLabelNow();
-      final builtAtEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final builtAtEpoch = outputBuildStartedAtMs ~/ 1000;
       final (bundleJson, dropped) = await _runIsolateCancellable(
         () {
           final bundle =
@@ -4924,7 +5002,8 @@ class DerivationEngine {
                 )
                 ..['algo_version'] = kAlgoVersion
                 ..['built_for_day'] = builtForDay
-                ..['built_at_epoch'] = builtAtEpoch;
+                ..['built_at_epoch'] = builtAtEpoch
+                ..['input_read_started_at_ms'] = input.readStartedAtMs;
           // Encode-safety BEFORE jsonEncode, never a try/catch around it: one
           // non-finite leaf must cost that leaf, not the whole artifact.
           final paths = <String>[];
@@ -4991,22 +5070,33 @@ class DerivationEngine {
     return out;
   }
 
-  Future<List<Map<String, dynamic>>> _crossDayInputDays() async {
+  Future<_CrossDayInputSnapshot> _crossDayInputDays() async {
     final artifact = await LocalDb.baseline('crossday_input');
     final raw = artifact?['payload_json'];
     if (raw is String && raw.isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        final today = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(nowMs));
         // Day-gated, NOT just well-formed. The rows carry `is_today`, which is a
         // fact about the day the artifact was BUILT on; serving them on a later
         // day makes `_todayNum` read yesterday's strain and nap minutes as
-        // today's (§3.3). See [crossDayArtifactUsableToday].
-        if (crossDayArtifactUsableToday(decoded, LocalDb.localDayLabelNow())) {
+        // today's (§3.3). See [crossDayArtifactUsableToday]. The parser returns
+        // the persisted source boundary so cache reuse cannot re-stamp it.
+        final readStartedAtMs = crossDayInputReadStartedAtMs(
+          decoded,
+          today,
+          nowMs: nowMs,
+        );
+        if (readStartedAtMs != null) {
           final rows = (decoded as Map)['days'] as List;
-          return [
-            for (final row in rows)
-              if (row is Map) row.cast<String, dynamic>(),
-          ];
+          return (
+            days: [
+              for (final row in rows)
+                if (row is Map) row.cast<String, dynamic>(),
+            ],
+            readStartedAtMs: readStartedAtMs,
+          );
         }
       } catch (_) {
         // Fall through to rebuild from day_result.
@@ -5015,7 +5105,7 @@ class DerivationEngine {
     return _refreshCrossDayInputArtifact();
   }
 
-  Future<List<Map<String, dynamic>>> _refreshCrossDayInputArtifact() async {
+  Future<_CrossDayInputSnapshot> _refreshCrossDayInputArtifact() async {
     // The DB read itself must stay on the main isolate (sqflite), but
     // decoding up to _crossDayWindow (90) full day payloads + re-encoding
     // them was previously ALL synchronous main-isolate work with zero
@@ -5023,8 +5113,13 @@ class DerivationEngine {
     // hang (Crashlytics jank_watchdog), since _refreshBaselines calls this
     // unconditionally on every heavy pass. _decodeBundle/_crossDayRecord are
     // both static, so this whole transform+encode step is isolate-safe.
+    // This timestamp is deliberately the final operation before the query: it
+    // is a lower bound on the source snapshot, not transform/persist/build time.
+    final inputReadStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final rows = await LocalDb.recentDayResults(_crossDayWindow);
-    final today = LocalDb.localDayLabelNow();
+    final today = dayLabelOf(
+      DateTime.fromMillisecondsSinceEpoch(inputReadStartedAtMs),
+    );
     final (days, json) = await _runIsolateCancellable(() {
       final days = <Map<String, dynamic>>[];
       for (final row in rows.reversed) {
@@ -5062,12 +5157,13 @@ class DerivationEngine {
         jsonEncode({
           'algo_version': kAlgoVersion,
           'built_for_day': today,
+          'input_read_started_at_ms': inputReadStartedAtMs,
           'days': days,
         })
       );
     }, _crossDayTimeout, label: 'crossday-input');
     await LocalDb.putBaseline('crossday_input', json);
-    return days;
+    return (days: days, readStartedAtMs: inputReadStartedAtMs);
   }
 
   // ── notifications generator ─────────────────────────────────────────────────

@@ -78,6 +78,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, double> _strainByDay = {};
   WeekendSleepEstimate? weekendEstimate;
   SetupEvaluation? setupEvaluation;
+  Map<String, dynamic>? sleepPlanArtifact;
+  List<SleepPlanInputJob> sleepPlanJobs = const [];
+  List<SleepPlanDayObservation> sleepPlanObservations = const [];
+  bool failSleepPlanRead = false;
+  DateTime Function() sleepPlanNow = DateTime.now;
   bool failSetupEvaluation = false;
   bool failSleepGoalRead = false;
   bool failSleepGoalWrite = false;
@@ -2374,6 +2379,24 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw StateError('synthetic sleep goal write failure');
     }
     _writeSleepGoal(day, null);
+  }
+
+  @override
+  Future<SleepPlanSnapshot> readSleepPlan(String day, {DateTime? now}) async {
+    if (failSleepPlanRead) {
+      throw StateError('synthetic sleep plan read failure');
+    }
+    if (!isLabCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    return sleepPlanFromStoredCrossday(
+      requestedDay: day,
+      now: now ?? sleepPlanNow(),
+      algoVersion: kAlgoVersion,
+      artifact: sleepPlanArtifact,
+      jobs: sleepPlanJobs,
+      observations: sleepPlanObservations,
+    );
   }
 
   SleepGoalPeriod? _sleepGoalAsOf(String day) {

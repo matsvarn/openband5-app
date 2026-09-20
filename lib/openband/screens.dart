@@ -9,10 +9,12 @@ import 'daily_activity.dart';
 import 'health.dart';
 import 'metric_detail.dart';
 import 'night_signals.dart';
+import '../data/day_label.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 import 'naps.dart';
 import 'sleep_editor.dart';
 import 'sleep_goal.dart';
+import 'sleep_plan.dart';
 import 'theme.dart';
 
 class OpenBandOverview extends StatelessWidget {
@@ -965,7 +967,6 @@ class OpenBandSleep extends StatelessWidget {
       final night = day?.sleep ?? const SleepNight();
       return Scaffold(
         body: SafeArea(
-          top: false,
           child: ListView(
             key: PageStorageKey('openband.sleep.${controller.selectedDay}'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -1206,19 +1207,46 @@ class OpenBandSleep extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 OBCard(
-                  child: SetRow(
-                    LucideIcons.target,
-                    p.sleep,
-                    'Schlafziel',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => OpenBandSleepGoal(
-                          repository: controller.repository,
-                          day: controller.selectedDay,
-                          synthetic: controller.day?.synthetic == true,
+                  child: Column(
+                    children: [
+                      if (controller.selectedDay ==
+                          todayLabel(controller.now()))
+                        SetRow(
+                          LucideIcons.moon,
+                          p.sleep,
+                          'Heute Nacht',
+                          onTap: () {
+                            final day = controller.selectedDay;
+                            final now = controller.now;
+                            final synthetic =
+                                controller.day?.synthetic == true;
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => OpenBandSleepPlan(
+                                  repository: controller.repository,
+                                  day: day,
+                                  now: now,
+                                  synthetic: synthetic,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      SetRow(
+                        LucideIcons.target,
+                        p.sleep,
+                        'Schlafziel',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => OpenBandSleepGoal(
+                              repository: controller.repository,
+                              day: controller.selectedDay,
+                              synthetic: controller.day?.synthetic == true,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),

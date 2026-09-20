@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
@@ -636,7 +635,7 @@ class NotificationSettingsView extends StatelessWidget {
                           ),
                         ),
                         if (prefs.deviceEnabled)
-                          _ValueRow(
+                          OBSettingsValueRow(
                             key: const ValueKey('notif-battery'),
                             label: _s(
                               context,
@@ -839,7 +838,7 @@ class NotificationSettingsView extends StatelessWidget {
                           ),
                         ),
                         if (prefs.waterEnabled)
-                          _ValueRow(
+                          OBSettingsValueRow(
                             key: const ValueKey('notif-water-interval'),
                             label: _s(
                               context,
@@ -872,7 +871,7 @@ class NotificationSettingsView extends StatelessWidget {
                       const SizedBox(height: 12),
                       _Group(
                         children: [
-                          _ValueRow(
+                          OBSettingsValueRow(
                             key: const ValueKey('notification-relay'),
                             label: _s(
                               context,
@@ -1073,71 +1072,6 @@ class _Group extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: Column(children: children),
-      ),
-    );
-  }
-}
-
-class _ValueRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool interactive;
-  final bool chevron;
-  final VoidCallback? onTap;
-
-  const _ValueRow({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.interactive,
-    this.chevron = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final stacked = _stackControls(context);
-    final labelText = Text(label, style: p.text(15, weight: FontWeight.w500));
-    final trailing = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (value.isNotEmpty)
-          Text(value, style: p.text(15, weight: FontWeight.w600)),
-        if (chevron) ...[
-          if (value.isNotEmpty) const SizedBox(width: 4),
-          Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
-        ],
-      ],
-    );
-    final child = SizedBox(
-      width: double.infinity,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-          child: stacked
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [labelText, const SizedBox(height: 8), trailing],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: labelText),
-                    const SizedBox(width: 12),
-                    trailing,
-                  ],
-                ),
-        ),
-      ),
-    );
-    if (!interactive || onTap == null) return child;
-    return Semantics(
-      button: true,
-      label: value.isEmpty ? label : '$label, $value',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(onTap: onTap, child: child),
       ),
     );
   }

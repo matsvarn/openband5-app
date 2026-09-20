@@ -812,12 +812,15 @@
         "nativeReview": "build/ui-review/sleep-goal-20260919 (113 PNGs); build/ui-review/sleep-goal-mini-20260919 (117 PNGs). Every PNG inspected; light/dark, unset/estimate, save failure, filled editor, method disclosure and 2x text. Synthetic simulator proof."
       },
       "Übersicht und Planung": {
-        "status": "open",
-        "paperNode": "22EJ-0",
-        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
-        "source": "lib/openband/screens.dart: OpenBandSleep; lib/compute/crossday_pipeline.dart: sleep_coach",
-        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
-        "note": "Night, naps and user goal routes exist; combined planning hub and stored bedtime/need presentation remain open. Do not rebuild completed routes."
+        "status": "implemented",
+        "paperNode": "45B3-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/sleep_plan.dart; lib/openband/sleep_plan_data.dart; lib/openband/local_repository.dart; lib/compute/derivation_engine.dart; lib/openband/screens.dart",
+        "evidence": "test/openband_sleep_plan_data_test.dart; test/openband_sleep_plan_test.dart; test/crossday_artifact_freshness_test.dart; integration_test/openband_review_test.dart; 1002 required tests and45 producer tests pass; analyzer clean; manifest118blocks285screens",
+        "note": "Existing night/naps/goal routes retained; today adds Heute Nacht for the coming night. Goal opens on the following wake-day and returns without changing selected day. Historical nights never borrow the current forecast.",
+        "archivePaperNode": "22EJ-0",
+        "archivePaperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "nativeReview": "build/ui-review/sleep-plan-pro-final-20260920 (62.92s) and sleep-plan-mini-final-20260920 (78.55s):23 PNGs each, all inspected; run/frames/index reconciled. Light/dark, missing/partial/error/retry/stale/corrupt/unknown, real parent/goal/back, fully visible and tappable2x goal. Synthetic simulator proof only."
       },
       "Nachtbild · Dunkel": {
         "status": "partial",
@@ -936,20 +939,26 @@
         "note": "Current disclosure separates observed duration from score; dedicated duration explanation and removal of stale ring wording remain open."
       },
       "Schlafbedarf": {
-        "status": "open",
-        "paperNode": "2DWM-0",
-        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
-        "source": "lib/compute/crossday_pipeline.dart: sleep_coach.need; lib/openband/sleep_goal.dart",
-        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
-        "note": "Stored learned estimate is separate from implemented user goal/weekend p75. Selected-day/version gating and wrong-night attainment B136 must be resolved before this flow is implemented."
+        "status": "implemented",
+        "paperNode": "45B3-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/sleep_plan.dart; lib/openband/sleep_plan_data.dart; lib/openband/local_repository.dart; lib/compute/derivation_engine.dart; lib/openband/screens.dart",
+        "evidence": "test/openband_sleep_plan_data_test.dart; test/openband_sleep_plan_test.dart; test/crossday_artifact_freshness_test.dart; integration_test/openband_review_test.dart; 1002 required tests and45 producer tests pass; analyzer clean; manifest118blocks285screens",
+        "note": "Stored coming-night sleep_coach.need only, distinct from chosen target and prior-night duration. Current day/version, source-read timestamp, current served source rows and saved-edit freshness checked. No wrong-night attainment ratio. Legacy SleepDetail/HealthScreen are outside the current production route graph; dead UI retirement remains in the global queue.",
+        "archivePaperNode": "2DWM-0",
+        "archivePaperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "nativeReview": "build/ui-review/sleep-plan-pro-final-20260920 (62.92s) and sleep-plan-mini-final-20260920 (78.55s):23 PNGs each, all inspected; run/frames/index reconciled. Light/dark, missing/partial/error/retry/stale/corrupt/unknown, real parent/goal/back, fully visible and tappable2x goal. Synthetic simulator proof only."
       },
       "Abendplanung": {
-        "status": "open",
-        "paperNode": "2DY0-0",
-        "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
-        "source": "lib/compute/crossday_pipeline.dart: sleep_coach.bedtime, sleep_coach.wake",
-        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
-        "note": "Stored bedtime/wake envelopes exist with missing-input refusal. Typed dated read and Alpin route remain open; do not calculate a bedtime from the user target in UI."
+        "status": "implemented",
+        "paperNode": "45B3-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/sleep_plan.dart; lib/openband/sleep_plan_data.dart; lib/openband/local_repository.dart; lib/compute/derivation_engine.dart; lib/openband/screens.dart",
+        "evidence": "test/openband_sleep_plan_data_test.dart; test/openband_sleep_plan_test.dart; test/crossday_artifact_freshness_test.dart; integration_test/openband_review_test.dart; 1002 required tests and45 producer tests pass; analyzer clean; manifest118blocks285screens",
+        "note": "Stored bedtime and typical wake envelopes; no new calculation, alarm write or sleep-cycle claim. Missing clocks and contributions remain explicit. Details disclose stored model/time and absent source timezone.",
+        "archivePaperNode": "2DY0-0",
+        "archivePaperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
+        "nativeReview": "build/ui-review/sleep-plan-pro-final-20260920 (62.92s) and sleep-plan-mini-final-20260920 (78.55s):23 PNGs each, all inspected; run/frames/index reconciled. Light/dark, missing/partial/error/retry/stale/corrupt/unknown, real parent/goal/back, fully visible and tappable2x goal. Synthetic simulator proof only."
       },
       "Nachtverlauf SpO₂": {
         "status": "open",

@@ -98,6 +98,89 @@ class OBSettingsChoiceRow extends StatelessWidget {
   }
 }
 
+/// Paper 3MB6-0 compact value row: min 56, pad 10/14, 15 w500 / optional 15 w600.
+/// Comfortable: min 64, pad 14/20, label 15/20; empty value stays inline at large text.
+class OBSettingsValueRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool interactive;
+  final bool chevron;
+  final bool comfortable;
+  final VoidCallback? onTap;
+
+  const OBSettingsValueRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.interactive = true,
+    this.chevron = false,
+    this.comfortable = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final stacked =
+        _stackSettingsControls(context) && !(comfortable && value.isEmpty);
+    final labelText = Text(
+      label,
+      style: comfortable
+          ? p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15)
+          : p.text(15, weight: FontWeight.w500),
+    );
+    final trailing = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (value.isNotEmpty)
+          Text(value, style: p.text(15, weight: FontWeight.w600)),
+        if (chevron) ...[
+          if (value.isNotEmpty) const SizedBox(width: 4),
+          Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
+        ],
+      ],
+    );
+    final child = SizedBox(
+      width: double.infinity,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: comfortable ? 64 : 56),
+        child: Padding(
+          padding: comfortable
+              ? const EdgeInsets.symmetric(vertical: 14, horizontal: 20)
+              : const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          child: stacked
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [labelText, const SizedBox(height: 8), trailing],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: labelText),
+                    const SizedBox(width: 12),
+                    trailing,
+                  ],
+                ),
+        ),
+      ),
+    );
+    if (!interactive || onTap == null) return child;
+    return Semantics(
+      button: true,
+      label: value.isEmpty ? label : '$label, $value',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: comfortable
+              ? BorderRadius.circular(AlpRadius.card)
+              : null,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 /// Label + Cupertino-like switch. Shared by notification settings and any
 /// other on/off row. Schedule rows add a time well on top of this layout.
 class OBSettingsToggleRow extends StatelessWidget {

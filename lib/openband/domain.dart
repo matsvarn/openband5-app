@@ -4,9 +4,11 @@ library;
 import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import 'package:uuid/uuid.dart';
+import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
+export 'sleep_plan_data.dart';
 
 enum MetricReadiness {
   available,
@@ -2017,6 +2019,9 @@ abstract interface class OpenBandRepository {
   Future<SleepGoalSnapshot> readSleepGoal(String day);
   Future<void> saveSleepGoal(String day, int minutes);
   Future<void> clearSleepGoal(String day);
+  /// Coming night only. [now] is local-clock injectable; historical days
+  /// return unavailable and never today's forecast.
+  Future<SleepPlanSnapshot> readSleepPlan(String day, {DateTime? now});
   Future<NutritionTargetSnapshot> readNutritionTargets(String day);
   Future<List<NutritionTargetChange>> listNutritionTargetChanges();
   Future<NutritionTargetWriteResult> saveNutritionTargets(
