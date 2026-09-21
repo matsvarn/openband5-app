@@ -376,6 +376,7 @@ void main() {
     await mount(tester, settingsOnly: true);
     expect(find.text('Zyklus im Journal'), findsOneWidget);
     expect(find.text('Zeitschätzung'), findsOneWidget);
+    expect(find.text('Abstände anzeigen'), findsOneWidget);
     expect(find.text('Keine Angabe'), findsOneWidget);
     await expectLater(
       capture(),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -494,6 +496,8 @@ class OBTrendCard extends StatelessWidget {
   final int? selectedIndex;
   final ValueChanged<int>? onSelect;
   final Key? plotKey;
+  final bool bars;
+  final String Function(MetricPoint point)? pointCaption;
   const OBTrendCard({
     super.key,
     required this.label,
@@ -512,7 +516,9 @@ class OBTrendCard extends StatelessWidget {
        axisEnd = null,
        selectedIndex = null,
        onSelect = null,
-       plotKey = null;
+       plotKey = null,
+       bars = false,
+       pointCaption = null;
 
   const OBTrendCard.sourced({
     super.key,
@@ -529,6 +535,8 @@ class OBTrendCard extends StatelessWidget {
     this.onSelect,
     this.plotKey,
     this.format,
+    this.bars = false,
+    this.pointCaption,
   }) : nights = 0,
        baseline = null,
        error = false,
@@ -642,7 +650,7 @@ class OBTrendCard extends StatelessWidget {
     final pts = points ?? const <MetricPoint>[];
     final scaler = MediaQuery.textScalerOf(context);
     final stacked = scaler.scale(15) > 20;
-    final geom = _SourcedPlotGeom.of(scaler);
+    final geom = bars ? _SourcedPlotGeom.bars(scaler) : _SourcedPlotGeom.of(scaler);
     final idx = selectedIndex;
     final shown = idx != null && idx >= 0 && idx < pts.length ? pts[idx] : null;
     final raw = shown?.value;
@@ -650,8 +658,11 @@ class OBTrendCard extends StatelessWidget {
     final valueText = format?.call(value) ?? obNumber(value);
     final dateText = shown == null
         ? null
-        : DateFormat('d. MMM', 'de_DE').format(DateTime.parse(shown.day));
-    final bounds = _sourcedTrendBounds([for (final pt in pts) pt.value]);
+        : pointCaption?.call(shown) ??
+            DateFormat('d. MMM', 'de_DE').format(DateTime.parse(shown.day));
+    final bounds = bars
+        ? _sourcedBarBounds([for (final pt in pts) pt.value])
+        : _sourcedTrendBounds([for (final pt in pts) pt.value]);
     final hasPlot = bounds != null;
     final titleStyle = p.text(15, weight: FontWeight.w600);
     final coverageStyle = p
@@ -686,12 +697,54 @@ class OBTrendCard extends StatelessWidget {
     String slotPhrase(int i) {
       if (i < 0 || i >= pts.length) return 'kein Wert';
       final pt = pts[i];
-      final day = DateFormat(
-        'd. MMMM',
-        'de_DE',
-      ).format(DateTime.parse(pt.day));
+      final day = pointCaption?.call(pt) ??
+          DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(pt.day));
       if (!_trendFinite(pt.value)) return '$day, kein Wert';
       return '$day, ${format?.call(pt.value) ?? obNumber(pt.value)} $unit';
+    }
+    final dateStyle = p
+        .text(13, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 18 / 13);
+    final valueStyle = p
+        .text(28, weight: FontWeight.w800, display: true)
+        .copyWith(height: 34 / 28);
+    final unitStyle = p.text(14, weight: FontWeight.w500, color: p.muted);
+    final valueAndUnit = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text(valueText, style: valueStyle),
+        const SizedBox(width: 8),
+        Text(unit, style: unitStyle),
+      ],
+    );
+    final Widget valueBlock;
+    if (bars && stacked) {
+      valueBlock = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          valueAndUnit,
+          if (dateText != null) ...[
+            const SizedBox(height: 8),
+            Text(dateText, style: dateStyle),
+          ],
+        ],
+      );
+    } else {
+      valueBlock = Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Text(valueText, style: valueStyle),
+          const SizedBox(width: 8),
+          Text(unit, style: unitStyle),
+          if (dateText != null) ...[
+            const SizedBox(width: 12),
+            Flexible(child: Text(dateText, style: dateStyle)),
+          ],
+        ],
+      );
     }
 
     return OBCard(
@@ -700,34 +753,7 @@ class OBTrendCard extends StatelessWidget {
         spacing: 8,
         children: [
           header,
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                valueText,
-                style: p
-                    .text(28, weight: FontWeight.w800, display: true)
-                    .copyWith(height: 34 / 28),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                unit,
-                style: p.text(14, weight: FontWeight.w500, color: p.muted),
-              ),
-              if (dateText != null) ...[
-                const SizedBox(width: 12),
-                Flexible(
-                  child: Text(
-                    dateText,
-                    style: p
-                        .text(13, weight: FontWeight.w500, color: p.muted)
-                        .copyWith(height: 18 / 13),
-                  ),
-                ),
-              ],
-            ],
-          ),
+          valueBlock,
           if (hasPlot)
             Semantics(
               key: plotKey,
@@ -751,12 +777,19 @@ class OBTrendCard extends StatelessWidget {
                       void pick(Offset local) {
                         if (onSelect == null || pts.isEmpty) return;
                         onSelect!(
-                          _sourcedHitIndex(
-                            local.dx,
-                            width,
-                            pts.length,
-                            geom,
-                          ),
+                          bars
+                              ? _sourcedBarHitIndex(
+                                  local.dx,
+                                  width,
+                                  pts.length,
+                                  geom,
+                                )
+                              : _sourcedHitIndex(
+                                  local.dx,
+                                  width,
+                                  pts.length,
+                                  geom,
+                                ),
                         );
                       }
 
@@ -775,6 +808,8 @@ class OBTrendCard extends StatelessWidget {
                             p.text(12, color: p.muted),
                             scaler,
                             Directionality.of(context),
+                            bars: bars,
+                            restColor: p.muted,
                           ),
                         ),
                       );
@@ -783,18 +818,45 @@ class OBTrendCard extends StatelessWidget {
                 ),
               ),
             ),
-          if (hasPlot && axisStart != null && axisEnd != null)
+          if (hasPlot && bars && pts.length == 1 && (axisEnd ?? axisStart) != null)
+            Padding(
+              padding: EdgeInsets.only(left: geom.left, right: geom.right),
+              child: Center(
+                child: Text(
+                  axisEnd ?? axisStart!,
+                  style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                ),
+              ),
+            )
+          else if (hasPlot && axisStart != null && axisEnd != null)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  axisStart!,
-                  style: p.text(12, weight: FontWeight.w500, color: p.muted),
-                ),
-                Text(
-                  axisEnd!,
-                  style: p.text(12, weight: FontWeight.w500, color: p.muted),
-                ),
+                if (bars)
+                  Flexible(
+                    child: Text(
+                      axisStart!,
+                      style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                    ),
+                  )
+                else
+                  Text(
+                    axisStart!,
+                    style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                  ),
+                if (bars)
+                  Flexible(
+                    child: Text(
+                      axisEnd!,
+                      textAlign: TextAlign.end,
+                      style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                    ),
+                  )
+                else
+                  Text(
+                    axisEnd!,
+                    style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                  ),
               ],
             ),
         ],
@@ -840,6 +902,18 @@ bool _trendFinite(double? value) => value != null && value.isFinite;
   return (lo, hi);
 }
 
+(double, double)? _sourcedBarBounds(Iterable<double?> values) {
+  double? hi;
+  for (final value in values) {
+    if (!_trendFinite(value) || value! <= 0) continue;
+    hi = hi == null || value > hi ? value : hi;
+  }
+  if (hi == null) return null;
+  var upper = (hi / 10).ceil() * 10.0;
+  if (upper <= 0) upper = 10;
+  return (0, upper);
+}
+
 class _SourcedPlotGeom {
   const _SourcedPlotGeom({
     required this.height,
@@ -871,6 +945,19 @@ class _SourcedPlotGeom {
       bottomBaseline: 81 + 15 * (t - 1),
     );
   }
+
+  factory _SourcedPlotGeom.bars(TextScaler scaler) {
+    final t = scaler.scale(12) / 12;
+    return _SourcedPlotGeom(
+      height: 132 + 16 * (t - 1),
+      left: 28 + 16 * (t - 1),
+      right: 4 + 4 * (t - 1),
+      yTop: 12 + 18 * (t - 1),
+      yBottom: 124 + 12 * (t - 1),
+      topBaseline: 16 + 10 * (t - 1),
+      bottomBaseline: 127 + 15 * (t - 1),
+    );
+  }
 }
 
 int _sourcedHitIndex(double x, double width, int n, _SourcedPlotGeom geom) {
@@ -879,6 +966,14 @@ int _sourcedHitIndex(double x, double width, int n, _SourcedPlotGeom geom) {
   if (plotW <= 0) return 0;
   final t = ((x - geom.left) / plotW).clamp(0.0, 1.0);
   return (t * (n - 1)).round();
+}
+
+int _sourcedBarHitIndex(double x, double width, int n, _SourcedPlotGeom geom) {
+  if (n <= 1) return 0;
+  final plotW = width - geom.left - geom.right;
+  if (plotW <= 0) return 0;
+  final t = ((x - geom.left) / plotW).clamp(0.0, 1.0);
+  return (t * n).floor().clamp(0, n - 1);
 }
 
 class _TrendPainter extends CustomPainter {
@@ -893,6 +988,8 @@ class _TrendPainter extends CustomPainter {
   final TextStyle? axisStyle;
   final TextScaler? textScaler;
   final TextDirection? textDirection;
+  final bool bars;
+  final Color? restColor;
 
   _TrendPainter(
     this.points,
@@ -908,7 +1005,9 @@ class _TrendPainter extends CustomPainter {
       geom = null,
       axisStyle = null,
       textScaler = null,
-      textDirection = null;
+      textDirection = null,
+      bars = false,
+      restColor = null;
 
   _TrendPainter.sourced(
     this.points,
@@ -919,8 +1018,10 @@ class _TrendPainter extends CustomPainter {
     _SourcedPlotGeom this.geom,
     TextStyle this.axisStyle,
     TextScaler this.textScaler,
-    TextDirection this.textDirection,
-  ) : baseline = null,
+    TextDirection this.textDirection, {
+    this.bars = false,
+    this.restColor,
+  }) : baseline = null,
       tint = color,
       gap = color,
       ring = color,
@@ -931,7 +1032,11 @@ class _TrendPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (sourced) {
-      _paintSourced(canvas, size);
+      if (bars) {
+        _paintBars(canvas, size);
+      } else {
+        _paintSourced(canvas, size);
+      }
       return;
     }
     final values = [for (final p in points) if (_usable(p)) p.value!];
@@ -1064,6 +1169,50 @@ class _TrendPainter extends CustomPainter {
     label(obNumber(low), g.bottomBaseline);
   }
 
+  void _paintBars(Canvas canvas, Size size) {
+    final g = geom!;
+    final high = hi!;
+    if (high <= 0 || !high.isFinite) return;
+    final plotW = size.width - g.left - g.right;
+    if (plotW <= 0) return;
+    final n = points.length;
+    if (n <= 0) return;
+    final step = plotW / n;
+    final barW = math.min(18.0, step * 0.72);
+    final rest = restColor ?? color;
+    final span = g.yBottom - g.yTop;
+    for (var i = 0; i < n; i++) {
+      final v = points[i].value;
+      if (!_trendFinite(v) || v! <= 0) continue;
+      final h = v / high * span;
+      if (h <= 0) continue;
+      final x = n == 1 ? g.left + (plotW - barW) / 2 : g.left + i * step;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, g.yBottom - h, barW, h),
+          const Radius.circular(3),
+        ),
+        Paint()..color = i == selectedIndex ? color : rest,
+      );
+    }
+    final style = axisStyle;
+    if (style == null) return;
+    void label(String text, double baseline) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: textDirection ?? TextDirection.ltr,
+        textScaler: textScaler ?? TextScaler.noScaling,
+      )..layout();
+      final alphabetic =
+          painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+      painter.paint(canvas, Offset(0, baseline - alphabetic));
+      painter.dispose();
+    }
+
+    label(obNumber(high), g.topBaseline);
+    label(obNumber(0), g.bottomBaseline);
+  }
+
   @override
   bool shouldRepaint(covariant _TrendPainter old) =>
       old.points != points ||
@@ -1079,5 +1228,7 @@ class _TrendPainter extends CustomPainter {
       old.geom != geom ||
       old.axisStyle != axisStyle ||
       old.textScaler != textScaler ||
-      old.textDirection != textDirection;
+      old.textDirection != textDirection ||
+      old.bars != bars ||
+      old.restColor != restColor;
 }

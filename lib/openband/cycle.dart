@@ -8,6 +8,7 @@ import '../data/day_label.dart';
 import 'alp_tokens.dart';
 import 'calendar.dart';
 import 'confirm_sheet.dart';
+import 'cycle_gaps.dart';
 import 'cycle_measurements.dart';
 import 'cycle_observations.dart';
 import 'domain.dart';
@@ -287,6 +288,17 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
     if (mounted) await _load();
   }
 
+  Future<void> _openGaps() async {
+    await OpenBandCycleGaps.push(
+      context,
+      repository: _repo,
+      day: _day,
+      now: _now,
+      synthetic: widget.synthetic,
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _openHistory() async {
     var identity = _identity;
     final repo = _repo;
@@ -527,6 +539,12 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
                       value: '',
                       chevron: true,
                       onTap: _openObservations,
+                    ),
+                    OBSettingsValueRow(
+                      label: 'Abstände',
+                      value: '',
+                      chevron: true,
+                      onTap: _openGaps,
                     ),
                     OBSettingsValueRow(
                       label: 'Verlauf',
@@ -825,6 +843,22 @@ class _OpenBandCycleSettingsState extends State<OpenBandCycleSettings> {
                                 situation: settings.situation,
                                 lengthReviewEnabled:
                                     settings.lengthReviewEnabled,
+                              ),
+                            ),
+                    ),
+                    OBSettingsToggleRow(
+                      label: 'Abstände anzeigen',
+                      value: settings.lengthReviewEnabled,
+                      interactive: !_locked,
+                      onToggle: _locked
+                          ? null
+                          : () => _persist(
+                              CycleSettings(
+                                enabled: settings.enabled,
+                                estimatesEnabled: settings.estimatesEnabled,
+                                situation: settings.situation,
+                                lengthReviewEnabled:
+                                    !settings.lengthReviewEnabled,
                               ),
                             ),
                     ),
