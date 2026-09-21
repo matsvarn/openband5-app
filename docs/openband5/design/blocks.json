@@ -1178,30 +1178,43 @@
       "usedIn": [
         "3F5T-0",
         "3FVE-0",
-        "3G8S-0"
+        "3G8S-0",
+        "3HTP-0"
       ],
       "children": [
-        "OBRangePill",
         "OBStatusChip"
       ],
       "implemented": "screens.dart",
-      "notes": " Value and unit retain the Paper baseline row when they fit; at larger text or narrow widths they stack without shrinking or truncating the value."
-    },
-    {
-      "name": "OBRangePill",
-      "paperNode": "3ESW-0",
-      "widget": "OBRangePill",
-      "file": "charts.dart",
-      "replaces": "BaselineMark",
-      "notes": "Vertical track; band = baseline range; dot = today. Metric colour + tint.",
-      "implemented": "charts.dart"
+      "notes": "Borderless card, radius24, padding14, minimum112; value/unit share a baseline and stack only when needed. Null omits the unit. Compact typed night states remain visible; comparison requires current complete data and an explicitly trusted stored baseline. No invented range marker or comparison arrow.",
+      "variantPaperNodes": {
+        "current-light": "3ESH-0",
+        "current-dark": "4X0V-0",
+        "missing-light": "4X1I-0",
+        "missing-dark": "4X25-0",
+        "partial-light": "4X2S-0",
+        "partial-dark": "4X3F-0",
+        "pending-light": "4X42-0",
+        "pending-dark": "4X4P-0",
+        "failed-light": "4X5C-0",
+        "failed-dark": "4X5Z-0",
+        "older-light": "4X6M-0",
+        "older-dark": "4X79-0",
+        "open-light": "4X7W-0",
+        "open-dark": "4X8J-0",
+        "unreadable-light": "4X96-0",
+        "unreadable-dark": "4X9T-0",
+        "no-baseline-light": "4XAG-0",
+        "no-baseline-dark": "4XB3-0",
+        "large-light": "4XEE-0",
+        "large-dark": "4XF1-0"
+      }
     },
     {
       "name": "OBStatusChip",
       "paperNode": "3ESQ-0",
       "widget": "obMetricStatus",
       "file": "health.dart",
-      "notes": "Text only: '+8 über Basis' / 'im Bereich'. Never repeats the value.",
+      "notes": "Text only: '+8 über Basis', '-2 unter Basis' or 'wie Basis'. Compact cards omit an unsupported comparison; detail retains source and baseline qualification.",
       "implemented": "health.dart"
     },
     {
@@ -1217,14 +1230,20 @@
       "children": [
         "OBTrendPlot"
       ],
-      "implemented": "health.dart"
+      "implemented": "health.dart",
+      "variantPaperNodes": {
+        "partial-light": "4XH1-0",
+        "partial-dark": "4XHQ-0",
+        "historical-partial": "4XKG-0"
+      },
+      "notes": " Historical partial input is retained and qualified in the observed-count caption and semantics. No comparison claim from a partial series."
     },
     {
       "name": "OBTrendPlot",
-      "paperNode": "3ETC-0",
+      "paperNode": "4XGV-0",
       "widget": "_TrendPainter",
       "file": "health.dart",
-      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only. Plot is inline in OBTrendCard via _TrendPainter; no OBTrendPlot type.",
+      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only. Plot is inline in OBTrendCard via _TrendPainter; no OBTrendPlot type. Scalar baseline is a line, never an invented range band.",
       "implemented": "health.dart",
       "usedIn": [
         "4MX3-0",
@@ -3887,6 +3906,44 @@
         "4SQU-0"
       ],
       "notes": "Latest actual stored night, date and unit per metric; physical-unit differences from named preceding21-day and same-cycle-day means. Independent missing/refused/unreadable reference states, real counts and no significance/phase claim. Value/unit share a baseline; at large type date/caption/reference value stack without truncation. Sources and uncertainty stay in the shared disclosure."
+    },
+    {
+      "name": "OBAdaptiveValues",
+      "paperNode": "3ESE-0",
+      "widget": "OBAdaptiveValues",
+      "file": "screens.dart",
+      "implemented": "screens.dart",
+      "usedIn": [
+        "3F5T-0",
+        "3FVE-0",
+        "3G8S-0",
+        "3HTP-0"
+      ],
+      "children": [
+        "OBMetricCard"
+      ],
+      "notes": "One shared pair for Overview, Sleep and Health. Equal-width row with10gap; full-width vertical cards when scaled14px text exceeds20px. Preserves values and supports large text without shrinking.",
+      "variantPaperNodes": {
+        "current-dark": "4X0J-0",
+        "missing-light": "4X16-0",
+        "missing-dark": "4X1T-0",
+        "partial-light": "4X2G-0",
+        "partial-dark": "4X33-0",
+        "pending-light": "4X3Q-0",
+        "pending-dark": "4X4D-0",
+        "failed-light": "4X50-0",
+        "failed-dark": "4X5N-0",
+        "older-light": "4X6A-0",
+        "older-dark": "4X6X-0",
+        "open-light": "4X7K-0",
+        "open-dark": "4X87-0",
+        "unreadable-light": "4X8U-0",
+        "unreadable-dark": "4X9H-0",
+        "no-baseline-light": "4XA4-0",
+        "no-baseline-dark": "4XAR-0",
+        "large-light": "4XE2-0",
+        "large-dark": "4XEP-0"
+      }
     }
   ],
   "openBlocks": [

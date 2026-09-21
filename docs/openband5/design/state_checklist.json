@@ -923,8 +923,9 @@
         "paperNode": "25NI-0",
         "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
         "source": "lib/openband/screens.dart; lib/openband/metric_detail.dart",
-        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
-        "note": "Actual stored resting-HR card/detail is reachable from sleep. Full archive state and shared method/source/coverage detail parity remain open."
+        "evidence": "test/openband_metric_card_test.dart; test/openband_night_scalar_detail_test.dart; test/openband_night_scalar_repository_test.dart; integration_test/openband_review_test.dart night-cards flow; IMPLEMENTATION_VERIFICATION.md",
+        "note": "Stored resting-pulse card and typed night detail are reachable from Sleep with matching receipt/version/partial states and explicit baseline qualification. Full archive method/source/coverage education remains open; this entry stays partial.",
+        "nativeReview": "night-cards Pro v4 and mini20260921 verify Sleep HRV/RHR entry and back,48ms/54min fixture parity, large text and missing/partial/error distinctions. Simulator synthetic proof only."
       },
       "Deine Schlafdauer": {
         "status": "partial",
@@ -1187,9 +1188,10 @@
       "Basis und offene Werte": {
         "status": "partial",
         "archiveNode": "24SE-0",
-        "source": "lib/openband/health.dart; lib/openband/metric_detail.dart",
-        "evidence": "Archive render inspected 2026-09-21; current Health routes and metric reads inspected.",
-        "note": "Archive is a full Health hub with dated baseline, weight/body values, rhythm, retrospective and coverage destinations. HRV/RHR detail and baseline disclosures do not complete that hub. Central cross-screen receipt consistency and remaining hub actions stay open."
+        "source": "lib/openband/health.dart; lib/openband/screens.dart; lib/openband/local_repository.dart; lib/openband/night_scalar_data.dart",
+        "evidence": "test/openband_metric_card_test.dart; test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_health_test.dart; integration_test/openband_review_test.dart night-cards flow",
+        "note": "Shared Overview/Sleep/Health HRV and resting-pulse cards now use the same selected SQL scalar, correction receipt and version policy as detail. Health history preserves partial flags and version anchoring; only a trusted current baseline supports comparison, with no inferred range. Full Health hub with body values, rhythm, retrospective, coverage and method/quality destinations remains open.",
+        "nativeReview": "night-cards-pro-20260921-v4:23 checkpoints, PASS83.18s; night-cards-mini-20260921:15 affected checkpoints, PASS95.49s, all interactions retained. All38 PNGs inspected; light/dark, missing/partial/error, root/detail/back, generic strain and2x cards. Synthetic simulator proof."
       },
       "Herzintervalle · unzuverlässig": {
         "status": "partial",

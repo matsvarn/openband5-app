@@ -50,17 +50,90 @@ class DayMetric {
   final MetricReadiness readiness;
   final String? reason;
   final double? baseline;
+  /// Typed night-scalar overlay for HRV/RHR cards. Null on other metrics.
+  final NightScalarState? nightScalar;
   const DayMetric(
     this.value, {
     this.readiness = MetricReadiness.available,
     this.reason,
     this.baseline,
+    this.nightScalar,
   });
   const DayMetric.missing([this.reason])
     : value = null,
       baseline = null,
-      readiness = MetricReadiness.missing;
+      readiness = MetricReadiness.missing,
+      nightScalar = null;
 }
+
+/// Compact HRV/RHR card. Comparison [DayMetric.baseline] is only a current
+/// complete scalar with stored status `trusted`. Typed detail keeps the rest.
+DayMetric dayMetricFromNightScalar({
+  required NightScalarState state,
+  double? value,
+  StoredNightBaseline? baseline,
+}) {
+  final cardBaseline = nightScalarCardBaseline(
+    state: state,
+    baseline: baseline,
+  );
+  switch (state) {
+    case NightScalarState.pending:
+      return DayMetric(
+        null,
+        readiness: MetricReadiness.processing,
+        reason: kNightScalarPendingLabel,
+        nightScalar: state,
+      );
+    case NightScalarState.failed:
+      return DayMetric(
+        null,
+        readiness: MetricReadiness.missing,
+        reason: kNightScalarFailedLabel,
+        nightScalar: state,
+      );
+    case NightScalarState.unknown:
+    case NightScalarState.outdated:
+      return DayMetric(
+        null,
+        readiness: MetricReadiness.missing,
+        reason: kNightScalarOpenLabel,
+        nightScalar: state,
+      );
+    case NightScalarState.unreadable:
+    case NightScalarState.missing:
+      return DayMetric(
+        null,
+        readiness: MetricReadiness.missing,
+        nightScalar: state,
+      );
+    case NightScalarState.partial:
+      return DayMetric(
+        nightScalarFinite(value),
+        readiness: MetricReadiness.partial,
+        reason: 'Ein Teil der Nacht wurde nicht erfasst.',
+        nightScalar: state,
+      );
+    case NightScalarState.older:
+      return DayMetric(
+        nightScalarFinite(value),
+        readiness: MetricReadiness.available,
+        nightScalar: state,
+      );
+    case NightScalarState.current:
+      return DayMetric(
+        nightScalarFinite(value),
+        readiness: MetricReadiness.available,
+        baseline: cardBaseline,
+        nightScalar: state,
+      );
+  }
+}
+
+List<MetricPoint> nightScalarHistoryPoints(NightScalarDetail detail) => [
+  for (final n in detail.history)
+    MetricPoint(n.day, n.value, partial: n.partial),
+];
 
 class BandSnapshot {
   final BandConnection connection;
@@ -346,7 +419,8 @@ class OpenBandDay {
 class MetricPoint {
   final String day;
   final double? value;
-  const MetricPoint(this.day, this.value);
+  final bool partial;
+  const MetricPoint(this.day, this.value, {this.partial = false});
 }
 
 enum MetricKey {

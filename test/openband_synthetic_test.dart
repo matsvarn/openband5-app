@@ -44,10 +44,24 @@ void main() {
     expect(day.sleep.segments.every((s) => s.stage != null), isTrue);
     expect(day.recovery.value, closeTo(74.062276, 1e-6));
     expect(day.hrv.value, 48);
-    expect(day.hrv.baseline, 40);
+    expect(day.hrv.baseline, isNull);
     expect(day.restingHr.value, 54);
-    expect(day.restingHr.baseline, 56);
+    expect(day.restingHr.baseline, isNull);
     expect(day.strain.value, 1.6);
+    final hrv = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.baseline?.value, 40);
+    expect(hrv.baseline?.status, isNot(kNightScalarTrustedBaseline));
+    final rhr = await r.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(rhr.baseline?.value, 56);
+    expect(rhr.baseline?.status, isNot(kNightScalarTrustedBaseline));
     expect(day.steps.value, 1240);
     expect(r.band.connection, BandConnection.connected);
     expect(r.band.transfer, TransferState.idle);

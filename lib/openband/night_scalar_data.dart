@@ -41,6 +41,8 @@ enum NightScalarState {
 
 const String kNightScalarPendingLabel = 'Auswertung läuft';
 const String kNightScalarOpenLabel = 'Auswertung offen';
+const String kNightScalarFailedLabel = 'Auswertung fehlgeschlagen';
+const String kNightScalarTrustedBaseline = 'trusted';
 
 const Set<String> kNightScalarOverrideSources = {'manual', 'confirmed'};
 
@@ -275,6 +277,7 @@ class NightScalarDetail {
 
   String? get evaluationLabel => switch (state) {
     NightScalarState.pending => kNightScalarPendingLabel,
+    NightScalarState.failed => kNightScalarFailedLabel,
     NightScalarState.unknown ||
     NightScalarState.outdated => kNightScalarOpenLabel,
     _ => null,
@@ -399,6 +402,11 @@ String? nightScalarLabel(Object? raw) {
   return value.isEmpty ? null : value;
 }
 
+String? nightScalarStatus(Object? raw) {
+  final label = nightScalarLabel(raw);
+  return label?.toLowerCase();
+}
+
 int? nightScalarMillis(Object? raw) {
   final n = nightScalarFinite(raw);
   if (n == null || n < kNightScalarMillisFloor) return null;
@@ -431,7 +439,7 @@ StoredNightBaseline? nightScalarBaseline({
 }) {
   final parsed = StoredNightBaseline(
     value: nightScalarFinite(value),
-    status: nightScalarLabel(status),
+    status: nightScalarStatus(status),
     nValid: nightScalarNonnegInt(nValid),
     nightsSinceUpdate: nightScalarNonnegInt(nightsSinceUpdate),
     note: nightScalarLabel(note),
@@ -580,6 +588,37 @@ NightScalarState? nightScalarJobsOverlay({
     return NightScalarState.unknown;
   }
   return null;
+}
+
+/// Same selected-night state as [buildNightScalarDetail], without history.
+NightScalarState nightScalarPublishedState({
+  NightScalarState? overlay,
+  NightScalarRow? selected,
+  required int currentAlgo,
+  double? value,
+}) {
+  if (overlay != null) return overlay;
+  if (selected?.payloadUnreadable == true) return NightScalarState.unreadable;
+  final finite = nightScalarFinite(value);
+  if (selected == null || selected.skipped || finite == null) {
+    return NightScalarState.missing;
+  }
+  if (selected.partial) return NightScalarState.partial;
+  if (selected.algoVersion != null && selected.algoVersion != currentAlgo) {
+    return NightScalarState.older;
+  }
+  return NightScalarState.current;
+}
+
+double? nightScalarCardBaseline({
+  required NightScalarState state,
+  StoredNightBaseline? baseline,
+}) {
+  if (state != NightScalarState.current) return null;
+  if (nightScalarStatus(baseline?.status) != kNightScalarTrustedBaseline) {
+    return null;
+  }
+  return nightScalarFinite(baseline?.value);
 }
 
 /// dart:convert last-wins nested fields only. sqlite json_extract is first-wins.

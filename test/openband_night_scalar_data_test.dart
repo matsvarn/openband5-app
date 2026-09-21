@@ -205,6 +205,27 @@ void main() {
     expect(detail.value, 44);
   });
 
+  test('history points keep partial flags; gaps stay null', () {
+    final selected = row('2026-09-15', value: 48, partial: true);
+    final points = nightScalarHistoryPoints(
+      snap(
+        selected: selected,
+        matching: {
+          '2026-09-14': row('2026-09-14', value: 40),
+          '2026-09-15': selected,
+        },
+      ),
+    );
+    expect(points, hasLength(7));
+    expect(MetricPoint('2026-09-14', 40).partial, isFalse);
+    expect(points.last.value, 48);
+    expect(points.last.partial, isTrue);
+    expect(points[5].value, 40);
+    expect(points[5].partial, isFalse);
+    expect(points[4].value, isNull);
+    expect(points[4].partial, isFalse);
+  });
+
   test('skipped and corrupt are refused independently of neighbors', () {
     final selected = row('2026-09-15', skipped: true, value: 48);
     final skipped = snap(
@@ -449,7 +470,7 @@ void main() {
     );
     expect(napFail.state, NightScalarState.failed);
     expect(napFail.storedForInfo, 42);
-    expect(napFail.evaluationLabel, isNull);
+    expect(napFail.evaluationLabel, kNightScalarFailedLabel);
     expect(napFail.history.last.gap, NightScalarGap.withheld);
   });
 
@@ -742,5 +763,382 @@ void main() {
     );
     expect(outOfRange.computedAt, isNull);
     expect(outOfRange.value, 48);
+  });
+
+  test('card metrics withhold comparison unless current and trusted', () {
+    const trusted = StoredNightBaseline(
+      value: 40,
+      status: kNightScalarTrustedBaseline,
+    );
+    const provisional = StoredNightBaseline(value: 40, status: 'provisional');
+    final current = dayMetricFromNightScalar(
+      state: NightScalarState.current,
+      value: 48,
+      baseline: trusted,
+    );
+    expect(current.value, 48);
+    expect(current.baseline, 40);
+    expect(current.nightScalar, NightScalarState.current);
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.current,
+        value: 48,
+        baseline: provisional,
+      ).baseline,
+      isNull,
+    );
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.older,
+        value: 41,
+        baseline: trusted,
+      ).baseline,
+      isNull,
+    );
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.partial,
+        value: 44,
+        baseline: trusted,
+      ).baseline,
+      isNull,
+    );
+    final pending = dayMetricFromNightScalar(
+      state: NightScalarState.pending,
+      value: 48,
+      baseline: trusted,
+    );
+    expect(pending.value, isNull);
+    expect(pending.baseline, isNull);
+    expect(pending.readiness, MetricReadiness.processing);
+    expect(pending.reason, kNightScalarPendingLabel);
+    final failed = dayMetricFromNightScalar(
+      state: NightScalarState.failed,
+      value: 48,
+      baseline: trusted,
+    );
+    expect(failed.value, isNull);
+    expect(failed.baseline, isNull);
+    expect(failed.readiness, MetricReadiness.missing);
+    expect(failed.nightScalar, NightScalarState.failed);
+    expect(failed.readiness, isNot(MetricReadiness.unreliable));
+    final spaced = nightScalarBaseline(value: 40, status: ' Trusted ');
+    expect(spaced?.status, kNightScalarTrustedBaseline);
+    expect(
+      nightScalarCardBaseline(
+        state: NightScalarState.current,
+        baseline: spaced,
+      ),
+      40,
+    );
+    expect(
+      nightScalarCardBaseline(
+        state: NightScalarState.current,
+        baseline: const StoredNightBaseline(value: 40, status: 'TRUSTED'),
+      ),
+      40,
+    );
+    expect(
+      nightScalarCardBaseline(
+        state: NightScalarState.current,
+        baseline: nightScalarBaseline(value: 40, status: ' STALE '),
+      ),
+      isNull,
+    );
+  });
+
+  test('synthetic cards follow night-scalar gating and keep other metrics',
+      () async {
+    final processing = await repo(scenario: SyntheticScenario.processing)
+        .readDay('2026-09-15');
+    expect(processing.hrv.value, isNull);
+    expect(processing.hrv.baseline, isNull);
+    expect(processing.hrv.readiness, MetricReadiness.processing);
+    expect(processing.hrv.nightScalar, NightScalarState.pending);
+    expect(processing.recovery.value, isNotNull);
+    expect(processing.recovery.readiness, MetricReadiness.processing);
+    expect(processing.strain.value, isNotNull);
+    final yesterday = await repo(scenario: SyntheticScenario.processing)
+        .readDay('2026-09-14');
+    expect(yesterday.hrv.value, 40);
+
+    final failed = await repo(scenario: SyntheticScenario.calculationFailure)
+        .readDay('2026-09-15');
+    expect(failed.hrv.value, isNull);
+    expect(failed.hrv.baseline, isNull);
+    expect(failed.hrv.nightScalar, NightScalarState.failed);
+    expect(failed.restingHr.value, isNull);
+
+    final complete = await repo().readDay('2026-09-15');
+    expect(complete.hrv.value, 48);
+    expect(complete.hrv.baseline, isNull);
+    expect(complete.hrv.nightScalar, NightScalarState.current);
+    expect(complete.restingHr.value, 54);
+    expect(complete.sleep.duration.value, isNotNull);
+
+    final partial = await repo(scenario: SyntheticScenario.partial)
+        .readDay('2026-09-15');
+    expect(partial.hrv.value, 48);
+    expect(partial.hrv.readiness, MetricReadiness.partial);
+    expect(partial.hrv.baseline, isNull);
+
+    final r = repo();
+    r.seedNightScalarDetail(
+      selected: row(
+        '2026-09-15',
+        value: 41,
+        algo: 84,
+        computedAtMs: 900,
+        baseline: const StoredNightBaseline(
+          value: 40,
+          status: kNightScalarTrustedBaseline,
+        ),
+      ),
+      matching: {
+        '2026-09-15': row('2026-09-15', value: 41, algo: 84, computedAtMs: 900),
+      },
+      currentAlgo: 90,
+    );
+    final older = await r.readDay('2026-09-15');
+    expect(older.hrv.value, 41);
+    expect(older.hrv.nightScalar, NightScalarState.older);
+    expect(older.hrv.baseline, isNull);
+    final detail = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(older.hrv.value, detail.value);
+    expect(older.hrv.nightScalar, detail.state);
+
+    final history = await repo(scenario: SyntheticScenario.processing)
+        .readMetricHistory(MetricKey.hrv, '2026-09-15', 7);
+    expect(history.last.value, isNull);
+    expect(history[5].value, 40);
+    final strain = await repo().readMetricHistory(
+      MetricKey.strain,
+      '2026-09-15',
+      7,
+    );
+    expect(strain, hasLength(7));
+  });
+
+  test('seeded HRV 48ms and RHR 54/min stay independent on the same repo',
+      () async {
+    final r = repo();
+    const hrvBaseline = StoredNightBaseline(
+      value: 40,
+      status: kNightScalarTrustedBaseline,
+      nValid: 14,
+    );
+    const rhrBaseline = StoredNightBaseline(
+      value: 56,
+      status: kNightScalarTrustedBaseline,
+      nValid: 14,
+    );
+    final hrvSelected = row(
+      '2026-09-15',
+      value: 48,
+      computedAtMs: 900,
+      baseline: hrvBaseline,
+    );
+    final rhrSelected = row(
+      '2026-09-15',
+      value: 54,
+      computedAtMs: 900,
+      baseline: rhrBaseline,
+    );
+    final sharedJob = NightScalarJob(
+      day: '2026-09-15',
+      status: 'complete',
+      resultAlgo: kAlgoVersion,
+      resultComputedAt: 900,
+      action: 'automatic',
+    );
+    r.seedNightScalarDetail(
+      selected: hrvSelected,
+      matching: {
+        '2026-09-14': row('2026-09-14', value: 40, computedAtMs: 800),
+        '2026-09-15': hrvSelected,
+      },
+      otherVersionDays: {'2026-09-13'},
+      sleepJobs: {'2026-09-15': sharedJob},
+    );
+    r.seedNightScalarDetail(
+      key: MetricKey.restingHr,
+      selected: rhrSelected,
+      matching: {
+        '2026-09-14': row('2026-09-14', value: 56, computedAtMs: 800),
+        '2026-09-15': rhrSelected,
+      },
+      seriesOnlyDays: {'2026-09-13'},
+      sleepJobs: {'2026-09-15': sharedJob},
+    );
+
+    final day = await r.readDay('2026-09-15');
+    expect(day.hrv.value, 48);
+    expect(day.restingHr.value, 54);
+    expect(day.hrv.baseline, 40);
+    expect(day.restingHr.baseline, 56);
+    expect(day.hrv.nightScalar, NightScalarState.current);
+    expect(day.restingHr.nightScalar, NightScalarState.current);
+
+    final hrv = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    final rhr = await r.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.key, NightScalarMetric.hrv);
+    expect(rhr.key, NightScalarMetric.rhr);
+    expect(day.hrv.value, hrv.value);
+    expect(day.restingHr.value, rhr.value);
+    expect(day.hrv.nightScalar, hrv.state);
+    expect(day.restingHr.nightScalar, rhr.state);
+    expect(hrv.baseline?.value, 40);
+    expect(rhr.baseline?.value, 56);
+    expect(hrv.history[5].value, 40);
+    expect(rhr.history[5].value, 56);
+    expect(hrv.history.last.value, 48);
+    expect(rhr.history.last.value, 54);
+    expect(hrv.counts.excludedVersion, 1);
+    expect(rhr.counts.excludedVersion, 0);
+    expect(hrv.counts.excludedUnversioned, 0);
+    expect(rhr.counts.excludedUnversioned, 1);
+
+    final hrvHistory = await r.readMetricHistory(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    final rhrHistory = await r.readMetricHistory(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(hrvHistory.last.value, hrv.value);
+    expect(rhrHistory.last.value, rhr.value);
+    expect(hrvHistory[5].value, 40);
+    expect(rhrHistory[5].value, 56);
+  });
+
+  test('HRV-only seed does not invent RHR value or baseline', () async {
+    final r = repo();
+    r.seedNightScalarDetail(
+      selected: row(
+        '2026-09-15',
+        value: 48,
+        baseline: const StoredNightBaseline(
+          value: 40,
+          status: kNightScalarTrustedBaseline,
+        ),
+      ),
+      matching: {
+        '2026-09-15': row('2026-09-15', value: 48),
+      },
+    );
+    final day = await r.readDay('2026-09-15');
+    expect(day.hrv.value, 48);
+    expect(day.hrv.baseline, 40);
+    expect(day.restingHr.value, isNull);
+    expect(day.restingHr.baseline, isNull);
+    expect(day.restingHr.nightScalar, NightScalarState.missing);
+    final rhr = await r.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(rhr.key, NightScalarMetric.rhr);
+    expect(rhr.value, isNull);
+    expect(rhr.state, NightScalarState.missing);
+    expect(rhr.baseline, isNull);
+    final rhrHistory = await r.readMetricHistory(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(rhrHistory.last.value, isNull);
+  });
+
+  test('nightScalarOverride does not leak to the other key or day', () async {
+    final r = repo();
+    final hrvSeed = row('2026-09-15', value: 48);
+    final rhrSeed = row('2026-09-15', value: 54);
+    r.seedNightScalarDetail(
+      selected: hrvSeed,
+      matching: {'2026-09-15': hrvSeed},
+    );
+    r.seedNightScalarDetail(
+      key: MetricKey.restingHr,
+      selected: rhrSeed,
+      matching: {'2026-09-15': rhrSeed},
+    );
+    r.nightScalarOverride = snap(
+      selected: row('2026-09-15', value: 12),
+      matching: {'2026-09-15': row('2026-09-15', value: 12)},
+    );
+    final hrv = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.value, 12);
+    expect(hrv.key, NightScalarMetric.hrv);
+    final day = await r.readDay('2026-09-15');
+    expect(day.hrv.value, 12);
+    expect(day.hrv.nightScalar, hrv.state);
+    expect(day.restingHr.value, 54);
+    final rhr = await r.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(rhr.key, NightScalarMetric.rhr);
+    expect(rhr.value, 54);
+    expect(day.restingHr.value, rhr.value);
+    expect(day.restingHr.nightScalar, rhr.state);
+    final otherDay = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-14',
+      7,
+    );
+    expect(otherDay.value, isNot(12));
+    final prior = await r.readDay('2026-09-14');
+    expect(prior.hrv.value, isNot(12));
+  });
+
+  test('seeded detail uses the requested day, not the fixture selected',
+      () async {
+    final r = repo();
+    final selected = row('2026-09-15', value: 48);
+    r.seedNightScalarDetail(
+      selected: selected,
+      matching: {
+        '2026-09-14': row('2026-09-14', value: 40),
+        '2026-09-15': selected,
+      },
+    );
+    final prior = await r.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-14',
+      7,
+    );
+    expect(prior.day, '2026-09-14');
+    expect(prior.value, 40);
+    expect(prior.value, isNot(48));
+    final day = await r.readDay('2026-09-14');
+    expect(day.hrv.value, 40);
+    expect(day.hrv.nightScalar, prior.state);
+    final history = await r.readMetricHistory(
+      MetricKey.hrv,
+      '2026-09-14',
+      7,
+    );
+    expect(history.last.day, '2026-09-14');
+    expect(history.last.value, 40);
   });
 }

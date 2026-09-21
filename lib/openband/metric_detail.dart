@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
-import 'charts.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'health.dart';
@@ -249,73 +248,65 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             children: [
               OBCard(
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 6,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: 6,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(widget.icon, size: 16, color: color),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  widget.controller.selectedDay == todayLabel()
-                                      ? (_nightly ? 'Nacht auf heute' : 'Heute')
-                                      : obDayTitle(
-                                          widget.controller.selectedDay,
-                                        ),
-                                  style: p.text(
-                                    13,
-                                    weight: FontWeight.w600,
-                                    color: p.muted,
+                    Row(
+                      children: [
+                        Icon(widget.icon, size: 16, color: color),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            widget.controller.selectedDay == todayLabel()
+                                ? (_nightly ? 'Nacht auf heute' : 'Heute')
+                                : obDayTitle(
+                                    widget.controller.selectedDay,
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
-                            children: [
-                              Text(
-                                obNumber(metric.value, digits: widget.digits),
-                                style: p.text(
-                                  44,
-                                  weight: FontWeight.w800,
-                                  display: true,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.unit,
-                                style: p.text(
-                                  14,
-                                  weight: FontWeight.w500,
-                                  color: p.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Text(
-                            obMetricStatus(metric.value, metric.baseline),
                             style: p.text(
                               13,
                               weight: FontWeight.w600,
-                              color:
-                                  metric.baseline != null &&
-                                      metric.value != null
-                                  ? p.smallText(color)
-                                  : p.muted,
+                              color: p.muted,
                             ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          obNumber(metric.value, digits: widget.digits),
+                          style: p.text(
+                            44,
+                            weight: FontWeight.w800,
+                            display: true,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          widget.unit,
+                          style: p.text(
+                            14,
+                            weight: FontWeight.w500,
+                            color: p.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      obMetricStatus(metric.value, metric.baseline),
+                      style: p.text(
+                        13,
+                        weight: FontWeight.w600,
+                        color:
+                            metric.baseline != null &&
+                                metric.value != null
+                            ? p.smallText(color)
+                            : p.muted,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    OBRangePill(metric: metric, color: color, tint: tint),
                   ],
                 ),
               ),

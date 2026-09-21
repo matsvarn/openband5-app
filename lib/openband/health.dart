@@ -51,52 +51,42 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
             ),
             const SizedBox(height: 12),
             if (day != null) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              OBAdaptiveValues(
                 children: [
-                  Expanded(
-                    child: OBMetricCard(
+                  OBMetricCard(
+                    label: 'HRV',
+                    unit: 'ms',
+                    metric: day.hrv,
+                    icon: LucideIcons.activity,
+                    color: p.recovery,
+                    onTap: () => OpenBandMetricDetail.push(
+                      context,
+                      controller: c,
+                      metricKey: MetricKey.hrv,
                       label: 'HRV',
+                      subtitle: 'Herzratenvariabilität',
                       unit: 'ms',
-                      metric: day.hrv,
                       icon: LucideIcons.activity,
-                      color: p.recovery,
-                      tint: p.recoveryTint,
-                      day: day.day,
-                      onTap: () => OpenBandMetricDetail.push(
-                        context,
-                        controller: c,
-                        metricKey: MetricKey.hrv,
-                        label: 'HRV',
-                        subtitle: 'Herzratenvariabilität',
-                        unit: 'ms',
-                        icon: LucideIcons.activity,
-                        color: (p) => p.recovery,
-                        tint: (p) => p.recoveryTint,
-                      ),
+                      color: (p) => p.recovery,
+                      tint: (p) => p.recoveryTint,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OBMetricCard(
+                  OBMetricCard(
+                    label: 'Ruhepuls',
+                    unit: '/min',
+                    metric: day.restingHr,
+                    icon: LucideIcons.heart,
+                    color: p.pulse,
+                    onTap: () => OpenBandMetricDetail.push(
+                      context,
+                      controller: c,
+                      metricKey: MetricKey.restingHr,
                       label: 'Ruhepuls',
+                      subtitle: 'in der Nacht',
                       unit: '/min',
-                      metric: day.restingHr,
                       icon: LucideIcons.heart,
-                      color: p.pulse,
-                      tint: p.pulseTint,
-                      day: day.day,
-                      onTap: () => OpenBandMetricDetail.push(
-                        context,
-                        controller: c,
-                        metricKey: MetricKey.restingHr,
-                        label: 'Ruhepuls',
-                        subtitle: 'in der Nacht',
-                        unit: '/min',
-                        icon: LucideIcons.heart,
-                        color: (p) => p.pulse,
-                        tint: (p) => p.pulseTint,
-                      ),
+                      color: (p) => p.pulse,
+                      tint: (p) => p.pulseTint,
                     ),
                   ),
                 ],
@@ -561,14 +551,18 @@ class OBTrendCard extends StatelessWidget {
         points?.where((e) => _trendFinite(e.value)).toList() ?? const [];
     final last = values.isEmpty ? null : values.last.value;
     final observed = values.length;
+    final hasPartial = values.any((e) => e.partial);
+    final countCaption = '$observed von $nights Nächten';
     final status = error
         ? ('Verlauf konnte nicht geladen werden', p.danger)
         : points == null
         ? ('', p.muted)
         : observed == 0
         ? ('Noch keine Werte', p.muted)
+        : hasPartial
+        ? ('$countCaption · teilweise', p.muted)
         : observed < nights
-        ? ('$observed von $nights Nächten', p.muted)
+        ? (countCaption, p.muted)
         : (
             format != null && baseline != null && last != null
                 ? _durationStatus(last, baseline!)
@@ -620,7 +614,7 @@ class OBTrendCard extends StatelessWidget {
           ),
           Semantics(
             label:
-                '$label, $nights Nächte, ${observed == 0 ? 'keine Werte' : '$observed Werte, zuletzt ${obNumber(last)} $unit'}',
+                '$label, $nights Nächte, ${observed == 0 ? 'keine Werte' : '$observed Werte, zuletzt ${obNumber(last)} $unit${hasPartial ? ', teilweise' : ''}'}',
             child: ExcludeSemantics(
               child: SizedBox(
                 height: 88,
@@ -1087,13 +1081,12 @@ class _TrendPainter extends CustomPainter {
     double x(int i) => points.length > 1 ? i * step : size.width / 2;
 
     if (baseline case final b?) {
-      final band = Paint()..color = tint;
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTRB(0, y(b) - 8, size.width, y(b) + 8),
-          const Radius.circular(4),
-        ),
-        band,
+      canvas.drawLine(
+        Offset(0, y(b)),
+        Offset(size.width, y(b)),
+        Paint()
+          ..color = gap
+          ..strokeWidth = 1,
       );
     }
     final line = Paint()

@@ -259,33 +259,141 @@ class LocalOpenBandRepository implements OpenBandRepository {
       throw StateError('Local repository is not initialized.');
     }
 
-    final row = await LocalDb.dayResult(day);
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final selectedRows = await txn.rawQuery(
+        'SELECT day_id, skipped, partial, algo_version, computed_at, '
+        'rhr, rmssd, payload_json '
+        'FROM day_result '
+        'WHERE day_id = ? AND algo_version <= ? '
+        'ORDER BY algo_version DESC LIMIT 1',
+        [day, kAlgoVersion],
+      );
+      final sleepRows = await txn.rawQuery(
+        'SELECT c.day_id AS day_id, '
+        'c.correction_id AS correction_id, '
+        'c.revision AS revision, '
+        'c.action AS action, '
+        'c.onset_ms AS onset_ms, '
+        'c.wake_ms AS wake_ms, '
+        'c.saved_at AS saved_at, '
+        'c.recording_timezone AS recording_timezone, '
+        'j.correction_id AS job_correction_id, '
+        'j.revision AS job_revision, '
+        'j.status AS status, '
+        'j.error AS error, '
+        'j.result_algo_version AS result_algo_version, '
+        'j.result_computed_at AS result_computed_at '
+        'FROM openband_sleep_correction c '
+        'LEFT JOIN openband_calculation_job j '
+        'ON j.day_id = c.day_id '
+        'AND j.correction_id = c.correction_id '
+        'AND j.revision = c.revision '
+        'WHERE c.day_id = ?',
+        [day],
+      );
+      final napRows = await txn.query(
+        'nap_recalc_job',
+        where: 'day_id = ?',
+        whereArgs: [day],
+        limit: 1,
+      );
+      return (
+        selected: selectedRows.isEmpty
+            ? null
+            : Map<String, Object?>.from(selectedRows.first),
+        sleep: sleepRows,
+        nap: napRows,
+      );
+    });
+    final row = snapshot.selected;
     final payload = _payload(row?['payload_json']);
+    // Unreadable payload fails the whole day. Cards never see
+    // NightScalarState.unreadable; typed detail still reports that gap.
     if (row != null && payload == null) {
       throw const FormatException('Stored day result is unreadable.');
     }
-    // Legacy day readers intentionally borrow the latest complete night when
-    // today has no row. A selected-day view must refuse that fallback.
+    NightScalarJob? sleepJob;
+    if (snapshot.sleep.isNotEmpty) {
+      sleepJob = nightScalarSleepJobFromRow(
+        Map<String, Object?>.from(snapshot.sleep.first),
+      );
+    }
+    NightScalarJob? napJob;
+    if (snapshot.nap.isNotEmpty) {
+      napJob = nightScalarNapJobFromRow(
+        Map<String, Object?>.from(snapshot.nap.first),
+      );
+    }
+    NightScalarRow? selectedRow;
+    if (row != null) {
+      selectedRow = NightScalarRow(
+        day: day,
+        algoVersion: (row['algo_version'] as num?)?.toInt(),
+        skipped: row['skipped'] == 1,
+        partial: row['partial'] == 1,
+        computedAtMs: (row['computed_at'] as num?)?.toInt(),
+        imported: nightScalarJsonTrue(_at(payload, 'imported')),
+        source: nightScalarLabel(_at(payload, 'source')),
+        sleepSource: nightScalarLabel(_at(payload, 'sleep_source')),
+        windowStartMs: nightScalarMillis(
+          _numAt(payload, 'sleep.window.value.onset_ms'),
+        ),
+        windowEndMs: nightScalarMillis(
+          _numAt(payload, 'sleep.window.value.offset_ms'),
+        ),
+      );
+    }
+    final overlay = nightScalarJobsOverlay(
+      sleep: sleepJob,
+      nap: napJob,
+      row: selectedRow,
+      storedAlgo: selectedRow?.algoVersion,
+      storedComputedAt: selectedRow?.computedAtMs,
+    );
+    DayMetric nightCard(Object? sqlScalar, String baselineRoot) {
+      final stored = nightScalarBaseline(
+        value: _numAt(payload, 'baselines.$baselineRoot.baseline'),
+        status: _stringAt(payload, 'baselines.$baselineRoot.status'),
+        nValid: _at(payload, 'baselines.$baselineRoot.n_valid'),
+        nightsSinceUpdate: _at(
+          payload,
+          'baselines.$baselineRoot.nights_since_update',
+        ),
+        note: _stringAt(payload, 'baselines.$baselineRoot.note'),
+      );
+      final value = nightScalarFinite(sqlScalar);
+      return dayMetricFromNightScalar(
+        state: nightScalarPublishedState(
+          overlay: overlay,
+          selected: selectedRow,
+          currentAlgo: kAlgoVersion,
+          value: value,
+        ),
+        value: value,
+        baseline: stored,
+      );
+    }
+
+    // Legacy day readers stay outside the snapshot. Cards already have SQL
+    // rmssd/rhr from the selected row; getDayHrv/getDayHeart envelopes are
+    // a different source and are not consulted for those scalars.
     final values = await Future.wait<Map<String, dynamic>>([
       row == null ? Future.value({}) : repository.getDaySleep(day),
       row == null ? Future.value({}) : repository.getDayHeart(day),
-      row == null ? Future.value({}) : repository.getDayHrv(day),
       row == null ? Future.value({}) : repository.getDayStrain(day),
       repository.getDaySteps(day),
     ]);
     final sleepMap = values[0],
         heart = values[1],
-        hrvMap = values[2],
-        strainMap = values[3],
-        stepsMap = values[4];
-    final db = await LocalDb.instance;
+        strainMap = values[2],
+        stepsMap = values[3];
     final nutrition = rollupDay(
       day,
       await NutritionDb.entriesForDay(db, day),
       today: todayLabel(),
     );
     final journal = await repository.getJournalMetrics(day);
-    final correctionRow = await LocalDb.openBandSleepCorrection(day);
     final provenanceRows = await LocalDb.metricSeriesVersions();
     String? source;
     for (final candidate in provenanceRows) {
@@ -314,7 +422,14 @@ class LocalOpenBandRepository implements OpenBandRepository {
       partial: unobserved != null && unobserved > 0,
       processing: app.deriving || app.derivePending,
     );
-    final recordingTimezone = correctionRow?['recording_timezone']?.toString();
+    String? recordingTimezone;
+    Map<String, dynamic>? correctionRow;
+    if (snapshot.sleep.isNotEmpty) {
+      correctionRow = Map<String, dynamic>.from(snapshot.sleep.first);
+      recordingTimezone = nightScalarLabel(
+        correctionRow['recording_timezone'],
+      );
+    }
 
     return OpenBandDay(
       day: day,
@@ -347,20 +462,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
         reason: strainMap['note']?.toString(),
         processing: app.deriving || app.derivePending,
       ),
-      hrv: _metric(
-        hrvMap['rmssd'],
-        baseline: _numAt(payload, 'baselines.hrv.baseline')?.toDouble(),
-        reason: _envelopeReason(hrvMap['hrv_time']),
-        processing: app.deriving || app.derivePending,
-      ),
-      restingHr: _metric(
-        heart['resting_hr'],
-        baseline: _numAt(payload, 'baselines.resting_hr.baseline')?.toDouble(),
-        reason:
-            _stringAt(payload, 'clinical.resting_hr.note') ??
-            _nestedReason(heart, 'resting_hr'),
-        processing: app.deriving || app.derivePending,
-      ),
+      hrv: nightCard(row?['rmssd'], 'hrv'),
+      restingHr: nightCard(row?['rhr'], 'resting_hr'),
       // day_total is the derived day's published result. Resolved spans may be
       // useful detail but are not silently substituted for a missing metric.
       steps: _metric(
@@ -1438,6 +1541,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
     String endDay,
     int nights,
   ) async {
+    if (key == MetricKey.hrv || key == MetricKey.restingHr) {
+      return nightScalarHistoryPoints(
+        await readNightScalarDetail(key, endDay, nights),
+      );
+    }
     _requireDay(endDay);
     final days = openBandDaysEnding(endDay, nights);
     final rows = await LocalDb.metricSeries(key.series);

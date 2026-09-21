@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/health.dart';
@@ -185,4 +186,97 @@ void main() {
       expect(find.text('Vitamin B12'), findsOneWidget);
     }
   });
+
+  testWidgets('health hub partial qualifies the observed count', (
+    tester,
+  ) async {
+    repo.scenario = SyntheticScenario.partial;
+    await mount(tester);
+    expect(find.text('Unvollständig'), findsWidgets);
+    expect(find.text('7 von 7 Nächten · teilweise'), findsWidgets);
+    expect(find.textContaining('über Basis'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/health-partial-light.png'),
+    );
+    await mount(tester, brightness: Brightness.dark);
+    expect(find.text('7 von 7 Nächten · teilweise'), findsWidgets);
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/health-partial-dark.png'),
+    );
+  });
+
+  testWidgets(
+    'historical partial qualifies the trend while the selected night is complete',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(393, 400);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const points = [
+        MetricPoint('2026-09-09', 36),
+        MetricPoint('2026-09-10', 44, partial: true),
+        MetricPoint('2026-09-11', 38),
+        MetricPoint('2026-09-12', 46),
+        MetricPoint('2026-09-13', 40),
+        MetricPoint('2026-09-14', 40),
+        MetricPoint('2026-09-15', 48),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          supportedLocales: const [Locale('de')],
+          theme: openBandTheme(
+            Brightness.light,
+          ).copyWith(platform: TargetPlatform.iOS),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: Scaffold(
+            backgroundColor: openBandTheme(
+              Brightness.light,
+            ).scaffoldBackgroundColor,
+            body: Builder(
+              builder: (context) {
+                final p = OB.of(context);
+                return ColoredBox(
+                  color: p.canvas,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: RepaintBoundary(
+                      key: const ValueKey('capture'),
+                      child: OBTrendCard(
+                        label: 'HRV',
+                        unit: 'ms',
+                        icon: LucideIcons.activity,
+                        color: p.recovery,
+                        tint: p.recoveryTint,
+                        nights: 7,
+                        points: points,
+                        baseline: 40,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('48'), findsOneWidget);
+      expect(find.text('7 von 7 Nächten · teilweise'), findsOneWidget);
+      expect(find.textContaining('Basis'), findsNothing);
+      expect(find.bySemanticsLabel(RegExp(r'teilweise')), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/trend-historical-partial.png'),
+      );
+    },
+  );
 }

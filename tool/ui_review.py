@@ -74,11 +74,19 @@ def main():
     parser.add_argument('mode', choices=['gallery', 'capture'])
     parser.add_argument('--small', action='store_true', help='Use a dedicated 375×812 iPhone 13 mini instead of 393×852 iPhone 15 Pro.')
     parser.add_argument('--output', type=Path, help='Native review output directory; defaults to build/ui-review/<timestamp>.')
-    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'exercise-copy', 'custom-load', 'glucose', 'medications', 'cycle', 'cycle-measurements', 'cycle-observations', 'cycle-gaps', 'cycle-medians', 'cycle-comparison', 'night-scalar'], default='all',
-                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, exercise copy, custom load, glucose, medications, cycle, cycle measurements, cycle observations, cycle gaps, cycle medians, cycle comparison, or HRV/resting pulse.')
+    parser.add_argument('--captures', help='Comma-separated exact checkpoint names. Default captures every checkpoint. Empty selection is an error.')
+    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'exercise-copy', 'custom-load', 'glucose', 'medications', 'cycle', 'cycle-measurements', 'cycle-observations', 'cycle-gaps', 'cycle-medians', 'cycle-comparison', 'night-scalar', 'night-cards'], default='all',
+                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, exercise copy, custom load, glucose, medications, cycle, cycle measurements, cycle observations, cycle gaps, cycle medians, cycle comparison, HRV/resting pulse detail, or compact night cards.')
     args = parser.parse_args()
     if not SDK.is_file():
         raise SystemExit(f'Pinned Flutter SDK not found: {SDK}')
+    capture_names = None
+    if args.captures is not None:
+        capture_names = [n.strip() for n in args.captures.split(',') if n.strip()]
+        if not capture_names:
+            raise SystemExit(
+                'OPENBAND_REVIEW_CAPTURES is empty; refusing a false-success run.',
+            )
     name, device = simulator(args.small)
     print(f'{name}: {device}', flush=True)
     if args.mode == 'gallery':
@@ -92,16 +100,23 @@ def main():
     manifest = {'synthetic': True, 'device': name, 'udid': device,
                 'sdk': str(SDK), 'runtime': 'iOS 26.5', 'captureKind': 'simulator-display',
                 'flow': args.flow, 'success': False}
+    if capture_names is not None:
+        manifest['captures'] = capture_names
     run('xcrun', 'simctl', 'status_bar', device, 'override', '--time', '09:41',
         '--batteryState', 'charged', '--batteryLevel', '100')
     env = {**os.environ, 'OPENBAND_REVIEW_OUTPUT': str(output)}
     server = capture_server(device, output)
     try:
-        run(SDK, 'drive', '--no-pub', '-d', device,
-            '--driver=test_driver/openband_review.dart',
-            '--target=integration_test/openband_review_test.dart',
-            f'--dart-define=OPENBAND_REVIEW_PORT={server.server_port}',
-            f'--dart-define=OPENBAND_REVIEW_FLOW={args.flow}', env=env)
+        drive = [SDK, 'drive', '--no-pub', '-d', device,
+                 '--driver=test_driver/openband_review.dart',
+                 '--target=integration_test/openband_review_test.dart',
+                 f'--dart-define=OPENBAND_REVIEW_PORT={server.server_port}',
+                 f'--dart-define=OPENBAND_REVIEW_FLOW={args.flow}']
+        if capture_names is not None:
+            drive.append(
+                '--dart-define=OPENBAND_REVIEW_CAPTURES=' + ','.join(capture_names),
+            )
+        run(*drive, env=env)
         manifest['success'] = True
     finally:
         server.shutdown()

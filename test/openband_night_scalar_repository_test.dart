@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -25,6 +26,7 @@ void main() {
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase('$dir/${LocalDb.dbName}');
     app = AppState.forTesting();
+    app.repo = LocalRepositoryImpl(getProfileMap: () => app.user);
     repository = LocalOpenBandRepository(app);
   });
 
@@ -772,6 +774,332 @@ void main() {
     );
     expect(snap.computedAt, isNull);
     expect(snap.value, 48);
+  });
+
+  test('readDay and history follow the typed overlay for HRV/RHR only',
+      () async {
+    await putCoveredNight('2026-09-14', rmssd: 40, rhr: 56, computedAt: 800);
+    await putCoveredNight('2026-09-15', rmssd: 48, rhr: 54, computedAt: 900);
+    await LocalDb.putMetricSeriesValue('2026-09-14', 'strain', 11);
+    await LocalDb.putMetricSeriesValue('2026-09-15', 'strain', 12);
+
+    Future<void> expectSameAsDetail(OpenBandDay day) async {
+      final hrv = await repository.readNightScalarDetail(
+        MetricKey.hrv,
+        day.day,
+        7,
+      );
+      expect(day.hrv.value, hrv.value);
+      expect(day.hrv.nightScalar, hrv.state);
+      if (hrv.withheld) {
+        expect(day.hrv.baseline, isNull);
+        expect(hrv.storedForInfo, isNotNull);
+      }
+    }
+
+    final complete = await repository.readDay('2026-09-15');
+    expect(complete.hrv.value, 48);
+    expect(complete.hrv.nightScalar, NightScalarState.current);
+    expect(complete.hrv.baseline, isNull);
+    await expectSameAsDetail(complete);
+
+    await putSleepJob('2026-09-15', status: 'pending');
+    final pending = await repository.readDay('2026-09-15');
+    expect(pending.hrv.value, isNull);
+    expect(pending.hrv.baseline, isNull);
+    expect(pending.hrv.readiness, MetricReadiness.processing);
+    expect(pending.hrv.nightScalar, NightScalarState.pending);
+    expect(pending.restingHr.value, isNull);
+    expect(pending.hrv.readiness, MetricReadiness.processing);
+    expect(pending.recovery.readiness, isNot(MetricReadiness.processing));
+    await expectSameAsDetail(pending);
+    final pendingHistory = await repository.readMetricHistory(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(pendingHistory.last.value, isNull);
+    expect(pendingHistory[5].value, 40);
+    final strain = await repository.readMetricHistory(
+      MetricKey.strain,
+      '2026-09-15',
+      7,
+    );
+    expect(strain.last.value, 12);
+    expect(strain[5].value, 11);
+  });
+
+  test('failed nap leaves no stale HRV number or baseline', () async {
+    await putCoveredNight('2026-09-15', rmssd: 48, rhr: 54, computedAt: 900);
+    await putNapJob('2026-09-15', status: 'failed');
+    final failed = await repository.readDay('2026-09-15');
+    expect(failed.hrv.value, isNull);
+    expect(failed.hrv.baseline, isNull);
+    expect(failed.hrv.nightScalar, NightScalarState.failed);
+    expect(failed.hrv.readiness, isNot(MetricReadiness.unreliable));
+    expect(failed.restingHr.value, isNull);
+  });
+
+  test('complete sleep without receipt is unknown on cards', () async {
+    await putCoveredNight('2026-09-15', rmssd: 48, computedAt: 900);
+    await putSleepJob('2026-09-15', status: 'complete');
+    final unknown = await repository.readDay('2026-09-15');
+    expect(unknown.hrv.value, isNull);
+    expect(unknown.hrv.nightScalar, NightScalarState.unknown);
+    expect(unknown.hrv.reason, kNightScalarOpenLabel);
+  });
+
+  test('outdated nap receipt withholds the selected night', () async {
+    await putCoveredNight('2026-09-15', rmssd: 48, computedAt: 800);
+    await putNapJob(
+      '2026-09-15',
+      status: 'complete',
+      resultAlgo: kAlgoVersion,
+      resultAt: 900,
+    );
+    final outdated = await repository.readDay('2026-09-15');
+    expect(outdated.hrv.value, isNull);
+    expect(outdated.hrv.nightScalar, NightScalarState.outdated);
+  });
+
+  test('older complete proof stays published without a card delta', () async {
+    const old = kAlgoVersion - 4;
+    await putCoveredNight(
+      '2026-09-15',
+      rmssd: 41,
+      algo: old,
+      computedAt: 900,
+    );
+    await putSleepJob(
+      '2026-09-15',
+      status: 'complete',
+      resultAlgo: old,
+      resultAt: 900,
+    );
+    final older = await repository.readDay('2026-09-15');
+    expect(older.hrv.value, 41);
+    expect(older.hrv.nightScalar, NightScalarState.older);
+    expect(older.hrv.baseline, isNull);
+    final detail = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(older.hrv.value, detail.value);
+  });
+
+  test('partial selected keeps the scalar and abstains card baseline', () async {
+    await putNight('2026-09-15', rmssd: 48, partial: true);
+    final partial = await repository.readDay('2026-09-15');
+    expect(partial.hrv.value, 48);
+    expect(partial.hrv.readiness, MetricReadiness.partial);
+    expect(partial.hrv.baseline, isNull);
+  });
+
+  test('trusted baseline is the only card comparison; provisional stays in detail',
+      () async {
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      computedAt: 900,
+      baselineHrv: {
+        'baseline': 40,
+        'status': kNightScalarTrustedBaseline,
+        'n_valid': 14,
+      },
+    );
+    final trusted = await repository.readDay('2026-09-15');
+    expect(trusted.hrv.value, 48);
+    expect(trusted.hrv.baseline, 40);
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      computedAt: 900,
+      baselineHrv: {
+        'baseline': 40,
+        'status': 'provisional',
+        'n_valid': 4,
+      },
+    );
+    final provisional = await repository.readDay('2026-09-15');
+    expect(provisional.hrv.value, 48);
+    expect(provisional.hrv.baseline, isNull);
+    final stored = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(stored.baseline?.status, 'provisional');
+    expect(stored.baseline?.value, 40);
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      computedAt: 900,
+      baselineHrv: {
+        'baseline': 40,
+        'status': ' Trusted ',
+        'n_valid': 14,
+      },
+    );
+    final spaced = await repository.readDay('2026-09-15');
+    expect(spaced.hrv.value, 48);
+    expect(spaced.hrv.baseline, 40);
+    final spacedDetail = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(spacedDetail.baseline?.status, kNightScalarTrustedBaseline);
+  });
+
+  test('unreadable history keeps the stored algo; other keys unchanged',
+      () async {
+    const old = 84;
+    await putNight('2026-09-13', rmssd: 41, algo: old);
+    await putNight('2026-09-14', rmssd: 99);
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      algo: old,
+      payloadJson: '{not-json',
+    );
+    final history = await repository.readMetricHistory(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(history[4].value, 41);
+    expect(history[5].value, isNull);
+    expect(history.last.value, isNull);
+  });
+
+  test('card and detail use SQL rmssd/rhr when payload scalars disagree',
+      () async {
+    await putNight('2026-09-15', rmssd: 48, rhr: 54, computedAt: 900);
+    final db = await LocalDb.instance;
+    await db.update(
+      'day_result',
+      {
+        'payload_json': jsonEncode({
+          'scalars': {'rmssd': 99, 'rhr': 11},
+        }),
+      },
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    final envelope = await app.repo!.getDayHrv('2026-09-15');
+    expect(envelope['rmssd'], 99);
+    final heart = await app.repo!.getDayHeart('2026-09-15');
+    expect(heart['resting_hr'], 11);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.hrv.value, 48);
+    expect(day.restingHr.value, 54);
+    final hrv = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    final rhr = await repository.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    expect(day.hrv.value, hrv.value);
+    expect(day.hrv.nightScalar, hrv.state);
+    expect(day.restingHr.value, rhr.value);
+    expect(day.restingHr.nightScalar, rhr.state);
+    expect(hrv.value, 48);
+    expect(rhr.value, 54);
+  });
+
+  test('null SQL rmssd/rhr does not borrow payload or legacy envelopes',
+      () async {
+    await putNight('2026-09-15', rmssd: 48, rhr: 54, computedAt: 900);
+    final db = await LocalDb.instance;
+    await db.update(
+      'day_result',
+      {'rmssd': null, 'rhr': null},
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    final envelope = await app.repo!.getDayHrv('2026-09-15');
+    expect(envelope['rmssd'], 48);
+    final heart = await app.repo!.getDayHeart('2026-09-15');
+    expect(heart['resting_hr'], 54);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.hrv.value, isNull);
+    expect(day.restingHr.value, isNull);
+    expect(day.hrv.nightScalar, NightScalarState.missing);
+    expect(day.restingHr.nightScalar, NightScalarState.missing);
+    final hrv = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(day.hrv.value, hrv.value);
+    expect(day.hrv.nightScalar, hrv.state);
+    expect(hrv.value, isNull);
+  });
+
+  test('corrupt payload throws from readDay; cards never see unreadable',
+      () async {
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: '{not-json',
+    );
+    await expectLater(
+      repository.readDay('2026-09-15'),
+      throwsA(isA<FormatException>()),
+    );
+    final detail = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(detail.state, NightScalarState.unreadable);
+    expect(detail.value, isNull);
+  });
+
+  test('readDay banner and cards share the sleep-correction snapshot', () async {
+    await putCoveredNight('2026-09-15', rmssd: 48, rhr: 54, computedAt: 900);
+    await putSleepJob('2026-09-15', status: 'pending');
+    final pending = await repository.readDay('2026-09-15');
+    expect(pending.hrv.value, isNull);
+    expect(pending.restingHr.value, isNull);
+    expect(pending.hrv.nightScalar, NightScalarState.pending);
+    expect(pending.restingHr.nightScalar, NightScalarState.pending);
+    expect(pending.correction, isNotNull);
+    expect(pending.correction!.id, 'draft-2026-09-15');
+    expect(pending.correction!.day, '2026-09-15');
+    expect(pending.correction!.revision, 1);
+    expect(pending.correction!.state, CorrectionState.pending);
+    expect(pending.correction!.automatic, isFalse);
+    expect(pending.correction!.error, isNull);
+    expect(pending.correction!.savedAt.millisecondsSinceEpoch, greaterThan(0));
+
+    final db = await LocalDb.instance;
+    await db.update(
+      'openband_calculation_job',
+      {'status': 'failed', 'error': 'staging timeout'},
+      where: 'day_id = ?',
+      whereArgs: ['2026-09-15'],
+    );
+    final failed = await repository.readDay('2026-09-15');
+    expect(failed.hrv.nightScalar, NightScalarState.failed);
+    expect(failed.restingHr.nightScalar, NightScalarState.failed);
+    expect(failed.correction!.id, pending.correction!.id);
+    expect(failed.correction!.state, CorrectionState.failed);
+    expect(failed.correction!.error, 'staging timeout');
+
+    await putCoveredNight('2026-09-14', rmssd: 40, rhr: 56, computedAt: 800);
+    await LocalDb.restoreOpenBandAutomatic('2026-09-14');
+    final restored = await repository.readDay('2026-09-14');
+    expect(restored.correction, isNull);
+    expect(restored.hrv.value, isNull);
+    expect(restored.hrv.nightScalar, NightScalarState.pending);
   });
 
   test('recovery and strain keys are refused', () async {

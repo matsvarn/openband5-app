@@ -50,6 +50,35 @@ enum SyntheticCaffeineSleepSeed {
   partialMeaningful,
 }
 
+class _NightScalarSeed {
+  _NightScalarSeed({
+    this.selected,
+    Map<String, NightScalarRow> matching = const {},
+    Set<String> otherVersionDays = const {},
+    Set<String> seriesOnlyDays = const {},
+    Map<String, NightScalarJob> sleepJobs = const {},
+    Map<String, NightScalarJob> napJobs = const {},
+    this.recordingTimezone,
+    this.currentAlgo,
+  }) : matching = Map<String, NightScalarRow>.from(matching),
+       otherVersionDays = Set<String>.from(otherVersionDays),
+       seriesOnlyDays = Set<String>.from(seriesOnlyDays),
+       sleepJobs = Map<String, NightScalarJob>.from(sleepJobs),
+       napJobs = Map<String, NightScalarJob>.from(napJobs);
+
+  final NightScalarRow? selected;
+  final Map<String, NightScalarRow> matching;
+  final Set<String> otherVersionDays;
+  final Set<String> seriesOnlyDays;
+  final Map<String, NightScalarJob> sleepJobs;
+  final Map<String, NightScalarJob> napJobs;
+  final String? recordingTimezone;
+  final int? currentAlgo;
+
+  NightScalarRow? rowFor(String day) =>
+      selected?.day == day ? selected : matching[day];
+}
+
 /// Isolated in-memory [OpenBandRepository] driven by design fixtures.
 ///
 /// ponytail: sleep totals after a correction clip fixture intervals and sum
@@ -2273,19 +2302,17 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String endDay,
     int nights,
   ) async {
+    if (key == MetricKey.hrv || key == MetricKey.restingHr) {
+      return nightScalarHistoryPoints(
+        await readNightScalarDetail(key, endDay, nights),
+      );
+    }
     final recovery = Map<String, dynamic>.from(_summary['recovery'] as Map);
     final todayKnown =
         scenario != SyntheticScenario.missing &&
         scenario != SyntheticScenario.processing;
     final source = switch (key) {
-      MetricKey.hrv => {
-        ..._hrvByDay,
-        if (todayKnown) _day: (recovery['hrv_ms'] as num).toDouble(),
-      },
-      MetricKey.restingHr => {
-        ..._rhrByDay,
-        if (todayKnown) _day: (recovery['rhr_bpm'] as num).toDouble(),
-      },
+      MetricKey.hrv || MetricKey.restingHr => const <String, double>{},
       MetricKey.recovery => {
         if (todayKnown) _day: (recovery['score'] as num).toDouble(),
       },
@@ -2309,17 +2336,14 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   bool failNightScalarRead = false;
   NightScalarDetail? nightScalarOverride;
-  bool _nightScalarCustom = false;
-  NightScalarRow? _nightScalarSelected;
-  final Map<String, NightScalarRow> _nightScalarMatching = {};
-  final Set<String> _nightScalarOtherVersions = {};
-  final Set<String> _nightScalarSeriesOnly = {};
-  final Map<String, NightScalarJob> _nightScalarSleepJobs = {};
-  final Map<String, NightScalarJob> _nightScalarNapJobs = {};
-  String? _nightScalarRecordingTimezone;
-  int? _nightScalarCurrentAlgo;
+  final Map<NightScalarMetric, _NightScalarSeed> _nightScalarSeeds = {};
 
+  /// Per-metric seed. [key] defaults to HRV so existing callers stay HRV-only.
+  /// Name [MetricKey.restingHr] to seed RHR. The other metric is not invented.
+  /// Pass the same [sleepJobs]/[napJobs] on both seeds when they share a
+  /// correction.
   void seedNightScalarDetail({
+    MetricKey key = MetricKey.hrv,
     NightScalarRow? selected,
     Map<String, NightScalarRow> matching = const {},
     Set<String> otherVersionDays = const {},
@@ -2329,25 +2353,27 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String? recordingTimezone,
     int? currentAlgo,
   }) {
-    _nightScalarCustom = true;
-    _nightScalarSelected = selected;
-    _nightScalarMatching
-      ..clear()
-      ..addAll(matching);
-    _nightScalarOtherVersions
-      ..clear()
-      ..addAll(otherVersionDays);
-    _nightScalarSeriesOnly
-      ..clear()
-      ..addAll(seriesOnlyDays);
-    _nightScalarSleepJobs
-      ..clear()
-      ..addAll(sleepJobs);
-    _nightScalarNapJobs
-      ..clear()
-      ..addAll(napJobs);
-    _nightScalarRecordingTimezone = recordingTimezone;
-    _nightScalarCurrentAlgo = currentAlgo;
+    _nightScalarSeeds[nightScalarMetricOf(key)] = _NightScalarSeed(
+      selected: selected,
+      matching: matching,
+      otherVersionDays: otherVersionDays,
+      seriesOnlyDays: seriesOnlyDays,
+      sleepJobs: sleepJobs,
+      napJobs: napJobs,
+      recordingTimezone: recordingTimezone,
+      currentAlgo: currentAlgo,
+    );
+  }
+
+  NightScalarDetail? _nightScalarOverrideFor(
+    NightScalarMetric metric,
+    String day,
+  ) {
+    final override = nightScalarOverride;
+    if (override == null || override.key != metric || override.day != day) {
+      return null;
+    }
+    return override;
   }
 
   @override
@@ -2360,22 +2386,33 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw StateError('synthetic night scalar read failure');
     }
     final metric = nightScalarMetricOf(key);
-    if (nightScalarOverride != null) return nightScalarOverride!;
+    final override = _nightScalarOverrideFor(metric, day);
+    if (override != null) return override;
     final days = nightScalarDaysEnding(day, nights);
-    if (_nightScalarCustom) {
+    final seed = _nightScalarSeeds[metric];
+    if (seed != null) {
       return buildNightScalarDetail(
         day: day,
         key: metric,
         nights: nights,
-        currentAlgo: _nightScalarCurrentAlgo ?? kAlgoVersion,
+        currentAlgo: seed.currentAlgo ?? kAlgoVersion,
         days: days,
-        selected: _nightScalarSelected,
-        matching: _nightScalarMatching,
-        otherVersionDays: _nightScalarOtherVersions,
-        seriesOnlyDays: _nightScalarSeriesOnly,
-        sleepJobs: _nightScalarSleepJobs,
-        napJobs: _nightScalarNapJobs,
-        recordingTimezone: _nightScalarRecordingTimezone,
+        selected: seed.rowFor(day),
+        matching: seed.matching,
+        otherVersionDays: seed.otherVersionDays,
+        seriesOnlyDays: seed.seriesOnlyDays,
+        sleepJobs: seed.sleepJobs,
+        napJobs: seed.napJobs,
+        recordingTimezone: seed.recordingTimezone,
+      );
+    }
+    if (_nightScalarSeeds.isNotEmpty) {
+      return buildNightScalarDetail(
+        day: day,
+        key: metric,
+        nights: nights,
+        currentAlgo: kAlgoVersion,
+        days: days,
       );
     }
     return _produceNightScalarDetail(metric, day, days);
@@ -2455,27 +2492,123 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<OpenBandDay> readDay(String day) async {
-    if (day == _day) return _overlay(_baseDay());
-    return OpenBandDay(
-      day: day,
-      sleep: SleepNight(
-        duration: _sleepByDay.containsKey(day)
-            ? DayMetric(_sleepByDay[day])
+    if (day == _day) return _withNightScalarCards(_overlay(_baseDay()));
+    return _withNightScalarCards(
+      OpenBandDay(
+        day: day,
+        sleep: SleepNight(
+          duration: _sleepByDay.containsKey(day)
+              ? DayMetric(_sleepByDay[day])
+              : const DayMetric.missing(),
+          history: _history
+              .where((sample) => sample.day.compareTo(day) <= 0)
+              .toList(),
+          recordingTimezone: _timezone,
+        ),
+        recovery: const DayMetric.missing(),
+        strain: const DayMetric.missing(),
+        hrv: _hrvByDay.containsKey(day)
+            ? DayMetric(_hrvByDay[day])
             : const DayMetric.missing(),
-        history: _history
-            .where((sample) => sample.day.compareTo(day) <= 0)
-            .toList(),
-        recordingTimezone: _timezone,
+        restingHr: _rhrByDay.containsKey(day)
+            ? DayMetric(_rhrByDay[day])
+            : const DayMetric.missing(),
+        synthetic: true,
       ),
-      recovery: const DayMetric.missing(),
-      strain: const DayMetric.missing(),
-      hrv: _hrvByDay.containsKey(day)
-          ? DayMetric(_hrvByDay[day], baseline: _hrvByDay[day])
-          : const DayMetric.missing(),
-      restingHr: _rhrByDay.containsKey(day)
-          ? DayMetric(_rhrByDay[day], baseline: _rhrByDay[day])
-          : const DayMetric.missing(),
-      synthetic: true,
+    );
+  }
+
+  OpenBandDay _withNightScalarCards(OpenBandDay day) {
+    DayMetric card({
+      required NightScalarMetric metric,
+      required DayMetric published,
+    }) {
+      final override = _nightScalarOverrideFor(metric, day.day);
+      if (override != null) {
+        return dayMetricFromNightScalar(
+          state: override.state,
+          value: override.value,
+          baseline: override.baseline,
+        );
+      }
+      final seed = _nightScalarSeeds[metric];
+      if (seed != null) {
+        final selected = seed.rowFor(day.day);
+        final overlay = nightScalarJobsOverlay(
+          sleep: seed.sleepJobs[day.day],
+          nap: seed.napJobs[day.day],
+          row: selected,
+          storedAlgo: selected?.algoVersion,
+          storedComputedAt: selected?.computedAtMs,
+        );
+        return dayMetricFromNightScalar(
+          state: nightScalarPublishedState(
+            overlay: overlay,
+            selected: selected,
+            currentAlgo: seed.currentAlgo ?? kAlgoVersion,
+            value: selected?.value,
+          ),
+          value: selected?.value,
+          baseline: selected?.baseline,
+        );
+      }
+      if (_nightScalarSeeds.isNotEmpty) {
+        return dayMetricFromNightScalar(
+          state: NightScalarState.missing,
+        );
+      }
+      NightScalarRow? selected;
+      if (!(scenario == SyntheticScenario.missing && day.day == _day)) {
+        if (day.day == _day) {
+          selected = NightScalarRow(
+            day: day.day,
+            algoVersion: kAlgoVersion,
+            partial: scenario == SyntheticScenario.partial,
+            computedAtMs: _baseBand.latestStoredAt?.millisecondsSinceEpoch,
+            windowStartMs: _onset.millisecondsSinceEpoch,
+            windowEndMs: _wake.millisecondsSinceEpoch,
+          );
+        } else if (published.value != null) {
+          selected = NightScalarRow(day: day.day, algoVersion: kAlgoVersion);
+        }
+      }
+      final overlay = nightScalarJobsOverlay(
+        sleep: (scenario == SyntheticScenario.processing && day.day == _day)
+            ? NightScalarJob(day: day.day, status: 'pending')
+            : null,
+        nap: (scenario == SyntheticScenario.calculationFailure &&
+                day.day == _day)
+            ? NightScalarJob(day: day.day, status: 'failed')
+            : null,
+        row: selected,
+        storedAlgo: selected?.algoVersion,
+        storedComputedAt: selected?.computedAtMs,
+      );
+      return dayMetricFromNightScalar(
+        state: nightScalarPublishedState(
+          overlay: overlay,
+          selected: selected,
+          currentAlgo: kAlgoVersion,
+          value: published.value,
+        ),
+        value: published.value,
+        baseline: selected?.baseline,
+      );
+    }
+
+    return OpenBandDay(
+      day: day.day,
+      sleep: day.sleep,
+      recovery: day.recovery,
+      strain: day.strain,
+      hrv: card(metric: NightScalarMetric.hrv, published: day.hrv),
+      restingHr: card(metric: NightScalarMetric.rhr, published: day.restingHr),
+      steps: day.steps,
+      stepIntervals: day.stepIntervals,
+      calculatedAt: day.calculatedAt,
+      intake: day.intake,
+      correction: day.correction,
+      synthetic: day.synthetic,
     );
   }
 
@@ -3376,14 +3509,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       sleep: sleep,
       recovery: DayMetric((recovery['score'] as num).toDouble()),
       strain: DayMetric((_summary['day_strain'] as num).toDouble()),
-      hrv: DayMetric(
-        (recovery['hrv_ms'] as num).toDouble(),
-        baseline: _hrvByDay[_previousDay(_day)],
-      ),
-      restingHr: DayMetric(
-        (recovery['rhr_bpm'] as num).toDouble(),
-        baseline: _rhrByDay[_previousDay(_day)],
-      ),
+      hrv: DayMetric((recovery['hrv_ms'] as num).toDouble()),
+      restingHr: DayMetric((recovery['rhr_bpm'] as num).toDouble()),
       steps: DayMetric((_summary['steps'] as num).toDouble()),
       calculatedAt: _baseBand.latestStoredAt,
       stepIntervals: [
@@ -3421,6 +3548,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           m.value,
           readiness: MetricReadiness.processing,
           baseline: m.baseline,
+          reason: m.reason,
+          nightScalar: m.nightScalar,
         );
         return OpenBandDay(
           day: day.day,

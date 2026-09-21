@@ -204,7 +204,7 @@ void main() {
   });
 
   testWidgets('rhr complete uses heart icon', (tester) async {
-    _seedTrusted(repo, hrv: false);
+    _seedTrusted(repo, key: MetricKey.restingHr);
     await mount(tester, key: MetricKey.restingHr);
     expect(find.text('Ruhepuls'), findsWidgets);
     expect(find.text('54'), findsOneWidget);
@@ -225,7 +225,7 @@ void main() {
     tester,
   ) async {
     for (final width in [375.0, 393.0]) {
-      _seedTrusted(repo, hrv: false);
+      _seedTrusted(repo, key: MetricKey.restingHr);
       await mount(
         tester,
         key: MetricKey.restingHr,
@@ -241,7 +241,7 @@ void main() {
   testWidgets('rhr 2x 375 stacks the footer without splitting the unit', (
     tester,
   ) async {
-    _seedTrusted(repo, hrv: false);
+    _seedTrusted(repo, key: MetricKey.restingHr);
     await mount(
       tester,
       key: MetricKey.restingHr,
@@ -1062,8 +1062,10 @@ void main() {
 int get _onsetStamp => DateTime(2026, 9, 14, 23, 10).millisecondsSinceEpoch;
 int get _wakeStamp => DateTime(2026, 9, 15, 6, 54).millisecondsSinceEpoch;
 
-void _seedTrusted(_GateRepo repo, {bool hrv = true}) {
+void _seedTrusted(_GateRepo repo, {MetricKey key = MetricKey.hrv}) {
+  final hrv = key == MetricKey.hrv;
   repo.seedNightScalarDetail(
+    key: key,
     selected: hrv
         ? _selected(
             baseline: const StoredNightBaseline(

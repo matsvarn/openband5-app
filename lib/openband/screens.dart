@@ -151,7 +151,7 @@ class OpenBandOverview extends StatelessWidget {
                           color: p.well,
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: _AdaptiveValues(
+                        child: OBAdaptiveValues(
                           children: [
                             MetricRing(
                               label: 'Schlaf',
@@ -291,7 +291,7 @@ class OpenBandOverview extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (day.correction != null || controller.calculating)
                   CorrectionBanner(controller: controller),
-                _AdaptiveValues(
+                OBAdaptiveValues(
                   children: [
                     OBMetricCard(
                       label: 'HRV',
@@ -299,8 +299,6 @@ class OpenBandOverview extends StatelessWidget {
                       unit: 'ms',
                       icon: LucideIcons.activity,
                       color: p.recovery,
-                      tint: p.recoveryTint,
-                      day: day.day,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
                         controller: controller,
@@ -319,8 +317,6 @@ class OpenBandOverview extends StatelessWidget {
                       unit: '/min',
                       icon: LucideIcons.heart,
                       color: p.pulse,
-                      tint: p.pulseTint,
-                      day: day.day,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
                         controller: controller,
@@ -515,9 +511,9 @@ Widget _sleepStageFact(OB p, String label, Color? swatch, String value) =>
       ),
     );
 
-class _AdaptiveValues extends StatelessWidget {
+class OBAdaptiveValues extends StatelessWidget {
   final List<Widget> children;
-  const _AdaptiveValues({required this.children});
+  const OBAdaptiveValues({super.key, required this.children});
   @override
   Widget build(BuildContext context) =>
       MediaQuery.textScalerOf(context).scale(14) > 20
@@ -539,11 +535,37 @@ class _AdaptiveValues extends StatelessWidget {
         );
 }
 
+String? _compactMetricStatus(DayMetric metric) {
+  switch (metric.nightScalar) {
+    case NightScalarState.pending:
+      return kNightScalarPendingLabel;
+    case NightScalarState.failed:
+      return kNightScalarFailedLabel;
+    case NightScalarState.unknown:
+    case NightScalarState.outdated:
+      return kNightScalarOpenLabel;
+    case NightScalarState.missing:
+      return 'Kein Nachtwert';
+    case NightScalarState.unreadable:
+      return 'Nicht lesbar';
+    case NightScalarState.partial:
+      return 'Unvollständig';
+    case NightScalarState.older:
+      return 'Ältere Berechnung';
+    case NightScalarState.current:
+      if (metric.value == null || metric.baseline == null) return null;
+      return obMetricStatus(metric.value, metric.baseline);
+    case null:
+      if (metric.value == null || metric.baseline == null) return null;
+      return obMetricStatus(metric.value, metric.baseline);
+  }
+}
+
 class OBMetricCard extends StatelessWidget {
-  final String label, unit, day;
+  final String label, unit;
   final DayMetric metric;
   final IconData icon;
-  final Color color, tint;
+  final Color color;
   final VoidCallback? onTap;
   const OBMetricCard({
     super.key,
@@ -552,64 +574,73 @@ class OBMetricCard extends StatelessWidget {
     required this.metric,
     required this.icon,
     required this.color,
-    required this.tint,
-    required this.day,
     this.onTap,
   });
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final status = obMetricStatus(metric.value, metric.baseline);
-    final statusColor = status.endsWith('Basis') && metric.value != null
-        ? p.smallText(color)
-        : p.muted;
+    final scaler = MediaQuery.textScalerOf(context);
+    final status = _compactMetricStatus(metric);
+    final compared =
+        status != null &&
+        metric.value != null &&
+        metric.baseline != null &&
+        (metric.nightScalar == null ||
+            metric.nightScalar == NightScalarState.current);
+    final labelSize = scaler.scale(13);
+    final valueSize = scaler.scale(34);
+    final unitSize = scaler.scale(14);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AlpRadius.card),
-      child: OBCard(
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                spacing: 6,
-                children: [
-                  Row(
-                    children: [
-                      Icon(icon, size: 16, color: color),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          label,
-                          style: p.text(
-                            13,
-                            weight: FontWeight.w600,
-                            color: p.muted,
-                          ),
-                        ),
+      child: MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+        child: OBCard(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 84),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              spacing: 6,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, size: 16, color: color),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: p
+                            .text(
+                              labelSize,
+                              weight: FontWeight.w600,
+                              color: p.muted,
+                            )
+                            .copyWith(height: 18 / 13, letterSpacing: 0),
                       ),
-                    ],
-                  ),
-                  _MetricValueUnit(
-                    value: obNumber(metric.value),
-                    unit: unit,
-                    size: 34,
-                  ),
+                    ),
+                  ],
+                ),
+                _MetricValueUnit(
+                  value: obNumber(metric.value),
+                  unit: metric.value == null ? null : unit,
+                  valueSize: valueSize,
+                  unitSize: unitSize,
+                ),
+                if (status != null)
                   Text(
                     status,
-                    style: p.text(
-                      13,
-                      weight: FontWeight.w600,
-                      color: statusColor,
-                    ),
+                    style: p
+                        .text(
+                          labelSize,
+                          weight: FontWeight.w600,
+                          color: compared ? p.smallText(color) : p.muted,
+                        )
+                        .copyWith(height: 18 / 13, letterSpacing: 0),
                   ),
-                ],
-              ),
+              ],
             ),
-            const SizedBox(width: 10),
-            OBRangePill(metric: metric, color: color, tint: tint),
-          ],
+          ),
         ),
       ),
     );
@@ -619,27 +650,36 @@ class OBMetricCard extends StatelessWidget {
 /// Paper value + unit on one baseline when they fit; stacks at large text or
 /// a narrow card instead of shrinking or truncating the figure.
 class _MetricValueUnit extends StatelessWidget {
-  final String value, unit;
-  final double size;
+  final String value;
+  final String? unit;
+  final double valueSize, unitSize;
   const _MetricValueUnit({
     required this.value,
     required this.unit,
-    required this.size,
+    required this.valueSize,
+    required this.unitSize,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final valueStyle = p.text(size, weight: FontWeight.w800, display: true);
-    final unitStyle = p.text(14, weight: FontWeight.w500, color: p.muted);
+    final valueStyle = p
+        .text(valueSize, weight: FontWeight.w800, display: true)
+        .copyWith(height: 36 / 34);
+    final unitStyle = p
+        .text(unitSize, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 18 / 14, letterSpacing: 0);
+    final unitText = unit;
+    if (unitText == null || unitText.isEmpty) {
+      return Text(value, style: valueStyle);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
-        final scaler = MediaQuery.textScalerOf(context);
         final dir = Directionality.of(context);
         final rowWidth =
-            _textWidth(value, valueStyle, scaler, dir) +
+            _textWidth(value, valueStyle, TextScaler.noScaling, dir) +
             4 +
-            _textWidth(unit, unitStyle, scaler, dir);
+            _textWidth(unitText, unitStyle, TextScaler.noScaling, dir);
         final stack =
             constraints.hasBoundedWidth && rowWidth > constraints.maxWidth;
         if (stack) {
@@ -648,7 +688,7 @@ class _MetricValueUnit extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(value, style: valueStyle),
-              Text(unit, style: unitStyle),
+              Text(unitText, style: unitStyle),
             ],
           );
         }
@@ -658,7 +698,7 @@ class _MetricValueUnit extends StatelessWidget {
           children: [
             Text(value, style: valueStyle),
             const SizedBox(width: 4),
-            Text(unit, style: unitStyle),
+            Text(unitText, style: unitStyle),
           ],
         );
       },
@@ -1130,7 +1170,7 @@ class OpenBandSleep extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (day.correction != null || controller.calculating)
                   CorrectionBanner(controller: controller),
-                _AdaptiveValues(
+                OBAdaptiveValues(
                   children: [
                     OBMetricCard(
                       label: 'HRV',
@@ -1138,8 +1178,6 @@ class OpenBandSleep extends StatelessWidget {
                       metric: day.hrv,
                       icon: LucideIcons.activity,
                       color: p.recovery,
-                      tint: p.recoveryTint,
-                      day: day.day,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
                         controller: controller,
@@ -1158,8 +1196,6 @@ class OpenBandSleep extends StatelessWidget {
                       metric: day.restingHr,
                       icon: LucideIcons.heart,
                       color: p.pulse,
-                      tint: p.pulseTint,
-                      day: day.day,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
                         controller: controller,
@@ -1218,8 +1254,7 @@ class OpenBandSleep extends StatelessWidget {
                           onTap: () {
                             final day = controller.selectedDay;
                             final now = controller.now;
-                            final synthetic =
-                                controller.day?.synthetic == true;
+                            final synthetic = controller.day?.synthetic == true;
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => OpenBandSleepPlan(
