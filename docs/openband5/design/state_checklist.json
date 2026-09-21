@@ -1354,7 +1354,7 @@
         "paperNode": "47SX-0",
         "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/exercise_catalogue.dart; lib/openband/exercise_load.dart; lib/openband/exercise_input.dart; lib/openband/template_editor.dart; lib/openband/strength_live.dart; lib/openband/local_repository.dart; lib/data/db.dart",
         "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
-        "note": "Definition creation, validation, conflict/retry and original load semantics are implemented. Definition management/copy/archive are separate open states.",
+        "note": "Definition creation, validation, conflict/retry and original load semantics are implemented. Definition copy is implemented with B65. Definition metadata editing and archive management remain separate open states.",
         "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
       },
       "Eigene Übung · Gerät wählen": {
@@ -1364,6 +1364,22 @@
         "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_custom_load_ui_test.dart; test/openband_exercise_load_test.dart; test/openband_strength_runtime_test.dart; test/openband_training_test.dart; test/csv_export_test.dart; integration_test/openband_review_test.dart",
         "note": "Canonical choice sheet selects equipment; per-device load requires a positive integer device count. No equipment or count is inferred.",
         "nativeReview": "build/ui-review/custom-exercise-pro-settled-20260920 and custom-exercise-mini-settled-20260920:23 PNGs each; custom-load-pro-final-20260920 and custom-load-mini-final-20260920:23 PNGs each. All92 final PNGs inspected, run/frames/index reconciled. Light/dark, errors/retry, missing metadata, mixed units/bases, bodyweight/assistance, 375 width,2x and keyboard. Synthetic simulator proof."
+      },
+      "Eigene Übung · Kopie gespeichert": {
+        "status": "implemented",
+        "paperNode": "4TIW-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/domain.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_exercise_picker_test.dart; integration_test/openband_review_test.dart; IMPLEMENTATION_VERIFICATION.md Exercise-definition copy",
+        "nativeReview": "build/ui-review/exercise-copy-pro-20260921 and exercise-copy-mini-20260921:17 PNGs each, all34 inspected; run/frames/index reconciled. Light/dark, preset unknown metadata, save failure/retry, cancel, hidden-filter recovery,375width and2x top/bottom. Synthetic simulator proof.",
+        "note": "Detail copy seeds the existing editor with known typed definition fields and direct source provenance. New UUID, unchanged source, no copied history/loads, unknown semantics unset. Save returns to the same library unselected, preserving source selection and filters. Saved entries survive refresh failure. Archive and metadata editing remain separate open requirements."
+      },
+      "Eigene Übung · kopierte Definition": {
+        "status": "implemented",
+        "paperNode": "4T6C-0",
+        "source": "lib/openband/exercise_definition_editor.dart; lib/openband/exercise_picker.dart; lib/openband/domain.dart; lib/data/db.dart",
+        "evidence": "test/openband_custom_exercise_contract_test.dart; test/openband_custom_exercise_test.dart; test/openband_exercise_picker_test.dart; integration_test/openband_review_test.dart; IMPLEMENTATION_VERIFICATION.md Exercise-definition copy",
+        "nativeReview": "build/ui-review/exercise-copy-pro-20260921 and exercise-copy-mini-20260921:17 PNGs each, all34 inspected; run/frames/index reconciled. Light/dark, preset unknown metadata, save failure/retry, cancel, hidden-filter recovery,375width and2x top/bottom. Synthetic simulator proof.",
+        "note": "Detail copy seeds the existing editor with known typed definition fields and direct source provenance. New UUID, unchanged source, no copied history/loads, unknown semantics unset. Save returns to the same library unselected, preserving source selection and filters. Saved entries survive refresh failure. Archive and metadata editing remain separate open requirements."
       }
     },
     "A06b · Training": {

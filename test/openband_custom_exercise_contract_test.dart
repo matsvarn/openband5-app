@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -873,5 +874,79 @@ void main() {
       ),
       sqlite: false,
     );
+  });
+
+  test('copied seed persists copiedFrom, leaves source, replays same id', () async {
+    final repo = await sqliteRepo('custom_ex_copy.db');
+    final source = (await repo.createCustomExercise(
+      _curlDraft(id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+    )).current!;
+    expect(source.retained.containsKey('copiedFrom'), isFalse);
+
+    final seed = seedCopiedCustomExercise(source);
+    expect(seed.copiedFrom, source.id);
+    expect(seed.label, 'Kurzhantel-Curl · Kopie');
+    expect(seed.loadBasis, ExerciseLoadBasis.perDevice);
+    expect(seed.deviceCount, 2);
+    expect(seed.repetitionBasis, ExerciseRepetitionBasis.perSide);
+
+    final copyId = newCustomExerciseId();
+    expect(copyId, isNot(source.id));
+    final draft = CustomExerciseDraft(
+      id: copyId,
+      label: seed.label,
+      mode: seed.mode!,
+      equipment: seed.equipment!,
+      equipmentRef: seed.equipmentRef,
+      loadBasis: seed.loadBasis!,
+      deviceCount: seed.deviceCount,
+      repetitionBasis: seed.repetitionBasis,
+      primaryMuscles: seed.primaryMuscles,
+      secondaryMuscles: seed.secondaryMuscles,
+      retained: {'copiedFrom': seed.copiedFrom},
+    );
+    final first = (await repo.createCustomExercise(draft)).current!;
+    expect(first.id, copyId);
+    expect(first.version, 1);
+    expect(first.source, ExerciseDefinitionSource.stored);
+    expect(first.retained['copiedFrom'], source.id);
+    expect(first.retained['copiedFrom'], isNot(equals('import-x')));
+    expect(first.label, 'Kurzhantel-Curl · Kopie');
+
+    final unchanged = (await repo.readExerciseCatalogue()).byId(source.id)!;
+    expect(unchanged.label, source.label);
+    expect(unchanged.retained['copiedFrom'], isNull);
+    expect(unchanged.version, 1);
+
+    final replay = await repo.createCustomExercise(draft);
+    expect(replay.saved, isTrue);
+    expect(replay.current!.id, copyId);
+    expect(replay.current!.version, 1);
+    expect(replay.current!.retained['created_at'], first.retained['created_at']);
+    expect(replay.current!.retained['copiedFrom'], source.id);
+
+    final secondId = newCustomExerciseId();
+    final second = (await repo.createCustomExercise(
+      CustomExerciseDraft(
+        id: secondId,
+        label: seed.label,
+        mode: seed.mode!,
+        equipment: seed.equipment!,
+        loadBasis: seed.loadBasis!,
+        deviceCount: seed.deviceCount,
+        repetitionBasis: seed.repetitionBasis,
+        primaryMuscles: seed.primaryMuscles,
+        secondaryMuscles: seed.secondaryMuscles,
+        retained: {'copiedFrom': seed.copiedFrom},
+      ),
+    )).current!;
+    expect(second.id, isNot(first.id));
+    expect(second.retained['copiedFrom'], source.id);
+
+    final preset = (await repo.readExerciseCatalogue()).byId('bench_press')!;
+    final presetSeed = seedCopiedCustomExercise(preset);
+    expect(presetSeed.loadBasis, isNull);
+    expect(presetSeed.repetitionBasis, isNull);
+    expect(presetSeed.copiedFrom, 'bench_press');
   });
 }

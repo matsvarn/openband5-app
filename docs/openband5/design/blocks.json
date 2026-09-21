@@ -650,7 +650,19 @@
     "4SP9-0": "A07c Vergleich · nicht auswertbar Info",
     "4SQU-0": "A07c Vergleich · nicht auswertbar Info · Dunkel",
     "4T22-0": "A07c Zyklus · Vergleichsbeispiel",
-    "4T47-0": "A07c Zyklus · Vergleichsbeispiel · Dunkel"
+    "4T47-0": "A07c Zyklus · Vergleichsbeispiel · Dunkel",
+    "4SV0-0": "A06a Übung · Kopieren",
+    "4SW6-0": "A06a Übung · Kopieren dunkel",
+    "4SXC-0": "A06a Übung kopieren · Vorgaben offen",
+    "4SZF-0": "A06a Übung kopieren · Vorgaben offen dunkel",
+    "4T6C-0": "A06a Übung kopieren · Eigene Definition",
+    "4T8F-0": "A06a Übung kopieren · Eigene Definition dunkel",
+    "4TAI-0": "A06a Übung kopieren · Speichern fehlgeschlagen",
+    "4TCM-0": "A06a Übung kopieren · Speichern fehlgeschlagen dunkel",
+    "4TEQ-0": "A06a Übung kopieren · 375px Text 2x",
+    "4TGT-0": "A06a Übung kopieren · 375px Text 2x dunkel",
+    "4TIW-0": "A06a Übung kopieren · Bibliothek",
+    "4TK6-0": "A06a Übung kopieren · Bibliothek dunkel"
   },
   "blocks": [
     {
@@ -1023,14 +1035,28 @@
         "4SP9-0",
         "4SQU-0",
         "4T22-0",
-        "4T47-0"
+        "4T47-0",
+        "4SV0-0",
+        "4SW6-0",
+        "4SXC-0",
+        "4SZF-0",
+        "4T6C-0",
+        "4T8F-0",
+        "4TAI-0",
+        "4TCM-0",
+        "4TEQ-0",
+        "4TGT-0",
+        "4TIW-0",
+        "4TK6-0"
       ],
-      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below.",
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
       "variantPaperNodes": {
         "large": "4EEM-0",
         "largeDark": "4EEZ-0",
         "cycleObservationLarge": "4FVH-0",
-        "cycleObservationLargeDark": "4G10-0"
+        "cycleObservationLargeDark": "4G10-0",
+        "exerciseCopy": "4SUC-0",
+        "exerciseCopyDark": "4SUQ-0"
       }
     },
     {
@@ -2512,7 +2538,17 @@
         "4MKU-0",
         "4MM3-0",
         "4T22-0",
-        "4T47-0"
+        "4T47-0",
+        "4SV0-0",
+        "4SW6-0",
+        "4SXC-0",
+        "4SZF-0",
+        "4T6C-0",
+        "4T8F-0",
+        "4TAI-0",
+        "4TCM-0",
+        "4TEQ-0",
+        "4TGT-0"
       ],
       "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit. Empty-value navigation rows keep a fixed trailing chevron at all text scales; value-bearing rows retain the shared large-text stacked layout.",
       "variantPaperNodes": {
@@ -3355,7 +3391,9 @@
         "48I8-0",
         "48JI-0",
         "49P5-0",
-        "49QF-0"
+        "49QF-0",
+        "4TIW-0",
+        "4TK6-0"
       ],
       "notes": "Canonical catalogue row: source labels and actual capture mode, fixed44 selection action, no invented metrics. Selection is local to the template draft. Saved custom definitions retain explicit load and repetition semantics and return unselected."
     },

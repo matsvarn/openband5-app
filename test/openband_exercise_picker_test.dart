@@ -950,4 +950,92 @@ void main() {
     expect(find.text('Gewichtsangabe'), findsNothing);
     expect(find.text('Nicht festgelegt'), findsOneWidget);
   });
+
+  testWidgets('unknown unselectable row is still copyable', (tester) async {
+    await pumpPicker(
+      tester,
+      repo: _CatRepo(catalogue: fiveCatalogue(extra: [unknownRow()])),
+    );
+    await tester.tap(find.byKey(const ValueKey('exercise-open-imported_row')));
+    await tester.pumpAndSettle();
+    final select = tester.widget<OBAction>(
+      find.widgetWithText(OBAction, 'Auswählen'),
+    );
+    expect(select.onPressed, isNull);
+    expect(find.byTooltip('Kopieren'), findsOneWidget);
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsOneWidget);
+    expect(find.text('Rudern am Gerät · Kopie'), findsOneWidget);
+    expect(
+      tester
+          .widget<OBAction>(find.byKey(const ValueKey('custom-exercise-save')))
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Auswählen'), findsOneWidget);
+    expect(
+      tester.widget<OBAction>(find.widgetWithText(OBAction, 'Auswählen')).onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('copy does not select source; query stays put', (tester) async {
+    final repo = _CatRepo();
+    await pumpPicker(tester, repo: repo);
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Bank',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-load')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-load-total')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps-total')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExercisePicker), findsOneWidget);
+    expect(find.text('Bankdrücken'), findsOneWidget);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('exercise-search'))).controller!.text,
+      'Bank',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('exercise-filter-muscles')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter-muscle-chest')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Filter anwenden'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Bankdrücken'), findsWidgets);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('exercise-filter-muscles')),
+        matching: find.text('Brust'),
+      ),
+      findsOneWidget,
+    );
+  });
 }

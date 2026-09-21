@@ -74,6 +74,18 @@ String _rowSubtitle(ExerciseCatalogueEntry entry, {required bool inPlan}) {
 String _addLabel(int n) =>
     n == 1 ? '1 Übung hinzufügen' : '$n Übungen hinzufügen';
 
+/// Detail pop value. Select/deselect stay distinct from a saved copy.
+class ExercisePickerDetailResult {
+  const ExercisePickerDetailResult._({this.selected, this.created});
+  const ExercisePickerDetailResult.select() : this._(selected: true);
+  const ExercisePickerDetailResult.deselect() : this._(selected: false);
+  const ExercisePickerDetailResult.created(ExerciseCatalogueEntry entry)
+    : this._(created: entry);
+
+  final bool? selected;
+  final ExerciseCatalogueEntry? created;
+}
+
 bool _stackFilterTriggers(BuildContext context) =>
     MediaQuery.textScalerOf(context).scale(14) > 19;
 
@@ -247,12 +259,7 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
       ),
     );
     if (!mounted || created == null) return;
-    await _reloadCatalogue(known: created);
-    if (!mounted) return;
-    final current = _catalogue?.byId(created.id) ?? created;
-    setState(() {
-      _hiddenCreated = _entryVisible(current) ? null : current;
-    });
+    await _acceptCreated(created);
   }
 
   List<ExerciseCatalogueEntry> get _visible {
@@ -317,19 +324,34 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
     }
   }
 
+  Future<void> _acceptCreated(ExerciseCatalogueEntry created) async {
+    await _reloadCatalogue(known: created);
+    if (!mounted) return;
+    final current = _catalogue?.byId(created.id) ?? created;
+    setState(() {
+      _hiddenCreated = _entryVisible(current) ? null : current;
+    });
+  }
+
   Future<void> _openDetail(ExerciseCatalogueEntry entry) async {
-    final choose = await Navigator.of(context).push<bool>(
+    final result = await Navigator.of(context).push<ExercisePickerDetailResult>(
       MaterialPageRoute(
         builder: (_) => _ExerciseDetailPage(
+          repository: widget.repository,
           entry: entry,
           selected: _selected.contains(entry.id),
         ),
       ),
     );
-    if (!mounted || choose == null) return;
-    if (choose) {
+    if (!mounted || result == null) return;
+    final created = result.created;
+    if (created != null) {
+      await _acceptCreated(created);
+      return;
+    }
+    if (result.selected == true) {
       if (!_selected.contains(entry.id)) await _toggle(entry);
-    } else {
+    } else if (result.selected == false) {
       setState(() => _selected.remove(entry.id));
     }
   }
@@ -915,12 +937,27 @@ class _FilterGroup extends StatelessWidget {
 }
 
 class _ExerciseDetailPage extends StatelessWidget {
+  final OpenBandRepository repository;
   final ExerciseCatalogueEntry entry;
   final bool selected;
   const _ExerciseDetailPage({
+    required this.repository,
     required this.entry,
     required this.selected,
   });
+
+  Future<void> _copy(BuildContext context) async {
+    final created = await Navigator.of(context).push<ExerciseCatalogueEntry>(
+      MaterialPageRoute(
+        builder: (_) => OpenBandExerciseDefinitionEditor(
+          repository: repository,
+          copyFrom: entry,
+        ),
+      ),
+    );
+    if (!context.mounted || created == null) return;
+    Navigator.of(context).pop(ExercisePickerDetailResult.created(created));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -952,9 +989,16 @@ class _ExerciseDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(title: 'Übung', subtitle: ''),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OBPageHeader(
+                key: const ValueKey('exercise-copy'),
+                title: 'Übung',
+                subtitle: '',
+                onInfo: () => _copy(context),
+                infoIcon: LucideIcons.copy,
+                infoLabel: 'Kopieren',
+              ),
             ),
             Expanded(
               child: ListView(
@@ -1017,10 +1061,14 @@ class _ExerciseDetailPage extends StatelessWidget {
                 selected ? 'Auswahl entfernen' : 'Auswählen',
                 ink: true,
                 onPressed: selected
-                    ? () => Navigator.of(context).pop(false)
+                    ? () => Navigator.of(context).pop(
+                        const ExercisePickerDetailResult.deselect(),
+                      )
                     : !entry.selectable
                     ? null
-                    : () => Navigator.of(context).pop(true),
+                    : () => Navigator.of(context).pop(
+                        const ExercisePickerDetailResult.select(),
+                      ),
               ),
             ),
           ],

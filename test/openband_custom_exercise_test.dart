@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
@@ -50,6 +51,7 @@ class _Repo extends SyntheticOpenBandRepository {
     this.conflictCreate = false,
     this.conflictCurrent,
     this.createDelay,
+    this.catalogue,
   }) : super.fromMaps(_summary(), _detail());
 
   bool failCreate;
@@ -57,11 +59,13 @@ class _Repo extends SyntheticOpenBandRepository {
   bool failRead = false;
   ExerciseCatalogueEntry? conflictCurrent;
   Duration? createDelay;
+  ExerciseCatalogue? catalogue;
   final created = <CustomExerciseDraft>[];
 
   @override
   Future<ExerciseCatalogue> readExerciseCatalogue() async {
     if (failRead) throw StateError('fail');
+    if (catalogue != null) return catalogue!;
     return super.readExerciseCatalogue();
   }
 
@@ -109,6 +113,7 @@ void main() {
     double height = 852,
     double dpr = 1,
     ExerciseCaptureMode? initialMode,
+    ExerciseCatalogueEntry? copyFrom,
   }) async {
     tester.view.devicePixelRatio = dpr;
     tester.view.physicalSize = Size(width * dpr, height * dpr);
@@ -133,6 +138,7 @@ void main() {
         home: OpenBandExerciseDefinitionEditor(
           repository: repo,
           initialMode: initialMode,
+          copyFrom: copyFrom,
         ),
       ),
     );
@@ -214,7 +220,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps-perSide')));
+    await tester.tap(
+      find.byKey(const ValueKey('custom-exercise-reps-perSide')),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -260,7 +268,9 @@ void main() {
     );
     await tester.pump();
     expect(
-      tester.widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen')).onPressed,
+      tester
+          .widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen'))
+          .onPressed,
       isNull,
     );
     await tester.enterText(
@@ -269,7 +279,9 @@ void main() {
     );
     await tester.pump();
     expect(
-      tester.widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen')).onPressed,
+      tester
+          .widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen'))
+          .onPressed,
       isNull,
     );
     await tester.tapAt(const Offset(10, 10));
@@ -379,7 +391,9 @@ void main() {
     expect(repo.created, hasLength(1));
   });
 
-  testWidgets('failed save keeps input and retries the same id', (tester) async {
+  testWidgets('failed save keeps input and retries the same id', (
+    tester,
+  ) async {
     final repo = _Repo(failCreate: true);
     await pumpEditor(tester, repo: repo);
     await fillRequired(tester);
@@ -461,7 +475,9 @@ void main() {
     expect(stored.repetitionBasis, ExerciseRepetitionBasis.perSide);
   });
 
-  testWidgets('query filters and selection stay put after save', (tester) async {
+  testWidgets('query filters and selection stay put after save', (
+    tester,
+  ) async {
     final repo = _Repo();
     await pumpPicker(tester, repo: repo);
     await tester.tap(find.byKey(const ValueKey('exercise-select-bench_press')));
@@ -533,7 +549,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Anzeigen'));
       await tester.ensureVisible(find.text('1 Übung hinzufügen'));
-      expect(find.byKey(const ValueKey('custom-exercise-saved')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('custom-exercise-saved')),
+        findsOneWidget,
+      );
       expect(find.text('Kurzhantel-Curl'), findsOneWidget);
       expect(find.text('Anzeigen').hitTestable(), findsOneWidget);
       expect(find.text('1 Übung hinzufügen').hitTestable(), findsOneWidget);
@@ -628,15 +647,11 @@ void main() {
     };
     addTearDown(() => FlutterError.onError = previous);
     final repo = _Repo();
-    await pumpEditor(
-      tester,
-      repo: repo,
-      scale: 2,
-      width: 375,
-      height: 1600,
-    );
+    await pumpEditor(tester, repo: repo, scale: 2, width: 375, height: 1600);
     await fillRequired(tester);
-    await tester.ensureVisible(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('custom-exercise-save')),
+    );
     expect(overflow, isNull);
     expect(tester.takeException(), isNull);
   });
@@ -725,13 +740,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/custom-exercise-count-dark.png'),
     );
-    await pumpEditor(
-      tester,
-      repo: _Repo(),
-      scale: 2,
-      width: 375,
-      height: 1600,
-    );
+    await pumpEditor(tester, repo: _Repo(), scale: 2, width: 375, height: 1600);
     await fillRequired(tester);
     await tester.ensureVisible(
       find.byKey(const ValueKey('custom-exercise-secondary')),
@@ -827,17 +836,19 @@ void main() {
     );
   });
 
-  test('count parser rejects fraction, sign and non-digits without stripping', () {
-    expect(parseOpenBandPositiveCount('2'), 2);
-    expect(parseOpenBandPositiveCount(' 15 '),
-        15);
-    expect(parseOpenBandPositiveCount('1.5'), isNull);
-    expect(parseOpenBandPositiveCount('-1'), isNull);
-    expect(parseOpenBandPositiveCount('+1'), isNull);
-    expect(parseOpenBandPositiveCount('0'), isNull);
-    expect(parseOpenBandPositiveCount(''), isNull);
-    expect(parseOpenBandPositiveCount('1e2'), isNull);
-  });
+  test(
+    'count parser rejects fraction, sign and non-digits without stripping',
+    () {
+      expect(parseOpenBandPositiveCount('2'), 2);
+      expect(parseOpenBandPositiveCount(' 15 '), 15);
+      expect(parseOpenBandPositiveCount('1.5'), isNull);
+      expect(parseOpenBandPositiveCount('-1'), isNull);
+      expect(parseOpenBandPositiveCount('+1'), isNull);
+      expect(parseOpenBandPositiveCount('0'), isNull);
+      expect(parseOpenBandPositiveCount(''), isNull);
+      expect(parseOpenBandPositiveCount('1e2'), isNull);
+    },
+  );
 
   testWidgets('typed and pasted fraction or negative stay and refuse apply', (
     tester,
@@ -854,7 +865,9 @@ void main() {
     expect(find.text('1.5'), findsOneWidget);
     expect(find.text('15'), findsNothing);
     expect(
-      tester.widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen')).onPressed,
+      tester
+          .widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen'))
+          .onPressed,
       isNull,
     );
     await tester.enterText(
@@ -864,7 +877,9 @@ void main() {
     await tester.pump();
     expect(find.text('-1'), findsOneWidget);
     expect(
-      tester.widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen')).onPressed,
+      tester
+          .widget<OBAction>(find.widgetWithText(OBAction, 'Übernehmen'))
+          .onPressed,
       isNull,
     );
     await tester.tapAt(const Offset(10, 10));
@@ -891,10 +906,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Muskelgruppen'), findsWidgets);
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('custom-muscle-role'))).data,
+      tester
+          .widget<Text>(find.byKey(const ValueKey('custom-muscle-role')))
+          .data,
       'Primär',
     );
-    expect(find.byKey(const ValueKey('custom-muscle-forearms')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('custom-muscle-forearms')),
+      findsOneWidget,
+    );
     expect(find.text('Unterarm'), findsOneWidget);
     expect(find.text('Zurücksetzen'), findsOneWidget);
     for (final id in kExerciseMuscleIds) {
@@ -917,13 +937,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('custom-exercise-secondary')));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<Text>(find.byKey(const ValueKey('custom-muscle-role'))).data,
+      tester
+          .widget<Text>(find.byKey(const ValueKey('custom-muscle-role')))
+          .data,
       'Sekundär',
     );
-    expect(find.byKey(const ValueKey('custom-muscle-forearms')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('custom-muscle-forearms')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('initialMode only applies when the caller set it', (tester) async {
+  testWidgets('initialMode only applies when the caller set it', (
+    tester,
+  ) async {
     await pumpEditor(
       tester,
       repo: _Repo(),
@@ -963,28 +990,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('375 2x multi-muscle values wrap without overflow', (tester) async {
-    FlutterErrorDetails? overflow;
-    final previous = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (details.toString().contains('overflowed')) overflow = details;
-      previous?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = previous);
-    await pumpEditor(
-      tester,
-      repo: _Repo(),
-      scale: 2,
-      width: 375,
-      height: 1600,
-    );
-    await selectPrimaryMuscles(tester, const ['chest', 'back', 'shoulders']);
-    expect(find.text('Brust, Rücken, Schultern'), findsOneWidget);
-    expect(overflow, isNull);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('393 and 375 scale1 all nine muscles wrap without squeezing label', (
+  testWidgets('375 2x multi-muscle values wrap without overflow', (
     tester,
   ) async {
     FlutterErrorDetails? overflow;
@@ -994,34 +1000,52 @@ void main() {
       previous?.call(details);
     };
     addTearDown(() => FlutterError.onError = previous);
-    final joined = [
-      for (final id in kExerciseMuscleIds) exerciseMuscleLabel(id),
-    ].join(', ');
-    Future<void> check(double width) async {
-      overflow = null;
-      await pumpEditor(tester, repo: _Repo(), width: width);
-      await selectPrimaryMuscles(tester, kExerciseMuscleIds);
-      expect(find.text(joined), findsOneWidget);
-      final row = tester.getRect(
-        find.byKey(const ValueKey('custom-exercise-primary')),
-      );
-      final label = tester.getRect(
-        find.descendant(
-          of: find.byKey(const ValueKey('custom-exercise-primary')),
-          matching: find.text('Primär'),
-        ),
-      );
-      final value = tester.getRect(find.text(joined));
-      expect(label.width, greaterThan(40));
-      expect(value.right, lessThanOrEqualTo(row.right + 0.5));
-      expect(value.left, greaterThanOrEqualTo(label.right));
-      expect(overflow, isNull);
-      expect(tester.takeException(), isNull);
-    }
-
-    await check(393);
-    await check(375);
+    await pumpEditor(tester, repo: _Repo(), scale: 2, width: 375, height: 1600);
+    await selectPrimaryMuscles(tester, const ['chest', 'back', 'shoulders']);
+    expect(find.text('Brust, Rücken, Schultern'), findsOneWidget);
+    expect(overflow, isNull);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    '393 and 375 scale1 all nine muscles wrap without squeezing label',
+    (tester) async {
+      FlutterErrorDetails? overflow;
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.toString().contains('overflowed')) overflow = details;
+        previous?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previous);
+      final joined = [
+        for (final id in kExerciseMuscleIds) exerciseMuscleLabel(id),
+      ].join(', ');
+      Future<void> check(double width) async {
+        overflow = null;
+        await pumpEditor(tester, repo: _Repo(), width: width);
+        await selectPrimaryMuscles(tester, kExerciseMuscleIds);
+        expect(find.text(joined), findsOneWidget);
+        final row = tester.getRect(
+          find.byKey(const ValueKey('custom-exercise-primary')),
+        );
+        final label = tester.getRect(
+          find.descendant(
+            of: find.byKey(const ValueKey('custom-exercise-primary')),
+            matching: find.text('Primär'),
+          ),
+        );
+        final value = tester.getRect(find.text(joined));
+        expect(label.width, greaterThan(40));
+        expect(value.right, lessThanOrEqualTo(row.right + 0.5));
+        expect(value.left, greaterThanOrEqualTo(label.right));
+        expect(overflow, isNull);
+        expect(tester.takeException(), isNull);
+      }
+
+      await check(393);
+      await check(375);
+    },
+  );
 
   testWidgets('failed save then invalid edit keeps save disabled', (
     tester,
@@ -1053,32 +1077,33 @@ void main() {
     expect(repo.created, hasLength(1));
   });
 
-  testWidgets('create then catalogue read failure keeps the entry and retries', (
-    tester,
-  ) async {
-    final repo = _Repo();
-    await pumpPicker(tester, repo: repo);
-    repo.failRead = true;
-    await tester.tap(find.byTooltip('Eigene Übung'));
-    await tester.pumpAndSettle();
-    await fillRequired(tester);
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('Kurzhantel-Curl'), findsOneWidget);
-    expect(find.text('Aktualisieren fehlgeschlagen'), findsOneWidget);
-    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
-    repo.failRead = true;
-    await tester.tap(find.text('Erneut laden'));
-    await tester.pumpAndSettle();
-    expect(find.text('Kurzhantel-Curl'), findsOneWidget);
-    expect(find.text('Aktualisieren fehlgeschlagen'), findsOneWidget);
-    repo.failRead = false;
-    await tester.tap(find.text('Erneut laden'));
-    await tester.pumpAndSettle();
-    expect(find.text('Kurzhantel-Curl'), findsOneWidget);
-    expect(find.text('Aktualisieren fehlgeschlagen'), findsNothing);
-    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
-  });
+  testWidgets(
+    'create then catalogue read failure keeps the entry and retries',
+    (tester) async {
+      final repo = _Repo();
+      await pumpPicker(tester, repo: repo);
+      repo.failRead = true;
+      await tester.tap(find.byTooltip('Eigene Übung'));
+      await tester.pumpAndSettle();
+      await fillRequired(tester);
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('Kurzhantel-Curl'), findsOneWidget);
+      expect(find.text('Aktualisieren fehlgeschlagen'), findsOneWidget);
+      expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+      repo.failRead = true;
+      await tester.tap(find.text('Erneut laden'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kurzhantel-Curl'), findsOneWidget);
+      expect(find.text('Aktualisieren fehlgeschlagen'), findsOneWidget);
+      repo.failRead = false;
+      await tester.tap(find.text('Erneut laden'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kurzhantel-Curl'), findsOneWidget);
+      expect(find.text('Aktualisieren fehlgeschlagen'), findsNothing);
+      expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    },
+  );
 
   testWidgets('goldens: mode, reps, muscles, time bodyweight', (tester) async {
     await pumpEditor(tester, repo: _Repo());
@@ -1176,6 +1201,492 @@ void main() {
     await expectLater(
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-time-dark.png'),
+    );
+  });
+
+  ExerciseCatalogueEntry completeCopySource({
+    String id = 'custom-curl',
+    String label = 'Kurzhantel-Curl',
+    String? equipmentRef = 'db-curl',
+  }) => ExerciseCatalogueEntry(
+    id: id,
+    label: label,
+    mode: ExerciseCaptureMode.repetitions,
+    equipment: ExerciseEquipmentCategory.dumbbell,
+    equipmentRef: equipmentRef,
+    loadBasis: ExerciseLoadBasis.perDevice,
+    deviceCount: 2,
+    repetitionBasis: ExerciseRepetitionBasis.perSide,
+    primaryMuscles: const ['biceps', 'unknown-muscle', 'biceps'],
+    secondaryMuscles: const ['forearms', 'biceps', 'not-a-muscle'],
+    source: ExerciseDefinitionSource.stored,
+    version: 4,
+    loadIncrement: 2,
+    aliases: const ['Curl'],
+    retained: const {
+      'custom': 1,
+      'source': 'custom',
+      'copiedFrom': 'import-x',
+      'loadBasis': 'band',
+    },
+  );
+
+  Future<void> fillCopyLoadAndReps(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-load')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-load-total')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps-total')));
+    await tester.pumpAndSettle();
+  }
+
+  test('mapper copies known typed fields and drops unknown retained', () {
+    final curl = completeCopySource();
+    final seed = seedCopiedCustomExercise(curl);
+    expect(seed.label, 'Kurzhantel-Curl · Kopie');
+    expect(seed.mode, ExerciseCaptureMode.repetitions);
+    expect(seed.equipment, ExerciseEquipmentCategory.dumbbell);
+    expect(seed.equipmentRef, 'db-curl');
+    expect(seed.loadBasis, ExerciseLoadBasis.perDevice);
+    expect(seed.deviceCount, 2);
+    expect(seed.repetitionBasis, ExerciseRepetitionBasis.perSide);
+    expect(seed.primaryMuscles, ['biceps']);
+    expect(seed.secondaryMuscles, ['forearms']);
+    expect(seed.copiedFrom, 'custom-curl');
+
+    final bench = exercisePresetById('bench_press')!.asEntry;
+    final preset = seedCopiedCustomExercise(bench);
+    expect(preset.label, 'Bankdrücken · Kopie');
+    expect(preset.mode, ExerciseCaptureMode.repetitions);
+    expect(preset.equipment, ExerciseEquipmentCategory.barbell);
+    expect(preset.equipmentRef, isNull);
+    expect(preset.loadBasis, isNull);
+    expect(preset.deviceCount, isNull);
+    expect(preset.repetitionBasis, isNull);
+    expect(preset.primaryMuscles, ['chest']);
+    expect(preset.secondaryMuscles, ['triceps', 'shoulders']);
+    expect(preset.copiedFrom, 'bench_press');
+
+    final bare = seedCopiedCustomExercise(
+      exercisePresetById('hip_thrust')!.asEntry,
+    );
+    expect(bare.equipment, isNull);
+    expect(bare.loadBasis, isNull);
+    expect(bare.copiedFrom, 'hip_thrust');
+
+    final time = seedCopiedCustomExercise(
+      ExerciseCatalogueEntry(
+        id: 'hold',
+        label: '  ',
+        mode: ExerciseCaptureMode.time,
+        equipment: ExerciseEquipmentCategory.bodyweight,
+        loadBasis: ExerciseLoadBasis.total,
+        deviceCount: 2,
+        repetitionBasis: ExerciseRepetitionBasis.perSide,
+        primaryMuscles: const ['core'],
+        source: ExerciseDefinitionSource.stored,
+      ),
+    );
+    expect(time.label, isEmpty);
+    expect(time.deviceCount, isNull);
+    expect(time.repetitionBasis, isNull);
+    expect(time.loadBasis, ExerciseLoadBasis.total);
+
+    final unknown = seedCopiedCustomExercise(
+      ExerciseCatalogueEntry(
+        id: 'row',
+        label: 'Rudern',
+        equipment: ExerciseEquipmentCategory.machine,
+        deviceCount: 0,
+        source: ExerciseDefinitionSource.stored,
+        retained: const {
+          'loadBasis': 'band',
+          'copiedFrom': 'import-x',
+          'equipment': 'kettlebell',
+        },
+      ),
+    );
+    expect(unknown.mode, isNull);
+    expect(unknown.loadBasis, isNull);
+    expect(unknown.deviceCount, isNull);
+    expect(unknown.copiedFrom, 'row');
+    expect(unknown.equipment, ExerciseEquipmentCategory.machine);
+  });
+
+  testWidgets('copy roundtrip stays unselected and stores copiedFrom', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Kopieren'), findsOneWidget);
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    expect(find.text('Eigene Übung'), findsWidgets);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(
+      tester
+          .widget<OBAction>(find.byKey(const ValueKey('custom-exercise-save')))
+          .onPressed,
+      isNull,
+    );
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsNothing);
+    expect(find.text('Übung'), findsNothing);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    expect(repo.created, hasLength(1));
+    expect(repo.created.single.id, isNot('bench_press'));
+    expect(repo.created.single.retained['copiedFrom'], 'bench_press');
+    expect(
+      (await repo.readExerciseCatalogue()).byId('bench_press')!.source,
+      ExerciseDefinitionSource.preset,
+    );
+    final add = tester.widget<OBAction>(
+      find.widgetWithText(OBAction, '0 Übungen hinzufügen'),
+    );
+    expect(add.onPressed, isNull);
+  });
+
+  testWidgets('copy cancel stays on source detail and writes nothing', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExerciseDefinitionEditor), findsNothing);
+    expect(find.text('Bankdrücken'), findsOneWidget);
+    expect(find.text('Auswählen'), findsOneWidget);
+    expect(repo.created, isEmpty);
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExercisePicker), findsOneWidget);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+  });
+
+  testWidgets('source already selected stays selected after copy', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    await tester.tap(find.byKey(const ValueKey('exercise-select-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    expect(find.text('Auswahl entfernen'), findsOneWidget);
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('1 Übung hinzufügen'), findsOneWidget);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    final copyId = repo.created.single.id!;
+    final sourceSelect = tester.widget<IconButton>(
+      find.byKey(const ValueKey('exercise-select-bench_press')),
+    );
+    final copySelect = tester.widget<IconButton>(
+      find.byKey(ValueKey('exercise-select-$copyId')),
+    );
+    expect((sourceSelect.icon as Icon).icon, LucideIcons.check);
+    expect((copySelect.icon as Icon).icon, LucideIcons.plus);
+  });
+
+  testWidgets('two copies allocate distinct ids; same form retries one id', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    Future<void> copyOnce() async {
+      await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Kopieren'));
+      await tester.pumpAndSettle();
+      await fillCopyLoadAndReps(tester);
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+      await tester.pumpAndSettle();
+    }
+
+    await copyOnce();
+    await copyOnce();
+    expect(repo.created, hasLength(2));
+    expect(repo.created[0].id, isNot(repo.created[1].id));
+    expect(repo.created[0].retained['copiedFrom'], 'bench_press');
+    expect(repo.created[1].retained['copiedFrom'], 'bench_press');
+
+    final retry = _Repo(failCreate: true);
+    await pumpEditor(
+      tester,
+      repo: retry,
+      copyFrom: exercisePresetById('bench_press')!.asEntry,
+    );
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    retry.failCreate = false;
+    await tester.tap(find.text('Erneut speichern'));
+    await tester.pumpAndSettle();
+    expect(retry.created, hasLength(2));
+    expect(retry.created.first.id, retry.created.last.id);
+    expect(retry.created.last.retained['copiedFrom'], 'bench_press');
+
+    final delayed = _Repo(createDelay: const Duration(milliseconds: 200));
+    await pumpEditor(
+      tester,
+      repo: delayed,
+      copyFrom: exercisePresetById('bench_press')!.asEntry,
+    );
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pump();
+    expect(delayed.created, hasLength(1));
+    await tester.pumpAndSettle();
+    expect(delayed.created, hasLength(1));
+  });
+
+  testWidgets('copied equipmentRef clears after explicit category change', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpEditor(tester, repo: repo, copyFrom: completeCopySource());
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(repo.created, hasLength(1));
+    expect(repo.created.single.equipmentRef, 'db-curl');
+    expect(repo.created.single.retained.keys, ['copiedFrom']);
+    expect(repo.created.single.retained['copiedFrom'], 'custom-curl');
+
+    final changed = _Repo();
+    await pumpEditor(tester, repo: changed, copyFrom: completeCopySource());
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-equipment')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('custom-exercise-equipment-barbell')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(changed.created.single.equipment, ExerciseEquipmentCategory.barbell);
+    expect(changed.created.single.equipmentRef, isNull);
+    expect(changed.created.single.retained['copiedFrom'], 'custom-curl');
+  });
+
+  testWidgets('copy save then catalogue read failure keeps the entry', (
+    tester,
+  ) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    repo.failRead = true;
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await fillCopyLoadAndReps(tester);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(find.text('Aktualisieren fehlgeschlagen'), findsOneWidget);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    repo.failRead = false;
+    await tester.tap(find.text('Erneut laden'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
+    expect(find.text('Aktualisieren fehlgeschlagen'), findsNothing);
+  });
+
+  testWidgets('copy hidden by query recovers through Anzeigen', (tester) async {
+    final repo = _Repo();
+    await pumpPicker(tester, repo: repo);
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Bank',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Kopieren'));
+    await tester.pumpAndSettle();
+    await fillCopyLoadAndReps(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-exercise-name')),
+      'Wandsitz',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('custom-exercise-saved')), findsOneWidget);
+    expect(find.text('Anzeigen'), findsOneWidget);
+    expect(find.text('1 Übung hinzufügen'), findsNothing);
+    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+    await tester.tap(find.text('Anzeigen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wandsitz'), findsWidgets);
+    expect(find.byKey(const ValueKey('custom-exercise-saved')), findsNothing);
+  });
+
+  testWidgets('goldens: copy source, preset, custom, retry, large, library', (
+    tester,
+  ) async {
+    await pumpPicker(tester, repo: _Repo());
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('openband_goldens/exercise-copy-source.png'),
+    );
+    await pumpPicker(tester, repo: _Repo(), brightness: Brightness.dark);
+    await tester.tap(find.byKey(const ValueKey('exercise-open-bench_press')));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('openband_goldens/exercise-copy-source-dark.png'),
+    );
+
+    await pumpEditor(
+      tester,
+      repo: _Repo(),
+      copyFrom: exercisePresetById('bench_press')!.asEntry,
+    );
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-preset.png'),
+    );
+    await pumpEditor(
+      tester,
+      repo: _Repo(),
+      copyFrom: exercisePresetById('bench_press')!.asEntry,
+      brightness: Brightness.dark,
+    );
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-preset-dark.png'),
+    );
+
+    final custom = completeCopySource();
+    await pumpEditor(tester, repo: _Repo(), copyFrom: custom);
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-custom.png'),
+    );
+    await pumpEditor(
+      tester,
+      repo: _Repo(),
+      copyFrom: custom,
+      brightness: Brightness.dark,
+    );
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-custom-dark.png'),
+    );
+
+    await pumpEditor(tester, repo: _Repo(failCreate: true), copyFrom: custom);
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-retry.png'),
+    );
+    await pumpEditor(
+      tester,
+      repo: _Repo(failCreate: true),
+      copyFrom: custom,
+      brightness: Brightness.dark,
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+    await tester.pumpAndSettle();
+    await unfocus(tester);
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-retry-dark.png'),
+    );
+
+    await pumpEditor(
+      tester,
+      repo: _Repo(),
+      copyFrom: completeCopySource(label: 'Curl'),
+      scale: 2,
+      width: 375,
+      height: 1600,
+    );
+    await unfocus(tester);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('custom-exercise-save')),
+    );
+    await expectLater(
+      find.byType(OpenBandExerciseDefinitionEditor),
+      matchesGoldenFile('openband_goldens/exercise-copy-375-2x.png'),
+    );
+  });
+
+  testWidgets('goldens: copy library query Curl unselected', (tester) async {
+    final library = _Repo(
+      catalogue: ExerciseCatalogue(
+        entries: [
+          customCurl(),
+          ExerciseCatalogueEntry(
+            id: 'custom-curl-copy',
+            label: 'Kurzhantel-Curl · Kopie',
+            mode: ExerciseCaptureMode.repetitions,
+            equipment: ExerciseEquipmentCategory.dumbbell,
+            loadBasis: ExerciseLoadBasis.perDevice,
+            deviceCount: 2,
+            repetitionBasis: ExerciseRepetitionBasis.perSide,
+            primaryMuscles: const ['biceps'],
+            secondaryMuscles: const ['forearms'],
+            source: ExerciseDefinitionSource.stored,
+            version: 1,
+            retained: const {
+              'custom': 1,
+              'source': 'custom',
+              'copiedFrom': 'custom-curl',
+            },
+          ),
+        ],
+      ),
+    );
+    await pumpPicker(tester, repo: library);
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Curl',
+    );
+    await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(OpenBandExercisePicker),
+      matchesGoldenFile('openband_goldens/exercise-copy-library.png'),
+    );
+    await pumpPicker(tester, repo: library, brightness: Brightness.dark);
+    await tester.enterText(
+      find.byKey(const ValueKey('exercise-search')),
+      'Curl',
+    );
+    await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(OpenBandExercisePicker),
+      matchesGoldenFile('openband_goldens/exercise-copy-library-dark.png'),
     );
   });
 }

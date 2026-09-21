@@ -459,3 +459,16 @@ The repository reads exact-algorithm results and corrections in one database sna
 - Paper Phase3 canonical4PO7/4PTT, main4PP4/4PUL, shared info actions4RMG/4RMX.64 exact PNG/JSX references in Mats task `cycle-comparison-paper/full-index.json`, including updated root navigation and all coverage variants. Native spacing/type/contrast/alignment/fit checked against Paper. Registry **127 blocks / 637 screens**.
 
 No schema, algorithm, dependency or version change. Synthetic local/simulator proof only; no personal-data, physical-device, Bluetooth or physiological proof. Nothing pushed.
+
+
+## Exercise-definition copy · 21 September 2026
+
+B65 is implemented from library detail through the existing definition editor back to the same library. A copied exercise gets a new UUID and direct `copiedFrom` provenance; only known typed metadata is seeded. Unknown preset/import semantics remain unset. The original definition, selection and filters remain intact; the saved copy is unselected. Cancel writes nothing. Retry reuses the form ID, and catalogue-refresh failure retains the saved entry. No schema, algorithm or dependency change.
+
+Paper Phase3 canonical copy-header variant4SUC/4SUQ, source4SV0/4SW6, preset4SXC/4SZF, custom4T6C/4T8F, error4TAI/4TCM,375/2x4TEQ/4TGT, library4TIW/4TK6. Six existing detail headers also use the copy action. All20 exported refs inspected; typed library query colour corrected to ink. Existing shared fields/cards/selectors retained.
+
+Required OpenBand suite **1794 passed**,95-item analysis **clean**, manifest **127blocks/649screens**. Final stronger selected-source assertion passed separately after its integration. Logs: `build/exercise-copy-acceptance/`. All **14 new/changed goldens** inspected; the two library goldens re-inspected after removing the focus caret. Goldens are committed under `test/openband_goldens/`.
+
+Native Pro `build/ui-review/exercise-copy-pro-20260921` **PASS95.25s** and mini `build/ui-review/exercise-copy-mini-20260921` **PASS122.27s**. **17PNG each/all34 inspected**, with run/frames/index reconciled. Actual copy/cancel/save/retry/return/hidden-filter actions exercised; light/dark, incomplete preset,375width and2x top/bottom controls. Layout matches the Paper blocks; system status-bar geometry differs by simulator. No physical-device, Bluetooth or physiological claim.
+
+Author3baa7617/cb4dfd1d passed77focused tests; follow-up48568f07 strengthened selection evidence and added dark2x bottom capture. Fresh reader e1a6d863/8593185c found no remaining data-loss/wrong-write/navigation bug in the final artifact. Lead inspected the source/diff, SQLite test evidence, all images and native runs. Initial review231c793a captured an intermediate formatting cleanup and was superseded by the completed snapshot. Snapshot/hash files remain in `/private/tmp/openband-alpin-20260919/`. Archive/edit/replace requirements remain open.

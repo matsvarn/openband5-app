@@ -98,6 +98,80 @@ List<(ExerciseLoadBasis, String)> loadBasisChoices(
   (ExerciseLoadBasis.assistance, 'Unterstützung'),
 ];
 
+/// Proposed editor name for a copied catalogue row. Empty source stays blank.
+String copiedCustomExerciseLabel(String sourceLabel) {
+  final trimmed = sourceLabel.trim();
+  if (trimmed.isEmpty) return '';
+  return '$trimmed · Kopie';
+}
+
+/// Known typed fields copied into a new editor. Unknown retained enums, aliases,
+/// loadIncrement, history, and inherited `copiedFrom` are omitted.
+class CopiedCustomExerciseSeed {
+  CopiedCustomExerciseSeed({
+    required this.label,
+    this.mode,
+    this.equipment,
+    this.equipmentRef,
+    this.loadBasis,
+    this.deviceCount,
+    this.repetitionBasis,
+    List<String> primaryMuscles = const [],
+    List<String> secondaryMuscles = const [],
+    required this.copiedFrom,
+  }) : primaryMuscles = List<String>.unmodifiable(primaryMuscles),
+       secondaryMuscles = List<String>.unmodifiable(secondaryMuscles);
+
+  final String label;
+  final ExerciseCaptureMode? mode;
+  final ExerciseEquipmentCategory? equipment;
+  final String? equipmentRef;
+  final ExerciseLoadBasis? loadBasis;
+  final int? deviceCount;
+  final ExerciseRepetitionBasis? repetitionBasis;
+  final List<String> primaryMuscles;
+  final List<String> secondaryMuscles;
+  final String copiedFrom;
+}
+
+CopiedCustomExerciseSeed seedCopiedCustomExercise(
+  ExerciseCatalogueEntry source,
+) {
+  final taken = <String>{};
+  List<String> musclesOf(Iterable<String> ids) {
+    final out = <String>[];
+    for (final id in ids) {
+      if (!kExerciseMuscleIds.contains(id) || taken.contains(id)) continue;
+      out.add(id);
+      taken.add(id);
+    }
+    return out;
+  }
+
+  final mode = source.mode;
+  final loadBasis = source.loadBasis;
+  final ref = source.equipmentRef?.trim();
+  return CopiedCustomExerciseSeed(
+    label: copiedCustomExerciseLabel(source.label),
+    mode: mode,
+    equipment: source.equipment,
+    equipmentRef: (ref != null && ref.isNotEmpty) ? ref : null,
+    loadBasis: loadBasis,
+    deviceCount:
+        loadBasis == ExerciseLoadBasis.perDevice &&
+            source.deviceCount != null &&
+            source.deviceCount! >= 1
+        ? source.deviceCount
+        : null,
+    repetitionBasis: mode == ExerciseCaptureMode.repetitions
+        ? source.repetitionBasis
+        : null,
+    primaryMuscles: musclesOf(source.primaryMuscles),
+    secondaryMuscles: musclesOf(source.secondaryMuscles),
+    copiedFrom: source.id,
+  );
+}
+
 String? customExerciseLibrarySubtitle(ExerciseCatalogueEntry entry) {
   final hasTyped =
       entry.loadBasis != null ||
@@ -146,10 +220,12 @@ class OpenBandExerciseDefinitionEditor extends StatefulWidget {
     super.key,
     required this.repository,
     this.initialMode,
+    this.copyFrom,
   });
 
   final OpenBandRepository repository;
   final ExerciseCaptureMode? initialMode;
+  final ExerciseCatalogueEntry? copyFrom;
 
   @override
   State<OpenBandExerciseDefinitionEditor> createState() =>
@@ -161,12 +237,14 @@ class _OpenBandExerciseDefinitionEditorState
   late final String _id = newCustomExerciseId();
   final _label = TextEditingController();
   ExerciseEquipmentCategory? _equipment;
+  String? _equipmentRef;
   ExerciseCaptureMode? _mode;
   ExerciseLoadBasis? _loadBasis;
   int? _deviceCount;
   ExerciseRepetitionBasis? _repetitionBasis;
   final _primary = <String>{};
   final _secondary = <String>{};
+  String? _copiedFrom;
   bool _busy = false;
   bool _saveError = false;
   bool _conflicted = false;
@@ -175,7 +253,23 @@ class _OpenBandExerciseDefinitionEditorState
   @override
   void initState() {
     super.initState();
-    _mode = widget.initialMode;
+    final source = widget.copyFrom;
+    if (source != null) {
+      final seed = seedCopiedCustomExercise(source);
+      _label.text = seed.label;
+      _mode = seed.mode;
+      _equipment = seed.equipment;
+      _equipmentRef = seed.equipmentRef;
+      _loadBasis = seed.loadBasis;
+      _deviceCount = seed.deviceCount;
+      _repetitionBasis = seed.repetitionBasis;
+      _primary.addAll(seed.primaryMuscles);
+      _secondary.addAll(seed.secondaryMuscles);
+      final copiedFrom = seed.copiedFrom.trim();
+      _copiedFrom = copiedFrom.isEmpty ? null : copiedFrom;
+    } else {
+      _mode = widget.initialMode;
+    }
   }
 
   @override
@@ -202,24 +296,38 @@ class _OpenBandExerciseDefinitionEditorState
     return true;
   }
 
-  CustomExerciseDraft get _draft => CustomExerciseDraft(
-    id: _id,
-    label: _label.text.trim(),
-    mode: _mode!,
-    equipment: _equipment!,
-    loadBasis: _loadBasis!,
-    deviceCount: _loadBasis == ExerciseLoadBasis.perDevice
-        ? _deviceCount
-        : null,
-    repetitionBasis: _mode == ExerciseCaptureMode.repetitions
-        ? _repetitionBasis
-        : null,
-    primaryMuscles: _primary.toList(),
-    secondaryMuscles: _secondary.toList(),
-  );
+  CustomExerciseDraft get _draft {
+    final ref = _equipmentRef?.trim();
+    final copiedFrom = _copiedFrom?.trim();
+    return CustomExerciseDraft(
+      id: _id,
+      label: _label.text.trim(),
+      mode: _mode!,
+      equipment: _equipment!,
+      equipmentRef: (ref != null && ref.isNotEmpty) ? ref : null,
+      loadBasis: _loadBasis!,
+      deviceCount: _loadBasis == ExerciseLoadBasis.perDevice
+          ? _deviceCount
+          : null,
+      repetitionBasis: _mode == ExerciseCaptureMode.repetitions
+          ? _repetitionBasis
+          : null,
+      primaryMuscles: _primary.toList(),
+      secondaryMuscles: _secondary.toList(),
+      retained: {
+        if (copiedFrom != null && copiedFrom.isNotEmpty)
+          'copiedFrom': copiedFrom,
+      },
+    );
+  }
 
   void _setEquipment(ExerciseEquipmentCategory equipment) {
-    setState(() => _equipment = equipment);
+    setState(() {
+      if (_equipment != equipment) {
+        _equipmentRef = null;
+      }
+      _equipment = equipment;
+    });
   }
 
   void _setMode(ExerciseCaptureMode mode) {
@@ -317,10 +425,7 @@ class _OpenBandExerciseDefinitionEditorState
     final selected = primary ? {..._primary} : {..._secondary};
     final applied = await Navigator.of(context).push<Set<String>>(
       MaterialPageRoute(
-        builder: (_) => _MuscleRolePage(
-          primary: primary,
-          selected: selected,
-        ),
+        builder: (_) => _MuscleRolePage(primary: primary, selected: selected),
       ),
     );
     if (!mounted || applied == null) return;
@@ -604,10 +709,7 @@ class _OpenBandExerciseDefinitionEditorState
 class _MuscleRolePage extends StatefulWidget {
   final bool primary;
   final Set<String> selected;
-  const _MuscleRolePage({
-    required this.primary,
-    required this.selected,
-  });
+  const _MuscleRolePage({required this.primary, required this.selected});
 
   @override
   State<_MuscleRolePage> createState() => _MuscleRolePageState();
@@ -681,10 +783,9 @@ class _MuscleRolePageState extends State<_MuscleRolePage> {
                         child: Text(
                           'Zurücksetzen',
                           textAlign: TextAlign.center,
-                          style: p.text(14).copyWith(
-                            height: 19 / 14,
-                            color: p.ink,
-                          ),
+                          style: p
+                              .text(14)
+                              .copyWith(height: 19 / 14, color: p.ink),
                         ),
                       ),
                     ),

@@ -15,6 +15,7 @@ import 'openband/domain.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/strength_live.dart';
+import 'openband/exercise_picker.dart';
 import 'openband/template_editor.dart';
 import 'openband/templates.dart';
 import 'openband/session.dart';
@@ -451,6 +452,33 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                     now: () => DateTime(2026, 9, 15, 9, 41),
                     synthetic: true,
                   ),
+                ),
+              );
+            },
+          ),
+          const ListTile(title: Text('Übungen · synthetische Zustände')),
+          ListTile(
+            title: const Text('Übung · Kopieren'),
+            onTap: () async {
+              Navigator.pop(c);
+              await widget.repository.createCustomExercise(
+                CustomExerciseDraft(
+                  id: 'gallery-curl',
+                  label: 'Kurzhantel-Curl',
+                  mode: ExerciseCaptureMode.repetitions,
+                  equipment: ExerciseEquipmentCategory.dumbbell,
+                  loadBasis: ExerciseLoadBasis.perDevice,
+                  deviceCount: 2,
+                  repetitionBasis: ExerciseRepetitionBasis.perSide,
+                  primaryMuscles: const ['biceps'],
+                  secondaryMuscles: const ['forearms'],
+                ),
+              );
+              if (!context.mounted) return;
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      OpenBandExercisePicker(repository: widget.repository),
                 ),
               );
             },
