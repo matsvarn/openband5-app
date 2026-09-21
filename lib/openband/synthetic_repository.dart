@@ -2311,7 +2311,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   ) async {
     if (key == MetricKey.hrv ||
         key == MetricKey.restingHr ||
-        key == MetricKey.respiration) {
+        key == MetricKey.respiration ||
+        key == MetricKey.skinTemperature) {
       return nightScalarHistoryPoints(
         await readNightScalarDetail(key, endDay, nights),
       );
@@ -2323,7 +2324,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     final source = switch (key) {
       MetricKey.hrv ||
       MetricKey.restingHr ||
-      MetricKey.respiration => const <String, double>{},
+      MetricKey.respiration ||
+      MetricKey.skinTemperature => const <String, double>{},
       MetricKey.recovery => {
         if (todayKnown) _day: (recovery['score'] as num).toDouble(),
       },
@@ -2350,9 +2352,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<NightScalarMetric, _NightScalarSeed> _nightScalarSeeds = {};
 
   /// Per-metric seed. [key] defaults to HRV so existing callers stay HRV-only.
-  /// Name [MetricKey.restingHr] or [MetricKey.respiration] to seed those.
-  /// The other metrics are not invented. Pass the same [sleepJobs]/[napJobs]
-  /// on both seeds when they share a correction.
+  /// Name [MetricKey.restingHr], [MetricKey.respiration], or
+  /// [MetricKey.skinTemperature] to seed those. The other metrics are not
+  /// invented. Pass the same [sleepJobs]/[napJobs] on both seeds when they
+  /// share a correction. Skin temperature is never fabricated from Paper
+  /// recovery maps — seed explicitly, including [seedPaperSkinTemperature].
   void seedNightScalarDetail({
     MetricKey key = MetricKey.hrv,
     NightScalarRow? selected,
@@ -2373,6 +2377,53 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       napJobs: napJobs,
       recordingTimezone: recordingTimezone,
       currentAlgo: currentAlgo,
+    );
+  }
+
+  /// Trailing Paper skin-temperature positions ending [kNightScalarPaperDay].
+  /// The 15-value fixture is the last 15 of 30; 7 and 90 take the trailing
+  /// overlap (last 7 of the fixture, or the fixture as the last 15 of 90).
+  /// SD is `band`; Celsius is `whoop_export` + imported; unknown is `cloud_v2`.
+  void seedPaperSkinTemperature({
+    NightScalarUnit unit = NightScalarUnit.sd,
+    String day = kNightScalarPaperDay,
+    int nights = 30,
+  }) {
+    final days = nightScalarDaysEnding(day, nights);
+    final paper = switch (unit) {
+      NightScalarUnit.celsius => kNightScalarPaperSkinTempC,
+      NightScalarUnit.sd || NightScalarUnit.unknown =>
+        kNightScalarPaperSkinTempSd,
+    };
+    final take = paper.length < days.length ? paper.length : days.length;
+    final paperOffset = paper.length - take;
+    final dayOffset = days.length - take;
+    final matching = <String, NightScalarRow>{};
+    NightScalarRow? selected;
+    final payloadSource = switch (unit) {
+      NightScalarUnit.sd => 'band',
+      NightScalarUnit.celsius => 'whoop_export',
+      NightScalarUnit.unknown => 'cloud_v2',
+    };
+    for (var i = 0; i < take; i++) {
+      final id = days[dayOffset + i];
+      final value = paper[paperOffset + i];
+      if (value == null) continue;
+      final row = NightScalarRow(
+        day: id,
+        algoVersion: kAlgoVersion,
+        value: value,
+        imported: unit == NightScalarUnit.celsius,
+        source: payloadSource,
+        rowSource: payloadSource,
+      );
+      matching[id] = row;
+      if (id == day) selected = row;
+    }
+    seedNightScalarDetail(
+      key: MetricKey.skinTemperature,
+      selected: selected,
+      matching: matching,
     );
   }
 
@@ -2438,6 +2489,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       NightScalarMetric.hrv => _hrvByDay,
       NightScalarMetric.rhr => _rhrByDay,
       NightScalarMetric.respiration => _respByDay,
+      NightScalarMetric.skinTemperature => const <String, double>{},
     };
     final recovery = Map<String, dynamic>.from(_summary['recovery'] as Map);
     final onFixtureDay = day == _day;
@@ -2454,6 +2506,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         NightScalarMetric.rhr => (recovery['rhr_bpm'] as num).toDouble(),
         NightScalarMetric.respiration =>
           (recovery['resp_per_min'] as num).toDouble(),
+        NightScalarMetric.skinTemperature => null,
       };
     } else if (!onFixtureDay) {
       selectedValue = byDay[day];
@@ -2463,6 +2516,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             NightScalarMetric.hrv => kNightScalarPaperHrvBaseline,
             NightScalarMetric.rhr => kNightScalarPaperRhrBaseline,
             NightScalarMetric.respiration => null,
+            NightScalarMetric.skinTemperature => null,
           }
         : null;
     NightScalarRow? selected;
@@ -2546,12 +2600,26 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       required NightScalarMetric metric,
       required DayMetric published,
     }) {
+      NightScalarUnit? unitOf(NightScalarRow? row, [NightScalarDetail? detail]) {
+        if (metric != NightScalarMetric.skinTemperature) return null;
+        if (detail != null) return detail.unit;
+        if (row == null) return null;
+        return nightScalarSkinTemperatureUnit(
+          resultSource: row.rowSource,
+          payloadSource: row.payloadUnreadable ? null : row.source,
+          imported: row.payloadUnreadable ? false : row.imported,
+        );
+      }
+
       final override = _nightScalarOverrideFor(metric, day.day);
       if (override != null) {
         return dayMetricFromNightScalar(
           state: override.state,
           value: override.value,
-          baseline: override.baseline,
+          baseline: metric == NightScalarMetric.skinTemperature
+              ? null
+              : override.baseline,
+          unit: unitOf(null, override),
         );
       }
       final seed = _nightScalarSeeds[metric];
@@ -2572,7 +2640,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             value: selected?.value,
           ),
           value: selected?.value,
-          baseline: selected?.baseline,
+          baseline: metric == NightScalarMetric.skinTemperature
+              ? null
+              : selected?.baseline,
+          unit: unitOf(selected),
         );
       }
       if (_nightScalarSeeds.isNotEmpty) {
@@ -2581,7 +2652,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         );
       }
       NightScalarRow? selected;
-      if (!(scenario == SyntheticScenario.missing && day.day == _day)) {
+      if (metric != NightScalarMetric.skinTemperature &&
+          !(scenario == SyntheticScenario.missing && day.day == _day)) {
         if (day.day == _day) {
           selected = NightScalarRow(
             day: day.day,
@@ -2616,6 +2688,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         ),
         value: published.value,
         baseline: selected?.baseline,
+        unit: unitOf(selected),
       );
     }
 
@@ -2629,6 +2702,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       respiration: card(
         metric: NightScalarMetric.respiration,
         published: day.respiration,
+      ),
+      skinTemperature: card(
+        metric: NightScalarMetric.skinTemperature,
+        published: day.skinTemperature,
       ),
       steps: day.steps,
       stepIntervals: day.stepIntervals,
@@ -3578,6 +3655,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           baseline: m.baseline,
           reason: m.reason,
           nightScalar: m.nightScalar,
+          unit: m.unit,
         );
         return OpenBandDay(
           day: day.day,
@@ -3601,6 +3679,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           hrv: pending(day.hrv),
           restingHr: pending(day.restingHr),
           respiration: pending(day.respiration),
+          skinTemperature: pending(day.skinTemperature),
           steps: pending(day.steps),
           stepIntervals: day.stepIntervals,
           calculatedAt: day.calculatedAt,

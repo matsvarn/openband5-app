@@ -716,7 +716,33 @@
     "4YGU-0": "A05 Atmung · 375px · 2x Text · Hell · Synthetische Daten",
     "4YJE-0": "A05 Atmung · 375px · 2x Text · Dunkel · Synthetische Daten",
     "4YNA-0": "A05 Atmung · Kompaktkarte · Hell · Synthetische Daten",
-    "4YNL-0": "A05 Atmung · Kompaktkarte · Dunkel · Synthetische Daten"
+    "4YNL-0": "A05 Atmung · Kompaktkarte · Dunkel · Synthetische Daten",
+    "4ZQX-0": "A05 Hauttemperatur · Messwertkarte · Synthetische Daten",
+    "4ZR8-0": "A05 Hauttemperatur · Messwertkarte · Dunkel · Synthetische Daten",
+    "4YPE-0": "A05 Hauttemperatur · Relative Abweichung · Synthetische Daten",
+    "4YTK-0": "A05 Hauttemperatur · Relative Abweichung · Dunkel · Synthetische Daten",
+    "4YXJ-0": "A05 Hauttemperatur · Einheit unbekannt · Synthetische Daten",
+    "4YZS-0": "A05 Hauttemperatur · Einheit unbekannt · Dunkel · Synthetische Daten",
+    "4Z21-0": "A05 Hauttemperatur · Celsius-Import · Synthetische Daten",
+    "4Z4A-0": "A05 Hauttemperatur · Celsius-Import · Dunkel · Synthetische Daten",
+    "4Z7P-0": "A05 Hauttemperatur · 375 große Schrift · Synthetische Daten",
+    "4Z9Y-0": "A05 Hauttemperatur · 375 große Schrift · Dunkel · Synthetische Daten",
+    "4ZLV-0": "A05 Hauttemperatur · Lesefehler · Synthetische Daten",
+    "4ZOE-0": "A05 Hauttemperatur · Lesefehler · Dunkel · Synthetische Daten",
+    "4ZRP-0": "A05 Hauttemperatur · Info SD · Synthetische Daten",
+    "4ZTY-0": "A05 Hauttemperatur · Info SD · Dunkel · Synthetische Daten",
+    "4ZW7-0": "A05 Hauttemperatur · Info Einheit unbekannt · Synthetische Daten",
+    "4ZXG-0": "A05 Hauttemperatur · Info Einheit unbekannt · Dunkel · Synthetische Daten",
+    "4ZYP-0": "A05 Hauttemperatur · Info Celsius · Synthetische Daten",
+    "500X-0": "A05 Hauttemperatur · Info Celsius · Dunkel · Synthetische Daten",
+    "4ZEV-0": "A05 Hauttemperatur · Keine Nachtwerte · Synthetische Daten",
+    "4ZG4-0": "A05 Hauttemperatur · Keine Nachtwerte · Dunkel · Synthetische Daten",
+    "4ZHD-0": "A05 Hauttemperatur · Unvollständige Nacht · Synthetische Daten",
+    "4ZJM-0": "A05 Hauttemperatur · Unvollständige Nacht · Dunkel · Synthetische Daten",
+    "5063-0": "A05 Hauttemperatur · Quellen uneindeutig · Synthetische Daten",
+    "507C-0": "A05 Hauttemperatur · Quellen uneindeutig · Dunkel · Synthetische Daten",
+    "508L-0": "A05 Hauttemperatur · Info · Quellen uneindeutig · Synthetische Daten",
+    "50A7-0": "A05 Hauttemperatur · Info · Quellen uneindeutig · Dunkel · Synthetische Daten"
   },
   "blocks": [
     {
@@ -1208,7 +1234,7 @@
         "OBStatusChip"
       ],
       "implemented": "screens.dart",
-      "notes": "Borderless card, radius24, padding14, minimum112; value/unit share a baseline and stack only when needed. Null omits the unit. Compact typed night states remain visible; comparison requires current complete data and an explicitly trusted stored baseline. No invented range marker or comparison arrow. Optional decimal precision preserves respiration values and baseline deltas; default integer formatting stays unchanged.",
+      "notes": "Borderless card, radius24, padding14, minimum112; value/unit share a baseline and stack only when needed. Null omits the unit. Compact typed night states remain visible; comparison requires current complete data and an explicitly trusted stored baseline. No invented range marker or comparison arrow. Optional decimal precision preserves respiration values and baseline deltas; default integer formatting stays unchanged. Temperature uses typed SD or Celsius and signed SD formatting; unknown quantities show — without a unit.",
       "variantPaperNodes": {
         "current-light": "3ESH-0",
         "current-dark": "4X0V-0",
@@ -1231,7 +1257,9 @@
         "large-light": "4XEE-0",
         "large-dark": "4XF1-0",
         "respiration-light": "4YNA-0",
-        "respiration-dark": "4YNL-0"
+        "respiration-dark": "4YNL-0",
+        "temperature-light": "4ZQX-0",
+        "temperature-dark": "4ZR8-0"
       }
     },
     {
@@ -1517,7 +1545,31 @@
         "4Y5G-0",
         "4Y7W-0",
         "4YGU-0",
-        "4YJE-0"
+        "4YJE-0",
+        "4YPE-0",
+        "4YTK-0",
+        "4YXJ-0",
+        "4YZS-0",
+        "4Z21-0",
+        "4Z4A-0",
+        "4Z7P-0",
+        "4Z9Y-0",
+        "4ZLV-0",
+        "4ZOE-0",
+        "4ZRP-0",
+        "4ZTY-0",
+        "4ZW7-0",
+        "4ZXG-0",
+        "4ZYP-0",
+        "500X-0",
+        "4ZEV-0",
+        "4ZG4-0",
+        "4ZHD-0",
+        "4ZJM-0",
+        "5063-0",
+        "507C-0",
+        "508L-0",
+        "50A7-0"
       ],
       "implemented": "health.dart",
       "notes": "Shared full-width 40-point visual well inside a 44-point target; centered 14/18 labels. Measurement uses selected weight. Stacks at narrow width or large text; compact g/% retains its own sizing."
@@ -3262,7 +3314,15 @@
         "4W5D-0",
         "4W7Q-0",
         "4WPF-0",
-        "4WS7-0"
+        "4WS7-0",
+        "4ZRP-0",
+        "4ZTY-0",
+        "4ZW7-0",
+        "4ZXG-0",
+        "4ZYP-0",
+        "500X-0",
+        "508L-0",
+        "50A7-0"
       ],
       "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x. Body width is bounded; shared action radius16 matches OBAction. Footer uses canonical OBActionPrimary.ink: 48-point minimum, 6-point vertical padding, 15/18 type (30/36 at 2x). Corrected and inspected 16 Paper copies that had drifted; Flutter action unchanged. Optional secondary ink source actions share the scroll body and return the selected action before the next disclosure opens; the fixed close/header remain. Coverage disclosure retains actual year/prior-window unreadable and unavailable counts. Explicit paragraphs retain internal newlines and12-point group spacing. Optional primary action replaces the pinned close footer while the header X still dismisses. HRV/RHR disclose stored origin, times, algorithm and baseline status; previous values are labelled previous.",
       "variantPaperNodes": {
@@ -4008,6 +4068,27 @@
         "large-light": "4XE2-0",
         "large-dark": "4XEP-0"
       }
+    },
+    {
+      "name": "OBNightLine",
+      "paperNode": "4YO1-0",
+      "widget": "OBNightLine",
+      "file": "night_line.dart",
+      "implemented": "night_line.dart",
+      "usedIn": [
+        "4YPE-0",
+        "4YTK-0",
+        "4Z21-0",
+        "4Z4A-0",
+        "4Z7P-0",
+        "4Z9Y-0",
+        "4ZHD-0",
+        "4ZJM-0"
+      ],
+      "variantPaperNodes": {
+        "dark": "4YSR-0"
+      },
+      "notes": "Calendar-positioned stored temperature points. Straight segments only between consecutive available nights; missing or incompatible quantities remain gaps. SD uses a symmetric zero-centered axis and Celsius preserves its own unit. Ink line2 and points2.5; axis labels retain half steps. No baseline, smoothing or overnight curve."
     }
   ],
   "openBlocks": [

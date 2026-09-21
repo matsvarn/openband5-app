@@ -203,14 +203,18 @@ Accepted local commit `47be2c31`. RunnerTests threeconfigurations match0.9.31/67
 
 ### Completed unit: exact-result source persistence
 
-Accepted with this commit. Schema66 adds nullable day_result.source beside the exact versioned payload; every putDayResult writes it atomically, including null/partial/empty-series cases. Old rows stay unknown. Never infer units from the date-only metric_series_version stamp. No analytics, pins, source-retention or BLE behavior changed.
+Accepted local commit `5dc3c66a`. Schema66 adds nullable day_result.source beside the exact versioned payload; every putDayResult writes it atomically, including null/partial/empty-series cases. Old rows stay unknown. Never infer units from the date-only metric_series_version stamp. No analytics, pins, source-retention or BLE behavior changed.
 
 Author6f6a25fd/65f3e30a+130c3231 accepted. Lead inspected actual diff/source and six SQLite cases. Fresh independent reader ac307e90/f9fbfdab found no blocker; prior Pi generic abort and Cursor connection timeout produced no accepted reviews, both were reconciled after process-liveness checks. Required1977 tests,103-item clean analysis,74 affected DB tests and127/703 manifest passed. Evidence build/day-result-source-acceptance and IMPLEMENTATION_VERIFICATION.md. Nonvisual unit; no new golden/native run needed.
 
-### Active unit: source-aware temperature
+### Completed unit: source-aware temperature
 
-DATA worker2c066aed/8d7c33c3, GrokPi900s, temperature-data-clone; sole writer night_scalar_data/domain/local_repository/synthetic_repository plus two night-scalar data/repository tests. Read-only schema66 dependency supplied. Paper lead owns integration and UI brief. No UI worker yet.
+Production and review complete.2011tests,104-item analysis, integration analysis,128blocks729screensmanifest pass. All20goldens and42nativePNGs inspected. Pro final PASS141.04s, mini PASS106.82s. Details and failed initial helper diagnosis in IMPLEMENTATION_VERIFICATION.md. DATA/UI/helper writers idle; fresh DATA/UI reviews clean. No push.
 
-Paper24 inspected refs and exact JSX/PNG exports: task temperature-paper/index.json. Canonical line4YO1/4YSR, card4ZQX/4ZR8; SD4YPE/4YTK, Celsius4Z21/4Z4A, unknown4YXJ/4YZS, large4Z7P/4Z9Y, missing4ZEV/4ZG4, partial4ZHD/4ZJM, error4ZLV/4ZOE, Info4ZRP/4ZTY/4ZW7/4ZXG/4ZYP/500X. All spacing/type/contrast/alignment/fit inspected, including stacked large header and source. Unregistered until implementation accepted.
+### Active unit: dated journal weight
 
-Known exact band source means SD; whoop_export means Celsius; cloud/unknown/conflict stays unknown. Legacy imported:true plus explicitwhoop_export can identify Celsius; null band source cannot proveSD. Preserve both source channels. Unknown-unit raw values remain in Info; hero/card show—. History uses selected storedalgo and sameknownquantity, incompatible samples stay gaps with disclosed counts. No ADC baseline or overnight temperature route. Synthetic14of30 fixture is explicit. Continue UI delegation, independent review, required checks/native/golden inspection, local commit, then remaining Health/B69/queue.
+DATA worker ae8c18a5/346c93f8, GrokPi720s, isolated weight-data-clone. Sole writer weight_data.dart, domain/local/synthetic repository and two new weight data/repository tests. Implement typed dated journal history, actual latest date, period-invariant existing EWMA, gaps, corrupt data and CAS behavior. No new write API or schema. Scope is journal subset of B152; Health imported provenance and explicit dated profile adoption remain independent supported work.
+
+Lead owns Paper and UI contract. Representative history50BT/50FU; edit50IN/50M2, empty50PG/50S9, loaderror50V2/50XV, saveerror5110/514E, Info517W/51AP inspected in both themes. Large51E8/51H1 just cloned and need refinement. Weight edits reuse OBJournalValueSheet with a date context label, retained draft, CAS save/remove and conflicts. Plus selects date using existing date picker then opens sheet. History main says Journal plus actual entry date; profile scalar never becomes a dated sample. All weight design refs remain unregistered and unimplemented. Exact maps in current tool state; export after remaining variants complete.
+
+Next Health discovery6fcbcd8a/21c3e227+ab37c2a4 accepted as source audit. ManualVO2 has no writer or Health12.2.1 VO2 type; typed user entry is not a verified measured value. New dated contract needs idempotent stableid and controlled undo, backup/export/salvage/wipe support and explicit restore-collision policy. Do not silently inherit INSERTORREPLACE regressions. Continue weight, then VO2/rhythm/fullHealth, B69 and remaining queue above.

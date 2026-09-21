@@ -1044,13 +1044,14 @@ String _nightLabel(MetricKey key) => switch (key) {
   MetricKey.hrv => 'HRV',
   MetricKey.restingHr => 'Ruhepuls',
   MetricKey.respiration => 'Atmung',
+  MetricKey.skinTemperature => 'Hauttemperatur',
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
   MetricKey.strain => throw ArgumentError.value(key),
 };
 
 int _nightDigits(MetricKey key) => switch (key) {
-  MetricKey.respiration => 1,
+  MetricKey.respiration || MetricKey.skinTemperature => 1,
   MetricKey.hrv || MetricKey.restingHr => 0,
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
@@ -1060,6 +1061,7 @@ int _nightDigits(MetricKey key) => switch (key) {
 String _nightUnit(MetricKey key) => switch (key) {
   MetricKey.hrv => 'ms',
   MetricKey.restingHr || MetricKey.respiration => '/min',
+  MetricKey.skinTemperature => '',
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
   MetricKey.strain => throw ArgumentError.value(key),
@@ -1069,6 +1071,7 @@ IconData _nightIcon(MetricKey key) => switch (key) {
   MetricKey.hrv => LucideIcons.activity,
   MetricKey.restingHr => LucideIcons.heart,
   MetricKey.respiration => LucideIcons.wind,
+  MetricKey.skinTemperature => LucideIcons.thermometer,
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
   MetricKey.strain => throw ArgumentError.value(key),
@@ -1078,6 +1081,7 @@ Color Function(OB) _nightColor(MetricKey key) => switch (key) {
   MetricKey.hrv => (p) => p.recovery,
   MetricKey.restingHr => (p) => p.pulse,
   MetricKey.respiration => (p) => p.sleep,
+  MetricKey.skinTemperature => (p) => p.ink,
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
   MetricKey.strain => throw ArgumentError.value(key),
@@ -1087,6 +1091,7 @@ Color Function(OB) _nightTint(MetricKey key) => switch (key) {
   MetricKey.hrv => (p) => p.recoveryTint,
   MetricKey.restingHr => (p) => p.pulseTint,
   MetricKey.respiration => (p) => p.sleepTint,
+  MetricKey.skinTemperature => (p) => p.well,
   MetricKey.recovery ||
   MetricKey.sleepDuration ||
   MetricKey.strain => throw ArgumentError.value(key),
@@ -1141,6 +1146,7 @@ void _seedTrusted(_GateRepo repo, {MetricKey key = MetricKey.hrv}) {
     case MetricKey.recovery:
     case MetricKey.sleepDuration:
     case MetricKey.strain:
+    case MetricKey.skinTemperature:
       throw ArgumentError.value(key);
   }
 }

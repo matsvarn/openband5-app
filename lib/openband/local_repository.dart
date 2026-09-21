@@ -263,7 +263,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final snapshot = await db.transaction((txn) async {
       final selectedRows = await txn.rawQuery(
         'SELECT day_id, skipped, partial, algo_version, computed_at, '
-        'rhr, rmssd, payload_json '
+        'rhr, rmssd, payload_json, source '
         'FROM day_result '
         'WHERE day_id = ? AND algo_version <= ? '
         'ORDER BY algo_version DESC LIMIT 1',
@@ -335,6 +335,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         computedAtMs: (row['computed_at'] as num?)?.toInt(),
         imported: nightScalarJsonTrue(_at(payload, 'imported')),
         source: nightScalarLabel(_at(payload, 'source')),
+        rowSource: nightScalarLabel(row['source']),
         sleepSource: nightScalarLabel(_at(payload, 'sleep_source')),
         windowStartMs: nightScalarMillis(
           _numAt(payload, 'sleep.window.value.onset_ms'),
@@ -351,17 +352,24 @@ class LocalOpenBandRepository implements OpenBandRepository {
       storedAlgo: selectedRow?.algoVersion,
       storedComputedAt: selectedRow?.computedAtMs,
     );
-    DayMetric nightCard(Object? sqlScalar, String baselineRoot) {
-      final stored = nightScalarBaseline(
-        value: _numAt(payload, 'baselines.$baselineRoot.baseline'),
-        status: _stringAt(payload, 'baselines.$baselineRoot.status'),
-        nValid: _at(payload, 'baselines.$baselineRoot.n_valid'),
-        nightsSinceUpdate: _at(
-          payload,
-          'baselines.$baselineRoot.nights_since_update',
-        ),
-        note: _stringAt(payload, 'baselines.$baselineRoot.note'),
-      );
+    DayMetric nightCard(
+      Object? sqlScalar,
+      String baselineRoot, {
+      NightScalarUnit? unit,
+      bool allowBaseline = true,
+    }) {
+      final stored = allowBaseline
+          ? nightScalarBaseline(
+              value: _numAt(payload, 'baselines.$baselineRoot.baseline'),
+              status: _stringAt(payload, 'baselines.$baselineRoot.status'),
+              nValid: _at(payload, 'baselines.$baselineRoot.n_valid'),
+              nightsSinceUpdate: _at(
+                payload,
+                'baselines.$baselineRoot.nights_since_update',
+              ),
+              note: _stringAt(payload, 'baselines.$baselineRoot.note'),
+            )
+          : null;
       final value = nightScalarFinite(sqlScalar);
       return dayMetricFromNightScalar(
         state: nightScalarPublishedState(
@@ -372,6 +380,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ),
         value: value,
         baseline: stored,
+        unit: unit,
       );
     }
 
@@ -465,6 +474,18 @@ class LocalOpenBandRepository implements OpenBandRepository {
       hrv: nightCard(row?['rmssd'], 'hrv'),
       restingHr: nightCard(row?['rhr'], 'resting_hr'),
       respiration: nightCard(_numAt(payload, 'scalars.resp_rate'), 'resp'),
+      skinTemperature: nightCard(
+        _numAt(payload, 'scalars.skin_temp_z'),
+        'skin_temp',
+        allowBaseline: false,
+        unit: selectedRow == null
+            ? null
+            : nightScalarSkinTemperatureUnit(
+                resultSource: selectedRow.rowSource,
+                payloadSource: selectedRow.source,
+                imported: selectedRow.imported,
+              ),
+      ),
       // day_total is the derived day's published result. Resolved spans may be
       // useful detail but are not silently substituted for a missing metric.
       steps: _metric(
@@ -1544,7 +1565,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
   ) async {
     if (key == MetricKey.hrv ||
         key == MetricKey.restingHr ||
-        key == MetricKey.respiration) {
+        key == MetricKey.respiration ||
+        key == MetricKey.skinTemperature) {
       return nightScalarHistoryPoints(
         await readNightScalarDetail(key, endDay, nights),
       );
@@ -1578,7 +1600,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final snapshot = await db.transaction((txn) async {
       final selectedRows = await txn.rawQuery(
         'SELECT day_id, skipped, partial, algo_version, computed_at, '
-        'rhr, rmssd, payload_json '
+        'rhr, rmssd, payload_json, source '
         'FROM day_result '
         'WHERE day_id = ? AND algo_version <= ? '
         'ORDER BY algo_version DESC LIMIT 1',
@@ -1616,6 +1638,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
             'computed_at',
             ?sqlColumn,
             'payload_json',
+            'source',
           ],
           where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
           whereArgs: [startDay, day, historyAnchor],
@@ -1707,6 +1730,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         computedAtMs: (r['computed_at'] as num?)?.toInt(),
         imported: valid && nightScalarJsonTrue(projected['imported']),
         source: valid ? nightScalarLabel(projected['source']) : null,
+        rowSource: nightScalarLabel(r['source']),
         sleepSource: valid ? nightScalarLabel(projected['sleep_source']) : null,
         deviceFamily: valid ? nightScalarLabel(projected['device_family']) : null,
         baseline: valid
@@ -1720,7 +1744,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
             : null,
         windowStartMs: valid ? nightScalarMillis(projected['onset_ms']) : null,
         windowEndMs: valid ? nightScalarMillis(projected['offset_ms']) : null,
-        envelope: valid && scalarKey != null
+        envelope: valid && metric == NightScalarMetric.respiration
             ? nightScalarEnvelope(projected['envelope'])
             : null,
       );

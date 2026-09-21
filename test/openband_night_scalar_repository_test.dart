@@ -40,11 +40,14 @@ void main() {
     double? rmssd,
     double? rhr,
     double? respRate,
+    double? skinTempZ,
     int algo = kAlgoVersion,
     bool skipped = false,
     bool partial = false,
     bool imported = false,
     String? source,
+    String? rowSource,
+    bool persistRowSource = true,
     String? sleepSource,
     String? deviceFamily,
     String? payloadJson,
@@ -69,6 +72,7 @@ void main() {
               'rmssd': rmssd,
               'rhr': rhr,
               'resp_rate': ?respRate,
+              'skin_temp_z': ?skinTempZ,
             },
             if (rsa != null) 'respiration': {'rsa': rsa},
             if (onsetMs != null || offsetMs != null)
@@ -91,7 +95,7 @@ void main() {
       partial: partial,
       rmssd: rmssd,
       rhr: rhr,
-      source: source,
+      source: persistRowSource ? (rowSource ?? source) : null,
     );
     if (computedAt != null) {
       final db = await LocalDb.instance;
@@ -112,10 +116,13 @@ void main() {
     double? rmssd,
     double? rhr,
     double? respRate,
+    double? skinTempZ,
     int algo = kAlgoVersion,
     bool partial = false,
     bool imported = false,
     String? source,
+    String? rowSource,
+    bool persistRowSource = true,
     int computedAt = 900,
     String sleepSource = 'manual',
   }) =>
@@ -124,10 +131,13 @@ void main() {
         rmssd: rmssd,
         rhr: rhr,
         respRate: respRate,
+        skinTempZ: skinTempZ,
         algo: algo,
         partial: partial,
         imported: imported,
         source: source,
+        rowSource: rowSource,
+        persistRowSource: persistRowSource,
         computedAt: computedAt,
         sleepSource: sleepSource,
         onsetMs: overrideOnset,
@@ -1607,5 +1617,484 @@ void main() {
     expect(snap.baseline?.status, 'trusted');
     expect((await repository.readDay('2026-09-15')).respiration.value, 16);
     expect((await repository.readDay('2026-09-15')).respiration.baseline, 15);
+  });
+
+  test('skin temp uses selected-version source column, not series stamp', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 33.2,
+      imported: true,
+      source: 'whoop_export',
+      algo: kAlgoVersion - 1,
+      computedAt: 800,
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+    );
+    final db = await LocalDb.instance;
+    await db.insert('metric_series_version', {
+      'date': '2026-09-15',
+      'algo_version': kAlgoVersion - 1,
+      'source': 'whoop_export',
+    });
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.value, 0.4);
+    expect(snap.unit, NightScalarUnit.sd);
+    expect(snap.resultSource, 'band');
+    expect(snap.payloadSource, 'band');
+    expect(snap.algoVersion, kAlgoVersion);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.skinTemperature.value, 0.4);
+    expect(day.skinTemperature.unit, NightScalarUnit.sd);
+    expect(day.hrv.nightScalar, isNotNull);
+  });
+
+  test('legacy null-column whoop payload is Celsius', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 33.2,
+      imported: true,
+      source: 'whoop_export',
+      persistRowSource: false,
+      computedAt: 900,
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.unit, NightScalarUnit.celsius);
+    expect(snap.value, 33.2);
+    expect(snap.resultSource, isNull);
+    expect(snap.payloadSource, 'whoop_export');
+    expect(snap.baseline, isNull);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.skinTemperature.value, 33.2);
+    expect(day.skinTemperature.unit, NightScalarUnit.celsius);
+  });
+
+  test('source conflicts null band-alone and cloud are unknown', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'whoop_export',
+      rowSource: 'band',
+      imported: true,
+      computedAt: 900,
+    );
+    final conflict = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(conflict.unit, NightScalarUnit.unknown);
+    expect(conflict.value, isNull);
+    expect(conflict.storedForInfo, 0.4);
+    expect(conflict.resultSource, 'band');
+    expect(conflict.payloadSource, 'whoop_export');
+    expect(conflict.state, isNot(NightScalarState.missing));
+    final conflictDay = await repository.readDay('2026-09-15');
+    expect(conflictDay.skinTemperature.value, isNull);
+    expect(conflictDay.skinTemperature.reason, kNightScalarUnknownUnitLabel);
+    expect(conflictDay.skinTemperature.nightScalar, NightScalarState.current);
+
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      persistRowSource: false,
+      computedAt: 900,
+    );
+    expect(
+      (await repository.readNightScalarDetail(
+        MetricKey.skinTemperature,
+        '2026-09-15',
+        7,
+      )).unit,
+      NightScalarUnit.unknown,
+    );
+
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.2,
+      source: 'cloud_v2',
+      imported: true,
+      computedAt: 900,
+    );
+    final cloud = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(cloud.unit, NightScalarUnit.unknown);
+    expect(cloud.storedForInfo, 0.2);
+  });
+
+  test('partial empty series still uses day_result source', () async {
+    await LocalDb.putDayResult(
+      dayId: '2026-09-15',
+      algoVersion: kAlgoVersion,
+      payloadJson: jsonEncode({
+        'source': 'band',
+        'scalars': {'skin_temp_z': 0.4},
+      }),
+      windowJson: '{}',
+      partial: true,
+      source: 'band',
+      series: const {},
+    );
+    final db = await LocalDb.instance;
+    await db.update(
+      'day_result',
+      {'computed_at': 900},
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    await db.insert('metric_series_version', {
+      'date': '2026-09-15',
+      'algo_version': 1,
+      'source': 'whoop_export',
+    });
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.state, NightScalarState.partial);
+    expect(snap.value, 0.4);
+    expect(snap.unit, NightScalarUnit.sd);
+    expect(snap.resultSource, 'band');
+  });
+
+  test('missing skin temp does not use prior or metric_series', () async {
+    await putCoveredNight(
+      '2026-09-14',
+      skinTempZ: 0.2,
+      source: 'band',
+      computedAt: 800,
+    );
+    await LocalDb.putMetricSeriesValue('2026-09-15', 'skin_temp_z', 0.9);
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.state, NightScalarState.missing);
+    expect(snap.value, isNull);
+    expect(snap.unit, isNull);
+    expect(snap.history.last.gap, NightScalarGap.unversioned);
+    expect(snap.history.last.value, isNull);
+    expect(snap.history[5].gap, NightScalarGap.unit);
+    expect(snap.history[5].value, isNull);
+    expect(snap.history[5].resultSource, 'band');
+    expect(snap.history[5].payloadSource, 'band');
+    expect(snap.counts.excludedUnit, 1);
+    expect(snap.counts.compared, 0);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.skinTemperature.value, isNull);
+    expect(day.skinTemperature.nightScalar, NightScalarState.missing);
+    expect(day.skinTemperature.unit, isNull);
+    expect(day.skinTemperature.reason, isNot(kNightScalarUnknownUnitLabel));
+  });
+
+  test('mixed unit history excludes incompatible finite rows', () async {
+    await putCoveredNight(
+      '2026-09-13',
+      skinTempZ: 33.2,
+      imported: true,
+      source: 'whoop_export',
+      computedAt: 700,
+    );
+    await putCoveredNight(
+      '2026-09-14',
+      skinTempZ: -0.1,
+      source: 'band',
+      computedAt: 800,
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.unit, NightScalarUnit.sd);
+    expect(snap.value, 0.4);
+    expect(snap.history[4].gap, NightScalarGap.unit);
+    expect(snap.history[4].value, isNull);
+    expect(snap.history[4].resultSource, 'whoop_export');
+    expect(snap.history[4].payloadSource, 'whoop_export');
+    expect(snap.history[5].value, -0.1);
+    expect(snap.history[5].resultSource, 'band');
+    expect(snap.history[5].payloadSource, 'band');
+    expect(snap.counts.compared, 2);
+    expect(snap.counts.excludedUnit, 1);
+    expect(snap.counts.sources, {'band': 2});
+    final history = await repository.readMetricHistory(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(history[4].value, isNull);
+    expect(history[5].value, -0.1);
+    expect(history.last.value, 0.4);
+  });
+
+  test('history retains row and payload sources for excluded finite rows', () async {
+    await putCoveredNight(
+      '2026-09-12',
+      skinTempZ: 0.2,
+      source: 'cloud_v2',
+      computedAt: 600,
+    );
+    await putCoveredNight(
+      '2026-09-13',
+      skinTempZ: 0.1,
+      source: 'whoop_export',
+      rowSource: 'band',
+      imported: true,
+      computedAt: 700,
+    );
+    await putCoveredNight(
+      '2026-09-14',
+      skinTempZ: -0.1,
+      rowSource: 'band',
+      persistRowSource: true,
+      computedAt: 800,
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      rowSource: 'band',
+      persistRowSource: true,
+      computedAt: 900,
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.unit, NightScalarUnit.sd);
+    expect(snap.history[3].gap, NightScalarGap.unit);
+    expect(snap.history[3].resultSource, 'cloud_v2');
+    expect(snap.history[3].payloadSource, 'cloud_v2');
+    expect(snap.history[4].gap, NightScalarGap.unit);
+    expect(snap.history[4].resultSource, 'band');
+    expect(snap.history[4].payloadSource, 'whoop_export');
+    expect(snap.history[5].value, -0.1);
+    expect(snap.history[5].resultSource, 'band');
+    expect(snap.history[5].payloadSource, isNull);
+    expect(snap.history.last.resultSource, 'band');
+    expect(snap.history.last.payloadSource, isNull);
+    expect(snap.counts.compared, 2);
+    expect(snap.counts.excludedUnit, 2);
+    expect(snap.counts.sources, {'band': 2});
+  });
+
+  test('corrupt skin-temp payload is unreadable and keeps stored algo', () async {
+    await putNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+      payloadJson: '{not-json',
+    );
+    await expectLater(
+      repository.readDay('2026-09-15'),
+      throwsA(isA<FormatException>()),
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.state, NightScalarState.unreadable);
+    expect(snap.value, isNull);
+    expect(snap.storedForInfo, isNull);
+    expect(snap.historyAnchor, kAlgoVersion);
+    expect(snap.resultSource, 'band');
+    expect(snap.payloadSource, isNull);
+  });
+
+  test('pending and failed skin-temp receipts retain the raw scalar', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+    );
+    await putSleepJob('2026-09-15', status: 'pending');
+    final pending = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(pending.state, NightScalarState.pending);
+    expect(pending.value, isNull);
+    expect(pending.storedForInfo, 0.4);
+    expect(pending.unit, NightScalarUnit.sd);
+    expect(pending.evaluationLabel, kNightScalarPendingLabel);
+    expect((await repository.readDay('2026-09-15')).skinTemperature.value, isNull);
+    expect(
+      (await repository.readDay('2026-09-15')).skinTemperature.reason,
+      kNightScalarPendingLabel,
+    );
+
+    await LocalDb.close();
+    LocalDb.dbName = 'openband_night_scalar_repository_test.db';
+    final dir = await databaseFactory.getDatabasesPath();
+    await databaseFactory.deleteDatabase('$dir/${LocalDb.dbName}');
+    app.dispose();
+    app = AppState.forTesting();
+    app.repo = LocalRepositoryImpl(getProfileMap: () => app.user);
+    repository = LocalOpenBandRepository(app);
+
+    await putCoveredNight(
+      '2026-09-15',
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+    );
+    await putNapJob('2026-09-15', status: 'failed');
+    final failed = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(failed.state, NightScalarState.failed);
+    expect(failed.storedForInfo, 0.4);
+    expect(failed.history.last.gap, NightScalarGap.withheld);
+    expect(failed.resultSource, 'band');
+    expect(failed.payloadSource, 'band');
+    expect(failed.unit, NightScalarUnit.sd);
+    final failedDay = await repository.readDay('2026-09-15');
+    expect(failedDay.skinTemperature.value, isNull);
+    expect(failedDay.skinTemperature.unit, NightScalarUnit.sd);
+    expect(failedDay.skinTemperature.reason, kNightScalarFailedLabel);
+  });
+
+  test('published skin temp is payload skin_temp_z only', () async {
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: jsonEncode({
+        'source': 'band',
+        'scalars': {
+          'rhr': 54,
+          'skin_temp_adc': 812,
+          'skin_temp': 0.9,
+        },
+        'baselines': {
+          'skin_temp': {'baseline': 11, 'status': 'trusted'},
+        },
+      }),
+      source: 'band',
+    );
+    final missingZ = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(missingZ.state, NightScalarState.missing);
+    expect(missingZ.value, isNull);
+    expect(missingZ.baseline, isNull);
+    expect(missingZ.unit, NightScalarUnit.sd);
+    expect((await repository.readDay('2026-09-15')).restingHr.value, 54);
+    expect((await repository.readDay('2026-09-15')).skinTemperature.value, isNull);
+
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: jsonEncode({
+        'source': 'band',
+        'scalars': {
+          'rhr': 54,
+          'skin_temp_z': 0.4,
+          'skin_temp_adc': 812,
+        },
+        'baselines': {
+          'skin_temp': {'baseline': 11, 'status': 'trusted'},
+        },
+      }),
+      source: 'band',
+    );
+    final z = await repository.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(z.value, 0.4);
+    expect(z.baseline, isNull);
+    expect(z.envelope, isNull);
+    expect((await repository.readDay('2026-09-15')).skinTemperature.value, 0.4);
+    expect((await repository.readDay('2026-09-15')).skinTemperature.baseline, isNull);
+
+    await putNight(
+      '2026-09-15',
+      computedAt: 900,
+      payloadJson: jsonEncode({
+        'source': 'band',
+        'scalars': {'skin_temp_z': '0.4'},
+      }),
+      source: 'band',
+    );
+    expect(
+      (await repository.readNightScalarDetail(
+        MetricKey.skinTemperature,
+        '2026-09-15',
+        7,
+      )).value,
+      isNull,
+    );
+  });
+
+  test('skin temperature does not change HRV RHR or respiration', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      rmssd: 48,
+      rhr: 54,
+      respRate: 16,
+      skinTempZ: 0.4,
+      source: 'band',
+      computedAt: 900,
+    );
+    final hrv = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    final rhr = await repository.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    final resp = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.value, 48);
+    expect(hrv.unit, isNull);
+    expect(rhr.value, 54);
+    expect(resp.value, 16);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.hrv.value, 48);
+    expect(day.restingHr.value, 54);
+    expect(day.respiration.value, 16);
+    expect(day.skinTemperature.value, 0.4);
+    expect(day.skinTemperature.unit, NightScalarUnit.sd);
   });
 }

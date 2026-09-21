@@ -1,7 +1,9 @@
-// Typed HRV / resting-pulse / respiration night scalars. Repositories decode
-// storage here. HRV/RHR use SQL `rmssd`/`rhr`; respiration uses payload
-// `scalars.resp_rate` (no SQL column). Not session envelopes or day curves.
-// Civil-date windows; no interpolation, refold, or invented provenance.
+// Typed HRV / resting-pulse / respiration / skin-temperature night scalars.
+// Repositories decode storage here. HRV/RHR use SQL `rmssd`/`rhr`; respiration
+// uses payload `scalars.resp_rate`; skin temperature uses payload
+// `scalars.skin_temp_z` only (no ADC / baselines.skin_temp / metric_series
+// headline fallback). Not session envelopes or day curves. Civil-date windows;
+// no interpolation, refold, or invented provenance.
 
 import 'dart:convert';
 
@@ -31,35 +33,74 @@ const List<double> kNightScalarPaperResp = [
   14, 18, 14.5, 17.5, 15, 17, 15.5, 16.5, 14, 18, 15, 17, 15.5, 16.5, 16,
 ];
 
+/// Paper skin-temperature SD, last 15 of 30 ending 2026-09-15. One real gap.
+/// Selected +0.4 SD. Lead 01M2TRX5GZKAXKTSXK7D34E8AY: canonical signed 4YO1 /
+/// dark 4YSR; SD main 4YPE / dark 4YTK; unknown 4YXJ / dark 4YZS; C 4Z21 /
+/// dark 4Z4A.
+const List<double?> kNightScalarPaperSkinTempSd = [
+  -0.2, -0.1, 0, 0.1, null, 0.2, 0.1, 0.3, 0.2, -0.1, 0.1, 0.3, 0.2, 0.5, 0.4,
+];
+
+/// Same positions as [kNightScalarPaperSkinTempSd] as 32.8 + v °C. Selected 33.2.
+const List<double?> kNightScalarPaperSkinTempC = [
+  32.6, 32.7, 32.8, 32.9, null, 33.0, 32.9, 33.1, 33.0, 32.7, 32.9, 33.1, 33.0,
+  33.3, 33.2,
+];
+
+const double kNightScalarPaperSkinTempSdSelected = 0.4;
+const double kNightScalarPaperSkinTempCSelected = 33.2;
+const double kNightScalarPaperSkinTempCOffset = 32.8;
+
 const String kNightScalarPaperDay = '2026-09-15';
 
 enum NightScalarMetric {
   hrv,
   rhr,
-  respiration;
+  respiration,
+  skinTemperature;
 
   String get series => switch (this) {
     hrv => 'rmssd',
     rhr => 'rhr',
     respiration => 'resp_rate',
+    skinTemperature => 'skin_temp_z',
   };
 
   String get baselinePath => switch (this) {
     hrv => 'hrv',
     rhr => 'resting_hr',
     respiration => 'resp',
+    skinTemperature => 'skin_temp',
   };
 
   String? get sqlColumn => switch (this) {
     hrv => 'rmssd',
     rhr => 'rhr',
     respiration => null,
+    skinTemperature => null,
   };
 
   String? get payloadScalar => switch (this) {
     respiration => 'resp_rate',
+    skinTemperature => 'skin_temp_z',
     _ => null,
   };
+}
+
+/// Physical quantity of a published night scalar. Skin temperature is SD
+/// (band relative deviation) or Celsius (WHOOP export). Other metrics leave
+/// this unset. UI must switch on this enum — never on source strings.
+enum NightScalarUnit {
+  /// Relative deviation in standard deviations (`source = band`).
+  sd,
+
+  /// Absolute degrees Celsius (`whoop_export`, including null-column legacy).
+  celsius,
+
+  /// Quantity cannot be determined. Do not plot, mix, or call it missing.
+  unknown;
+
+  bool get isKnown => this == sd || this == celsius;
 }
 
 enum NightScalarState {
@@ -77,6 +118,7 @@ enum NightScalarState {
 const String kNightScalarPendingLabel = 'Auswertung läuft';
 const String kNightScalarOpenLabel = 'Auswertung offen';
 const String kNightScalarFailedLabel = 'Auswertung fehlgeschlagen';
+const String kNightScalarUnknownUnitLabel = 'Einheit unbekannt';
 const String kNightScalarTrustedBaseline = 'trusted';
 
 const Set<String> kNightScalarOverrideSources = {'manual', 'confirmed'};
@@ -88,6 +130,9 @@ enum NightScalarGap {
   unversioned,
   unreadable,
   withheld,
+
+  /// Finite stored scalar whose quantity is unknown or not the selected unit.
+  unit,
 }
 
 class StoredNightBaseline {
@@ -213,16 +258,25 @@ class NightScalarHistoryNight {
     this.value,
     this.partial = false,
     this.source,
+    this.resultSource,
+    this.payloadSource,
     this.imported = false,
     this.gap,
+    this.unit,
   });
 
   final String day;
   final double? value;
   final bool partial;
+  /// Payload `source` for HRV/RHR/respiration. Null stays null.
   final String? source;
+  /// Exact-row `day_result.source`. Null stays null — never backfilled.
+  final String? resultSource;
+  /// Payload `source`. Null stays null — never backfilled from [resultSource].
+  final String? payloadSource;
   final bool imported;
   final NightScalarGap? gap;
+  final NightScalarUnit? unit;
 
   @override
   bool operator ==(Object other) =>
@@ -231,12 +285,24 @@ class NightScalarHistoryNight {
       other.value == value &&
       other.partial == partial &&
       other.source == source &&
+      other.resultSource == resultSource &&
+      other.payloadSource == payloadSource &&
       other.imported == imported &&
-      other.gap == gap;
+      other.gap == gap &&
+      other.unit == unit;
 
   @override
-  int get hashCode =>
-      Object.hash(day, value, partial, source, imported, gap);
+  int get hashCode => Object.hash(
+    day,
+    value,
+    partial,
+    source,
+    resultSource,
+    payloadSource,
+    imported,
+    gap,
+    unit,
+  );
 }
 
 class NightScalarCounts {
@@ -245,6 +311,7 @@ class NightScalarCounts {
     this.excludedVersion = 0,
     this.excludedSkipped = 0,
     this.excludedUnversioned = 0,
+    this.excludedUnit = 0,
     this.unreadable = 0,
     this.imported = 0,
     this.sources = const {},
@@ -254,6 +321,7 @@ class NightScalarCounts {
   final int excludedVersion;
   final int excludedSkipped;
   final int excludedUnversioned;
+  final int excludedUnit;
   final int unreadable;
   final int imported;
   final Map<String, int> sources;
@@ -265,6 +333,7 @@ class NightScalarCounts {
       other.excludedVersion == excludedVersion &&
       other.excludedSkipped == excludedSkipped &&
       other.excludedUnversioned == excludedUnversioned &&
+      other.excludedUnit == excludedUnit &&
       other.unreadable == unreadable &&
       other.imported == imported &&
       _sameCounts(other.sources, sources);
@@ -277,6 +346,7 @@ class NightScalarCounts {
       excludedVersion,
       excludedSkipped,
       excludedUnversioned,
+      excludedUnit,
       unreadable,
       imported,
       Object.hashAll([for (final k in keys) Object.hash(k, sources[k])]),
@@ -295,6 +365,7 @@ class NightScalarRow {
     this.computedAtMs,
     this.imported = false,
     this.source,
+    this.rowSource,
     this.sleepSource,
     this.deviceFamily,
     this.baseline,
@@ -312,6 +383,8 @@ class NightScalarRow {
   final int? computedAtMs;
   final bool imported;
   final String? source;
+  /// Exact-row `day_result.source`. Never inferred from payload or series.
+  final String? rowSource;
   final String? sleepSource;
   final String? deviceFamily;
   final StoredNightBaseline? baseline;
@@ -338,8 +411,11 @@ class NightScalarDetail {
     this.historyAnchor,
     this.sleepSource,
     this.vendorSource,
+    this.resultSource,
+    this.payloadSource,
     this.deviceFamily,
     this.recordingTimezone,
+    this.unit,
     this.history = const [],
     this.counts = const NightScalarCounts(),
     this.envelope,
@@ -361,11 +437,20 @@ class NightScalarDetail {
   final int? historyAnchor;
   final String? sleepSource;
   final String? vendorSource;
+  /// Exact-row `day_result.source`. Null stays null — never backfilled.
+  final String? resultSource;
+  /// Payload `source`. Null stays null — never backfilled from [resultSource].
+  final String? payloadSource;
   final String? deviceFamily;
   final String? recordingTimezone;
+  /// Skin-temperature quantity. Null on HRV / RHR / respiration.
+  final NightScalarUnit? unit;
   final List<NightScalarHistoryNight> history;
   final NightScalarCounts counts;
   final NightScalarEnvelope? envelope;
+
+  /// Known SD or Celsius. Unknown selected has no comparable chart.
+  bool get hasComparableQuantity => unit?.isKnown == true;
 
   bool get withheld =>
       state == NightScalarState.pending ||
@@ -404,8 +489,11 @@ class NightScalarDetail {
       other.historyAnchor == historyAnchor &&
       other.sleepSource == sleepSource &&
       other.vendorSource == vendorSource &&
+      other.resultSource == resultSource &&
+      other.payloadSource == payloadSource &&
       other.deviceFamily == deviceFamily &&
       other.recordingTimezone == recordingTimezone &&
+      other.unit == unit &&
       _sameNights(other.history, history) &&
       other.counts == counts &&
       other.envelope == envelope;
@@ -438,6 +526,7 @@ class NightScalarDetail {
           counts,
           envelope,
         ),
+        Object.hash(resultSource, payloadSource, unit),
       );
 }
 
@@ -514,6 +603,39 @@ String? nightScalarLabel(Object? raw) {
   if (raw is! String) return null;
   final value = raw.trim();
   return value.isEmpty ? null : value;
+}
+
+bool nightScalarKnownUnit(NightScalarUnit? unit) => unit?.isKnown == true;
+
+/// Classify skin-temperature quantity from exact-row `day_result.source` plus
+/// payload `source` / `imported`. Never reads `metric_series_version`. Source
+/// strings are provenance for Info — UI unit comes only from this enum.
+///
+/// `band` supports SD unless a nonempty payload source conflicts.
+/// `whoop_export` supports Celsius unless a nonempty payload source conflicts.
+/// `cloud_v2` and any other nonempty row source are unknown.
+/// A null column may use unambiguous payload `imported: true` +
+/// `source: whoop_export` for legacy Celsius. Null column with `band` or
+/// `imported` alone cannot infer SD or Celsius. Any two nonempty differing
+/// sources are unknown. Invalid / non-string sources do not classify.
+NightScalarUnit nightScalarSkinTemperatureUnit({
+  Object? resultSource,
+  Object? payloadSource,
+  Object? imported,
+}) {
+  final row = nightScalarLabel(resultSource);
+  final payload = nightScalarLabel(payloadSource);
+  final isImported = nightScalarJsonTrue(imported);
+  if (row != null && payload != null && row != payload) {
+    return NightScalarUnit.unknown;
+  }
+  if (row == 'band') return NightScalarUnit.sd;
+  if (row == 'whoop_export') return NightScalarUnit.celsius;
+  if (row != null) return NightScalarUnit.unknown;
+  if (isImported && payload == 'whoop_export') {
+    return NightScalarUnit.celsius;
+  }
+  return NightScalarUnit.unknown;
 }
 
 String? nightScalarStatus(Object? raw) {
@@ -858,6 +980,14 @@ NightScalarDetail buildNightScalarDetail({
     storedAlgo: selectedAlgo,
     storedComputedAt: selected?.computedAtMs,
   );
+  final selectedUnit = key == NightScalarMetric.skinTemperature &&
+          selected != null
+      ? nightScalarSkinTemperatureUnit(
+          resultSource: selected.rowSource,
+          payloadSource: payloadUnreadable ? null : selected.source,
+          imported: payloadUnreadable ? false : selected.imported,
+        )
+      : null;
 
   NightScalarState state;
   double? hero;
@@ -879,11 +1009,20 @@ NightScalarDetail buildNightScalarDetail({
     state = NightScalarState.current;
     hero = selectedFinite;
   }
+  if (overlay == null &&
+      hero != null &&
+      key == NightScalarMetric.skinTemperature &&
+      !nightScalarKnownUnit(selectedUnit)) {
+    storedForInfo = hero;
+    hero = null;
+  }
 
   final window = payloadUnreadable
       ? null
       : nightScalarWindow(selected?.windowStartMs, selected?.windowEndMs);
-  final baseline = payloadUnreadable ? null : selected?.baseline;
+  final baseline = payloadUnreadable || key == NightScalarMetric.skinTemperature
+      ? null
+      : selected?.baseline;
   final sleepSource =
       payloadUnreadable ? null : nightScalarLabel(selected?.sleepSource);
   final deviceFamily =
@@ -897,6 +1036,7 @@ NightScalarDetail buildNightScalarDetail({
   var excludedVersion = 0;
   var excludedSkipped = 0;
   var excludedUnversioned = 0;
+  var excludedUnit = 0;
   var unreadable = 0;
   var imported = 0;
   final sources = <String, int>{};
@@ -947,19 +1087,50 @@ NightScalarDetail buildNightScalarDetail({
         );
         continue;
       }
-      final source = nightScalarLabel(row.source);
+      final payloadSource = nightScalarLabel(row.source);
+      final resultSource = nightScalarLabel(row.rowSource);
+      final nightUnit = key == NightScalarMetric.skinTemperature
+          ? nightScalarSkinTemperatureUnit(
+              resultSource: row.rowSource,
+              payloadSource: row.source,
+              imported: row.imported,
+            )
+          : null;
+      if (key == NightScalarMetric.skinTemperature &&
+          !(nightScalarKnownUnit(selectedUnit) && nightUnit == selectedUnit)) {
+        excludedUnit++;
+        history.add(
+          NightScalarHistoryNight(
+            day: id,
+            partial: row.partial,
+            source: payloadSource,
+            resultSource: resultSource,
+            payloadSource: payloadSource,
+            imported: row.imported,
+            gap: NightScalarGap.unit,
+            unit: nightUnit,
+          ),
+        );
+        continue;
+      }
       compared++;
       if (row.imported) imported++;
-      if (source != null) {
-        sources[source] = (sources[source] ?? 0) + 1;
-      }
+      _countNightScalarSource(
+        sources,
+        key: key,
+        resultSource: resultSource,
+        payloadSource: payloadSource,
+      );
       history.add(
         NightScalarHistoryNight(
           day: id,
           value: value,
           partial: row.partial,
-          source: source,
+          source: payloadSource,
+          resultSource: resultSource,
+          payloadSource: payloadSource,
           imported: row.imported,
+          unit: nightUnit,
         ),
       );
       continue;
@@ -1000,15 +1171,21 @@ NightScalarDetail buildNightScalarDetail({
     historyAnchor: historyAnchor,
     sleepSource: sleepSource,
     vendorSource: vendorSource,
+    resultSource: nightScalarLabel(selected?.rowSource),
+    payloadSource: payloadUnreadable ? null : nightScalarLabel(selected?.source),
     deviceFamily: deviceFamily,
     recordingTimezone: nightScalarLabel(recordingTimezone),
-    envelope: payloadUnreadable ? null : selected?.envelope,
+    unit: selectedUnit,
+    envelope: payloadUnreadable || key != NightScalarMetric.respiration
+        ? null
+        : selected?.envelope,
     history: List.unmodifiable(history),
     counts: NightScalarCounts(
       compared: compared,
       excludedVersion: excludedVersion,
       excludedSkipped: excludedSkipped,
       excludedUnversioned: excludedUnversioned,
+      excludedUnit: excludedUnit,
       unreadable: unreadable,
       imported: imported,
       sources: Map.unmodifiable(sources),
@@ -1042,4 +1219,27 @@ bool _sameCounts(Map<String, int> a, Map<String, int> b) {
     if (b[e.key] != e.value) return false;
   }
   return true;
+}
+
+/// Compared-night provenance. Skin temperature counts one channel when the
+/// other is empty, never merges two nonempty differing sources into one key.
+void _countNightScalarSource(
+  Map<String, int> sources, {
+  required NightScalarMetric key,
+  required String? resultSource,
+  required String? payloadSource,
+}) {
+  if (key == NightScalarMetric.skinTemperature) {
+    if (resultSource != null &&
+        payloadSource != null &&
+        resultSource != payloadSource) {
+      return;
+    }
+    final label = payloadSource ?? resultSource;
+    if (label != null) sources[label] = (sources[label] ?? 0) + 1;
+    return;
+  }
+  if (payloadSource != null) {
+    sources[payloadSource] = (sources[payloadSource] ?? 0) + 1;
+  }
 }

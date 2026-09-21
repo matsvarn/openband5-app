@@ -10,8 +10,9 @@ import 'controller.dart';
 import 'domain.dart';
 import 'health.dart' show OBSegmented;
 import 'journal_controls.dart';
+import 'night_line.dart';
 import 'night_signals.dart';
-import 'screens.dart' show obMetricComparisonStatus;
+import 'screens.dart' show obMetricComparisonStatus, obTemperatureNumber;
 import 'settings_controls.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
@@ -298,10 +299,13 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     }
   }
 
+  bool get _temperature => widget.metricKey == MetricKey.skinTemperature;
+
   String get _storedKindLabel => switch (widget.metricKey) {
     MetricKey.hrv => 'RMSSD',
     MetricKey.restingHr => 'Ruhepuls',
     MetricKey.respiration => 'Atemfrequenz',
+    MetricKey.skinTemperature => 'Hauttemperatur',
     MetricKey.recovery ||
     MetricKey.sleepDuration ||
     MetricKey.strain => widget.label,
@@ -311,6 +315,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     MetricKey.hrv => NightSignalKind.hrv,
     MetricKey.restingHr => NightSignalKind.pulse,
     MetricKey.respiration => NightSignalKind.respiration,
+    MetricKey.skinTemperature ||
     MetricKey.recovery ||
     MetricKey.sleepDuration ||
     MetricKey.strain => throw StateError(
@@ -323,6 +328,35 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       (widget.controller.calculating || widget.controller.napCalculating);
 
   String _heroStatus(NightScalarDetail snap) {
+    if (_temperature) {
+      switch (snap.state) {
+        case NightScalarState.pending:
+          return kNightScalarPendingLabel;
+        case NightScalarState.failed:
+          return kNightScalarFailedLabel;
+        case NightScalarState.unknown:
+        case NightScalarState.outdated:
+          return kNightScalarOpenLabel;
+        case NightScalarState.missing:
+          return 'Noch kein Nachtwert';
+        case NightScalarState.unreadable:
+          return 'Nachtwert nicht lesbar';
+        case NightScalarState.partial:
+          return 'Unvollständige Nacht';
+        case NightScalarState.older:
+          return 'Ältere Berechnung';
+        case NightScalarState.current:
+          return switch (snap.unit) {
+            NightScalarUnit.sd => 'Relative Abweichung',
+            NightScalarUnit.celsius => 'Importiert',
+            NightScalarUnit.unknown => kNightScalarUnknownUnitLabel,
+            null =>
+              snap.value == null
+                  ? 'Noch kein Nachtwert'
+                  : kNightScalarUnknownUnitLabel,
+          };
+      }
+    }
     switch (snap.state) {
       case NightScalarState.pending:
         return kNightScalarPendingLabel;
@@ -360,6 +394,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
 
   String _nightLabel() {
     final selected = widget.controller.selectedDay;
+    if (_temperature) return obDayTitle(selected);
     final today = dayLabelOf(widget.controller.now());
     return selected == today ? 'Nacht auf heute' : obDayTitle(selected);
   }
@@ -411,6 +446,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
   List<String> _headerParagraphs(NightScalarDetail? snap) {
     if (_error) return ['Nachtwerte konnten nicht geladen werden.'];
     if (snap == null) return ['Die Nachtwerte werden geladen.'];
+    if (_temperature) return _temperatureParagraphs(snap);
     if (snap.withheld) return _withheldParagraphs(snap);
     final first = <String>[
       '$_storedKindLabel · gespeicherter Wert',
@@ -448,6 +484,110 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       if (second.isNotEmpty) second.join('\n'),
       if (third.isNotEmpty) third.join('\n'),
     ];
+  }
+
+  List<String> _temperatureParagraphs(NightScalarDetail snap) {
+    String raw(double value, NightScalarUnit? unit) {
+      final number = obNumber(value, digits: 1);
+      return switch (unit) {
+        NightScalarUnit.sd => '$number SD',
+        NightScalarUnit.celsius => '$number °C',
+        NightScalarUnit.unknown || null => number,
+      };
+    }
+
+    final stored = snap.storedForInfo ?? snap.value;
+    final first = snap.withheld
+        ? [
+            _heroStatus(snap),
+            if (stored != null) 'Gespeicherter Wert: ${raw(stored, snap.unit)}',
+          ].join('\n')
+        : switch (snap.unit) {
+            NightScalarUnit.sd =>
+              'Relative Abweichung in Standardabweichungen (SD), keine Temperatur in °C.',
+            NightScalarUnit.celsius =>
+              'Hauttemperatur in °C · importierter Wert',
+            NightScalarUnit.unknown =>
+              stored == null
+                  ? 'Die Einheit ist nicht belegt.'
+                  : 'Gespeicherter Wert: ${raw(stored, null)}\nDie Einheit ist nicht belegt.',
+            null =>
+              snap.state == NightScalarState.missing
+                  ? 'Noch kein Nachtwert.'
+                  : 'Die Einheit ist nicht belegt.',
+          };
+    final sources = _temperatureSourceInfo(snap);
+    final family = _deviceFamilyLabel(snap.deviceFamily);
+    final provenance = [?sources, ?family].join(' · ');
+    final metadata = <String>[
+      if (provenance.isNotEmpty) provenance,
+      if (snap.computedAt != null)
+        'Berechnet am ${DateFormat('d. MMMM, HH:mm', 'de_DE').format(snap.computedAt!.toLocal())}',
+      if (snap.algoVersion != null) 'Algorithmus ${snap.algoVersion}',
+    ];
+    final exclusions = <String>[];
+    if (snap.unit != NightScalarUnit.unknown && snap.counts.excludedUnit > 0) {
+      exclusions.add(
+        '${snap.counts.excludedUnit} ${snap.counts.excludedUnit == 1 ? 'Nacht' : 'Nächte'} mit anderer oder unbekannter Einheit ausgeschlossen.',
+      );
+      final conflicts = <String>{};
+      for (final night in snap.history) {
+        final result = night.resultSource?.trim();
+        final payload = night.payloadSource?.trim();
+        if (result != null &&
+            result.isNotEmpty &&
+            payload != null &&
+            payload.isNotEmpty &&
+            result != payload) {
+          conflicts.add('${_sourceLabel(result)} / ${_sourceLabel(payload)}');
+        }
+      }
+      if (conflicts.isNotEmpty) {
+        exclusions.add('Quellenkonflikt: ${conflicts.join(', ')}');
+      }
+    }
+    final otherExcluded =
+        snap.counts.excludedVersion +
+        snap.counts.excludedSkipped +
+        snap.counts.excludedUnversioned +
+        snap.counts.unreadable;
+    if (otherExcluded > 0) {
+      exclusions.add(
+        '$otherExcluded ${otherExcluded == 1 ? 'Nacht' : 'Nächte'} wegen unvollständiger oder nicht vergleichbarer Daten ausgeschlossen.',
+      );
+    }
+    return [
+      first,
+      if (metadata.isNotEmpty) metadata.join('\n'),
+      if (exclusions.isNotEmpty) exclusions.join('\n'),
+    ];
+  }
+
+  String? _temperatureSourceInfo(NightScalarDetail snap) {
+    final result = snap.resultSource?.trim();
+    final payload = snap.payloadSource?.trim();
+    final hasResult = result != null && result.isNotEmpty;
+    final hasPayload = payload != null && payload.isNotEmpty;
+    if (!hasResult && !hasPayload) return null;
+    if (hasResult && hasPayload && result != payload) {
+      return 'Quellen: ${_sourceLabel(result)} / ${_sourceLabel(payload)}';
+    }
+    return _sourceLabel(hasResult ? result : payload!);
+  }
+
+  String _temperatureSourceValue(NightScalarDetail? snap) {
+    if (snap == null) return '—';
+    final result = snap.resultSource?.trim();
+    final payload = snap.payloadSource?.trim();
+    if (result != null &&
+        result.isNotEmpty &&
+        payload != null &&
+        payload.isNotEmpty &&
+        result != payload) {
+      return 'Uneindeutig';
+    }
+    final source = result?.isNotEmpty == true ? result : payload;
+    return source == null || source.isEmpty ? '—' : _sourceLabel(source);
   }
 
   List<String> _withheldParagraphs(NightScalarDetail snap) {
@@ -517,6 +657,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
 
   String _sourceLabel(String source) {
     return switch (source.trim().toLowerCase()) {
+      'band' => 'Band',
       'whoop_export' || 'whoop-export' => 'WHOOP-Export',
       'cloud_v2' || 'cloud' => 'Cloud-Import',
       'apple_health' || 'healthkit' => 'Apple Health',
@@ -654,17 +795,20 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                     )
                   else ...[
                     _hero(p, color, snap),
-                    const SizedBox(height: 12),
-                    OBSegmented(
-                      labels: const ['7 Nächte', '30 Nächte', '90 Nächte'],
-                      selected: _nightOptions.indexOf(_nights),
-                      onChanged: (i) {
-                        setState(() => _nights = _nightOptions[i]);
-                        unawaited(_load());
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _chartCard(p, color, snap),
+                    if (!_temperature ||
+                        snap?.hasComparableQuantity == true) ...[
+                      const SizedBox(height: 12),
+                      OBSegmented(
+                        labels: const ['7 Nächte', '30 Nächte', '90 Nächte'],
+                        selected: _nightOptions.indexOf(_nights),
+                        onChanged: (i) {
+                          setState(() => _nights = _nightOptions[i]);
+                          unawaited(_load());
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _chartCard(p, color, snap),
+                    ],
                     const SizedBox(height: 12),
                     _rows(p, snap),
                   ],
@@ -710,7 +854,9 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                _metricNumber(value),
+                _temperature
+                    ? obTemperatureNumber(value, snap?.unit)
+                    : _metricNumber(value),
                 style: p
                     .text(44, weight: FontWeight.w800, display: true)
                     .copyWith(height: 46 / 44),
@@ -722,7 +868,13 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                 maintainAnimation: true,
                 maintainState: true,
                 child: Text(
-                  widget.unit,
+                  _temperature
+                      ? switch (snap?.unit) {
+                          NightScalarUnit.sd => 'SD',
+                          NightScalarUnit.celsius => '°C',
+                          NightScalarUnit.unknown || null => '',
+                        }
+                      : widget.unit,
                   style: p
                       .text(14, weight: FontWeight.w500, color: p.muted)
                       .copyWith(height: 18 / 14),
@@ -809,17 +961,25 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                   ],
                 ),
           const SizedBox(height: 10),
-          NightScalarChart(
-            bars: [
-              for (final row
-                  in snap?.history ?? const <NightScalarHistoryNight>[])
-                (day: row.day, value: row.value),
-            ],
-            nights: _nights,
-            baseline: showBaseline ? snap.baseline!.value : null,
-            color: color,
-            visible: showChart,
-          ),
+          if (_temperature && snap?.unit?.isKnown == true)
+            OBNightLine(
+              history: snap!.history,
+              nights: _nights,
+              unit: snap.unit!,
+              visible: showChart,
+            )
+          else
+            NightScalarChart(
+              bars: [
+                for (final row
+                    in snap?.history ?? const <NightScalarHistoryNight>[])
+                  (day: row.day, value: row.value),
+              ],
+              nights: _nights,
+              baseline: showBaseline ? snap.baseline!.value : null,
+              color: color,
+              visible: showChart,
+            ),
           const SizedBox(height: 10),
           _footer(
             p,
@@ -925,6 +1085,19 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
   }
 
   Widget _rows(OB p, NightScalarDetail? snap) {
+    if (_temperature) {
+      return OBCard(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: OBSettingsValueRow(
+          leading: _tile(p.well, p.ink, LucideIcons.info),
+          label: 'Quelle',
+          value: _temperatureSourceValue(snap),
+          chevron: true,
+          mutedValue: true,
+          onTap: () => _info(baselineOnly: false),
+        ),
+      );
+    }
     final locked =
         _loading ||
         widget.controller.calculating ||

@@ -52,18 +52,22 @@ class DayMetric {
   final double? baseline;
   /// Typed night-scalar overlay for nightly scalar cards. Null on other metrics.
   final NightScalarState? nightScalar;
+  /// Skin-temperature quantity. Null on metrics that are not skin temperature.
+  final NightScalarUnit? unit;
   const DayMetric(
     this.value, {
     this.readiness = MetricReadiness.available,
     this.reason,
     this.baseline,
     this.nightScalar,
+    this.unit,
   });
   const DayMetric.missing([this.reason])
     : value = null,
       baseline = null,
       readiness = MetricReadiness.missing,
-      nightScalar = null;
+      nightScalar = null,
+      unit = null;
 }
 
 /// Compact nightly-scalar card. Comparison [DayMetric.baseline] is only a current
@@ -72,11 +76,15 @@ DayMetric dayMetricFromNightScalar({
   required NightScalarState state,
   double? value,
   StoredNightBaseline? baseline,
+  NightScalarUnit? unit,
 }) {
-  final cardBaseline = nightScalarCardBaseline(
-    state: state,
-    baseline: baseline,
-  );
+  final cardBaseline = unit != null
+      ? null
+      : nightScalarCardBaseline(
+          state: state,
+          baseline: baseline,
+        );
+  final unknownUnit = unit == NightScalarUnit.unknown;
   switch (state) {
     case NightScalarState.pending:
       return DayMetric(
@@ -84,6 +92,7 @@ DayMetric dayMetricFromNightScalar({
         readiness: MetricReadiness.processing,
         reason: kNightScalarPendingLabel,
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.failed:
       return DayMetric(
@@ -91,6 +100,7 @@ DayMetric dayMetricFromNightScalar({
         readiness: MetricReadiness.missing,
         reason: kNightScalarFailedLabel,
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.unknown:
     case NightScalarState.outdated:
@@ -99,6 +109,7 @@ DayMetric dayMetricFromNightScalar({
         readiness: MetricReadiness.missing,
         reason: kNightScalarOpenLabel,
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.unreadable:
     case NightScalarState.missing:
@@ -106,26 +117,34 @@ DayMetric dayMetricFromNightScalar({
         null,
         readiness: MetricReadiness.missing,
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.partial:
       return DayMetric(
-        nightScalarFinite(value),
+        unknownUnit ? null : nightScalarFinite(value),
         readiness: MetricReadiness.partial,
-        reason: 'Ein Teil der Nacht wurde nicht erfasst.',
+        reason: unknownUnit
+            ? kNightScalarUnknownUnitLabel
+            : 'Ein Teil der Nacht wurde nicht erfasst.',
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.older:
       return DayMetric(
-        nightScalarFinite(value),
+        unknownUnit ? null : nightScalarFinite(value),
         readiness: MetricReadiness.available,
+        reason: unknownUnit ? kNightScalarUnknownUnitLabel : null,
         nightScalar: state,
+        unit: unit,
       );
     case NightScalarState.current:
       return DayMetric(
-        nightScalarFinite(value),
+        unknownUnit ? null : nightScalarFinite(value),
         readiness: MetricReadiness.available,
-        baseline: cardBaseline,
+        reason: unknownUnit ? kNightScalarUnknownUnitLabel : null,
+        baseline: unknownUnit ? null : cardBaseline,
         nightScalar: state,
+        unit: unit,
       );
   }
 }
@@ -392,7 +411,7 @@ class DayIntake {
 class OpenBandDay {
   final String day;
   final SleepNight sleep;
-  final DayMetric recovery, strain, hrv, restingHr, respiration, steps;
+  final DayMetric recovery, strain, hrv, restingHr, respiration, skinTemperature, steps;
   final SleepCorrection? correction;
   final List<StepInterval> stepIntervals;
   final DateTime? calculatedAt;
@@ -406,6 +425,7 @@ class OpenBandDay {
     this.hrv = const DayMetric.missing(),
     this.restingHr = const DayMetric.missing(),
     this.respiration = const DayMetric.missing(),
+    this.skinTemperature = const DayMetric.missing(),
     this.steps = const DayMetric.missing(),
     this.correction,
     this.stepIntervals = const [],
@@ -428,6 +448,7 @@ enum MetricKey {
   hrv('rmssd'),
   restingHr('rhr'),
   respiration('resp_rate'),
+  skinTemperature('skin_temp_z'),
   recovery('readiness'),
   sleepDuration('tst_min'),
   strain('strain');
@@ -440,10 +461,11 @@ NightScalarMetric nightScalarMetricOf(MetricKey key) => switch (key) {
   MetricKey.hrv => NightScalarMetric.hrv,
   MetricKey.restingHr => NightScalarMetric.rhr,
   MetricKey.respiration => NightScalarMetric.respiration,
+  MetricKey.skinTemperature => NightScalarMetric.skinTemperature,
   _ => throw ArgumentError.value(
     key,
     'key',
-    'Night scalar detail is HRV, resting pulse, or respiration only.',
+    'Night scalar detail is HRV, resting pulse, respiration, or skin temperature.',
   ),
 };
 
@@ -2265,11 +2287,13 @@ abstract interface class OpenBandRepository {
     String endDay,
     int nights,
   );
-  /// Stored RMSSD / resting-pulse / respiration night scalar for [day], plus a
-  /// 7/30/90 local-calendar history at the selected row's algorithm. [key] is
-  /// HRV, resting pulse, or respiration. Pending or failed sleep/nap receipts
-  /// withhold the hero and that history day; a finite stored scalar stays on
-  /// [NightScalarDetail.storedForInfo]. Database failure throws.
+  /// Stored RMSSD / resting-pulse / respiration / skin-temperature night scalar
+  /// for [day], plus a 7/30/90 local-calendar history at the selected row's
+  /// algorithm. [key] is HRV, resting pulse, respiration, or skin temperature.
+  /// Pending or failed sleep/nap receipts withhold the hero and that history
+  /// day; a finite stored scalar stays on [NightScalarDetail.storedForInfo].
+  /// Skin temperature publishes `scalars.skin_temp_z` only, with a typed unit.
+  /// Database failure throws.
   Future<NightScalarDetail> readNightScalarDetail(
     MetricKey key,
     String day,

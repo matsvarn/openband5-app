@@ -11,7 +11,10 @@ import 'screens.dart';
 import 'theme.dart';
 
 bool _isNightScalar(MetricKey key) => switch (key) {
-  MetricKey.hrv || MetricKey.restingHr || MetricKey.respiration => true,
+  MetricKey.hrv ||
+  MetricKey.restingHr ||
+  MetricKey.respiration ||
+  MetricKey.skinTemperature => true,
   MetricKey.recovery || MetricKey.sleepDuration || MetricKey.strain => false,
 };
 
@@ -170,6 +173,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
     MetricKey.hrv => day.hrv,
     MetricKey.restingHr => day.restingHr,
     MetricKey.respiration => day.respiration,
+    MetricKey.skinTemperature => day.skinTemperature,
     MetricKey.recovery => day.recovery,
     MetricKey.sleepDuration => day.sleep.duration,
     MetricKey.strain => day.strain,

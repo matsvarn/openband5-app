@@ -29,6 +29,7 @@ NightScalarRow row(
   bool unreadable = false,
   bool imported = false,
   String? source,
+  String? rowSource,
   String? sleepSource,
   String? deviceFamily,
   StoredNightBaseline? baseline,
@@ -47,6 +48,7 @@ NightScalarRow row(
       computedAtMs: computedAtMs,
       imported: imported,
       source: source,
+      rowSource: rowSource,
       sleepSource: sleepSource,
       deviceFamily: deviceFamily,
       baseline: baseline,
@@ -103,6 +105,10 @@ void main() {
       nightScalarMetricOf(MetricKey.respiration),
       NightScalarMetric.respiration,
     );
+    expect(
+      nightScalarMetricOf(MetricKey.skinTemperature),
+      NightScalarMetric.skinTemperature,
+    );
     expect(NightScalarMetric.hrv.series, 'rmssd');
     expect(NightScalarMetric.hrv.baselinePath, 'hrv');
     expect(NightScalarMetric.hrv.sqlColumn, 'rmssd');
@@ -116,6 +122,11 @@ void main() {
     expect(NightScalarMetric.respiration.sqlColumn, isNull);
     expect(NightScalarMetric.respiration.payloadScalar, 'resp_rate');
     expect(MetricKey.respiration.series, 'resp_rate');
+    expect(NightScalarMetric.skinTemperature.series, 'skin_temp_z');
+    expect(NightScalarMetric.skinTemperature.baselinePath, 'skin_temp');
+    expect(NightScalarMetric.skinTemperature.sqlColumn, isNull);
+    expect(NightScalarMetric.skinTemperature.payloadScalar, 'skin_temp_z');
+    expect(MetricKey.skinTemperature.series, 'skin_temp_z');
   });
 
   test('trailing 30 and 90 are local calendar days, including DST', () {
@@ -1438,5 +1449,537 @@ void main() {
     );
     expect(history.last.value, 16);
     expect(history[5].value, 15.5);
+  });
+
+  test('skin-temperature unit classification is source-only and typed', () {
+    NightScalarUnit of({
+      Object? result,
+      Object? payload,
+      Object? imported,
+    }) =>
+        nightScalarSkinTemperatureUnit(
+          resultSource: result,
+          payloadSource: payload,
+          imported: imported,
+        );
+
+    expect(of(result: 'band'), NightScalarUnit.sd);
+    expect(of(result: 'band', payload: 'band'), NightScalarUnit.sd);
+    expect(of(result: 'whoop_export'), NightScalarUnit.celsius);
+    expect(
+      of(result: 'whoop_export', payload: 'whoop_export'),
+      NightScalarUnit.celsius,
+    );
+    expect(of(result: 'cloud_v2'), NightScalarUnit.unknown);
+    expect(
+      of(result: 'cloud_v2', payload: 'cloud_v2'),
+      NightScalarUnit.unknown,
+    );
+    expect(of(result: 'other'), NightScalarUnit.unknown);
+    expect(of(result: 'band', payload: 'whoop_export'), NightScalarUnit.unknown);
+    expect(of(result: 'whoop_export', payload: 'band'), NightScalarUnit.unknown);
+    expect(of(result: 'band', payload: 'cloud_v2'), NightScalarUnit.unknown);
+
+    expect(
+      of(payload: 'whoop_export', imported: true),
+      NightScalarUnit.celsius,
+    );
+    expect(of(payload: 'whoop_export'), NightScalarUnit.unknown);
+    expect(of(payload: 'band'), NightScalarUnit.unknown);
+    expect(of(imported: true), NightScalarUnit.unknown);
+    expect(of(payload: 'band', imported: true), NightScalarUnit.unknown);
+    expect(of(), NightScalarUnit.unknown);
+
+    expect(of(result: 'BAND'), NightScalarUnit.unknown);
+    expect(of(result: ' whoop_export '), NightScalarUnit.celsius);
+    expect(of(result: ''), NightScalarUnit.unknown);
+    expect(of(result: 1), NightScalarUnit.unknown);
+    expect(of(result: true), NightScalarUnit.unknown);
+    expect(of(result: double.nan), NightScalarUnit.unknown);
+    expect(of(payload: double.infinity, imported: true), NightScalarUnit.unknown);
+    expect(nightScalarKnownUnit(NightScalarUnit.sd), isTrue);
+    expect(nightScalarKnownUnit(NightScalarUnit.celsius), isTrue);
+    expect(nightScalarKnownUnit(NightScalarUnit.unknown), isFalse);
+    expect(nightScalarKnownUnit(null), isFalse);
+  });
+
+  test('skin temperature publishes payload z, never ADC or baseline', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'band',
+      source: 'band',
+      baseline: const StoredNightBaseline(
+        value: 12,
+        status: kNightScalarTrustedBaseline,
+      ),
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {'2026-09-15': selected},
+    );
+    expect(detail.key, NightScalarMetric.skinTemperature);
+    expect(detail.series, 'skin_temp_z');
+    expect(detail.value, 0.4);
+    expect(detail.unit, NightScalarUnit.sd);
+    expect(detail.baseline, isNull);
+    expect(detail.envelope, isNull);
+    expect(detail.resultSource, 'band');
+    expect(detail.payloadSource, 'band');
+    expect(detail.hasComparableQuantity, isTrue);
+    final card = dayMetricFromNightScalar(
+      state: detail.state,
+      value: detail.value,
+      baseline: const StoredNightBaseline(
+        value: 12,
+        status: kNightScalarTrustedBaseline,
+      ),
+      unit: detail.unit,
+    );
+    expect(card.value, 0.4);
+    expect(card.baseline, isNull);
+    expect(card.unit, NightScalarUnit.sd);
+    expect(card.nightScalar, NightScalarState.current);
+    expect(card.reason, isNull);
+  });
+
+  test('unknown skin-temperature unit keeps storedForInfo and is not missing', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'cloud_v2',
+      source: 'cloud_v2',
+    );
+    final neighbor = row(
+      '2026-09-14',
+      value: -0.1,
+      rowSource: 'band',
+      source: 'band',
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {'2026-09-14': neighbor, '2026-09-15': selected},
+    );
+    expect(detail.state, NightScalarState.current);
+    expect(detail.state, isNot(NightScalarState.missing));
+    expect(detail.value, isNull);
+    expect(detail.storedForInfo, 0.4);
+    expect(detail.unit, NightScalarUnit.unknown);
+    expect(detail.hasComparableQuantity, isFalse);
+    expect(detail.resultSource, 'cloud_v2');
+    expect(detail.payloadSource, 'cloud_v2');
+    expect(detail.history.last.gap, NightScalarGap.unit);
+    expect(detail.history.last.value, isNull);
+    expect(detail.history[5].gap, NightScalarGap.unit);
+    expect(detail.history[5].value, isNull);
+    expect(detail.counts.compared, 0);
+    expect(detail.counts.excludedUnit, 2);
+    final card = dayMetricFromNightScalar(
+      state: detail.state,
+      value: 0.4,
+      unit: detail.unit,
+    );
+    expect(card.value, isNull);
+    expect(card.reason, kNightScalarUnknownUnitLabel);
+    expect(card.readiness, isNot(MetricReadiness.missing));
+    expect(card.nightScalar, NightScalarState.current);
+    expect(card.unit, NightScalarUnit.unknown);
+  });
+
+  test('celsius skin temperature is usable on card and history', () {
+    final selected = row(
+      '2026-09-15',
+      value: 33.2,
+      imported: true,
+      source: 'whoop_export',
+      rowSource: 'whoop_export',
+    );
+    final prior = row(
+      '2026-09-14',
+      value: 33.0,
+      imported: true,
+      source: 'whoop_export',
+      rowSource: 'whoop_export',
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {'2026-09-14': prior, '2026-09-15': selected},
+    );
+    expect(detail.state, NightScalarState.current);
+    expect(detail.value, 33.2);
+    expect(detail.unit, NightScalarUnit.celsius);
+    expect(detail.baseline, isNull);
+    expect(detail.history[5].value, 33.0);
+    expect(detail.history[5].unit, NightScalarUnit.celsius);
+    expect(detail.counts.compared, 2);
+    final card = dayMetricFromNightScalar(
+      state: detail.state,
+      value: detail.value,
+      unit: detail.unit,
+    );
+    expect(card.value, 33.2);
+    expect(card.unit, NightScalarUnit.celsius);
+    expect(card.readiness, MetricReadiness.available);
+    expect(card.reason, isNull);
+    expect(card.baseline, isNull);
+  });
+
+  test('mixed skin-temperature units become gaps with exclusion count', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'band',
+      source: 'band',
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {
+        '2026-09-12': row(
+          '2026-09-12',
+          value: 33.2,
+          imported: true,
+          source: 'whoop_export',
+          rowSource: 'whoop_export',
+        ),
+        '2026-09-13': row(
+          '2026-09-13',
+          value: 0.2,
+          rowSource: 'cloud_v2',
+          source: 'cloud_v2',
+        ),
+        '2026-09-14': row(
+          '2026-09-14',
+          value: -0.1,
+          rowSource: 'band',
+          source: 'band',
+        ),
+        '2026-09-15': selected,
+      },
+    );
+    expect(detail.unit, NightScalarUnit.sd);
+    expect(detail.value, 0.4);
+    expect(detail.history[3].gap, NightScalarGap.unit);
+    expect(detail.history[3].value, isNull);
+    expect(detail.history[3].resultSource, 'whoop_export');
+    expect(detail.history[3].payloadSource, 'whoop_export');
+    expect(detail.history[4].gap, NightScalarGap.unit);
+    expect(detail.history[4].resultSource, 'cloud_v2');
+    expect(detail.history[4].payloadSource, 'cloud_v2');
+    expect(detail.history[5].value, -0.1);
+    expect(detail.history[5].unit, NightScalarUnit.sd);
+    expect(detail.history[5].resultSource, 'band');
+    expect(detail.history[5].payloadSource, 'band');
+    expect(detail.history.last.value, 0.4);
+    expect(detail.counts.compared, 2);
+    expect(detail.counts.excludedUnit, 2);
+    expect(detail.counts.sources, {'band': 2});
+  });
+
+  test('history keeps both source channels without conflating counts', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'band',
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {
+        '2026-09-11': row(
+          '2026-09-11',
+          value: 33.2,
+          imported: true,
+          source: 'whoop_export',
+          rowSource: 'whoop_export',
+        ),
+        '2026-09-12': row(
+          '2026-09-12',
+          value: 0.2,
+          rowSource: 'cloud_v2',
+          source: 'cloud_v2',
+        ),
+        '2026-09-13': row(
+          '2026-09-13',
+          value: 0.1,
+          rowSource: 'band',
+          source: 'whoop_export',
+          imported: true,
+        ),
+        '2026-09-14': row(
+          '2026-09-14',
+          value: -0.1,
+          rowSource: 'band',
+        ),
+        '2026-09-15': selected,
+      },
+    );
+    expect(detail.unit, NightScalarUnit.sd);
+    expect(detail.value, 0.4);
+    expect(detail.history.last.resultSource, 'band');
+    expect(detail.history.last.payloadSource, isNull);
+    expect(detail.history.last.source, isNull);
+    expect(detail.history[5].resultSource, 'band');
+    expect(detail.history[5].payloadSource, isNull);
+    expect(detail.history[5].value, -0.1);
+
+    expect(detail.history[2].gap, NightScalarGap.unit);
+    expect(detail.history[2].value, isNull);
+    expect(detail.history[2].resultSource, 'whoop_export');
+    expect(detail.history[2].payloadSource, 'whoop_export');
+    expect(detail.history[2].unit, NightScalarUnit.celsius);
+
+    expect(detail.history[3].gap, NightScalarGap.unit);
+    expect(detail.history[3].resultSource, 'cloud_v2');
+    expect(detail.history[3].payloadSource, 'cloud_v2');
+    expect(detail.history[3].unit, NightScalarUnit.unknown);
+
+    expect(detail.history[4].gap, NightScalarGap.unit);
+    expect(detail.history[4].resultSource, 'band');
+    expect(detail.history[4].payloadSource, 'whoop_export');
+    expect(detail.history[4].source, 'whoop_export');
+    expect(detail.history[4].unit, NightScalarUnit.unknown);
+    expect(detail.counts.compared, 2);
+    expect(detail.counts.excludedUnit, 3);
+    expect(detail.counts.sources, {'band': 2});
+    expect(detail.counts.sources.containsKey('whoop_export'), isFalse);
+    expect(detail.counts.sources.containsKey('cloud_v2'), isFalse);
+  });
+
+  test('null-column whoop import is legacy C; band or imported alone is unknown', () {
+    final legacy = row(
+      '2026-09-15',
+      value: 33.2,
+      imported: true,
+      source: 'whoop_export',
+    );
+    final legacyDetail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: legacy,
+      matching: {'2026-09-15': legacy},
+    );
+    expect(legacyDetail.unit, NightScalarUnit.celsius);
+    expect(legacyDetail.value, 33.2);
+    expect(legacyDetail.resultSource, isNull);
+    expect(legacyDetail.payloadSource, 'whoop_export');
+
+    final bandOnly = row('2026-09-15', value: 0.4, source: 'band');
+    expect(
+      snap(
+        key: NightScalarMetric.skinTemperature,
+        selected: bandOnly,
+        matching: {'2026-09-15': bandOnly},
+      ).unit,
+      NightScalarUnit.unknown,
+    );
+    final importedAlone = row('2026-09-15', value: 0.4, imported: true);
+    final unknownImported = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: importedAlone,
+      matching: {'2026-09-15': importedAlone},
+    );
+    expect(unknownImported.unit, NightScalarUnit.unknown);
+    expect(unknownImported.value, isNull);
+    expect(unknownImported.storedForInfo, 0.4);
+  });
+
+  test('conflicting sources stay unknown and retain both channels', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'band',
+      source: 'whoop_export',
+      imported: true,
+    );
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {'2026-09-15': selected},
+    );
+    expect(detail.unit, NightScalarUnit.unknown);
+    expect(detail.resultSource, 'band');
+    expect(detail.payloadSource, 'whoop_export');
+    expect(detail.vendorSource, 'whoop_export');
+    expect(detail.value, isNull);
+    expect(detail.storedForInfo, 0.4);
+  });
+
+  test('skin-temperature missing selected does not borrow a prior unit', () {
+    final detail = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: null,
+      matching: {
+        '2026-09-14': row(
+          '2026-09-14',
+          value: 0.2,
+          rowSource: 'band',
+          source: 'band',
+        ),
+      },
+    );
+    expect(detail.state, NightScalarState.missing);
+    expect(detail.value, isNull);
+    expect(detail.storedForInfo, isNull);
+    expect(detail.unit, isNull);
+    expect(detail.history.last.gap, NightScalarGap.missing);
+    expect(detail.history[5].gap, NightScalarGap.unit);
+    expect(detail.history[5].value, isNull);
+    expect(detail.counts.excludedUnit, 1);
+  });
+
+  test('withheld skin-temperature receipt keeps raw and beats unknown unit', () {
+    final selected = row(
+      '2026-09-15',
+      value: 0.4,
+      rowSource: 'cloud_v2',
+      source: 'cloud_v2',
+      computedAtMs: 900,
+    );
+    final pending = snap(
+      key: NightScalarMetric.skinTemperature,
+      selected: selected,
+      matching: {'2026-09-15': selected},
+      sleepJobs: {
+        '2026-09-15': const NightScalarJob(
+          day: '2026-09-15',
+          status: 'pending',
+        ),
+      },
+    );
+    expect(pending.state, NightScalarState.pending);
+    expect(pending.value, isNull);
+    expect(pending.storedForInfo, 0.4);
+    expect(pending.unit, NightScalarUnit.unknown);
+    expect(pending.evaluationLabel, kNightScalarPendingLabel);
+    expect(pending.history.last.gap, NightScalarGap.withheld);
+    final card = dayMetricFromNightScalar(
+      state: pending.state,
+      value: 0.4,
+      unit: pending.unit,
+    );
+    expect(card.reason, kNightScalarPendingLabel);
+    expect(card.reason, isNot(kNightScalarUnknownUnitLabel));
+    expect(card.unit, NightScalarUnit.unknown);
+  });
+
+  test('paper SD and C synthetic seeds stay explicit and unmixed', () async {
+    final sdRepo = repo();
+    sdRepo.seedPaperSkinTemperature();
+    final sd = await sdRepo.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      30,
+    );
+    expect(sd.state, NightScalarState.current);
+    expect(sd.value, kNightScalarPaperSkinTempSdSelected);
+    expect(sd.unit, NightScalarUnit.sd);
+    expect(sd.baseline, isNull);
+    expect(sd.history, hasLength(30));
+    expect(
+      [for (final n in sd.history) ?n.value],
+      [for (final v in kNightScalarPaperSkinTempSd) ?v],
+    );
+    expect(sd.counts.compared, 14);
+    expect(sd.history[19].gap, NightScalarGap.missing);
+    final sdDay = await sdRepo.readDay('2026-09-15');
+    expect(sdDay.skinTemperature.value, 0.4);
+    expect(sdDay.skinTemperature.unit, NightScalarUnit.sd);
+    expect(sdDay.skinTemperature.baseline, isNull);
+    expect(sdDay.hrv.value, isNull);
+    final sdHistory = await sdRepo.readMetricHistory(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      30,
+    );
+    expect(
+      [for (final p in sdHistory) ?p.value],
+      [for (final v in kNightScalarPaperSkinTempSd) ?v],
+    );
+
+    final seven = await sdRepo.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    final trailingSeven = kNightScalarPaperSkinTempSd.sublist(
+      kNightScalarPaperSkinTempSd.length - 7,
+    );
+    expect(seven.history, hasLength(7));
+    expect(
+      [for (final n in seven.history) n.value],
+      trailingSeven,
+    );
+    expect(seven.value, 0.4);
+    expect(seven.counts.compared, 7);
+    expect(seven.history.first.resultSource, 'band');
+
+    final ninety = await sdRepo.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      90,
+    );
+    expect(ninety.history, hasLength(90));
+    expect(ninety.history[75].value, -0.2);
+    expect(ninety.history[79].gap, NightScalarGap.missing);
+    expect(ninety.history.last.value, 0.4);
+    expect(ninety.counts.compared, 14);
+
+    final cRepo = repo();
+    cRepo.seedPaperSkinTemperature(unit: NightScalarUnit.celsius);
+    final c = await cRepo.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      30,
+    );
+    expect(c.value, kNightScalarPaperSkinTempCSelected);
+    expect(c.unit, NightScalarUnit.celsius);
+    expect(c.counts.compared, 14);
+    expect(c.history.last.value, 33.2);
+    final cDay = await cRepo.readDay('2026-09-15');
+    expect(cDay.skinTemperature.value, 33.2);
+    expect(cDay.skinTemperature.unit, NightScalarUnit.celsius);
+    expect(cDay.skinTemperature.reason, isNull);
+
+    final unknownRepo = repo();
+    unknownRepo.seedPaperSkinTemperature(unit: NightScalarUnit.unknown);
+    final unknown = await unknownRepo.readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      30,
+    );
+    expect(unknown.unit, NightScalarUnit.unknown);
+    expect(unknown.value, isNull);
+    expect(unknown.storedForInfo, 0.4);
+    expect(unknown.hasComparableQuantity, isFalse);
+    expect(unknown.counts.compared, 0);
+    expect(
+      unknown.history.where((n) => n.value != null),
+      isEmpty,
+    );
+    final unknownDay = await unknownRepo.readDay('2026-09-15');
+    expect(unknownDay.skinTemperature.value, isNull);
+    expect(unknownDay.skinTemperature.reason, kNightScalarUnknownUnitLabel);
+    expect(unknownDay.skinTemperature.nightScalar, NightScalarState.current);
+    expect(unknownDay.skinTemperature.unit, NightScalarUnit.unknown);
+  });
+
+  test('unseeded synthetic skin temperature is not fabricated', () async {
+    final day = await repo().readDay('2026-09-15');
+    expect(day.skinTemperature.value, isNull);
+    expect(day.skinTemperature.nightScalar, NightScalarState.missing);
+    expect(day.skinTemperature.unit, isNull);
+    expect(day.hrv.value, 48);
+    expect(day.respiration.value, 16);
+    final detail = await repo().readNightScalarDetail(
+      MetricKey.skinTemperature,
+      '2026-09-15',
+      7,
+    );
+    expect(detail.state, NightScalarState.missing);
+    expect(detail.value, isNull);
+    expect(detail.unit, isNull);
   });
 }

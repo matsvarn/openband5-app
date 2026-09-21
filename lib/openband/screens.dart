@@ -665,7 +665,19 @@ String obMetricComparisonStatus(
       '${difference > 0 ? 'über' : 'unter'} Basis';
 }
 
+String obTemperatureNumber(double? value, NightScalarUnit? unit) {
+  if (value == null || !value.isFinite) return '—';
+  final number = obNumber(value.abs(), digits: 1);
+  if (unit != NightScalarUnit.sd || value == 0) {
+    return obNumber(value, digits: 1);
+  }
+  return value > 0 ? '+$number' : '−$number';
+}
+
 String? _compactMetricStatus(DayMetric metric, {required int digits}) {
+  if (metric.unit == NightScalarUnit.unknown) {
+    return metric.reason ?? kNightScalarUnknownUnitLabel;
+  }
   switch (metric.nightScalar) {
     case NightScalarState.pending:
       return kNightScalarPendingLabel;
@@ -721,6 +733,16 @@ class OBMetricCard extends StatelessWidget {
     final p = OB.of(context);
     final scaler = MediaQuery.textScalerOf(context);
     final status = _compactMetricStatus(metric, digits: digits);
+    final temperature = metric.unit != null;
+    final displayUnit = switch (metric.unit) {
+      NightScalarUnit.sd => 'SD',
+      NightScalarUnit.celsius => '°C',
+      NightScalarUnit.unknown => '',
+      null => unit,
+    };
+    final displayValue = temperature
+        ? obTemperatureNumber(metric.value, metric.unit)
+        : obNumber(metric.value, digits: digits);
     final compared =
         status != null &&
         metric.value != null &&
@@ -762,8 +784,10 @@ class OBMetricCard extends StatelessWidget {
                   ],
                 ),
                 _MetricValueUnit(
-                  value: obNumber(metric.value, digits: digits),
-                  unit: metric.value == null ? null : unit,
+                  value: displayValue,
+                  unit: metric.value == null || displayUnit.isEmpty
+                      ? null
+                      : displayUnit,
                   valueSize: valueSize,
                   unitSize: unitSize,
                 ),
