@@ -1,6 +1,6 @@
 # Designbrücke · Paper → Flutter
 
-Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**), Seite **A00b · Bausteine · Alpin**. Designphase 2 bleibt als eingefrorene Referenz bestehen.
+Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**). Die ersten Seiten sind **Release · Alpin 3** und **Bausteine · Release · Alpin 3**. Die übrigen Seiten sind als Archiv gekennzeichnet. Designphase 2 bleibt eingefroren.
 
 ## Dateien
 
@@ -44,4 +44,6 @@ Nach einem Token-Export aus Paper: `tokens.json` ersetzen, `source.tokensContent
 
 ## Stand
 
-`blocks.json` führt die aktuellen Bausteine, Screens und Varianten. `check_design_manifest.py` prüft die Quellenzuordnung und nennt die Anzahl. `state_checklist.json` hält die ursprünglichen Archivnamen und ihre belegten Dispositionen; eine registrierte Variante allein bedeutet keine abgeschlossene Funktion. Abgenommene Einheiten und Prüfnachweise stehen in `../IMPLEMENTATION_VERIFICATION.md`, laufende Arbeit in `../IMPLEMENTATION_PLAN.md`.
+`blocks.json` führt die Bausteine und repräsentativen Screens des reduzierten Releases. `check_design_manifest.py` prüft die Quellenzuordnung, nicht die visuelle Abnahme. `state_checklist.json` ist die kurze Release-Queue. Die vollständigen bisherigen Dateien bleiben unverändert in `archive/blocks-20260921.json` und `archive/state_checklist-20260921.json` erhalten. Offene Archivnamen sind keine Release-Aufträge; geparkte Funktionen gelten dadurch nicht als implementiert.
+
+Pro realem Screen: kanonisch hell/dunkel und nur die nötigen fehlenden/fehlerhaften Zustände. Keine vollständige Variantenmatrix. Native Prüfungen sind während einer Änderung gezielt; am Release-Checkpoint folgen Pro und Mini. Jede neu erzeugte PNG wird visuell geprüft. Abgenommene Einheiten stehen in `../IMPLEMENTATION_VERIFICATION.md`, laufende Arbeit in `../IMPLEMENTATION_PLAN.md`.
