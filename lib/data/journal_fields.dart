@@ -287,9 +287,13 @@ Map<String, double> weightTrendEwma(
   double? ewma;
   DateTime? prev;
   for (final day in days) {
-    final d = DateTime.tryParse(day);
+    final parsed = DateTime.tryParse(day);
     final v = byDay[day];
-    if (d == null || v == null || !v.isFinite) continue;
+    if (parsed == null || v == null || !v.isFinite) continue;
+    // Calendar Y/M/D as UTC midnight. tryParse of YYYY-MM-DD is local
+    // midnight; difference.inDays then drops a day across a 23h spring
+    // DST span. parsed.toUtc() keeps that 23h duration.
+    final d = DateTime.utc(parsed.year, parsed.month, parsed.day);
     if (ewma == null || prev == null) {
       ewma = v;
     } else {

@@ -652,6 +652,7 @@ class _ShellState extends State<_Shell> {
       onSelect: (d) {
         _domain = d;
         Prefs.setString('ui.openband.tab', d.name);
+        if (d == ShellDomain.health) unawaited(_day.refresh());
       },
       builder: (c, d) => switch (d) {
         ShellDomain.home => OpenBandOverview(

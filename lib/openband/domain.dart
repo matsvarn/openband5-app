@@ -14,6 +14,7 @@ import 'exercise_load.dart';
 import 'medication_data.dart';
 import 'night_scalar_data.dart';
 import 'sleep_plan_data.dart';
+import 'weight_data.dart';
 
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
@@ -27,6 +28,7 @@ export 'exercise_load.dart';
 export 'medication_data.dart';
 export 'night_scalar_data.dart';
 export 'sleep_plan_data.dart';
+export 'weight_data.dart';
 
 enum MetricReadiness {
   available,
@@ -2274,6 +2276,16 @@ abstract interface class OpenBandRepository {
   Future<void> writeJournal(String day, String key, double value);
   Future<JournalDaySnapshot> readJournalDay(String day);
   Future<void> patchJournalDay(JournalDayPatch patch);
+  /// Dated `journal_metric.weight_kg` history ending on [endDay]. [days] is 7,
+  /// 30, or 90 local calendar days. Latest is the newest actual journal entry
+  /// on or before [endDay], even if that date precedes the visible window.
+  /// Trend slots follow the window and are null on days without a finite
+  /// in-entry-range value. EWMA uses every usable reading on or before
+  /// [endDay], so a given date does not change across 7/30/90. Unreadable rows
+  /// and finite out-of-range entries are exposed separately. Database failure
+  /// throws; it is not an empty history. Profile weight is not a fallback.
+  /// Writes stay on [readJournalDay] / [patchJournalDay].
+  Future<WeightHistory> readWeightHistory(String endDay, int days);
   /// Signed `journal_metric.water_ml` delta. Returns the committed amount
   /// without a follow-up read; null means the field is absent.
   Future<double?> adjustWater(String day, double deltaMl);

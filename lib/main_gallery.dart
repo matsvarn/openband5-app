@@ -174,6 +174,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     ),
   );
   Widget _shell(BuildContext context) => AppShell(
+    onSelect: (domain) {
+      if (domain == ShellDomain.health) controller.refresh();
+    },
     builder: (c, domain) => switch (domain) {
       ShellDomain.home => OpenBandOverview(
         controller: controller,

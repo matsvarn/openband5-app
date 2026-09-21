@@ -32,6 +32,8 @@ Future<OpenBandJournalValueResult?> showOpenBandJournalValueSheet({
   JournalMetricValue? metric,
   OpenBandJournalValueApply? apply,
   OpenBandJournalValueReload? reload,
+  String? contextLabel,
+  bool showRemove = true,
 }) {
   return showModalBottomSheet<OpenBandJournalValueResult>(
     context: context,
@@ -44,6 +46,8 @@ Future<OpenBandJournalValueResult?> showOpenBandJournalValueSheet({
       metric: metric,
       apply: apply,
       reload: reload,
+      contextLabel: contextLabel,
+      showRemove: showRemove,
     ),
   );
 }
@@ -54,12 +58,16 @@ class OBJournalValueSheet extends StatefulWidget {
   final JournalMetricValue? metric;
   final OpenBandJournalValueApply? apply;
   final OpenBandJournalValueReload? reload;
+  final String? contextLabel;
+  final bool showRemove;
   const OBJournalValueSheet({
     super.key,
     required this.spec,
     required this.metric,
     this.apply,
     this.reload,
+    this.contextLabel,
+    this.showRemove = true,
   });
 
   @override
@@ -286,6 +294,15 @@ class _OBJournalValueSheetState extends State<OBJournalValueSheet> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 const SizedBox(height: 16),
+                                if (widget.contextLabel != null) ...[
+                                  Text(
+                                    widget.contextLabel!,
+                                    style: p
+                                        .text(13, color: p.muted)
+                                        .copyWith(height: 18 / 13),
+                                  ),
+                                  const SizedBox(height: 6),
+                                ],
                                 ..._valueFields(
                                   p: p,
                                   display: display,
@@ -329,19 +346,21 @@ class _OBJournalValueSheetState extends State<OBJournalValueSheet> {
                                       : 'Speichern'),
                             onPressed: _busy ? null : _apply,
                           ),
-                        const SizedBox(height: 4),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 44),
-                          child: TextButton(
-                            onPressed: _busy ? null : () => _commit(null),
-                            child: Text(
-                              'Wert entfernen',
-                              style: p
-                                  .text(15, color: p.danger)
-                                  .copyWith(height: 20 / 15),
+                        if (widget.showRemove) ...[
+                          const SizedBox(height: 4),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 44),
+                            child: TextButton(
+                              onPressed: _busy ? null : () => _commit(null),
+                              child: Text(
+                                'Wert entfernen',
+                                style: p
+                                    .text(15, color: p.danger)
+                                    .copyWith(height: 20 / 15),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

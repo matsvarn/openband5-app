@@ -5,6 +5,8 @@
 // correlation that reads the second as the first invents a data point at the
 // bottom of the dose range, which is where it does the most damage.
 
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 
@@ -527,6 +529,31 @@ void main() {
       final ewma = weightTrendEwma({'2026-01-01': 80.0, '2026-01-02': 84.0});
       // ~9.4% of a 4 kg jump at a 7-day half-life.
       expect(ewma['2026-01-02'], closeTo(80.4, 0.1));
+    });
+
+    test('civil-day gaps survive Europe/Berlin spring DST', () {
+      // Independently: same EWMA as the January 1-day case, and a 4-day gap
+      // at the 7-day half-life. Local midnight parse + inDays: 29→30 is the
+      // 23h spring-forward (inDays 0); 27→31 is 95h (inDays 3). 28→29 is
+      // still 24h — the jump is 02:00 on the 29th.
+      const start = 80.0;
+      const next = 84.0;
+      double afterGap(int days) {
+        final w = 1 - math.pow(0.5, days / kWeightTrendHalfLifeDays);
+        return start + w * (next - start);
+      }
+
+      final oneDay = weightTrendEwma({
+        '2026-03-29': start,
+        '2026-03-30': next,
+      });
+      expect(oneDay['2026-03-30'], closeTo(afterGap(1), 1e-9));
+
+      final multiDay = weightTrendEwma({
+        '2026-03-27': start,
+        '2026-03-31': next,
+      });
+      expect(multiDay['2026-03-31'], closeTo(afterGap(4), 1e-9));
     });
   });
 }

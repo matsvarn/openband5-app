@@ -440,6 +440,30 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
   }
 
+  /// Isolated tests/gallery only. Writes dated `weight_kg` into existing
+  /// journal storage so later edits/deletes are visible to
+  /// [readWeightHistory]. Does not invent profile fallback rows.
+  void seedWeightHistory({
+    List<String>? dates,
+    List<double>? enteredKg,
+  }) {
+    final days = dates ?? kWeightPaperDates;
+    final values = enteredKg ?? kWeightPaperEnteredKg;
+    if (days.length != values.length) {
+      throw ArgumentError('weight history dates and values must align.');
+    }
+    for (var i = 0; i < days.length; i++) {
+      if (!isJournalDayId(days[i])) {
+        throw ArgumentError.value(days[i], 'dates', 'Expected YYYY-MM-DD.');
+      }
+      final row = _journal[days[i]] ??= _SynthJournalDay();
+      row.metrics[kWeightJournalField] = JournalMetricValue(values[i]);
+      row.metricUpdatedAt[kWeightJournalField] = _nextJournalRev(
+        row.metricUpdatedAt[kWeightJournalField] ?? 0,
+      );
+    }
+  }
+
   final Map<String, WorkoutTemplate> _templates = {};
   final Set<String> _archivedTemplates = {};
   String? _pinnedTemplateId;
@@ -2151,6 +2175,28 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       if (patch.note != null) row.note = patch.note!;
       row.journalUpdatedAt = _nextJournalRev(row.journalUpdatedAt);
     }
+  }
+
+  @override
+  Future<WeightHistory> readWeightHistory(String endDay, int days) async {
+    requireWeightHistoryDay(endDay);
+    requireWeightHistoryDays(days);
+    if (journalReadBarrier != null) await journalReadBarrier;
+    if (failJournalRead) throw StateError('synthetic journal read failure');
+    return buildWeightHistory(
+      endDay: endDay,
+      days: days,
+      rows: [
+        for (final e in _journal.entries)
+          if (e.value.metrics[kWeightJournalField] case final metric?)
+            WeightStoredRow(
+              date: e.key,
+              value: metric.value,
+              updatedAt: e.value.metricUpdatedAt[kWeightJournalField],
+              atMinuteOfDay: metric.atMinuteOfDay,
+            ),
+      ],
+    );
   }
 
   @override

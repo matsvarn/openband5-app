@@ -104,6 +104,9 @@ class OBSettingsValueRow extends StatelessWidget {
   final bool comfortable;
   final bool mutedValue;
   final Widget? leading;
+  final String? subtitle;
+  final FontWeight labelWeight;
+  final FontWeight valueWeight;
   final VoidCallback? onTap;
 
   const OBSettingsValueRow({
@@ -115,6 +118,9 @@ class OBSettingsValueRow extends StatelessWidget {
     this.comfortable = false,
     this.mutedValue = false,
     this.leading,
+    this.subtitle,
+    this.labelWeight = FontWeight.w500,
+    this.valueWeight = FontWeight.w600,
     this.onTap,
   });
 
@@ -123,21 +129,35 @@ class OBSettingsValueRow extends StatelessWidget {
     final p = OB.of(context);
     final stacked = _stackSettingsControls(context) && value.isNotEmpty;
     final labelStyle = comfortable
-        ? p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15)
+        ? p.text(15, weight: labelWeight).copyWith(height: 20 / 15)
         : leading == null
-        ? p.text(15, weight: FontWeight.w500)
-        : p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15);
+        ? p.text(15, weight: labelWeight)
+        : p.text(15, weight: labelWeight).copyWith(height: 20 / 15);
     final labelText = Text(label, style: labelStyle);
+    final labelBlock = subtitle == null
+        ? labelText
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              labelText,
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
+              ),
+            ],
+          );
     final valueStyle = leading == null
         ? p.text(
             15,
-            weight: FontWeight.w600,
+            weight: valueWeight,
             color: mutedValue ? p.muted : null,
           )
         : p
               .text(
                 15,
-                weight: FontWeight.w600,
+                weight: valueWeight,
                 color: mutedValue ? p.muted : null,
               )
               .copyWith(height: 20 / 15);
@@ -165,7 +185,7 @@ class OBSettingsValueRow extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            labelText,
+            labelBlock,
             const SizedBox(height: 8),
             trailing(expanded: true),
           ],
@@ -174,7 +194,7 @@ class OBSettingsValueRow extends StatelessWidget {
       if (value.isEmpty) {
         return Row(
           children: [
-            Expanded(child: labelText),
+            Expanded(child: labelBlock),
             if (chevron)
               SizedBox(
                 width: 18,
@@ -194,7 +214,7 @@ class OBSettingsValueRow extends StatelessWidget {
           );
           return Row(
             children: [
-              Expanded(child: labelText),
+              Expanded(child: labelBlock),
               const SizedBox(width: gap),
               ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: maxTrailing),

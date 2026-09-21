@@ -13,7 +13,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/health.dart';
-import 'package:openstrap_edge/openband/night_line.dart';
+import 'package:openstrap_edge/openband/calendar_line.dart';
 import 'package:openstrap_edge/openband/night_scalar_detail.dart';
 import 'package:openstrap_edge/openband/night_signals.dart';
 import 'package:openstrap_edge/openband/screens.dart';
@@ -254,7 +254,7 @@ void main() {
     await mountDetail(tester);
     expect(detailText('+0,4'), findsOneWidget);
     expect(detailText('Relative Abweichung'), findsOneWidget);
-    expect(find.byType(OBNightLine), findsOneWidget);
+    expect(find.byType(OBCalendarLine), findsOneWidget);
 
     seed(NightScalarUnit.celsius);
     await mountDetail(tester);
@@ -267,7 +267,7 @@ void main() {
     expect(detailText('—'), findsWidgets);
     expect(detailText('Einheit unbekannt'), findsOneWidget);
     expect(find.byType(OBSegmented), findsNothing);
-    expect(find.byType(OBNightLine), findsNothing);
+    expect(find.byType(OBCalendarLine), findsNothing);
     await mountHealth(tester);
     final unknownCard = find.byKey(const ValueKey('hauttemperatur'));
     await tester.scrollUntilVisible(unknownCard, 180);
@@ -317,27 +317,27 @@ void main() {
     expect(obTemperatureNumber(0, NightScalarUnit.sd), '0,0');
     expect(obTemperatureNumber(-0.2, NightScalarUnit.sd), '−0,2');
     expect(obTemperatureNumber(33.2, NightScalarUnit.celsius), '33,2');
-    expect(OBNightLinePainter.axisLabel(32.5, NightScalarUnit.celsius), '32,5');
-    expect(OBNightLinePainter.axisLabel(1, NightScalarUnit.sd), '+1');
-    expect(OBNightLinePainter.axisLabel(-1, NightScalarUnit.sd), '−1');
+    expect(OBCalendarLinePainter.axisLabel(32.5), '32,5');
+    expect(OBCalendarLinePainter.axisLabel(1, signed: true), '+1');
+    expect(OBCalendarLinePainter.axisLabel(-1, signed: true), '−1');
   });
 
   testWidgets('periods retain actual calendar gaps and counts', (tester) async {
     seed(NightScalarUnit.sd);
     await mountDetail(tester);
-    var line = tester.widget<OBNightLine>(find.byType(OBNightLine));
-    expect(line.history, hasLength(30));
-    expect(line.history.where((night) => night.value != null), hasLength(14));
-    expect(line.history[19].value, isNull);
+    var line = tester.widget<OBCalendarLine>(find.byType(OBCalendarLine));
+    expect(line.values, hasLength(30));
+    expect(line.values.whereType<double>(), hasLength(14));
+    expect(line.values[19], isNull);
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
-    line = tester.widget<OBNightLine>(find.byType(OBNightLine));
-    expect(line.history, hasLength(7));
+    line = tester.widget<OBCalendarLine>(find.byType(OBCalendarLine));
+    expect(line.values, hasLength(7));
     expect(find.text('7 von 7 Nächten'), findsOneWidget);
     await tester.tap(find.text('90 Nächte'));
     await tester.pumpAndSettle();
-    line = tester.widget<OBNightLine>(find.byType(OBNightLine));
-    expect(line.history, hasLength(90));
+    line = tester.widget<OBCalendarLine>(find.byType(OBCalendarLine));
+    expect(line.values, hasLength(90));
     expect(find.text('14 von 90 Nächten'), findsOneWidget);
   });
 

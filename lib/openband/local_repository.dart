@@ -1489,6 +1489,32 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<WeightHistory> readWeightHistory(String endDay, int days) async {
+    requireWeightHistoryDay(endDay);
+    requireWeightHistoryDays(days);
+    final db = await LocalDb.instance;
+    final raw = await db.query(
+      'journal_metric',
+      columns: ['date', 'value', 'at_min', 'updated_at'],
+      where: 'field = ?',
+      whereArgs: [kWeightJournalField],
+    );
+    return buildWeightHistory(
+      endDay: endDay,
+      days: days,
+      rows: [
+        for (final r in raw)
+          WeightStoredRow(
+            date: r['date'],
+            value: r['value'],
+            updatedAt: r['updated_at'],
+            atMinuteOfDay: r['at_min'],
+          ),
+      ],
+    );
+  }
+
+  @override
   Future<double?> adjustWater(String day, double deltaMl) async {
     _requireDay(day);
     if (!deltaMl.isFinite) {

@@ -11,7 +11,9 @@ import 'glucose.dart';
 import 'labs.dart';
 import 'metric_detail.dart';
 import 'screens.dart';
+import 'settings_controls.dart';
 import 'theme.dart';
+import 'weight.dart';
 
 class OpenBandHealth extends StatefulWidget {
   final OpenBandController controller;
@@ -197,6 +199,17 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                 ),
               ),
             OBCard(
+              padding: EdgeInsets.zero,
+              child: _HealthWeightRow(
+                key: ValueKey('weight-${c.selectedDay}'),
+                repository: c.repository,
+                endDay: c.selectedDay,
+                now: c.now,
+                refreshRequest: c.refreshRequest,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OBCard(
               child: SetRow(
                 LucideIcons.flaskConical,
                 p.muted,
@@ -229,6 +242,111 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
       );
     },
   );
+}
+
+class _HealthWeightRow extends StatefulWidget {
+  const _HealthWeightRow({
+    super.key,
+    required this.repository,
+    required this.endDay,
+    required this.now,
+    required this.refreshRequest,
+  });
+
+  final OpenBandRepository repository;
+  final String endDay;
+  final DateTime Function() now;
+  final int refreshRequest;
+
+  @override
+  State<_HealthWeightRow> createState() => _HealthWeightRowState();
+}
+
+class _HealthWeightRowState extends State<_HealthWeightRow> {
+  late Future<WeightHistory> _history = _read();
+
+  Future<WeightHistory> _read() {
+    final repository = widget.repository;
+    final endDay = widget.endDay;
+    final future = Future<WeightHistory>.sync(
+      () => repository.readWeightHistory(endDay, 7),
+    );
+    // Observe an error immediately. FutureBuilder receives the same future
+    // and retains its error snapshot even if the read finishes before rebuild.
+    future.ignore();
+    return future;
+  }
+
+  @override
+  void didUpdateWidget(covariant _HealthWeightRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        oldWidget.endDay != widget.endDay ||
+        oldWidget.refreshRequest != widget.refreshRequest) {
+      _history = _read();
+    }
+  }
+
+  String _date(String day) {
+    final date = DateTime.parse(day);
+    return DateFormat(
+      date.year == widget.now().year ? 'd. MMM' : 'd. MMM y',
+      'de_DE',
+    ).format(date);
+  }
+
+  Future<void> _openWeight(BuildContext context) async {
+    await OpenBandWeight.push(
+      context,
+      repository: widget.repository,
+      endDay: widget.endDay,
+      now: widget.now,
+    );
+    if (!mounted) return;
+    final history = _read();
+    setState(() {
+      _history = history;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return FutureBuilder<WeightHistory>(
+      future: _history,
+      builder: (context, snapshot) {
+        final loaded =
+            snapshot.connectionState == ConnectionState.done &&
+            !snapshot.hasError;
+        final latest = loaded ? snapshot.data?.latest : null;
+        final value = latest == null
+            ? '—'
+            : '${obNumber(latest.value, digits: 1)} kg';
+        final subtitle = snapshot.hasError
+            ? 'Journal · Laden fehlgeschlagen'
+            : latest == null
+            ? 'Journal'
+            : 'Journal · ${_date(latest.day)}';
+        return OBSettingsValueRow(
+          label: 'Gewicht',
+          value: value,
+          subtitle: subtitle,
+          labelWeight: FontWeight.w600,
+          valueWeight: FontWeight.w700,
+          chevron: true,
+          mutedValue: latest == null,
+          leading: DecoratedBox(
+            decoration: BoxDecoration(
+              color: p.foodTint,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(LucideIcons.scale, size: 18, color: p.food),
+          ),
+          onTap: () => _openWeight(context),
+        );
+      },
+    );
+  }
 }
 
 class OBSegmented extends StatelessWidget {

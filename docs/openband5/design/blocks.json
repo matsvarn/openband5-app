@@ -742,7 +742,33 @@
     "5063-0": "A05 Hauttemperatur · Quellen uneindeutig · Synthetische Daten",
     "507C-0": "A05 Hauttemperatur · Quellen uneindeutig · Dunkel · Synthetische Daten",
     "508L-0": "A05 Hauttemperatur · Info · Quellen uneindeutig · Synthetische Daten",
-    "50A7-0": "A05 Hauttemperatur · Info · Quellen uneindeutig · Dunkel · Synthetische Daten"
+    "50A7-0": "A05 Hauttemperatur · Info · Quellen uneindeutig · Dunkel · Synthetische Daten",
+    "50BT-0": "A05 Gewicht · Journalverlauf · Synthetische Daten",
+    "50FU-0": "A05 Gewicht · Journalverlauf · Dunkel · Synthetische Daten",
+    "50IN-0": "A05 Gewicht · Eintrag bearbeiten · Synthetische Daten",
+    "50M2-0": "A05 Gewicht · Eintrag bearbeiten · Dunkel · Synthetische Daten",
+    "50PG-0": "A05 Gewicht · Keine Einträge · Synthetische Daten",
+    "50S9-0": "A05 Gewicht · Keine Einträge · Dunkel · Synthetische Daten",
+    "50V2-0": "A05 Gewicht · Lesefehler · Synthetische Daten",
+    "50XV-0": "A05 Gewicht · Lesefehler · Dunkel · Synthetische Daten",
+    "5110-0": "A05 Gewicht · Speichern fehlgeschlagen · Synthetische Daten",
+    "514E-0": "A05 Gewicht · Speichern fehlgeschlagen · Dunkel · Synthetische Daten",
+    "517W-0": "A05 Gewicht · Info · Synthetische Daten",
+    "51AP-0": "A05 Gewicht · Info · Dunkel · Synthetische Daten",
+    "51E8-0": "A05 Gewicht · 375px · 2x Text · Synthetische Daten",
+    "51H1-0": "A05 Gewicht · 375px · 2x Text · Dunkel · Synthetische Daten",
+    "51KK-0": "A05 Gewicht · Neuer Eintrag · Synthetische Daten",
+    "51NF-0": "A05 Gewicht · Neuer Eintrag · Dunkel · Synthetische Daten",
+    "51QA-0": "A05 Gewicht · Geänderter Eintrag · Synthetische Daten",
+    "51TP-0": "A05 Gewicht · Geänderter Eintrag · Dunkel · Synthetische Daten",
+    "51ZO-0": "A05 Gewicht · Einträge unlesbar · Synthetische Daten",
+    "522J-0": "A05 Gewicht · Einträge unlesbar · Dunkel · Synthetische Daten",
+    "52DC-0": "A05 Gewicht · Gespeichert, Verlauf offen · Synthetische Daten",
+    "52G7-0": "A05 Gewicht · Gespeichert, Verlauf offen · Dunkel · Synthetische Daten",
+    "52JA-0": "A05 Gewicht · Teilweise lesbar · Synthetische Daten",
+    "52M3-0": "A05 Gewicht · Teilweise lesbar · Dunkel · Synthetische Daten",
+    "52X0-0": "A05 Gewicht · Datum · Synthetische Daten",
+    "5305-0": "A05 Gewicht · Datum · Dunkel · Synthetische Daten"
   },
   "blocks": [
     {
@@ -1137,7 +1163,33 @@
         "4YAC-0",
         "4YCV-0",
         "4YGU-0",
-        "4YJE-0"
+        "4YJE-0",
+        "50BT-0",
+        "50FU-0",
+        "50IN-0",
+        "50M2-0",
+        "50PG-0",
+        "50S9-0",
+        "50V2-0",
+        "50XV-0",
+        "5110-0",
+        "514E-0",
+        "517W-0",
+        "51AP-0",
+        "51E8-0",
+        "51H1-0",
+        "51KK-0",
+        "51NF-0",
+        "51QA-0",
+        "51TP-0",
+        "51ZO-0",
+        "522J-0",
+        "52DC-0",
+        "52G7-0",
+        "52JA-0",
+        "52M3-0",
+        "52X0-0",
+        "5305-0"
       ],
       "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
       "variantPaperNodes": {
@@ -1569,7 +1621,13 @@
         "5063-0",
         "507C-0",
         "508L-0",
-        "50A7-0"
+        "50A7-0",
+        "50BT-0",
+        "50FU-0",
+        "51E8-0",
+        "51H1-0",
+        "52JA-0",
+        "52M3-0"
       ],
       "implemented": "health.dart",
       "notes": "Shared full-width 40-point visual well inside a 44-point target; centered 14/18 labels. Measurement uses selected weight. Stacks at narrow width or large text; compact g/% retains its own sizing."
@@ -2162,9 +2220,11 @@
         "4OHM-0",
         "4OKZ-0",
         "4P3O-0",
-        "4P71-0"
+        "4P71-0",
+        "52X0-0",
+        "5305-0"
       ],
-      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json."
+      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap. Weight uses min(selected day, today), no availability dots, and a year-1 previous-month guard."
     },
     {
       "name": "OBDayPreview",
@@ -2609,7 +2669,33 @@
         "4SKJ-0",
         "4SMW-0",
         "4SP9-0",
-        "4SQU-0"
+        "4SQU-0",
+        "50BT-0",
+        "50FU-0",
+        "50IN-0",
+        "50M2-0",
+        "50PG-0",
+        "50S9-0",
+        "50V2-0",
+        "50XV-0",
+        "5110-0",
+        "514E-0",
+        "517W-0",
+        "51AP-0",
+        "51E8-0",
+        "51H1-0",
+        "51KK-0",
+        "51NF-0",
+        "51QA-0",
+        "51TP-0",
+        "51ZO-0",
+        "522J-0",
+        "52DC-0",
+        "52G7-0",
+        "52JA-0",
+        "52M3-0",
+        "52X0-0",
+        "5305-0"
       ]
     },
     {
@@ -2848,12 +2934,22 @@
         "4WPF-0",
         "4WS7-0",
         "4WUZ-0",
-        "4WXC-0"
+        "4WXC-0",
+        "3FVE-0",
+        "50BT-0",
+        "50FU-0",
+        "51E8-0",
+        "51H1-0",
+        "52JA-0",
+        "52M3-0"
       ],
-      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit. Empty-value navigation rows keep a fixed trailing chevron at all text scales; value-bearing rows retain the shared large-text stacked layout. Leading icon variant uses a36-point fixed tile,12-point label gap and56-point normal minimum. Existing compact/comfortable variants retain their layout. Leading value–chevron gap is12; existing non-leading gap remains4.",
+      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit. Empty-value navigation rows keep a fixed trailing chevron at all text scales; value-bearing rows retain the shared large-text stacked layout. Leading icon variant uses a36-point fixed tile,12-point label gap and56-point normal minimum. Existing compact/comfortable variants retain their layout. Leading value–chevron gap is12; existing non-leading gap remains4. Optional source/date subtitle wraps. Dated journal-weight entries use this same row, with regular date and medium muted value; large text follows the canonical stack.",
       "variantPaperNodes": {
         "comfortable": "45C7-0",
-        "leading": "4U6E-0"
+        "leading": "4U6E-0",
+        "weightSource": "3G62-0",
+        "weightEntry": "50EO-0",
+        "weightEntryLarge": "51F6-0"
       }
     },
     {
@@ -3215,12 +3311,24 @@
       "file": "journal_value_editor.dart",
       "usedIn": [
         "3PV8-0",
-        "3Q0P-0"
+        "3Q0P-0",
+        "50IN-0",
+        "50M2-0",
+        "5110-0",
+        "514E-0",
+        "51KK-0",
+        "51NF-0",
+        "51QA-0",
+        "51TP-0"
       ],
-      "notes": "Shared amount and optional time editing; blank remains absent. Stored precision is retained. Amount-only water uses no redundant caption. Persistence, conflict reload and local Journal apply stay distinct; controls lock while either write or reload is pending.",
+      "notes": "Shared amount and optional time editing; blank remains absent. Stored precision is retained. Amount-only water uses no redundant caption. Persistence, conflict reload and local Journal apply stay distinct; controls lock while either write or reload is pending. Optional date context identifies the fixed journal day. New-entry mode hides removal; existing callers retain their defaults.",
       "variantPaperNodes": {
         "large": "44W4-0",
-        "largeDark": "44WP-0"
+        "largeDark": "44WP-0",
+        "datedWeight": "50IN-0",
+        "datedWeightDark": "50M2-0",
+        "newWeight": "51KK-0",
+        "newWeightDark": "51NF-0"
       }
     },
     {
@@ -3322,7 +3430,9 @@
         "4ZYP-0",
         "500X-0",
         "508L-0",
-        "50A7-0"
+        "50A7-0",
+        "517W-0",
+        "51AP-0"
       ],
       "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x. Body width is bounded; shared action radius16 matches OBAction. Footer uses canonical OBActionPrimary.ink: 48-point minimum, 6-point vertical padding, 15/18 type (30/36 at 2x). Corrected and inspected 16 Paper copies that had drifted; Flutter action unchanged. Optional secondary ink source actions share the scroll body and return the selected action before the next disclosure opens; the fixed close/header remain. Coverage disclosure retains actual year/prior-window unreadable and unavailable counts. Explicit paragraphs retain internal newlines and12-point group spacing. Optional primary action replaces the pinned close footer while the header X still dismisses. HRV/RHR disclose stored origin, times, algorithm and baseline status; previous values are labelled previous.",
       "variantPaperNodes": {
@@ -4070,11 +4180,11 @@
       }
     },
     {
-      "name": "OBNightLine",
+      "name": "OBCalendarLine",
       "paperNode": "4YO1-0",
-      "widget": "OBNightLine",
-      "file": "night_line.dart",
-      "implemented": "night_line.dart",
+      "widget": "OBCalendarLine",
+      "file": "calendar_line.dart",
+      "implemented": "calendar_line.dart",
       "usedIn": [
         "4YPE-0",
         "4YTK-0",
@@ -4083,12 +4193,59 @@
         "4Z7P-0",
         "4Z9Y-0",
         "4ZHD-0",
-        "4ZJM-0"
+        "4ZJM-0",
+        "50BT-0",
+        "50FU-0",
+        "51E8-0",
+        "51H1-0",
+        "52JA-0",
+        "52M3-0"
       ],
       "variantPaperNodes": {
-        "dark": "4YSR-0"
+        "dark": "4YSR-0",
+        "weight": "51YA-0",
+        "weightDark": "51YU-0"
       },
-      "notes": "Calendar-positioned stored temperature points. Straight segments only between consecutive available nights; missing or incompatible quantities remain gaps. SD uses a symmetric zero-centered axis and Celsius preserves its own unit. Ink line2 and points2.5; axis labels retain half steps. No baseline, smoothing or overnight curve."
+      "notes": "Shared calendar-slot numeric line for stored temperature and the explicitly labelled journal-weight EWMA. Consecutive finite slots connect directly; actual gaps stay empty. Callers select signed zero-centered SD or absolute kilograms/Celsius. No metric computation or unit inference. Measured scaled labels set the gutter; existing temperature geometry is preserved when labels fit."
+    },
+    {
+      "name": "OBWeightDetail",
+      "paperNode": "50D5-0",
+      "widget": "OpenBandWeight",
+      "file": "weight.dart",
+      "implemented": "weight.dart",
+      "usedIn": [
+        "50BT-0",
+        "50FU-0",
+        "50IN-0",
+        "50M2-0",
+        "50PG-0",
+        "50S9-0",
+        "50V2-0",
+        "50XV-0",
+        "5110-0",
+        "514E-0",
+        "517W-0",
+        "51AP-0",
+        "51E8-0",
+        "51H1-0",
+        "51KK-0",
+        "51NF-0",
+        "51QA-0",
+        "51TP-0",
+        "51ZO-0",
+        "522J-0",
+        "52DC-0",
+        "52G7-0",
+        "52JA-0",
+        "52M3-0"
+      ],
+      "variantPaperNodes": {
+        "dark": "50HR-0",
+        "partial": "52OW-0",
+        "partialDark": "52P3-0"
+      },
+      "notes": "Dated journal weight only: actual latest entry and source date, 7/30/90 civil-day history, existing labelled EWMA, shared value rows and field-level CAS editing/removal. Empty, unreadable, failed read, conflict, failed save and committed-but-refresh-failed stay distinct. Undated profile weight and Health samples are not substituted."
     }
   ],
   "openBlocks": [

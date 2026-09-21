@@ -8,11 +8,13 @@ import 'theme.dart';
 const _weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 /// Canonical Paper 3HPT month grid. Sleep availability dots are optional;
-/// goal dates omit them. Future days stay tappable only when [allowFuture].
+/// goal dates omit them. [now] is only the today marker. Selectable days end
+/// at [lastDate] when set; with [allowFuture] false they also end at today.
 class OBCalendar extends StatelessWidget {
   final DateTime month;
   final DateTime selected;
   final DateTime now;
+  final DateTime? lastDate;
   final bool allowFuture;
   final bool showAvailability;
   final Set<String> nights;
@@ -26,6 +28,7 @@ class OBCalendar extends StatelessWidget {
     required this.selected,
     required this.now,
     required this.onSelect,
+    this.lastDate,
     this.allowFuture = false,
     this.showAvailability = false,
     this.nights = const {},
@@ -33,10 +36,31 @@ class OBCalendar extends StatelessWidget {
     this.onNextMonth,
   });
 
+  DateTime _civil(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
+
+  /// Latest selectable civil day. Null means no forward cap.
+  DateTime? get _latestAllowed {
+    final explicit = lastDate == null ? null : _civil(lastDate!);
+    if (!allowFuture) {
+      final today = _civil(now);
+      if (explicit == null || explicit.isAfter(today)) return today;
+      return explicit;
+    }
+    return explicit;
+  }
+
   bool get _canGoNext {
-    if (allowFuture) return true;
+    final cap = _latestAllowed;
+    if (cap == null) return true;
     final next = DateTime(month.year, month.month + 1);
-    return !next.isAfter(DateTime(now.year, now.month));
+    final nextMonth = DateTime(next.year, next.month);
+    return !nextMonth.isAfter(DateTime(cap.year, cap.month));
+  }
+
+  bool _isBlocked(DateTime date) {
+    final cap = _latestAllowed;
+    return cap != null && _civil(date).isAfter(cap);
   }
 
   @override
@@ -139,7 +163,7 @@ class OBCalendar extends StatelessWidget {
     final chosen = day == dayLabelOf(selected);
     final isToday = day == dayLabelOf(today);
     final future = date.isAfter(today);
-    final blocked = future && !allowFuture;
+    final blocked = _isBlocked(date);
     final stored = nights.contains(day);
     final ink = blocked ? p.muted : (chosen ? p.card : p.ink);
     return Semantics(

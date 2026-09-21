@@ -10,7 +10,7 @@ import 'controller.dart';
 import 'domain.dart';
 import 'health.dart' show OBSegmented;
 import 'journal_controls.dart';
-import 'night_line.dart';
+import 'calendar_line.dart';
 import 'night_signals.dart';
 import 'screens.dart' show obMetricComparisonStatus, obTemperatureNumber;
 import 'settings_controls.dart';
@@ -962,10 +962,10 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                 ),
           const SizedBox(height: 10),
           if (_temperature && snap?.unit?.isKnown == true)
-            OBNightLine(
-              history: snap!.history,
-              nights: _nights,
-              unit: snap.unit!,
+            OBCalendarLine(
+              values: [for (final night in snap!.history) night.value],
+              days: _nights,
+              zeroCentered: snap.unit == NightScalarUnit.sd,
               visible: showChart,
             )
           else

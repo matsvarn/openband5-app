@@ -1221,10 +1221,43 @@
       "Alle Messwerte": {
         "status": "partial",
         "paperNode": "4XTE-0",
-        "source": "lib/openband/health.dart; lib/openband/night_scalar_detail.dart; lib/openband/night_scalar_data.dart; lib/openband/local_repository.dart; lib/openband/night_line.dart",
+        "source": "lib/openband/health.dart; lib/openband/night_scalar_detail.dart; lib/openband/night_scalar_data.dart; lib/openband/local_repository.dart; lib/openband/calendar_line.dart",
         "evidence": "test/openband_respiration_test.dart; test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; integration_test/openband_review_test.dart respiration flow; test/openband_temperature_ui_test.dart; integration_test/openband_review_test.dart temperature flow",
         "note": "Respiration is now reachable from Health: actual published payload scalar, selected-result algorithm history, correction receipts, trusted-only baseline, one decimal and actual RSA metadata in Info. Overnight destination opens respiration. HRV/RHR remain on the same shared family. Temperature is reachable from Health with exact-result source classification: band SD and imported Celsius remain separate, unknown/conflicting quantities show — with raw provenance in Info. Same-version/same-quantity 7/30/90 history retains actual gaps and correction state. No ADC baseline or false overnight route. Body/manual VO2, rhythm and full Health hub parity remain open.",
         "nativeReview": "respiration-pro-20260921 PASS72.71s and respiration-mini-20260921 PASS95.48s,21 checkpoints each. Safe-area fixture corrected; replacement Health entry/detail captures respiration-pro-health-20260921 PASS62.4s and respiration-mini-health-20260921 PASS66.94s. All46 PNGs inspected; original two Health entry captures superseded.14 goldens inspected. Synthetic simulator proof only. Temperature: Pro final PASS141.04s with8 new captures plus13 unchanged initial captures; mini PASS106.82s/21 captures. All42 PNGs and20goldens inspected. Details in IMPLEMENTATION_VERIFICATION.md."
+      },
+      "Gewicht eintragen": {
+        "status": "partial",
+        "paperNode": "50IN-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/weight.dart; lib/openband/weight_data.dart; lib/openband/local_repository.dart; lib/openband/calendar_line.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_weight_data_test.dart; test/openband_weight_repository_test.dart; test/openband_weight_ui_test.dart; test/openband_calendar_line_test.dart; test/openband_calendar_bounds_test.dart; test/journal_fields_test.dart; integration_test/openband_review_test.dart weight flow",
+        "note": "Dated journal entry is implemented with canonical calendar, fixed-day value editor, field-level CAS and preserved minute/other journal fields. B152 multiple-observation Health/source ledger remains open.",
+        "nativeReview": "weight-pro-final-20260921 PASS79.04s/28 captures; weight-pro-retry-20260921 PASS72.76s/3 replacement retry captures; weight-mini-20260921 PASS107.53s/28 captures. All59 PNGs and6goldens inspected; light/dark,375px2x,CRUD,conflict,missing,partial,unreadable,save/read failure and Health return. Synthetic simulator proof only."
+      },
+      "Gewicht gespeichert": {
+        "status": "partial",
+        "paperNode": "50BT-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/weight.dart; lib/openband/weight_data.dart; lib/openband/local_repository.dart; lib/openband/calendar_line.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_weight_data_test.dart; test/openband_weight_repository_test.dart; test/openband_weight_ui_test.dart; test/openband_calendar_line_test.dart; test/openband_calendar_bounds_test.dart; test/journal_fields_test.dart; integration_test/openband_review_test.dart weight flow",
+        "note": "Journal write and successful refresh are separate states. Committed write plus read failure is explicit; read-only retry does not duplicate the write. Returning to Health refreshes the dated row. Full source-ledger/profile adoption remains open.",
+        "nativeReview": "weight-pro-final-20260921 PASS79.04s/28 captures; weight-pro-retry-20260921 PASS72.76s/3 replacement retry captures; weight-mini-20260921 PASS107.53s/28 captures. All59 PNGs and6goldens inspected; light/dark,375px2x,CRUD,conflict,missing,partial,unreadable,save/read failure and Health return. Synthetic simulator proof only."
+      },
+      "Gewicht Verlauf": {
+        "status": "partial",
+        "paperNode": "50BT-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/weight.dart; lib/openband/weight_data.dart; lib/openband/local_repository.dart; lib/openband/calendar_line.dart; lib/data/journal_fields.dart",
+        "evidence": "test/openband_weight_data_test.dart; test/openband_weight_repository_test.dart; test/openband_weight_ui_test.dart; test/openband_calendar_line_test.dart; test/openband_calendar_bounds_test.dart; test/journal_fields_test.dart; integration_test/openband_review_test.dart weight flow",
+        "note": "Actual journal entries and existing labelled EWMA over7/30/90 civil days; missing dates remain gaps, malformed rows/invalid trend inputs are labelled, prior history anchors the trend independent of period. Shared civil-day arithmetic handles DST. Health observations and dated profile adoption remain open.",
+        "nativeReview": "weight-pro-final-20260921 PASS79.04s/28 captures; weight-pro-retry-20260921 PASS72.76s/3 replacement retry captures; weight-mini-20260921 PASS107.53s/28 captures. All59 PNGs and6goldens inspected; light/dark,375px2x,CRUD,conflict,missing,partial,unreadable,save/read failure and Health return. Synthetic simulator proof only."
+      },
+      "Gewicht Profil": {
+        "status": "open",
+        "source": "lib/health/health_profile_import.dart; lib/state/app_state.dart; lib/compute/profile.dart; docs/openband5/DESIGN_BACKEND.md B152",
+        "evidence": "Source audit c3254b0f/ad648163 and2f3de210 in private Mats task openband-alpin-20260919; implementation verified against current journal contract.",
+        "note": "Existing undated profile scalar is deliberately excluded from measured journal history. Current Health profile import loses observation dates/source and changing profile weight affects all historic dates. Health WEIGHT is supported by pinned health12.2.1; source-preserving dated observations, explicit date-effective adoption and affected recalculation remain required, not deferred."
       }
     },
     "A04 · System": {

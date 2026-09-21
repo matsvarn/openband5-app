@@ -33,6 +33,7 @@ class OpenBandController extends ChangeNotifier {
   }) : selectedDay = initialDay ?? todayLabel();
 
   bool get calculating => _calculating.contains(selectedDay);
+  int get refreshRequest => _request;
   bool get napCalculating => _napCalculating.contains(selectedDay);
   void _notify() {
     if (!_disposed) notifyListeners();
