@@ -896,8 +896,8 @@
         "paperNode": "2DBR-0",
         "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D",
         "source": "lib/openband/charts.dart: NightChart",
-        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20",
-        "note": "Tapping opens a readable segment list including gaps. The selected interval in the hypnogram and matching archive detail composition remain open.",
+        "evidence": "test/openband_flow_test.dart; test/openband_sleep_storage_test.dart; docs/openband5/IMPLEMENTATION_VERIFICATION.md; source and Paper audit 2026-09-20; adaptive OBStageLegend: test/openband_stage_legend_test.dart; build/ui-review/sleep-legend-pro-20260921-v2 and sleep-legend-mini-20260921 (8 checkpoints each, 2026-09-21)",
+        "note": "Tapping opens a readable segment list including gaps. The selected interval in the hypnogram and matching archive detail composition remain open. Adaptive stage facts are implemented:393px five columns,375px four,2x two; stored values/missing state retained and no Im Bett swatch. Legend completion does not close selected-interval/detail parity.",
         "nativeReview": "Existing build/ui-review/notifications-picker-final-20260919 sleep-complete-dark, sleep-partial-light, sleep-missing-light, sleep-phases PNGs inspected 2026-09-20. Synthetic simulator evidence; identifies remaining parity gaps, not complete-flow acceptance."
       },
       "24 Minuten ohne Daten": {

@@ -473,43 +473,157 @@ List<DateTime> _sleepAxisTimes(SleepNight night) {
   ];
 }
 
-Widget _sleepStageFact(OB p, String label, Color? swatch, String value) =>
-    Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+class OBStageLegend extends StatelessWidget {
+  final SleepNight night;
+  const OBStageLegend({super.key, required this.night});
+
+  static const double swatchSize = 8;
+  static const double swatchGap = 6;
+  static const double fiveColumnGap = 8;
+  static const double wrappedColumnGap = 12;
+  static const double rowGap = 16;
+  static const double labelValueGap = 2;
+
+  static TextStyle labelStyle(OB p, double size) => p
+      .text(size, weight: FontWeight.w500, color: p.muted)
+      .copyWith(height: 14 / 12, letterSpacing: 0);
+
+  static TextStyle valueStyle(OB p, double size) => p
+      .text(size, weight: FontWeight.w700, display: true)
+      .copyWith(height: 20 / 17, letterSpacing: -0.02 * size);
+
+  static List<({String label, Color? swatch, String value})> facts(
+    SleepNight night,
+    OB p,
+  ) => [
+    (label: 'Tief', swatch: p.stageDeep, value: obDuration(night.deepMinutes)),
+    (
+      label: 'Leicht',
+      swatch: p.stageLight,
+      value: obDuration(night.lightMinutes),
+    ),
+    (label: 'REM', swatch: p.stageRem, value: obDuration(night.remMinutes)),
+    (
+      label: 'Wach',
+      swatch: p.wake,
+      value: night.awakeMinutes == null
+          ? '—'
+          : '${obNumber(night.awakeMinutes)} Min.',
+    ),
+    (label: 'Im Bett', swatch: null, value: obDuration(night.bedMinutes)),
+  ];
+
+  static int columnsFor({
+    required double width,
+    required List<double> itemWidths,
+  }) {
+    if (!(width > 0) || itemWidths.isEmpty) return 1;
+    for (var n = 5; n >= 1; n--) {
+      final gap = n == 5 ? fiveColumnGap : wrappedColumnGap;
+      final col = n == 1 ? width : (width - gap * (n - 1)) / n;
+      if (col > 0 && itemWidths.every((w) => w <= col)) return n;
+    }
+    return 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    final dir = Directionality.of(context);
+    final labels = labelStyle(p, scaler.scale(12));
+    final values = valueStyle(p, scaler.scale(17));
+    final items = facts(night, p);
+    final itemWidths = <double>[];
+    for (final item in items) {
+      final labelWidth =
+          (item.swatch == null ? 0.0 : swatchSize + swatchGap) +
+          _textWidth(item.label, labels, TextScaler.noScaling, dir);
+      final valueWidth = _textWidth(
+        item.value,
+        values,
+        TextScaler.noScaling,
+        dir,
+      );
+      itemWidths.add(labelWidth > valueWidth ? labelWidth : valueWidth);
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : itemWidths.fold<double>(0, (a, b) => a + b) + fiveColumnGap * 4;
+        final columns = columnsFor(width: width, itemWidths: itemWidths);
+        final gap = columns == 5 ? fiveColumnGap : wrappedColumnGap;
+        final colW = columns == 1
+            ? width
+            : (width - gap * (columns - 1)) / columns;
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.noScaling),
+          child: Wrap(
+            spacing: gap,
+            runSpacing: rowGap,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: swatch ?? p.well,
-                  borderRadius: BorderRadius.circular(2),
-                  border: swatch == null ? Border.all(color: p.line) : null,
+              for (final item in items)
+                SizedBox(
+                  width: colW,
+                  child: _StageFact(
+                    label: item.label,
+                    swatch: item.swatch,
+                    value: item.value,
+                    labelStyle: labels,
+                    valueStyle: values,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  label,
-                  style: p.text(11, weight: FontWeight.w600, color: p.muted),
-                ),
-              ),
             ],
           ),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              value,
-              style: p.text(15, weight: FontWeight.w700, display: true),
+        );
+      },
+    );
+  }
+}
+
+class _StageFact extends StatelessWidget {
+  final String label, value;
+  final Color? swatch;
+  final TextStyle labelStyle, valueStyle;
+  const _StageFact({
+    required this.label,
+    required this.swatch,
+    required this.value,
+    required this.labelStyle,
+    required this.valueStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: ValueKey('sleep-stage-$label'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (swatch != null) ...[
+            Container(
+              key: ValueKey('sleep-stage-swatch-$label'),
+              width: OBStageLegend.swatchSize,
+              height: OBStageLegend.swatchSize,
+              decoration: BoxDecoration(
+                color: swatch,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+            const SizedBox(width: OBStageLegend.swatchGap),
+          ],
+          Text(label, style: labelStyle),
         ],
       ),
-    );
+      const SizedBox(height: OBStageLegend.labelValueGap),
+      Text(value, style: valueStyle),
+    ],
+  );
+}
 
 class OBAdaptiveValues extends StatelessWidget {
   final List<Widget> children;
@@ -1006,6 +1120,7 @@ class OpenBandSleep extends StatelessWidget {
       final day = controller.day;
       final night = day?.sleep ?? const SleepNight();
       return Scaffold(
+        key: const ValueKey('openband-sleep'),
         body: SafeArea(
           child: ListView(
             key: PageStorageKey('openband.sleep.${controller.selectedDay}'),
@@ -1127,42 +1242,9 @@ class OpenBandSleep extends StatelessWidget {
                                     ),
                                 ],
                               ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _sleepStageFact(
-                                  p,
-                                  'Tief',
-                                  p.stageDeep,
-                                  obDuration(night.deepMinutes),
-                                ),
-                                _sleepStageFact(
-                                  p,
-                                  'Leicht',
-                                  p.stageLight,
-                                  obDuration(night.lightMinutes),
-                                ),
-                                _sleepStageFact(
-                                  p,
-                                  'REM',
-                                  p.stageRem,
-                                  obDuration(night.remMinutes),
-                                ),
-                                _sleepStageFact(
-                                  p,
-                                  'Wach',
-                                  p.wake,
-                                  night.awakeMinutes == null
-                                      ? '—'
-                                      : '${obNumber(night.awakeMinutes)} Min.',
-                                ),
-                                _sleepStageFact(
-                                  p,
-                                  'Im Bett',
-                                  null,
-                                  obDuration(night.bedMinutes),
-                                ),
-                              ],
+                            OBStageLegend(
+                              key: const ValueKey('sleep-stage-legend'),
+                              night: night,
                             ),
                           ],
                         ),

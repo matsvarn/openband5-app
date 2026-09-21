@@ -703,7 +703,8 @@
     "4WPF-0": "A05 Gesundheit · HRV · Persönliche Basis · Hell",
     "4WS7-0": "A05 Gesundheit · HRV · Persönliche Basis · Dunkel",
     "4WUZ-0": "A05 Gesundheit · HRV · Ausgewählte Nacht fehlt · Hell",
-    "4WXC-0": "A05 Gesundheit · HRV · Ausgewählte Nacht fehlt · Dunkel"
+    "4WXC-0": "A05 Gesundheit · HRV · Ausgewählte Nacht fehlt · Dunkel",
+    "4XLW-0": "A02 Schlaf · Nacht · Dunkel · adaptive Legende"
   },
   "blocks": [
     {
@@ -1303,14 +1304,21 @@
     },
     {
       "name": "OBStageLegend",
-      "paperNode": "3EX4-0",
-      "widget": "_sleepStageFact",
+      "paperNode": "4XIB-0",
+      "widget": "OBStageLegend",
       "file": "screens.dart",
       "usedIn": [
-        "3F5T-0",
-        "3G8S-0"
+        "3G8S-0",
+        "4XLW-0"
       ],
-      "notes": "Sleep-screen stage facts; no OBStageLegend class."
+      "notes": "Adaptive five-stage facts in the Sleep hero. Actual stored durations or —; no Im Bett swatch. Equal measured columns use 8px gaps for five columns or 12px otherwise; 16px row gap. Labels Inter 12/14, values Inter Tight 17/20. At 375px and 2x text, two columns preserve full-size text. Canonical board instance 4XSP-0 replaces obsolete 3EX4-0. Full Sleep-page parity remains open. At375px/1x, four columns wrap Im Bett into the next row.",
+      "variantPaperNodes": {
+        "dark": "4XJ1-0",
+        "large": "4XFE-0",
+        "largeDark": "4XJR-0",
+        "compact": "4YFG-0",
+        "compactDark": "4YG6-0"
+      }
     },
     {
       "name": "OBSectionHeader",

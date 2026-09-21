@@ -502,3 +502,16 @@ The shared card has one status line and adapts to large text. Paper includes24 i
 Initial native runs found lazy-list test navigation mistakes, not app defects. Two routine worker repairs timed out; their artifacts were preserved and workers reconciled. Lead finished the narrow repair by scrolling off-screen Back/card/Sleep controls into view, with a focused route regression. Failed v1/v2/v3 runs are retained as diagnostics, not acceptance.
 
 Full Health hub, physiological-quality education and full Sleep page parity remain open. The pre-existing large-text stage legend is next. No schema, algorithm, dependency or app-version changes; synthetic simulator proof only, no physical-device/Bluetooth/physiological validation. Nothing pushed.
+
+
+### Adaptive Sleep-stage legend — 2026-09-21
+
+Replaced fixed Expanded/FittedBox stage facts with OBStageLegend. Measured labels and values select equal columns without shrinking:393px five,375px four,375/320px2x two. Stored duration/order/null behavior is unchanged; Im Bett has no stage swatch. The obsolete helper is removed and the actual Sleep hero uses the canonical widget.
+
+Paper component normal/dark4XI9/4XIZ;375px4YFE/4YG4;large4XFC/4XJP. Canonical board instance4XSP replaces3EX4. Representative Sleep3G8S/4XLW uses new legends. All changed renders inspected for spacing,type,contrast,alignment and fit. Exact exports under task sleep-legend-paper. Full Sleep-page parity and selected-interval details remain open; this unit accepts the legend only.
+
+Required1944 OpenBand tests passed,102-item analysis clean,manifest127 blocks/691 screens. Logs build/sleep-legend-acceptance/{tests,analyze}.log. Final test-only locator repair:focused hero-locator test passes and main two-file analysis clean (analyze-final.log). Production source unchanged after full suite. All7 changed/new golden PNGs inspected; normal,dark,375/320px2x,missing and real Sleep large/partial.
+
+Native Pro build/ui-review/sleep-legend-pro-20260921-v2 passed74.52s;mini sleep-legend-mini-20260921 passed84.68s. All16 PNGs inspected;run.json/frames.json/index.html match8 checkpoints each. Covers normal/dark,partial,missing,2x hero/legend and2x dark,with real navigation/back. First Pro run failed a broad7h18 text finder matching both hero and trend; author scoped the assertion to the hero instead of weakening it. Snapshot/hash record task sleep-legend-inspect/hashes.json.
+
+Author2cc483bf/fe06127e;follow-up61dcf632 navigation anddeea423b scoped locators. Fresh independent reviewer4205877a/9929aa57 found no blockers; final production source is byte-identical to review snapshot. Later test changes add a capture boundary and scoped hero locator. Lead inspected actual source/diff and screenshots. Predecessor Cursor timeouts and preserved partials are reconciled in task records. Synthetic simulator proof only; no personal data, Bluetooth or physiological validation. No pins/schema/algorithm/version changes.

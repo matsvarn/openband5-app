@@ -414,6 +414,13 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.byType(OBStageLegend), findsOneWidget);
+      expect(find.text('Leicht'), findsOneWidget);
+      expect(find.text('4h07'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('sleep-stage-swatch-Im Bett')),
+        findsNothing,
+      );
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-large.png'),
