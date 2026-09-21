@@ -1,19 +1,14 @@
 // Wellness — softer than Health, same system.
 //
 // Health tells you what your body did. Wellness is where you tell it back, and
-// where the app explains itself. Five sub-tabs: Mind, Recovery, Habits,
-// Medication, Cycle. Cycle is a SUB-TAB and not a sixth shell tab — see
-// `app_shell.dart`; anything that feels like a sixth domain belongs inside the
-// domain that owns it.
+// where the app explains itself. Four sub-tabs: Mind, Recovery, Habits, Cycle.
+// Cycle is a SUB-TAB and not a sixth shell tab — see `app_shell.dart`; anything
+// that feels like a sixth domain belongs inside the domain that owns it.
+// Medication lives on the canonical OpenBand screen pushed over Journal, not
+// here.
 //
-// Three rules this screen exists to hold:
-//   · Habits are a CONSISTENCY, never a streak. "5 of 7 days" cannot reset to
-//     zero, so a missed day costs a day rather than costing everything.
-//   · Adherence is a COUNT with its window stated, and a dose still ahead of
-//     you today is in no denominator.
-//   · There is no drug-interaction checking. The screen does not carry a card
-//     saying so either — a disclaimer for a feature that was never offered is
-//     still an advert for it.
+// Habits are a CONSISTENCY, never a streak. "5 of 7 days" cannot reset to
+// zero, so a missed day costs a day rather than costing everything.
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -23,7 +18,6 @@ import 'package:provider/provider.dart';
 import '../../data/db.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
-import '../../data/med_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart' show whyFromNote;
 import '../../state/app_state.dart';
@@ -35,7 +29,7 @@ import '../../openband/local_repository.dart';
 import 'calm_breathing.dart';
 import 'driver_breakdown.dart';
 import 'cycle_screen.dart';
-import 'home_screen.dart' show envValue, metricOf, weekdayShortName;
+import 'home_screen.dart' show envValue, metricOf;
 import 'journal_compose.dart';
 import 'start_card.dart';
 import 'metric_detail.dart' show detailScaffold;
@@ -44,34 +38,13 @@ import 'sleep_detail.dart';
 class WellnessScreen extends StatefulWidget {
   const WellnessScreen({super.key});
 
-  /// A deep link asking for one of the sub-tabs — [medsTab] from the dose
-  /// reminder. -1 for the ordinary case: open where the screen opens.
-  ///
-  /// NOT A CONSTRUCTOR ARGUMENT, and it cannot be one. This screen is built by
-  /// the shell's IndexedStack, which keeps it alive; a tap that lands on a
-  /// Wellness already on screen rebuilds nothing, so there is no constructor
-  /// call to carry the index. A request the screen listens for reaches it in
-  /// BOTH cases — the live state's listener when Wellness is already up, and
-  /// the fresh state's `initState` when the shell re-keys to switch domain.
-  ///
-  /// The shell CLEARS it a frame later rather than the screen consuming it on
-  /// read: on the re-key path the outgoing state's listener fires first, and a
-  /// consume-on-read would eat the request before the incoming one existed.
-  static final ValueNotifier<int> tabRequest = ValueNotifier<int>(-1);
-
   /// Cycle is LAST on purpose: it is the one tab that can be switched off
   /// (Profile → Preferences → Cycle tracking, off by default), and dropping a
   /// trailing tab leaves every other tab's index where it was.
   ///
-  /// On the widget rather than the state so [medsTab] can be checked against
-  /// it — a deep link that lands on the wrong tab because the list was
-  /// reordered is not a failure anything else would catch.
-  ///
   /// Fallback labels only — index bookkeeping uses `.length`, and the actual
   /// display labels are localized in `build`.
-  static const tabs = ['Mind', 'Recovery', 'Habits', 'Medication', 'Cycle'];
-
-  static const int medsTab = 3;
+  static const tabs = ['Mind', 'Recovery', 'Habits', 'Cycle'];
 
   @override
   State<WellnessScreen> createState() => _WellnessScreenState();
@@ -79,7 +52,6 @@ class WellnessScreen extends StatefulWidget {
 
 class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   int _tab = 0;
-  static const _tabs = WellnessScreen.tabs;
 
   /// Habit consistency is read over a fortnight: long enough that one bad week
   /// does not read as collapse, short enough to still be about now.
@@ -108,30 +80,11 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   List<JournalFieldSpec> _fields = const [];
   Map<String, Map<String, JournalMetricValue>> _habitHistory = const {};
   List<Map<String, dynamic>> _breathing = const [];
-  List<MedDef> _meds = const [];
-  List<MedSlot> _slots = const [];
-  ({int taken, int of}) _adherence = (taken: 0, of: 0);
 
   @override
   void initState() {
     super.initState();
-    final t = WellnessScreen.tabRequest.value;
-    if (t >= 0 && t < _tabs.length) _tab = t;
-    WellnessScreen.tabRequest.addListener(_onTabRequest);
     _load();
-  }
-
-  /// A dose reminder tapped while Wellness was already the open domain.
-  void _onTabRequest() {
-    final t = WellnessScreen.tabRequest.value;
-    if (t < 0 || t >= _tabs.length || t == _tab || !mounted) return;
-    setState(() => _tab = t);
-  }
-
-  @override
-  void dispose() {
-    WellnessScreen.tabRequest.removeListener(_onTabRequest);
-    super.dispose();
   }
 
   /// Readiness drivers, insights and journal metrics all move under this tab
@@ -144,11 +97,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     final t = beginRead(#wellness);
     final app = context.read<AppState>();
     final repo = app.repo;
-    final db = await LocalDb.instance;
 
-    final meds = await MedDb.defs(db);
-    final doses = await MedDb.dosesForDay(db, _date);
-    final adherence = await MedDb.adherenceWindow(db, days: 7);
     final breathing = await app.breathingHistory(limit: 5);
 
     var stress = const <String, dynamic>{};
@@ -196,9 +145,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
 
     if (!stillNewest(#wellness, t)) return;
     setState(() {
-      _meds = meds;
-      _slots = slotsForDay(meds, _date, doses, now: DateTime.now());
-      _adherence = adherence;
       _breathing = breathing;
       _stress = stress;
       _insights = insights;
@@ -230,12 +176,11 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       l?.wellnessTabMind ?? 'Mind',
       l?.wellnessTabRecovery ?? 'Recovery',
       l?.wellnessTabHabits ?? 'Habits',
-      l?.wellnessTabMedication ?? 'Medication',
       l?.wellnessTabCycle ?? 'Cycle',
     ];
     final tabs = showCycle ? labels : labels.take(labels.length - 1).toList();
     // Clamped rather than reset: switching Cycle off while standing on it
-    // lands on Medication, not back at Mind.
+    // lands on Habits, not back at Mind.
     final tab = _tab.clamp(0, tabs.length - 1);
     // Same rule as Workout: the LIST drops its side padding and hands it to
     // every child except the hero, which is how that one runs edge to edge.
@@ -254,8 +199,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
             const Center(child: CircularProgressIndicator())
           else ...[
             // Mind is the only tab here with something to START. The other
-            // four are logs and reviews, and a "begin" card over a medication
-            // list would be an invitation to nothing.
+            // three are logs and reviews.
             if (tab == 0) ...[
               StartCard(
                 label: l?.wellnessStartASitting ?? 'START A SITTING',
@@ -298,7 +242,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               ),
               const SizedBox(height: S.x4),
             ],
-            [_mind, _recovery, _habitsTab, _medication, _cycle][tab](c),
+            [_mind, _recovery, _habitsTab, _cycle][tab](c),
           ],
         ])
           if (w is StartCard)
@@ -662,346 +606,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
     if (mounted) await _load();
   }
 
-  // ── MEDICATION ───────────────────────────────────────────────────────────
-
-  Widget _medication(BuildContext c) {
-    final l = AppLocalizations.of(c);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_meds.isEmpty)
-          StatusCard(
-            l?.wellnessNothingScheduledTitle ?? 'Nothing scheduled',
-            l?.wellnessNothingScheduledBody ?? 'Add what you take and when.',
-            fix: l?.wellnessAddAMedication ?? 'Add a medication',
-            icon: LucideIcons.pill,
-            onFix: () => _addMed(c),
-          )
-        else ...[
-          // A medication with no slot TODAY is not an empty screen. It happens
-          // for ordinary reasons — the days exclude today, the time had already
-          // passed when it was added (`slotsForDay` will not invent a slot
-          // behind you), or the day being viewed is not today — and every one
-          // of them used to render an empty `Surface`: added a medication, no
-          // tracker, nothing said. Absence states its reason, and the schedule
-          // itself is the reason, so it is what gets printed.
-          if (_slots.isEmpty) ...[
-            StatusCard(
-              l?.wellnessNothingDueTodayTitle ?? 'Nothing due today',
-              l?.wellnessNothingDueTodayBody ??
-                  'What you take is scheduled for other days or times.',
-              icon: LucideIcons.pill,
-            ),
-            const SizedBox(height: S.x3),
-            Surface(
-              pad: const EdgeInsets.symmetric(vertical: S.x2),
-              child: Column(
-                children: [
-                  for (final d in _meds)
-                    for (final sch in d.schedule) _scheduleRow(c, d, sch),
-                ],
-              ),
-            ),
-          ] else
-            Surface(
-              pad: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: Column(
-                children: [
-                  for (final s in _slots)
-                    MedRow(
-                      slot: s,
-                      onTap: () => _markDose(s),
-                      // Everything that is not "I took it" lives behind here:
-                      // skipping a dose on purpose, fixing the days it is due,
-                      // and the exit for a course you finished — which used to
-                      // keep coming due every day with nothing but "Delete
-                      // everything" to stop it.
-                      onMore: () => _medActions(c, s),
-                    ),
-                ],
-              ),
-            ),
-          Section(
-            l?.wellnessAdherence ?? 'Adherence',
-            // An empty denominator is not an adherence of nothing. Consistency
-            // would print "0 of 0 days" with an empty bar under it, which reads
-            // as a failure; the reason is the honest answer until a dose has
-            // actually come due.
-            _adherence.of == 0
-                ? StatusCard(
-                    l?.wellnessNothingToScoreTitle ?? 'Nothing to score yet',
-                    l?.wellnessNothingToScoreBody ??
-                        'No scheduled doses have come due yet.',
-                    icon: LucideIcons.pill,
-                  )
-                : Surface(
-                    child: Consistency(
-                      _adherence.taken,
-                      _adherence.of,
-                      l?.wellnessTakenOfScheduled ??
-                          'Taken, of those scheduled in the last seven days.',
-                      C.blue,
-                      // Doses, not days — three a day over a week is 21 of
-                      // them inside a seven-day window.
-                      unit: l?.wellnessDosesUnit ?? 'doses',
-                    ),
-                  ),
-          ),
-          const SizedBox(height: S.x4),
-          BigButton(
-            l?.wellnessAddAMedication ?? 'Add a medication',
-            icon: LucideIcons.plus,
-            color: C.domMind,
-            soft: true,
-            onTap: () => _addMed(c),
-          ),
-        ],
-      ],
-    );
-  }
-
-  /// One scheduled time that is not due today: what it is, and when it is due.
-  ///
-  /// Tapping goes straight to the schedule and NOT to `_medActions` — a slot
-  /// that is not due cannot be taken or skipped, and offering either would
-  /// write a dose row for a day the medication was never scheduled on.
-  /// Changing when it is due is the only honest action here, and it is also
-  /// the one that brings the tracker back.
-  Widget _scheduleRow(BuildContext c, MedDef d, MedSchedule sch) {
-    final slot = MedSlot(
-      def: d,
-      date: _date,
-      slotMin: sch.minuteOfDay,
-      state: DoseState.upcoming,
-    );
-    return _SheetAction(
-      LucideIcons.pill,
-      d.label,
-      // `timeLabel`, so the two halves of this tab print a time the same way.
-      sub: '${_daysLabel(c, sch.days)} · ${slot.timeLabel}',
-      onTap: () => _editSchedule(c, slot),
-    );
-  }
-
-  Future<void> _markDose(MedSlot s) async {
-    final db = await LocalDb.instance;
-    await MedDb.mark(
-      db,
-      medKey: s.def.key,
-      date: s.date,
-      slotMin: s.slotMin,
-      taken: s.state != DoseState.taken,
-    );
-    await _load();
-  }
-
-  /// A dose deliberately NOT taken.
-  ///
-  /// `DoseState.skipped` has been in the enum, the schema and the row label
-  /// since the store was written and nothing could ever enter it: `mark`'s only
-  /// caller never passed `skipped`, so every untaken dose read back as
-  /// `missed`. The count does not change — `adherence()` counts by decided, and
-  /// both are decided-and-not-taken — but "I chose not to" and "I forgot" are
-  /// not the same fact about a medication, and the user could not record the
-  /// difference or correct it afterwards.
-  Future<void> _skipDose(MedSlot s) async {
-    final db = await LocalDb.instance;
-    await MedDb.mark(
-      db,
-      medKey: s.def.key,
-      date: s.date,
-      slotMin: s.slotMin,
-      taken: false,
-      skipped: s.state != DoseState.skipped,
-    );
-    await _load();
-  }
-
-  Future<void> _medActions(BuildContext c, MedSlot s) async {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final skipped = s.state == DoseState.skipped;
-    await showModalBottomSheet<void>(
-      context: c,
-      backgroundColor: p.card,
-      showDragHandle: true,
-      builder: (sheet) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(S.x5, 0, S.x5, S.x3),
-              child: Text(
-                '${s.def.label} · ${s.timeLabel}',
-                style: F.head.copyWith(color: p.ink),
-              ),
-            ),
-            _SheetAction(
-              LucideIcons.circleSlash,
-              skipped
-                  ? (l?.wellnessUndoSkipped ?? 'Undo skipped')
-                  : (l?.wellnessSkippedOnPurpose ?? 'Skipped on purpose'),
-              sub: skipped
-                  ? (l?.wellnessBackToNotTaken ?? 'Back to not taken.')
-                  : (l?.wellnessRecordedAsDecision ??
-                      'Recorded as a decision, not a miss.'),
-              onTap: () {
-                Navigator.of(sheet).pop();
-                _skipDose(s);
-              },
-            ),
-            _SheetAction(
-              LucideIcons.calendarDays,
-              l?.wellnessWhichDaysDue ?? 'Which days it is due',
-              sub: _daysLabel(c, _daysFor(s)),
-              onTap: () {
-                Navigator.of(sheet).pop();
-                _editSchedule(c, s);
-              },
-            ),
-            _SheetAction(
-              LucideIcons.trash2,
-              l?.wellnessRemoveMedTitle(s.def.label) ??
-                  'Remove ${s.def.label}',
-              sub: l?.wellnessRemoveMedBody ??
-                  'It stops being scheduled. Marked doses stay.',
-              onTap: () {
-                Navigator.of(sheet).pop();
-                _confirmRemoveMed(s.def);
-              },
-            ),
-            const SizedBox(height: S.x4),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// The weekdays THIS slot is due on. An empty list means every day — that is
-  /// `MedSchedule.onDay`'s own rule, not a guess made here.
-  List<int> _daysFor(MedSlot s) {
-    for (final sch in s.def.schedule) {
-      if (sch.minuteOfDay == s.slotMin) {
-        return sch.days.isEmpty ? const [1, 2, 3, 4, 5, 6, 7] : sch.days;
-      }
-    }
-    return const [1, 2, 3, 4, 5, 6, 7];
-  }
-
-  Future<void> _editSchedule(BuildContext c, MedSlot s) async {
-    final picked = await pickMedSchedule(
-      c,
-      minuteOfDay: s.slotMin,
-      days: _daysFor(s),
-    );
-    if (picked == null || !mounted) return;
-    // Only THIS slot is rewritten. A medication with a morning and an evening
-    // dose keeps the other one exactly as it was.
-    final rest = [
-      for (final sch in s.def.schedule)
-        if (sch.minuteOfDay != s.slotMin) sch,
-    ];
-    await MedDb.putDef(
-      await LocalDb.instance,
-      MedDef(
-        key: s.def.key,
-        label: s.def.label,
-        doseValue: s.def.doseValue,
-        doseUnit: s.def.doseUnit,
-        kind: s.def.kind,
-        note: s.def.note,
-        active: s.def.active,
-        createdAt: s.def.createdAt,
-        schedule: [...rest, MedSchedule(picked.minuteOfDay, picked.days)],
-      ),
-    );
-    await _load();
-  }
-
-  /// Remove the medication, keep the doses.
-  ///
-  /// `MedDb.deleteDef` keeps `med_dose` on purpose (see its note): those doses
-  /// were taken, and the CSV export still carries them. What stops is the
-  /// schedule — and with it the empty denominator that was dragging adherence
-  /// down every day after the course ended.
-  Future<void> _confirmRemoveMed(MedDef d) async {
-    final l = AppLocalizations.of(context);
-    final ok = await confirmRemove(
-      context,
-      title: l?.wellnessRemoveMedConfirmTitle(d.label) ??
-          'Remove ${d.label}?',
-      body: l?.wellnessRemoveMedConfirmBody ??
-          'It stops being scheduled and stops counting towards adherence. '
-              'The doses you already marked stay.',
-    );
-    if (!ok || !mounted) return;
-    await MedDb.deleteDef(await LocalDb.instance, d.key);
-    await _load();
-  }
-
-  Future<void> _addMed(BuildContext c) async {
-    final l = AppLocalizations.of(c);
-    final name = await _askName(
-      c,
-      l?.wellnessAddAMedication ?? 'Add a medication',
-      l?.wellnessMedHint ?? 'Vitamin D',
-    );
-    if (name == null || name.isEmpty) return;
-    if (!c.mounted) return;
-    // The weekdays used to be hardcoded to all seven with no way back in, so a
-    // Monday-and-Thursday drug generated five phantom slots a week that
-    // resolved as missed and went into adherence's denominator — a wrong number
-    // on screen, produced by the app rather than by the person.
-    final picked = await pickMedSchedule(c);
-    if (picked == null || !mounted) return;
-    await MedDb.putDef(
-      await LocalDb.instance,
-      MedDef(
-        key: MedDb.keyFor(name),
-        label: name,
-        // Dose is left null — "as directed" is a real answer, and demanding a
-        // number to get a reminder is how a checklist stops being used.
-        schedule: [MedSchedule(picked.minuteOfDay, picked.days)],
-      ),
-    );
-    await _load();
-  }
-
-  Future<String?> _askName(BuildContext c, String title, String hint) {
-    final ctrl = TextEditingController();
-    return showDialog<String>(
-      context: c,
-      builder: (d) {
-        final l = AppLocalizations.of(d);
-        return AlertDialog(
-          backgroundColor: P.of(d).card,
-          title: Text(title, style: F.head.copyWith(color: P.of(d).ink)),
-          content: OsTextField(
-            controller: ctrl,
-            label: l?.wellnessNameLabel ?? 'Name',
-            hint: hint,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(d).pop(),
-              child: Text(
-                l?.actionCancel ?? 'Cancel',
-                style: F.body.copyWith(color: P.of(d).ink2),
-              ),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(d).pop(ctrl.text.trim()),
-              child: Text(
-                l?.wellnessAdd ?? 'Add',
-                style: F.body.copyWith(color: P.of(d).on(C.domMind)),
-              ),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(ctrl.dispose);
-  }
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -1114,274 +718,6 @@ String? _stressLevelLabel(AppLocalizations? l, String raw) {
     default:
       return raw;
   }
-}
-
-/// The days a dose is due, in the words a person would use. `DateTime.weekday`
-/// values, 1 = Monday; empty means every day.
-String _daysLabel(BuildContext c, List<int> days) {
-  final l = AppLocalizations.of(c);
-  final set = days.toSet();
-  if (set.isEmpty || set.length == 7) return l?.wellnessEveryDay ?? 'Every day';
-  if (set.length == 5 && !set.contains(6) && !set.contains(7)) {
-    return l?.wellnessWeekdays ?? 'Weekdays';
-  }
-  if (set.length == 2 && set.contains(6) && set.contains(7)) {
-    return l?.wellnessWeekends ?? 'Weekends';
-  }
-  final sorted = set.toList()..sort();
-  return [for (final d in sorted) weekdayShortName(d, l)].join(', ');
-}
-
-/// Pick a time and the weekdays it repeats on. Returns null if dismissed.
-///
-/// One sheet for BOTH the add flow and the edit path, because a schedule the
-/// user can enter but not correct is the shape of bug this replaced: the app
-/// wrote seven days a week whatever the drug was, and then counted the days it
-/// invented against the person taking it.
-Future<MedSchedule?> pickMedSchedule(
-  BuildContext c, {
-  int minuteOfDay = 8 * 60,
-  List<int> days = const [1, 2, 3, 4, 5, 6, 7],
-}) async {
-  var minute = minuteOfDay;
-  var picked = days.toSet();
-  final p = P.of(c);
-  final l = AppLocalizations.of(c);
-  return showModalBottomSheet<MedSchedule>(
-    context: c,
-    backgroundColor: p.card,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (sheet) => SafeArea(
-      child: StatefulBuilder(
-        builder: (sheet, setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(S.x5, 0, S.x5, S.x5),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                l?.wellnessWhenYouTakeIt ?? 'When you take it',
-                style: F.head.copyWith(color: p.ink),
-              ),
-              const SizedBox(height: S.x4),
-              Pressable(
-                semanticLabel: l?.wellnessChangeTheTime ?? 'Change the time',
-                onTap: () async {
-                  final at = await showTimePicker(
-                    context: sheet,
-                    initialTime: TimeOfDay(
-                      hour: (minute ~/ 60) % 24,
-                      minute: minute % 60,
-                    ),
-                  );
-                  if (at != null) {
-                    setSheet(() => minute = at.hour * 60 + at.minute);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(S.x4),
-                  decoration: BoxDecoration(color: p.card2, borderRadius: R.rMd),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.clock, size: 17, color: p.ink3),
-                      const SizedBox(width: S.x3),
-                      Expanded(
-                        child: Text(
-                          '${(minute ~/ 60).toString().padLeft(2, '0')}:'
-                          '${(minute % 60).toString().padLeft(2, '0')}',
-                          style: F.n17.copyWith(color: p.ink),
-                        ),
-                      ),
-                      Icon(LucideIcons.chevronRight, size: 16, color: p.ink3),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: S.x4),
-              Text(
-                l?.wellnessWhichDays ?? 'WHICH DAYS',
-                style: F.over.copyWith(color: p.ink3),
-              ),
-              const SizedBox(height: S.x2),
-              Wrap(
-                spacing: S.x2,
-                runSpacing: S.x2,
-                children: [
-                  for (var d = 1; d <= 7; d++)
-                    Pressable(
-                      semanticLabel: weekdayShortName(d, l),
-                      onTap: () => setSheet(() {
-                        picked.contains(d) ? picked.remove(d) : picked.add(d);
-                      }),
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: S.x4,
-                          vertical: S.x2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: picked.contains(d)
-                              ? p.wash(C.domMind)
-                              : p.card2,
-                          borderRadius: R.rPill,
-                          border: Border.all(
-                            color: picked.contains(d)
-                                ? p.on(C.domMind)
-                                : p.line,
-                          ),
-                        ),
-                        child: Text(
-                          weekdayShortName(d, l),
-                          style: F.cap.copyWith(
-                            color: picked.contains(d)
-                                ? p.on(C.domMind)
-                                : p.ink2,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: S.x3),
-              // A schedule with no days is not a schedule. Saying so beats
-              // saving one that can never come due.
-              Text(
-                picked.isEmpty
-                    ? (l?.wellnessPickAtLeastOneDay ?? 'Pick at least one day.')
-                    : (l?.wellnessDueDays(_daysLabel(c, picked.toList())) ??
-                        'Due ${_daysLabel(c, picked.toList()).toLowerCase()}.'),
-                style: F.cap.copyWith(color: p.ink3),
-              ),
-              const SizedBox(height: S.x4),
-              BigButton(
-                l?.actionSave ?? 'Save',
-                color: C.domMind,
-                onTap: picked.isEmpty
-                    ? null
-                    : () => Navigator.of(sheet).pop(
-                        MedSchedule(minute, picked.toList()..sort()),
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _SheetAction extends StatelessWidget {
-  const _SheetAction(this.icon, this.title, {this.sub = '', this.onTap});
-  final IconData icon;
-  final String title;
-  final String sub;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    return Pressable(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: S.x5, vertical: S.x3),
-        child: Row(
-          children: [
-            Icon(icon, size: 17, color: p.ink3),
-            const SizedBox(width: S.x3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: F.body.copyWith(color: p.ink)),
-                  if (sub.isNotEmpty)
-                    Text(sub, style: F.cap.copyWith(color: p.ink3)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One scheduled dose. A slot still ahead of you reads as upcoming, never as a
-/// miss — that distinction is the whole reason `taken_ts` is nullable.
-class MedRow extends StatelessWidget {
-  const MedRow({super.key, required this.slot, this.onTap, this.onMore});
-
-  final MedSlot slot;
-  final VoidCallback? onTap;
-
-  /// Everything that is not "I took it": skip, reschedule, remove. Null hides
-  /// the control. There is no long-press or swipe here on purpose — `Pressable`
-  /// is the app's only gesture, so a second action needs a second target.
-  final VoidCallback? onMore;
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final taken = slot.state == DoseState.taken;
-    return Pressable(
-      onTap: onTap,
-      semanticLabel: l?.wellnessMedAtTime(slot.def.label, slot.timeLabel) ??
-          '${slot.def.label} at ${slot.timeLabel}',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: p.wash(C.blue),
-                borderRadius: R.rMd,
-              ),
-              child: Icon(LucideIcons.pill, size: 17, color: p.on(C.blue)),
-            ),
-            const SizedBox(width: S.x3),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    slot.def.label,
-                    style: F.body.copyWith(color: taken ? p.ink3 : p.ink),
-                  ),
-                  Text(
-                    '${slot.def.doseLabel} · ${slot.timeLabel} · '
-                    '${_stateLabel(l, slot.state)}',
-                    style: F.over.copyWith(color: p.ink3),
-                  ),
-                ],
-              ),
-            ),
-            if (onMore != null)
-              Pressable(
-                semanticLabel:
-                    l?.wellnessMoreForMed(slot.def.label) ??
-                        'More for ${slot.def.label}',
-                onTap: onMore,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: S.x3),
-                  child: Icon(LucideIcons.ellipsis, size: 18, color: p.ink3),
-                ),
-              ),
-            _Check(on: taken, onTap: null),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _stateLabel(AppLocalizations? l, DoseState s) => switch (s) {
-    DoseState.taken => l?.wellnessStateTaken ?? 'taken',
-    DoseState.skipped => l?.wellnessStateSkipped ?? 'skipped',
-    DoseState.missed => l?.wellnessStateNotTaken ?? 'not taken',
-    DoseState.upcoming => l?.wellnessStateDueLater ?? 'due later',
-  };
 }
 
 class _Check extends StatelessWidget {

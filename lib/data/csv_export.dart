@@ -208,11 +208,11 @@ const kCsvExportSets = <CsvExportSet>[
       'note',
     ],
     sql: '''
-      SELECT d.date, COALESCE(m.label, d.med_key) AS medication,
-             COALESCE(m.kind, '') AS kind, d.slot_min, d.taken_ts, d.skipped,
-             COALESCE(d.dose_value, m.dose_value) AS dose_value,
-             COALESCE(m.dose_unit, '') AS dose_unit, d.note
-      FROM med_dose d LEFT JOIN med_def m ON m.key = d.med_key
+      SELECT d.date, COALESCE(d.label, d.med_key) AS medication,
+             COALESCE(d.kind, '') AS kind, d.slot_min, d.taken_ts, d.skipped,
+             d.dose_value AS dose_value,
+             COALESCE(d.dose_unit, '') AS dose_unit, d.note
+      FROM med_dose d
       ORDER BY d.date ASC, d.slot_min ASC
     ''',
   ),

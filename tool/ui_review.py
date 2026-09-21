@@ -74,8 +74,8 @@ def main():
     parser.add_argument('mode', choices=['gallery', 'capture'])
     parser.add_argument('--small', action='store_true', help='Use a dedicated 375×812 iPhone 13 mini instead of 393×852 iPhone 15 Pro.')
     parser.add_argument('--output', type=Path, help='Native review output directory; defaults to build/ui-review/<timestamp>.')
-    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'custom-load', 'glucose'], default='all',
-                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, custom load, or glucose.')
+    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'custom-load', 'glucose', 'medications'], default='all',
+                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, custom load, glucose, or medications.')
     args = parser.parse_args()
     if not SDK.is_file():
         raise SystemExit(f'Pinned Flutter SDK not found: {SDK}')

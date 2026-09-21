@@ -1868,6 +1868,80 @@
         "note": "Overview add-entry chooser remains open. Existing Journal/Training destinations do not implement this chooser. Original archive node is a reference, not an assertion of Designphase3 implementation.",
         "paperFileId": "01M2KDQRH0A9K3N46EWHMBF61D"
       }
+    },
+    "A07c · Coach, Atmen, Zyklus, Medikamente": {
+      "Medikamente · Verlauf": {
+        "status": "implemented",
+        "paperNode": "4BT8-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente · Speichern fehlgeschlagen": {
+        "status": "implemented",
+        "paperNode": "4CRG-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente · Einnahme gespeichert": {
+        "status": "implemented",
+        "paperNode": "4CH6-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente · Plan verwalten": {
+        "status": "implemented",
+        "paperNode": "4BUZ-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikament hinzufügen": {
+        "status": "implemented",
+        "paperNode": "4BNU-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Einnahme eintragen": {
+        "status": "implemented",
+        "paperNode": "4BQS-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente": {
+        "status": "implemented",
+        "paperNode": "4BLV-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente · leer": {
+        "status": "implemented",
+        "paperNode": "4CBX-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      },
+      "Medikamente · kein Termin": {
+        "status": "implemented",
+        "paperNode": "4CDO-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/medication.dart; lib/openband/medication_data.dart; lib/data/med_store.dart; lib/app.dart /meds; lib/openband/journal.dart",
+        "evidence": "test/openband_medication_{contract,store,runtime}_test.dart; test/openband_medication_test.dart; integration_test/openband_review_test.dart medications; build/ui-review/medications-pro-final and medications-mini-accepted; IMPLEMENTATION_VERIFICATION.md Medication plans and entries · 21 September 2026",
+        "note": "Typed day/plan/history flow with retained original dose metadata, explicit unknown/partial/read-error states, plan end/restart and save versus reminder-refresh failure. Light/dark, small width and large-text controls inspected. Synthetic simulator proof only."
+      }
     }
   }
 }

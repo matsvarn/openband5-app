@@ -181,14 +181,13 @@ class OBPageHeader extends StatelessWidget {
             ),
           ),
         );
+    final headingStyle = p
+        .text(18, weight: FontWeight.w600)
+        .copyWith(height: 24 / 18);
     final heading = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          textAlign: TextAlign.center,
-          style: p.text(18, weight: FontWeight.w600).copyWith(height: 24 / 18),
-        ),
+        Text(title, textAlign: TextAlign.center, style: headingStyle),
         if (subtitle.isNotEmpty) ...[
           const SizedBox(height: 2),
           Text(
@@ -199,34 +198,75 @@ class OBPageHeader extends StatelessWidget {
         ],
       ],
     );
+    Widget titled(Widget child) => onDate == null
+        ? child
+        : TextButton(
+            onPressed: onDate,
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+            child: child,
+          );
+    final back = circle(
+      LucideIcons.chevronLeft,
+      backLabel,
+      onBack ?? () => Navigator.maybePop(context),
+    );
+    final info = onInfo == null
+        ? const SizedBox(width: 44, height: 44)
+        : circle(infoIcon, infoLabel, onInfo!);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: 2, bottom: 12),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 50),
-        child: Row(
-          children: [
-            circle(
-              LucideIcons.chevronLeft,
-              backLabel,
-              onBack ?? () => Navigator.maybePop(context),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const control = 44.0;
+          const laneGap = 12.0;
+          final centerLane = (constraints.maxWidth - control * 2 - laneGap * 2)
+              .clamp(0.0, double.infinity);
+          var longest = 0.0;
+          for (final word in title.split(RegExp(r'\s+'))) {
+            if (word.isEmpty) continue;
+            final painter = TextPainter(
+              text: TextSpan(text: word, style: headingStyle),
+              textDirection: direction,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            if (painter.width > longest) longest = painter.width;
+            painter.dispose();
+          }
+          if (longest > centerLane) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 44,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [back, info],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: titled(heading),
+                ),
+              ],
+            );
+          }
+          return ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 50),
+            child: Row(
+              children: [
+                back,
+                const SizedBox(width: laneGap),
+                Expanded(child: titled(heading)),
+                const SizedBox(width: laneGap),
+                info,
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: onDate == null
-                  ? heading
-                  : TextButton(
-                      onPressed: onDate,
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                      child: heading,
-                    ),
-            ),
-            const SizedBox(width: 12),
-            if (onInfo == null)
-              const SizedBox(width: 44, height: 44)
-            else
-              circle(infoIcon, infoLabel, onInfo!),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

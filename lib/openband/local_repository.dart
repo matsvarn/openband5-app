@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
 import '../data/db.dart';
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
+import '../data/med_store.dart';
 import '../data/nutrition_store.dart';
 import '../data/nutrition_targets.dart';
 import '../data/day_label.dart';
@@ -28,12 +29,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
     this.app, {
     ImportedMeasurementImporter? measurementImporter,
     Future<GlucoseSnapshot> Function()? glucoseRefresh,
+    Future<void> Function()? reminderRefresh,
   })  : _measurementImporter = measurementImporter,
-        _glucoseRefresh = glucoseRefresh;
+        _glucoseRefresh = glucoseRefresh,
+        _reminderRefresh = reminderRefresh;
 
   final AppState app;
   final ImportedMeasurementImporter? _measurementImporter;
   final Future<GlucoseSnapshot> Function()? _glucoseRefresh;
+  final Future<void> Function()? _reminderRefresh;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -2868,6 +2872,123 @@ class LocalOpenBandRepository implements OpenBandRepository {
       sourceKey: sourceKey,
       excluded: !included,
     );
+  }
+
+  @override
+  Future<MedicationDay> readMedicationDay(String day, {DateTime? now}) async {
+    _requireDay(day);
+    if (!isMedicationCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Invalid calendar day.');
+    }
+    final db = await LocalDb.instance;
+    return MedDb.readDay(db, day, now: now ?? DateTime.now());
+  }
+
+  @override
+  Future<List<MedicationPlan>> readMedicationPlans({
+    bool activeOnly = true,
+  }) async {
+    final db = await LocalDb.instance;
+    return MedDb.readPlans(db, activeOnly: activeOnly);
+  }
+
+  @override
+  Future<MedicationHistory> readMedicationHistory(
+    String fromDay,
+    String toDay, {
+    DateTime? now,
+  }) async {
+    if (!isMedicationCalendarDay(fromDay)) {
+      throw ArgumentError.value(fromDay, 'fromDay', 'Invalid calendar day.');
+    }
+    if (!isMedicationCalendarDay(toDay)) {
+      throw ArgumentError.value(toDay, 'toDay', 'Invalid calendar day.');
+    }
+    final db = await LocalDb.instance;
+    return MedDb.readHistory(
+      db,
+      fromDay,
+      toDay,
+      now: now ?? DateTime.now(),
+    );
+  }
+
+  @override
+  Future<MedicationMutationResult> saveMedicationPlan(
+    MedicationPlanDraft draft, {
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final db = await LocalDb.instance;
+    final plan = await MedDb.commitPlan(db, draft, now: at);
+    return _medicationWriteResult(plan: plan);
+  }
+
+  @override
+  Future<MedicationMutationResult> endMedicationPlan(
+    String key, {
+    DateTime? now,
+  }) async {
+    return _setPlanActive(key, active: false, now: now);
+  }
+
+  @override
+  Future<MedicationMutationResult> restartMedicationPlan(
+    String key, {
+    DateTime? now,
+  }) async {
+    return _setPlanActive(key, active: true, now: now);
+  }
+
+  @override
+  Future<MedicationMutationResult> saveMedicationEntry(
+    MedicationEntryDraft draft, {
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final db = await LocalDb.instance;
+    final entry = await MedDb.markDose(db, draft, now: at);
+    return _medicationWriteResult(entry: entry);
+  }
+
+  @override
+  Future<void> refreshMedicationReminders() async {
+    await (_reminderRefresh ?? app.refreshAiReminders)();
+  }
+
+  Future<MedicationMutationResult> _setPlanActive(
+    String key, {
+    required bool active,
+    DateTime? now,
+  }) async {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(key, 'key');
+    }
+    final at = now ?? DateTime.now();
+    final db = await LocalDb.instance;
+    final plan = await MedDb.setActive(
+      db,
+      trimmed,
+      active: active,
+      now: at,
+    );
+    return _medicationWriteResult(plan: plan);
+  }
+
+  Future<MedicationMutationResult> _medicationWriteResult({
+    MedicationPlan? plan,
+    MedicationDayEntry? entry,
+  }) async {
+    try {
+      await refreshMedicationReminders();
+      return MedicationMutationResult.saved(plan: plan, entry: entry);
+    } catch (_) {
+      return MedicationMutationResult.savedRemindersFailed(
+        plan: plan,
+        entry: entry,
+      );
+    }
   }
 }
 

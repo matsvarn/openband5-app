@@ -99,7 +99,7 @@ class OBSettingsChoiceRow extends StatelessWidget {
 }
 
 /// Paper 3MB6-0 compact value row: min 56, pad 10/14, 15 w500 / optional 15 w600.
-/// Comfortable: min 64, pad 14/20, label 15/20; empty value stays inline at large text.
+/// Comfortable: min 64, pad 14/20, label 15/20. Empty value never stacks.
 class OBSettingsValueRow extends StatelessWidget {
   final String label;
   final String value;
@@ -123,8 +123,7 @@ class OBSettingsValueRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final stacked =
-        _stackSettingsControls(context) && !(comfortable && value.isEmpty);
+    final stacked = _stackSettingsControls(context) && value.isNotEmpty;
     final labelText = Text(
       label,
       style: comfortable
@@ -170,6 +169,22 @@ class OBSettingsValueRow extends StatelessWidget {
                     labelText,
                     const SizedBox(height: 8),
                     trailing(expanded: true),
+                  ],
+                )
+              : value.isEmpty
+              ? Row(
+                  children: [
+                    Expanded(child: labelText),
+                    if (chevron)
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: Icon(
+                          LucideIcons.chevronRight,
+                          size: 18,
+                          color: p.muted,
+                        ),
+                      ),
                   ],
                 )
               : LayoutBuilder(

@@ -7,6 +7,7 @@ import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
+import 'medication_data.dart';
 import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
@@ -14,6 +15,7 @@ export '../data/nutrition_store.dart'
 export '../health/glucose_contract.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
+export 'medication_data.dart';
 export 'sleep_plan_data.dart';
 
 enum MetricReadiness {
@@ -2227,4 +2229,40 @@ abstract interface class OpenBandRepository {
     String sourceKey, {
     required bool included,
   });
+  /// Selected local civil day. Union of then-effective scheduled slots and
+  /// every retained dose row. Missing answer is [MedicationSlotStatus.unknown],
+  /// never skipped. [now] is injectable.
+  Future<MedicationDay> readMedicationDay(String day, {DateTime? now});
+  /// Current plan heads. Identity is the stable key, never a name slug.
+  Future<List<MedicationPlan>> readMedicationPlans({bool activeOnly = true});
+  Future<MedicationHistory> readMedicationHistory(
+    String fromDay,
+    String toDay, {
+    DateTime? now,
+  });
+  /// Create or update. Missing update refuses. [MedicationMutationResult.committed]
+  /// means the row is stored; [MedicationMutationResult.remindersFailed] must
+  /// not retry the write.
+  Future<MedicationMutationResult> saveMedicationPlan(
+    MedicationPlanDraft draft, {
+    DateTime? now,
+  });
+  Future<MedicationMutationResult> endMedicationPlan(
+    String key, {
+    DateTime? now,
+  });
+  Future<MedicationMutationResult> restartMedicationPlan(
+    String key, {
+    DateTime? now,
+  });
+  /// taken / skipped / clear. New rows freeze known slot metadata; updates
+  /// preserve the original snapshot including nulls. Clear restores unknown
+  /// and does not delete the plan.
+  Future<MedicationMutationResult> saveMedicationEntry(
+    MedicationEntryDraft draft, {
+    DateTime? now,
+  });
+  /// Retry-only reminder refresh after [MedicationMutationResult.remindersFailed].
+  /// Must not write plans or doses. Local delegates [AppState.refreshAiReminders].
+  Future<void> refreshMedicationReminders();
 }

@@ -565,9 +565,9 @@ void main() {
     });
 
     test(
-      'pre-migration upgrade from 59 creates 64 without fabricating 60',
+      'pre-migration upgrade from 59 creates the current schemaVersion without fabricating 60',
       () async {
-        expect(LocalDb.schemaVersion, 64);
+        expect(LocalDb.schemaVersion, greaterThanOrEqualTo(61));
         await LocalDb.close();
         final oldName = 'nutrition_targets_from_59.db';
         final oldPath = p.join(
@@ -590,7 +590,7 @@ void main() {
         final upgraded = await LocalDb.instance;
         expect(
           (await upgraded.rawQuery('PRAGMA user_version')).first.values.first,
-          64,
+          LocalDb.schemaVersion,
         );
         expect(
           await upgraded.rawQuery(

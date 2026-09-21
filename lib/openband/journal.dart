@@ -9,8 +9,10 @@ import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
+import 'medication.dart';
 import 'nutrition.dart';
 import 'theme.dart';
+import '../ui2/profile/profile.dart' show SetRow;
 
 const _kPatternNights = 30;
 
@@ -423,6 +425,23 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                 journal: false,
                 meals: false,
                 targets: false,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OBCard(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+              child: SetRow(
+                LucideIcons.pill,
+                OB.of(context).muted,
+                'Medikamente',
+                key: const ValueKey('medication-journal'),
+                onTap: () => OpenBandMedications.push(
+                  context,
+                  repository: _c.repository,
+                  day: _c.selectedDay,
+                  now: _c.now,
+                  synthetic: _c.day?.synthetic == true,
+                ),
               ),
             ),
           ],

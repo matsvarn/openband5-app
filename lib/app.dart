@@ -5,6 +5,7 @@ import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
+import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/screens.dart';
@@ -48,7 +49,6 @@ import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
 import 'ui2/screens/log_workout.dart';
 import 'ui2/screens/log_food.dart';
-import 'ui2/screens/wellness_screen.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
 
@@ -382,8 +382,8 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
   // Water is a journal field that lives on Nutrition — that is the tab
   // behind the log screen, and where a "back" from it should land.
   kRouteWater => ShellDomain.wellness,
-  // The medication reminder. Wellness owns the Medication tab and its
-  // checklist, which is where a dose is actually recorded.
+  // The medication reminder. Journal owns the canonical medications screen;
+  // back from it lands on Journal, same as water → Nutrition over wellness.
   kRouteMeds => ShellDomain.wellness,
   // The movement/sedentary nudges. Today (Home) is where the steps/rings
   // they point at live; there is no move screen to push, so
@@ -433,7 +433,10 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 Future<void> _nutritionBarcode(BuildContext context, String day, String meal) =>
     LogFoodSheet.show(context, date: day, meal: meal);
 
-Widget? screenForRoute(String route) => switch (routePath(route)) {
+Widget? screenForRoute(
+  String route, {
+  OpenBandRepository? repository,
+}) => switch (routePath(route)) {
   kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
   kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
   kRouteJournalCompose => const OpenBandJournalEditorRoute(),
@@ -447,18 +450,16 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
     date: todayLabel(),
     onBarcode: _nutritionBarcode,
   ),
+  // Same shape as water: a focused screen pushed over Journal. Missing or
+  // ended plans open the canonical day without mutating — the screen reads.
+  kRouteMeds => repository == null
+      ? null
+      : OpenBandMedications(
+          repository: repository,
+          day: todayLabel(),
+        ),
   // The detected bout, with the three answers to it: log it, adjust the
   // times first, or say it never happened.
-  // The medication reminder pushes NOTHING, and still lands on the
-  // checklist: it is a SUB-TAB of Wellness, so pushing anything would put
-  // a second copy of a shell tab over the shell. `_consume` asks Wellness
-  // for the tab instead (`WellnessScreen.tabRequest`) — the deep link is
-  // wired, the answer here stays null.
-  kRouteMeds => null,
-  // A CONSTRUCTOR ARGUMENT is right here and wrong for `/meds` above: this
-  // screen is PUSHED by `_consume`, so every tap builds a fresh one and the
-  // id reaches it. Wellness is a shell tab kept alive in the IndexedStack,
-  // never rebuilt on a tap, which is why that one needs a request notifier.
   kRouteWorkoutSuggestion => WorkoutSuggestionScreen(focusId: routeId(route)),
   // Battery, band and sources all live behind this one.
   kRouteProfile => const ProfileHome(),
@@ -608,17 +609,7 @@ class _ShellState extends State<_Shell> {
     // the base the payload was built with, not a second destination.
     if (s != null && s.isNotEmpty) {
       _go(domainForRoute(s));
-      // A route whose destination is a SUB-tab, which no pushed screen can
-      // express. Asked for AFTER `_go` (which may re-key the shell and build a
-      // fresh Wellness) and cleared a frame later, so whichever state ends up
-      // on screen has seen it — see `WellnessScreen.tabRequest`.
-      if (routePath(s) == kRouteMeds) {
-        WellnessScreen.tabRequest.value = WellnessScreen.medsTab;
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => WellnessScreen.tabRequest.value = -1,
-        );
-      }
-      final screen = screenForRoute(s);
+      final screen = screenForRoute(s, repository: _day.repository);
       if (screen != null) {
         _shellKey.currentState?.open(domainForRoute(s), screen);
       }

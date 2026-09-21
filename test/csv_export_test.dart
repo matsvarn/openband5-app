@@ -217,6 +217,61 @@ void main() {
       final broken = rows.firstWhere((r) => r['date'] == '2026-04-10');
       expect(broken['tags'], 'not json');
     });
+
+    test('medication export uses the dose snapshot, never the current plan',
+        () async {
+      final db = await LocalDb.instance;
+      await db.insert('med_def', {
+        'key': 'k1',
+        'label': 'CurrentName',
+        'dose_value': 99,
+        'dose_unit': 'mg',
+        'kind': 'supplement',
+        'schedule_json': '[]',
+        'active': 1,
+        'note': '',
+        'created_at': 1,
+      });
+      await db.insert('med_dose', {
+        'med_key': 'k1',
+        'date': '2026-09-10',
+        'slot_min': 480,
+        'taken_ts': 1,
+        'skipped': 0,
+        'dose_value': 1,
+        'note': '',
+        'updated_at': 1,
+        'label': 'Frozen',
+        'dose_unit': 'Tablette',
+        'kind': 'medication',
+      });
+      await db.insert('med_dose', {
+        'med_key': 'orphan',
+        'date': '2026-09-11',
+        'slot_min': 600,
+        'taken_ts': null,
+        'skipped': 0,
+        'dose_value': null,
+        'note': '',
+        'updated_at': 1,
+      });
+      final med = kCsvExportSets.firstWhere((s) => s.name == 'medication');
+      final rows = await db.rawQuery(med.sql);
+      final frozen = rows.firstWhere((r) => r['date'] == '2026-09-10');
+      expect(frozen['medication'], 'Frozen');
+      expect(frozen['dose_value'], 1);
+      expect(frozen['dose_unit'], 'Tablette');
+      expect(frozen['kind'], 'medication');
+      expect(frozen['medication'], isNot('CurrentName'));
+      final unknown = rows.firstWhere((r) => r['date'] == '2026-09-11');
+      expect(unknown['medication'], 'orphan');
+      expect(unknown['dose_value'], isNull);
+      expect(unknown['dose_unit'], '');
+      expect(unknown['kind'], '');
+      final csv = renderCsv(med.columns, rows);
+      final unknownLine = csv.trim().split(RegExp(r'\r?\n')).last;
+      expect(unknownLine.split(',')[med.columns.indexOf('dose_value')], '');
+    });
   });
 
   group('formula injection', () {

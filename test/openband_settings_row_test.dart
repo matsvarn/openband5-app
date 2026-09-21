@@ -134,16 +134,48 @@ void main() {
     }
   });
 
-  testWidgets('compact empty 2x still stacks the chevron', (tester) async {
+  testWidgets('compact empty 2x keeps chevron in trailing lane', (tester) async {
+    var taps = 0;
     await pumpRow(
       tester,
       label: 'Bei App-Mitteilungen vibrieren',
       scale: 2,
-      onTap: () {},
+      onTap: () => taps++,
+    );
+    expect(tester.getSize(find.byType(OBSettingsValueRow)).height, greaterThanOrEqualTo(56));
+    final label = tester.getRect(find.text('Bei App-Mitteilungen vibrieren'));
+    final chevron = tester.getRect(find.byIcon(LucideIcons.chevronRight));
+    expect(label.height, greaterThan(40));
+    expect(chevron.left, greaterThan(label.left));
+    expect(chevron.top, lessThan(label.bottom));
+    expect(chevron.bottom, greaterThan(label.top));
+    expect(chevron.width, 18);
+    expect(chevron.height, 18);
+    await tester.tap(find.byType(OBSettingsValueRow));
+    expect(taps, 1);
+  });
+
+  testWidgets('393 empty long label stays inline and taps', (tester) async {
+    var taps = 0;
+    await pumpRow(
+      tester,
+      label: 'Bei App-Mitteilungen vibrieren',
+      width: 393,
+      onTap: () => taps++,
+    );
+    expect(
+      tester.getSize(find.byType(OBSettingsValueRow)).height,
+      greaterThanOrEqualTo(56),
     );
     final label = tester.getRect(find.text('Bei App-Mitteilungen vibrieren'));
     final chevron = tester.getRect(find.byIcon(LucideIcons.chevronRight));
-    expect(chevron.top, greaterThanOrEqualTo(label.bottom));
+    expect(chevron.left, greaterThan(label.left));
+    expect(chevron.top, lessThan(label.bottom));
+    expect(chevron.bottom, greaterThan(label.top));
+    expect(chevron.width, 18);
+    expect(chevron.height, 18);
+    await tester.tap(find.byType(OBSettingsValueRow));
+    expect(taps, 1);
   });
 
   testWidgets('comfortable nonempty 2x keeps compact stacking', (tester) async {
@@ -167,5 +199,66 @@ void main() {
     await tester.tap(find.byType(OBSettingsValueRow), warnIfMissed: false);
     expect(taps, 0);
     expect(find.byType(InkWell), findsNothing);
+  });
+
+  testWidgets('375 2x weekday toggle stacks without overflow', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 800);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(375, 800),
+            textScaler: TextScaler.linear(2),
+            devicePixelRatio: 1,
+          ),
+          child: Scaffold(
+            body: Align(
+              alignment: Alignment.topCenter,
+              child: OBCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OBSettingsToggleRow(
+                      label: 'Donnerstag',
+                      value: true,
+                      onToggle: () {},
+                    ),
+                    OBScheduleTimeToggleRow(
+                      weekday: 'Donnerstag',
+                      enabled: true,
+                      timeLabel: '07:00',
+                      onToggle: () {},
+                      onPickTime: () {},
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final toggle = tester.getSize(find.byType(OBSettingsToggleRow));
+    final schedule = tester.getSize(find.byType(OBScheduleTimeToggleRow));
+    expect(toggle.width, 375);
+    expect(schedule.width, 375);
+    // Stacked large-text layout is taller scrollable content, not a flex clip.
+    expect(toggle.height, greaterThan(56));
+    expect(schedule.height, greaterThan(64));
+
+    final toggleLabel = tester.getRect(find.text('Donnerstag').first);
+    expect(toggleLabel.left, greaterThanOrEqualTo(0));
+    expect(toggleLabel.right, lessThanOrEqualTo(375));
+    final scheduleLabel = tester.getRect(find.text('Donnerstag').last);
+    final time = tester.getRect(find.text('07:00'));
+    expect(time.top, greaterThanOrEqualTo(scheduleLabel.bottom));
+    expect(time.right, lessThanOrEqualTo(375));
   });
 }

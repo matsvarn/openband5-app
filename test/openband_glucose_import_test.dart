@@ -192,10 +192,10 @@ void main() {
         await LocalDb.close();
         LocalDb.dbName = name;
         final db = await LocalDb.instance;
-        expect(LocalDb.schemaVersion, 64);
+        expect(LocalDb.schemaVersion, greaterThanOrEqualTo(64));
         expect(
           (await db.rawQuery('PRAGMA user_version')).first.values.first,
-          64,
+          LocalDb.schemaVersion,
         );
         final cols = {
           for (final c in await db.rawQuery(

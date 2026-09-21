@@ -167,6 +167,10 @@ class CoachEngine {
   final String storageKey; // per-user, so accounts don't share a transcript
   final http.Client _http = http.Client();
 
+  /// Optional rearm after a durable medication write. Production constructs
+  /// with AppState.refreshAiReminders. Failures must not hide the write.
+  final Future<void> Function()? onMedicationMutated;
+
   // OpenAI-format running history (system is added per-request) — the context we
   // resend every turn so the model remembers the conversation.
   final List<Map<String, dynamic>> _history = [];
@@ -218,7 +222,12 @@ class CoachEngine {
     'Pulling the thread…',
   ];
 
-  CoachEngine({required this.config, required this.api, this.storageKey = 'anon'});
+  CoachEngine({
+    required this.config,
+    required this.api,
+    this.storageKey = 'anon',
+    this.onMedicationMutated,
+  });
 
   // ── prompt size ceilings ────────────────────────────────────────────────────
   //
@@ -821,14 +830,24 @@ class CoachEngine {
                 '${_daysSummary(args['weekdays'])}. '
                 'This app does not check interactions.',
             args: args,
-          ), () async => CoachActions.addMedication(await LocalDb.instance, args));
+          ), () async => _afterMedicationWrite(
+                () async => CoachActions.addMedication(
+                  await LocalDb.instance,
+                  args,
+                ),
+              ));
         case 'mark_medication':
           return await _action(confirm, ActionRequest(
             tool: name, title: 'Mark a dose',
             summary: 'Record ${args['name']} on ${args['date'] ?? 'today'} as '
                 '${args['state']}.',
             args: args,
-          ), () async => CoachActions.markMedication(await LocalDb.instance, args));
+          ), () async => _afterMedicationWrite(
+                () async => CoachActions.markMedication(
+                  await LocalDb.instance,
+                  args,
+                ),
+              ));
         case 'set_step_goal':
           return await _action(confirm, ActionRequest(
             tool: name, title: 'Set step goal',
@@ -857,6 +876,36 @@ class CoachEngine {
     final ok = await confirm(req);
     if (!ok) return 'User declined the action. Do not retry it.';
     return await run();
+  }
+
+  /// Rearm after a durable CoachActions write. Scheduling failure must not
+  /// look like the write failed — the fact is already stored; retry is
+  /// refresh only, never the plan/dose again. The JSON always says whether
+  /// reminders were applied so the model cannot claim they were configured.
+  Future<String> _afterMedicationWrite(Future<String> Function() write) async {
+    final saved = await write();
+    Map<String, dynamic> body;
+    try {
+      final decoded = jsonDecode(saved);
+      body = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{'saved': true, 'result': saved};
+    } catch (_) {
+      body = <String, dynamic>{'saved': true, 'result': saved};
+    }
+    final hook = onMedicationMutated;
+    if (hook == null) {
+      body['reminders_updated'] = false;
+      return jsonEncode(body);
+    }
+    try {
+      await hook();
+      body['reminders_updated'] = true;
+    } catch (e) {
+      body['reminders_updated'] = false;
+      body['reminders_error'] = e.toString();
+    }
+    return jsonEncode(body);
   }
 
   String _enc(Object? data) {
@@ -1017,7 +1066,7 @@ class CoachEngine {
         {'date': {'type': 'string', 'description': 'YYYY-MM-DD, default today'}}),
     _fn('get_medications',
         'Read the medication/supplement schedule and today\'s doses '
-        '(taken/skipped/missed/upcoming). Not in run_sql — use this.', {}),
+        '(taken/skipped/unknown/upcoming). Not in run_sql — use this.', {}),
     _fn('log_food',
         'Log something eaten (asks the user to confirm). EVERY nutrient is '
         'optional: an eating occasion with no numbers is a complete log, and '

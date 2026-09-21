@@ -32,12 +32,38 @@ import '../ai/ai_prefs.dart';
 import '../ai/reminder_plan.dart';
 import '../data/day_label.dart';
 import '../data/journal_fields.dart';
-import '../data/med_store.dart';
 import 'fired_keys.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
 import 'tap_router.dart';
+
+/// One resolved future dose instant. Identity is the plan key + civil slot;
+/// [at] is the wall-clock fire time already validated by the store (DST gaps
+/// and folds omitted, never shifted).
+typedef MedReminderInstant = ({
+  String key,
+  String date,
+  int slotMin,
+  DateTime at,
+});
+
+/// Pure lock-screen plan for one armed dose. Title and body name no drug.
+class MedReminderSlot {
+  const MedReminderSlot({
+    required this.id,
+    required this.at,
+    this.title = 'Medication',
+    this.body = 'A dose is due.',
+    this.route = kRouteMeds,
+  });
+
+  final int id;
+  final DateTime at;
+  final String title;
+  final String body;
+  final String route;
+}
 
 class NotificationCenter {
   NotificationCenter._();
@@ -214,20 +240,20 @@ class NotificationCenter {
   /// answered, which is the whole reason the caller reads it. NULL means the
   /// caller could not tell, and the check-in is then left exactly as it is.
   ///
-  /// [medDefs] / [medDosesToday] come straight from `MedDb` and are only read
-  /// when `prefs.medsEnabled` is on. NULL means the caller did not read the
+  /// [medInstants] are revision-aware future wall instants from
+  /// `MedDb.upcomingReminderInstants`. NULL means the caller did not read the
   /// schedule at all — the notifications screen re-asserting after an
-  /// unrelated toggle, or a read that threw — and the armed doses are then
-  /// left exactly as they are. An EMPTY list is an answer: there are no
-  /// medications, and the old slots go. They stay parameters rather than a query
-  /// in here for the same reason [weeklyFinding] does: this method is the
-  /// policy, and a policy that opens the database cannot be tested without
-  /// one.
+  /// unrelated toggle, or a read that threw / was unreadable-partial — and the
+  /// armed doses are then left exactly as they are. An EMPTY list is an
+  /// answer: there are no upcoming doses, and the old slots go. They stay
+  /// parameters rather than a query in here for the same reason [weeklyFinding]
+  /// does: this method is the policy, and a policy that opens the database
+  /// cannot be tested without one.
   ///
   /// [armedTonight]: whether the REAL armed alarm (AppState.alarmEpoch, not
   /// merely an enabled schedule row) falls on today's calendar date — see
   /// [alarmNightCheckSlot]. Always a real answer (never null): unlike
-  /// `checkInDoneToday`/`medDefs`, it costs no extra read (AppState already
+  /// `checkInDoneToday`/`medInstants`, it costs no extra read (AppState already
   /// holds the armed epoch), so there is no "caller doesn't know" case to
   /// preserve through.
   /// Public entry point — serialized through [_synchronized] so two
@@ -239,18 +265,18 @@ class NotificationCenter {
     double? bedtimeMinOfDay,
     String? weeklyFinding,
     bool? checkInDoneToday,
-    List<MedDef>? medDefs,
-    Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
+    List<MedReminderInstant>? medInstants,
     bool armedTonight = false,
+    DateTime? now,
   }) =>
       _synchronized(() => _scheduleStandingReminders(
             prefs,
             bedtimeMinOfDay: bedtimeMinOfDay,
             weeklyFinding: weeklyFinding,
             checkInDoneToday: checkInDoneToday,
-            medDefs: medDefs,
-            medDosesToday: medDosesToday,
+            medInstants: medInstants,
             armedTonight: armedTonight,
+            now: now,
           ));
 
   Future<void> _scheduleStandingReminders(
@@ -258,9 +284,9 @@ class NotificationCenter {
     double? bedtimeMinOfDay,
     String? weeklyFinding,
     bool? checkInDoneToday,
-    List<MedDef>? medDefs,
-    Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
+    List<MedReminderInstant>? medInstants,
     bool armedTonight = false,
+    DateTime? now,
   }) async {
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idWeeklyRecap);
@@ -305,7 +331,7 @@ class NotificationCenter {
     // re-arming is impossible and cancelling would silently disarm doses that
     // are still real. Collapsing both into `const []` chose preserve for both,
     // so the deleted-medication case never got its cancel.
-    if (!prefs.medsEnabled || medDefs != null) {
+    if (!prefs.medsEnabled || medInstants != null) {
       for (var i = 0; i < NotificationService.maxMedSlots; i++) {
         await svc.cancel(NotificationService.idMedsBase + i);
       }
@@ -329,15 +355,14 @@ class NotificationCenter {
     }
     final water = waterSlotMinutes(prefs);
     final wantWeekly = prefs.remindersEnabled && weeklyFinding != null;
-    final now = DateTime.now();
+    final clock = now ?? DateTime.now();
     final checkIn = checkInDoneToday == null
         ? null
         : checkInSlot(prefs, bedtimeMinOfDay,
-            doneToday: checkInDoneToday, nowMin: now.hour * 60 + now.minute);
-    final meds =
-        medPromptSlots(prefs, medDefs ?? const [], medDosesToday, now: now);
+            doneToday: checkInDoneToday, nowMin: clock.hour * 60 + clock.minute);
+    final meds = medReminderPlan(prefs, medInstants, now: clock);
     final nightCheck = alarmNightCheckSlot(prefs,
-        armedTonight: armedTonight, nowMin: now.hour * 60 + now.minute);
+        armedTonight: armedTonight, nowMin: clock.hour * 60 + clock.minute);
     if (water.isEmpty &&
         !wantWeekly &&
         windDownMin == null &&
@@ -405,36 +430,27 @@ class NotificationCenter {
 
   /// One notification per dose still due — never one per day, never a summary.
   ///
-  /// ONE-SHOT per slot, at the minute the user entered. A daily repeat cannot
-  /// know whether today's dose was already taken, and a reminder for a pill
-  /// already swallowed is exactly the notification people turn everything off
-  /// over. The cost of the one-shot is that cover only reaches as far as
-  /// [medPromptSlots]' horizon from the last foreground pass; the reminder
-  /// re-arms on every resume, which for anyone who opens the app daily is
-  /// always ahead of the doses.
+  /// ONE-SHOT per slot, at the already-resolved wall instant. A daily repeat
+  /// cannot know whether today's dose was already taken, and a reminder for a
+  /// pill already swallowed is exactly the notification people turn everything
+  /// off over. Cover only reaches as far as [medHorizonDays] from the last
+  /// foreground pass; the reminder re-arms on every resume.
   ///
   /// Quiet hours are deliberately NOT applied: this is the user's own entered
   /// time, the same reasoning that exempts the alarm. Someone who takes a pill
   /// at 23:00 typed 23:00.
-  Future<void> _armMedSlots(NotificationService svc, List<MedSlot> slots) async {
-    for (var i = 0; i < slots.length; i++) {
-      final s = slots[i];
-      final at = medSlotInstant(s);
-      if (at == null) continue;
+  Future<void> _armMedSlots(
+    NotificationService svc,
+    List<MedReminderSlot> slots,
+  ) async {
+    for (final s in slots) {
       await svc.scheduleOnce(
-        id: NotificationService.idMedsBase + i,
+        id: s.id,
         category: NotifCategory.reminders,
-        // NO MEDICATION NAME, deliberately. This lands on a lock screen, in
-        // front of whoever is in the room, and "which drug" is the most
-        // sensitive fact in the app. The checklist behind the tap says which —
-        // one unlock away, which is where that belongs. It is also why the
-        // body is not a dose or a count.
-        title: 'Medication',
-        // Not an adherence score, not a streak, and nothing about a dose that
-        // was missed: this is the reminder, not the report.
-        body: 'A dose is due.',
-        at: at,
-        route: kRouteMeds,
+        title: s.title,
+        body: s.body,
+        at: s.at,
+        route: s.route,
       );
     }
   }
@@ -750,49 +766,42 @@ class NotificationCenter {
   /// Not more, because a slot armed days out cannot know it was taken early.
   static const int medHorizonDays = 3;
 
-  /// The doses to arm: every slot still UPCOMING across [medHorizonDays],
-  /// soonest first, capped at [NotificationService.maxMedSlots].
+  /// Pure policy over already-resolved instants. Does not open the database,
+  /// does not invent wall times, and never puts a drug name on the lock screen.
   ///
-  /// `DoseState.upcoming` is the whole rule-4 answer and it is already
-  /// computed by [slotsForDay]: a dose marked taken, a dose deliberately
-  /// skipped, and a slot that has already passed are all something other than
-  /// upcoming, and none of them is armed. [dosesToday] only covers today
-  /// because that is the only day a dose can already have been recorded for.
-  static List<MedSlot> medPromptSlots(
+  /// NULL [instants] is "unknown" — the caller must not cancel. This function
+  /// then returns empty so the arming loop is a no-op. An EMPTY list is known
+  /// empty. Same-instant duplicates collapse to one interruption. Past instants
+  /// and days past [medHorizonDays] are dropped. Capped at
+  /// [NotificationService.maxMedSlots] (ids 2300+).
+  static List<MedReminderSlot> medReminderPlan(
     NotificationPrefs prefs,
-    List<MedDef> defs,
-    Map<String, Map<int, Map<String, Object?>>> dosesToday, {
+    List<MedReminderInstant>? instants, {
     DateTime? now,
   }) {
-    if (!prefs.medsEnabled || defs.isEmpty) return const [];
-    final at = now ?? DateTime.now();
-    final out = <MedSlot>[];
-    for (var d = 0; d < medHorizonDays; d++) {
-      final day = dayLabelOf(DateTime(at.year, at.month, at.day + d));
-      for (final s in slotsForDay(defs, day, d == 0 ? dosesToday : const {},
-          now: at)) {
-        if (s.state != DoseState.upcoming) continue;
-        // Two pills at 08:00 are ONE interruption. The list is in time order,
-        // so an instant equal to the last kept one is the same moment — and
-        // the notification names nothing anyway, so a second copy of it would
-        // carry no extra information and burn an id from the band.
-        if (out.isNotEmpty &&
-            out.last.date == s.date &&
-            out.last.slotMin == s.slotMin) {
-          continue;
-        }
-        out.add(s);
-        if (out.length >= NotificationService.maxMedSlots) return out;
-      }
+    if (!prefs.medsEnabled || instants == null || instants.isEmpty) {
+      return const [];
+    }
+    final clock = now ?? DateTime.now();
+    final lastDay = dayLabelOf(
+      DateTime(clock.year, clock.month, clock.day + medHorizonDays - 1),
+    );
+    final sorted = [...instants]..sort((a, b) => a.at.compareTo(b.at));
+    final seen = <int>{};
+    final out = <MedReminderSlot>[];
+    for (final s in sorted) {
+      if (!s.at.isAfter(clock)) continue;
+      if (s.date.compareTo(lastDay) > 0) continue;
+      if (!seen.add(s.at.millisecondsSinceEpoch)) continue;
+      out.add(
+        MedReminderSlot(
+          id: NotificationService.idMedsBase + out.length,
+          at: s.at,
+        ),
+      );
+      if (out.length >= NotificationService.maxMedSlots) break;
     }
     return out;
-  }
-
-  /// The absolute instant [s] is due, or null when its day cannot be resolved.
-  static DateTime? medSlotInstant(MedSlot s) {
-    final start = localDayStartSec(s.date);
-    if (start == null) return null;
-    return DateTime.fromMillisecondsSinceEpoch((start + s.slotMin * 60) * 1000);
   }
 
   /// Re-assert the three AI slots (morning briefing, nightly sweep, pre-sleep

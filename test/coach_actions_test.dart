@@ -6,11 +6,18 @@
 //     a full-day replace would erase the morning's mood; only action-provided
 //     keys are patched.
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_actions.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
+import 'package:openstrap_edge/data/med_store.dart';
+import 'package:openstrap_edge/openband/medication_data.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeRepo extends LocalRepository {
   Map<String, JournalMetricValue> stored = {};
@@ -185,6 +192,104 @@ void main() {
       );
       expect(repo.setStepGoal(3), throwsA(isA<RepositoryException>()));
       expect(repo.setStepGoal(900000), throwsA(isA<RepositoryException>()));
+    });
+  });
+
+  group('medication tools', () {
+    const dbName = 'coach_actions_med_test.db';
+
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    setUp(() async {
+      await LocalDb.close();
+      LocalDb.dbName = dbName;
+      await databaseFactory.deleteDatabase(
+        p.join(await databaseFactory.getDatabasesPath(), dbName),
+      );
+    });
+
+    tearDown(() async => LocalDb.close());
+
+    test('unique name adds to that plan; no match creates a new key', () async {
+      final db = await LocalDb.instance;
+      final now = DateTime(2026, 9, 15, 9);
+      await CoachActions.addMedication(db, {
+        'name': 'Paracetamol',
+        'time': '08:00',
+        'dose_value': 500,
+        'dose_unit': 'mg',
+      }, now: now);
+      final first = await MedDb.readPlans(db);
+      expect(first, hasLength(1));
+      final key = first.single.key;
+      expect(key.startsWith('custom_'), isFalse);
+      await CoachActions.addMedication(db, {
+        'name': 'Paracetamol',
+        'time': '22:00',
+      }, now: now.add(const Duration(minutes: 1)));
+      final again = await MedDb.readPlans(db);
+      expect(again, hasLength(1));
+      expect(again.single.key, key);
+      expect(again.single.schedule.map((s) => s.minuteOfDay), [8 * 60, 22 * 60]);
+    });
+
+    test('ambiguous names refuse rather than picking one', () async {
+      final db = await LocalDb.instance;
+      final now = DateTime(2026, 9, 15, 9);
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(create: true, name: 'Same'),
+        now: now,
+      );
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(create: true, name: 'Same'),
+        now: now.add(const Duration(minutes: 1)),
+      );
+      await expectLater(
+        CoachActions.addMedication(db, {
+          'name': 'Same',
+          'time': '08:00',
+        }, now: now),
+        throwsA(isA<CoachActionError>()),
+      );
+      await expectLater(
+        CoachActions.markMedication(db, {
+          'name': 'Same',
+          'time': '08:00',
+          'state': 'taken',
+        }, now: now),
+        throwsA(isA<CoachActionError>()),
+      );
+    });
+
+    test('not_taken clears to unknown instead of skipped', () async {
+      final db = await LocalDb.instance;
+      final now = DateTime(2026, 9, 15, 9, 41);
+      await CoachActions.addMedication(db, {
+        'name': 'A',
+        'time': '08:00',
+      }, now: DateTime(2026, 9, 15, 7));
+      await CoachActions.markMedication(db, {
+        'name': 'A',
+        'date': '2026-09-15',
+        'time': '08:00',
+        'state': 'taken',
+      }, now: now);
+      final marked = jsonDecode(
+        await CoachActions.markMedication(db, {
+          'name': 'A',
+          'date': '2026-09-15',
+          'time': '08:00',
+          'state': 'not_taken',
+        }, now: now),
+      ) as Map;
+      expect(marked['state'], 'unknown');
+      final day = jsonDecode(await CoachActions.medications(db, now: now)) as Map;
+      expect(day['today'][0]['state'], 'unknown');
     });
   });
 }

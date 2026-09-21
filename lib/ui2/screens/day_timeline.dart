@@ -34,6 +34,7 @@ import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
 import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
+import '../../openband/medication_data.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
@@ -109,6 +110,14 @@ String _dur(num? minutes) {
 
 String _span(int from, int? to) =>
     to == null ? clockOfTs(from) : '${clockOfTs(from)} – ${clockOfTs(to)}';
+
+/// Frozen snapshot name. Unknown history is a generic label, never the live
+/// head and never a raw plan key.
+String medicationTimelineTitle(MedicationDayEntry e) {
+  final label = e.snapshotLabel?.trim();
+  if (label != null && label.isNotEmpty) return label;
+  return 'Medication';
+}
 
 /// THE JOIN. Pure, so the ordering and the placement rules are testable
 /// without a database or a frame.
@@ -567,18 +576,21 @@ class TimelineData {
     final meals = await NutritionDb.entriesForDay(db, day);
     final notes = await LocalDb.journalRows(sinceDaysEpoch: day);
 
-    // Doses: one row per (medication, slot), and only the ones actually taken
-    // carry a clock. A skipped dose is a real fact with no time attached, so it
-    // is not on the axis — see the note at the top of this file.
-    final defs = {for (final d in await MedDb.defs(db, activeOnly: false)) d.key: d};
+    // Doses: one row per taken instant. Frozen snapshot label, not the live
+    // head name. Orphan logs (ended/edited plans) stay. Unknown historical
+    // name is a generic label, never a raw plan key. Skipped/unknown without
+    // a clock stay off the axis — see the note at the top of this file.
+    final medDay = await MedDb.readDay(db, day, now: DateTime.now());
     final taken = <({String label, int at})>[];
-    (await MedDb.dosesForDay(db, day)).forEach((key, slots) {
-      for (final row in slots.values) {
-        final ts = (row['taken_ts'] as num?)?.toInt();
-        if (ts == null) continue;
-        taken.add((label: defs[key]?.label ?? key, at: ts));
-      }
-    });
+    for (final e in medDay.entries) {
+      if (e.status != MedicationSlotStatus.taken) continue;
+      final at = e.takenAt;
+      if (at == null) continue;
+      taken.add((
+        label: medicationTimelineTitle(e),
+        at: at.millisecondsSinceEpoch ~/ 1000,
+      ));
+    }
 
     // WHAT OTHER SOURCES SAY about this day (M6). Gated on isNotEmpty being
     // the ONLY behaviour change: zero rows today, on every install, so the

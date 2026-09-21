@@ -388,7 +388,57 @@
     "4BAZ-0": "A05 Glukose · 375 / große Schrift · Synthetische Daten (glucose.dart)",
     "4BE5-0": "A05 Glukose · 375 / große Schrift · Dunkel · Synthetische Daten (glucose.dart)",
     "4BH0-0": "A05 Glukose · Speicher-Lesefehler · Synthetische Daten (glucose.dart)",
-    "4BJ7-0": "A05 Glukose · Speicher-Lesefehler · Dunkel · Synthetische Daten (glucose.dart)"
+    "4BJ7-0": "A05 Glukose · Speicher-Lesefehler · Dunkel · Synthetische Daten (glucose.dart)",
+    "4BLV-0": "A07c Medikamente",
+    "4BNU-0": "A07c Medikament hinzufügen",
+    "4BQS-0": "A07c Einnahme eintragen",
+    "4BT8-0": "A07c Medikamente · Verlauf",
+    "4BUZ-0": "A07c Medikamente · Pläne",
+    "4BX9-0": "A07c Medikamente · Dunkel",
+    "4BZU-0": "A07c Medikament hinzufügen · Dunkel",
+    "4C1Y-0": "A07c Medikamente · Zeit",
+    "4C41-0": "A07c Einnahme eintragen · Dunkel",
+    "4C5G-0": "A07c Medikamente · Verlauf · Dunkel",
+    "4C7T-0": "A07c Medikamente · Pläne · Dunkel",
+    "4CA2-0": "A07c Medikamente · Zeit · Dunkel",
+    "4CBX-0": "A07c Medikamente · leer",
+    "4CDO-0": "A07c Medikamente · kein Termin",
+    "4CFF-0": "A07c Medikamente · Ladefehler",
+    "4CH6-0": "A07c Medikamente · Einnahme gespeichert",
+    "4CJC-0": "A07c Medikamente · leer · Dunkel",
+    "4CLD-0": "A07c Medikamente · kein Termin · Dunkel",
+    "4CNE-0": "A07c Medikamente · Ladefehler · Dunkel",
+    "4COV-0": "A07c Medikamente · Einnahme gespeichert · Dunkel",
+    "4CRG-0": "A07c Medikamente · Speichern fehlgeschlagen",
+    "4CSL-0": "A07c Einnahme · unbeantwortet",
+    "4CTQ-0": "A07c Einnahme · ausgelassen",
+    "4CUV-0": "A07c Medikamente · Plan bearbeiten",
+    "4CWP-0": "A07c Medikamente · Speichern fehlgeschlagen · Dunkel",
+    "4CYD-0": "A07c Einnahme · unbeantwortet · Dunkel",
+    "4CZO-0": "A07c Einnahme · ausgelassen · Dunkel",
+    "4D0Z-0": "A07c Medikamente · Plan bearbeiten · Dunkel",
+    "4D35-0": "A07c Medikamente · Information",
+    "4D5A-0": "A07c Medikamente · beendete Pläne",
+    "4D6T-0": "A07c Medikamente · Plan fortsetzen",
+    "4D8G-0": "A07c Medikamente · gespeichert, Erinnerungen offen",
+    "4DA7-0": "A07c Medikamente · Uhrzeit nicht eindeutig",
+    "4DBY-0": "A07c Medikamente · teilweise lesbar",
+    "4DDX-0": "A07c Medikamente · 375 große Schrift",
+    "4DFO-0": "A07c Medikamente · 375 große Schrift · Dunkel",
+    "4DI9-0": "A07c Medikamente · Information · Dunkel",
+    "4DLB-0": "A07c Medikamente · beendete Pläne · Dunkel",
+    "4DMR-0": "A07c Medikamente · Plan fortsetzen · Dunkel",
+    "4DOV-0": "A07c Medikamente · gespeichert, Erinnerungen offen · Dunkel",
+    "4DRK-0": "A07c Medikamente · Uhrzeit nicht eindeutig · Dunkel",
+    "4DU5-0": "A07c Medikamente · teilweise lesbar · Dunkel",
+    "4E2V-0": "A07c Einnahme · 375 große Schrift",
+    "4E40-0": "A07c Medikament hinzufügen · 375 große Schrift",
+    "4E5L-0": "A07c Einnahme bearbeiten",
+    "4E6Q-0": "A07c Einnahme · historische Angaben fehlen",
+    "4E83-0": "A07c Einnahme · 375 große Schrift · Dunkel",
+    "4E9I-0": "A07c Medikament hinzufügen · 375 große Schrift · Dunkel",
+    "4EBM-0": "A07c Einnahme bearbeiten · Dunkel",
+    "4ED3-0": "A07c Einnahme · historische Angaben fehlen · Dunkel"
   },
   "blocks": [
     {
@@ -525,9 +575,63 @@
         "4BAZ-0",
         "4BE5-0",
         "4BH0-0",
-        "4BJ7-0"
+        "4BJ7-0",
+        "4BLV-0",
+        "4BNU-0",
+        "4BQS-0",
+        "4BT8-0",
+        "4BUZ-0",
+        "4BX9-0",
+        "4BZU-0",
+        "4C1Y-0",
+        "4C41-0",
+        "4C5G-0",
+        "4C7T-0",
+        "4CA2-0",
+        "4CBX-0",
+        "4CDO-0",
+        "4CFF-0",
+        "4CH6-0",
+        "4CJC-0",
+        "4CLD-0",
+        "4CNE-0",
+        "4COV-0",
+        "4CRG-0",
+        "4CSL-0",
+        "4CTQ-0",
+        "4CUV-0",
+        "4CWP-0",
+        "4CYD-0",
+        "4CZO-0",
+        "4D0Z-0",
+        "4D35-0",
+        "4D5A-0",
+        "4D6T-0",
+        "4D8G-0",
+        "4DA7-0",
+        "4DBY-0",
+        "4DDX-0",
+        "4DFO-0",
+        "4DI9-0",
+        "4DLB-0",
+        "4DMR-0",
+        "4DOV-0",
+        "4DRK-0",
+        "4DU5-0",
+        "4E2V-0",
+        "4E40-0",
+        "4E5L-0",
+        "4E6Q-0",
+        "4E83-0",
+        "4E9I-0",
+        "4EBM-0",
+        "4ED3-0"
       ],
-      "notes": "Canonical 64-point header, 44-point card circles, 18/24 title and 12/16 subtitle; height grows for accessibility text."
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below.",
+      "variantPaperNodes": {
+        "large": "4EEM-0",
+        "largeDark": "4EEZ-0"
+      }
     },
     {
       "name": "OBBandCapsule",
@@ -1345,10 +1449,42 @@
       "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture).",
       "usedIn": [
         "3G8S-0",
-        "3FVE-0"
+        "3FVE-0",
+        "3G8R-0",
+        "3NBJ-0",
+        "3Z4Y-0",
+        "3Z9O-0",
+        "3YQF-0",
+        "3YWT-0",
+        "3SVS-0",
+        "3T0I-0",
+        "3T5G-0",
+        "3TA2-0",
+        "3TEO-0",
+        "3TJA-0",
+        "3TNW-0",
+        "3TSI-0",
+        "3TXE-0",
+        "3U2N-0",
+        "3U7T-0",
+        "3UCJ-0",
+        "3XWM-0",
+        "3Y1C-0",
+        "3Y6A-0",
+        "3YB4-0",
+        "3YFY-0",
+        "3YKS-0",
+        "3ZFK-0",
+        "3ZKA-0",
+        "3ZPA-0",
+        "3ZTC-0",
+        "4069-0",
+        "40BJ-0"
       ],
       "variantPaperNodes": {
-        "glucoseEntry": "4BAP-0"
+        "glucoseEntry": "4BAP-0",
+        "medicationEntry": "4DWS-0",
+        "medicationEntryDark": "4DX2-0"
       }
     },
     {
@@ -1701,7 +1837,19 @@
         "4AUY-0",
         "4B0O-0",
         "4AR4-0",
-        "4AWV-0"
+        "4AWV-0",
+        "4BLV-0",
+        "4BX9-0",
+        "4BNU-0",
+        "4BZU-0",
+        "4BQS-0",
+        "4C41-0",
+        "4C1Y-0",
+        "4CA2-0",
+        "4D6T-0",
+        "4DMR-0",
+        "4CRG-0",
+        "4CWP-0"
       ]
     },
     {
@@ -1802,9 +1950,19 @@
         "4BAZ-0",
         "4BE5-0",
         "4BH0-0",
-        "4BJ7-0"
+        "4BJ7-0",
+        "4BLV-0",
+        "4BX9-0",
+        "4BUZ-0",
+        "4C7T-0",
+        "4BNU-0",
+        "4BZU-0",
+        "4DDX-0",
+        "4DFO-0",
+        "4E40-0",
+        "4E9I-0"
       ],
-      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit.",
+      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit. Empty-value navigation rows keep a fixed trailing chevron at all text scales; value-bearing rows retain the shared large-text stacked layout.",
       "variantPaperNodes": {
         "comfortable": "45C7-0"
       }
@@ -2177,7 +2335,9 @@
         "45ID-0",
         "45OR-0",
         "4AR4-0",
-        "4AWV-0"
+        "4AWV-0",
+        "4D35-0",
+        "4DI9-0"
       ],
       "notes": "Shared disclosure with pinned heading/44-point close and pinned ink action; only the 15/22 body scrolls. Short bodies shrink-wrap. Safe-area padding and canonical24-point card radius; Journal, custom fields and nutrition goals share this implementation. Inter body optical size follows rendered text size, clamped14..32, matching Paper at2x. Body width is bounded; shared action radius16 matches OBAction."
     },
@@ -2609,6 +2769,37 @@
         "375 / large text"
       ],
       "notes": "Stored individual readings at actual elapsed timestamps, in their original common unit. No interpolation, target band, physiological bounds or invented coverage. Quiet numeric guides; finite viewport safeguards; unknown unit or unrepresentable viewport leaves the plot absent. Raw readings remain available in history."
+    },
+    {
+      "name": "OBMedicationRow",
+      "paperNode": "4BLJ-0",
+      "widget": "_MedDoseRow",
+      "file": "medication.dart",
+      "usedIn": [
+        "4BLV-0",
+        "4BX9-0",
+        "4BT8-0",
+        "4C5G-0",
+        "4CH6-0",
+        "4COV-0",
+        "4DBY-0",
+        "4DU5-0",
+        "4DA7-0",
+        "4DRK-0",
+        "4DDX-0",
+        "4DFO-0"
+      ],
+      "variants": [
+        "light",
+        "dark",
+        "unknown",
+        "taken",
+        "skipped",
+        "upcoming",
+        "unavailable",
+        "375 / large text"
+      ],
+      "notes": "Stored civil slot, frozen name/dose when present and explicit unknown historical metadata. No missed-dose inference or adherence. Native large text stacks time above details. Canonical row composes the retained medication day/history entries."
     }
   ],
   "openBlocks": [
@@ -2635,7 +2826,7 @@
     "hostWiring": "app.dart: four tabs use the OpenBand hubs; Laufen tile → OpenBandRunLive over AppState (single live engine, _LiveRunFeed); templates → OpenBandStrengthLive via startStrengthSession(AppState.startWorkout); meals → OBFoodSearchSheet → showOpenBandMealDraft. Live route map (flutter_map, CARTO tiles) renders only with mapTilesAllowed; laps are recorded via recordLap and frozen into the session snapshot."
   },
   "schema": {
-    "version": 64,
+    "version": 65,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -2653,7 +2844,10 @@
       "strength_set",
       "imported_measurement",
       "imported_measurement_receipt",
-      "imported_measurement_source_setting"
+      "imported_measurement_source_setting",
+      "med_def",
+      "med_dose",
+      "med_plan_revision"
     ]
   },
   "research": {

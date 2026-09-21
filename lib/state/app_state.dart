@@ -51,7 +51,7 @@ import '../compute/profile.dart';
 import '../data/day_label.dart';
 import '../data/journal_fields.dart'
     show JournalDayPatch, JournalConflict, kJournalFieldsByKey;
-import '../data/med_store.dart' show MedDb, MedDef;
+import '../data/med_store.dart' show MedDb;
 import '../data/auto_backup.dart' show BackupCadence, BackupOutcome, runBackup;
 import '../stress/breath_phases.dart';
 // `runBackupIfDue` is also the name of the AppState method below, so the pure
@@ -209,6 +209,14 @@ class AppState extends ChangeNotifier {
     buzz: () => engine.buzz(),
     isConnected: () => engine.isConnected,
   );
+
+  /// Injected clock for reminder reads. Tests only.
+  @visibleForTesting
+  DateTime Function() debugNow = DateTime.now;
+
+  /// Serialises read-then-plugin so a stale snapshot cannot clobber a newer
+  /// one. Does not hold a DB transaction across plugin IO.
+  Future<void> _reminderGate = Future<void>.value();
 
   /// Tasker integration bridge — listens for Android broadcast intents from
   /// Tasker and buzzes the strap. Wired in the constructor.
@@ -1519,6 +1527,10 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   Future<void> debugEnsureRemindersScheduled() => _ensureRemindersScheduled();
 
+  /// In-memory med strap timers. Tests only.
+  @visibleForTesting
+  List<DateTime> get debugMedBuzzerSlotInstants => _medBuzzer.debugSlotInstants;
+
   /// (Re)arm the in-memory water-reminder timer from the current notification
   /// prefs. Call at launch and whenever the toggle changes (the Notifications
   /// screen passes [prefs] so we skip a reload). This is local configure
@@ -1758,8 +1770,10 @@ class AppState extends ChangeNotifier {
   /// any prefs change), then run the data-driven foreground nudges.
   Future<void> runCadenceChecks() async {
     try {
-      if (!isPaired) return;
+      // Phone-local one-shots (meds, water, check-in) must renew on resume
+      // even when no band is paired. Pairing-only work stays below.
       await _ensureRemindersScheduled();
+      if (!isPaired) return;
       await _maybeNotifyStepGoal();
       await _maybeNotifyInactivity();
       // Opt-in auto-import of Health workouts (off by default; self-gates on
@@ -2518,8 +2532,10 @@ class AppState extends ChangeNotifier {
     // App status (OTA pointer + admin alert banner) — best-effort, non-blocking.
     unawaited(_loadAppStatus());
     // Register the recurring wall-clock nudges as real OS-scheduled notifications
-    // (wind-down, weekly recap) so they fire even when the app is closed.
-    if (isPaired) unawaited(_ensureRemindersScheduled());
+    // (wind-down, weekly recap, med one-shots) so they fire even when the app
+    // is closed. Not gated on pairing: a skipped-pair user still needs the
+    // 3-day med window renewed. BLE connect stays below, behind isPaired.
+    unawaited(_ensureRemindersScheduled());
     // SECOND FRAMED BAND (iOS 18+): the ASK picker must run with NO
     // CBCentralManager alive in the process. This is the only such moment —
     // `main()`'s two flutter_blue_plus calls (setOptions/setLogLevel) return
@@ -2703,7 +2719,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _scheduleReminders() async {
+  Future<void> _serializedReminders(Future<void> Function() run) {
+    final prev = _reminderGate;
+    final done = Completer<void>();
+    _reminderGate = done.future;
+    return prev.then((_) => run()).whenComplete(done.complete);
+  }
+
+  Future<void> _scheduleReminders() => _serializedReminders(() async {
     final prefs = await NotificationPrefs.load();
     // ONE crossday read feeds every schedule that hangs off the rollup:
     // the Sleep Coach bedtime (check-in, wind-down, nightly sweep) AND the
@@ -2711,7 +2734,25 @@ class AppState extends ChangeNotifier {
     // used to be written; the second one is also where the weekly finding
     // silently never got computed at all.
     final cd = await _readCrossdaySummary();
-    final meds = await _medScheduleToday(prefs);
+    final clock = debugNow();
+    final meds = await _medReminderInstants(prefs, now: clock);
+    final medReadFailed = prefs.medsEnabled && meds == null;
+    // In-memory strap timers are local and must follow a KNOWN snapshot even
+    // when the OS plugin later throws. Prefs off or a resolved list updates
+    // / clears the buzzer here; an unknown read leaves it alone. OS cancel-
+    // then-arm is not atomic — a throw after cancel can drop phone arms.
+    if (!prefs.medsEnabled) {
+      _medBuzzer.configure(slotInstants: const []);
+    } else if (meds != null) {
+      final plan = NotificationCenter.medReminderPlan(
+        prefs,
+        meds,
+        now: clock,
+      );
+      _medBuzzer.configure(
+        slotInstants: [for (final s in plan) s.at],
+      );
+    }
     await NotificationCenter.instance.scheduleStandingReminders(
       prefs,
       bedtimeMinOfDay: cd.bedtimeMin,
@@ -2719,32 +2760,10 @@ class AppState extends ChangeNotifier {
           ? NotificationCenter.weeklyLookbackFinding(cd.recent)
           : null,
       checkInDoneToday: await _checkInDoneToday(),
-      medDefs: meds.defs,
-      medDosesToday: meds.doses,
+      medInstants: meds,
       armedTonight: _alarmArmedTonight,
+      now: clock,
     );
-    // The strap-buzz half of the medication reminder, off the SAME schedule
-    // read the OS dose slots above were armed from — one read feeds both
-    // surfaces. Three answers, matching the scheduler's own rule: the
-    // switch OFF is an explicit choice and CLEARS the armed buzzes (a timer
-    // left standing would buzz for doses the user has muted); a real
-    // (possibly empty) schedule re-arms from it; only a FAILED read while
-    // enabled preserves, because cancelling would disarm doses that are
-    // still real.
-    if (!prefs.medsEnabled) {
-      _medBuzzer.configure(slotInstants: const []);
-    } else if (meds.defs != null) {
-      final instants = <DateTime>[];
-      for (final s in NotificationCenter.medPromptSlots(
-        prefs,
-        meds.defs!,
-        meds.doses,
-      )) {
-        final at = NotificationCenter.medSlotInstant(s);
-        if (at != null) instants.add(at);
-      }
-      _medBuzzer.configure(slotInstants: instants);
-    }
     // AI slots. The nightly sweep is armed only when today actually produced
     // a finding — see [_sweepHeadlineNow], which is also where the body of
     // that notification comes from.
@@ -2757,7 +2776,13 @@ class AppState extends ChangeNotifier {
       journalDoneToday: BriefingStore.journalDoneToday(),
       sweepHeadline: await _sweepHeadlineNow(),
     );
-  }
+    // Unknown/unreadable meds were preserved above. The refresh still fails
+    // so LocalRepository can surface savedRemindersFailed — a successful
+    // return would look like the new plan was armed.
+    if (medReadFailed) {
+      throw StateError('Medication reminder read failed.');
+    }
+  });
 
   /// Everything the reminder scheduler needs from the crossday rollup, in ONE
   /// read: the Sleep Coach's recommended bedtime (local minutes past midnight,
@@ -2811,23 +2836,28 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The medication schedule + today's recorded doses. Two indexed reads, only
-  /// on the path that will use them.
+  /// Revision-aware future dose instants for the next three days.
   ///
-  /// NULL `defs` means the switch is off. A thrown read is a failed apply,
-  /// not "unread, preserve": settings must not treat a broken meds load as a
-  /// successful reapply. Empty list still means "this user has no medications".
-  Future<
-    ({List<MedDef>? defs, Map<String, Map<int, Map<String, Object?>>> doses})
-  >
-  _medScheduleToday(NotificationPrefs prefs) async {
-    const empty = <String, Map<int, Map<String, Object?>>>{};
-    if (!prefs.medsEnabled) return (defs: null, doses: empty);
-    final db = await LocalDb.instance;
-    return (
-      defs: await MedDb.defs(db),
-      doses: await MedDb.dosesForDay(db, todayLabel()),
-    );
+  /// NULL means unknown: the standing scheduler preserves what is armed.
+  /// [_scheduleReminders] still throws afterwards so a repo write can report
+  /// saved-but-not-applied. Empty list is known empty and cancels. Plugin IO
+  /// is NOT done here.
+  Future<List<MedReminderInstant>?> _medReminderInstants(
+    NotificationPrefs prefs, {
+    required DateTime now,
+  }) async {
+    if (!prefs.medsEnabled) return const [];
+    try {
+      final db = await LocalDb.instance;
+      return await MedDb.upcomingReminderInstants(
+        db,
+        now: now,
+        horizonDays: NotificationCenter.medHorizonDays,
+      );
+    } catch (e) {
+      _log('[notify] medication reminder read failed: $e');
+      return null;
+    }
   }
 
   String? _sweepHeadline;

@@ -34,7 +34,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
-import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
 import '../../ai/nightly_sweep.dart' show SweepFinding;
 import '../../compute/findings.dart';
@@ -475,8 +474,7 @@ Map<String, Widget> _chartCases() {
 
 /// Nutrition and Wellness. Every one of these is a widget the screens compose
 /// from, captured with the state that is easiest to get wrong: a day whose
-/// energy is a floor rather than a total, an occasion with no numbers, a dose
-/// that has not come due yet.
+/// energy is a floor rather than a total, an occasion with no numbers.
 Map<String, Widget> _nutritionAndWellnessCases() {
   const bare = FoodEntry(
       id: 'a', date: '2026-08-14', meal: 'dinner', label: 'Dinner');
@@ -577,11 +575,6 @@ Map<String, Widget> _nutritionAndWellnessCases() {
           DriverRow(
               label: 'Slept 52 minutes short', detail: '7h 08m against 8h 00m'),
         ])),
-    'med_row': Surface(
-        pad: const EdgeInsets.symmetric(horizontal: S.x4),
-        child: Column(children: [
-          for (final s in _medSlots) MedRow(slot: s),
-        ])),
   };
 }
 
@@ -651,29 +644,6 @@ final _bare = ActivityResult(
   start: DateTime(2026, 8, 13, 22, 5),
   duration: Motion.tick * 900,
 );
-
-const _medDef = MedDef(
-    key: 'custom_d',
-    label: 'Vitamin D',
-    doseValue: 2000,
-    doseUnit: 'IU',
-    schedule: [MedSchedule(480, [1, 2, 3, 4, 5, 6, 7])]);
-
-/// Taken, missed and not-yet-due, side by side — the third is the one that
-/// must never read as a failure.
-const _medSlots = <MedSlot>[
-  MedSlot(def: _medDef, date: '2026-08-14', slotMin: 480, state: DoseState.taken),
-  MedSlot(
-      def: MedDef(key: 'custom_m', label: 'Magnesium', doseValue: 300, doseUnit: 'mg'),
-      date: '2026-08-14',
-      slotMin: 780,
-      state: DoseState.missed),
-  MedSlot(
-      def: MedDef(key: 'custom_z', label: 'Zinc'),
-      date: '2026-08-14',
-      slotMin: 1260,
-      state: DoseState.upcoming),
-];
 
 // ══════════════════ the rest of the vocabulary ══════════════════
 //

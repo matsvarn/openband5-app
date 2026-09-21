@@ -313,6 +313,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       ),
     ]);
     _seedFixtureGlucose();
+    _seedFixtureMedication();
   }
 
   BandSnapshot get band {
@@ -668,6 +669,20 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool emptyGlucoseImport = false;
   bool failGlucoseExclusionWrite = false;
   HealthMeasurementImportStatus? glucoseImportFailureStatus;
+
+  static final medicationFixtureNow = DateTime(2026, 9, 15, 9, 41);
+  static const medicationFixtureDay = '2026-09-15';
+  static const medicationFixturePlanAKey = 'synthetic-med-a';
+  static const medicationFixturePlanBKey = 'synthetic-med-b';
+
+  bool failMedicationRead = false;
+  bool failMedicationWrite = false;
+  bool failMedicationReminders = false;
+  bool corruptMedicationHeads = false;
+  final Map<String, MedicationPlan> _medPlans = {};
+  final Map<String, List<MedicationPlanRevision>> _medRevisions = {};
+  final List<MedicationStoredDose> _medDoses = [];
+  int _medRevisionSeq = 0;
 
   void seedGlucoseReading(GlucoseReading reading) =>
       _glucoseReadings.add(reading);
@@ -3369,6 +3384,361 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   static String _shift(String day, int days) {
     final p = day.split('-').map(int.parse).toList();
     return dayLabelOf(DateTime(p[0], p[1], p[2]).add(Duration(days: days)));
+  }
+
+  void _seedFixtureMedication() {
+    const prior = '2026-09-14';
+    final knownAt = DateTime(2026, 9, 14, 7);
+    _putSynthPlan(
+      MedicationPlanDraft(
+        create: true,
+        key: medicationFixturePlanAKey,
+        name: 'Präparat A',
+        doseValue: 1,
+        doseUnit: 'Tablette',
+        schedule: const [
+          MedicationScheduleSlot(minuteOfDay: 8 * 60),
+        ],
+      ),
+      now: knownAt,
+    );
+    _putSynthPlan(
+      MedicationPlanDraft(
+        create: true,
+        key: medicationFixturePlanBKey,
+        name: 'Präparat B',
+        doseValue: 1,
+        doseUnit: 'Kapsel',
+        schedule: const [
+          MedicationScheduleSlot(minuteOfDay: 20 * 60),
+        ],
+      ),
+      now: knownAt,
+    );
+    _medDoses.add(
+      MedicationStoredDose(
+        medKey: medicationFixturePlanAKey,
+        date: prior,
+        slotMin: 8 * 60,
+        takenTsSeconds: DateTime(2026, 9, 14, 8, 4).millisecondsSinceEpoch ~/ 1000,
+        doseValue: 1,
+        doseUnit: 'Tablette',
+        label: 'Präparat A',
+        kind: MedicationKind.medication,
+        takenUtcOffsetMinutes: DateTime(2026, 9, 14, 8, 4).timeZoneOffset.inMinutes,
+      ),
+    );
+    _medDoses.add(
+      const MedicationStoredDose(
+        medKey: medicationFixturePlanAKey,
+        date: '2026-09-13',
+        slotMin: 8 * 60,
+      ),
+    );
+  }
+
+  void _requireMedicationReadable() {
+    if (failMedicationRead) {
+      throw StateError('synthetic medication read failure');
+    }
+    if (corruptMedicationHeads) {
+      throw const FormatException('Stored medication plan is unreadable.');
+    }
+  }
+
+  void _requireMedicationWritable() {
+    if (failMedicationWrite) {
+      throw StateError('synthetic medication write failure');
+    }
+  }
+
+  Map<String, String> get _medCurrentNames => {
+        for (final p in _medPlans.values) p.key: p.name,
+      };
+
+  MedicationPlan _putSynthPlan(MedicationPlanDraft draft, {required DateTime now}) {
+    requireMedicationPlanDraft(draft);
+    final name = draft.name.trim();
+    final existing = draft.key == null ? null : _medPlans[draft.key];
+    if (!draft.create && existing == null) {
+      throw StateError('No medication plan "${draft.key}" to update.');
+    }
+    if (draft.create && existing != null) {
+      throw StateError('Medication plan "${draft.key}" already exists.');
+    }
+    final key = draft.create
+        ? (draft.key?.trim().isNotEmpty == true
+            ? draft.key!.trim()
+            : newMedicationPlanId())
+        : draft.key!.trim();
+    final ts = now.millisecondsSinceEpoch;
+    final id = ++_medRevisionSeq;
+    final rev = MedicationPlanRevision(
+      id: id,
+      medKey: key,
+      effectiveTs: ts,
+      effectiveDate: dayLabelOf(now),
+      effectiveMin: now.hour * 60 + now.minute,
+      label: name,
+      doseValue: draft.doseValue,
+      doseUnit: draft.doseUnit?.trim().isEmpty == true ? null : draft.doseUnit?.trim(),
+      kind: draft.kind,
+      note: draft.note,
+      schedule: draft.schedule,
+      active: draft.active,
+      origin: MedicationPlanOrigin.user,
+    );
+    (_medRevisions[key] ??= []).add(rev);
+    final plan = MedicationPlan(
+      key: key,
+      name: name,
+      doseValue: draft.doseValue,
+      doseUnit: rev.doseUnit,
+      kind: draft.kind,
+      note: draft.note,
+      schedule: draft.schedule,
+      active: draft.active,
+      createdAtMs: existing?.createdAtMs ?? now.millisecondsSinceEpoch,
+      revisionId: id,
+      effectiveTs: ts,
+      effectiveDate: rev.effectiveDate,
+      effectiveMin: rev.effectiveMin,
+      origin: rev.origin,
+    );
+    _medPlans[key] = plan;
+    return plan;
+  }
+
+  Future<MedicationMutationResult> _synthWriteResult({
+    MedicationPlan? plan,
+    MedicationDayEntry? entry,
+  }) async {
+    try {
+      await refreshMedicationReminders();
+      return MedicationMutationResult.saved(plan: plan, entry: entry);
+    } catch (_) {
+      return MedicationMutationResult.savedRemindersFailed(
+        plan: plan,
+        entry: entry,
+      );
+    }
+  }
+
+  MedicationDayEntry? _entryOnDay(MedicationDay day, String key, int slotMin) {
+    for (final e in day.entries) {
+      if (e.key == key && e.slotMin == slotMin) return e;
+    }
+    return null;
+  }
+
+  @override
+  Future<MedicationDay> readMedicationDay(String day, {DateTime? now}) async {
+    _requireMedicationReadable();
+    if (!isMedicationCalendarDay(day)) {
+      throw ArgumentError.value(day, 'day', 'Invalid calendar day.');
+    }
+    return _synthDay(day, now ?? DateTime.now());
+  }
+
+  @override
+  Future<List<MedicationPlan>> readMedicationPlans({
+    bool activeOnly = true,
+  }) async {
+    _requireMedicationReadable();
+    final plans = _medPlans.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    if (activeOnly) {
+      return [for (final p in plans) if (p.active) p];
+    }
+    return plans;
+  }
+
+  @override
+  Future<MedicationHistory> readMedicationHistory(
+    String fromDay,
+    String toDay, {
+    DateTime? now,
+  }) async {
+    _requireMedicationReadable();
+    final at = now ?? DateTime.now();
+    final entries = <MedicationDayEntry>[];
+    var unreadable = 0;
+    for (final day in medicationCivilDays(fromDay, toDay)) {
+      final resolved = resolveMedicationDay(
+        date: day,
+        now: at,
+        revisionsByKey: _medRevisions,
+        doses: _medDoses,
+        currentNames: _medCurrentNames,
+      );
+      entries.addAll(resolved.entries);
+      unreadable += resolved.unreadableCount;
+    }
+    return MedicationHistory(
+      fromDay: fromDay,
+      toDay: toDay,
+      entries: entries,
+      unreadableCount: unreadable,
+    );
+  }
+
+  @override
+  Future<MedicationMutationResult> saveMedicationPlan(
+    MedicationPlanDraft draft, {
+    DateTime? now,
+  }) async {
+    _requireMedicationWritable();
+    final plan = _putSynthPlan(draft, now: now ?? DateTime.now());
+    return _synthWriteResult(plan: plan);
+  }
+
+  @override
+  Future<MedicationMutationResult> endMedicationPlan(
+    String key, {
+    DateTime? now,
+  }) async {
+    return _synthSetActive(key, active: false, now: now);
+  }
+
+  @override
+  Future<MedicationMutationResult> restartMedicationPlan(
+    String key, {
+    DateTime? now,
+  }) async {
+    return _synthSetActive(key, active: true, now: now);
+  }
+
+  MedicationDay _synthDay(String day, DateTime now) {
+    final resolved = resolveMedicationDay(
+      date: day,
+      now: now,
+      revisionsByKey: _medRevisions,
+      doses: _medDoses,
+      currentNames: _medCurrentNames,
+    );
+    return MedicationDay(
+      day: day,
+      entries: resolved.entries,
+      unreadableCount: resolved.unreadableCount,
+    );
+  }
+
+  Future<MedicationMutationResult> _synthSetActive(
+    String key, {
+    required bool active,
+    DateTime? now,
+  }) async {
+    _requireMedicationWritable();
+    final current = _medPlans[key.trim()];
+    if (current == null) {
+      throw StateError('No medication plan "$key" to update.');
+    }
+    if (current.scheduleUnreadableCount > 0) {
+      throw FormatException(
+        'Stored medication plan "${current.key}" has an unreadable schedule.',
+      );
+    }
+    final plan = _putSynthPlan(
+      MedicationPlanDraft(
+        create: false,
+        key: current.key,
+        name: current.name,
+        doseValue: current.doseValue,
+        doseUnit: current.doseUnit,
+        kind: current.kind,
+        note: current.note,
+        schedule: current.schedule,
+        active: active,
+      ),
+      now: now ?? DateTime.now(),
+    );
+    return _synthWriteResult(plan: plan);
+  }
+
+  @override
+  Future<MedicationMutationResult> saveMedicationEntry(
+    MedicationEntryDraft draft, {
+    DateTime? now,
+  }) async {
+    _requireMedicationWritable();
+    final at = now ?? DateTime.now();
+    requireMedicationEntryDraft(draft, now: at);
+    final key = draft.key.trim();
+    final previous = List<MedicationStoredDose>.from(_medDoses);
+    final MedicationDayEntry? entry;
+    try {
+      if (draft.answer == MedicationEntryAnswer.clear) {
+        _medDoses.removeWhere(
+          (d) =>
+              d.medKey == key && d.date == draft.date && d.slotMin == draft.slotMin,
+        );
+        entry = _entryOnDay(_synthDay(draft.date, at), key, draft.slotMin);
+      } else {
+        final idx = _medDoses.indexWhere(
+          (d) =>
+              d.medKey == key && d.date == draft.date && d.slotMin == draft.slotMin,
+        );
+        final covering = coveringMedicationRevision(
+          revisions: _medRevisions[key] ?? const [],
+          date: draft.date,
+          slotMin: draft.slotMin,
+        );
+        final takenAt = draft.answer == MedicationEntryAnswer.taken
+            ? (draft.takenAt ?? at)
+            : null;
+        final takenSeconds =
+            takenAt == null ? null : takenAt.millisecondsSinceEpoch ~/ 1000;
+        if (idx >= 0) {
+          final prev = _medDoses[idx];
+          final offset = prev.takenTsSeconds == takenSeconds
+              ? prev.takenUtcOffsetMinutes
+              : takenAt?.timeZoneOffset.inMinutes;
+          _medDoses[idx] = MedicationStoredDose(
+            medKey: prev.medKey,
+            date: prev.date,
+            slotMin: prev.slotMin,
+            takenTsSeconds: takenSeconds,
+            skipped: draft.answer == MedicationEntryAnswer.skipped,
+            doseValue: prev.doseValue,
+            doseUnit: prev.doseUnit,
+            label: prev.label,
+            kind: prev.kind,
+            note: draft.note ?? prev.note,
+            takenUtcOffsetMinutes: offset,
+          );
+        } else {
+          _medDoses.add(
+            MedicationStoredDose(
+              medKey: key,
+              date: draft.date,
+              slotMin: draft.slotMin,
+              takenTsSeconds: takenSeconds,
+              skipped: draft.answer == MedicationEntryAnswer.skipped,
+              doseValue: covering?.doseValue,
+              doseUnit: covering?.doseUnit,
+              label: covering?.label,
+              kind: covering?.kind,
+              note: draft.note ?? '',
+              takenUtcOffsetMinutes: takenAt?.timeZoneOffset.inMinutes,
+            ),
+          );
+        }
+        entry = _entryOnDay(_synthDay(draft.date, at), key, draft.slotMin);
+      }
+    } on Object {
+      _medDoses
+        ..clear()
+        ..addAll(previous);
+      rethrow;
+    }
+    return _synthWriteResult(entry: entry);
+  }
+
+  @override
+  Future<void> refreshMedicationReminders() async {
+    if (failMedicationReminders) {
+      throw StateError('synthetic medication reminder refresh failure');
+    }
   }
 }
 

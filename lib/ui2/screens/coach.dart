@@ -116,6 +116,7 @@ class _CoachScreenState extends State<CoachScreen> {
       config: cfg,
       api: repo,
       storageKey: (app.user?['id'] ?? 'local').toString(),
+      onMedicationMutated: app.refreshAiReminders,
     );
     await engine.restore();
     if (!mounted) {

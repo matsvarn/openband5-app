@@ -272,6 +272,7 @@ class LocalDb {
     'food_def',
     'med_def',
     'med_dose',
+    'med_plan_revision',
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
@@ -444,7 +445,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 64;
+  static const int schemaVersion = 65;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1205,6 +1206,11 @@ class LocalDb {
           // Glucose/import receipts + source exclusion. Additive columns only;
           // legacy imported_at stays NULL — never backfilled.
           await _createImportedMeasurement(db);
+        }
+        if (oldV < 65) {
+          // Medication plan revisions + frozen dose snapshots. Additive;
+          // current heads snapshot at migration NOW, never created_at.
+          await upgradeMedTables(db);
         }
       },
       onOpen: (db) async {
@@ -10636,6 +10642,13 @@ class LocalDb {
     // `custom_magnesium` with no label, no unit and no idea what scale they
     // are on — the values survive the export and their meaning does not.
     await copyRows('journal_field_def');
+    // Plans are not day-scoped; definitions and revision history ride along
+    // so exported dose rows keep their identity. Per-day dose rows follow.
+    for (final dayId in sorted) {
+      await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
+    }
+    await copyRows('med_def');
+    await copyRows('med_plan_revision');
     await out.close();
     return dest;
   }
@@ -11008,6 +11021,7 @@ class LocalDb {
       'food_def',
       'med_def',
       'med_dose',
+      'med_plan_revision',
       'cycle_log',
       'cycle_symptom',
       'breathing_session',
@@ -11521,6 +11535,7 @@ class LocalDb {
       'food_def',
       'med_def',
       'med_dose',
+      'med_plan_revision',
       'cycle_log',
       'notifications',
       'sync_cursor',
@@ -11598,6 +11613,21 @@ class LocalDb {
       'updated_at',
       'report_low',
       'report_high',
+    ]);
+
+    final medRevCols = await hasTable('med_plan_revision')
+        ? await cols('med_plan_revision')
+        : <String>{};
+    expect('med_plan_revision', medRevCols, [
+      'id',
+      'med_key',
+      'effective_ts',
+      'effective_date',
+      'effective_min',
+      'label',
+      'schedule_json',
+      'active',
+      'origin',
     ]);
 
     final journalFieldDefCols = await hasTable('journal_field_def')
