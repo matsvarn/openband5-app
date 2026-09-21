@@ -74,8 +74,8 @@ def main():
     parser.add_argument('mode', choices=['gallery', 'capture'])
     parser.add_argument('--small', action='store_true', help='Use a dedicated 375×812 iPhone 13 mini instead of 393×852 iPhone 15 Pro.')
     parser.add_argument('--output', type=Path, help='Native review output directory; defaults to build/ui-review/<timestamp>.')
-    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'exercise-copy', 'custom-load', 'glucose', 'medications', 'cycle', 'cycle-measurements', 'cycle-observations', 'cycle-gaps', 'cycle-medians', 'cycle-comparison'], default='all',
-                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, exercise copy, custom load, glucose, medications, cycle, cycle measurements, cycle observations, cycle gaps, cycle medians, or cycle comparison.')
+    parser.add_argument('--flow', choices=['all', 'journal', 'journal-hub', 'nutrition-entry', 'nutrition-parent', 'sleep-plan', 'exercise-picker', 'custom-exercise', 'exercise-copy', 'custom-load', 'glucose', 'medications', 'cycle', 'cycle-measurements', 'cycle-observations', 'cycle-gaps', 'cycle-medians', 'cycle-comparison', 'night-scalar'], default='all',
+                        help='Native capture flow: full gallery (default), Journal, Journal hub, saved food entry, nutrition parent, sleep plan, exercise picker, custom exercise, exercise copy, custom load, glucose, medications, cycle, cycle measurements, cycle observations, cycle gaps, cycle medians, cycle comparison, or HRV/resting pulse.')
     args = parser.parse_args()
     if not SDK.is_file():
         raise SystemExit(f'Pinned Flutter SDK not found: {SDK}')

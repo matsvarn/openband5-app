@@ -12,6 +12,7 @@ import 'cycle_medians_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
 import 'medication_data.dart';
+import 'night_scalar_data.dart';
 import 'sleep_plan_data.dart';
 
 export '../data/nutrition_store.dart'
@@ -24,6 +25,7 @@ export 'cycle_medians_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
 export 'medication_data.dart';
+export 'night_scalar_data.dart';
 export 'sleep_plan_data.dart';
 
 enum MetricReadiness {
@@ -357,6 +359,16 @@ enum MetricKey {
   final String series;
   const MetricKey(this.series);
 }
+
+NightScalarMetric nightScalarMetricOf(MetricKey key) => switch (key) {
+  MetricKey.hrv => NightScalarMetric.hrv,
+  MetricKey.restingHr => NightScalarMetric.rhr,
+  _ => throw ArgumentError.value(
+    key,
+    'key',
+    'Night scalar detail is HRV or resting pulse only.',
+  ),
+};
 
 class TrainingSession {
   final String id, day, type;
@@ -2174,6 +2186,16 @@ abstract interface class OpenBandRepository {
   Future<List<MetricPoint>> readMetricHistory(
     MetricKey key,
     String endDay,
+    int nights,
+  );
+  /// Stored RMSSD / resting-pulse night scalar for [day], plus a 7/30/90
+  /// local-calendar history at the selected row's algorithm. [key] is HRV or
+  /// resting pulse. Pending or failed sleep/nap receipts withhold the hero
+  /// and that history day; a finite stored scalar stays on
+  /// [NightScalarDetail.storedForInfo]. Database failure throws.
+  Future<NightScalarDetail> readNightScalarDetail(
+    MetricKey key,
+    String day,
     int nights,
   );
   Future<Set<String>> sleepDays();

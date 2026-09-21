@@ -51,6 +51,12 @@ void main() {
       'Fünfter Block: Wiederholte Sätze halten den Block deutlich über die '
       'Bildschirmhöhe und dürfen keine Overflow-Fehler erzeugen.';
 
+  const groupedParagraphs = [
+    'RMSSD · gespeicherter Wert\n14.–15. September · 23:10–06:54',
+    'Bandmessung · WHOOP 5.0\nBerechnet am 15. September, 07:02\nAlgorithmus 90',
+    'Basis 40 ms · 30 gültige Nächte\nStatus: Verlässlich',
+  ];
+
   Future<void> openSheet(
     WidgetTester tester, {
     Brightness brightness = Brightness.light,
@@ -59,6 +65,9 @@ void main() {
     double scale = 1,
     String sheetTitle = title,
     String sheetBody = body,
+    List<String>? sheetParagraphs,
+    List<OBInfoSheetAction> actions = const [],
+    OBInfoSheetAction? primaryAction,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = Size(width, height);
@@ -86,6 +95,9 @@ void main() {
       tester.element(find.byType(Scaffold)),
       title: sheetTitle,
       body: sheetBody,
+      paragraphs: sheetParagraphs,
+      actions: actions,
+      primaryAction: primaryAction,
     );
     await tester.pumpAndSettle();
   }
@@ -126,6 +138,14 @@ void main() {
         ),
       );
       expect(second.top - first.bottom, closeTo(12, 1.5));
+      expect(first.height, closeTo(22, 1.5));
+      expect(
+        find.text(
+          'Eigene Tagesziele, keine Bedarfsschätzung.\n'
+          'Änderungen gelten ab dem gewählten Datum. Leere Felder haben kein Ziel.',
+        ),
+        findsNothing,
+      );
 
       final close = tester.getRect(find.byType(IconButton));
       expect(close.width, greaterThanOrEqualTo(44));
@@ -229,6 +249,200 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Schließen'), findsNothing);
     expect(find.byIcon(LucideIcons.x), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('explicit paragraphs keep inner newlines without 12 gaps', (
+    tester,
+  ) async {
+    await openSheet(
+      tester,
+      width: 375,
+      height: 812,
+      sheetParagraphs: [
+        '  ',
+        groupedParagraphs[0],
+        '',
+        groupedParagraphs[1],
+        ' \n ',
+        groupedParagraphs[2],
+      ],
+    );
+    expect(find.text(groupedParagraphs[0]), findsOneWidget);
+    expect(find.text(groupedParagraphs[1]), findsOneWidget);
+    expect(find.text(groupedParagraphs[2]), findsOneWidget);
+    expect(find.text('RMSSD · gespeicherter Wert'), findsNothing);
+    expect(find.text('Eigene Tagesziele, keine Bedarfsschätzung.'), findsNothing);
+
+    final first = tester.getRect(find.text(groupedParagraphs[0]));
+    final second = tester.getRect(find.text(groupedParagraphs[1]));
+    final third = tester.getRect(find.text(groupedParagraphs[2]));
+    expect(first.height, closeTo(44, 2));
+    expect(second.height, closeTo(66, 2));
+    expect(third.height, closeTo(44, 2));
+    expect(second.top - first.bottom, closeTo(12, 1.5));
+    expect(third.top - second.bottom, closeTo(12, 1.5));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('2x 375 long paragraphs and actions scroll', (tester) async {
+    const longGrouped = [
+      'Eigene Tagesziele, keine Bedarfsschätzung.\n'
+          'Änderungen gelten ab dem gewählten Datum. Leere Felder haben kein Ziel.',
+      'Die Energie aus Makros kann vom Energieziel abweichen.\n'
+          'Ein sehr langer Hinweistext prüft, dass der Bogen bei großem Inhalt '
+          'scrollt statt über den Viewport zu laufen. Wiederholte Sätze halten den '
+          'Block deutlich über die Bildschirmhöhe.',
+      'Zweiter Block: Wiederholte Sätze halten den Block deutlich über die '
+          'Bildschirmhöhe und dürfen keine Overflow-Fehler erzeugen.\n'
+          'Dritter Block: Wiederholte Sätze halten den Block deutlich über die '
+          'Bildschirmhöhe und dürfen keine Overflow-Fehler erzeugen.\n'
+          'Vierter Block: Wiederholte Sätze halten den Block deutlich über die '
+          'Bildschirmhöhe und dürfen keine Overflow-Fehler erzeugen.\n'
+          'Fünfter Block: Wiederholte Sätze halten den Block deutlich über die '
+          'Bildschirmhöhe und dürfen keine Overflow-Fehler erzeugen.',
+    ];
+    await openSheet(
+      tester,
+      width: 375,
+      height: 812,
+      scale: 2,
+      sheetBody: '',
+      sheetParagraphs: longGrouped,
+      actions: const [OBInfoSheetAction(id: 'hrv', label: 'HRV · Quellen')],
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Scrollable), findsWidgets);
+    expect(find.text(longGrouped[0]), findsOneWidget);
+    final close = find.widgetWithText(OBAction, 'Schließen');
+    expect(close.hitTestable(), findsOneWidget);
+    final body = find.byKey(const ValueKey('journal-info-body'));
+    await tester.scrollUntilVisible(
+      find.text('HRV · Quellen'),
+      80,
+      scrollable: find.descendant(of: body, matching: find.byType(Scrollable)),
+    );
+    expect(find.text('HRV · Quellen'), findsOneWidget);
+    expect(close.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('action result closes the sheet and returns the id', (
+    tester,
+  ) async {
+    await openSheet(
+      tester,
+      sheetBody: '',
+      sheetParagraphs: groupedParagraphs,
+    );
+    expect(find.text(groupedParagraphs[0]), findsOneWidget);
+    await tester.tap(find.byIcon(LucideIcons.x));
+    await tester.pumpAndSettle();
+    expect(find.text(groupedParagraphs[0]), findsNothing);
+
+    final future = showOpenBandJournalInfo(
+      tester.element(find.byType(Scaffold)),
+      title: title,
+      paragraphs: groupedParagraphs,
+      actions: const [OBInfoSheetAction(id: 'hrv', label: 'HRV · Quellen')],
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('HRV · Quellen'));
+    await tester.pumpAndSettle();
+    expect(await future, 'hrv');
+    expect(find.text('Schließen'), findsNothing);
+    expect(find.text('HRV · Quellen'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('primaryAction returns id; X, barrier and default close return null', (
+    tester,
+  ) async {
+    const sleep = OBInfoSheetAction(id: 'sleep', label: 'Schlaf ansehen');
+    await openSheet(tester);
+    await tester.tap(find.byIcon(LucideIcons.x));
+    await tester.pumpAndSettle();
+
+    final defaultClose = showOpenBandJournalInfo(
+      tester.element(find.byType(Scaffold)),
+      title: title,
+      body: body,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Schließen'), findsOneWidget);
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+    expect(await defaultClose, isNull);
+
+    final xFuture = showOpenBandJournalInfo(
+      tester.element(find.byType(Scaffold)),
+      title: title,
+      body: body,
+      primaryAction: sleep,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Schlaf ansehen'), findsOneWidget);
+    expect(find.text('Schließen'), findsNothing);
+    await tester.tap(find.byIcon(LucideIcons.x));
+    await tester.pumpAndSettle();
+    expect(await xFuture, isNull);
+
+    final barrierFuture = showOpenBandJournalInfo(
+      tester.element(find.byType(Scaffold)),
+      title: title,
+      body: body,
+      primaryAction: sleep,
+    );
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(20, 80));
+    await tester.pumpAndSettle();
+    expect(await barrierFuture, isNull);
+
+    final primaryFuture = showOpenBandJournalInfo(
+      tester.element(find.byType(Scaffold)),
+      title: title,
+      body: body,
+      primaryAction: sleep,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Schlaf ansehen'));
+    await tester.pumpAndSettle();
+    expect(await primaryFuture, 'sleep');
+    expect(find.text('Schlaf ansehen'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('primaryAction stays pinned at 2x with long body', (tester) async {
+    await openSheet(
+      tester,
+      width: 375,
+      height: 812,
+      scale: 2,
+      sheetBody: longBody,
+      actions: const [OBInfoSheetAction(id: 'hrv', label: 'HRV · Quellen')],
+      primaryAction: const OBInfoSheetAction(
+        id: 'sleep',
+        label: 'Schlaf ansehen',
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Schließen'), findsNothing);
+    final primary = find.widgetWithText(OBAction, 'Schlaf ansehen');
+    expect(primary.hitTestable(), findsOneWidget);
+    final primaryRect = tester.getRect(primary);
+    expect(primaryRect.bottom, lessThanOrEqualTo(812 - 34 + 1));
+    expect(primaryRect.top, greaterThanOrEqualTo(59));
+    final bodyScroll = find.byKey(const ValueKey('journal-info-body'));
+    await tester.scrollUntilVisible(
+      find.text('HRV · Quellen'),
+      80,
+      scrollable: find.descendant(
+        of: bodyScroll,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.text('HRV · Quellen'), findsOneWidget);
+    expect(primary.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

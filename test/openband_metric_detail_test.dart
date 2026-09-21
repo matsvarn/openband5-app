@@ -101,22 +101,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('hrv detail renders light and dark', (tester) async {
+  testWidgets('hrv detail routes to the night-scalar screen', (tester) async {
     await mount(tester);
     expect(find.text('48'), findsOneWidget);
     expect(find.text('Nacht für Nacht'), findsOneWidget);
     expect(find.textContaining('von 30 Nächten'), findsOneWidget);
-    expect(find.textContaining('Basis '), findsOneWidget);
+    expect(find.text('Nachtverlauf'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/metric-detail-hrv.png'),
-    );
-    await mount(tester, brightness: Brightness.dark);
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/metric-detail-hrv-dark.png'),
-    );
   });
 
   testWidgets('tapping 7 nights changes the observed count label', (
@@ -152,7 +143,47 @@ void main() {
     repo.scenario = SyntheticScenario.missing;
     await mount(tester);
     expect(find.text('—'), findsWidgets);
-    expect(find.text('Basis noch offen'), findsOneWidget);
+    expect(find.text('Noch kein Nachtwert'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('switching HRV to strain loads the generic day family', (
+    tester,
+  ) async {
+    await mount(tester);
+    expect(find.text('Nachtverlauf'), findsOneWidget);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 59, bottom: 34),
+            disableAnimations: true,
+          ),
+          child: child!,
+        ),
+        home: OpenBandMetricDetail(
+          controller: controller,
+          metricKey: MetricKey.strain,
+          label: 'Belastung',
+          subtitle: 'heute bis jetzt',
+          unit: 'von 21',
+          icon: LucideIcons.flame,
+          color: (p) => p.strain,
+          tint: (p) => p.strainTint,
+          digits: 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.text('Nachtverlauf'), findsNothing);
+    expect(find.text('1,6'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

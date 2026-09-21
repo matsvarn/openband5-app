@@ -1449,6 +1449,228 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<NightScalarDetail> readNightScalarDetail(
+    MetricKey key,
+    String day,
+    int nights,
+  ) async {
+    _requireDay(day);
+    final metric = nightScalarMetricOf(key);
+    requireNightScalarNights(nights);
+    final days = nightScalarDaysEnding(day, nights);
+    final startDay = days.first;
+    final column = metric == NightScalarMetric.hrv ? 'rmssd' : 'rhr';
+    final baselineRoot =
+        metric == NightScalarMetric.hrv ? 'hrv' : 'resting_hr';
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final selectedRows = await txn.rawQuery(
+        'SELECT day_id, skipped, partial, algo_version, computed_at, '
+        'rhr, rmssd, payload_json '
+        'FROM day_result '
+        'WHERE day_id = ? AND algo_version <= ? '
+        'ORDER BY algo_version DESC LIMIT 1',
+        [day, kAlgoVersion],
+      );
+      final selectedMap =
+          selectedRows.isEmpty ? null : Map<String, Object?>.from(selectedRows.first);
+      Map<String, Object?>? selectedProjected;
+      if (selectedMap != null) {
+        final selectedRaw = selectedMap['payload_json'];
+        final projected = await Isolate.run(
+          () => projectNightScalarPayloads([selectedRaw], baselineRoot),
+        );
+        final first = projected.first;
+        selectedProjected =
+            first == null ? null : Map<String, Object?>.from(first);
+        selectedMap.remove('payload_json');
+      }
+      final selectedAlgo = (selectedMap?['algo_version'] as num?)?.toInt();
+      final historyAnchor = selectedAlgo ?? kAlgoVersion;
+      final matchingRows = <Map<String, Object?>>[];
+      var offset = 0;
+      while (true) {
+        final batch = await txn.query(
+          'day_result',
+          columns: [
+            'day_id',
+            'skipped',
+            'partial',
+            'algo_version',
+            'computed_at',
+            column,
+            'payload_json',
+          ],
+          where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
+          whereArgs: [startDay, day, historyAnchor],
+          orderBy: 'day_id ASC',
+          limit: kNightScalarPayloadBatchSize,
+          offset: offset,
+        );
+        if (batch.isEmpty) break;
+        final rawPayloads = [for (final r in batch) r['payload_json']];
+        final payloads = await Isolate.run(
+          () => projectNightScalarPayloads(rawPayloads, baselineRoot),
+        );
+        for (var i = 0; i < batch.length; i++) {
+          final r = Map<String, Object?>.from(batch[i])..remove('payload_json');
+          final projected = i < payloads.length ? payloads[i] : null;
+          r['projected'] =
+              projected == null ? null : Map<String, Object?>.from(projected);
+          matchingRows.add(r);
+        }
+        offset += batch.length;
+        if (batch.length < kNightScalarPayloadBatchSize) break;
+      }
+      final otherRows = await txn.rawQuery(
+        'SELECT DISTINCT day_id FROM day_result '
+        'WHERE day_id >= ? AND day_id <= ? AND algo_version != ?',
+        [startDay, day, historyAnchor],
+      );
+      final seriesRows = await txn.rawQuery(
+        'SELECT date, value FROM metric_series '
+        'WHERE key = ? AND date >= ? AND date <= ? AND value IS NOT NULL',
+        [column, startDay, day],
+      );
+      final sleepRows = await txn.rawQuery(
+        'SELECT c.day_id AS day_id, '
+        'c.correction_id AS correction_id, '
+        'c.revision AS revision, '
+        'c.action AS action, '
+        'c.onset_ms AS onset_ms, '
+        'c.wake_ms AS wake_ms, '
+        'c.recording_timezone AS recording_timezone, '
+        'j.correction_id AS job_correction_id, '
+        'j.revision AS job_revision, '
+        'j.status AS status, '
+        'j.result_algo_version AS result_algo_version, '
+        'j.result_computed_at AS result_computed_at '
+        'FROM openband_sleep_correction c '
+        'LEFT JOIN openband_calculation_job j '
+        'ON j.day_id = c.day_id '
+        'AND j.correction_id = c.correction_id '
+        'AND j.revision = c.revision '
+        'WHERE c.day_id >= ? AND c.day_id <= ?',
+        [startDay, day],
+      );
+      final napRows = await txn.rawQuery(
+        'SELECT day_id, revision, status, '
+        'result_algo_version, result_computed_at '
+        'FROM nap_recalc_job '
+        'WHERE day_id >= ? AND day_id <= ?',
+        [startDay, day],
+      );
+      return (
+        selected: selectedMap,
+        selectedProjected: selectedProjected,
+        matching: matchingRows,
+        other: otherRows,
+        series: seriesRows,
+        sleep: sleepRows,
+        nap: napRows,
+      );
+    });
+
+    NightScalarRow rowFrom(
+      Map<String, Object?> r, {
+      required Object? scalar,
+      Map<String, Object?>? projected,
+    }) {
+      final valid = projected != null;
+      return NightScalarRow(
+        day: r['day_id'] as String,
+        algoVersion: (r['algo_version'] as num?)?.toInt(),
+        skipped: r['skipped'] == 1,
+        partial: r['partial'] == 1,
+        payloadUnreadable: !valid,
+        value: nightScalarFinite(scalar),
+        computedAtMs: (r['computed_at'] as num?)?.toInt(),
+        imported: valid && nightScalarJsonTrue(projected['imported']),
+        source: valid ? nightScalarLabel(projected['source']) : null,
+        sleepSource: valid ? nightScalarLabel(projected['sleep_source']) : null,
+        deviceFamily: valid ? nightScalarLabel(projected['device_family']) : null,
+        baseline: valid
+            ? nightScalarBaseline(
+                value: projected['baseline_value'],
+                status: projected['baseline_status'],
+                nValid: projected['baseline_n_valid'],
+                nightsSinceUpdate: projected['baseline_nights_since_update'],
+                note: projected['baseline_note'],
+              )
+            : null,
+        windowStartMs: valid ? nightScalarMillis(projected['onset_ms']) : null,
+        windowEndMs: valid ? nightScalarMillis(projected['offset_ms']) : null,
+      );
+    }
+
+    final selected = snapshot.selected == null
+        ? null
+        : rowFrom(
+            snapshot.selected!,
+            scalar: snapshot.selected![column],
+            projected: snapshot.selectedProjected,
+          );
+    final matching = <String, NightScalarRow>{
+      for (final r in snapshot.matching)
+        if (r['day_id'] is String)
+          r['day_id'] as String: rowFrom(
+            r,
+            scalar: r[column],
+            projected: r['projected'] as Map<String, Object?>?,
+          ),
+    };
+    final matchingDays = matching.keys.toSet();
+    final otherVersionDays = {
+      for (final r in snapshot.other)
+        if (r['day_id'] is String && !matchingDays.contains(r['day_id']))
+          r['day_id'] as String,
+    };
+    final seriesOnlyDays = {
+      for (final r in snapshot.series)
+        if (r['date'] is String &&
+            nightScalarFinite(r['value']) != null &&
+            !matchingDays.contains(r['date']) &&
+            !otherVersionDays.contains(r['date']))
+          r['date'] as String,
+    };
+    final sleepJobs = <String, NightScalarJob>{
+      for (final r in snapshot.sleep)
+        if (r['day_id'] is String)
+          r['day_id'] as String: nightScalarSleepJobFromRow(
+            Map<String, Object?>.from(r),
+          ),
+    };
+    final napJobs = <String, NightScalarJob>{
+      for (final r in snapshot.nap)
+        if (r['day_id'] is String)
+          r['day_id'] as String: nightScalarNapJobFromRow(
+            Map<String, Object?>.from(r),
+          ),
+    };
+    String? recordingTimezone;
+    for (final r in snapshot.sleep) {
+      if (r['day_id'] == day) {
+        recordingTimezone = nightScalarLabel(r['recording_timezone']);
+        break;
+      }
+    }
+    return buildNightScalarDetail(
+      day: day,
+      key: metric,
+      nights: nights,
+      currentAlgo: kAlgoVersion,
+      days: days,
+      selected: selected,
+      matching: matching,
+      otherVersionDays: otherVersionDays,
+      seriesOnlyDays: seriesOnlyDays,
+      sleepJobs: sleepJobs,
+      napJobs: napJobs,
+      recordingTimezone: recordingTimezone,
+    );
+  }
+
+  @override
   Future<SetupEvaluation> readSetupEvaluation(String day) async {
     _requireDay(day);
     final row = await LocalDb.dayResult(day);

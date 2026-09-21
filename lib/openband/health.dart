@@ -902,7 +902,7 @@ String obMetricStatus(double? value, double? baseline, {String unit = ''}) {
   if (baseline == null) return 'Basis noch offen';
   if (value == null) return '—';
   final d = value - baseline;
-  if (d.abs() < .5) return 'im Bereich';
+  if (d.abs() < .5) return 'wie Basis';
   return '${d > 0 ? '+' : '−'}${obNumber(d.abs())} ${d > 0 ? 'über' : 'unter'} Basis';
 }
 

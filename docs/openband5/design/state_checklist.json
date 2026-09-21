@@ -757,6 +757,13 @@
         "note": "Alias of A01 Übertragung unterbrochen. Phase 3 consolidates interrupted transfer into the overview sync row, with stored frontier and Fortsetzen. Archive 1E0M-0 is not a separate production destination. This records the accepted navigation change, not pixel parity with the frozen archive. First sync, running/completed transfer and storage-full states remain separate. Synthetic UI proof only; physical interruption/recovery remains open.",
         "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
         "nativeReview": "build/ui-review/notifications-picker-final-20260919 (PASS, 368.15s) and notifications-picker-mini-final-20260919 (PASS, 529.58s), overview-interrupted-light/dark. Existing accepted captures; lead rechecked native light render and run metadata on 21 September."
+      },
+      "HRV · Quelle und Grenzen": {
+        "status": "partial",
+        "archiveNode": "2J85-0",
+        "source": "lib/openband/night_scalar_data.dart; lib/openband/night_signals.dart",
+        "evidence": "Archive render inspected 2026-09-21; stored scalar origin and version audit recorded in IMPLEMENTATION_PLAN.md.",
+        "note": "Source/time/version/baseline disclosure and actual night-signal navigation are being completed in the HRV/RHR detail unit. Archive also includes used sleep sections and RMSSD/SDNN method education. Those broader outcomes remain open; do not claim a known headline estimator or physiological validity from stored metadata."
       }
     },
     "A02 · Schlaf": {
@@ -1176,6 +1183,38 @@
         "note": "Alias of the implemented Labormarker custom editor. Gesundheit → Laborwerte → Eigene Marker → Marker anlegen opens Eigener Marker. Phase 3 light/dark 3LXY-0 / 3LZI-0. Existing native runs and tests cover save, collisions, retained draft on failure and repeated taps. Lead rechecked production source and the native editor on 21 September; no second implementation.",
         "nativeReview": "build/ui-review/labs-v3-20260919 (138 PNGs); build/ui-review/labs-mini-v3-20260919 (139 PNGs). Every PNG inspected; light/dark, empty, CRUD, failures/retry, missing report bounds, keyboard and 2x text. Synthetic simulator proof.",
         "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY"
+      },
+      "Basis und offene Werte": {
+        "status": "partial",
+        "archiveNode": "24SE-0",
+        "source": "lib/openband/health.dart; lib/openband/metric_detail.dart",
+        "evidence": "Archive render inspected 2026-09-21; current Health routes and metric reads inspected.",
+        "note": "Archive is a full Health hub with dated baseline, weight/body values, rhythm, retrospective and coverage destinations. HRV/RHR detail and baseline disclosures do not complete that hub. Central cross-screen receipt consistency and remaining hub actions stay open."
+      },
+      "Herzintervalle · unzuverlässig": {
+        "status": "partial",
+        "archiveNode": "2BCX-0",
+        "source": "lib/openband/local_repository.dart; lib/openband/night_scalar_data.dart",
+        "evidence": "Archive render and _metric/typed night-scalar state source inspected 2026-09-21.",
+        "note": "Unreadable payload, missing scalar and pending correction are distinct from unreliable physiological quality. Existing _metric only maps quality notes after a null value; no full quality-specific detail or method flow is verified. Do not substitute the unreadable variant for this requirement."
+      },
+      "Ruhepuls · 7 Tage": {
+        "status": "implemented",
+        "archiveNode": "296Q-0",
+        "paperNode": "4TQK-0",
+        "source": "lib/openband/night_scalar_detail.dart; lib/openband/night_scalar_data.dart; lib/openband/local_repository.dart",
+        "evidence": "test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_night_scalar_detail_test.dart; integration_test/openband_review_test.dart",
+        "note": "Current stored night plus selectable7/30/90 civil-day history at the same stored algorithm. The archived invented spread band and period-average headline are replaced by actual individual nights and the stored scalar baseline. All existing HRV/RHR detail callers use this shared family; no old detail layout remains reachable. Missing, unreadable, partial, older and correction receipt states are explicit.",
+        "nativeReview": "build/ui-review/night-scalar-pro-20260921-v2 and night-scalar-mini-20260921-v2:36 checkpoints each, all72 PNGs inspected. Shared period selector, RHR light/dark, missing/partial/error/retry, actual night/correction destinations,2x top/bottom. Synthetic simulator proof."
+      },
+      "Ruhepuls 30 Tage": {
+        "status": "implemented",
+        "archiveNode": "2F44-0",
+        "paperNode": "4TQK-0",
+        "source": "lib/openband/night_scalar_detail.dart; lib/openband/night_scalar_data.dart; lib/openband/local_repository.dart",
+        "evidence": "test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_night_scalar_detail_test.dart; integration_test/openband_review_test.dart",
+        "note": "Current stored night plus selectable7/30/90 civil-day history at the same stored algorithm. The archived invented spread band and period-average headline are replaced by actual individual nights and the stored scalar baseline. All existing HRV/RHR detail callers use this shared family; no old detail layout remains reachable. Missing, unreadable, partial, older and correction receipt states are explicit.",
+        "nativeReview": "build/ui-review/night-scalar-pro-20260921-v2 and night-scalar-mini-20260921-v2:36 checkpoints each, all72 PNGs inspected. Shared period selector, RHR light/dark, missing/partial/error/retry, actual night/correction destinations,2x top/bottom. Synthetic simulator proof."
       }
     },
     "A04 · System": {

@@ -32,6 +32,13 @@ void main() {
     await icons.load();
   });
 
+  test('scalar baseline comparison does not imply a normal range', () {
+    expect(obMetricStatus(40, 40), 'wie Basis');
+    expect(obMetricStatus(40.4, 40), 'wie Basis');
+    expect(obMetricStatus(40.5, 40), '+1 über Basis');
+    expect(obMetricStatus(null, 40), '—');
+  });
+
   late SyntheticOpenBandRepository repo;
   late OpenBandController controller;
   setUp(() {

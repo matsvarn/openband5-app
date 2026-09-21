@@ -2307,6 +2307,152 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     ];
   }
 
+  bool failNightScalarRead = false;
+  NightScalarDetail? nightScalarOverride;
+  bool _nightScalarCustom = false;
+  NightScalarRow? _nightScalarSelected;
+  final Map<String, NightScalarRow> _nightScalarMatching = {};
+  final Set<String> _nightScalarOtherVersions = {};
+  final Set<String> _nightScalarSeriesOnly = {};
+  final Map<String, NightScalarJob> _nightScalarSleepJobs = {};
+  final Map<String, NightScalarJob> _nightScalarNapJobs = {};
+  String? _nightScalarRecordingTimezone;
+  int? _nightScalarCurrentAlgo;
+
+  void seedNightScalarDetail({
+    NightScalarRow? selected,
+    Map<String, NightScalarRow> matching = const {},
+    Set<String> otherVersionDays = const {},
+    Set<String> seriesOnlyDays = const {},
+    Map<String, NightScalarJob> sleepJobs = const {},
+    Map<String, NightScalarJob> napJobs = const {},
+    String? recordingTimezone,
+    int? currentAlgo,
+  }) {
+    _nightScalarCustom = true;
+    _nightScalarSelected = selected;
+    _nightScalarMatching
+      ..clear()
+      ..addAll(matching);
+    _nightScalarOtherVersions
+      ..clear()
+      ..addAll(otherVersionDays);
+    _nightScalarSeriesOnly
+      ..clear()
+      ..addAll(seriesOnlyDays);
+    _nightScalarSleepJobs
+      ..clear()
+      ..addAll(sleepJobs);
+    _nightScalarNapJobs
+      ..clear()
+      ..addAll(napJobs);
+    _nightScalarRecordingTimezone = recordingTimezone;
+    _nightScalarCurrentAlgo = currentAlgo;
+  }
+
+  @override
+  Future<NightScalarDetail> readNightScalarDetail(
+    MetricKey key,
+    String day,
+    int nights,
+  ) async {
+    if (failNightScalarRead) {
+      throw StateError('synthetic night scalar read failure');
+    }
+    final metric = nightScalarMetricOf(key);
+    if (nightScalarOverride != null) return nightScalarOverride!;
+    final days = nightScalarDaysEnding(day, nights);
+    if (_nightScalarCustom) {
+      return buildNightScalarDetail(
+        day: day,
+        key: metric,
+        nights: nights,
+        currentAlgo: _nightScalarCurrentAlgo ?? kAlgoVersion,
+        days: days,
+        selected: _nightScalarSelected,
+        matching: _nightScalarMatching,
+        otherVersionDays: _nightScalarOtherVersions,
+        seriesOnlyDays: _nightScalarSeriesOnly,
+        sleepJobs: _nightScalarSleepJobs,
+        napJobs: _nightScalarNapJobs,
+        recordingTimezone: _nightScalarRecordingTimezone,
+      );
+    }
+    return _produceNightScalarDetail(metric, day, days);
+  }
+
+  NightScalarDetail _produceNightScalarDetail(
+    NightScalarMetric key,
+    String day,
+    List<String> days,
+  ) {
+    final byDay = key == NightScalarMetric.hrv ? _hrvByDay : _rhrByDay;
+    final recovery = Map<String, dynamic>.from(_summary['recovery'] as Map);
+    final onFixtureDay = day == _day;
+    final missing = scenario == SyntheticScenario.missing;
+    final processing = onFixtureDay && scenario == SyntheticScenario.processing;
+    final failed =
+        onFixtureDay && scenario == SyntheticScenario.calculationFailure;
+    final selectedPartial =
+        onFixtureDay && scenario == SyntheticScenario.partial;
+    double? selectedValue;
+    if (onFixtureDay && !missing) {
+      selectedValue = key == NightScalarMetric.hrv
+          ? (recovery['hrv_ms'] as num).toDouble()
+          : (recovery['rhr_bpm'] as num).toDouble();
+    } else if (!onFixtureDay) {
+      selectedValue = byDay[day];
+    }
+    final baselineValue = onFixtureDay && selectedValue != null
+        ? (key == NightScalarMetric.hrv
+            ? kNightScalarPaperHrvBaseline
+            : kNightScalarPaperRhrBaseline)
+        : null;
+    NightScalarRow? selected;
+    if (selectedValue != null) {
+      selected = NightScalarRow(
+        day: day,
+        algoVersion: kAlgoVersion,
+        partial: selectedPartial,
+        value: selectedValue,
+        computedAtMs: onFixtureDay
+            ? _baseBand.latestStoredAt?.millisecondsSinceEpoch
+            : null,
+        baseline: baselineValue == null
+            ? null
+            : StoredNightBaseline(value: baselineValue),
+        windowStartMs: onFixtureDay ? _onset.millisecondsSinceEpoch : null,
+        windowEndMs: onFixtureDay ? _wake.millisecondsSinceEpoch : null,
+      );
+    }
+    final matching = <String, NightScalarRow>{
+      for (final id in days)
+        if (id == day && selected != null)
+          id: selected
+        else if (!(missing && id == _day) && byDay[id] != null)
+          id: NightScalarRow(
+            day: id,
+            algoVersion: kAlgoVersion,
+            value: byDay[id],
+          ),
+    };
+    return buildNightScalarDetail(
+      day: day,
+      key: key,
+      nights: days.length,
+      currentAlgo: kAlgoVersion,
+      days: days,
+      selected: selected,
+      matching: matching,
+      sleepJobs: {
+        if (processing) day: NightScalarJob(day: day, status: 'pending'),
+      },
+      napJobs: {
+        if (failed) day: NightScalarJob(day: day, status: 'failed'),
+      },
+    );
+  }
+
   @override
   Future<OpenBandDay> readDay(String day) async {
     if (day == _day) return _overlay(_baseDay());

@@ -250,11 +250,19 @@ class OBInfoSheetAction {
   final String label;
 }
 
+/// Shared journal/info sheet. Non-null [paragraphs] wins over [body]: each
+/// entry is one block (inner newlines kept, empty/whitespace entries dropped).
+/// Null [paragraphs] keeps the existing [body] split-on-newline behavior.
+/// Non-null [primaryAction] replaces the pinned Schließen footer with that
+/// label and returns its id. Header X and barrier dismiss still return null.
+/// [actions] stay secondary buttons in the scroll body.
 Future<Object?> showOpenBandJournalInfo(
   BuildContext context, {
   required String title,
-  required String body,
+  String body = '',
+  List<String>? paragraphs,
   List<OBInfoSheetAction> actions = const [],
+  OBInfoSheetAction? primaryAction,
 }) {
   return showModalBottomSheet<Object>(
     context: context,
@@ -266,7 +274,9 @@ Future<Object?> showOpenBandJournalInfo(
     builder: (context) => _OpenBandInfoSheet(
       title: title,
       body: body,
+      paragraphs: paragraphs,
       actions: actions,
+      primaryAction: primaryAction,
     ),
   );
 }
@@ -274,19 +284,22 @@ Future<Object?> showOpenBandJournalInfo(
 class _OpenBandInfoSheet extends StatelessWidget {
   final String title;
   final String body;
+  final List<String>? paragraphs;
   final List<OBInfoSheetAction> actions;
+  final OBInfoSheetAction? primaryAction;
   const _OpenBandInfoSheet({
     required this.title,
-    required this.body,
+    this.body = '',
+    this.paragraphs,
     this.actions = const [],
+    this.primaryAction,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final media = MediaQuery.of(context);
-    final paragraphs = body
-        .split(RegExp(r'\r?\n+'))
+    final blocks = (paragraphs ?? body.split(RegExp(r'\r?\n+')))
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toList();
@@ -359,7 +372,7 @@ class _OpenBandInfoSheet extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 for (final (i, paragraph)
-                                    in paragraphs.indexed) ...[
+                                    in blocks.indexed) ...[
                                   if (i > 0) const SizedBox(height: 12),
                                   Text(
                                     paragraph,
@@ -394,9 +407,10 @@ class _OpenBandInfoSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   OBAction(
-                    'Schließen',
+                    primaryAction?.label ?? 'Schließen',
                     ink: true,
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () =>
+                        Navigator.pop(context, primaryAction?.id),
                   ),
                 ],
               ),

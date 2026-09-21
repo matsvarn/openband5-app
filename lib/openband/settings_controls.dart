@@ -95,6 +95,7 @@ class OBSettingsChoiceRow extends StatelessWidget {
 
 /// Paper 3MB6-0 compact value row: min 56, pad 10/14, 15 w500 / optional 15 w600.
 /// Comfortable: min 64, pad 14/20, label 15/20. Empty value never stacks.
+/// Optional [leading] is a 36px tile with 12 gap; 2x stacks label/value beside it.
 class OBSettingsValueRow extends StatelessWidget {
   final String label;
   final String value;
@@ -102,6 +103,7 @@ class OBSettingsValueRow extends StatelessWidget {
   final bool chevron;
   final bool comfortable;
   final bool mutedValue;
+  final Widget? leading;
   final VoidCallback? onTap;
 
   const OBSettingsValueRow({
@@ -112,6 +114,7 @@ class OBSettingsValueRow extends StatelessWidget {
     this.chevron = false,
     this.comfortable = false,
     this.mutedValue = false,
+    this.leading,
     this.onTap,
   });
 
@@ -119,17 +122,25 @@ class OBSettingsValueRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final stacked = _stackSettingsControls(context) && value.isNotEmpty;
-    final labelText = Text(
-      label,
-      style: comfortable
-          ? p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15)
-          : p.text(15, weight: FontWeight.w500),
-    );
-    final valueStyle = p.text(
-      15,
-      weight: FontWeight.w600,
-      color: mutedValue ? p.muted : null,
-    );
+    final labelStyle = comfortable
+        ? p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15)
+        : leading == null
+        ? p.text(15, weight: FontWeight.w500)
+        : p.text(15, weight: FontWeight.w500).copyWith(height: 20 / 15);
+    final labelText = Text(label, style: labelStyle);
+    final valueStyle = leading == null
+        ? p.text(
+            15,
+            weight: FontWeight.w600,
+            color: mutedValue ? p.muted : null,
+          )
+        : p
+              .text(
+                15,
+                weight: FontWeight.w600,
+                color: mutedValue ? p.muted : null,
+              )
+              .copyWith(height: 20 / 15);
     Widget trailing({required bool expanded}) => Row(
       mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
       children: [
@@ -144,11 +155,67 @@ class OBSettingsValueRow extends StatelessWidget {
                   ),
                 ),
         if (chevron) ...[
-          if (value.isNotEmpty) const SizedBox(width: 4),
+          if (value.isNotEmpty) SizedBox(width: leading != null ? 12 : 4),
           Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
         ],
       ],
     );
+    Widget body() {
+      if (stacked) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            labelText,
+            const SizedBox(height: 8),
+            trailing(expanded: true),
+          ],
+        );
+      }
+      if (value.isEmpty) {
+        return Row(
+          children: [
+            Expanded(child: labelText),
+            if (chevron)
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
+              ),
+          ],
+        );
+      }
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 12.0;
+          const minLabel = 64.0;
+          final maxTrailing = (constraints.maxWidth - gap - minLabel).clamp(
+            0.0,
+            double.infinity,
+          );
+          return Row(
+            children: [
+              Expanded(child: labelText),
+              const SizedBox(width: gap),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxTrailing),
+                child: trailing(expanded: false),
+              ),
+            ],
+          );
+        },
+      );
+    }
+
+    final inner = leading == null
+        ? body()
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(width: 36, height: 36, child: leading),
+              const SizedBox(width: 12),
+              Expanded(child: body()),
+            ],
+          );
     final child = SizedBox(
       width: double.infinity,
       child: ConstrainedBox(
@@ -157,49 +224,7 @@ class OBSettingsValueRow extends StatelessWidget {
           padding: comfortable
               ? const EdgeInsets.symmetric(vertical: 14, horizontal: 20)
               : const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-          child: stacked
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    labelText,
-                    const SizedBox(height: 8),
-                    trailing(expanded: true),
-                  ],
-                )
-              : value.isEmpty
-              ? Row(
-                  children: [
-                    Expanded(child: labelText),
-                    if (chevron)
-                      SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: Icon(
-                          LucideIcons.chevronRight,
-                          size: 18,
-                          color: p.muted,
-                        ),
-                      ),
-                  ],
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    const gap = 12.0;
-                    const minLabel = 64.0;
-                    final maxTrailing = (constraints.maxWidth - gap - minLabel)
-                        .clamp(0.0, double.infinity);
-                    return Row(
-                      children: [
-                        Expanded(child: labelText),
-                        const SizedBox(width: gap),
-                        ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: maxTrailing),
-                          child: trailing(expanded: false),
-                        ),
-                      ],
-                    );
-                  },
-                ),
+          child: inner,
         ),
       ),
     );
