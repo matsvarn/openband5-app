@@ -107,10 +107,7 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
       _hrvSlot = null;
     });
     try {
-      final snap = await repo.readCycleMeasurements(
-        day,
-        cycleStartDay: start,
-      );
+      final snap = await repo.readCycleMeasurements(day, cycleStartDay: start);
       if (!_same(gen, repo, day)) return;
       setState(() {
         _snapshot = snap;
@@ -136,10 +133,7 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
   }
 
   bool _same(int gen, OpenBandRepository repo, String day) =>
-      mounted &&
-      gen == _gen &&
-      identical(repo, _repo) &&
-      widget.day == day;
+      mounted && gen == _gen && identical(repo, _repo) && widget.day == day;
 
   void _info() => showOpenBandJournalInfo(
     context,
@@ -179,7 +173,9 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
           (period.startDay, _periodLabel(period, asOf)),
       ],
     );
-    if (picked == null || !_same(gen, repo, day) || picked == _selectedStartDay) {
+    if (picked == null ||
+        !_same(gen, repo, day) ||
+        picked == _selectedStartDay) {
       return;
     }
     setState(() {
@@ -231,13 +227,7 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
     if (snap == null) return const [];
     switch (snap.reason) {
       case CycleMeasurementsReason.trackingDisabled:
-        return [
-          _notice(
-            'Zyklus deaktiviert',
-            'Einstellungen',
-            _openSettings,
-          ),
-        ];
+        return [_notice('Zyklus deaktiviert', 'Einstellungen', _openSettings)];
       case CycleMeasurementsReason.emptyStarts:
         return [
           _notice('Kein Zyklusbeginn', 'Zum Zyklus', () {
@@ -246,14 +236,9 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
         ];
       case CycleMeasurementsReason.unreadableStarts:
         return [
-          _notice(
-            'Zyklusbeginn nicht lesbar',
-            'Zum Zyklus',
-            () {
-              Navigator.maybePop(context);
-            },
-            danger: true,
-          ),
+          _notice('Zyklusbeginn nicht lesbar', 'Zum Zyklus', () {
+            Navigator.maybePop(context);
+          }, danger: true),
         ];
       case CycleMeasurementsReason.selectedStartMissing:
         if (snap.periods.isEmpty) {
@@ -282,11 +267,31 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
     final periodLabel = selected == null ? '' : _periodLabel(selected, asOf);
     final rhrPoints = [
       for (final night in snap.nights)
-        MetricPoint(night.day, _finiteMetric(night.rhr?.value)),
+        OBSourcedSample(
+          value: _finiteMetric(night.rhr?.value),
+          caption: DateFormat(
+            'd. MMM',
+            'de_DE',
+          ).format(DateTime.parse(night.day)),
+          semantics: DateFormat(
+            'd. MMMM',
+            'de_DE',
+          ).format(DateTime.parse(night.day)),
+        ),
     ];
     final hrvPoints = [
       for (final night in snap.nights)
-        MetricPoint(night.day, _finiteMetric(night.hrv?.value)),
+        OBSourcedSample(
+          value: _finiteMetric(night.hrv?.value),
+          caption: DateFormat(
+            'd. MMM',
+            'de_DE',
+          ).format(DateTime.parse(night.day)),
+          semantics: DateFormat(
+            'd. MMMM',
+            'de_DE',
+          ).format(DateTime.parse(night.day)),
+        ),
     ];
     final rhrIndex = _rhrSlot ?? _latestFinite(rhrPoints);
     final hrvIndex = _hrvSlot ?? _latestFinite(hrvPoints);
@@ -417,7 +422,7 @@ class _MeasurementsSyntheticFooter extends StatelessWidget {
 double? _finiteMetric(double? value) =>
     value != null && value.isFinite ? value : null;
 
-int? _latestFinite(List<MetricPoint> points) {
+int? _latestFinite(List<OBSourcedSample> points) {
   for (var i = points.length - 1; i >= 0; i--) {
     final value = points[i].value;
     if (value != null && value.isFinite) return i;
@@ -425,7 +430,7 @@ int? _latestFinite(List<MetricPoint> points) {
   return null;
 }
 
-String _coverage(List<MetricPoint> points, int visible) {
+String _coverage(List<OBSourcedSample> points, int visible) {
   final available = [
     for (final point in points)
       if (point.value != null && point.value!.isFinite) point,
@@ -440,7 +445,10 @@ String _periodLabel(CycleMeasurementPeriod period, String asOfDay) {
   final needYear =
       from.year != to.year || from.year != asOf.year || to.year != asOf.year;
   if (from.year == to.year && from.month == to.month) {
-    final end = DateFormat(needYear ? 'd. MMM y' : 'd. MMM', 'de_DE').format(to);
+    final end = DateFormat(
+      needYear ? 'd. MMM y' : 'd. MMM',
+      'de_DE',
+    ).format(to);
     return '${from.day}.–$end';
   }
   final fmt = needYear ? 'd. MMM y' : 'd. MMM';
@@ -449,15 +457,16 @@ String _periodLabel(CycleMeasurementPeriod period, String asOfDay) {
 
 const _kLineSep = '\u2028';
 
-String _infoBody(
-  CycleMeasurementsSnapshot? snap,
-  int? rhrSlot,
-  int? hrvSlot,
-) {
+String _infoBody(CycleMeasurementsSnapshot? snap, int? rhrSlot, int? hrvSlot) {
   if (snap == null || snap.nights.isEmpty) return _kInfoBody;
   final sources = <String>[
     if (_nightMetric(snap, rhrSlot, rhr: true) case final selected?)
-      _sourceParagraph('Ruhepuls', selected.night, selected.metric, snap.asOfDay),
+      _sourceParagraph(
+        'Ruhepuls',
+        selected.night,
+        selected.metric,
+        snap.asOfDay,
+      ),
     if (_nightMetric(snap, hrvSlot, rhr: false) case final selected?)
       _sourceParagraph('HRV', selected.night, selected.metric, snap.asOfDay),
   ];
@@ -521,7 +530,10 @@ String? _windowUtc(DateTime? start, DateTime? end, String asOfDay) {
       from.year != to.year || from.year != asOfYear || to.year != asOfYear;
   String stamp(DateTime at) {
     final date = DateTime(at.year, at.month, at.day);
-    final day = DateFormat(needYear ? 'd. MMM y' : 'd. MMM', 'de_DE').format(date);
+    final day = DateFormat(
+      needYear ? 'd. MMM y' : 'd. MMM',
+      'de_DE',
+    ).format(date);
     final time =
         '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
     return '$day, $time';

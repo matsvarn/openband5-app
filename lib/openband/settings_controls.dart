@@ -31,12 +31,7 @@ class OBSettingsErrorCard extends StatelessWidget {
         children: [
           Text(message, style: p.text(14, color: p.danger)),
           const SizedBox(height: 8),
-          OBAction(
-            retryLabel,
-            secondary: true,
-            ink: true,
-            onPressed: onRetry,
-          ),
+          OBAction(retryLabel, secondary: true, ink: true, onPressed: onRetry),
         ],
       ),
     );
@@ -527,9 +522,9 @@ class OBSettingsChoiceSheet<T> extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: p.text(18, weight: FontWeight.w600).copyWith(
-                  height: 24 / 18,
-                ),
+                style: p
+                    .text(18, weight: FontWeight.w600)
+                    .copyWith(height: 24 / 18),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -571,11 +566,8 @@ Future<int?> showOpenBandSettingsCountSheet({
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AlpRadius.card)),
     ),
-    builder: (sheet) => OBSettingsCountSheet(
-      title: title,
-      value: value,
-      sheetKey: sheetKey,
-    ),
+    builder: (sheet) =>
+        OBSettingsCountSheet(title: title, value: value, sheetKey: sheetKey),
   );
 }
 
@@ -647,9 +639,9 @@ class _OBSettingsCountSheetState extends State<OBSettingsCountSheet> {
                 children: [
                   Text(
                     widget.title,
-                    style: p.text(18, weight: FontWeight.w600).copyWith(
-                      height: 24 / 18,
-                    ),
+                    style: p
+                        .text(18, weight: FontWeight.w600)
+                        .copyWith(height: 24 / 18),
                   ),
                   const SizedBox(height: 12),
                   DecoratedBox(
@@ -693,6 +685,119 @@ class _OBSettingsCountSheetState extends State<OBSettingsCountSheet> {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Twelve-month window control: 64pt at default type, 44pt chevrons,
+/// two centered 15/20 date lines that grow at large text.
+class OBWindowPager extends StatelessWidget {
+  const OBWindowPager({
+    super.key,
+    required this.startLabel,
+    required this.endLabel,
+    this.onEarlier,
+    this.onLater,
+    this.onCenter,
+    this.earlierEnabled = true,
+    this.laterEnabled = true,
+    this.earlierKey,
+    this.laterKey,
+    this.centerKey,
+    this.earlierTooltip = 'Früher',
+    this.laterTooltip = 'Später',
+    this.centerTooltip = 'Enddatum',
+  });
+
+  final String startLabel;
+  final String endLabel;
+  final VoidCallback? onEarlier;
+  final VoidCallback? onLater;
+  final VoidCallback? onCenter;
+  final bool earlierEnabled;
+  final bool laterEnabled;
+  final Key? earlierKey;
+  final Key? laterKey;
+  final Key? centerKey;
+  final String earlierTooltip;
+  final String laterTooltip;
+  final String centerTooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final rangeStyle = p
+        .text(15, weight: FontWeight.w600)
+        .copyWith(height: 20 / 15);
+    Widget slot({
+      required Key? key,
+      required String tooltip,
+      required IconData icon,
+      required bool enabled,
+      required VoidCallback? onPressed,
+    }) {
+      final button = SizedBox(
+        width: 44,
+        height: 44,
+        child: IconButton(
+          key: key,
+          tooltip: tooltip,
+          onPressed: enabled ? onPressed : null,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
+          icon: Icon(icon, size: 18, color: p.ink),
+        ),
+      );
+      if (enabled) return button;
+      return Opacity(opacity: 0.4, child: button);
+    }
+
+    return OBCard(
+      padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        child: Row(
+          children: [
+            slot(
+              key: earlierKey,
+              tooltip: earlierTooltip,
+              icon: LucideIcons.chevronLeft,
+              enabled: earlierEnabled && onEarlier != null,
+              onPressed: onEarlier,
+            ),
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: centerKey,
+                    onTap: onCenter,
+                    child: Semantics(
+                      button: true,
+                      label: centerTooltip,
+                      child: Center(
+                        child: Text(
+                          '$startLabel–\n$endLabel',
+                          textAlign: TextAlign.center,
+                          style: rangeStyle,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            slot(
+              key: laterKey,
+              tooltip: laterTooltip,
+              icon: LucideIcons.chevronRight,
+              enabled: laterEnabled && onLater != null,
+              onPressed: onLater,
+            ),
+          ],
         ),
       ),
     );

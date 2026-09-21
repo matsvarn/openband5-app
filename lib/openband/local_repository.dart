@@ -3041,91 +3041,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
       final visibleStart = selection.visibleStart;
       final periodEnd = selection.selected?.endDay;
-      final dayRows = visibleStart == null || periodEnd == null
-          ? const <Map<String, Object?>>[]
-          : await txn.rawQuery(
-              'SELECT day_id, skipped, partial, payload_json, computed_at '
-              'FROM day_result '
-              'WHERE day_id >= ? AND day_id <= ? AND algo_version = ?',
-              [visibleStart, periodEnd, kAlgoVersion],
+      final rows = visibleStart == null || periodEnd == null
+          ? const <CycleNightSourceRow>[]
+          : await _readExactAlgoCycleNights(
+              txn,
+              startDay: visibleStart,
+              endDay: periodEnd,
             );
-      final correctionRows = visibleStart == null || periodEnd == null
-          ? const <Map<String, Object?>>[]
-          : await txn.rawQuery(
-              'SELECT c.day_id AS day_id, '
-              'c.correction_id AS correction_id, '
-              'c.revision AS revision, '
-              'c.action AS action, '
-              'c.onset_ms AS onset_ms, '
-              'c.wake_ms AS wake_ms, '
-              'j.correction_id AS job_correction_id, '
-              'j.revision AS job_revision, '
-              'j.status AS status, '
-              'j.result_algo_version AS result_algo_version, '
-              'j.result_computed_at AS result_computed_at '
-              'FROM openband_sleep_correction c '
-              'LEFT JOIN openband_calculation_job j '
-              'ON j.day_id = c.day_id '
-              'AND j.correction_id = c.correction_id '
-              'AND j.revision = c.revision '
-              'WHERE c.day_id >= ? AND c.day_id <= ?',
-              [visibleStart, periodEnd],
-            );
-      return (
-        parsed: parsed,
-        dayRows: dayRows,
-        correctionRows: correctionRows,
-      );
+      return (parsed: parsed, rows: rows);
     });
-
-    final correctionByDay = <String, Map<String, dynamic>>{};
-    final blockedJob = <String>{};
-    for (final r in snapshot.correctionRows) {
-      final date = r['day_id'];
-      if (date is! String) continue;
-      final mapped = Map<String, dynamic>.from(r);
-      correctionByDay[date] = mapped;
-      if (!_currentCompleteSleepJob(mapped)) {
-        blockedJob.add(date);
-      }
-    }
-
-    final rawPayloads = [for (final r in snapshot.dayRows) r['payload_json']];
-    // dart:convert last-wins; sqlite json_extract is first-wins. Needed keys
-    // only, off-isolate, so unused series never expand on the UI isolate.
-    final payloads = rawPayloads.isEmpty
-        ? const <Map<String, Object?>?>[]
-        : await Isolate.run(() => _projectCycleNightPayloads(rawPayloads));
-
-    final rows = <CycleNightSourceRow>[];
-    for (var i = 0; i < snapshot.dayRows.length; i++) {
-      final r = snapshot.dayRows[i];
-      final date = r['day_id'];
-      if (date is! String) continue;
-      final payload = i < payloads.length ? payloads[i] : null;
-      final correction = correctionByDay[date];
-      final published =
-          correction != null && !blockedJob.contains(date) ? correction : null;
-      rows.add(
-        CycleNightSourceRow(
-          day: date,
-          algoVersion: kAlgoVersion,
-          skipped: r['skipped'] == 1,
-          partial: r['partial'] == 1,
-          payload: payload == null
-              ? null
-              : Map<String, Object?>.from(payload),
-          payloadUnreadable: payload == null,
-          jobBlocked: blockedJob.contains(date),
-          computedAtMs: (r['computed_at'] as num?)?.toInt(),
-          resultComputedAtMs:
-              (published?['result_computed_at'] as num?)?.toInt(),
-          correctionAction: published?['action']?.toString(),
-          correctionOnsetMs: (published?['onset_ms'] as num?)?.toInt(),
-          correctionWakeMs: (published?['wake_ms'] as num?)?.toInt(),
-        ),
-      );
-    }
 
     return buildCycleMeasurementsSnapshot(
       asOfDay: asOfDay,
@@ -3133,7 +3057,57 @@ class LocalOpenBandRepository implements OpenBandRepository {
       log: snapshot.parsed,
       cycleStartDay: cycleStartDay,
       algoVersion: kAlgoVersion,
-      rows: rows,
+      rows: snapshot.rows,
+    );
+  }
+
+  @override
+  Future<CycleMediansSnapshot> readCycleMedians(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
+  }) async {
+    requireCycleCalendarDay(anchorEnd, 'anchorEnd');
+    final at = now ?? DateTime.now();
+    if (cycleDateIsAfterToday(anchorEnd, at)) {
+      throw ArgumentError.value(
+        anchorEnd,
+        'anchorEnd',
+        'Cycle median anchor cannot be after local today.',
+      );
+    }
+    final window = cycleMedianWindow(
+      anchorEnd: anchorEnd,
+      pageOffset: pageOffset,
+    );
+    final settings = await readCycleSettings();
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final parsed = await CycleStore.load(txn, asOf: window.endDay);
+      final preview = buildCycleMediansSnapshot(
+        settings: settings,
+        log: parsed,
+        algoVersion: kAlgoVersion,
+        window: window,
+      );
+      if (!_cycleMediansNeedsNightRows(preview)) {
+        return (parsed: parsed, rows: const <CycleNightSourceRow>[]);
+      }
+      return (
+        parsed: parsed,
+        rows: await _readExactAlgoCycleNights(
+          txn,
+          startDay: window.startDay,
+          endDay: window.endDay,
+        ),
+      );
+    });
+    return buildCycleMediansSnapshot(
+      settings: settings,
+      log: snapshot.parsed,
+      algoVersion: kAlgoVersion,
+      window: window,
+      rows: snapshot.rows,
     );
   }
 
@@ -3313,6 +3287,121 @@ GlucoseSnapshot _glucoseSnapshotFromRead(
     truncated: read.historyTruncated,
     unreadableCount: unreadable + unreadTokens.length + receipt.unreadable,
   );
+}
+
+/// Bounded raw `payload_json` page for cycle-night reads. A twelve-month
+/// window is walked in these chunks so 365/366 fat strings are never held
+/// together; decode is isolate Dart last-wins on needed keys only.
+const int kCycleNightPayloadBatchSize = 32;
+
+bool _cycleMediansNeedsNightRows(CycleMediansSnapshot snap) {
+  return switch (snap.reason) {
+    CycleMediansReason.available ||
+    CycleMediansReason.insufficientDays =>
+      true,
+    CycleMediansReason.trackingDisabled ||
+    CycleMediansReason.emptyStarts ||
+    CycleMediansReason.unreadableStarts ||
+    CycleMediansReason.longPeriods =>
+      false,
+  };
+}
+
+/// Exact [kAlgoVersion] nights in [startDay]..=[endDay], date-ordered.
+/// Corrections load once; payloads query in [kCycleNightPayloadBatchSize]
+/// batches, project off-isolate, then drop the raw batch before the next.
+Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
+  DatabaseExecutor txn, {
+  required String startDay,
+  required String endDay,
+}) async {
+  final correctionRows = await txn.rawQuery(
+    'SELECT c.day_id AS day_id, '
+    'c.correction_id AS correction_id, '
+    'c.revision AS revision, '
+    'c.action AS action, '
+    'c.onset_ms AS onset_ms, '
+    'c.wake_ms AS wake_ms, '
+    'j.correction_id AS job_correction_id, '
+    'j.revision AS job_revision, '
+    'j.status AS status, '
+    'j.result_algo_version AS result_algo_version, '
+    'j.result_computed_at AS result_computed_at '
+    'FROM openband_sleep_correction c '
+    'LEFT JOIN openband_calculation_job j '
+    'ON j.day_id = c.day_id '
+    'AND j.correction_id = c.correction_id '
+    'AND j.revision = c.revision '
+    'WHERE c.day_id >= ? AND c.day_id <= ?',
+    [startDay, endDay],
+  );
+  final correctionRowsByDay = <String, Map<String, dynamic>>{};
+  final blockedJob = <String>{};
+  for (final r in correctionRows) {
+    final date = r['day_id'];
+    if (date is! String) continue;
+    final mapped = Map<String, dynamic>.from(r);
+    correctionRowsByDay[date] = mapped;
+    if (!LocalOpenBandRepository._currentCompleteSleepJob(mapped)) {
+      blockedJob.add(date);
+    }
+  }
+
+  final rows = <CycleNightSourceRow>[];
+  var offset = 0;
+  while (true) {
+    final dayRows = await txn.query(
+      'day_result',
+      columns: [
+        'day_id',
+        'skipped',
+        'partial',
+        'payload_json',
+        'computed_at',
+      ],
+      where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
+      whereArgs: [startDay, endDay, kAlgoVersion],
+      orderBy: 'day_id ASC',
+      limit: kCycleNightPayloadBatchSize,
+      offset: offset,
+    );
+    if (dayRows.isEmpty) break;
+    final rawPayloads = [for (final r in dayRows) r['payload_json']];
+    // dart:convert last-wins; sqlite json_extract is first-wins. Needed keys
+    // only, off-isolate, so unused series never expand on the UI isolate.
+    final payloads = await Isolate.run(
+      () => _projectCycleNightPayloads(rawPayloads),
+    );
+    for (var i = 0; i < dayRows.length; i++) {
+      final r = dayRows[i];
+      final date = r['day_id'];
+      if (date is! String) continue;
+      final payload = i < payloads.length ? payloads[i] : null;
+      final correction = correctionRowsByDay[date];
+      final published =
+          correction != null && !blockedJob.contains(date) ? correction : null;
+      rows.add(
+        CycleNightSourceRow(
+          day: date,
+          algoVersion: kAlgoVersion,
+          skipped: r['skipped'] == 1,
+          partial: r['partial'] == 1,
+          payload: payload == null ? null : Map<String, Object?>.from(payload),
+          payloadUnreadable: payload == null,
+          jobBlocked: blockedJob.contains(date),
+          computedAtMs: (r['computed_at'] as num?)?.toInt(),
+          resultComputedAtMs:
+              (published?['result_computed_at'] as num?)?.toInt(),
+          correctionAction: published?['action']?.toString(),
+          correctionOnsetMs: (published?['onset_ms'] as num?)?.toInt(),
+          correctionWakeMs: (published?['wake_ms'] as num?)?.toInt(),
+        ),
+      );
+    }
+    offset += dayRows.length;
+    if (dayRows.length < kCycleNightPayloadBatchSize) break;
+  }
+  return rows;
 }
 
 const _kCycleNightPayloadKeys = [

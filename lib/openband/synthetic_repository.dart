@@ -694,11 +694,19 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     '2026-08-24',
   ];
   static final cycleFixtureNow = DateTime(2026, 9, 15, 12);
+  static const cycleMedianFixtureStarts = [
+    '2026-06-29',
+    '2026-07-31',
+    '2026-08-24',
+  ];
+  static const cycleMedianFixtureAnchor = '2026-09-15';
+  static final cycleMedianFixtureNow = DateTime(2026, 9, 15, 12);
 
   bool failCycleRead = false;
   bool failCycleWrite = false;
   bool failCycleContextRefresh = false;
   bool failCycleMeasurementsRead = false;
+  bool failCycleMediansRead = false;
   int cycleContextRefreshCalls = 0;
   CycleSettings cycleSettings = const CycleSettings(
     enabled: true,
@@ -3784,6 +3792,54 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   void clearCycleNightSources() => _cycleNights.clear();
 
+  /// Opt-in Paper median fixture. Default cycle seeding stays 4 starts and
+  /// one selected-cycle night run so existing cycle tests do not change.
+  void seedCycleMedianFixture({
+    bool includeRhr = true,
+    bool includeHrv = true,
+  }) {
+    _cycleStarts
+      ..clear()
+      ..addAll({
+        for (final date in cycleMedianFixtureStarts)
+          date: CycleStart(date: date, kind: kCycleStartKind),
+      });
+    _cycleUnreadableStarts.clear();
+    _cycleNights.clear();
+    for (final date in cycleMedianFixtureStarts) {
+      seedCyclePaperNightsFrom(
+        date,
+        includeRhr: includeRhr,
+        includeHrv: includeHrv,
+      );
+    }
+  }
+
+  void seedCyclePaperNightsFrom(
+    String start, {
+    bool includeRhr = true,
+    bool includeHrv = true,
+  }) {
+    final last = cycleAddDays(start, kCyclePaperRhr.length - 1);
+    final days = cycleCivilDaysInclusive(start, last);
+    for (var i = 0; i < days.length; i++) {
+      final rhr = includeRhr ? kCyclePaperRhr[i] : null;
+      final hrv = includeHrv ? kCyclePaperHrv[i] : null;
+      if (rhr == null && hrv == null) continue;
+      final day = days[i];
+      _cycleNights[day] = CycleNightSourceRow(
+        day: day,
+        algoVersion: kAlgoVersion,
+        payload: cycleNightSourcePayload(
+          rhr: rhr,
+          hrv: hrv,
+          onsetMs: cycleNightOnsetMs(day),
+          offsetMs: cycleNightOffsetMs(day),
+        ),
+      );
+    }
+  }
+
   void clearCycleLogs() {
     _cycleStarts.clear();
     _cycleObservations.clear();
@@ -3798,23 +3854,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   void _seedFixtureCycleNights() {
-    final days = cycleCivilDaysInclusive(kCyclePaperStartDay, kCyclePaperAsOfDay);
-    for (var i = 0; i < days.length; i++) {
-      final rhr = kCyclePaperRhr[i];
-      final hrv = kCyclePaperHrv[i];
-      if (rhr == null && hrv == null) continue;
-      final day = days[i];
-      _cycleNights[day] = CycleNightSourceRow(
-        day: day,
-        algoVersion: kAlgoVersion,
-        payload: cycleNightSourcePayload(
-          rhr: rhr,
-          hrv: hrv,
-          onsetMs: cycleNightOnsetMs(day),
-          offsetMs: cycleNightOffsetMs(day),
-        ),
-      );
-    }
+    seedCyclePaperNightsFrom(kCyclePaperStartDay);
   }
 
   CycleLogParse _synthCycleLog(String day) => parseCycleLog(
@@ -3890,6 +3930,37 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       log: _synthCycleLog(asOfDay),
       cycleStartDay: cycleStartDay,
       algoVersion: kAlgoVersion,
+      rows: _cycleNights.values.toList(),
+    );
+  }
+
+  @override
+  Future<CycleMediansSnapshot> readCycleMedians(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
+  }) async {
+    if (failCycleMediansRead || failCycleRead) {
+      throw StateError('synthetic cycle medians read failure');
+    }
+    requireCycleCalendarDay(anchorEnd, 'anchorEnd');
+    final at = now ?? DateTime.now();
+    if (cycleDateIsAfterToday(anchorEnd, at)) {
+      throw ArgumentError.value(
+        anchorEnd,
+        'anchorEnd',
+        'Cycle median anchor cannot be after local today.',
+      );
+    }
+    final window = cycleMedianWindow(
+      anchorEnd: anchorEnd,
+      pageOffset: pageOffset,
+    );
+    return buildCycleMediansSnapshot(
+      settings: cycleSettings,
+      log: _synthCycleLog(window.endDay),
+      algoVersion: kAlgoVersion,
+      window: window,
       rows: _cycleNights.values.toList(),
     );
   }

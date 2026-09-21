@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
+import 'openband/cycle.dart';
+import 'openband/cycle_medians.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
@@ -399,6 +401,41 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                 ).push(MaterialPageRoute<void>(builder: (_) => entry.$2));
               },
             ),
+          ),
+          const ListTile(title: Text('Zyklustage · synthetische Zustände')),
+          ListTile(
+            title: const Text('Zyklustage'),
+            onTap: () {
+              widget.repository.seedCycleMedianFixture();
+              Navigator.pop(c);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => OpenBandCycle(
+                    repository: widget.repository,
+                    day: '2026-09-15',
+                    now: () => DateTime(2026, 9, 15, 9, 41),
+                    synthetic: true,
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            title: const Text('Zyklustage · Mediane'),
+            onTap: () {
+              widget.repository.seedCycleMedianFixture();
+              Navigator.pop(c);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => OpenBandCycleMedians(
+                    repository: widget.repository,
+                    day: '2026-09-15',
+                    now: () => DateTime(2026, 9, 15, 9, 41),
+                    synthetic: true,
+                  ),
+                ),
+              );
+            },
           ),
           const ListTile(title: Text('Alarm · synthetische Zustände')),
           ..._alarmGalleryStates().map(

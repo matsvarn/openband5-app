@@ -136,11 +136,8 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
     return groups.first.last;
   }
 
-  void _info() => showOpenBandJournalInfo(
-    context,
-    title: _kInfoTitle,
-    body: _kInfoBody,
-  );
+  void _info() =>
+      showOpenBandJournalInfo(context, title: _kInfoTitle, body: _kInfoBody);
 
   Future<void> _openSettings() async {
     await Navigator.of(context).push<void>(
@@ -228,9 +225,7 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
           _notice('Abstände ausgeblendet', 'Einstellungen', _openSettings),
         ];
       case CycleGapsReason.trackingDisabled:
-        return [
-          _notice('Zyklus deaktiviert', 'Einstellungen', _openSettings),
-        ];
+        return [_notice('Zyklus deaktiviert', 'Einstellungen', _openSettings)];
       case CycleGapsReason.insufficientGaps:
         return [
           _notice('Mindestens 12 Abstände nötig', 'Zum Zyklus', () {
@@ -239,14 +234,9 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
         ];
       case CycleGapsReason.unreadableStarts:
         return [
-          _notice(
-            'Zyklusbeginn nicht lesbar',
-            'Zum Zyklus',
-            () {
-              Navigator.maybePop(context);
-            },
-            danger: true,
-          ),
+          _notice('Zyklusbeginn nicht lesbar', 'Zum Zyklus', () {
+            Navigator.maybePop(context);
+          }, danger: true),
         ];
       case CycleGapsReason.longGap:
         return [
@@ -278,11 +268,15 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
         : group.last;
     final selectedIndex = group.indexOf(shown);
     final points = [
-      for (final gap in group) MetricPoint(gap.nextStart, gap.days.toDouble()),
+      for (final gap in group)
+        OBSourcedSample(
+          value: gap.days.toDouble(),
+          caption: cycleGapsRangeLabel(gap),
+        ),
     ];
     final asOfYear = DateTime.parse(summary.asOfDay).year;
-    final firstDay = DateTime.parse(points.first.day);
-    final lastDay = DateTime.parse(points.last.day);
+    final firstDay = DateTime.parse(group.first.nextStart);
+    final lastDay = DateTime.parse(group.last.nextStart);
     final axisYear =
         firstDay.year != lastDay.year ||
         firstDay.year != asOfYear ||
@@ -309,18 +303,12 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
         tint: p.muted,
         points: points,
         coverage: cycleGapsCoverage(group.length, summary.gaps.length),
-        axisStart: _axisDay(points.first.day, withYear: axisYear),
-        axisEnd: _axisDay(points.last.day, withYear: axisYear),
+        axisStart: _axisDay(group.first.nextStart, withYear: axisYear),
+        axisEnd: _axisDay(group.last.nextStart, withYear: axisYear),
         selectedIndex: selectedIndex < 0 ? group.length - 1 : selectedIndex,
         plotKey: const ValueKey('cycle-gaps-plot'),
         bars: true,
         unit: shown.days == 1 ? 'Tag' : 'Tage',
-        pointCaption: (pt) {
-          for (final gap in group) {
-            if (gap.nextStart == pt.day) return cycleGapsRangeLabel(gap);
-          }
-          return DateFormat('d. MMM', 'de_DE').format(DateTime.parse(pt.day));
-        },
         onSelect: (i) {
           if (i < 0 || i >= group.length) return;
           setState(() => _selectedGap = group[i]);

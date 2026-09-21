@@ -10,6 +10,7 @@ import 'calendar.dart';
 import 'confirm_sheet.dart';
 import 'cycle_gaps.dart';
 import 'cycle_measurements.dart';
+import 'cycle_medians.dart';
 import 'cycle_observations.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
@@ -277,6 +278,27 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
     if (mounted) await _load();
   }
 
+  Future<void> _openMedians() async {
+    var identity = _identity;
+    final repo = _repo;
+    final receipt = await OpenBandCycleMedians.push(
+      context,
+      repository: repo,
+      day: _day,
+      now: _now,
+      synthetic: widget.synthetic,
+    );
+    if (!mounted || identity != _identity || !identical(repo, _repo)) return;
+    if (receipt != null && !receipt.isEmpty) {
+      setState(() {
+        _undoStart = receipt.start;
+        _refreshError = receipt.refreshError;
+      });
+      _showUndo();
+    }
+    await _load();
+  }
+
   Future<void> _openObservations() async {
     await OpenBandCycleObservations.push(
       context,
@@ -302,29 +324,23 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
   Future<void> _openHistory() async {
     var identity = _identity;
     final repo = _repo;
-    _CycleHistoryResult? pending;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => _CycleHistory(
-          repository: repo,
-          onReturn: (result) => pending = result,
-          day: _day,
-          now: _now,
-          synthetic: widget.synthetic,
-          onDay: (day) {
-            if (mounted &&
-                identity == _identity &&
-                identical(repo, _repo) &&
-                day != _day) {
-              setState(() => _resetDay(day));
-              identity = _identity;
-            }
-          },
-        ),
-      ),
+    final receipt = await OpenBandCycleHistory.push(
+      context,
+      repository: repo,
+      day: _day,
+      now: _now,
+      synthetic: widget.synthetic,
+      onDay: (day) {
+        if (mounted &&
+            identity == _identity &&
+            identical(repo, _repo) &&
+            day != _day) {
+          setState(() => _resetDay(day));
+          identity = _identity;
+        }
+      },
     );
     if (!mounted || identity != _identity || !identical(repo, _repo)) return;
-    final receipt = pending;
     if (receipt != null && !receipt.isEmpty) {
       setState(() {
         _undoStart = receipt.start;
@@ -533,6 +549,12 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
                       value: '',
                       chevron: true,
                       onTap: _openMeasurements,
+                    ),
+                    OBSettingsValueRow(
+                      label: 'Zyklustage',
+                      value: '',
+                      chevron: true,
+                      onTap: _openMedians,
                     ),
                     OBSettingsValueRow(
                       label: 'Beobachtungen',
@@ -1511,15 +1533,41 @@ class _CycleObservationEditorState extends State<_CycleObservationEditor> {
   }
 }
 
-class _CycleHistoryResult {
-  const _CycleHistoryResult(this.start, this.refreshError);
+class OpenBandCycleHistoryResult {
+  const OpenBandCycleHistoryResult(this.start, this.refreshError);
   final CycleStart? start;
   final String? refreshError;
   bool get isEmpty => start == null && refreshError == null;
 }
 
+class OpenBandCycleHistory {
+  static Future<OpenBandCycleHistoryResult?> push(
+    BuildContext context, {
+    required OpenBandRepository repository,
+    required String day,
+    DateTime Function()? now,
+    bool synthetic = false,
+    ValueChanged<String>? onDay,
+  }) async {
+    OpenBandCycleHistoryResult? pending;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _CycleHistory(
+          onReturn: (result) => pending = result,
+          repository: repository,
+          day: day,
+          now: now ?? DateTime.now,
+          synthetic: synthetic,
+          onDay: onDay,
+        ),
+      ),
+    );
+    return pending;
+  }
+}
+
 class _CycleHistory extends StatefulWidget {
-  final ValueChanged<_CycleHistoryResult> onReturn;
+  final ValueChanged<OpenBandCycleHistoryResult> onReturn;
   final OpenBandRepository repository;
   final String day;
   final DateTime Function() now;
@@ -1745,7 +1793,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
       canPop: !_undoBusy,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) return;
-        final receipt = _CycleHistoryResult(_undoStart, _refreshError);
+        final receipt = OpenBandCycleHistoryResult(_undoStart, _refreshError);
         if (!receipt.isEmpty) widget.onReturn(receipt);
       },
       child: ScaffoldMessenger(
@@ -2200,11 +2248,16 @@ Future<String?> pickOpenBandCycleDay(
   required String selected,
   required DateTime now,
   bool synthetic = false,
+  String title = 'Datum',
 }) {
   return Navigator.of(context).push<String>(
     MaterialPageRoute(
-      builder: (_) =>
-          _CycleDayPicker(selected: selected, now: now, synthetic: synthetic),
+      builder: (_) => _CycleDayPicker(
+        selected: selected,
+        now: now,
+        synthetic: synthetic,
+        title: title,
+      ),
     ),
   );
 }
@@ -2213,10 +2266,12 @@ class _CycleDayPicker extends StatefulWidget {
   final String selected;
   final DateTime now;
   final bool synthetic;
+  final String title;
   const _CycleDayPicker({
     required this.selected,
     required this.now,
     this.synthetic = false,
+    this.title = 'Datum',
   });
 
   @override
@@ -2252,7 +2307,7 @@ class _CycleDayPickerState extends State<_CycleDayPicker> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Datum', subtitle: ''),
+            OBPageHeader(title: widget.title, subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(

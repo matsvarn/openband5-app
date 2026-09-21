@@ -8,7 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
+import 'package:openstrap_edge/compute/derivation_engine.dart'
+    show kAlgoVersion;
 import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/cycle.dart';
 import 'package:openstrap_edge/openband/cycle_measurements.dart';
@@ -61,11 +62,7 @@ class _GateRepo extends SyntheticOpenBandRepository {
 }
 
 class _Host extends StatefulWidget {
-  const _Host({
-    super.key,
-    required this.initialRepo,
-    required this.initialDay,
-  });
+  const _Host({super.key, required this.initialRepo, required this.initialDay});
   final OpenBandRepository initialRepo;
   final String initialDay;
   @override
@@ -148,10 +145,8 @@ void main() {
 
   Finder capture() => find.byKey(const ValueKey('capture'));
 
-  Finder cardOf(Key plot) => find.ancestor(
-    of: find.byKey(plot),
-    matching: find.byType(OBCard),
-  );
+  Finder cardOf(Key plot) =>
+      find.ancestor(of: find.byKey(plot), matching: find.byType(OBCard));
 
   Future<void> mount(
     WidgetTester tester, {
@@ -310,8 +305,14 @@ void main() {
     await mount(tester);
     expect(find.text('0 von 23 Nächten'), findsNWidgets(2));
     expect(find.text('—'), findsNWidgets(2));
-    expect(find.byKey(const ValueKey('cycle-measurements-rhr-plot')), findsNothing);
-    expect(find.byKey(const ValueKey('cycle-measurements-hrv-plot')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('cycle-measurements-rhr-plot')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('cycle-measurements-hrv-plot')),
+      findsNothing,
+    );
     expect(find.text('Tag 1'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
@@ -325,7 +326,9 @@ void main() {
     );
   });
 
-  testWidgets('unreadable rows show partial notice above cards', (tester) async {
+  testWidgets('unreadable rows show partial notice above cards', (
+    tester,
+  ) async {
     repo.seedCycleNightSource(_night('2026-08-29', unreadable: true));
     await mount(tester);
     expect(find.text('Daten teilweise lesbar'), findsOneWidget);
@@ -402,7 +405,9 @@ void main() {
     expect(find.text('Zum Zyklus'), findsOneWidget);
   });
 
-  testWidgets('settings return withholds prior unavailable state', (tester) async {
+  testWidgets('settings return withholds prior unavailable state', (
+    tester,
+  ) async {
     repo.cycleSettings = const CycleSettings(
       enabled: false,
       estimatesEnabled: false,
@@ -429,7 +434,9 @@ void main() {
     expect(find.text('Ruhepuls'), findsOneWidget);
   });
 
-  testWidgets('removed selected cycle offers remaining periods', (tester) async {
+  testWidgets('removed selected cycle offers remaining periods', (
+    tester,
+  ) async {
     await mount(tester);
     await tester.tap(find.byKey(const ValueKey('cycle-measurements-picker')));
     await tester.pumpAndSettle();
@@ -496,8 +503,14 @@ void main() {
     expect(find.text('0 von 23 Nächten'), findsOneWidget);
     expect(find.text('54'), findsOneWidget);
     expect(find.text('15. Sept.'), findsOneWidget);
-    expect(find.byKey(const ValueKey('cycle-measurements-rhr-plot')), findsOneWidget);
-    expect(find.byKey(const ValueKey('cycle-measurements-hrv-plot')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('cycle-measurements-rhr-plot')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('cycle-measurements-hrv-plot')),
+      findsNothing,
+    );
     await expectLater(
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-single.png'),
@@ -559,7 +572,9 @@ void main() {
     );
     expect(find.textContaining('Qualitätswert —'), findsNWidgets(2));
     expect(
-      find.text('Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.'),
+      find.text(
+        'Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.',
+      ),
       findsOneWidget,
     );
     await expectLater(
@@ -623,7 +638,9 @@ void main() {
     await tester.pumpAndSettle();
     final infoScroll = find.byKey(const ValueKey('journal-info-body'));
     await tester.scrollUntilVisible(
-      find.text('Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.'),
+      find.text(
+        'Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.',
+      ),
       80,
       scrollable: find.descendant(
         of: infoScroll,
@@ -656,11 +673,7 @@ void main() {
     await mount(
       tester,
       settle: false,
-      home: _Host(
-        key: hostKey,
-        initialRepo: repo,
-        initialDay: '2026-09-15',
-      ),
+      home: _Host(key: hostKey, initialRepo: repo, initialDay: '2026-09-15'),
     );
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('54'), findsNothing);
@@ -702,11 +715,7 @@ void main() {
     final hostKey = GlobalKey<_HostState>();
     await mount(
       tester,
-      home: _Host(
-        key: hostKey,
-        initialRepo: repo,
-        initialDay: '2026-09-15',
-      ),
+      home: _Host(key: hostKey, initialRepo: repo, initialDay: '2026-09-15'),
     );
     await tester.tap(find.byKey(const ValueKey('cycle-measurements-picker')));
     await tester.pumpAndSettle();
@@ -733,8 +742,14 @@ void main() {
       final plot = find.byKey(const ValueKey('cycle-measurements-rhr-plot'));
       var node = tester.getSemantics(plot);
       expect(node.value, contains('15. September'));
-      expect(node.getSemanticsData().hasAction(SemanticsAction.decrease), isTrue);
-      expect(node.getSemanticsData().hasAction(SemanticsAction.increase), isFalse);
+      expect(
+        node.getSemanticsData().hasAction(SemanticsAction.decrease),
+        isTrue,
+      );
+      expect(
+        node.getSemanticsData().hasAction(SemanticsAction.increase),
+        isFalse,
+      );
       final box = tester.getRect(plot);
       await tester.tapAt(Offset(box.left + 8, box.center.dy));
       await tester.pump();
@@ -765,9 +780,12 @@ void main() {
             tint: AlpColor.pulseTint,
             coverage: '0 von 3 Nächten',
             points: const [
-              MetricPoint('2026-09-13', double.nan),
-              MetricPoint('2026-09-14', double.infinity),
-              MetricPoint('2026-09-15', double.negativeInfinity),
+              OBSourcedSample(value: double.nan, caption: '13. Sept.'),
+              OBSourcedSample(value: double.infinity, caption: '14. Sept.'),
+              OBSourcedSample(
+                value: double.negativeInfinity,
+                caption: '15. Sept.',
+              ),
             ],
           ),
         ),
@@ -784,37 +802,38 @@ void main() {
   ) async {
     final handle = tester.ensureSemantics();
     try {
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(Brightness.light),
-        home: Builder(
-          builder: (context) {
-            final p = OB.of(context);
-            return Scaffold(
-              body: _IsolatedSelectCard(palette: p),
-            );
-          },
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          supportedLocales: const [Locale('de')],
+          theme: openBandTheme(Brightness.light),
+          home: Builder(
+            builder: (context) {
+              final p = OB.of(context);
+              return Scaffold(body: _IsolatedSelectCard(palette: p));
+            },
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(find.text('52'), findsOneWidget);
-    final plot = find.byKey(const ValueKey('isolated-plot'));
-    var node = tester.getSemantics(plot);
-    expect(node.getSemanticsData().hasAction(SemanticsAction.decrease), isTrue);
-    final box = tester.getRect(plot);
-    await tester.tapAt(Offset(box.center.dx, box.center.dy));
-    await tester.pump();
-    node = tester.getSemantics(plot);
-    expect(node.value, contains('kein Wert'));
-    await tester.tapAt(Offset(box.left + 8, box.center.dy));
-    await tester.pump();
-    node = tester.getSemantics(plot);
-    expect(node.value, contains('50'));
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('52'), findsOneWidget);
+      final plot = find.byKey(const ValueKey('isolated-plot'));
+      var node = tester.getSemantics(plot);
+      expect(
+        node.getSemanticsData().hasAction(SemanticsAction.decrease),
+        isTrue,
+      );
+      final box = tester.getRect(plot);
+      await tester.tapAt(Offset(box.center.dx, box.center.dy));
+      await tester.pump();
+      node = tester.getSemantics(plot);
+      expect(node.value, contains('kein Wert'));
+      await tester.tapAt(Offset(box.left + 8, box.center.dy));
+      await tester.pump();
+      node = tester.getSemantics(plot);
+      expect(node.value, contains('50'));
     } finally {
       handle.dispose();
     }
@@ -825,6 +844,19 @@ void main() {
     tester.view.physicalSize = const Size(393, 720);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    const samples = [
+      OBSourcedSample(
+        value: 50,
+        caption: '13. Sept.',
+        semantics: '13. September',
+      ),
+      OBSourcedSample(caption: '14. Sept.', semantics: '14. September'),
+      OBSourcedSample(
+        value: 52,
+        caption: '15. Sept.',
+        semantics: '15. September',
+      ),
+    ];
     const points = [
       MetricPoint('2026-09-13', 50),
       MetricPoint('2026-09-14', null),
@@ -863,7 +895,7 @@ void main() {
                             axisStart: 'Tag 1',
                             axisEnd: 'Tag 3',
                             selectedIndex: 2,
-                            points: points,
+                            points: samples,
                           ),
                           const SizedBox(height: 12),
                           OBTrendCard(
@@ -892,7 +924,9 @@ void main() {
     expect(find.text('50'), findsNothing);
     await expectLater(
       find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/cycle-measurements-isolated-first.png'),
+      matchesGoldenFile(
+        'openband_goldens/cycle-measurements-isolated-first.png',
+      ),
     );
   });
 
@@ -945,7 +979,9 @@ void main() {
     expect(find.textContaining('Qualitätswert 0,90 / 1'), findsOneWidget);
     expect(find.textContaining('Qualitätswert 1 / 1'), findsOneWidget);
     expect(
-      find.text('Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.'),
+      find.text(
+        'Qualitätswerte sind gespeicherte Scores, keine Fehlerspannen.',
+      ),
       findsOneWidget,
     );
     await tester.tap(find.text('Schließen'));
@@ -1005,9 +1041,17 @@ class _IsolatedSelectCardState extends State<_IsolatedSelectCard> {
       plotKey: const ValueKey('isolated-plot'),
       onSelect: (i) => setState(() => _slot = i),
       points: const [
-        MetricPoint('2026-09-13', 50),
-        MetricPoint('2026-09-14', null),
-        MetricPoint('2026-09-15', 52),
+        OBSourcedSample(
+          value: 50,
+          caption: '13. Sept.',
+          semantics: '13. September',
+        ),
+        OBSourcedSample(caption: '14. Sept.', semantics: '14. September'),
+        OBSourcedSample(
+          value: 52,
+          caption: '15. Sept.',
+          semantics: '15. September',
+        ),
       ],
     );
   }

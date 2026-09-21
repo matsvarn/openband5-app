@@ -244,6 +244,10 @@ void main() {
 
   Finder capture() => find.byKey(const ValueKey('capture'));
 
+  Future<void> expectGolden(WidgetTester tester, String name) async {
+    await expectLater(capture(), matchesGoldenFile('openband_goldens/$name'));
+  }
+
   Finder noteEditable() => find.descendant(
     of: find.byKey(const ValueKey('cycle-note')),
     matching: find.byType(EditableText),
@@ -267,15 +271,9 @@ void main() {
     expect(find.text('3 bisherige Abstände'), findsOneWidget);
     expect(find.text('Beginn eintragen'), findsOneWidget);
     expect(find.text('Selbst eintragen'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-main.png'),
-    );
+    await expectGolden(tester, 'cycle-main.png');
     await mount(tester, brightness: Brightness.dark);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-main-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-main-dark.png');
   });
 
   testWidgets('empty is not a read failure', (tester) async {
@@ -285,15 +283,9 @@ void main() {
     expect(find.text('Noch kein Beginn'), findsOneWidget);
     expect(find.text('Daten nicht geladen'), findsNothing);
     expect(find.text('Nächster Beginn · geschätzt'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-empty.png'),
-    );
+    await expectGolden(tester, 'cycle-empty.png');
     await mount(tester, brightness: Brightness.dark);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-empty-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-empty-dark.png');
   });
 
   testWidgets('first start on selected day opens edit', (tester) async {
@@ -306,10 +298,7 @@ void main() {
     expect(find.text('Beginn · 15. September'), findsOneWidget);
     expect(find.text('Beginn bearbeiten'), findsOneWidget);
     expect(find.text('Nächster Beginn · geschätzt'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-first-start.png'),
-    );
+    await expectGolden(tester, 'cycle-first-start.png');
   });
 
   testWidgets('missing estimate with a long gap shows the reason', (
@@ -326,10 +315,7 @@ void main() {
     expect(find.text('Tag 23'), findsOneWidget);
     expect(find.text('Schätzung offen'), findsOneWidget);
     expect(find.text('Abstand über 60 Tage'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-estimate-open.png'),
-    );
+    await expectGolden(tester, 'cycle-estimate-open.png');
   });
 
   testWidgets('disabled estimate is omitted', (tester) async {
@@ -362,10 +348,7 @@ void main() {
     expect(find.text('Daten nicht geladen'), findsOneWidget);
     expect(find.text('Noch kein Beginn'), findsNothing);
     expect(find.text('Beginn eintragen'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-read-error.png'),
-    );
+    await expectGolden(tester, 'cycle-read-error.png');
     repo.failCycleRead = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
@@ -378,25 +361,16 @@ void main() {
     expect(find.text('Zeitschätzung'), findsOneWidget);
     expect(find.text('Abstände anzeigen'), findsOneWidget);
     expect(find.text('Keine Angabe'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-settings.png'),
-    );
+    await expectGolden(tester, 'cycle-settings.png');
     await mount(tester, settingsOnly: true, brightness: Brightness.dark);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-settings-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-settings-dark.png');
     repo.cycleSettings = const CycleSettings(
       enabled: false,
       estimatesEnabled: false,
       lengthReviewEnabled: false,
     );
     await mount(tester, settingsOnly: true);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-setup.png'),
-    );
+    await expectGolden(tester, 'cycle-setup.png');
   });
 
   testWidgets('start and observation goldens', (tester) async {
@@ -406,19 +380,13 @@ void main() {
     expect(find.text('Datum'), findsOneWidget);
     expect(find.text('Notiz'), findsOneWidget);
     expect(find.text('Speichern'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-start.png'),
-    );
+    await expectGolden(tester, 'cycle-start.png');
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     await mount(tester, brightness: Brightness.dark);
     await tester.tap(find.text('Beginn eintragen'));
     await tester.pumpAndSettle();
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-start-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-start-dark.png');
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     repo.seedCycleObservation(
@@ -431,19 +399,13 @@ void main() {
     expect(find.text('Kopfschmerzen'), findsOneWidget);
     expect(find.text('Stimmungstief'), findsOneWidget);
     expect(find.text('Niedergeschlagenheit'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-observation.png'),
-    );
+    await expectGolden(tester, 'cycle-observation.png');
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     await mount(tester, brightness: Brightness.dark);
     await tester.tap(find.text('Beobachtung festhalten'));
     await tester.pumpAndSettle();
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-observation-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-observation-dark.png');
   });
 
   testWidgets('history is as-of selected day and tappable', (tester) async {
@@ -457,10 +419,7 @@ void main() {
     expect(find.text('Krämpfe'), findsOneWidget);
     expect(find.text('24. August'), findsOneWidget);
     expect(find.text('1. Juni'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-history.png'),
-    );
+    await expectGolden(tester, 'cycle-history.png');
     await tester.tap(find.text('Krämpfe'));
     await tester.pumpAndSettle();
     expect(find.text('Beobachtung'), findsOneWidget);
@@ -499,10 +458,7 @@ void main() {
     expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
     expect(find.text('Heute begonnen'), findsOneWidget);
     expect(repo.startSaves, 1);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-save-error.png'),
-    );
+    await expectGolden(tester, 'cycle-save-error.png');
     repo.failCycleWrite = false;
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
@@ -538,10 +494,7 @@ void main() {
       isFalse,
     );
     expect(repo.startSaves, 1);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-saved-refresh.png'),
-    );
+    await expectGolden(tester, 'cycle-saved-refresh.png');
     repo.failCycleContextRefresh = false;
     final reads = repo.cycleReads;
     await tester.tap(find.text('Erneut versuchen'));
@@ -782,6 +735,11 @@ void main() {
     await tester.ensureVisible(find.byKey(const ValueKey('cycle-journal')));
     await tester.tap(find.byKey(const ValueKey('cycle-journal')));
     await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Einstellungen'));
     await tester.pumpAndSettle();
     await tester.tap(
@@ -834,17 +792,11 @@ void main() {
   ) async {
     await mount(tester, scale: 2, width: 375, height: 812);
     expect(find.text('Tag 23'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-2x.png'),
-    );
+    await expectGolden(tester, 'cycle-2x.png');
     await mount(tester, width: 320, height: 568);
     await tester.scrollUntilVisible(find.text('Einstellungen'), 150);
     expect(find.text('Einstellungen'), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-320.png'),
-    );
+    await expectGolden(tester, 'cycle-320.png');
     await mount(tester, width: 375, height: 812);
     await tester.tap(find.text('Beginn eintragen'));
     await tester.pumpAndSettle();
@@ -876,15 +828,9 @@ void main() {
     expect(find.text('Tag 23'), findsNothing);
     expect(find.text('Starts nicht lesbar'), findsNothing);
     expect(find.text('Nächster Beginn · geschätzt'), findsNothing);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-partial.png'),
-    );
+    await expectGolden(tester, 'cycle-partial.png');
     await mount(tester, brightness: Brightness.dark);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-partial-dark.png'),
-    );
+    await expectGolden(tester, 'cycle-partial-dark.png');
   });
 
   testWidgets('info body matches Paper', (tester) async {
@@ -1253,44 +1199,43 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets(
-    'overview undo survives a no-op History roundtrip',
-    (tester) async {
-      repo.clearCycleLogs();
-      const original = CycleStart(
-        date: '2026-09-15',
-        kind: kCycleStartKind,
-        note: '  exact\nsource  ',
-      );
-      repo.seedCycleStart(original);
-      await mount(tester);
-      await tester.tap(find.text('Beginn bearbeiten'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Entfernen'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Entfernen').last);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-      expect(find.text('Rückgängig'), findsOneWidget);
-      expect(repo.startRemoves, 1);
-      await tester.tap(find.text('Verlauf'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Zurück'));
-      await tester.pumpAndSettle();
-      expect(find.text('Rückgängig').hitTestable(), findsOneWidget);
-      await tester.tap(find.text('Rückgängig'));
-      await tester.pumpAndSettle();
-      final snap = await repo.readCycle('2026-09-15');
-      expect(
-        snap.starts.where((s) => s.date == original.date).single.note,
-        original.note,
-      );
-      expect(repo.startRemoves, 1);
-      expect(repo.startRestores, 1);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('overview undo survives a no-op History roundtrip', (
+    tester,
+  ) async {
+    repo.clearCycleLogs();
+    const original = CycleStart(
+      date: '2026-09-15',
+      kind: kCycleStartKind,
+      note: '  exact\nsource  ',
+    );
+    repo.seedCycleStart(original);
+    await mount(tester);
+    await tester.tap(find.text('Beginn bearbeiten'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Entfernen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Entfernen').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('Rückgängig'), findsOneWidget);
+    expect(repo.startRemoves, 1);
+    await tester.tap(find.text('Verlauf'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rückgängig').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Rückgängig'));
+    await tester.pumpAndSettle();
+    final snap = await repo.readCycle('2026-09-15');
+    expect(
+      snap.starts.where((s) => s.date == original.date).single.note,
+      original.note,
+    );
+    expect(repo.startRemoves, 1);
+    expect(repo.startRestores, 1);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('history back transfers exact Undo and failed refresh receipt', (
     tester,
@@ -1306,7 +1251,10 @@ void main() {
     await removeFromHistory(tester);
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
-    expect(find.text('Entfernt · Aktualisieren fehlgeschlagen'), findsOneWidget);
+    expect(
+      find.text('Entfernt · Aktualisieren fehlgeschlagen'),
+      findsOneWidget,
+    );
     expect(repo.startRemoves, 1);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
@@ -1628,64 +1576,63 @@ void main() {
     expect(replacement.settingsSaves, 0);
   });
 
-  testWidgets(
-    'settings late read failure cannot lock replacement repository',
-    (tester) async {
-      final source = ValueNotifier<OpenBandRepository>(repo);
-      addTearDown(source.dispose);
-      await mount(
-        tester,
-        home: ValueListenableBuilder<OpenBandRepository>(
-          valueListenable: source,
-          builder: (_, value, _) => OpenBandCycle(
-            repository: value,
-            day: '2026-09-15',
-            settingsOnly: true,
-          ),
+  testWidgets('settings late read failure cannot lock replacement repository', (
+    tester,
+  ) async {
+    final source = ValueNotifier<OpenBandRepository>(repo);
+    addTearDown(source.dispose);
+    await mount(
+      tester,
+      home: ValueListenableBuilder<OpenBandRepository>(
+        valueListenable: source,
+        builder: (_, value, _) => OpenBandCycle(
+          repository: value,
+          day: '2026-09-15',
+          settingsOnly: true,
         ),
+      ),
+    );
+    final gate = repo.settingsReadGate = Completer<void>();
+    repo.failSettingsRead = true;
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
+        matching: find.byType(CupertinoSwitch),
+      ),
+    );
+    await tester.pump();
+    final replacement = _CycleRepo()
+      ..cycleSettings = const CycleSettings(
+        enabled: false,
+        estimatesEnabled: false,
+        lengthReviewEnabled: false,
       );
-      final gate = repo.settingsReadGate = Completer<void>();
-      repo.failSettingsRead = true;
-      await tester.tap(
-        find.descendant(
-          of: find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
-          matching: find.byType(CupertinoSwitch),
-        ),
-      );
-      await tester.pump();
-      final replacement = _CycleRepo()
-        ..cycleSettings = const CycleSettings(
-          enabled: false,
-          estimatesEnabled: false,
-          lengthReviewEnabled: false,
-        );
-      source.value = replacement;
-      await tester.pumpAndSettle();
-      gate.complete();
-      await tester.pumpAndSettle();
-      expect(find.textContaining('Daten nicht geladen'), findsNothing);
-      expect(find.textContaining('Aktualisieren fehlgeschlagen'), findsNothing);
-      expect(find.text('Speichern fehlgeschlagen'), findsNothing);
-      expect(
-        tester
-            .widget<OBSettingsToggleRow>(
-              find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
-            )
-            .interactive,
-        isTrue,
-      );
-      expect(
-        tester
-            .widget<OBSettingsToggleRow>(
-              find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
-            )
-            .value,
-        isFalse,
-      );
-      expect(replacement.settingsSaves, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    source.value = replacement;
+    await tester.pumpAndSettle();
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Daten nicht geladen'), findsNothing);
+    expect(find.textContaining('Aktualisieren fehlgeschlagen'), findsNothing);
+    expect(find.text('Speichern fehlgeschlagen'), findsNothing);
+    expect(
+      tester
+          .widget<OBSettingsToggleRow>(
+            find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
+          )
+          .interactive,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<OBSettingsToggleRow>(
+            find.widgetWithText(OBSettingsToggleRow, 'Zyklus im Journal'),
+          )
+          .value,
+      isFalse,
+    );
+    expect(replacement.settingsSaves, 0);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('2x observation at 320 with keyboard can scroll and save', (
     tester,
@@ -1735,85 +1682,76 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Speichern').hitTestable(), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile(
-        'openband_goldens/cycle-observation-320-2x-keyboard.png',
-      ),
-    );
+    await expectGolden(tester, 'cycle-observation-320-2x-keyboard.png');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect(repo.observationSaves, 1);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'tap outside shared note at 2x ends focus and reaches Save',
-    (tester) async {
-      const longNote =
-          'Langer Eintrag mit mehreren Zeilen\n'
-          'damit das Feld den Caret über der Tastatur hält\n'
-          'und Speichern nicht mehr sichtbar bleibt\n'
-          'ohne die Tastatur zu schließen.';
+  testWidgets('tap outside shared note at 2x ends focus and reaches Save', (
+    tester,
+  ) async {
+    const longNote =
+        'Langer Eintrag mit mehreren Zeilen\n'
+        'damit das Feld den Caret über der Tastatur hält\n'
+        'und Speichern nicht mehr sichtbar bleibt\n'
+        'ohne die Tastatur zu schließen.';
 
-      Future<void> dismissNoteAndReachSave(
-        String editorKey,
-        String openLabel,
-      ) async {
-        await tester.scrollUntilVisible(
-          find.text(openLabel).hitTestable(),
-          180,
-        );
-        await tester.tap(find.text(openLabel));
-        await tester.pumpAndSettle();
-        final scroll = find
-            .descendant(
-              of: find.byKey(ValueKey(editorKey)),
-              matching: find.byType(Scrollable),
-            )
-            .first;
-        await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('cycle-note')).hitTestable(),
-          180,
-          scrollable: scroll,
-        );
-        await tester.enterText(
-          find.byKey(const ValueKey('cycle-note')),
-          longNote,
-        );
-        tester.view.viewInsets = const FakeViewPadding(bottom: 220);
-        await tester.pumpAndSettle();
-        expect(noteHasFocus(tester), isTrue);
-        final noteBox = tester.getRect(find.byKey(const ValueKey('cycle-note')));
-        await tester.tapAt(Offset(noteBox.right + 8, noteBox.center.dy));
-        await tester.pumpAndSettle();
-        expect(find.byKey(ValueKey(editorKey)), findsOneWidget);
-        expect(noteHasFocus(tester), isFalse);
-        tester.view.resetViewInsets();
-        await tester.pumpAndSettle();
-        final outerScroll = find
-            .ancestor(
-              of: find.byKey(const ValueKey('cycle-note')),
-              matching: find.byType(Scrollable),
-            )
-            .last;
-        await tester.scrollUntilVisible(
-          find.text('Speichern'),
-          180,
-          scrollable: outerScroll,
-        );
-        expect(find.text('Speichern').hitTestable(), findsOneWidget);
-      }
-
-      await mount(tester, width: 320, height: 568, scale: 2);
-      addTearDown(tester.view.resetViewInsets);
-      await dismissNoteAndReachSave('cycle-start', 'Beginn eintragen');
-      await mount(tester, width: 320, height: 568, scale: 2);
-      await dismissNoteAndReachSave(
-        'cycle-observation',
-        'Beobachtung festhalten',
+    Future<void> dismissNoteAndReachSave(
+      String editorKey,
+      String openLabel,
+    ) async {
+      await tester.scrollUntilVisible(find.text(openLabel).hitTestable(), 180);
+      await tester.tap(find.text(openLabel));
+      await tester.pumpAndSettle();
+      final scroll = find
+          .descendant(
+            of: find.byKey(ValueKey(editorKey)),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('cycle-note')).hitTestable(),
+        180,
+        scrollable: scroll,
       );
-      expect(tester.takeException(), isNull);
-    },
-  );
+      await tester.enterText(
+        find.byKey(const ValueKey('cycle-note')),
+        longNote,
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 220);
+      await tester.pumpAndSettle();
+      expect(noteHasFocus(tester), isTrue);
+      final noteBox = tester.getRect(find.byKey(const ValueKey('cycle-note')));
+      await tester.tapAt(Offset(noteBox.right + 8, noteBox.center.dy));
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey(editorKey)), findsOneWidget);
+      expect(noteHasFocus(tester), isFalse);
+      tester.view.resetViewInsets();
+      await tester.pumpAndSettle();
+      final outerScroll = find
+          .ancestor(
+            of: find.byKey(const ValueKey('cycle-note')),
+            matching: find.byType(Scrollable),
+          )
+          .last;
+      await tester.scrollUntilVisible(
+        find.text('Speichern'),
+        180,
+        scrollable: outerScroll,
+      );
+      expect(find.text('Speichern').hitTestable(), findsOneWidget);
+    }
+
+    await mount(tester, width: 320, height: 568, scale: 2);
+    addTearDown(tester.view.resetViewInsets);
+    await dismissNoteAndReachSave('cycle-start', 'Beginn eintragen');
+    await mount(tester, width: 320, height: 568, scale: 2);
+    await dismissNoteAndReachSave(
+      'cycle-observation',
+      'Beobachtung festhalten',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

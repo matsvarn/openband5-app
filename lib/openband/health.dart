@@ -480,12 +480,23 @@ class OBSegmented extends StatelessWidget {
   }
 }
 
+/// Numeric sourced chart slot. Caption is display copy; [semantics] is the
+/// longer accessibility name. No civil-date identity is required.
+class OBSourcedSample {
+  const OBSourcedSample({this.value, this.caption, this.semantics});
+
+  final double? value;
+  final String? caption;
+  final String? semantics;
+}
+
 class OBTrendCard extends StatelessWidget {
   final String label, unit;
   final IconData icon;
   final Color color, tint;
   final int nights;
   final List<MetricPoint>? points;
+  final List<OBSourcedSample> samples;
   final double? baseline;
   final bool error;
   final String Function(double?)? format;
@@ -497,7 +508,6 @@ class OBTrendCard extends StatelessWidget {
   final ValueChanged<int>? onSelect;
   final Key? plotKey;
   final bool bars;
-  final String Function(MetricPoint point)? pointCaption;
   const OBTrendCard({
     super.key,
     required this.label,
@@ -511,14 +521,14 @@ class OBTrendCard extends StatelessWidget {
     this.error = false,
     this.format,
   }) : sourced = false,
+       samples = const [],
        coverage = null,
        axisStart = null,
        axisEnd = null,
        selectedIndex = null,
        onSelect = null,
        plotKey = null,
-       bars = false,
-       pointCaption = null;
+       bars = false;
 
   const OBTrendCard.sourced({
     super.key,
@@ -527,8 +537,8 @@ class OBTrendCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.tint,
-    required List<MetricPoint> this.points,
-    required String this.coverage,
+    required List<OBSourcedSample> points,
+    this.coverage,
     this.axisStart,
     this.axisEnd,
     this.selectedIndex,
@@ -536,11 +546,12 @@ class OBTrendCard extends StatelessWidget {
     this.plotKey,
     this.format,
     this.bars = false,
-    this.pointCaption,
   }) : nights = 0,
        baseline = null,
        error = false,
-       sourced = true;
+       sourced = true,
+       samples = points,
+       points = null;
 
   @override
   Widget build(BuildContext context) {
@@ -647,19 +658,18 @@ class OBTrendCard extends StatelessWidget {
 
   Widget _buildSourced(BuildContext context) {
     final p = OB.of(context);
-    final pts = points ?? const <MetricPoint>[];
+    final pts = samples;
     final scaler = MediaQuery.textScalerOf(context);
     final stacked = scaler.scale(15) > 20;
-    final geom = bars ? _SourcedPlotGeom.bars(scaler) : _SourcedPlotGeom.of(scaler);
+    final geom = bars
+        ? _SourcedPlotGeom.bars(scaler)
+        : _SourcedPlotGeom.of(scaler);
     final idx = selectedIndex;
     final shown = idx != null && idx >= 0 && idx < pts.length ? pts[idx] : null;
     final raw = shown?.value;
     final value = _trendFinite(raw) ? raw : null;
     final valueText = format?.call(value) ?? obNumber(value);
-    final dateText = shown == null
-        ? null
-        : pointCaption?.call(shown) ??
-            DateFormat('d. MMM', 'de_DE').format(DateTime.parse(shown.day));
+    final dateText = shown?.caption;
     final bounds = bars
         ? _sourcedBarBounds([for (final pt in pts) pt.value])
         : _sourcedTrendBounds([for (final pt in pts) pt.value]);
@@ -675,15 +685,15 @@ class OBTrendCard extends StatelessWidget {
         Expanded(child: Text(label, style: titleStyle)),
       ],
     );
-    final coverageText = Text(coverage ?? '', style: coverageStyle);
-    final header = stacked
+    final coverageLabel = coverage?.trim();
+    final hasCoverage = coverageLabel != null && coverageLabel.isNotEmpty;
+    final coverageText = Text(coverageLabel ?? '', style: coverageStyle);
+    final header = !hasCoverage
+        ? title
+        : stacked
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              title,
-              const SizedBox(height: 4),
-              coverageText,
-            ],
+            children: [title, const SizedBox(height: 4), coverageText],
           )
         : Row(
             children: [
@@ -697,11 +707,14 @@ class OBTrendCard extends StatelessWidget {
     String slotPhrase(int i) {
       if (i < 0 || i >= pts.length) return 'kein Wert';
       final pt = pts[i];
-      final day = pointCaption?.call(pt) ??
-          DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(pt.day));
-      if (!_trendFinite(pt.value)) return '$day, kein Wert';
-      return '$day, ${format?.call(pt.value) ?? obNumber(pt.value)} $unit';
+      final day = pt.semantics ?? pt.caption ?? '';
+      if (!_trendFinite(pt.value)) {
+        return day.isEmpty ? 'kein Wert' : '$day, kein Wert';
+      }
+      final number = format?.call(pt.value) ?? obNumber(pt.value);
+      return day.isEmpty ? '$number $unit' : '$day, $number $unit';
     }
+
     final dateStyle = p
         .text(13, weight: FontWeight.w500, color: p.muted)
         .copyWith(height: 18 / 13);
@@ -720,12 +733,12 @@ class OBTrendCard extends StatelessWidget {
       ],
     );
     final Widget valueBlock;
-    if (bars && stacked) {
+    if (stacked) {
       valueBlock = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           valueAndUnit,
-          if (dateText != null) ...[
+          if (dateText != null && dateText.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(dateText, style: dateStyle),
           ],
@@ -739,7 +752,7 @@ class OBTrendCard extends StatelessWidget {
           Text(valueText, style: valueStyle),
           const SizedBox(width: 8),
           Text(unit, style: unitStyle),
-          if (dateText != null) ...[
+          if (dateText != null && dateText.isNotEmpty) ...[
             const SizedBox(width: 12),
             Flexible(child: Text(dateText, style: dateStyle)),
           ],
@@ -757,7 +770,9 @@ class OBTrendCard extends StatelessWidget {
           if (hasPlot)
             Semantics(
               key: plotKey,
-              label: '$label, $coverage, ${slotPhrase(slot)}',
+              label: hasCoverage
+                  ? '$label, $coverageLabel, ${slotPhrase(slot)}'
+                  : '$label, ${slotPhrase(slot)}',
               value: slotPhrase(slot),
               increasedValue: canIncrease ? slotPhrase(slot + 1) : null,
               decreasedValue: canDecrease ? slotPhrase(slot - 1) : null,
@@ -799,7 +814,7 @@ class OBTrendCard extends StatelessWidget {
                         onHorizontalDragUpdate: (d) => pick(d.localPosition),
                         child: CustomPaint(
                           painter: _TrendPainter.sourced(
-                            pts,
+                            [for (final pt in pts) pt.value],
                             color,
                             bounds.$1,
                             bounds.$2,
@@ -818,7 +833,10 @@ class OBTrendCard extends StatelessWidget {
                 ),
               ),
             ),
-          if (hasPlot && bars && pts.length == 1 && (axisEnd ?? axisStart) != null)
+          if (hasPlot &&
+              bars &&
+              pts.length == 1 &&
+              (axisEnd ?? axisStart) != null)
             Padding(
               padding: EdgeInsets.only(left: geom.left, right: geom.right),
               child: Center(
@@ -836,7 +854,11 @@ class OBTrendCard extends StatelessWidget {
                   Flexible(
                     child: Text(
                       axisStart!,
-                      style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                      style: p.text(
+                        12,
+                        weight: FontWeight.w500,
+                        color: p.muted,
+                      ),
                     ),
                   )
                 else
@@ -849,7 +871,11 @@ class OBTrendCard extends StatelessWidget {
                     child: Text(
                       axisEnd!,
                       textAlign: TextAlign.end,
-                      style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                      style: p.text(
+                        12,
+                        weight: FontWeight.w500,
+                        color: p.muted,
+                      ),
                     ),
                   )
                 else
@@ -978,6 +1004,7 @@ int _sourcedBarHitIndex(double x, double width, int n, _SourcedPlotGeom geom) {
 
 class _TrendPainter extends CustomPainter {
   final List<MetricPoint> points;
+  final List<double?> values;
   final double? baseline;
   final Color color, tint, gap, ring;
   final bool sourced;
@@ -999,6 +1026,7 @@ class _TrendPainter extends CustomPainter {
     this.gap,
     this.ring,
   ) : sourced = false,
+      values = const [],
       lo = null,
       hi = null,
       selectedIndex = null,
@@ -1010,7 +1038,7 @@ class _TrendPainter extends CustomPainter {
       restColor = null;
 
   _TrendPainter.sourced(
-    this.points,
+    this.values,
     this.color,
     double this.lo,
     double this.hi,
@@ -1021,11 +1049,12 @@ class _TrendPainter extends CustomPainter {
     TextDirection this.textDirection, {
     this.bars = false,
     this.restColor,
-  }) : baseline = null,
-      tint = color,
-      gap = color,
-      ring = color,
-      sourced = true;
+  }) : points = const [],
+       baseline = null,
+       tint = color,
+       gap = color,
+       ring = color,
+       sourced = true;
 
   bool _usable(MetricPoint point) => _trendFinite(point.value);
 
@@ -1039,7 +1068,10 @@ class _TrendPainter extends CustomPainter {
       }
       return;
     }
-    final values = [for (final p in points) if (_usable(p)) p.value!];
+    final values = [
+      for (final p in points)
+        if (_usable(p)) p.value!,
+    ];
     if (values.isEmpty) return;
     var lo = values.reduce((a, b) => a < b ? a : b);
     var hi = values.reduce((a, b) => a > b ? a : b);
@@ -1091,7 +1123,8 @@ class _TrendPainter extends CustomPainter {
       if (path == null) {
         path = Path()..moveTo(x(i), y(v!));
         final isolatedFirst =
-            lastIndex == null && (i == points.length - 1 || !_usable(points[i + 1]));
+            lastIndex == null &&
+            (i == points.length - 1 || !_usable(points[i + 1]));
         if (lastIndex != null || isolatedFirst) {
           canvas.drawCircle(Offset(x(i), y(v)), 2.5, Paint()..color = color);
         }
@@ -1117,11 +1150,10 @@ class _TrendPainter extends CustomPainter {
     if (span <= 0 || !span.isFinite) return;
     final plotW = size.width - g.left - g.right;
     if (plotW <= 0) return;
-    double x(int i) => points.length > 1
-        ? g.left + i * plotW / (points.length - 1)
+    double x(int i) => values.length > 1
+        ? g.left + i * plotW / (values.length - 1)
         : g.left + plotW / 2;
-    double y(double v) =>
-        g.yBottom - (v - low) / span * (g.yBottom - g.yTop);
+    double y(double v) => g.yBottom - (v - low) / span * (g.yBottom - g.yTop);
     final line = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -1129,8 +1161,8 @@ class _TrendPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     Path? path;
-    for (var i = 0; i < points.length; i++) {
-      final v = points[i].value;
+    for (var i = 0; i < values.length; i++) {
+      final v = values[i];
       if (!_trendFinite(v)) {
         path = null;
         continue;
@@ -1145,8 +1177,8 @@ class _TrendPainter extends CustomPainter {
       }
     }
     final mark = Paint()..color = color;
-    for (var i = 0; i < points.length; i++) {
-      final v = points[i].value;
+    for (var i = 0; i < values.length; i++) {
+      final v = values[i];
       if (!_trendFinite(v)) continue;
       final selected = i == selectedIndex;
       canvas.drawCircle(Offset(x(i), y(v!)), selected ? 4 : 2, mark);
@@ -1159,8 +1191,9 @@ class _TrendPainter extends CustomPainter {
         textDirection: textDirection ?? TextDirection.ltr,
         textScaler: textScaler ?? TextScaler.noScaling,
       )..layout();
-      final alphabetic =
-          painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+      final alphabetic = painter.computeDistanceToActualBaseline(
+        TextBaseline.alphabetic,
+      );
       painter.paint(canvas, Offset(0, baseline - alphabetic));
       painter.dispose();
     }
@@ -1175,14 +1208,14 @@ class _TrendPainter extends CustomPainter {
     if (high <= 0 || !high.isFinite) return;
     final plotW = size.width - g.left - g.right;
     if (plotW <= 0) return;
-    final n = points.length;
+    final n = values.length;
     if (n <= 0) return;
     final step = plotW / n;
     final barW = math.min(18.0, step * 0.72);
     final rest = restColor ?? color;
     final span = g.yBottom - g.yTop;
     for (var i = 0; i < n; i++) {
-      final v = points[i].value;
+      final v = values[i];
       if (!_trendFinite(v) || v! <= 0) continue;
       final h = v / high * span;
       if (h <= 0) continue;
@@ -1203,8 +1236,9 @@ class _TrendPainter extends CustomPainter {
         textDirection: textDirection ?? TextDirection.ltr,
         textScaler: textScaler ?? TextScaler.noScaling,
       )..layout();
-      final alphabetic =
-          painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+      final alphabetic = painter.computeDistanceToActualBaseline(
+        TextBaseline.alphabetic,
+      );
       painter.paint(canvas, Offset(0, baseline - alphabetic));
       painter.dispose();
     }
@@ -1216,6 +1250,7 @@ class _TrendPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TrendPainter old) =>
       old.points != points ||
+      old.values != values ||
       old.baseline != baseline ||
       old.color != color ||
       old.tint != tint ||

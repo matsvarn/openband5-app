@@ -7,6 +7,7 @@ import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
 import 'cycle_data.dart';
 import 'cycle_measurements_data.dart';
+import 'cycle_medians_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
 import 'medication_data.dart';
@@ -17,6 +18,7 @@ export '../data/nutrition_store.dart'
 export '../health/glucose_contract.dart';
 export 'cycle_data.dart';
 export 'cycle_measurements_data.dart';
+export 'cycle_medians_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
 export 'medication_data.dart';
@@ -2294,6 +2296,17 @@ abstract interface class OpenBandRepository {
   Future<CycleMeasurementsSnapshot> readCycleMeasurements(
     String asOfDay, {
     String? cycleStartDay,
+  });
+
+  /// Twelve-calendar-month medians ending on [anchorEnd], paged by whole-year
+  /// [pageOffset]. [anchorEnd] is an independent civil end date, not today;
+  /// it must exist and must not follow local today of [now] (clock default).
+  /// Tracking off, no contributing starts, or unreadable starts do not decode
+  /// day payloads. Database failure throws.
+  Future<CycleMediansSnapshot> readCycleMedians(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
   });
 
   /// Compare-and-swap. [expected] null creates. A changed date checks source
