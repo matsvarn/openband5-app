@@ -1258,6 +1258,46 @@
         "source": "lib/health/health_profile_import.dart; lib/state/app_state.dart; lib/compute/profile.dart; docs/openband5/DESIGN_BACKEND.md B152",
         "evidence": "Source audit c3254b0f/ad648163 and2f3de210 in private Mats task openband-alpin-20260919; implementation verified against current journal contract.",
         "note": "Existing undated profile scalar is deliberately excluded from measured journal history. Current Health profile import loses observation dates/source and changing profile weight affects all historic dates. Health WEIGHT is supported by pinned health12.2.1; source-preserving dated observations, explicit date-effective adoption and affected recalculation remain required, not deferred."
+      },
+      "VO2max Fehler": {
+        "status": "implemented",
+        "paperNode": "5386-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/vo2.dart; lib/openband/vo2_data.dart; lib/openband/health.dart; lib/openband/local_repository.dart; lib/data/vo2_store.dart",
+        "evidence": "test/openband_vo2_{data,store,repository,ui}_test.dart; test/openband_backup_receipt_test.dart; integration_test/openband_review_test.dart vo2; IMPLEMENTATION_VERIFICATION.md Manual VO2max and import receipts",
+        "note": "Dated manual entry, source/method disclosure, immutable revisions, CAS edit, removal/restoration and retained drafts. Empty, unreadable, partial and failed reads are distinct; committed writes survive refresh/import failures. No estimator or reference classification."
+      },
+      "VO2max gespeichert": {
+        "status": "implemented",
+        "paperNode": "52B4-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/vo2.dart; lib/openband/vo2_data.dart; lib/openband/health.dart; lib/openband/local_repository.dart; lib/data/vo2_store.dart",
+        "evidence": "test/openband_vo2_{data,store,repository,ui}_test.dart; test/openband_backup_receipt_test.dart; integration_test/openband_review_test.dart vo2; IMPLEMENTATION_VERIFICATION.md Manual VO2max and import receipts",
+        "note": "Dated manual entry, source/method disclosure, immutable revisions, CAS edit, removal/restoration and retained drafts. Empty, unreadable, partial and failed reads are distinct; committed writes survive refresh/import failures. No estimator or reference classification."
+      },
+      "VO2max eintragen": {
+        "status": "implemented",
+        "paperNode": "52T6-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/vo2.dart; lib/openband/vo2_data.dart; lib/openband/health.dart; lib/openband/local_repository.dart; lib/data/vo2_store.dart",
+        "evidence": "test/openband_vo2_{data,store,repository,ui}_test.dart; test/openband_backup_receipt_test.dart; integration_test/openband_review_test.dart vo2; IMPLEMENTATION_VERIFICATION.md Manual VO2max and import receipts",
+        "note": "Dated manual entry, source/method disclosure, immutable revisions, CAS edit, removal/restoration and retained drafts. Empty, unreadable, partial and failed reads are distinct; committed writes survive refresh/import failures. No estimator or reference classification."
+      },
+      "VO2max offen": {
+        "status": "implemented",
+        "paperNode": "525E-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/vo2.dart; lib/openband/vo2_data.dart; lib/openband/health.dart; lib/openband/local_repository.dart; lib/data/vo2_store.dart",
+        "evidence": "test/openband_vo2_{data,store,repository,ui}_test.dart; test/openband_backup_receipt_test.dart; integration_test/openband_review_test.dart vo2; IMPLEMENTATION_VERIFICATION.md Manual VO2max and import receipts",
+        "note": "Dated manual entry, source/method disclosure, immutable revisions, CAS edit, removal/restoration and retained drafts. Empty, unreadable, partial and failed reads are distinct; committed writes survive refresh/import failures. No estimator or reference classification."
+      },
+      "VO2max Einordnung": {
+        "status": "partial",
+        "paperNode": "53LQ-0",
+        "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+        "source": "lib/openband/vo2.dart; lib/openband/vo2_data.dart; lib/openband/health.dart; lib/openband/local_repository.dart; lib/data/vo2_store.dart; docs/openband5/DESIGN_BACKEND.md B150/B151",
+        "evidence": "test/openband_vo2_{data,store,repository,ui}_test.dart; test/openband_backup_receipt_test.dart; integration_test/openband_review_test.dart vo2; IMPLEMENTATION_VERIFICATION.md Manual VO2max and import receipts",
+        "note": "Actual manual value, date, declared method and unavailable-reference disclosure implemented. Classification remains open: no versioned licensed reference catalog/group exists in the source, and the removed k/resting-HR estimator must not return. No physiological norm is invented by the UI."
       }
     },
     "A04 · System": {

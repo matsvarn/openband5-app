@@ -402,7 +402,7 @@ void main() {
     for (final m in const [
       'Future<int> importNoopCsv(',
       'Future<int> importWhoopCsvs(',
-      'Future<int> importEdgeBackup(',
+      'Future<BackupImportReceipt> importEdgeBackup(',
     ]) {
       final at = src.indexOf(m);
       expect(at, greaterThan(0), reason: '$m has moved or been renamed');

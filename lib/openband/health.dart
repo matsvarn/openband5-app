@@ -13,6 +13,7 @@ import 'metric_detail.dart';
 import 'screens.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
+import 'vo2.dart';
 import 'weight.dart';
 
 class OpenBandHealth extends StatefulWidget {
@@ -210,6 +211,17 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
             ),
             const SizedBox(height: 10),
             OBCard(
+              padding: EdgeInsets.zero,
+              child: _HealthVo2Row(
+                key: ValueKey('vo2-${c.selectedDay}'),
+                repository: c.repository,
+                endDay: c.selectedDay,
+                now: c.now,
+                refreshRequest: c.refreshRequest,
+              ),
+            ),
+            const SizedBox(height: 10),
+            OBCard(
               child: SetRow(
                 LucideIcons.flaskConical,
                 p.muted,
@@ -242,6 +254,130 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
       );
     },
   );
+}
+
+class _HealthVo2Row extends StatefulWidget {
+  const _HealthVo2Row({
+    super.key,
+    required this.repository,
+    required this.endDay,
+    required this.now,
+    required this.refreshRequest,
+  });
+
+  final OpenBandRepository repository;
+  final String endDay;
+  final DateTime Function() now;
+  final int refreshRequest;
+
+  @override
+  State<_HealthVo2Row> createState() => _HealthVo2RowState();
+}
+
+class _HealthVo2RowState extends State<_HealthVo2Row> {
+  late Future<Vo2List> _entries = _read();
+
+  Future<Vo2List> _read() {
+    final repository = widget.repository;
+    final future = Future<Vo2List>.sync(repository.readVo2Entries);
+    future.ignore();
+    return future;
+  }
+
+  @override
+  void didUpdateWidget(covariant _HealthVo2Row oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        oldWidget.endDay != widget.endDay ||
+        oldWidget.refreshRequest != widget.refreshRequest) {
+      _entries = _read();
+    }
+  }
+
+  Vo2Revision? _latest(Vo2List? list) {
+    if (list == null) return null;
+    final entries = <Vo2Revision>[];
+    for (final item in list.entries) {
+      final head = item.head;
+      if (head != null &&
+          !head.deleted &&
+          head.measuredOn.compareTo(widget.endDay) <= 0) {
+        entries.add(head);
+      }
+    }
+    entries.sort((a, b) {
+      final byDay = b.measuredOn.compareTo(a.measuredOn);
+      return byDay != 0 ? byDay : a.id.compareTo(b.id);
+    });
+    return entries.isEmpty ? null : entries.first;
+  }
+
+  String _date(String day) {
+    final date = DateTime.parse(day);
+    return DateFormat(
+      date.year == widget.now().year ? 'd. MMM' : 'd. MMM y',
+      'de_DE',
+    ).format(date);
+  }
+
+  Future<void> _open(BuildContext context) async {
+    await OpenBandVo2.push(
+      context,
+      repository: widget.repository,
+      endDay: widget.endDay,
+      now: widget.now,
+    );
+    if (!mounted) return;
+    setState(() {
+      _entries = _read();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return FutureBuilder<Vo2List>(
+      future: _entries,
+      builder: (context, snapshot) {
+        final loaded =
+            snapshot.connectionState == ConnectionState.done &&
+            !snapshot.hasError;
+        final list = loaded ? snapshot.data : null;
+        final latest = _latest(list);
+        final hasUnreadable = (list?.corruptCount ?? 0) > 0;
+        final value = latest == null
+            ? '—'
+            : '${obNumber(latest.valueMlKgMin, digits: 1)} $kVo2Unit';
+        final subtitle = snapshot.hasError
+            ? 'Laden fehlgeschlagen'
+            : latest == null
+            ? hasUnreadable
+                  ? 'Eintrag nicht lesbar'
+                  : 'Eingetragen'
+            : hasUnreadable
+            ? 'Eingetragen · ${_date(latest.measuredOn)}\nTeilweise lesbar'
+            : 'Eingetragen · ${_date(latest.measuredOn)}';
+        return OBSettingsValueRow(
+          key: const ValueKey('vo2-health-row'),
+          label: 'VO₂max',
+          value: value,
+          subtitle: subtitle,
+          labelWeight: FontWeight.w600,
+          valueWeight: FontWeight.w700,
+          chevron: true,
+          mutedValue: latest == null,
+          leading: DecoratedBox(
+            decoration: BoxDecoration(
+              color: p.well,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(LucideIcons.activity, size: 18, color: p.ink),
+          ),
+          onTap: () => _open(context),
+        );
+      },
+    );
+  }
 }
 
 class _HealthWeightRow extends StatefulWidget {

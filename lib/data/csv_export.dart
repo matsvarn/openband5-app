@@ -157,6 +157,30 @@ const kCsvExportSets = <CsvExportSet>[
     sql: 'SELECT taken_on, marker, value, unit, note, report_low, report_high '
         'FROM lab_result ORDER BY taken_on ASC, marker ASC',
   ),
+  CsvExportSet(
+    name: 'vo2',
+    title: 'VO2max',
+    // Every revision, including a deleted head. `source` is the stored origin
+    // (`user-entered`); the method is the user's own words, not a verified test.
+    columns: [
+      'id',
+      'measured_on',
+      'value',
+      'unit',
+      'declared_method',
+      'source',
+      'revision',
+      'deleted',
+      'created_at',
+      'updated_at',
+    ],
+    sql: '''
+      SELECT id, measured_on, value_ml_kg_min AS value, unit, declared_method,
+             origin AS source, revision, deleted, created_at, updated_at
+      FROM manual_vo2
+      ORDER BY measured_on ASC, id ASC, revision ASC
+    ''',
+  ),
   // ── everything below is data the user TYPED IN ──────────────────────────────
   //
   // The six sets above are all derived, so the export used to be able to hand

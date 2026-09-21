@@ -14,6 +14,7 @@ import 'exercise_load.dart';
 import 'medication_data.dart';
 import 'night_scalar_data.dart';
 import 'sleep_plan_data.dart';
+import 'vo2_data.dart';
 import 'weight_data.dart';
 
 export '../data/nutrition_store.dart'
@@ -28,6 +29,7 @@ export 'exercise_load.dart';
 export 'medication_data.dart';
 export 'night_scalar_data.dart';
 export 'sleep_plan_data.dart';
+export 'vo2_data.dart';
 export 'weight_data.dart';
 
 enum MetricReadiness {
@@ -2286,6 +2288,40 @@ abstract interface class OpenBandRepository {
   /// throws; it is not an empty history. Profile weight is not a fallback.
   /// Writes stay on [readJournalDay] / [patchJournalDay].
   Future<WeightHistory> readWeightHistory(String endDay, int days);
+  /// Manual VO2max revisions. [readVo2Entries] returns every current head,
+  /// deleted included, in id order. A corrupt head is null and stays null
+  /// when an older revision is readable. [readVo2Entry] is one chain; an
+  /// unknown id is missing. Database failure throws and is not an empty list.
+  ///
+  /// Ids are caller-owned. Create is the absent base; edit, remove, and
+  /// restore send the revision they read. The local clock is captured for a
+  /// new revision. Repeating the same id and payload is a retry and does not
+  /// append. [declaredMethod] is stored text, not a verified test. Values are
+  /// finite and strictly positive, with no invented upper bound. Profile
+  /// weight and resting heart rate are not entries.
+  Future<Vo2List> readVo2Entries();
+  Future<Vo2Detail> readVo2Entry(String id);
+  Future<Vo2WriteResult> createVo2Entry({
+    required String id,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  });
+  Future<Vo2WriteResult> editVo2Entry({
+    required String id,
+    required int expectedRevision,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  });
+  Future<Vo2WriteResult> removeVo2Entry({
+    required String id,
+    required int expectedRevision,
+  });
+  Future<Vo2WriteResult> restoreVo2Entry({
+    required String id,
+    required int expectedRevision,
+  });
   /// Signed `journal_metric.water_ml` delta. Returns the committed amount
   /// without a follow-up read; null means the field is absent.
   Future<double?> adjustWater(String day, double deltaMl);

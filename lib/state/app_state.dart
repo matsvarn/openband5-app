@@ -62,6 +62,7 @@ import 'alarm_schedule.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../ui2/profile/devices.dart' show liveSources, rankSources;
+import '../data/backup_import_result.dart';
 import '../data/db.dart';
 import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
@@ -510,31 +511,51 @@ class AppState extends ChangeNotifier {
     return res.days;
   }
 
-  /// Another device's exported OpenStrap DB (.db) → merge into the local store.
-  /// Returns total rows copied across tables.
   /// Set when an import landed its rows but the rollup rebuild after it threw.
   /// The days are in the database and the summaries built from them are not, so
   /// reporting only the row count would claim a success the user does not have.
+  ///
+  /// Database backup imports carry the same failure on
+  /// [BackupImportReceipt.recalculationError]. This field stays for the other
+  /// import paths and for the settings screen that reads it directly.
   String? importRollupError;
 
-  Future<int> importEdgeBackup(String path) async {
+  /// Another device's exported database (`.db` or `.db.gz`) merged locally.
+  ///
+  /// [BackupImportReceipt.days] is distinct days written. VO2 revisions,
+  /// conflict ids, and corrupt ids stay on the receipt and are not added to
+  /// that day count. A thrown read never becomes a zero receipt.
+  Future<BackupImportReceipt> importEdgeBackup(String path) async {
     importRollupError = null;
     // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
     // do not add it back here. Its inflate checks the gzip trailer, so a
     // truncated backup fails loudly; `gzip.decoder` returns partial output
     // without raising and would restore short while reporting success.
-    final counts = await LocalDb.importFromDbFile(path);
-    // Imported rows include derived day_result/metric_series → refresh rollups.
+    Map<String, int> counts;
+    String? readError;
+    try {
+      counts = await LocalDb.importFromDbFile(path);
+    } on PartialImportException catch (e) {
+      counts = e.counts;
+      readError = '${e.cause}';
+    }
+    // Rows that committed are already in the database, including when a later
+    // table stopped the file. Refresh them. A recalc failure stays separate
+    // from that read error.
+    String? rollupError;
     try {
       await _derive.finalizeImport(_profile);
     } catch (e) {
-      importRollupError = '$e';
+      rollupError = '$e';
+      importRollupError = rollupError;
     }
     bumpInsights(); // see importNoopCsv — imported rows have to reach the tabs
     notifyListeners();
-    // DAYS, not rows. `_days` is a distinct day_id count taken from the source
-    // file; the caller reports "N days imported" and a row total is not that.
-    return counts['_days'] ?? 0;
+    return BackupImportReceipt.fromCounts(
+      counts,
+      recalculationError: rollupError,
+      readError: readError,
+    );
   }
 
   // ── platform health export (Apple Health / Health Connect) ──────────────────

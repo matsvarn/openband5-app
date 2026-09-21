@@ -13,6 +13,7 @@ import '../data/lab_catalogue.dart';
 import '../data/med_store.dart';
 import '../data/nutrition_store.dart';
 import '../data/nutrition_targets.dart';
+import '../data/vo2_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../compute/derivation_engine.dart' show kAlgoVersion;
@@ -3621,6 +3622,88 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<void> refreshCycleContext() {
     return (_cycleContextRefresh ?? app.refreshCycleContext)();
+  }
+
+  @override
+  Future<Vo2List> readVo2Entries() async {
+    final db = await LocalDb.instance;
+    return Vo2Store.list(db);
+  }
+
+  @override
+  Future<Vo2Detail> readVo2Entry(String id) async {
+    final db = await LocalDb.instance;
+    return Vo2Store.detail(db, id);
+  }
+
+  @override
+  Future<Vo2WriteResult> createVo2Entry({
+    required String id,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  }) async {
+    final now = DateTime.now();
+    final db = await LocalDb.instance;
+    return Vo2Store.create(
+      db,
+      id: id,
+      measuredOn: measuredOn,
+      valueMlKgMin: valueMlKgMin,
+      declaredMethod: declaredMethod,
+      now: now,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> editVo2Entry({
+    required String id,
+    required int expectedRevision,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  }) async {
+    final now = DateTime.now();
+    final db = await LocalDb.instance;
+    return Vo2Store.edit(
+      db,
+      id: id,
+      expectedRevision: expectedRevision,
+      measuredOn: measuredOn,
+      valueMlKgMin: valueMlKgMin,
+      declaredMethod: declaredMethod,
+      now: now,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> removeVo2Entry({
+    required String id,
+    required int expectedRevision,
+  }) async {
+    final now = DateTime.now();
+    final db = await LocalDb.instance;
+    return Vo2Store.delete(
+      db,
+      id: id,
+      expectedRevision: expectedRevision,
+      now: now,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> restoreVo2Entry({
+    required String id,
+    required int expectedRevision,
+  }) async {
+    final now = DateTime.now();
+    final db = await LocalDb.instance;
+    return Vo2Store.restore(
+      db,
+      id: id,
+      expectedRevision: expectedRevision,
+      now: now,
+    );
   }
 
   Future<CycleWriteResult> _cycleWriteResult({

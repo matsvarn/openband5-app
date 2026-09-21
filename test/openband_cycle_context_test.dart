@@ -10,6 +10,7 @@ import 'package:openstrap_edge/compute/derive_scheduler.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/backup_import_result.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -550,7 +551,11 @@ void main() {
     ]);
     await expectLater(
       LocalDb.importFromDbFile(path),
-      throwsStateError,
+      throwsA(
+        isA<PartialImportException>()
+            .having((e) => e.cause, 'original error', isA<StateError>())
+            .having((e) => e.counts['cycle_log'], 'committed cycle rows', 2),
+      ),
     );
     expect(await LocalDb.cycleStartDates(), ['2026-06-01', '2026-06-29']);
     expect(await LocalDb.baseline('crossday'), isNull);
@@ -900,7 +905,14 @@ void main() {
       'updated_at': now,
     });
     await src.close();
-    await expectLater(LocalDb.importFromDbFile(path), throwsStateError);
+    await expectLater(
+      LocalDb.importFromDbFile(path),
+      throwsA(
+        isA<PartialImportException>().having(
+          (e) => e.cause, 'original error', isA<StateError>(),
+        ),
+      ),
+    );
     await LocalDb.close();
     final reopened = await LocalDb.instance;
     expect(reopened.isOpen, isTrue);

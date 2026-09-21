@@ -11,6 +11,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/csv_export.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/vo2_store.dart';
+import 'package:openstrap_edge/openband/vo2_data.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -511,6 +513,49 @@ void main() {
       final csv = renderCsv(strength.columns, rows);
       expect(csv, contains('62.55'));
       expect(csv.split('\n').first, contains('original_load'));
+    } finally {
+      await LocalDb.close();
+    }
+  });
+
+  test('vo2 CSV keeps source, unit, revision, and deleted state', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = 'openstrap_csv_vo2_test.db';
+    await LocalDb.close();
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      final db = await LocalDb.instance;
+      final created = await Vo2Store.create(
+        db,
+        id: 'entry-1',
+        measuredOn: '2026-09-14',
+        valueMlKgMin: 42.5,
+        declaredMethod: 'Spiroergometrie',
+        now: DateTime(2026, 9, 14, 9),
+      );
+      expect(created, isA<Vo2Committed>());
+      await Vo2Store.delete(
+        db,
+        id: 'entry-1',
+        expectedRevision: 1,
+        now: DateTime(2026, 9, 14, 10),
+      );
+      final vo2 = kCsvExportSets.firstWhere((s) => s.name == 'vo2');
+      expect(vo2.columns, containsAll(['source', 'unit', 'revision', 'deleted']));
+      final rows = await db.rawQuery(vo2.sql);
+      expect(rows, hasLength(2));
+      final csv = renderCsv(vo2.columns, rows);
+      expect(csv, contains('user-entered'));
+      expect(csv, contains('ml/kg/min'));
+      expect(csv, contains('Spiroergometrie'));
+      expect(csv.trim().split('\n').last, contains('user-entered,2,1,'));
+      expect(rows.last['deleted'], 1);
+      expect(rows.last['source'], kVo2Origin);
+      expect(rows.last['revision'], 2);
+      expect(csv, isNot(contains('null')));
     } finally {
       await LocalDb.close();
     }

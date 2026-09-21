@@ -50,6 +50,12 @@ enum SyntheticCaffeineSleepSeed {
   partialMeaningful,
 }
 
+/// Paper VO2max row: 14 September 2026, 42.0 ml/kg/min, Spiroergometrie.
+const String kSyntheticVo2PaperId = 'vo2-paper';
+const String kSyntheticVo2PaperDay = '2026-09-14';
+const double kSyntheticVo2PaperValue = 42;
+const String kSyntheticVo2PaperMethod = 'Spiroergometrie';
+
 class _NightScalarSeed {
   _NightScalarSeed({
     this.selected,
@@ -129,6 +135,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   Future<void>? templateWriteBarrier;
   bool failJournalRead = false;
   Future<void>? journalReadBarrier;
+  bool failVo2Read = false;
+  bool failVo2Write = false;
+  DateTime Function() vo2Now = DateTime.now;
   bool failJournalPatch = false;
   bool failJournalFieldsList = false;
   bool failJournalFieldsCreate = false;
@@ -380,6 +389,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   final Map<String, _SynthJournalDay> _journal = {};
+  final Map<String, List<Map<String, Object?>>> _vo2 = {};
   final Map<String, JournalFieldSpec> _journalFieldDefs = {};
   int _journalClock = 0;
   final Map<String, double?> _solMin = {};
@@ -462,6 +472,42 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         row.metricUpdatedAt[kWeightJournalField] ?? 0,
       );
     }
+  }
+
+  /// Isolated tests/gallery only. Stores the Paper entry
+  /// [kSyntheticVo2PaperDay], [kSyntheticVo2PaperValue] ml/kg/min, declared
+  /// method [kSyntheticVo2PaperMethod], through the same mutation path as
+  /// [createVo2Entry]. [removed] appends a real delete. [corruptHead] appends
+  /// an unreadable higher revision; the older 42.0 stays in the chain and is
+  /// not the head. Edits and conflicts use [editVo2Entry]. An id that was
+  /// never stored is missing. Profile weight and resting heart rate are left
+  /// untouched. Read and write failure flags do not apply to seeding.
+  void seedVo2Paper({bool removed = false, bool corruptHead = false}) {
+    if (_vo2.containsKey(kSyntheticVo2PaperId)) {
+      throw StateError('VO2 paper entry is already seeded.');
+    }
+    final created = _vo2Write(
+      op: _Vo2Op.create,
+      id: kSyntheticVo2PaperId,
+      expectedRevision: 0,
+      measuredOn: kSyntheticVo2PaperDay,
+      valueMlKgMin: kSyntheticVo2PaperValue,
+      declaredMethod: kSyntheticVo2PaperMethod,
+    );
+    if (created is! Vo2Committed || created.retry) {
+      throw StateError('VO2 paper seed did not store a revision.');
+    }
+    if (removed) {
+      final deleted = _vo2Write(
+        op: _Vo2Op.delete,
+        id: kSyntheticVo2PaperId,
+        expectedRevision: created.revision.revision,
+      );
+      if (deleted is! Vo2Committed || deleted.retry) {
+        throw StateError('VO2 paper seed did not remove the revision.');
+      }
+    }
+    if (corruptHead) _vo2AppendCorruptHead(kSyntheticVo2PaperId);
   }
 
   final Map<String, WorkoutTemplate> _templates = {};
@@ -4684,7 +4730,378 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       );
     }
   }
+
+  @override
+  Future<Vo2List> readVo2Entries() async {
+    if (failVo2Read) throw StateError('synthetic vo2 read failure');
+    return _vo2List();
+  }
+
+  @override
+  Future<Vo2Detail> readVo2Entry(String id) async {
+    if (failVo2Read) throw StateError('synthetic vo2 read failure');
+    return _vo2Detail(id);
+  }
+
+  @override
+  Future<Vo2WriteResult> createVo2Entry({
+    required String id,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  }) async {
+    if (failVo2Write) throw StateError('synthetic vo2 save failure');
+    return _vo2Write(
+      op: _Vo2Op.create,
+      id: id,
+      expectedRevision: 0,
+      measuredOn: measuredOn,
+      valueMlKgMin: valueMlKgMin,
+      declaredMethod: declaredMethod,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> editVo2Entry({
+    required String id,
+    required int expectedRevision,
+    required String measuredOn,
+    required double valueMlKgMin,
+    String? declaredMethod,
+  }) async {
+    if (failVo2Write) throw StateError('synthetic vo2 save failure');
+    return _vo2Write(
+      op: _Vo2Op.edit,
+      id: id,
+      expectedRevision: expectedRevision,
+      measuredOn: measuredOn,
+      valueMlKgMin: valueMlKgMin,
+      declaredMethod: declaredMethod,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> removeVo2Entry({
+    required String id,
+    required int expectedRevision,
+  }) async {
+    if (failVo2Write) throw StateError('synthetic vo2 save failure');
+    return _vo2Write(
+      op: _Vo2Op.delete,
+      id: id,
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  @override
+  Future<Vo2WriteResult> restoreVo2Entry({
+    required String id,
+    required int expectedRevision,
+  }) async {
+    if (failVo2Write) throw StateError('synthetic vo2 save failure');
+    return _vo2Write(
+      op: _Vo2Op.restore,
+      id: id,
+      expectedRevision: expectedRevision,
+    );
+  }
+
+  Vo2List _vo2List() {
+    final ids = _vo2.keys.toList()..sort();
+    var rowCount = 0;
+    var corrupt = 0;
+    final entries = <Vo2ListEntry>[];
+    for (final id in ids) {
+      final chain = _vo2[id]!;
+      rowCount += chain.length;
+      final head = tryParseVo2Row(_vo2Last(chain));
+      if (head == null) {
+        corrupt += 1;
+        entries.add(Vo2ListEntry(id: id, head: null, corrupt: true));
+      } else {
+        entries.add(Vo2ListEntry(id: id, head: head, corrupt: false));
+      }
+    }
+    return Vo2List(entries: entries, corruptCount: corrupt, rowCount: rowCount);
+  }
+
+  Vo2Detail _vo2Detail(String id) {
+    if (!isVo2EntryId(id)) {
+      return Vo2Detail(
+        id: id,
+        head: null,
+        missing: true,
+        headCorrupt: false,
+        revisions: const [],
+        corruptRevisionCount: 0,
+      );
+    }
+    final chain = _vo2[id];
+    if (chain == null || chain.isEmpty) {
+      return Vo2Detail(
+        id: id,
+        head: null,
+        missing: true,
+        headCorrupt: false,
+        revisions: const [],
+        corruptRevisionCount: 0,
+      );
+    }
+    final slots = <Vo2RevisionSlot>[];
+    for (final raw in _vo2Ordered(chain)) {
+      final parsed = tryParseVo2Row(raw);
+      final revision = raw['revision'];
+      slots.add(
+        Vo2RevisionSlot(
+          revision: parsed?.revision ?? (revision is int ? revision : null),
+          value: parsed,
+          corrupt: parsed == null,
+        ),
+      );
+    }
+    final last = slots.last;
+    return Vo2Detail(
+      id: id,
+      head: last.corrupt ? null : last.value,
+      missing: false,
+      headCorrupt: last.corrupt,
+      revisions: slots,
+      corruptRevisionCount: slots.where((slot) => slot.corrupt).length,
+    );
+  }
+
+  Vo2WriteResult _vo2Write({
+    required _Vo2Op op,
+    required String id,
+    required int expectedRevision,
+    String? measuredOn,
+    double? valueMlKgMin,
+    String? declaredMethod,
+  }) {
+    final method = normalizeVo2Method(declaredMethod);
+    if (!_vo2InputOk(
+      op: op,
+      id: id,
+      expectedRevision: expectedRevision,
+      measuredOn: measuredOn,
+      valueMlKgMin: valueMlKgMin,
+    )) {
+      return const Vo2WriteRejected(Vo2RejectReason.invalid);
+    }
+    final nowMs = vo2Now().millisecondsSinceEpoch;
+    final chain = _vo2[id];
+    if (chain == null || chain.isEmpty) {
+      if (op != _Vo2Op.create) {
+        return const Vo2WriteRejected(Vo2RejectReason.missing);
+      }
+      final created = Vo2Revision(
+        id: id,
+        revision: 1,
+        measuredOn: measuredOn!,
+        valueMlKgMin: valueMlKgMin!,
+        declaredMethod: method,
+        createdAt: nowMs,
+        updatedAt: nowMs,
+        deleted: false,
+      );
+      _vo2[id] = [_vo2Row(created)];
+      return Vo2Committed(created);
+    }
+    final head = tryParseVo2Row(_vo2Last(chain));
+    if (head == null) return const Vo2WriteConflict(headCorrupt: true);
+    if (head.revision == expectedRevision) {
+      if (!_vo2Applies(op, head)) return Vo2WriteConflict(head: head);
+      final next = _vo2Next(
+        op: op,
+        head: head,
+        nowMs: nowMs,
+        measuredOn: measuredOn,
+        valueMlKgMin: valueMlKgMin,
+        method: method,
+      );
+      chain.add(_vo2Row(next));
+      return Vo2Committed(next);
+    }
+    if (head.revision == expectedRevision + 1 &&
+        _vo2IsRetry(
+          chain: chain,
+          op: op,
+          head: head,
+          expectedRevision: expectedRevision,
+          measuredOn: measuredOn,
+          valueMlKgMin: valueMlKgMin,
+          method: method,
+        )) {
+      return Vo2Committed(head, retry: true);
+    }
+    return Vo2WriteConflict(head: head);
+  }
+
+  void _vo2AppendCorruptHead(String id) {
+    final chain = _vo2[id];
+    if (chain == null || chain.isEmpty) {
+      throw StateError('VO2 corrupt head needs a stored chain.');
+    }
+    final parsed = tryParseVo2Row(_vo2Last(chain));
+    final revision = (parsed?.revision ?? chain.length) + 1;
+    chain.add({
+      'id': id,
+      'revision': revision,
+      'measured_on': 'not-a-day',
+      'value_ml_kg_min': 99,
+      'declared_method': parsed?.declaredMethod,
+      'created_at': parsed?.createdAt ?? 0,
+      'updated_at': (parsed?.updatedAt ?? 0) + 1,
+      'deleted': 0,
+      'origin': kVo2Origin,
+      'unit': kVo2Unit,
+    });
+  }
 }
+
+enum _Vo2Op { create, edit, delete, restore }
+
+bool _vo2InputOk({
+  required _Vo2Op op,
+  required String id,
+  required int expectedRevision,
+  String? measuredOn,
+  double? valueMlKgMin,
+}) {
+  if (!isVo2EntryId(id)) return false;
+  if (op == _Vo2Op.create) {
+    if (expectedRevision != 0) return false;
+  } else if (expectedRevision < 1) {
+    return false;
+  }
+  if (op == _Vo2Op.create || op == _Vo2Op.edit) {
+    if (measuredOn == null || !isVo2CivilDay(measuredOn)) return false;
+    if (valueMlKgMin == null || !isVo2Value(valueMlKgMin)) return false;
+  }
+  return true;
+}
+
+bool _vo2Applies(_Vo2Op op, Vo2Revision head) {
+  switch (op) {
+    case _Vo2Op.create:
+      return false;
+    case _Vo2Op.edit:
+    case _Vo2Op.delete:
+      return !head.deleted;
+    case _Vo2Op.restore:
+      return head.deleted;
+  }
+}
+
+Vo2Revision _vo2Next({
+  required _Vo2Op op,
+  required Vo2Revision head,
+  required int nowMs,
+  String? measuredOn,
+  double? valueMlKgMin,
+  String? method,
+}) {
+  return Vo2Revision(
+    id: head.id,
+    revision: head.revision + 1,
+    measuredOn: op == _Vo2Op.edit ? measuredOn! : head.measuredOn,
+    valueMlKgMin: op == _Vo2Op.edit ? valueMlKgMin! : head.valueMlKgMin,
+    declaredMethod: op == _Vo2Op.edit ? method : head.declaredMethod,
+    createdAt: head.createdAt,
+    updatedAt: nowMs > head.updatedAt ? nowMs : head.updatedAt + 1,
+    deleted: op == _Vo2Op.delete,
+  );
+}
+
+/// Retry only when [op] could have produced [head] from the expected base.
+/// Restore requires that base to be deleted, so a same-value edit is not a
+/// successful restore.
+bool _vo2IsRetry({
+  required List<Map<String, Object?>> chain,
+  required _Vo2Op op,
+  required Vo2Revision head,
+  required int expectedRevision,
+  String? measuredOn,
+  double? valueMlKgMin,
+  String? method,
+}) {
+  if (op == _Vo2Op.create) {
+    return !head.deleted &&
+        head.revision == 1 &&
+        head.measuredOn == measuredOn &&
+        head.valueMlKgMin == valueMlKgMin &&
+        head.declaredMethod == method &&
+        head.origin == kVo2Origin &&
+        head.unit == kVo2Unit;
+  }
+  Vo2Revision? base;
+  for (final raw in chain) {
+    if (raw['revision'] == expectedRevision) {
+      base = tryParseVo2Row(raw);
+      break;
+    }
+  }
+  if (base == null ||
+      base.revision != expectedRevision ||
+      base.createdAt != head.createdAt) {
+    return false;
+  }
+  switch (op) {
+    case _Vo2Op.create:
+      return false;
+    case _Vo2Op.edit:
+      return !base.deleted &&
+          !head.deleted &&
+          head.measuredOn == measuredOn &&
+          head.valueMlKgMin == valueMlKgMin &&
+          head.declaredMethod == method;
+    case _Vo2Op.delete:
+      return !base.deleted &&
+          head.deleted &&
+          head.measuredOn == base.measuredOn &&
+          head.valueMlKgMin == base.valueMlKgMin &&
+          head.declaredMethod == base.declaredMethod &&
+          head.origin == base.origin &&
+          head.unit == base.unit;
+    case _Vo2Op.restore:
+      return base.deleted &&
+          !head.deleted &&
+          head.measuredOn == base.measuredOn &&
+          head.valueMlKgMin == base.valueMlKgMin &&
+          head.declaredMethod == base.declaredMethod &&
+          head.origin == base.origin &&
+          head.unit == base.unit;
+  }
+}
+
+List<Map<String, Object?>> _vo2Ordered(List<Map<String, Object?>> chain) {
+  final ordered = [...chain];
+  ordered.sort((a, b) {
+    final ar = a['revision'];
+    final br = b['revision'];
+    if (ar is int && br is int) return ar.compareTo(br);
+    if (ar is int) return -1;
+    if (br is int) return 1;
+    return 0;
+  });
+  return ordered;
+}
+
+Map<String, Object?> _vo2Last(List<Map<String, Object?>> chain) =>
+    _vo2Ordered(chain).last;
+
+Map<String, Object?> _vo2Row(Vo2Revision revision) => {
+  'id': revision.id,
+  'revision': revision.revision,
+  'measured_on': revision.measuredOn,
+  'value_ml_kg_min': revision.valueMlKgMin,
+  'declared_method': revision.declaredMethod,
+  'created_at': revision.createdAt,
+  'updated_at': revision.updatedAt,
+  'deleted': revision.deleted ? 1 : 0,
+  'origin': revision.origin,
+  'unit': revision.unit,
+};
 
 class _SyntheticStrength {
   _SyntheticStrength({required this.plan, required this.startedAt});

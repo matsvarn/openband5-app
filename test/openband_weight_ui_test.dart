@@ -223,6 +223,7 @@ void main() {
       expect(find.text('Gewicht'), findsOneWidget);
       expect(find.text('Journal · 15. Sept.'), findsOneWidget);
       expect(find.text('75,0 kg'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Laborwerte'), 100);
       expect(
         tester.getTopLeft(find.text('Gewicht')).dy,
         lessThan(tester.getTopLeft(find.text('Laborwerte')).dy),

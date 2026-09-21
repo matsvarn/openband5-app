@@ -1520,6 +1520,57 @@
       }
     }
   },
+  "welcomeVo2PartialTitle": "Partially imported",
+  "@welcomeVo2PartialTitle": {
+    "description": "Import report title when some VO2max revisions were accepted and some were not."
+  },
+  "welcomeVo2ImportedTitle": "Imported",
+  "@welcomeVo2ImportedTitle": {
+    "description": "Import report title when VO2max revisions were accepted and none were withheld."
+  },
+  "welcomeVo2Unchanged": "VO₂max unchanged",
+  "@welcomeVo2Unchanged": {
+    "description": "Import report title when the source had a VO2max table and nothing new was accepted, with no conflicts and nothing unreadable. The source name sits under this title. There is no second sentence."
+  },
+  "welcomeVo2NotImportedTitle": "Not imported",
+  "@welcomeVo2NotImportedTitle": {
+    "description": "Heading for VO2max entries left untouched. German is 'Nicht übernommen'."
+  },
+  "welcomeSourceOpenBand": "OpenBand backup",
+  "@welcomeSourceOpenBand": {
+    "description": "Import report source for a plain OpenBand database backup. Distinct from the encrypted backup source."
+  },
+  "welcomeSourceEncrypted": "Encrypted backup",
+  "@welcomeSourceEncrypted": {
+    "description": "Import report source for an encrypted OpenBand backup. Distinct from the plain database backup source."
+  },
+  "welcomeVo2Accepted": "{n, plural, one{1 VO₂max change accepted} other{{n} VO₂max changes accepted}}",
+  "@welcomeVo2Accepted": {
+    "description": "Count of accepted VO2max revision rows.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "welcomeVo2Conflicts": "{n, plural, one{1 VO₂max conflict} other{{n} VO₂max conflicts}}",
+  "@welcomeVo2Conflicts": {
+    "description": "Count of VO2max entry ids left untouched because the local history diverged.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "welcomeVo2Unreadable": "{n, plural, one{1 VO₂max entry unreadable} other{{n} VO₂max entries unreadable}}",
+  "@welcomeVo2Unreadable": {
+    "description": "Count of VO2max entry ids left untouched because the source chain could not be read.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "welcomeJournalDaysReplaced": "{n, plural, one{1 journal day replaced} other{{n} journal days replaced}}",
   "@welcomeJournalDaysReplaced": {
     "description": "Import result sub: N journal days replaced.",
@@ -1546,6 +1597,10 @@
         "type": "String"
       }
     }
+  },
+  "welcomeImportIncomplete": "Import incomplete",
+  "@welcomeImportIncomplete": {
+    "description": "Import report title when a backup stopped before the file was finished. The original error is the card body. Accepted counts are shown separately."
   },
   "welcomeOneFileCouldNotBeRead": "One of those files could not be read",
   "@welcomeOneFileCouldNotBeRead": {
@@ -7189,6 +7244,33 @@
       "list": {
         "type": "String",
         "example": "nutrition"
+      }
+    }
+  },
+  "homeDbRebuiltVo2Conflicts": "{n, plural, one{1 VO₂max conflict} other{{n} VO₂max conflicts}}",
+  "@homeDbRebuiltVo2Conflicts": {
+    "description": "Rebuild card: VO2max entry ids that were not recovered because the chains diverged.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "homeDbRebuiltVo2Unreadable": "{n, plural, one{1 unreadable VO₂max entry} other{{n} unreadable VO₂max entries}}",
+  "@homeDbRebuiltVo2Unreadable": {
+    "description": "Rebuild card: VO2max entry ids that were not recovered because they could not be read.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "homeDbRebuiltNotRecovered": "Not recovered: {detail}.",
+  "@homeDbRebuiltNotRecovered": {
+    "description": "Rebuild card sentence for VO2max entries that were not recovered. Detail is the conflict and unreadable counts.",
+    "placeholders": {
+      "detail": {
+        "type": "String"
       }
     }
   },

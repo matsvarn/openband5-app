@@ -37,6 +37,8 @@ import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
+import 'backup_import_result.dart';
+import 'vo2_store.dart';
 import 'models.dart';
 import 'nutrition_store.dart';
 import 'nutrition_targets.dart';
@@ -250,6 +252,19 @@ class LocalDb {
   @visibleForTesting
   static Future<void> Function(String table)? debugAfterImportedTable;
 
+  /// Test seam: a full page has committed and the next source page is about to
+  /// be read. Throw here to stop between pages.
+  @visibleForTesting
+  static Future<void> Function(String table)? debugBeforeNextImportPage;
+
+  /// Test seam: forwarded to [Vo2Store.mergeImport]'s source reader.
+  @visibleForTesting
+  static Future<List<Map<String, Object?>>> Function(
+    String sql,
+    List<Object?>? arguments,
+  )?
+  debugVo2ImportRead;
+
   static Future<Database> get instance async {
     final db = _db;
     // `_db != null` is NOT enough: Android can close the underlying
@@ -284,6 +299,7 @@ class LocalDb {
     'journal_metric',
     'journal_field_def',
     'lab_result',
+    'manual_vo2',
     'lab_marker_def',
     'strength_set',
     'openband_strength_session',
@@ -391,6 +407,9 @@ class LocalDb {
         // as though a table by that name had survived — or "Empty: _days" as
         // though one had been lost. Drop it here; the card is the one surface
         // whose whole job is telling the truth about a data-loss event.
+        // `manual_vo2_conflict` and `manual_vo2_corrupt` are entry-id counts,
+        // not tables. They stay in this map. The card reports a positive count
+        // as not recovered and does not list those keys as tables.
         salvaged = Map.of(
           await _mergeFromDbFile(
             quarantine,
@@ -465,7 +484,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 66;
+  static const int schemaVersion = 67;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1238,6 +1257,10 @@ class LocalDb {
           // metric_series_version (date-only, can describe another payload).
           // Existing rows stay NULL.
           await _ensureDayResultSourceColumn(db);
+        }
+        if (oldV < 67) {
+          // User-entered VO2max revisions. Additive; nothing is backfilled.
+          await createVo2Tables(db);
         }
       },
       onOpen: (db) async {
@@ -6517,6 +6540,7 @@ class LocalDb {
     // DDL belongs next to the code that reads it, not two thousand lines away.
     await createNutritionTables(db);
     await createMedTables(db);
+    await createVo2Tables(db);
     // cycle_log — menstrual cycle markers; `kind` is 'start' (cycle start) etc.
     await db.execute('''
       CREATE TABLE IF NOT EXISTS cycle_log (
@@ -10705,6 +10729,9 @@ class LocalDb {
     }
     await copyRows('med_def');
     await copyRows('med_plan_revision');
+    // Head measurement date selects the id. Every revision of that id is
+    // copied, including a deleted head, so a later restore still has the removal.
+    await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
     await out.close();
     return dest;
   }
@@ -11069,6 +11096,25 @@ class LocalDb {
     }
   }
 
+  static void _storeVo2Counts(Map<String, int> counts, Vo2ImportCounts merged) {
+    if (merged.tableMissing) return;
+    counts[kManualVo2Table] = merged.inserted;
+    counts['${kManualVo2Table}_conflict'] = merged.conflictIds;
+    counts['${kManualVo2Table}_corrupt'] = merged.corruptIds;
+  }
+
+  static bool _vo2Known(Vo2ImportCounts counts) =>
+      counts.inserted > 0 || counts.conflictIds > 0 || counts.corruptIds > 0;
+
+  static bool _publishableImport(Map<String, int> counts, int pageCommitted) {
+    if (pageCommitted > 0) return true;
+    if (counts.containsKey(kManualVo2Table)) return true;
+    for (final entry in counts.entries) {
+      if (entry.value > 0) return true;
+    }
+    return false;
+  }
+
   /// Merge every table [tables] names from the database file at [path] into
   /// this one.
   ///
@@ -11095,6 +11141,7 @@ class LocalDb {
       'journal_metric',
       'journal_field_def',
       'lab_result',
+      'manual_vo2',
       'lab_marker_def',
       'strength_set',
       'openband_strength_session',
@@ -11186,9 +11233,45 @@ class LocalDb {
     // null when day_result could not be read at all, so the caller can tell
     // "nothing imported" from "we don't know".
     Set<String>? importedDays;
+    void restoreDays(Set<String>? snapshot) {
+      final days = importedDays;
+      if (days == null || snapshot == null) return;
+      days
+        ..clear()
+        ..addAll(snapshot);
+    }
+
+    Map<String, int> committedSnapshot(int pageCommitted, String table) {
+      final snap = Map<String, int>.from(counts);
+      if (pageCommitted > 0 &&
+          table != kManualVo2Table &&
+          !snap.containsKey(table)) {
+        snap[table] = pageCommitted;
+      }
+      final days = importedDays;
+      if (days != null) snap['_days'] = days.length;
+      return snap;
+    }
+
     try {
       for (final t in (only ?? tables)) {
+        var committedCopied = 0;
         try {
+          if (t == kManualVo2Table) {
+            // Not INSERT OR REPLACE. One id's chain is preflighted and either
+            // left alone or appended. A divergent or broken chain writes nothing
+            // for that id; other tables in this loop still merge.
+            final merged = await Vo2Store.mergeImport(
+              src: src,
+              dest: db,
+              // ignore: invalid_use_of_visible_for_testing_member
+              readSource: debugVo2ImportRead,
+            );
+            if (!merged.tableMissing) _storeVo2Counts(counts, merged);
+            final afterVo2 = debugAfterImportedTable;
+            if (afterVo2 != null) await afterVo2(t);
+            continue;
+          }
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
           // This used to be a single `src.query(t)`. sqflite serialises an entire
@@ -11466,34 +11549,74 @@ class LocalDb {
                 importedDaySources = true;
               }
             }, exclusive: t == 'day_result');
-            if (t == 'imported_measurement' ||
+            final gated =
+                t == 'imported_measurement' ||
                 t == 'imported_measurement_receipt' ||
-                t == 'imported_measurement_source_setting') {
-              await runImportedMeasurementOp(writePage);
-            } else {
-              await writePage();
-              if (importedDaySources) {
-                onCycleContextInvalidated?.call();
-                importedDaySources = false;
+                t == 'imported_measurement_source_setting';
+            // Counters move inside the transaction, before it commits. Keep the
+            // pre-page values and publish them only after the commit returns.
+            final copiedAtPage = committedCopied;
+            final currentDays = importedDays;
+            final daysAtPage = currentDays == null
+                ? null
+                : Set<String>.of(currentDays);
+            try {
+              if (gated) {
+                await runImportedMeasurementOp(writePage);
+              } else {
+                await writePage();
               }
+            } catch (e) {
+              copied = copiedAtPage;
+              restoreDays(daysAtPage);
+              rethrow;
+            }
+            committedCopied = copied;
+            if (!gated && importedDaySources) {
+              onCycleContextInvalidated?.call();
+              importedDaySources = false;
             }
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
             lastRowid = (page.last[rowidKey] as num).toInt();
             if (page.length < pageSize) break;
+            final beforeNext = debugBeforeNextImportPage;
+            if (beforeNext != null) await beforeNext(t);
             page = await nextPage();
           }
           counts[t] = copied;
+          committedCopied = copied;
           final afterTable = debugAfterImportedTable;
           if (afterTable != null) await afterTable(t);
-        } catch (_) {
-          // One table's worth of loss, not the whole salvage. A user-initiated
-          // restore still rethrows: reporting a partial import as a success is
-          // the worst available outcome there, whereas a rebuild has no better
-          // file to fall back to.
-          if (!tolerant) rethrow;
-          counts[t] = 0;
+        } catch (e) {
+          if (e is Vo2ImportInterrupted) {
+            // The source probe already found manual_vo2. A user receipt keeps
+            // that presence even when every count is still zero. Salvage omits
+            // an all-zero interruption so the card does not call it empty.
+            if (!tolerant || _vo2Known(e.counts)) {
+              _storeVo2Counts(counts, e.counts);
+            }
+            if (!tolerant) {
+              throw PartialImportException(
+                committedSnapshot(committedCopied, t),
+                e.cause,
+              );
+            }
+            continue;
+          }
+          if (!tolerant) {
+            if (_publishableImport(counts, committedCopied)) {
+              throw PartialImportException(
+                committedSnapshot(committedCopied, t),
+                e,
+              );
+            }
+            rethrow;
+          }
+          if (t == kManualVo2Table) continue;
+          if (counts.containsKey(t)) continue;
+          counts[t] = committedCopied;
         }
       }
     } finally {
@@ -11670,6 +11793,7 @@ class LocalDb {
       'journal_metric',
       'journal_field_def',
       'lab_result',
+      'manual_vo2',
       'lab_marker_def',
       'breathing_session',
       'food_entry',
@@ -11754,6 +11878,22 @@ class LocalDb {
       'updated_at',
       'report_low',
       'report_high',
+    ]);
+
+    final vo2Cols = await hasTable('manual_vo2')
+        ? await cols('manual_vo2')
+        : <String>{};
+    expect('manual_vo2', vo2Cols, [
+      'id',
+      'revision',
+      'measured_on',
+      'value_ml_kg_min',
+      'declared_method',
+      'created_at',
+      'updated_at',
+      'deleted',
+      'origin',
+      'unit',
     ]);
 
     final medRevCols = await hasTable('med_plan_revision')
