@@ -121,17 +121,21 @@ The next dependency-ordered package is **WP3: physical WHOOP 5.0 capture and int
 
 Authority: edge/, branch openband5/ios-device-setup, PR1. No push, merge, deploy, personal-data, physical-device or Bluetooth authority. Preserve six unrelated untracked assets. Mats task `/private/tmp/openband-alpin-20260919`; workers use origin-free isolated clones. Minimal visible copy and near-exact Paper/native parity are required. **The redesign remains incomplete; continue through the queue.**
 
-Latest accepted commit **18f4379**, medication plans/entries. Earlier glucose5295d34, checklist aliasesffe4706, custom exercise/original loadc2b71a1, library06523ff, sleep plan1550b9b and nutrition parent/week/waterf0d60b4 are accepted. Evidence is in IMPLEMENTATION_VERIFICATION.md. Do not rebuild these units.
+Latest accepted commit **9f78b21**, cycle logging/settings/history; medication plans/entries18f4379. Earlier glucose5295d34, checklist aliasesffe4706, custom exercise/original loadc2b71a1, library06523ff, sleep plan1550b9b and nutrition parent/week/waterf0d60b4 are accepted. Evidence is in IMPLEMENTATION_VERIFICATION.md. Do not rebuild these units.
 
-### Current unit: cycle logging, settings and entry history
+### Accepted raw cycle unit
 
-Accepted locally, ready for this unit's commit. Required1493 tests pass;82-item analysis including native harness is clean. DATA53 under America/Los_Angeles, UI54, Journal102 and affected runtime suites pass. All41 changed goldens inspected. Native Pro73frames PASS129.4s; final mini73frames PASS228.23s after the one-label copy fix. All final146 PNGs, preceding mini73 and earlier failed-run PNGs inspected. Full details, worker/reviewer IDs and exact evidence paths are in IMPLEMENTATION_VERIFICATION.md.
+Committed **9f78b21**: logging/settings/history. Required1493 tests and82-item analysis passed; DATA53 (America/Los_Angeles), UI54, Journal102 and affected runtime suites passed. All41 goldens inspected. Pro73frames PASS129.4s; final mini73frames PASS228.23s. All final146 PNGs plus preceding mini73 and failed-run evidence inspected. Exact logs, Paper44variants and worker IDs are in IMPLEMENTATION_VERIFICATION.md and task cycle-paper/. Eight raw-state dispositions do not close analytical scope. Previous workers idle; failed93be99fb,4446d397,26860258,78dabe62 are reconciled/retired.
 
-Paper Phase3 has44 real cycle variants,2 canonical summaries and4 Journal entry/error variants. Exact exports/index in task cycle-paper/. Existing shared controls and extracted Undo are reused; final small-screen label Stimmungstief and stacked large observation header match native. Eight raw cycle checklist states now have dispositions. This does not close analytical cycle scope.
+### Measured cycle history acceptance
 
-All workers are idle with accepted results. UIe0fd2ece/26093b5e, DATAa169581a/1fb382fe, runtimefe311c1c/b59eee58, shared Undod2854227/3d0554ea, fixture59bec819/f886add6, capturec9e6ed1f/327049a0. Failed workers93be99fb,4446d397,26860258,78dabe62 are reconciled and retired; do not resume.
+Implementation and review complete; commit pending. DATA44 tests in America/Los_Angeles; UI25, raw cycle54 and health6 passed. Required1562 tests and85-item analysis passed. All26 changed goldens inspected, including the corrected Material/Lucide isolated-point fixture. Pro42 native frames PASS87.09s; mini42 PASS130.8s, all84 PNGs and run metadata inspected. Production source hashes match both simulator runs. No physical or physiological proof.
 
-Next: commit this unit, then design measured cycle history in Paper and assign implementation. Keep legacy CycleTab/getCycle until its supported analytical outcomes/callers/tests migrate.
+Paper35 exports/index are in task cycle-measurements-paper/. Canonical4HA5 and main4HBH/4HG7;32 new real variants, canonical and2 cycle entry exports. Refreshed four info exports after fixing16 Paper footer copies to canonical48min/15–18 type. All16 renders inspected. Registry acceptance records implementation; exact source timing and missing quality remain in disclosure.
+
+Workers idle and accepted: DATA285927ad/ca29c006; DATA reviewer933a2428/26459769; UIffd7073a/c5385695 and fixture repair4a14fc1c; capturee4ab2cff/23dda6e6; fresh reviewer44686273/459a5b36. Lead reviewed source, diffs, reports, logs and images. No unresolved finding for this unit. Legacy CycleTab/getCycle remains until analytical outcomes/callers/tests migrate.
+
+Next: commit complete measured-night unit, then design and delegate remaining cycle analytical outcomes. No next-unit code or Paper design yet. Discoverye68e0ada/eeee6340 is available in task worker reports.
 
 ### Next cycle analytical unit
 

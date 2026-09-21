@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'controller.dart';
@@ -487,6 +487,13 @@ class OBTrendCard extends StatelessWidget {
   final double? baseline;
   final bool error;
   final String Function(double?)? format;
+  final bool sourced;
+  final String? coverage;
+  final String? axisStart;
+  final String? axisEnd;
+  final int? selectedIndex;
+  final ValueChanged<int>? onSelect;
+  final Key? plotKey;
   const OBTrendCard({
     super.key,
     required this.label,
@@ -499,11 +506,40 @@ class OBTrendCard extends StatelessWidget {
     this.baseline,
     this.error = false,
     this.format,
-  });
+  }) : sourced = false,
+       coverage = null,
+       axisStart = null,
+       axisEnd = null,
+       selectedIndex = null,
+       onSelect = null,
+       plotKey = null;
+
+  const OBTrendCard.sourced({
+    super.key,
+    required this.label,
+    required this.unit,
+    required this.icon,
+    required this.color,
+    required this.tint,
+    required List<MetricPoint> this.points,
+    required String this.coverage,
+    this.axisStart,
+    this.axisEnd,
+    this.selectedIndex,
+    this.onSelect,
+    this.plotKey,
+    this.format,
+  }) : nights = 0,
+       baseline = null,
+       error = false,
+       sourced = true;
+
   @override
   Widget build(BuildContext context) {
+    if (sourced) return _buildSourced(context);
     final p = OB.of(context);
-    final values = points?.where((e) => e.value != null).toList() ?? const [];
+    final values =
+        points?.where((e) => _trendFinite(e.value)).toList() ?? const [];
     final last = values.isEmpty ? null : values.last.value;
     final observed = values.length;
     final status = error
@@ -600,6 +636,171 @@ class OBTrendCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildSourced(BuildContext context) {
+    final p = OB.of(context);
+    final pts = points ?? const <MetricPoint>[];
+    final scaler = MediaQuery.textScalerOf(context);
+    final stacked = scaler.scale(15) > 20;
+    final geom = _SourcedPlotGeom.of(scaler);
+    final idx = selectedIndex;
+    final shown = idx != null && idx >= 0 && idx < pts.length ? pts[idx] : null;
+    final raw = shown?.value;
+    final value = _trendFinite(raw) ? raw : null;
+    final valueText = format?.call(value) ?? obNumber(value);
+    final dateText = shown == null
+        ? null
+        : DateFormat('d. MMM', 'de_DE').format(DateTime.parse(shown.day));
+    final bounds = _sourcedTrendBounds([for (final pt in pts) pt.value]);
+    final hasPlot = bounds != null;
+    final titleStyle = p.text(15, weight: FontWeight.w600);
+    final coverageStyle = p
+        .text(13, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 18 / 13);
+    final title = Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Expanded(child: Text(label, style: titleStyle)),
+      ],
+    );
+    final coverageText = Text(coverage ?? '', style: coverageStyle);
+    final header = stacked
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: 4),
+              coverageText,
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(child: title),
+              coverageText,
+            ],
+          );
+    final slot = idx ?? 0;
+    final canDecrease = hasPlot && pts.length > 1 && slot > 0;
+    final canIncrease = hasPlot && pts.length > 1 && slot < pts.length - 1;
+    String slotPhrase(int i) {
+      if (i < 0 || i >= pts.length) return 'kein Wert';
+      final pt = pts[i];
+      final day = DateFormat(
+        'd. MMMM',
+        'de_DE',
+      ).format(DateTime.parse(pt.day));
+      if (!_trendFinite(pt.value)) return '$day, kein Wert';
+      return '$day, ${format?.call(pt.value) ?? obNumber(pt.value)} $unit';
+    }
+
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 8,
+        children: [
+          header,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                valueText,
+                style: p
+                    .text(28, weight: FontWeight.w800, display: true)
+                    .copyWith(height: 34 / 28),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                unit,
+                style: p.text(14, weight: FontWeight.w500, color: p.muted),
+              ),
+              if (dateText != null) ...[
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    dateText,
+                    style: p
+                        .text(13, weight: FontWeight.w500, color: p.muted)
+                        .copyWith(height: 18 / 13),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (hasPlot)
+            Semantics(
+              key: plotKey,
+              label: '$label, $coverage, ${slotPhrase(slot)}',
+              value: slotPhrase(slot),
+              increasedValue: canIncrease ? slotPhrase(slot + 1) : null,
+              decreasedValue: canDecrease ? slotPhrase(slot - 1) : null,
+              onIncrease: canIncrease && onSelect != null
+                  ? () => onSelect!(slot + 1)
+                  : null,
+              onDecrease: canDecrease && onSelect != null
+                  ? () => onSelect!(slot - 1)
+                  : null,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  height: geom.height,
+                  width: double.infinity,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.maxWidth;
+                      void pick(Offset local) {
+                        if (onSelect == null || pts.isEmpty) return;
+                        onSelect!(
+                          _sourcedHitIndex(
+                            local.dx,
+                            width,
+                            pts.length,
+                            geom,
+                          ),
+                        );
+                      }
+
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapDown: (d) => pick(d.localPosition),
+                        onHorizontalDragUpdate: (d) => pick(d.localPosition),
+                        child: CustomPaint(
+                          painter: _TrendPainter.sourced(
+                            pts,
+                            color,
+                            bounds.$1,
+                            bounds.$2,
+                            selectedIndex,
+                            geom,
+                            p.text(12, color: p.muted),
+                            scaler,
+                            Directionality.of(context),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          if (hasPlot && axisStart != null && axisEnd != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  axisStart!,
+                  style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                ),
+                Text(
+                  axisEnd!,
+                  style: p.text(12, weight: FontWeight.w500, color: p.muted),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 String _durationStatus(double value, double baseline) {
@@ -617,10 +818,82 @@ String obMetricStatus(double? value, double? baseline, {String unit = ''}) {
   return '${d > 0 ? '+' : '−'}${obNumber(d.abs())} ${d > 0 ? 'über' : 'unter'} Basis';
 }
 
+bool _trendFinite(double? value) => value != null && value.isFinite;
+
+(double, double)? _sourcedTrendBounds(Iterable<double?> values) {
+  double? lo;
+  double? hi;
+  for (final value in values) {
+    if (!_trendFinite(value)) continue;
+    lo = lo == null || value! < lo ? value : lo;
+    hi = hi == null || value! > hi ? value : hi;
+  }
+  if (lo == null || hi == null) return null;
+  lo -= 2;
+  hi += 2;
+  lo = (lo / 2).floorToDouble() * 2;
+  hi = (hi / 2).ceilToDouble() * 2;
+  if (lo >= hi) {
+    lo -= 2;
+    hi += 2;
+  }
+  return (lo, hi);
+}
+
+class _SourcedPlotGeom {
+  const _SourcedPlotGeom({
+    required this.height,
+    required this.left,
+    required this.right,
+    required this.yTop,
+    required this.yBottom,
+    required this.topBaseline,
+    required this.bottomBaseline,
+  });
+
+  final double height;
+  final double left;
+  final double right;
+  final double yTop;
+  final double yBottom;
+  final double topBaseline;
+  final double bottomBaseline;
+
+  factory _SourcedPlotGeom.of(TextScaler scaler) {
+    final t = scaler.scale(12) / 12;
+    return _SourcedPlotGeom(
+      height: 88 + 16 * (t - 1),
+      left: 26 + 18 * (t - 1),
+      right: 4,
+      yTop: 10 + 18 * (t - 1),
+      yBottom: 78 + 12 * (t - 1),
+      topBaseline: 15 + 10 * (t - 1),
+      bottomBaseline: 81 + 15 * (t - 1),
+    );
+  }
+}
+
+int _sourcedHitIndex(double x, double width, int n, _SourcedPlotGeom geom) {
+  if (n <= 1) return 0;
+  final plotW = width - geom.left - geom.right;
+  if (plotW <= 0) return 0;
+  final t = ((x - geom.left) / plotW).clamp(0.0, 1.0);
+  return (t * (n - 1)).round();
+}
+
 class _TrendPainter extends CustomPainter {
   final List<MetricPoint> points;
   final double? baseline;
   final Color color, tint, gap, ring;
+  final bool sourced;
+  final double? lo;
+  final double? hi;
+  final int? selectedIndex;
+  final _SourcedPlotGeom? geom;
+  final TextStyle? axisStyle;
+  final TextScaler? textScaler;
+  final TextDirection? textDirection;
+
   _TrendPainter(
     this.points,
     this.baseline,
@@ -628,11 +901,40 @@ class _TrendPainter extends CustomPainter {
     this.tint,
     this.gap,
     this.ring,
-  );
+  ) : sourced = false,
+      lo = null,
+      hi = null,
+      selectedIndex = null,
+      geom = null,
+      axisStyle = null,
+      textScaler = null,
+      textDirection = null;
+
+  _TrendPainter.sourced(
+    this.points,
+    this.color,
+    double this.lo,
+    double this.hi,
+    this.selectedIndex,
+    _SourcedPlotGeom this.geom,
+    TextStyle this.axisStyle,
+    TextScaler this.textScaler,
+    TextDirection this.textDirection,
+  ) : baseline = null,
+      tint = color,
+      gap = color,
+      ring = color,
+      sourced = true;
+
+  bool _usable(MetricPoint point) => _trendFinite(point.value);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final values = [for (final p in points) p.value].nonNulls.toList();
+    if (sourced) {
+      _paintSourced(canvas, size);
+      return;
+    }
+    final values = [for (final p in points) if (_usable(p)) p.value!];
     if (values.isEmpty) return;
     var lo = values.reduce((a, b) => a < b ? a : b);
     var hi = values.reduce((a, b) => a > b ? a : b);
@@ -663,13 +965,13 @@ class _TrendPainter extends CustomPainter {
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
-    final first = points.indexWhere((p) => p.value != null);
-    final last = points.lastIndexWhere((p) => p.value != null);
+    final first = points.indexWhere(_usable);
+    final last = points.lastIndexWhere(_usable);
     Path? path;
     int? lastIndex;
     for (var i = 0; i < points.length; i++) {
       final v = points[i].value;
-      if (v == null) {
+      if (!_trendFinite(v)) {
         if (i > first && i < last) {
           final dash = Paint()
             ..color = gap
@@ -682,12 +984,14 @@ class _TrendPainter extends CustomPainter {
         continue;
       }
       if (path == null) {
-        path = Path()..moveTo(x(i), y(v));
-        if (lastIndex != null) {
+        path = Path()..moveTo(x(i), y(v!));
+        final isolatedFirst =
+            lastIndex == null && (i == points.length - 1 || !_usable(points[i + 1]));
+        if (lastIndex != null || isolatedFirst) {
           canvas.drawCircle(Offset(x(i), y(v)), 2.5, Paint()..color = color);
         }
       } else {
-        path.lineTo(x(i), y(v));
+        path.lineTo(x(i), y(v!));
       }
       canvas.drawPath(path, line);
       path = Path()..moveTo(x(i), y(v));
@@ -700,6 +1004,66 @@ class _TrendPainter extends CustomPainter {
     }
   }
 
+  void _paintSourced(Canvas canvas, Size size) {
+    final g = geom!;
+    final low = lo!;
+    final high = hi!;
+    final span = high - low;
+    if (span <= 0 || !span.isFinite) return;
+    final plotW = size.width - g.left - g.right;
+    if (plotW <= 0) return;
+    double x(int i) => points.length > 1
+        ? g.left + i * plotW / (points.length - 1)
+        : g.left + plotW / 2;
+    double y(double v) =>
+        g.yBottom - (v - low) / span * (g.yBottom - g.yTop);
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    Path? path;
+    for (var i = 0; i < points.length; i++) {
+      final v = points[i].value;
+      if (!_trendFinite(v)) {
+        path = null;
+        continue;
+      }
+      final at = Offset(x(i), y(v!));
+      if (path == null) {
+        path = Path()..moveTo(at.dx, at.dy);
+      } else {
+        path.lineTo(at.dx, at.dy);
+        canvas.drawPath(path, line);
+        path = Path()..moveTo(at.dx, at.dy);
+      }
+    }
+    final mark = Paint()..color = color;
+    for (var i = 0; i < points.length; i++) {
+      final v = points[i].value;
+      if (!_trendFinite(v)) continue;
+      final selected = i == selectedIndex;
+      canvas.drawCircle(Offset(x(i), y(v!)), selected ? 4 : 2, mark);
+    }
+    final style = axisStyle;
+    if (style == null) return;
+    void label(String text, double baseline) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: textDirection ?? TextDirection.ltr,
+        textScaler: textScaler ?? TextScaler.noScaling,
+      )..layout();
+      final alphabetic =
+          painter.computeDistanceToActualBaseline(TextBaseline.alphabetic);
+      painter.paint(canvas, Offset(0, baseline - alphabetic));
+      painter.dispose();
+    }
+
+    label(obNumber(high), g.topBaseline);
+    label(obNumber(low), g.bottomBaseline);
+  }
+
   @override
   bool shouldRepaint(covariant _TrendPainter old) =>
       old.points != points ||
@@ -707,5 +1071,13 @@ class _TrendPainter extends CustomPainter {
       old.color != color ||
       old.tint != tint ||
       old.gap != gap ||
-      old.ring != ring;
+      old.ring != ring ||
+      old.sourced != sourced ||
+      old.lo != lo ||
+      old.hi != hi ||
+      old.selectedIndex != selectedIndex ||
+      old.geom != geom ||
+      old.axisStyle != axisStyle ||
+      old.textScaler != textScaler ||
+      old.textDirection != textDirection;
 }

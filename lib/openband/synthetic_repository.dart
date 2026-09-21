@@ -315,6 +315,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _seedFixtureGlucose();
     _seedFixtureMedication();
     _seedFixtureCycle();
+    _seedFixtureCycleNights();
   }
 
   BandSnapshot get band {
@@ -697,6 +698,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failCycleRead = false;
   bool failCycleWrite = false;
   bool failCycleContextRefresh = false;
+  bool failCycleMeasurementsRead = false;
   int cycleContextRefreshCalls = 0;
   CycleSettings cycleSettings = const CycleSettings(
     enabled: true,
@@ -707,6 +709,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, CycleObservation> _cycleObservations = {};
   final List<Map<Object?, Object?>> _cycleUnreadableStarts = [];
   final List<Map<Object?, Object?>> _cycleUnreadableObservations = [];
+  final Map<String, CycleNightSourceRow> _cycleNights = {};
 
   void seedGlucoseReading(GlucoseReading reading) =>
       _glucoseReadings.add(reading);
@@ -3776,6 +3779,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   void seedUnreadableCycleObservation(Map<Object?, Object?> row) =>
       _cycleUnreadableObservations.add(row);
 
+  void seedCycleNightSource(CycleNightSourceRow row) =>
+      _cycleNights[row.day] = row;
+
+  void clearCycleNightSources() => _cycleNights.clear();
+
   void clearCycleLogs() {
     _cycleStarts.clear();
     _cycleObservations.clear();
@@ -3786,6 +3794,26 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   void _seedFixtureCycle() {
     for (final date in cycleFixtureStarts) {
       _cycleStarts[date] = CycleStart(date: date, kind: kCycleStartKind);
+    }
+  }
+
+  void _seedFixtureCycleNights() {
+    final days = cycleCivilDaysInclusive(kCyclePaperStartDay, kCyclePaperAsOfDay);
+    for (var i = 0; i < days.length; i++) {
+      final rhr = kCyclePaperRhr[i];
+      final hrv = kCyclePaperHrv[i];
+      if (rhr == null && hrv == null) continue;
+      final day = days[i];
+      _cycleNights[day] = CycleNightSourceRow(
+        day: day,
+        algoVersion: kAlgoVersion,
+        payload: cycleNightSourcePayload(
+          rhr: rhr,
+          hrv: hrv,
+          onsetMs: cycleNightOnsetMs(day),
+          offsetMs: cycleNightOffsetMs(day),
+        ),
+      );
     }
   }
 
@@ -3841,6 +3869,28 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       observations: parsed.observations,
       unreadableCount: parsed.unreadableCount,
       unreadableStarts: parsed.unreadableStarts,
+    );
+  }
+
+  @override
+  Future<CycleMeasurementsSnapshot> readCycleMeasurements(
+    String asOfDay, {
+    String? cycleStartDay,
+  }) async {
+    if (failCycleMeasurementsRead || failCycleRead) {
+      throw StateError('synthetic cycle measurements read failure');
+    }
+    requireCycleCalendarDay(asOfDay, 'asOfDay');
+    if (cycleStartDay != null) {
+      requireCycleCalendarDay(cycleStartDay, 'cycleStartDay');
+    }
+    return buildCycleMeasurementsSnapshot(
+      asOfDay: asOfDay,
+      settings: cycleSettings,
+      log: _synthCycleLog(asOfDay),
+      cycleStartDay: cycleStartDay,
+      algoVersion: kAlgoVersion,
+      rows: _cycleNights.values.toList(),
     );
   }
 

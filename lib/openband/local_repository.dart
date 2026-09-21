@@ -3021,6 +3021,116 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<CycleMeasurementsSnapshot> readCycleMeasurements(
+    String asOfDay, {
+    String? cycleStartDay,
+  }) async {
+    requireCycleCalendarDay(asOfDay, 'asOfDay');
+    if (cycleStartDay != null) {
+      requireCycleCalendarDay(cycleStartDay, 'cycleStartDay');
+    }
+    final settings = await readCycleSettings();
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final parsed = await CycleStore.load(txn, asOf: asOfDay);
+      final selection = selectCycleMeasurementRange(
+        asOfDay: asOfDay,
+        settings: settings,
+        log: parsed,
+        cycleStartDay: cycleStartDay,
+      );
+      final visibleStart = selection.visibleStart;
+      final periodEnd = selection.selected?.endDay;
+      final dayRows = visibleStart == null || periodEnd == null
+          ? const <Map<String, Object?>>[]
+          : await txn.rawQuery(
+              'SELECT day_id, skipped, partial, payload_json, computed_at '
+              'FROM day_result '
+              'WHERE day_id >= ? AND day_id <= ? AND algo_version = ?',
+              [visibleStart, periodEnd, kAlgoVersion],
+            );
+      final correctionRows = visibleStart == null || periodEnd == null
+          ? const <Map<String, Object?>>[]
+          : await txn.rawQuery(
+              'SELECT c.day_id AS day_id, '
+              'c.correction_id AS correction_id, '
+              'c.revision AS revision, '
+              'c.action AS action, '
+              'c.onset_ms AS onset_ms, '
+              'c.wake_ms AS wake_ms, '
+              'j.correction_id AS job_correction_id, '
+              'j.revision AS job_revision, '
+              'j.status AS status, '
+              'j.result_algo_version AS result_algo_version, '
+              'j.result_computed_at AS result_computed_at '
+              'FROM openband_sleep_correction c '
+              'LEFT JOIN openband_calculation_job j '
+              'ON j.day_id = c.day_id '
+              'AND j.correction_id = c.correction_id '
+              'AND j.revision = c.revision '
+              'WHERE c.day_id >= ? AND c.day_id <= ?',
+              [visibleStart, periodEnd],
+            );
+      return (
+        parsed: parsed,
+        dayRows: dayRows,
+        correctionRows: correctionRows,
+      );
+    });
+
+    final correctionByDay = <String, Map<String, dynamic>>{};
+    final blockedJob = <String>{};
+    for (final r in snapshot.correctionRows) {
+      final date = r['day_id'];
+      if (date is! String) continue;
+      final mapped = Map<String, dynamic>.from(r);
+      correctionByDay[date] = mapped;
+      if (!_currentCompleteSleepJob(mapped)) {
+        blockedJob.add(date);
+      }
+    }
+
+    final rows = <CycleNightSourceRow>[];
+    for (final r in snapshot.dayRows) {
+      final date = r['day_id'];
+      if (date is! String) continue;
+      final raw = r['payload_json'];
+      final payload = _payload(raw);
+      final correction = correctionByDay[date];
+      final published =
+          correction != null && !blockedJob.contains(date) ? correction : null;
+      rows.add(
+        CycleNightSourceRow(
+          day: date,
+          algoVersion: kAlgoVersion,
+          skipped: r['skipped'] == 1,
+          partial: r['partial'] == 1,
+          payload: payload == null
+              ? null
+              : Map<String, Object?>.from(payload),
+          payloadUnreadable: payload == null,
+          jobBlocked: blockedJob.contains(date),
+          computedAtMs: (r['computed_at'] as num?)?.toInt(),
+          resultComputedAtMs:
+              (published?['result_computed_at'] as num?)?.toInt(),
+          correctionAction: published?['action']?.toString(),
+          correctionOnsetMs: (published?['onset_ms'] as num?)?.toInt(),
+          correctionWakeMs: (published?['wake_ms'] as num?)?.toInt(),
+        ),
+      );
+    }
+
+    return buildCycleMeasurementsSnapshot(
+      asOfDay: asOfDay,
+      settings: settings,
+      log: snapshot.parsed,
+      cycleStartDay: cycleStartDay,
+      algoVersion: kAlgoVersion,
+      rows: rows,
+    );
+  }
+
+  @override
   Future<CycleWriteResult> saveCycleStart(
     CycleStart desired, {
     CycleStart? expected,

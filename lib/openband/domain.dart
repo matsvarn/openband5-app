@@ -6,6 +6,7 @@ import '../data/nutrition_store.dart';
 import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
 import 'cycle_data.dart';
+import 'cycle_measurements_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
 import 'medication_data.dart';
@@ -15,6 +16,7 @@ export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
 export '../health/glucose_contract.dart';
 export 'cycle_data.dart';
+export 'cycle_measurements_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
 export 'medication_data.dart';
@@ -2278,6 +2280,21 @@ abstract interface class OpenBandRepository {
   /// [CycleSnapshot.unreadableStarts] is start-source trust, independent of
   /// estimate settings; [CycleSnapshot.cycleDay] is null when that is true.
   Future<CycleSnapshot> readCycle(String day, {DateTime? now});
+
+  /// Measured nocturnal RHR and session HRV for the logged cycle containing
+  /// [asOfDay], or the cycle that starts on [cycleStartDay] when that start is
+  /// an actual readable start on or before [asOfDay]. A missing or deleted
+  /// selected start is a typed reason with [CycleMeasurementsSnapshot.selected]
+  /// null and no nights, never another cycle; remaining readable periods stay
+  /// on the snapshot. Nested present-but-malformed RHR/HRV set
+  /// [CycleNightMeasurement.rhrUnreadable] / [CycleNightMeasurement.hrvUnreadable]
+  /// without dropping a valid sibling; out-of-range stored confidence is
+  /// [CycleNightMetric.confidenceUnreadable] with confidence left null.
+  /// Database failure throws; it is not an empty snapshot.
+  Future<CycleMeasurementsSnapshot> readCycleMeasurements(
+    String asOfDay, {
+    String? cycleStartDay,
+  });
 
   /// Compare-and-swap. [expected] null creates. A changed date checks source
   /// and destination in one transaction and never overwrites another start.
