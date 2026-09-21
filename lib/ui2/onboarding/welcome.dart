@@ -91,6 +91,13 @@ class ImportOutcome {
   /// table whose counts are zero.
   final bool vo2TablePresent;
 
+  /// Durable backup rows handled by the preserve-local restore path.
+  final int restoredRows;
+  final int unchangedRows;
+  final int restoreConflicts;
+  final int unreadableRows;
+  final int pendingRecalculations;
+
   const ImportOutcome({
     required this.source,
     this.days = 0,
@@ -108,6 +115,11 @@ class ImportOutcome {
     this.vo2ConflictIds = 0,
     this.vo2CorruptIds = 0,
     this.vo2TablePresent = false,
+    this.restoredRows = 0,
+    this.unchangedRows = 0,
+    this.restoreConflicts = 0,
+    this.unreadableRows = 0,
+    this.pendingRecalculations = 0,
   });
 
   bool get lostSomething =>
@@ -122,7 +134,8 @@ class ImportOutcome {
       workouts == 0 &&
       skippedDays == 0 &&
       journalRows == 0 &&
-      vo2Revisions == 0;
+      vo2Revisions == 0 &&
+      restoredRows == 0;
 }
 
 /// Raised when an encrypted backup was picked and the user closed the
@@ -358,6 +371,8 @@ Future<ImportOutcome> runImport(
   var days = 0, workouts = 0, skipped = 0, late = 0, stranded = 0;
   var journalRows = 0;
   var vo2Revisions = 0, vo2Conflicts = 0, vo2Corrupt = 0;
+  var restoredRows = 0, unchangedRows = 0, restoreConflicts = 0;
+  var unreadableRows = 0, pendingRecalculations = 0;
   var vo2TablePresent = false;
   final corruptTables = <String>{};
   final rejected = <String>[];
@@ -432,6 +447,11 @@ Future<ImportOutcome> runImport(
           vo2Conflicts += receipt.conflictIds;
           vo2Corrupt += receipt.corruptIds;
         }
+        restoredRows += receipt.restoredRows;
+        unchangedRows += receipt.unchangedRows;
+        restoreConflicts += receipt.restoreConflicts;
+        unreadableRows += receipt.unreadableRows;
+        pendingRecalculations += receipt.pendingRecalculations;
         // The rows are in and the rollup rebuild threw. The receipt is the
         // backup result. A later file must not wipe an earlier failure.
         rollupError ??= receipt.recalculationError;
@@ -567,6 +587,11 @@ Future<ImportOutcome> runImport(
     vo2ConflictIds: vo2Conflicts,
     vo2CorruptIds: vo2Corrupt,
     vo2TablePresent: vo2TablePresent,
+    restoredRows: restoredRows,
+    unchangedRows: unchangedRows,
+    restoreConflicts: restoreConflicts,
+    unreadableRows: unreadableRows,
+    pendingRecalculations: pendingRecalculations,
     // A file that would not decrypt is reported the same way a file that would
     // not parse is: named, alongside whatever else did land.
     readError: readError ?? cryptoError,
@@ -780,13 +805,18 @@ class ImportReport extends StatelessWidget {
         o.workouts > 0 ||
         o.skippedDays > 0;
     final vo2 = _vo2Cards(p, l);
-    if (o.readError != null && !showLegacy && vo2.isEmpty) {
+    final showRestore = o.restoredRows > 0 ||
+        o.unchangedRows > 0 ||
+        o.restoreConflicts > 0 ||
+        o.unreadableRows > 0 ||
+        o.pendingRecalculations > 0;
+    if (o.readError != null && !showLegacy && vo2.isEmpty && !showRestore) {
       return _incompleteRead(l);
     }
     // A zero is not a success. Same tick, same words, nothing in the database.
     // A present VO2 table still has something to say when nothing else landed:
     // no new changes, or the ids that were not imported.
-    if (!showLegacy && vo2.isEmpty) {
+    if (!showLegacy && vo2.isEmpty && !showRestore) {
       return OBNoticeCard(
         l?.welcomeNothingWasImported ?? 'Nothing was imported',
         // Every row refused is its own answer to "why is it empty?", and it
@@ -807,8 +837,12 @@ class ImportReport extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (showLegacy) _legacyCard(p, l),
-        if (vo2.isNotEmpty) ...[
+        if (showRestore) ...[
           if (showLegacy) const SizedBox(height: 12),
+          _restoreCard(p, l, Localizations.localeOf(c).languageCode == 'de'),
+        ],
+        if (vo2.isNotEmpty) ...[
+          if (showLegacy || showRestore) const SizedBox(height: 12),
           ...vo2,
         ],
         // REJECTED, never clamped. A row outside its declared range is not
@@ -935,6 +969,67 @@ class ImportReport extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _restoreCard(OB p, AppLocalizations? l, bool de) {
+    final withheld = o.restoreConflicts > 0 || o.unreadableRows > 0;
+    final title = o.restoredRows > 0
+        ? withheld
+              ? (de ? 'Teilweise importiert' : 'Partially imported')
+              : (de ? 'Importiert' : 'Imported')
+        : withheld
+        ? (de ? 'Nicht übernommen' : 'Not imported')
+        : (de ? 'Unverändert' : 'Unchanged');
+    String count(int n, String one, String many) => n == 1 ? one : '$n $many';
+    final lines = <String>[
+      if (o.restoredRows > 0)
+        count(
+          o.restoredRows,
+          de ? '1 Eintrag gespeichert' : '1 entry saved',
+          de ? 'Einträge gespeichert' : 'entries saved',
+        ),
+      if (o.unchangedRows > 0)
+        count(
+          o.unchangedRows,
+          de ? '1 unverändert' : '1 unchanged',
+          de ? 'unverändert' : 'unchanged',
+        ),
+      if (o.restoreConflicts > 0)
+        count(
+          o.restoreConflicts,
+          de
+              ? '1 Konflikt · lokal beibehalten'
+              : '1 conflict · local version kept',
+          de
+              ? 'Konflikte · lokal beibehalten'
+              : 'conflicts · local versions kept',
+        ),
+      if (o.unreadableRows > 0)
+        count(
+          o.unreadableRows,
+          de ? '1 Eintrag nicht lesbar' : '1 entry unreadable',
+          de ? 'Einträge nicht lesbar' : 'entries unreadable',
+        ),
+      if (o.pendingRecalculations > 0)
+        count(
+          o.pendingRecalculations,
+          de
+              ? '1 Neuberechnung ausstehend'
+              : '1 recalculation pending',
+          de
+              ? 'Neuberechnungen ausstehend'
+              : 'recalculations pending',
+        ),
+    ];
+    return _primaryCard(
+      p,
+      l,
+      title: title,
+      body: [
+        for (final line in lines)
+          Text(line, style: _receiptLine(p, 15, 21)),
+      ],
     );
   }
 

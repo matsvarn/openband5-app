@@ -134,6 +134,51 @@ Future<void> reviewTapHeaderBack(WidgetTester tester) async {
   await reviewPumpPageTransitions(tester);
 }
 
+Future<void> reviewMountImportReceipt(
+  WidgetTester tester,
+  ImportOutcome outcome, {
+  Brightness brightness = Brightness.light,
+  double scale = 1,
+}) async {
+  final canvas = OB(brightness == Brightness.dark).canvas;
+  await tester.pumpWidget(
+    MaterialApp(
+      key: UniqueKey(),
+      debugShowCheckedModeBanner: false,
+      locale: const Locale('de'),
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      theme: openBandTheme(
+        brightness,
+      ).copyWith(platform: TargetPlatform.iOS),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(scale)),
+        child: child!,
+      ),
+      home: Scaffold(
+        backgroundColor: canvas,
+        body: SafeArea(
+          child: ListView(
+            key: const ValueKey('import-receipt-scroll'),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            children: [
+              OBPageHeader(
+                title: 'Datenimport',
+                subtitle: '',
+                onBack: () {},
+              ),
+              ImportReport(outcome),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 bool reviewTimingContainsFrame(
   List<FrameTiming> timings,
   int? targetFrameNumber,
@@ -3274,49 +3319,6 @@ void main() {
           readError: 'count failed',
         );
 
-        Future<void> mountReceipt(
-          ImportOutcome outcome, {
-          Brightness brightness = Brightness.light,
-          double scale = 1,
-        }) async {
-          final canvas = OB(brightness == Brightness.dark).canvas;
-          await tester.pumpWidget(
-            MaterialApp(
-              key: UniqueKey(),
-              debugShowCheckedModeBanner: false,
-              locale: const Locale('de'),
-              supportedLocales: AppLocalizations.supportedLocales,
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
-              theme: openBandTheme(
-                brightness,
-              ).copyWith(platform: TargetPlatform.iOS),
-              builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!,
-              ),
-              home: Scaffold(
-                backgroundColor: canvas,
-                body: SafeArea(
-                  child: ListView(
-                    key: const ValueKey('vo2-receipt-scroll'),
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    children: [
-                      OBPageHeader(
-                        title: 'Datenimport',
-                        subtitle: '',
-                        onBack: () {},
-                      ),
-                      ImportReport(outcome),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-          await tester.pumpAndSettle();
-        }
 
         void expectReceiptChrome({bool source = true}) {
           expect(find.byType(SafeArea), findsOneWidget);
@@ -3356,7 +3358,7 @@ void main() {
               tester.getRect(hit).bottom > viewport;
           if (!cutOff) return;
           final scroll = find.descendant(
-            of: find.byKey(const ValueKey('vo2-receipt-scroll')),
+            of: find.byKey(const ValueKey('import-receipt-scroll')),
             matching: find.byType(Scrollable),
           );
           await tester.scrollUntilVisible(lower, 160, scrollable: scroll);
@@ -3365,24 +3367,24 @@ void main() {
           await capture(name);
         }
 
-        await mountReceipt(partialReceipt);
+        await reviewMountImportReceipt(tester, partialReceipt);
         expectPartialReceipt();
         await capture('vo2-receipt-partial');
-        await mountReceipt(partialReceipt, brightness: Brightness.dark);
+        await reviewMountImportReceipt(tester, partialReceipt, brightness: Brightness.dark);
         expectPartialReceipt();
         await capture('vo2-receipt-partial-dark');
-        await mountReceipt(partialReceipt, scale: 2);
+        await reviewMountImportReceipt(tester, partialReceipt, scale: 2);
         expectPartialReceipt();
         await capture('vo2-receipt-partial-375-2x');
         await captureReceiptBottomIfCutOff('vo2-receipt-partial-375-2x-bottom');
-        await mountReceipt(partialReceipt, brightness: Brightness.dark, scale: 2);
+        await reviewMountImportReceipt(tester, partialReceipt, brightness: Brightness.dark, scale: 2);
         expectPartialReceipt();
         await capture('vo2-receipt-partial-375-2x-dark');
         await captureReceiptBottomIfCutOff(
           'vo2-receipt-partial-375-2x-dark-bottom',
         );
 
-        await mountReceipt(successReceipt);
+        await reviewMountImportReceipt(tester, successReceipt);
         expectReceiptChrome();
         expect(find.text('Importiert'), findsOneWidget);
         expect(find.text('2 VO₂max-Änderungen übernommen'), findsOneWidget);
@@ -3391,7 +3393,7 @@ void main() {
         expect(find.text('VO₂max unverändert'), findsNothing);
         await capture('vo2-receipt-success');
 
-        await mountReceipt(noopReceipt);
+        await reviewMountImportReceipt(tester, noopReceipt);
         expectReceiptChrome();
         expect(find.text('VO₂max unverändert'), findsOneWidget);
         expect(find.text('Importiert'), findsNothing);
@@ -3400,7 +3402,7 @@ void main() {
         expect(find.textContaining('Änderungen übernommen'), findsNothing);
         await capture('vo2-receipt-noop');
 
-        await mountReceipt(interruptedReceipt);
+        await reviewMountImportReceipt(tester, interruptedReceipt);
         expectReceiptChrome();
         expect(find.text('Teilweise importiert'), findsOneWidget);
         expect(find.text('1 VO₂max-Änderung übernommen'), findsOneWidget);
@@ -3411,7 +3413,7 @@ void main() {
         expect(find.text('Nichts wurde importiert'), findsNothing);
         await capture('vo2-receipt-interrupted');
 
-        await mountReceipt(interruptedEmptyReceipt);
+        await reviewMountImportReceipt(tester, interruptedEmptyReceipt);
         expectReceiptChrome(source: false);
         expect(find.text('Import unvollständig'), findsOneWidget);
         expect(find.textContaining('count failed'), findsOneWidget);
@@ -20488,6 +20490,27 @@ void main() {
           scrollable: verticalScrollable().last,
         );
         await capture('release-large-bottom');
+
+        const restoreReceipt = ImportOutcome(
+          source: 'OpenStrap backup',
+          restoredRows: 12,
+          unchangedRows: 3,
+          restoreConflicts: 1,
+          unreadableRows: 1,
+          pendingRecalculations: 2,
+        );
+        await reviewMountImportReceipt(tester, restoreReceipt);
+        expect(find.text('Teilweise importiert'), findsOneWidget);
+        expect(find.text('12 Einträge gespeichert'), findsOneWidget);
+        expect(find.text('1 Konflikt · lokal beibehalten'), findsOneWidget);
+        await capture('release-restore-partial');
+        await reviewMountImportReceipt(
+          tester, restoreReceipt, brightness: Brightness.dark,
+        );
+        await capture('release-restore-partial-dark');
+        await reviewMountImportReceipt(tester, restoreReceipt, scale: 2);
+        await tester.ensureVisible(find.text('2 Neuberechnungen ausstehend'));
+        await capture('release-restore-partial-large');
         return;
       }
       if (kOpenBandReviewFlow == 'journal' ||

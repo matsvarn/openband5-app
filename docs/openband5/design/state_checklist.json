@@ -26,7 +26,7 @@
       "outcome": "Essential Profile/settings and export, backup, restore; private export migration and retained-source evidence checked.",
       "status": "in-progress",
       "owner": "restore-sol",
-      "evidence": "Private-copy audit found durable restore omissions. Isolated worker9017e301 assignmentf295d6eb owns repair; no private records supplied to worker."
+      "evidence": "Durable restore accepted after independent review,2214 required tests,63 affected checks and final private-copy roundtrip. Compact Profile/Data implementation remains open."
     },
     {
       "id": "release-paper",

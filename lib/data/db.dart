@@ -229,6 +229,18 @@ class _OpenBandFoodCasConflict implements Exception {
   final FoodEntry? current;
 }
 
+class _PreservingImportInterrupted implements Exception {
+  const _PreservingImportInterrupted(this.counts, this.cause);
+  final Map<String, int> counts;
+  final Object cause;
+}
+
+class _SleepImportInterrupted implements Exception {
+  const _SleepImportInterrupted(this.counts, this.cause);
+  final Map<String, int> counts;
+  final Object cause;
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -320,7 +332,13 @@ class LocalDb {
     'sleep_goal_period',
     'nutrition_target_period',
     'breathing_session',
+    'openband_workout_template',
+    'openband_pinned_template',
+    'openband_meal_draft',
+    'alarm_schedule',
     'sessions',
+    'openband_session_detail',
+    'openband_lap',
     'workout_route',
     'workout_split',
     // Derived once, from raw that no longer exists.
@@ -329,6 +347,9 @@ class LocalDb {
     'metric_series_version',
     'baselines',
     'raw_archive',
+    'raw_records',
+    'live_coverage',
+    'workout_suggestions',
     'device_coverage',
     'signal_priority',
     'sync_cursor',
@@ -1364,7 +1385,10 @@ class LocalDb {
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
-    await _dropRawStore(db);
+    // Retained replay/debug ledger. Older migrations may have retired their
+    // working copy after backfill; recreate the durable table so a backup can
+    // restore records that exist only in this ledger.
+    await _createRaw(db);
   }
 
   /// The column names [table] currently has (empty if the table is absent).
@@ -3438,6 +3462,17 @@ class LocalDb {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       return correction;
     });
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      pendingOpenBandSleepCorrections() async {
+    final db = await instance;
+    return db.rawQuery(
+      'SELECT c.* FROM openband_sleep_correction c '
+      'JOIN openband_calculation_job j ON j.day_id = c.day_id '
+      'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+      "WHERE j.status = 'pending' ORDER BY j.requested_at ASC",
+    );
   }
 
   static Future<bool> updateOpenBandCalculationJob({
@@ -11115,6 +11150,774 @@ class LocalDb {
     return false;
   }
 
+  static const _preservingImportKeys = <String, List<String>>{
+    'openband_workout_template': ['id'],
+    'openband_pinned_template': ['singleton'],
+    'openband_meal_draft': ['draft_id'],
+    'openband_lap': ['session_id', 'lap_index'],
+    'alarm_schedule': ['weekday'],
+    'workout_suggestions': ['id'],
+    'live_coverage': ['id'],
+    'openband_session_detail': ['session_id'],
+    'sessions': ['id'],
+    'raw_records': ['counter'],
+  };
+
+  static Future<List<Map<String, Object?>>> _sourceParentRows(
+    Database src,
+    String table,
+    String key,
+    Object? value,
+  ) async {
+    try {
+      return await src.query(
+        table,
+        where: '$key = ?',
+        whereArgs: [value],
+        limit: 1,
+      );
+    } on DatabaseException catch (e) {
+      if (e.isNoSuchTableError()) return const [];
+      rethrow;
+    }
+  }
+
+  static bool _sameImportValues(
+    Map<String, Object?> existing,
+    Map<String, Object?> incoming,
+  ) {
+    for (final entry in incoming.entries) {
+      if (existing[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  /// Import a newly-restorable durable table without replacing a row that this
+  /// install already owns. These tables are snapshots or user state, not
+  /// revision chains: a colliding key with different values is a conflict even
+  /// if one row carries a larger timestamp/version.
+  static Future<Map<String, int>?> _mergePreservingTable(
+    Database src,
+    Database dest,
+    String table,
+    List<String> keys,
+  ) async {
+    const pageSize = 2000;
+    // INTEGER PRIMARY KEY aliases rowid and zero is valid (raw_records counter
+    // can wrap to it), so the first keyset page must start below zero.
+    var lastRowid = -9223372036854775808;
+    var imported = 0;
+    var skipped = 0;
+    var conflicts = 0;
+    var unreadable = 0;
+    final destInfo = await dest.rawQuery('PRAGMA table_info($table)');
+    final destColumns = {for (final c in destInfo) c['name']?.toString() ?? ''}
+      ..remove('');
+    if (destColumns.isEmpty) return null;
+    Map<String, int> committedCounts() => {
+      table: imported,
+      '${table}_skipped': skipped,
+      '${table}_conflict': conflicts,
+      '${table}_unreadable': unreadable,
+    };
+    bool hasCommitted() =>
+        imported > 0 || skipped > 0 || conflicts > 0 || unreadable > 0;
+
+    while (true) {
+      late final List<Map<String, Object?>> page;
+      try {
+        page = await src.rawQuery(
+          'SELECT rowid AS _restore_rowid, * FROM $table '
+          'WHERE rowid > ? ORDER BY rowid LIMIT ?',
+          [lastRowid, pageSize],
+        );
+      } catch (e) {
+        if (e is DatabaseException &&
+            e.isNoSuchTableError() &&
+            !hasCommitted()) {
+          return null;
+        }
+        if (hasCommitted()) {
+          throw _PreservingImportInterrupted(committedCounts(), e);
+        }
+        rethrow;
+      }
+      if (page.isEmpty) break;
+      var pageImported = 0;
+      var pageSkipped = 0;
+      var pageConflicts = 0;
+      var pageUnreadable = 0;
+      try {
+        await dest.transaction((txn) async {
+          for (final sourceRow in page) {
+            final row = <String, Object?>{
+              for (final entry in sourceRow.entries)
+                if (destColumns.contains(entry.key)) entry.key: entry.value,
+            };
+            if (row.isEmpty || keys.any((key) => row[key] == null)) {
+              pageUnreadable++;
+              continue;
+            }
+            final where = keys.map((key) => '$key = ?').join(' AND ');
+            final args = [for (final key in keys) row[key]];
+            if (table == 'openband_pinned_template' && row['singleton'] != 1) {
+              pageUnreadable++;
+              continue;
+            }
+            if (table == 'openband_meal_draft') {
+              final localContext = await txn.query(
+                'openband_meal_draft',
+                where: 'day_id = ? AND meal = ?',
+                whereArgs: [row['day_id'], row['meal']],
+                limit: 1,
+              );
+              if (localContext.isNotEmpty &&
+                  localContext.single['draft_id'] != row['draft_id']) {
+                // The alternate UNIQUE(day_id, meal) key is saved user work;
+                // do not let a different source id turn it into a constraint
+                // failure or replacement.
+                pageConflicts++;
+                continue;
+              }
+            }
+            if (table == 'openband_pinned_template') {
+              final owner = await txn.query(
+                'openband_workout_template',
+                where: 'id = ?',
+                whereArgs: [row['template_id']],
+                limit: 1,
+              );
+              if (owner.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParents = await _sourceParentRows(
+                src,
+                'openband_workout_template',
+                'id',
+                row['template_id'],
+              );
+              if (sourceParents.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParent = <String, Object?>{
+                for (final entry in sourceParents.single.entries)
+                  if (owner.single.containsKey(entry.key))
+                    entry.key: entry.value,
+              };
+              if (!_sameImportValues(owner.single, sourceParent)) {
+                // The id exists locally, but names a different plan. Importing
+                // the pin would silently retarget it to local content.
+                pageConflicts++;
+                continue;
+              }
+            }
+            if (table == 'openband_lap' ||
+                table == 'openband_session_detail') {
+              final sourceParents = await _sourceParentRows(
+                src,
+                'sessions',
+                'id',
+                row['session_id'],
+              );
+              if (sourceParents.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final owner = await txn.query(
+                'sessions',
+                where: 'id = ?',
+                whereArgs: [row['session_id']],
+                limit: 1,
+              );
+              if (owner.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParent = <String, Object?>{
+                for (final entry in sourceParents.single.entries)
+                  if (owner.single.containsKey(entry.key))
+                    entry.key: entry.value,
+              };
+              if (!_sameImportValues(owner.single, sourceParent)) {
+                pageConflicts++;
+                continue;
+              }
+            }
+            final existing = await txn.query(
+              table,
+              where: where,
+              whereArgs: args,
+              limit: 1,
+            );
+            if (existing.isNotEmpty) {
+              if (_sameImportValues(existing.single, row)) {
+                pageSkipped++;
+              } else {
+                pageConflicts++;
+              }
+              continue;
+            }
+            // Constraint, disk and I/O failures propagate. Calling all of them a
+            // malformed source row would turn an interrupted restore into a false
+            // successful receipt.
+            await txn.insert(table, row);
+            pageImported++;
+          }
+          if (table == 'sessions' && pageImported > 0) {
+            await invalidateCycleContext(txn, daySourcesChanged: true);
+          }
+        });
+      } catch (e) {
+        if (hasCommitted()) {
+          throw _PreservingImportInterrupted(committedCounts(), e);
+        }
+        rethrow;
+      }
+      // Publish counts only after the page transaction commits.
+      imported += pageImported;
+      skipped += pageSkipped;
+      conflicts += pageConflicts;
+      unreadable += pageUnreadable;
+      try {
+        if (table == 'sessions' && pageImported > 0) {
+          onCycleContextInvalidated?.call();
+        }
+        lastRowid = (page.last['_restore_rowid'] as num).toInt();
+        if (page.length < pageSize) break;
+        final beforeNext = debugBeforeNextImportPage;
+        if (beforeNext != null) await beforeNext(table);
+      } catch (e) {
+        // The page is committed. Cursor/callback failures must publish it just
+        // like a later source query or destination transaction failure.
+        throw _PreservingImportInterrupted(committedCounts(), e);
+      }
+    }
+    return {
+      table: imported,
+      '${table}_skipped': skipped,
+      '${table}_conflict': conflicts,
+      '${table}_unreadable': unreadable,
+    };
+  }
+
+  static Future<List<Map<String, Object?>>?> _restoreSourceRows(
+    Database src,
+    String table,
+  ) async {
+    try {
+      return await src.query(table);
+    } on DatabaseException catch (e) {
+      if (e.isNoSuchTableError()) return null;
+      rethrow;
+    }
+  }
+
+  static Future<List<Map<String, Object?>>?> _sleepRowsForDestination(
+    Database dest,
+    String table,
+    List<Map<String, Object?>>? rows,
+  ) async {
+    if (rows == null) return null;
+    final info = await dest.rawQuery('PRAGMA table_info($table)');
+    final columns = {for (final column in info) column['name'] as String};
+    return [
+      for (final row in rows)
+        {
+          for (final entry in row.entries)
+            if (columns.contains(entry.key)) entry.key: entry.value,
+        },
+    ];
+  }
+
+  static bool _validSleepBounds(Object? onset, Object? wake) =>
+      onset is int && wake is int && onset < wake;
+
+  static bool _validSleepDraft(Map<String, Object?>? draft) =>
+      draft != null &&
+      draft['draft_id'] is String &&
+      (draft['draft_id'] as String).isNotEmpty &&
+      _validSleepBounds(draft['onset_ms'], draft['wake_ms']);
+
+  static bool _sameSleepCorrection(
+    Map<String, Object?> a,
+    Map<String, Object?> b,
+  ) {
+    const fields = [
+      'correction_id',
+      'action',
+      'revision',
+      'onset_ms',
+      'wake_ms',
+      'recording_timezone',
+    ];
+    return fields.every((field) => a[field] == b[field]);
+  }
+
+  /// Merge sleep state as one per-day family. A revision is not an ancestry
+  /// proof: any differing local family wins, regardless of which number is
+  /// larger. A fresh imported correction always receives a pending local job.
+  static Future<Map<String, int>> _mergeSleepFamilies(
+    Database src,
+    Database dest,
+  ) async {
+    final sourceOverrides = await _sleepRowsForDestination(
+      dest,
+      'sleep_override',
+      await _restoreSourceRows(src, 'sleep_override'),
+    );
+    final sourceDrafts = await _sleepRowsForDestination(
+      dest,
+      'openband_sleep_draft',
+      await _restoreSourceRows(src, 'openband_sleep_draft'),
+    );
+    final sourceCorrections = await _sleepRowsForDestination(
+      dest,
+      'openband_sleep_correction',
+      await _restoreSourceRows(src, 'openband_sleep_correction'),
+    );
+    final sourceJobs = await _sleepRowsForDestination(
+      dest,
+      'openband_calculation_job',
+      await _restoreSourceRows(src, 'openband_calculation_job'),
+    );
+    if (sourceOverrides == null &&
+        sourceDrafts == null &&
+        sourceCorrections == null &&
+        sourceJobs == null) {
+      return const {};
+    }
+
+    bool validDay(Map<String, Object?> row) =>
+        row['day_id'] is String && (row['day_id'] as String).isNotEmpty;
+    Map<String, Map<String, Object?>> byDay(List<Map<String, Object?>>? rows) =>
+        {
+          for (final row in rows ?? const <Map<String, Object?>>[])
+            if (validDay(row)) row['day_id'] as String: row,
+        };
+    int invalidDays(List<Map<String, Object?>>? rows) =>
+        (rows ?? const <Map<String, Object?>>[])
+            .where((row) => !validDay(row))
+            .length;
+
+    final overrides = byDay(sourceOverrides);
+    final drafts = byDay(sourceDrafts);
+    final corrections = byDay(sourceCorrections);
+    final jobs = byDay(sourceJobs);
+    final days = <String>{
+      ...overrides.keys,
+      ...drafts.keys,
+      ...corrections.keys,
+      ...jobs.keys,
+    };
+    var imported = 0;
+    var skipped = 0;
+    var conflicts = 0;
+    var unreadable =
+        invalidDays(sourceOverrides) +
+        invalidDays(sourceCorrections) +
+        invalidDays(sourceJobs);
+    var pending = 0;
+    var correctionImported = 0;
+    var overrideImported = 0;
+    var draftImported = 0;
+    var draftSkipped = 0;
+    var draftConflicts = 0;
+    var draftUnreadable = invalidDays(sourceDrafts);
+
+    Map<String, int> currentCounts() => {
+      'openband_sleep_family': imported,
+      'openband_sleep_family_skipped': skipped,
+      'openband_sleep_family_conflict': conflicts,
+      'openband_sleep_family_unreadable': unreadable,
+      'openband_sleep_pending': pending,
+      'sleep_override': overrideImported,
+      'openband_sleep_correction': correctionImported,
+      'openband_calculation_job': correctionImported,
+      'openband_sleep_draft': draftImported,
+      'openband_sleep_draft_skipped': draftSkipped,
+      'openband_sleep_draft_conflict': draftConflicts,
+      'openband_sleep_draft_unreadable': draftUnreadable,
+    };
+    bool hasReported(Map<String, int> counts) =>
+        counts.values.any((value) => value > 0);
+    void restoreCounts(Map<String, int> counts) {
+      imported = counts['openband_sleep_family']!;
+      skipped = counts['openband_sleep_family_skipped']!;
+      conflicts = counts['openband_sleep_family_conflict']!;
+      unreadable = counts['openband_sleep_family_unreadable']!;
+      pending = counts['openband_sleep_pending']!;
+      overrideImported = counts['sleep_override']!;
+      correctionImported = counts['openband_sleep_correction']!;
+      draftImported = counts['openband_sleep_draft']!;
+      draftSkipped = counts['openband_sleep_draft_skipped']!;
+      draftConflicts = counts['openband_sleep_draft_conflict']!;
+      draftUnreadable = counts['openband_sleep_draft_unreadable']!;
+    }
+    Future<void> runFamily(
+      Future<void> Function(Transaction txn) operation,
+    ) async {
+      final before = currentCounts();
+      try {
+        await dest.transaction(operation);
+      } catch (e) {
+        restoreCounts(before);
+        if (hasReported(before)) throw _SleepImportInterrupted(before, e);
+        rethrow;
+      }
+    }
+
+    for (final day in days) {
+      final sourceCorrection = corrections[day];
+      final sourceOverride = overrides[day];
+      final sourceDraft = drafts[day];
+      final sourceJob = jobs[day];
+      if (sourceCorrection != null) {
+        final id = sourceCorrection['correction_id'];
+        final revision = sourceCorrection['revision'];
+        final action = sourceCorrection['action'];
+        final validCorrection =
+            id is String &&
+            id.isNotEmpty &&
+            revision is int &&
+            revision >= 1 &&
+            (action == 'override' || action == 'automatic');
+        final validJob =
+            sourceJob?['correction_id'] == id &&
+            sourceJob?['revision'] is int &&
+            sourceJob?['revision'] == revision;
+        final validDraft =
+            sourceDraft == null || _validSleepDraft(sourceDraft);
+        final validOverride = action == 'override'
+            ? sourceOverride != null &&
+                  sourceOverride['correction_id'] == id &&
+                  sourceOverride['revision'] is int &&
+                  sourceOverride['revision'] == revision &&
+                  _validSleepBounds(
+                    sourceCorrection['onset_ms'],
+                    sourceCorrection['wake_ms'],
+                  ) &&
+                  _validSleepBounds(
+                    sourceOverride['onset_ts'],
+                    sourceOverride['offset_ts'],
+                  ) &&
+                  (sourceOverride['onset_ts'] as num).toInt() ==
+                      (sourceCorrection['onset_ms'] as num).toInt() ~/ 1000 &&
+                  (sourceOverride['offset_ts'] as num).toInt() ==
+                      (sourceCorrection['wake_ms'] as num).toInt() ~/ 1000
+            : sourceOverride == null;
+        if (!validCorrection || !validJob || !validOverride) {
+          unreadable++;
+          continue;
+        }
+
+        await runFamily((txn) async {
+          final localCorrections = await txn.query(
+            'openband_sleep_correction',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localOverrides = await txn.query(
+            'sleep_override',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localDrafts = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localCorrections.isNotEmpty) {
+            final local = localCorrections.single;
+            final localJobs = await txn.query(
+              'openband_calculation_job',
+              where: 'day_id = ? AND correction_id = ? AND revision = ?',
+              whereArgs: [day, local['correction_id'], local['revision']],
+              limit: 1,
+            );
+            final localOverrideOk = action == 'override'
+                ? localOverrides.isNotEmpty &&
+                      localOverrides.single['correction_id'] == id &&
+                      localOverrides.single['revision'] == revision &&
+                      localOverrides.single['onset_ts'] ==
+                          sourceOverride!['onset_ts'] &&
+                      localOverrides.single['offset_ts'] ==
+                          sourceOverride['offset_ts']
+                : localOverrides.isEmpty;
+            if (!_sameSleepCorrection(local, sourceCorrection) ||
+                localJobs.isEmpty ||
+                !localOverrideOk) {
+              conflicts++;
+              if (sourceDraft != null) draftConflicts++;
+              return;
+            }
+            skipped++;
+            if (sourceDraft == null) return;
+            if (!validDraft) {
+              draftUnreadable++;
+              return;
+            }
+            if (localDrafts.isNotEmpty) {
+              if (_sameImportValues(localDrafts.single, sourceDraft)) {
+                draftSkipped++;
+              } else {
+                draftConflicts++;
+              }
+              return;
+            }
+            final duplicateDraft = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateDraft.isNotEmpty) {
+              draftConflicts++;
+            } else {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            }
+            return;
+          }
+          if (localOverrides.isNotEmpty || localDrafts.isNotEmpty) {
+            conflicts++;
+            return;
+          }
+          final duplicateId = await txn.query(
+            'openband_sleep_correction',
+            columns: ['day_id'],
+            where: 'correction_id = ?',
+            whereArgs: [id],
+            limit: 1,
+          );
+          if (duplicateId.isNotEmpty) {
+            conflicts++;
+            return;
+          }
+          if (sourceDraft != null && validDraft) {
+            final duplicateDraft = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateDraft.isNotEmpty) {
+              conflicts++;
+              draftConflicts++;
+              return;
+            }
+          }
+          if (action == 'override') {
+            await txn.insert('sleep_override', {
+              for (final entry in sourceOverride!.entries)
+                if (entry.key != 'day_id' || entry.value == day)
+                  entry.key: entry.value,
+            });
+            overrideImported++;
+          } else {
+            // Only this newly-owned automatic family may invalidate the cached
+            // candidate. A conflicting local override was returned above.
+            await txn.delete(
+              'sleep_session_candidates',
+              where: 'day_id = ?',
+              whereArgs: [day],
+            );
+          }
+          await txn.insert('openband_sleep_correction', sourceCorrection);
+          final now = DateTime.now().millisecondsSinceEpoch;
+          await txn.insert('openband_calculation_job', {
+            'day_id': day,
+            'correction_id': id,
+            'revision': revision,
+            'status': 'pending',
+            'requested_at': now,
+            'updated_at': now,
+          });
+          if (sourceDraft != null) {
+            if (validDraft) {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            } else {
+              draftUnreadable++;
+            }
+          }
+          imported++;
+          correctionImported++;
+          pending++;
+        });
+        continue;
+      }
+
+      // Backups predating correction receipts may contain a standalone
+      // sleep_override. It is safe only into an otherwise empty day family.
+      if (sourceOverride != null) {
+        final legacyCorrectionId = sourceOverride['correction_id'];
+        final legacyRevision = sourceOverride['revision'];
+        final genuineLegacy =
+            (legacyCorrectionId == null || legacyCorrectionId == '') &&
+            (legacyRevision == null ||
+                (legacyRevision is int && legacyRevision == 0));
+        if (!genuineLegacy ||
+            !_validSleepBounds(
+              sourceOverride['onset_ts'],
+              sourceOverride['offset_ts'],
+            )) {
+          // Provenance on an override promises a correction+job family. Never
+          // reinterpret a broken modern family as a safe old standalone row.
+          unreadable++;
+          if (sourceDraft != null) draftUnreadable++;
+          continue;
+        }
+        final validLegacyDraft =
+            sourceDraft == null || _validSleepDraft(sourceDraft);
+        await runFamily((txn) async {
+          final localCorrection = await txn.query(
+            'openband_sleep_correction',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localDraft = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localOverride = await txn.query(
+            'sleep_override',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localCorrection.isNotEmpty ||
+              (localDraft.isNotEmpty && localOverride.isEmpty)) {
+            conflicts++;
+            if (sourceDraft != null) draftConflicts++;
+            return;
+          }
+          if (localOverride.isNotEmpty) {
+            if (!_sameImportValues(localOverride.single, sourceOverride)) {
+              conflicts++;
+              if (sourceDraft != null) draftConflicts++;
+              return;
+            }
+            skipped++;
+          } else {
+            await txn.insert('sleep_override', sourceOverride);
+            imported++;
+            overrideImported++;
+          }
+          if (sourceDraft == null) return;
+          if (!validLegacyDraft) {
+            draftUnreadable++;
+            return;
+          }
+          if (localDraft.isNotEmpty) {
+            if (_sameImportValues(localDraft.single, sourceDraft)) {
+              draftSkipped++;
+            } else {
+              draftConflicts++;
+            }
+            return;
+          }
+          final duplicateDraft = await txn.query(
+            'openband_sleep_draft',
+            columns: ['day_id'],
+            where: 'draft_id = ?',
+            whereArgs: [sourceDraft['draft_id']],
+            limit: 1,
+          );
+          if (duplicateDraft.isNotEmpty) {
+            draftConflicts++;
+          } else {
+            await txn.insert('openband_sleep_draft', sourceDraft);
+            draftImported++;
+          }
+        });
+        continue;
+      }
+
+      if (sourceDraft != null) {
+        if (!_validSleepDraft(sourceDraft)) {
+          draftUnreadable++;
+          continue;
+        }
+        await runFamily((txn) async {
+          final localFamily = await txn.rawQuery(
+            'SELECT day_id FROM openband_sleep_correction WHERE day_id = ? '
+            'UNION ALL SELECT day_id FROM sleep_override WHERE day_id = ?',
+            [day, day],
+          );
+          final localDraft = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localFamily.isNotEmpty) {
+            draftConflicts++;
+          } else if (localDraft.isNotEmpty) {
+            if (_sameImportValues(localDraft.single, sourceDraft)) {
+              draftSkipped++;
+            } else {
+              draftConflicts++;
+            }
+          } else {
+            final duplicateId = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateId.isNotEmpty) {
+              draftConflicts++;
+            } else {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            }
+          }
+        });
+        continue;
+      }
+
+      // A job without its correction cannot be acted upon safely.
+      if (sourceJob != null) unreadable++;
+    }
+    return currentCounts();
+  }
+
+  static void _storeRestoreTotals(Map<String, int> counts) {
+    const durable = [
+      'openband_sleep_family',
+      'openband_sleep_draft',
+      'openband_workout_template',
+      'openband_pinned_template',
+      'openband_meal_draft',
+      'openband_lap',
+      'alarm_schedule',
+      'workout_suggestions',
+      'live_coverage',
+      'openband_session_detail',
+      'sessions',
+      'raw_records',
+    ];
+    int total(String suffix) => durable.fold(
+      0,
+      (sum, table) => sum + (counts['$table$suffix'] ?? 0),
+    );
+    counts['_restore_imported'] = total('');
+    counts['_restore_skipped'] = total('_skipped');
+    counts['_restore_conflict'] = total('_conflict');
+    counts['_restore_unreadable'] = total('_unreadable');
+  }
+
   /// Merge every table [tables] names from the database file at [path] into
   /// this one.
   ///
@@ -11154,6 +11957,11 @@ class LocalDb {
       'cycle_log',
       'cycle_symptom',
       'breathing_session',
+      'openband_workout_template',
+      'openband_pinned_template',
+      'openband_meal_draft',
+      'alarm_schedule',
+      'workout_suggestions',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
       // any of it — a `reports` band trims its own history, and the app whose
@@ -11166,6 +11974,9 @@ class LocalDb {
       // skipped these would silently reinstate every nap the user had deleted
       // and lose every one they logged.
       'sleep_override',
+      'openband_sleep_draft',
+      'openband_sleep_correction',
+      'openband_calculation_job',
       'sleep_nap',
       'nap_recalc_job',
       'sleep_goal_period',
@@ -11193,12 +12004,16 @@ class LocalDb {
       // never lost. Keyed by `hex`, so two same-counter frames from different
       // boots both survive the merge.
       'raw_archive',
+      'raw_records',
       'band_events',
       'band_battery',
       'day_result',
       'metric_series',
       'metric_series_version',
       'sessions',
+      'openband_session_detail',
+      'openband_lap',
+      'live_coverage',
       'notifications',
       'baselines',
       // The devices this phone knows about — so a SECONDARY device's identity
@@ -11250,6 +12065,7 @@ class LocalDb {
       }
       final days = importedDays;
       if (days != null) snap['_days'] = days.length;
+      _storeRestoreTotals(snap);
       return snap;
     }
 
@@ -11257,6 +12073,50 @@ class LocalDb {
       for (final t in (only ?? tables)) {
         var committedCopied = 0;
         try {
+          if (t == 'sleep_override') {
+            try {
+              counts.addAll(await _mergeSleepFamilies(src, db));
+            } on _SleepImportInterrupted catch (e) {
+              counts.addAll(e.counts);
+              if (!tolerant) {
+                throw PartialImportException(
+                  committedSnapshot(0, t),
+                  e.cause,
+                );
+              }
+            }
+            final afterSleep = debugAfterImportedTable;
+            if (afterSleep != null) await afterSleep(t);
+            continue;
+          }
+          if (t == 'openband_sleep_draft' ||
+              t == 'openband_sleep_correction' ||
+              t == 'openband_calculation_job') {
+            continue; // consumed atomically with sleep_override above
+          }
+          final preservingKeys = _preservingImportKeys[t];
+          if (preservingKeys != null) {
+            try {
+              final merged = await _mergePreservingTable(
+                src,
+                db,
+                t,
+                preservingKeys,
+              );
+              if (merged != null) counts.addAll(merged);
+            } on _PreservingImportInterrupted catch (e) {
+              counts.addAll(e.counts);
+              if (!tolerant) {
+                throw PartialImportException(
+                  committedSnapshot(0, t),
+                  e.cause,
+                );
+              }
+            }
+            final afterPreserved = debugAfterImportedTable;
+            if (afterPreserved != null) await afterPreserved(t);
+            continue;
+          }
           if (t == kManualVo2Table) {
             // Not INSERT OR REPLACE. One id's chain is preflighted and either
             // left alone or appended. A divergent or broken chain writes nothing
@@ -11590,6 +12450,7 @@ class LocalDb {
           final afterTable = debugAfterImportedTable;
           if (afterTable != null) await afterTable(t);
         } catch (e) {
+          if (e is PartialImportException) rethrow;
           if (e is Vo2ImportInterrupted) {
             // The source probe already found manual_vo2. A user receipt keeps
             // that presence even when every count is still zero. Salvage omits
@@ -11632,8 +12493,9 @@ class LocalDb {
     if ((counts['day_result'] ?? 0) > 0) {
       await putComputeFreshness(kReencodeCursorKey, jsonEncode({}));
     }
-    // Last, so it can never be mistaken for a table row count by anything that
-    // walks this map in order.
+    // Last, so these can never be mistaken for table row counts by anything
+    // walking the map. They summarize only the preserving restore paths above.
+    _storeRestoreTotals(counts);
     if (importedDays != null) counts['_days'] = importedDays.length;
     return counts;
   }

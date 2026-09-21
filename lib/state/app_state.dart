@@ -536,12 +536,20 @@ class AppState extends ChangeNotifier {
     // do not add it back here. Its inflate checks the gzip trailer, so a
     // truncated backup fails loudly; `gzip.decoder` returns partial output
     // without raising and would restore short while reporting success.
+    String correctionKey(Map<String, dynamic> row) =>
+        '${row['day_id']}|${row['correction_id']}|${row['revision']}';
+    final pendingBefore = {
+      for (final row in await LocalDb.pendingOpenBandSleepCorrections())
+        correctionKey(row),
+    };
     Map<String, int> counts;
     String? readError;
     try {
       counts = await LocalDb.importFromDbFile(path);
     } on PartialImportException catch (e) {
-      counts = e.counts;
+      // The exception freezes its committed-only receipt. Import scheduling
+      // updates the pending-job count below, so work on a mutable copy.
+      counts = Map<String, int>.from(e.counts);
       readError = '${e.cause}';
     }
     // Rows that committed are already in the database, including when a later
@@ -550,6 +558,31 @@ class AppState extends ChangeNotifier {
     String? rollupError;
     try {
       await _derive.finalizeImport(_profile);
+      // Database restore writes sleep corrections as pending jobs rather than
+      // trusting a source device's derived result. Pick those jobs up through
+      // the same strict revision-checked path as an edit made on this phone.
+      final pending = await LocalDb.pendingOpenBandSleepCorrections();
+      final importedPending = [
+        for (final correction in pending)
+          if (!pendingBefore.contains(correctionKey(correction))) correction,
+      ];
+      for (final correction in importedPending) {
+        try {
+          await recalculateOpenBandSleepCorrection(
+            day: correction['day_id'] as String,
+            correctionId: correction['correction_id'] as String,
+            revision: (correction['revision'] as num).toInt(),
+          );
+        } catch (e) {
+          rollupError ??= '$e';
+        }
+      }
+      final stillPending = await LocalDb.pendingOpenBandSleepCorrections();
+      final importedKeys = importedPending.map(correctionKey).toSet();
+      counts['openband_sleep_pending'] = stillPending
+          .where((correction) => importedKeys.contains(correctionKey(correction)))
+          .length;
+      importRollupError = rollupError;
     } catch (e) {
       rollupError = '$e';
       importRollupError = rollupError;

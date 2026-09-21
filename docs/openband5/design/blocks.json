@@ -41,7 +41,9 @@
     "55Y8-0": "Release Daten & Sicherung · Dunkel (lib/ui2/profile/data.dart)",
     "3P8X-0": "Einrichtung · Auswertung nicht geladen (lib/ui2/onboarding/first_sync.dart)",
     "565V-0": "Einrichtung · Übertragung unterbrochen · Hell (lib/ui2/onboarding/first_sync.dart)",
-    "567A-0": "Einrichtung · Übertragung unterbrochen · Dunkel (lib/ui2/onboarding/first_sync.dart)"
+    "567A-0": "Einrichtung · Übertragung unterbrochen · Dunkel (lib/ui2/onboarding/first_sync.dart)",
+    "569H-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Hell (lib/ui2/onboarding/welcome.dart)",
+    "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)"
   },
   "blocks": [
     {
@@ -74,7 +76,9 @@
         "3KTM-0",
         "3KUQ-0",
         "55NA-0",
-        "55SE-0"
+        "55SE-0",
+        "569H-0",
+        "56A9-0"
       ],
       "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
       "variantPaperNodes": {
@@ -802,6 +806,21 @@
         "weightDark": "51YU-0"
       },
       "notes": "Shared calendar-slot numeric line for stored temperature and the explicitly labelled journal-weight EWMA. Consecutive finite slots connect directly; actual gaps stay empty. Callers select signed zero-centered SD or absolute kilograms/Celsius. No metric computation or unit inference. Measured scaled labels set the gutter; existing temperature geometry is preserved when labels fit."
+    },
+    {
+      "name": "OBBackupImportReceipt",
+      "paperNode": "546R-0",
+      "widget": "ImportReport",
+      "file": "ui2/onboarding/welcome.dart",
+      "usedIn": [
+        "569H-0",
+        "56A9-0"
+      ],
+      "notes": "Canonical ImportReport card reused for durable restore counts, conflicts, unreadable entries and pending recalculation. Implementation/native acceptance is tracked in the release-data queue.",
+      "variantPaperNodes": {
+        "durablePartial": "569J-0",
+        "durablePartialDark": "56AB-0"
+      }
     }
   ],
   "openBlocks": [],

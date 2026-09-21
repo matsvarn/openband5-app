@@ -291,6 +291,42 @@ void main() {
       expect(app.onboardChoice, 'imported');
     });
 
+    test('backup scheduling leaves unrelated pending corrections alone', () async {
+      const day = '2026-09-25';
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: day,
+        draftId: 'already-pending',
+        onsetMs: 1000,
+        wakeMs: 2000,
+      );
+      await LocalDb.commitOpenBandSleepCorrection(
+        dayId: day,
+        draftId: 'already-pending',
+        onsetMs: 1000,
+        wakeMs: 2000,
+      );
+      final path = await source('unrelated_pending.db', (db) async {
+        await db.insert(
+          'manual_vo2',
+          row(
+            id: 'pending-test',
+            revision: 1,
+            measuredOn: '2026-09-25',
+            value: 45,
+            created: 1,
+          ),
+        );
+      });
+
+      final receipt = await app.importEdgeBackup(path);
+
+      expect(receipt.pendingRecalculations, 0);
+      expect(
+        (await LocalDb.openBandSleepCorrection(day))?['status'],
+        'pending',
+      );
+    });
+
     test('days and VO2 revisions stay separate, including a second file', () async {
       final first = await source(
         'mixed_a.db',
@@ -723,6 +759,380 @@ void main() {
       expect(rows.first['n'], 2000);
     });
 
+    test('a committed preserving page is reported when the next read fails', () async {
+      final path = p.join(tmp.path, 'raw_page.db');
+      final src = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) async {
+            await db.execute('''
+              CREATE TABLE raw_backing (
+                counter INTEGER PRIMARY KEY,
+                hex TEXT NOT NULL,
+                packet_type INTEGER,
+                captured_at INTEGER NOT NULL,
+                rec_ts INTEGER NOT NULL DEFAULT 0,
+                uploaded INTEGER NOT NULL DEFAULT 0
+              )
+            ''');
+            await db.execute('''
+              CREATE VIEW raw_records AS
+              SELECT counter AS rowid, counter, hex, packet_type,
+                CASE WHEN counter >= 2000
+                  THEN abs(-9223372036854775808)
+                  ELSE captured_at END AS captured_at,
+                rec_ts, uploaded
+              FROM raw_backing
+            ''');
+          },
+        ),
+      );
+      final batch = src.batch();
+      for (var i = 0; i < 2001; i++) {
+        batch.insert('raw_backing', {
+          'counter': i,
+          'hex': i.toRadixString(16),
+          'packet_type': 47,
+          'captured_at': i,
+          'rec_ts': i,
+          'uploaded': 0,
+        });
+      }
+      await batch.commit(noResult: true);
+      await src.close();
+
+      PartialImportException? interrupted;
+      try {
+        await LocalDb.importFromDbFile(path);
+      } on PartialImportException catch (e) {
+        interrupted = e;
+      }
+      expect(interrupted, isNotNull);
+      final receipt = BackupImportReceipt.fromCounts(interrupted!.counts);
+      expect(receipt.restoredRows, 2000);
+      expect(interrupted.cause.toString(), contains('integer overflow'));
+      expect(
+        (await (await LocalDb.instance).rawQuery(
+          'SELECT COUNT(*) AS n FROM raw_records',
+        )).single['n'],
+        2000,
+      );
+    });
+
+    test('a real failing later destination page reports only committed rows', () async {
+      final path = p.join(tmp.path, 'raw_dest_failure.db');
+      final src = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) => db.execute('''
+            CREATE TABLE raw_records (
+              counter INTEGER PRIMARY KEY,
+              hex TEXT NOT NULL,
+              packet_type INTEGER,
+              captured_at INTEGER NOT NULL,
+              rec_ts INTEGER NOT NULL DEFAULT 0,
+              uploaded INTEGER NOT NULL DEFAULT 0
+            )
+          '''),
+        ),
+      );
+      final batch = src.batch();
+      for (var i = 0; i < 2001; i++) {
+        batch.insert('raw_records', {
+          'counter': i,
+          'hex': i.toRadixString(16),
+          'packet_type': 47,
+          'captured_at': i,
+          'rec_ts': i,
+          'uploaded': 0,
+        });
+      }
+      await batch.commit(noResult: true);
+      await src.close();
+      LocalDb.debugBeforeNextImportPage = (table) async {
+        if (table != 'raw_records') return;
+        final dest = await LocalDb.instance;
+        await dest.execute('''
+          CREATE TRIGGER fail_later_raw_restore
+          BEFORE INSERT ON raw_records
+          WHEN NEW.counter = 2000
+          BEGIN SELECT RAISE(ABORT, 'real destination failure'); END
+        ''');
+      };
+
+      PartialImportException? interrupted;
+      try {
+        await LocalDb.importFromDbFile(path);
+      } on PartialImportException catch (e) {
+        interrupted = e;
+      }
+      expect(interrupted, isNotNull);
+      expect(interrupted!.counts['_restore_imported'], 2000);
+      expect(interrupted.cause.toString(), contains('real destination failure'));
+      final dest = await LocalDb.instance;
+      expect(
+        (await dest.rawQuery('SELECT COUNT(*) AS n FROM raw_records')).single['n'],
+        2000,
+      );
+    });
+
+    test('a real failing sleep family keeps the prior family receipt', () async {
+      final path = p.join(tmp.path, 'sleep_family_failure.db');
+      final src = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) async {
+            await db.execute('''CREATE TABLE sleep_override (
+              day_id TEXT PRIMARY KEY, onset_ts INTEGER NOT NULL,
+              offset_ts INTEGER NOT NULL, source TEXT NOT NULL,
+              created_at INTEGER NOT NULL, correction_id TEXT, revision INTEGER
+            )''');
+            await db.execute('''CREATE TABLE openband_sleep_correction (
+              day_id TEXT PRIMARY KEY, correction_id TEXT NOT NULL UNIQUE,
+              draft_id TEXT UNIQUE, action TEXT NOT NULL, onset_ms INTEGER,
+              wake_ms INTEGER, recording_timezone TEXT, revision INTEGER NOT NULL,
+              saved_at INTEGER NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE openband_calculation_job (
+              day_id TEXT PRIMARY KEY, correction_id TEXT NOT NULL,
+              revision INTEGER NOT NULL, status TEXT NOT NULL,
+              requested_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+              error TEXT, result_algo_version INTEGER, result_computed_at INTEGER
+            )''');
+            await db.execute('''CREATE TABLE openband_sleep_draft (
+              day_id TEXT PRIMARY KEY, draft_id TEXT NOT NULL UNIQUE,
+              onset_ms INTEGER NOT NULL, wake_ms INTEGER NOT NULL,
+              recording_timezone TEXT, updated_at INTEGER NOT NULL
+            )''');
+          },
+        ),
+      );
+      for (final entry in [('2026-09-01', 'first'), ('2026-09-02', 'second')]) {
+        await src.insert('sleep_override', {
+          'day_id': entry.$1,
+          'onset_ts': 100,
+          'offset_ts': 200,
+          'source': 'manual',
+          'created_at': 1,
+          'correction_id': entry.$2,
+          'revision': 1,
+        });
+        await src.insert('openband_sleep_correction', {
+          'day_id': entry.$1,
+          'correction_id': entry.$2,
+          'draft_id': entry.$2,
+          'action': 'override',
+          'onset_ms': 100000,
+          'wake_ms': 200000,
+          'revision': 1,
+          'saved_at': 1,
+        });
+        await src.insert('openband_calculation_job', {
+          'day_id': entry.$1,
+          'correction_id': entry.$2,
+          'revision': 1,
+          'status': 'complete',
+          'requested_at': 1,
+          'updated_at': 1,
+        });
+      }
+      await src.close();
+      final dest = await LocalDb.instance;
+      await dest.execute('''
+        CREATE TRIGGER fail_second_sleep_family
+        BEFORE INSERT ON sleep_override
+        WHEN NEW.day_id = '2026-09-02'
+        BEGIN SELECT RAISE(ABORT, 'real sleep destination failure'); END
+      ''');
+
+      PartialImportException? interrupted;
+      try {
+        await LocalDb.importFromDbFile(path);
+      } on PartialImportException catch (e) {
+        interrupted = e;
+      }
+      expect(interrupted, isNotNull);
+      expect(interrupted!.counts['_restore_imported'], 1);
+      expect(interrupted.counts['openband_sleep_pending'], 1);
+      expect(interrupted.cause.toString(), contains('real sleep destination failure'));
+      expect(await LocalDb.openBandSleepCorrection('2026-09-01'), isNotNull);
+      expect(await LocalDb.openBandSleepCorrection('2026-09-02'), isNull);
+    });
+
+    test('session children require a matching source and retained parent', () async {
+      final path = p.join(tmp.path, 'session_family.db');
+      final src = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) async {
+            await db.execute('''CREATE TABLE sessions (
+              id TEXT PRIMARY KEY, start_ts INTEGER NOT NULL, end_ts INTEGER,
+              type TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE openband_lap (
+              session_id TEXT NOT NULL, lap_index INTEGER NOT NULL,
+              at_ts INTEGER NOT NULL, elapsed_sec INTEGER NOT NULL,
+              paused_sec INTEGER NOT NULL, distance_m REAL,
+              PRIMARY KEY(session_id, lap_index)
+            )''');
+            await db.execute('''CREATE TABLE openband_session_detail (
+              session_id TEXT PRIMARY KEY, algo_version INTEGER NOT NULL,
+              computed_at INTEGER NOT NULL, payload_json TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE openband_workout_template (
+              id TEXT PRIMARY KEY, name TEXT NOT NULL, version INTEGER NOT NULL,
+              exercises_json TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0,
+              updated_at INTEGER NOT NULL
+            )''');
+            // Deliberately old/malformed shape without singleton CHECK.
+            await db.execute('''CREATE TABLE openband_pinned_template (
+              singleton INTEGER PRIMARY KEY, template_id TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE raw_records (
+              counter INTEGER PRIMARY KEY, hex TEXT NOT NULL,
+              packet_type INTEGER, captured_at INTEGER NOT NULL,
+              rec_ts INTEGER NOT NULL DEFAULT 0, uploaded INTEGER NOT NULL DEFAULT 0
+            )''');
+          },
+        ),
+      );
+      await src.insert('sessions', {
+        'id': 'same-id',
+        'start_ts': 10,
+        'end_ts': 20,
+        'type': 'source-run',
+        'status': 'done',
+        'source': 'manual',
+        'created_at': 1,
+      });
+      for (final id in ['same-id', 'orphan-id']) {
+        await src.insert('openband_lap', {
+          'session_id': id,
+          'lap_index': 0,
+          'at_ts': 15,
+          'elapsed_sec': 5,
+          'paused_sec': 0,
+        });
+        await src.insert('openband_session_detail', {
+          'session_id': id,
+          'algo_version': 1,
+          'computed_at': 1,
+          'payload_json': '{}',
+        });
+      }
+      await src.insert('openband_workout_template', {
+        'id': 'template-malformed-pin',
+        'name': 'Plan',
+        'version': 1,
+        'exercises_json': '[]',
+        'archived': 0,
+        'updated_at': 1,
+      });
+      await src.insert('openband_pinned_template', {
+        'singleton': 2,
+        'template_id': 'template-malformed-pin',
+      });
+      await src.insert('raw_records', {
+        'counter': 5,
+        'hex': '05',
+        'captured_at': 5,
+        'rec_ts': 5,
+      });
+      await src.close();
+
+      final dest = await LocalDb.instance;
+      for (final id in ['same-id', 'orphan-id']) {
+        await dest.insert('sessions', {
+          'id': id,
+          'start_ts': 100,
+          'end_ts': 200,
+          'type': 'local-ride',
+          'status': 'done',
+          'source': 'manual',
+          'created_at': 2,
+        });
+      }
+      final receipt = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(path),
+      );
+      expect(receipt.restoreConflicts, greaterThanOrEqualTo(3));
+      expect(receipt.unreadableRows, greaterThanOrEqualTo(3));
+      expect((await dest.query('sessions', where: "id = 'same-id'")).single['type'], 'local-ride');
+      expect(await dest.query('openband_lap'), isEmpty);
+      expect(await dest.query('openband_session_detail'), isEmpty);
+      expect(await dest.query('openband_pinned_template'), isEmpty);
+      expect(await dest.query('raw_records', where: 'counter = 5'), hasLength(1));
+    });
+
+    test('missing source session table withholds children and continues', () async {
+      final path = p.join(tmp.path, 'orphan_session_children.db');
+      final src = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (db, _) async {
+            await db.execute('''CREATE TABLE openband_lap (
+              session_id TEXT NOT NULL, lap_index INTEGER NOT NULL,
+              at_ts INTEGER NOT NULL, elapsed_sec INTEGER NOT NULL,
+              paused_sec INTEGER NOT NULL, PRIMARY KEY(session_id, lap_index)
+            )''');
+            await db.execute('''CREATE TABLE openband_session_detail (
+              session_id TEXT PRIMARY KEY, algo_version INTEGER NOT NULL,
+              computed_at INTEGER NOT NULL, payload_json TEXT NOT NULL
+            )''');
+            await db.execute('''CREATE TABLE raw_records (
+              counter INTEGER PRIMARY KEY, hex TEXT NOT NULL,
+              captured_at INTEGER NOT NULL, rec_ts INTEGER NOT NULL DEFAULT 0,
+              uploaded INTEGER NOT NULL DEFAULT 0
+            )''');
+          },
+        ),
+      );
+      await src.insert('openband_lap', {
+        'session_id': 'coincidental',
+        'lap_index': 0,
+        'at_ts': 1,
+        'elapsed_sec': 1,
+        'paused_sec': 0,
+      });
+      await src.insert('openband_session_detail', {
+        'session_id': 'coincidental',
+        'algo_version': 1,
+        'computed_at': 1,
+        'payload_json': '{}',
+      });
+      await src.insert('raw_records', {
+        'counter': 9,
+        'hex': '09',
+        'captured_at': 9,
+        'rec_ts': 9,
+      });
+      await src.close();
+      final dest = await LocalDb.instance;
+      await dest.insert('sessions', {
+        'id': 'coincidental',
+        'start_ts': 10,
+        'type': 'local',
+        'status': 'done',
+        'source': 'manual',
+        'created_at': 1,
+      });
+
+      final receipt = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(path),
+      );
+
+      expect(receipt.unreadableRows, 2);
+      expect(await dest.query('openband_lap'), isEmpty);
+      expect(await dest.query('openband_session_detail'), isEmpty);
+      expect(await dest.query('raw_records', where: 'counter = 9'), hasLength(1));
+    });
+
     test('a committed VO2 chain survives a later table failure', () async {
       final path = await oneRevision('partial_later.db');
       LocalDb.debugAfterImportedTable = (table) async {
@@ -808,6 +1218,505 @@ void main() {
       await File(garbage).writeAsString('not a database');
       await expectLater(app.importEdgeBackup(garbage), throwsA(anything));
       expect(await vo2Rows(), 0);
+    });
+
+    test('full export restores durable rows and sleep families idempotently', () async {
+      final destinationName = LocalDb.dbName;
+      final sourceName = 'backup_restore_source_$n.db';
+      await LocalDb.close();
+      LocalDb.dbName = sourceName;
+      await databaseFactory.deleteDatabase(
+        p.join(await databaseFactory.getDatabasesPath(), sourceName),
+      );
+      final sourceDb = await LocalDb.instance;
+      await sourceDb.insert('openband_workout_template', {
+        'id': 'template-1',
+        'name': 'Intervals',
+        'version': 1,
+        'exercises_json': '[]',
+        'archived': 0,
+        'updated_at': 1,
+      });
+      await sourceDb.insert('openband_pinned_template', {
+        'singleton': 1,
+        'template_id': 'template-1',
+      });
+      await sourceDb.insert('openband_meal_draft', {
+        'draft_id': 'meal-1',
+        'day_id': '2026-09-18',
+        'meal': 'dinner',
+        'entries_json': '[]',
+        'updated_at': 2,
+      });
+      await sourceDb.insert('sessions', {
+        'id': 'session-1',
+        'start_ts': 100,
+        'end_ts': 200,
+        'type': 'run',
+        'status': 'done',
+        'source': 'manual',
+        'created_at': 1,
+      });
+      await sourceDb.insert('openband_session_detail', {
+        'session_id': 'session-1',
+        'algo_version': 1,
+        'computed_at': 2,
+        'payload_json': '{"frozen":true}',
+      });
+      await sourceDb.insert('openband_lap', {
+        'session_id': 'session-1',
+        'lap_index': 0,
+        'at_ts': 150,
+        'elapsed_sec': 50,
+        'paused_sec': 0,
+        'distance_m': 400.0,
+      });
+      await sourceDb.insert('alarm_schedule', {
+        'weekday': 2,
+        'hour': 7,
+        'minute': 15,
+        'enabled': 0,
+      });
+      await sourceDb.insert('workout_suggestions', {
+        'id': 'suggestion-1',
+        'date': '2026-09-18',
+        'start_ts': 100,
+        'end_ts': 200,
+        'dismissed': 1,
+        'created_at': 3,
+      });
+      await sourceDb.insert('live_coverage', {
+        'start_ts': 100,
+        'end_ts': 160,
+        'steps': 42,
+        'day': '2026-09-18',
+        'source': 'band_100hz',
+        'device_id': '',
+      });
+      await sourceDb.insert('raw_records', {
+        'counter': 0,
+        'hex': '00ff',
+        'packet_type': 47,
+        'captured_at': 1000,
+        'rec_ts': 1,
+        'uploaded': 0,
+      });
+
+      const editedDay = '2026-09-18';
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: editedDay,
+        draftId: 'saved-edit',
+        onsetMs: 100000,
+        wakeMs: 200000,
+      );
+      await LocalDb.commitOpenBandSleepCorrection(
+        dayId: editedDay,
+        draftId: 'saved-edit',
+        onsetMs: 100000,
+        wakeMs: 200000,
+      );
+      // A committed correction and a later in-progress edit are both durable.
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: editedDay,
+        draftId: 'next-edit',
+        onsetMs: 110000,
+        wakeMs: 210000,
+      );
+      const automaticDay = '2026-09-19';
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: automaticDay,
+        draftId: 'auto-edit',
+        onsetMs: 300000,
+        wakeMs: 400000,
+      );
+      await LocalDb.commitOpenBandSleepCorrection(
+        dayId: automaticDay,
+        draftId: 'auto-edit',
+        onsetMs: 300000,
+        wakeMs: 400000,
+      );
+      await LocalDb.restoreOpenBandAutomatic(automaticDay);
+      // A newer source may carry columns this destination does not know yet.
+      await sourceDb.execute(
+        'ALTER TABLE sleep_override ADD COLUMN future_override TEXT',
+      );
+      await sourceDb.execute(
+        'ALTER TABLE openband_sleep_correction ADD COLUMN future_correction TEXT',
+      );
+      await sourceDb.execute(
+        'ALTER TABLE openband_sleep_draft ADD COLUMN future_draft TEXT',
+      );
+      await sourceDb.update('sleep_override', {'future_override': 'new'});
+      await sourceDb.update(
+        'openband_sleep_correction',
+        {'future_correction': 'new'},
+      );
+      await sourceDb.update('openband_sleep_draft', {'future_draft': 'new'});
+      final backup = await LocalDb.exportCopy();
+
+      await LocalDb.close();
+      LocalDb.dbName = destinationName;
+      await databaseFactory.deleteDatabase(
+        p.join(await databaseFactory.getDatabasesPath(), destinationName),
+      );
+      final dest = await LocalDb.instance;
+      final firstCounts = await LocalDb.importFromDbFile(backup);
+      final first = BackupImportReceipt.fromCounts(firstCounts);
+      expect(first.restoredRows, 13);
+      expect(first.unchangedRows, 0);
+      expect(first.restoreConflicts, 0);
+      expect(first.unreadableRows, 0);
+      expect(first.pendingRecalculations, 2);
+      for (final table in [
+        'openband_workout_template',
+        'openband_pinned_template',
+        'openband_meal_draft',
+        'openband_session_detail',
+        'openband_lap',
+        'alarm_schedule',
+        'workout_suggestions',
+        'live_coverage',
+        'raw_records',
+      ]) {
+        expect(
+          (await dest.rawQuery('SELECT COUNT(*) AS n FROM $table')).single['n'],
+          1,
+          reason: table,
+        );
+      }
+      expect(
+        (await dest.query('raw_records')).single['counter'],
+        0,
+        reason: 'counter zero must survive rowid paging',
+      );
+      expect(
+        (await LocalDb.openBandSleepDraft(editedDay))?['draft_id'],
+        'next-edit',
+      );
+      expect(
+        (await LocalDb.openBandSleepCorrection(automaticDay))?['action'],
+        'automatic',
+      );
+      expect(await LocalDb.getSleepOverride(automaticDay), isNull);
+
+      final legacySource = await databaseFactory.openDatabase(
+        backup,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await legacySource.insert('sleep_override', {
+        'day_id': '2026-09-20',
+        'onset_ts': 500,
+        'offset_ts': 600,
+        'source': 'manual',
+        'created_at': 1,
+        'correction_id': null,
+        'revision': 0,
+      });
+      await legacySource.insert('openband_sleep_draft', {
+        'day_id': '2026-09-20',
+        'draft_id': 'legacy-next-edit',
+        'onset_ms': 510000,
+        'wake_ms': 610000,
+        'updated_at': 2,
+      });
+      await legacySource.insert('openband_sleep_draft', {
+        'day_id': '',
+        'draft_id': 'invalid-empty-day',
+        'onset_ms': 1,
+        'wake_ms': 2,
+        'updated_at': 1,
+      });
+      await legacySource.insert('openband_sleep_draft', {
+        'day_id': '2026-09-26',
+        'draft_id': '',
+        'onset_ms': 1,
+        'wake_ms': 2,
+        'updated_at': 1,
+      });
+      await legacySource.insert('sleep_override', {
+        'day_id': '2026-09-21',
+        'onset_ts': 700,
+        'offset_ts': 800,
+        'source': 'manual',
+        'created_at': 1,
+        'correction_id': 'missing-correction',
+        'revision': 3,
+      });
+      await legacySource.close();
+      final legacyReceipt = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(legacyReceipt.restoredRows, 2);
+      expect(legacyReceipt.unchangedRows, 13);
+      expect(legacyReceipt.unreadableRows, 3);
+      expect(
+        (await LocalDb.openBandSleepDraft('2026-09-20'))?['draft_id'],
+        'legacy-next-edit',
+      );
+      expect(await LocalDb.getSleepOverride('2026-09-20'), isNotNull);
+      expect(await LocalDb.getSleepOverride('2026-09-21'), isNull);
+
+      await LocalDb.updateOpenBandCalculationJob(
+        dayId: editedDay,
+        correctionId: 'saved-edit',
+        revision: 1,
+        status: 'complete',
+        fromStatuses: const {'pending'},
+      );
+      final repeat = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(repeat.restoredRows, 0);
+      expect(repeat.unchangedRows, 15);
+      expect(repeat.restoreConflicts, 0);
+      expect(repeat.unreadableRows, 3);
+      expect(repeat.pendingRecalculations, 0);
+      expect(
+        (await LocalDb.openBandSleepCorrection(editedDay))?['status'],
+        'complete',
+        reason: 'an identical retry must not reset a completed job',
+      );
+
+      // A destination draft is saved work and blocks a source family that
+      // would change its context.
+      const draftConflictDay = '2026-09-22';
+      final familySource = await databaseFactory.openDatabase(
+        backup,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await familySource.insert('sleep_override', {
+        'day_id': draftConflictDay,
+        'onset_ts': 900,
+        'offset_ts': 1000,
+        'source': 'manual',
+        'created_at': 1,
+        'correction_id': 'source-family',
+        'revision': 1,
+      });
+      await familySource.insert('openband_sleep_correction', {
+        'day_id': draftConflictDay,
+        'correction_id': 'source-family',
+        'draft_id': 'source-family',
+        'action': 'override',
+        'onset_ms': 900000,
+        'wake_ms': 1000000,
+        'revision': 1,
+        'saved_at': 1,
+      });
+      await familySource.insert('openband_calculation_job', {
+        'day_id': draftConflictDay,
+        'correction_id': 'source-family',
+        'revision': 1,
+        'status': 'complete',
+        'requested_at': 1,
+        'updated_at': 1,
+      });
+      const duplicateDraftDay = '2026-09-23';
+      await familySource.insert('sleep_override', {
+        'day_id': duplicateDraftDay,
+        'onset_ts': 1100,
+        'offset_ts': 1200,
+        'source': 'manual',
+        'created_at': 1,
+        'correction_id': 'source-with-draft',
+        'revision': 1,
+      });
+      await familySource.insert('openband_sleep_correction', {
+        'day_id': duplicateDraftDay,
+        'correction_id': 'source-with-draft',
+        'draft_id': 'source-with-draft',
+        'action': 'override',
+        'onset_ms': 1100000,
+        'wake_ms': 1200000,
+        'revision': 1,
+        'saved_at': 1,
+      });
+      await familySource.insert('openband_calculation_job', {
+        'day_id': duplicateDraftDay,
+        'correction_id': 'source-with-draft',
+        'revision': 1,
+        'status': 'complete',
+        'requested_at': 1,
+        'updated_at': 1,
+      });
+      await familySource.insert('openband_sleep_draft', {
+        'day_id': duplicateDraftDay,
+        'draft_id': 'cross-day-duplicate',
+        'onset_ms': 1110000,
+        'wake_ms': 1210000,
+        'updated_at': 1,
+      });
+      await familySource.close();
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: draftConflictDay,
+        draftId: 'local-draft',
+        onsetMs: 910000,
+        wakeMs: 1010000,
+      );
+      await LocalDb.putOpenBandSleepDraft(
+        dayId: '2026-09-24',
+        draftId: 'cross-day-duplicate',
+        onsetMs: 1300000,
+        wakeMs: 1400000,
+      );
+      final draftConflict = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(draftConflict.restoreConflicts, greaterThanOrEqualTo(3));
+      expect(await LocalDb.openBandSleepCorrection(draftConflictDay), isNull);
+      expect(await LocalDb.openBandSleepCorrection(duplicateDraftDay), isNull);
+      expect(
+        (await LocalDb.openBandSleepDraft(draftConflictDay))?['draft_id'],
+        'local-draft',
+      );
+
+      await dest.delete('openband_meal_draft');
+      await dest.insert('openband_meal_draft', {
+        'draft_id': 'local-meal',
+        'day_id': '2026-09-18',
+        'meal': 'dinner',
+        'entries_json': '[{"local":true}]',
+        'updated_at': 99,
+      });
+      final mealConflict = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(mealConflict.restoreConflicts, greaterThanOrEqualTo(2));
+      expect(
+        (await dest.query('openband_meal_draft')).single['draft_id'],
+        'local-meal',
+      );
+
+      // A numerically newer source still cannot overwrite a different local
+      // family: revisions from independent databases do not prove ancestry.
+      final writableBackup = await databaseFactory.openDatabase(
+        backup,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await writableBackup.update(
+        'openband_sleep_correction',
+        {'revision': 8, 'onset_ms': 120000, 'wake_ms': 220000},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await writableBackup.update(
+        'sleep_override',
+        {'revision': 8, 'onset_ts': 120, 'offset_ts': 220},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await writableBackup.update(
+        'openband_calculation_job',
+        {'revision': 8},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await writableBackup.close();
+      final divergent = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(divergent.restoreConflicts, greaterThanOrEqualTo(1));
+      expect(
+        (await LocalDb.openBandSleepCorrection(editedDay))?['revision'],
+        1,
+      );
+      await dest.update(
+        'openband_sleep_correction',
+        {'revision': 10},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await dest.update(
+        'sleep_override',
+        {'revision': 10},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await dest.update(
+        'openband_calculation_job',
+        {'revision': 10},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      final olderSource = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(olderSource.restoreConflicts, greaterThanOrEqualTo(1));
+      expect(
+        (await LocalDb.openBandSleepCorrection(editedDay))?['revision'],
+        10,
+      );
+
+      // A pin cannot be attached to a same-id local template whose content
+      // differs from the source parent.
+      await dest.update(
+        'openband_workout_template',
+        {'name': 'Local plan'},
+        where: 'id = ?',
+        whereArgs: ['template-1'],
+      );
+      await dest.delete('openband_pinned_template');
+      final parentConflict = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(parentConflict.restoreConflicts, greaterThanOrEqualTo(2));
+      expect(await dest.query('openband_pinned_template'), isEmpty);
+      expect(
+        (await dest.query('openband_workout_template')).single['name'],
+        'Local plan',
+      );
+
+      // SQLite can return TEXT from an INTEGER-affinity column. Refuse it at
+      // the family boundary instead of throwing a cast over the whole restore.
+      final malformed = await databaseFactory.openDatabase(
+        backup,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await malformed.rawUpdate(
+        'UPDATE openband_sleep_correction SET onset_ms = ? WHERE day_id = ?',
+        ['not-a-number', editedDay],
+      );
+      await malformed.close();
+      final malformedReceipt = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(malformedReceipt.unreadableRows, greaterThanOrEqualTo(2));
+      expect(
+        (await LocalDb.openBandSleepCorrection(editedDay))?['revision'],
+        10,
+      );
+
+      final fractional = await databaseFactory.openDatabase(
+        backup,
+        options: OpenDatabaseOptions(singleInstance: false),
+      );
+      await fractional.update(
+        'openband_sleep_correction',
+        {'revision': 8.5, 'onset_ms': 120000.5, 'wake_ms': 220000},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await fractional.update(
+        'sleep_override',
+        {'revision': 8.5, 'onset_ts': 120.5, 'offset_ts': 220},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await fractional.update(
+        'openband_calculation_job',
+        {'revision': 8.5},
+        where: 'day_id = ?',
+        whereArgs: [editedDay],
+      );
+      await fractional.close();
+      final fractionalReceipt = BackupImportReceipt.fromCounts(
+        await LocalDb.importFromDbFile(backup),
+      );
+      expect(fractionalReceipt.unreadableRows, greaterThanOrEqualTo(2));
+      expect(
+        (await LocalDb.openBandSleepCorrection(editedDay))?['revision'],
+        10,
+      );
     });
 
     test('a recompute failure keeps the rows that were written', () async {
@@ -977,6 +1886,39 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/backup_receipt_partial_light.png'),
       );
+    });
+
+    testWidgets('durable restore receipt is concise and truthful', (tester) async {
+      await mount(
+        tester,
+        const ImportOutcome(
+          source: 'OpenStrap backup',
+          restoredRows: 12,
+          unchangedRows: 3,
+          restoreConflicts: 1,
+          unreadableRows: 1,
+          pendingRecalculations: 2,
+        ),
+      );
+      expect(find.text('Teilweise importiert'), findsOneWidget);
+      expect(find.text('12 Einträge gespeichert'), findsOneWidget);
+      expect(find.text('3 unverändert'), findsOneWidget);
+      expect(find.text('1 Konflikt · lokal beibehalten'), findsOneWidget);
+      expect(find.text('1 Eintrag nicht lesbar'), findsOneWidget);
+      expect(find.text('2 Neuberechnungen ausstehend'), findsOneWidget);
+
+      await mount(
+        tester,
+        const ImportOutcome(
+          source: 'OpenStrap backup',
+          restoreConflicts: 1,
+          unreadableRows: 1,
+        ),
+        locale: const Locale('en'),
+      );
+      expect(find.text('Not imported'), findsOneWidget);
+      expect(find.text('Partially imported'), findsNothing);
+      expect(find.text('1 conflict · local version kept'), findsOneWidget);
     });
 
     testWidgets('partial dark', (tester) async {
