@@ -5,6 +5,7 @@ import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
+import 'cycle_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
 import 'medication_data.dart';
@@ -13,6 +14,7 @@ import 'sleep_plan_data.dart';
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
 export '../health/glucose_contract.dart';
+export 'cycle_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
 export 'medication_data.dart';
@@ -2265,4 +2267,35 @@ abstract interface class OpenBandRepository {
   /// Retry-only reminder refresh after [MedicationMutationResult.remindersFailed].
   /// Must not write plans or doses. Local delegates [AppState.refreshAiReminders].
   Future<void> refreshMedicationReminders();
+
+  /// Runtime-owned profile/prefs. Strict parse throws; missing estimate and
+  /// length-review keys default off. Local delegates AppState.
+  Future<CycleSettings> readCycleSettings();
+  Future<CycleWriteResult> saveCycleSettings(CycleSettings settings);
+
+  /// Selected civil day. Valid starts/observations as-of that day. Entire read
+  /// failure throws; a sibling bad row counts [CycleSnapshot.unreadableCount].
+  /// [CycleSnapshot.unreadableStarts] is start-source trust, independent of
+  /// estimate settings; [CycleSnapshot.cycleDay] is null when that is true.
+  Future<CycleSnapshot> readCycle(String day, {DateTime? now});
+
+  /// Compare-and-swap. [expected] null creates. A changed date checks source
+  /// and destination in one transaction and never overwrites another start.
+  /// Already-matching current returns committed before the expected check.
+  Future<CycleWriteResult> saveCycleStart(
+    CycleStart desired, {
+    CycleStart? expected,
+    DateTime? now,
+  });
+  Future<CycleWriteResult> removeCycleStart(CycleStart expected);
+  Future<CycleWriteResult> restoreCycleStart(CycleStart removed, {DateTime? now});
+  Future<CycleWriteResult> saveCycleObservation(
+    CycleObservation desired, {
+    CycleObservation? expected,
+    DateTime? now,
+  });
+
+  /// Retry-only after [CycleWriteResult.contextRefreshFailed]. Must not write
+  /// starts or observations. Runtime implements AppState.refreshCycleContext.
+  Future<void> refreshCycleContext();
 }

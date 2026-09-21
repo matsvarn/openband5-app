@@ -65,6 +65,7 @@ import '../ui2/profile/devices.dart' show liveSources, rankSources;
 import '../data/db.dart';
 import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
+import '../openband/cycle_data.dart';
 import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/route_types.dart';
@@ -174,6 +175,12 @@ class AppState extends ChangeNotifier {
     log: _log,
     onChanged: notifyListeners,
   );
+
+  @visibleForTesting
+  DeriveScheduler get debugDeriveScheduler => _deriveScheduler;
+
+  @visibleForTesting
+  DerivationEngine get debugDeriveEngine => _derive;
 
   /// Profile fed to the analytics (HRmax/calories/TRIMP personalization).
   PersonalProfile get _profile => PersonalProfile.fromMap(user);
@@ -335,6 +342,13 @@ class AppState extends ChangeNotifier {
   // profile the analytics re-layer will read for personalization. `null` until set.
   static const String _kProfile = 'local_profile_json';
   Map<String, dynamic>? user;
+  Future<void> _profileWriteTail = Future.value();
+  bool? _lastReadableCycleEnabled;
+
+  /// Test seam: delay/observe a profile write. Persistence still goes through
+  /// SharedPreferences so a failed platform ack can be proven against the cache.
+  @visibleForTesting
+  Future<void> Function(String encoded)? debugBeforeProfileWrite;
 
   // ── onboarding choice (new vs existing v2 user) ─────────────────────────────
   // Persist the choice across relaunches; going back from first-run pairing
@@ -919,29 +933,114 @@ class AppState extends ChangeNotifier {
   /// old cloud PATCH /profile (no network).
   Future<Map<String, dynamic>> updateProfile(
     Map<String, dynamic> fields,
-  ) async {
-    final updated = {...?user, ...fields}..remove('age');
-    final value = updated['birth_date'];
-    if (value != null) {
-      final date = parseBirthDate(value);
-      if (date == null || ageOnDate(date, DateTime.now()) == null) {
-        throw const FormatException(
-          'Birth date must be a valid past calendar date.',
-        );
+  ) {
+    return _serializeProfileWrite(() async {
+      final updated = {...?user, ...fields}..remove('age');
+      final value = updated['birth_date'];
+      if (value != null) {
+        final date = parseBirthDate(value);
+        if (date == null || ageOnDate(date, DateTime.now()) == null) {
+          throw const FormatException(
+            'Birth date must be a valid past calendar date.',
+          );
+        }
+        updated['birth_date'] = birthDateString(date);
       }
-      updated['birth_date'] = birthDateString(date);
+      final inputsChanged =
+          jsonEncode(PersonalProfile.fromMap(user).toMap()) !=
+          jsonEncode(PersonalProfile.fromMap(updated).toMap());
+      final encoded = jsonEncode(updated);
+      final beforeWrite = debugBeforeProfileWrite;
+      if (beforeWrite != null) await beforeWrite(encoded);
+      final prefs = await SharedPreferences.getInstance();
+      final previous = prefs.getString(_kProfile);
+      bool ok;
+      try {
+        ok = await prefs.setString(_kProfile, encoded);
+      } catch (_) {
+        await _restoreProfileCache(prefs, previous);
+        rethrow;
+      }
+      if (!ok) {
+        await _restoreProfileCache(prefs, previous);
+        throw StateError('Profile could not be saved.');
+      }
+      user = updated;
+      if (inputsChanged && initialized && repo != null) {
+        _deriveScheduler.requestHeavy();
+      }
+      notifyListeners();
+      return user!;
+    });
+  }
+
+  Future<T> _serializeProfileWrite<T>(Future<T> Function() job) {
+    final previous = _profileWriteTail;
+    final done = Completer<void>();
+    _profileWriteTail = done.future;
+    return previous.catchError((_) {}).then((_) => job()).whenComplete(() {
+      if (!done.isCompleted) done.complete();
+    });
+  }
+
+  /// SharedPreferences updates [_preferenceCache] before the platform ack.
+  /// A false/thrown persist must not leave that cache looking committed so a
+  /// later [_loadProfile] / new [SharedPreferences.getInstance] reread cannot
+  /// treat the failed write as saved.
+  static Future<void> _restoreProfileCache(
+    SharedPreferences prefs,
+    String? previous,
+  ) async {
+    try {
+      if (previous == null) {
+        await prefs.remove(_kProfile);
+      } else {
+        await prefs.setString(_kProfile, previous);
+      }
+    } catch (_) {
+      /* cache is updated before the platform result; ignore a second failure */
     }
-    final inputsChanged =
-        jsonEncode(PersonalProfile.fromMap(user).toMap()) !=
-        jsonEncode(PersonalProfile.fromMap(updated).toMap());
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kProfile, jsonEncode(updated));
-    user = updated;
-    if (inputsChanged && initialized && repo != null) {
-      _deriveScheduler.requestHeavy();
-    }
-    notifyListeners();
-    return user!;
+  }
+
+  Map<String, Object?>? _cycleProfileMap() {
+    final u = user;
+    if (u == null) return null;
+    return Map<String, Object?>.from(u);
+  }
+
+  Future<CycleSettings> readCycleSettings() async {
+    await Prefs.ensureLoaded();
+    return CycleSettings.fromProfile(
+      _cycleProfileMap(),
+      Prefs.getBool(_kCycleTracking, false),
+    );
+  }
+
+  Future<void> saveCycleSettings(CycleSettings settings) async {
+    await updateProfile(
+      Map<String, dynamic>.from(settings.toProfileFields()),
+    );
+  }
+
+  /// Requeue failed cycle work and wake an already-durable queue.
+  /// Does not insert a new heavy job — start-set writes enqueue in the DB txn.
+  /// Does not wait for, or claim, compute. Failures propagate so DATA can
+  /// return `savedContextRefreshFailed`.
+  Future<void> refreshCycleContext() async {
+    if (_disposed) return;
+    await LocalDb.requeueFailedCycleContextJobs();
+    if (_disposed) return;
+    await _deriveScheduler.wakeQueuedWork();
+    if (_disposed) return;
+    bumpInsights();
+  }
+
+  void _onCycleContextInvalidated() {
+    unawaited(
+      refreshCycleContext().catchError((Object e) {
+        _log('cycle context wake failed: $e');
+      }),
+    );
   }
 
   // ── automatic backup ────────────────────────────────────────────────────────
@@ -1163,11 +1262,45 @@ class AppState extends ChangeNotifier {
   /// NOTHING — cycle entries already logged stay on disk and come back intact
   /// if it is switched on again.
   static const String _kCycleTracking = 'cycle_tracking_enabled';
-  bool get cycleTrackingEnabled => Prefs.getBool(_kCycleTracking, false);
+
+  /// Legacy render seam (Wellness Cycle tab, Settings switch). Must not throw.
+  /// Uninitialized uses the unsaved prefs default. Unreadable settings keep
+  /// the last successful parse so they do not collapse to a saved-off switch.
+  bool get cycleTrackingEnabled {
+    final legacy = Prefs.getBool(_kCycleTracking, false);
+    try {
+      final enabled = CycleSettings.fromProfile(
+        _cycleProfileMap(),
+        legacy,
+      ).enabled;
+      _lastReadableCycleEnabled = enabled;
+      return enabled;
+    } catch (_) {
+      if (_lastReadableCycleEnabled != null) return _lastReadableCycleEnabled!;
+      return legacy;
+    }
+  }
 
   Future<void> setCycleTrackingEnabled(bool on) async {
-    Prefs.setBool(_kCycleTracking, on);
-    notifyListeners();
+    var estimates = false;
+    CycleSituation? situation;
+    var lengthReview = false;
+    try {
+      final current = await readCycleSettings();
+      estimates = current.estimatesEnabled;
+      situation = current.situation;
+      lengthReview = current.lengthReviewEnabled;
+    } on FormatException {
+      // Explicit user action; uninitialized/unreadable must not block it.
+    }
+    await saveCycleSettings(
+      CycleSettings(
+        enabled: on,
+        estimatesEnabled: estimates,
+        situation: situation,
+        lengthReviewEnabled: lengthReview,
+      ),
+    );
   }
 
   /// Whether this install checks for updates. Only meaningful on a sideload
@@ -1327,6 +1460,7 @@ class AppState extends ChangeNotifier {
     // Same wiring, second notify-class sensor: PMD readings otherwise never
     // reach liveHr/the live trace at all (arm/disarm alone don't feed it).
     PolarPmdLink.instance.reading.addListener(_onPmdReading);
+    LocalDb.onCycleContextInvalidated = _onCycleContextInvalidated;
     _init();
     // Notification taps → request a tab switch (the shell listens to navRequest).
     _tapSub = NotificationService.instance.taps.listen(_handleTapRoute);
@@ -1366,6 +1500,7 @@ class AppState extends ChangeNotifier {
     // here: a ValueNotifier, no plugin.
     HrsLink.instance.reading.addListener(_onHrsReading);
     PolarPmdLink.instance.reading.addListener(_onPmdReading);
+    LocalDb.onCycleContextInvalidated = _onCycleContextInvalidated;
   }
 
   /// A Siri/Shortcuts App Intent (e.g. "start breathing") may have set a
@@ -1437,6 +1572,9 @@ class AppState extends ChangeNotifier {
     navRequest.dispose();
     screenRequest.dispose();
     insightsRevision.dispose();
+    if (LocalDb.onCycleContextInvalidated == _onCycleContextInvalidated) {
+      LocalDb.onCycleContextInvalidated = null;
+    }
     super.dispose();
   }
 
@@ -1556,6 +1694,7 @@ class AppState extends ChangeNotifier {
   /// sweep. Best-effort + non-blocking — never throws into the BLE path.
   /// Refreshes the UI when results land so screens re-read the fresh derived rows.
   Future<void> _afterDrain({bool heavy = false}) async {
+    if (_disposed) return;
     final mode = heavy ? 'heavy' : 'light';
     try {
       // Context for whatever crash/ANR report comes next — the derivation
@@ -1572,6 +1711,7 @@ class AppState extends ChangeNotifier {
         () => _derive.run(
           _profile,
           heavy: heavy,
+          durableCycleContext: _deriveScheduler.activeJobCycleContext,
           onDayDone: (day, index, total) async {
             if (index == total || index == 1 || index % 3 == 0) {
               notifyListeners();
@@ -1580,6 +1720,8 @@ class AppState extends ChangeNotifier {
         ),
       );
       TelemetryService.instance.breadcrumb('derive: $mode done');
+      if (_disposed) return;
+      try {
       // A drain can bank band coverage and a day can have rolled over since the
       // last read — both change which source owns today's steps.
       unawaited(_refreshPhoneStepsToday());
@@ -1598,6 +1740,7 @@ class AppState extends ChangeNotifier {
         _log('[derive] session rescore failed: $e');
       }
       await LocalDb.refreshComputeFreshness();
+      if (_disposed) return;
       bumpInsights();
       notifyListeners(); // screens re-fetch from the derived store
       // Same signal, for the surfaces that can't listen: home/lock-screen
@@ -1644,16 +1787,22 @@ class AppState extends ChangeNotifier {
         unawaited(HealthUploader.instance.maybeUpload(consented: true));
       }
       if (heavy) unawaited(_maybeReclaimDiskSpace());
+      } catch (e, st) {
+        _log('[derive] post-drain failed: $e');
+        TelemetryService.instance.recordNonFatal(
+          e,
+          st,
+          reason: 'post_drain_failed',
+        );
+      }
     } catch (e, st) {
-      _log('[derive] post-drain failed: $e');
-      // Was silently swallowed before — this is a real pipeline failure
-      // (derive/health-export/etc.) that Firebase never saw. Non-fatal, not
-      // fatal: the app keeps running, but this is worth knowing about.
+      _log('[derive] derivation failed: $e');
       TelemetryService.instance.recordNonFatal(
         e,
         st,
-        reason: 'post_drain_failed',
+        reason: 'derive_failed',
       );
+      rethrow;
     } finally {
       TelemetryService.instance.setContext('derive_active', false);
     }

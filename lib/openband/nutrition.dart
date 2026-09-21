@@ -11,6 +11,7 @@ import 'meal_entry.dart';
 import 'nutrition_browser.dart';
 import 'nutrition_goals.dart';
 import 'theme.dart';
+import 'undo_notice.dart';
 import 'water.dart';
 
 export 'nutrition_browser.dart' show obMeals;
@@ -406,82 +407,18 @@ class _OpenBandNutritionState extends State<OpenBandNutrition> {
     if (!_undoLive(undo)) return;
     final messenger = _messenger;
     if (messenger == null) return;
-    messenger.removeCurrentSnackBar();
-    final p = OB.of(context);
-    final inverse = p.dark ? p.canvas : AlpColor.canvas;
-    final bottom = 16.0 + MediaQuery.paddingOf(context).bottom;
-    final largeText = MediaQuery.textScalerOf(context).scale(15) > 20;
-    TextButton actionButton(String label, VoidCallback onPressed) => TextButton(
-      onPressed: () {
-        if (!identical(_undo, undo) || undo.busy) return;
-        onPressed();
-      },
-      style: TextButton.styleFrom(
-        foregroundColor: inverse,
-        minimumSize: const Size(44, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-      ),
-      child: Text(
-        label,
-        style: p
-            .text(15, weight: FontWeight.w600, color: inverse)
-            .copyWith(height: 20 / 15),
-      ),
-    );
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: p.ink,
-        elevation: 0,
-        duration: const Duration(seconds: 8),
-        dismissDirection: DismissDirection.none,
-        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-        margin: EdgeInsets.fromLTRB(16, 0, 16, bottom),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: largeText
-              ? Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      message,
-                      style: p
-                          .text(15, color: inverse)
-                          .copyWith(height: 20 / 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      children: [
-                        actionButton(action, onAction),
-                        if (secondary != null && onSecondary != null)
-                          actionButton(secondary, onSecondary),
-                      ],
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        message,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: p
-                            .text(15, color: inverse)
-                            .copyWith(height: 20 / 15),
-                      ),
-                    ),
-                    actionButton(action, onAction),
-                    if (secondary != null && onSecondary != null)
-                      actionButton(secondary, onSecondary),
-                  ],
-                ),
-        ),
-      ),
+    VoidCallback guarded(VoidCallback pressed) => () {
+      if (!identical(_undo, undo) || undo.busy) return;
+      pressed();
+    };
+    showOpenBandUndoNotice(
+      context: context,
+      messenger: messenger,
+      message: message,
+      primaryLabel: action,
+      onPrimary: guarded(onAction),
+      secondaryLabel: secondary,
+      onSecondary: onSecondary == null ? null : guarded(onSecondary),
     );
   }
 

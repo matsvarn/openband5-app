@@ -2213,6 +2213,13 @@ class _AsyncLock {
   }
 }
 
+/// A derivation pass is already in flight. Scheduler must requeue, not complete.
+class DerivationBusy implements Exception {
+  const DerivationBusy();
+  @override
+  String toString() => 'DerivationBusy';
+}
+
 class DerivationEngine {
   DerivationEngine({this.log, this.background = false});
   final void Function(String)? log;
@@ -2224,6 +2231,10 @@ class DerivationEngine {
   /// and [_perDayTimeout]. Set at construction, not per-run, so a long-lived
   /// foreground engine can never inherit background tuning by accident.
   final bool background;
+
+  /// Test seam: pause after the process lock so a scheduler drain can contend.
+  @visibleForTesting
+  Future<void> Function()? debugBeforeRun;
 
   /// PROCESS-WIDE, not per-engine. The thing it protects is the DATABASE, and
   /// there is one of those however many engines exist — but engines are built
@@ -2283,9 +2294,10 @@ class DerivationEngine {
     PersonalProfile profile, {
     bool heavy = false,
     bool force = false,
+    bool durableCycleContext = false,
     void Function(String day, int index, int total)? onDayDone,
   }) async {
-    if (_running) return 0;
+    if (_running) throw const DerivationBusy();
     _running = true;
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     _diag
@@ -2323,7 +2335,13 @@ class DerivationEngine {
       }
     } catch (_) {}
 
+    var cycleContext = durableCycleContext;
     try {
+      final beforeRun = debugBeforeRun;
+      if (beforeRun != null) await beforeRun();
+      if (!cycleContext) {
+        cycleContext = await LocalDb.hasRunningCycleContextJob();
+      }
       final profileSignature = jsonEncode(profile.toMap());
       final profileChanged =
           await LocalDb.getCursor('derived_profile_signature') != profileSignature;
@@ -2340,6 +2358,9 @@ class DerivationEngine {
       final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
       if (dataNowSec <= 0) {
         _log('derive: no decoded data');
+        if (cycleContext) {
+          await _runCrossDay(profile, durable: true);
+        }
         return 0;
       }
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
@@ -2360,6 +2381,9 @@ class DerivationEngine {
       ];
       if (todoDays.isEmpty) {
         _log('derive: all days finalized — nothing to do');
+        if (cycleContext) {
+          await _runCrossDay(profile, durable: true);
+        }
         await _pruneOldDecoded(scope.rawDays, dataNowSec);
         return 0;
       }
@@ -2456,13 +2480,18 @@ class DerivationEngine {
       await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
 
       // 4. Cross-day rollup + notifications (best-effort).
-      if (done > 0) {
-        _diag['stage'] = 'baselines';
-        await _refreshBaselines();
+      // Cycle invalidation must refresh even when no per-day work ran.
+      if (done > 0 || cycleContext) {
+        if (done > 0) {
+          _diag['stage'] = 'baselines';
+          await _refreshBaselines();
+        }
         _diag['stage'] = 'cross_day';
-        await _runCrossDay(profile);
-        _diag['stage'] = 'notifications';
-        await _runNotifications();
+        await _runCrossDay(profile, durable: cycleContext);
+        if (done > 0) {
+          _diag['stage'] = 'notifications';
+          await _runNotifications();
+        }
       }
       // 5. Prune raw — never for a day still inside its raw window / un-derived.
       // Runs on EVERY derive, not just a full restage: `rawRetentionDays` is
@@ -2500,6 +2529,7 @@ class DerivationEngine {
     } catch (e, st) {
       _diag['last_error'] = '$e';
       _log('derive ERROR: $e\n$st');
+      if (cycleContext) rethrow;
       return 0;
     } finally {
       // Storage housekeeping runs here, after everything, still holding
@@ -4890,9 +4920,18 @@ class DerivationEngine {
     Object? decoded,
     String today, {
     int? nowMs,
+    int sourceRev = 0,
   }) {
     if (decoded is! Map) return null;
     if (decoded['days'] is! List) return null;
+    // Absent key is only the initial rev0 envelope. A present null or non-int
+    // stamp is unreadable. Once rev>0 the numeric stamp must equal current rev.
+    if (!decoded.containsKey('source_rev')) {
+      if (sourceRev != 0) return null;
+    } else if (decoded['source_rev'] is! int ||
+        decoded['source_rev'] != sourceRev) {
+      return null;
+    }
     // The artifact stamps `algo_version` and this gate used to ignore it, so a
     // version bump that CHANGES THE ROW SHAPE (a new per-day field, e.g.
     // `hourly_hr`) was served from the pre-bump artifact for the rest of the
@@ -4938,8 +4977,30 @@ class DerivationEngine {
   Future<void> debugRunCrossDay(PersonalProfile profile) =>
       _runCrossDay(profile);
 
-  Future<void> _runCrossDay(PersonalProfile profile) async {
+  /// Count of [_runCrossDay] entries. Tests observe empty-todo cycle refresh.
+  @visibleForTesting
+  int debugCrossDayPasses = 0;
+
+  /// Test seam: run after the start list is captured and before the isolate.
+  @visibleForTesting
+  Future<void> Function()? debugAfterCrossDayCapture;
+
+  /// Test seam: after day_result rows for the input cache have been read.
+  @visibleForTesting
+  Future<void> Function()? debugAfterCrossDayInputRead;
+
+  Future<void> _runCrossDay(
+    PersonalProfile profile, {
+    bool durable = false,
+  }) async {
+    debugCrossDayPasses++;
     try {
+      // Capture the cycle-start source BEFORE compute so a write during the
+      // isolate cannot be published as if it were this pass's input.
+      final cycleStarts = List<String>.from(await LocalDb.cycleStartDates());
+      final sourceRev = await LocalDb.crossDaySourceRevision();
+      final afterCapture = debugAfterCrossDayCapture;
+      if (afterCapture != null) await afterCapture();
       final input = await _crossDayInputDays();
       final days = input.days;
       if (days.length < 3) {
@@ -4966,13 +5027,6 @@ class DerivationEngine {
       final profileMap = profile
           .forDate(DateTime.parse(builtForDay))
           .toMap();
-      // Her own logged cycle starts. Read on the DB-owning isolate (sqflite),
-      // passed in as plain strings so the bundle stays pure. Only `start`
-      // markers — the other kinds are not what a cycle is counted from.
-      final cycleStarts = <String>[
-        for (final r in await LocalDb.cycleLogs())
-          if (r['kind'] == 'start' && r['date'] is String) r['date'] as String,
-      ];
       // TS-11's grouping key. Read here (sqflite is main-isolate only) and
       // handed in as plain strings so the bundle stays pure.
       final sessionTypes = await _sessionTypesByDate(days);
@@ -5003,7 +5057,8 @@ class DerivationEngine {
                 ..['algo_version'] = kAlgoVersion
                 ..['built_for_day'] = builtForDay
                 ..['built_at_epoch'] = builtAtEpoch
-                ..['input_read_started_at_ms'] = input.readStartedAtMs;
+                ..['input_read_started_at_ms'] = input.readStartedAtMs
+                ..['source_rev'] = sourceRev;
           // Encode-safety BEFORE jsonEncode, never a try/catch around it: one
           // non-finite leaf must cost that leaf, not the whole artifact.
           final paths = <String>[];
@@ -5014,7 +5069,15 @@ class DerivationEngine {
         _crossDayTimeout,
         label: 'crossday',
       );
-      await LocalDb.putBaseline('crossday', bundleJson);
+      final committed = await LocalDb.commitCrossDayIfStartsUnchanged(
+        payloadJson: bundleJson,
+        expectedStarts: cycleStarts,
+        expectedSourceRev: sourceRev,
+      );
+      if (!committed) {
+        _log('crossday: start set changed during compute — discarded');
+        return;
+      }
       if (dropped.isNotEmpty) {
         // Loud, not debug-only: a dropped field is a metric the user will see
         // as absent, and the reason lives here and nowhere else.
@@ -5030,6 +5093,7 @@ class DerivationEngine {
       debugPrint('[derive] crossday BUNDLE DROPPED — the stored artifact is '
           'now stale and every cross-day metric will read absent: $e\n$st');
       _log('crossday FAILED/skipped: $e');
+      if (durable) rethrow;
     }
   }
 
@@ -5083,10 +5147,12 @@ class DerivationEngine {
         // day makes `_todayNum` read yesterday's strain and nap minutes as
         // today's (§3.3). See [crossDayArtifactUsableToday]. The parser returns
         // the persisted source boundary so cache reuse cannot re-stamp it.
+        final sourceRev = await LocalDb.crossDaySourceRevision();
         final readStartedAtMs = crossDayInputReadStartedAtMs(
           decoded,
           today,
           nowMs: nowMs,
+          sourceRev: sourceRev,
         );
         if (readStartedAtMs != null) {
           final rows = (decoded as Map)['days'] as List;
@@ -5115,8 +5181,11 @@ class DerivationEngine {
     // both static, so this whole transform+encode step is isolate-safe.
     // This timestamp is deliberately the final operation before the query: it
     // is a lower bound on the source snapshot, not transform/persist/build time.
+    final sourceRev = await LocalDb.crossDaySourceRevision();
     final inputReadStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     final rows = await LocalDb.recentDayResults(_crossDayWindow);
+    final afterRead = debugAfterCrossDayInputRead;
+    if (afterRead != null) await afterRead();
     final today = dayLabelOf(
       DateTime.fromMillisecondsSinceEpoch(inputReadStartedAtMs),
     );
@@ -5158,11 +5227,18 @@ class DerivationEngine {
           'algo_version': kAlgoVersion,
           'built_for_day': today,
           'input_read_started_at_ms': inputReadStartedAtMs,
+          'source_rev': sourceRev,
           'days': days,
         })
       );
     }, _crossDayTimeout, label: 'crossday-input');
-    await LocalDb.putBaseline('crossday_input', json);
+    final wrote = await LocalDb.commitCrossDayInputIfRevUnchanged(
+      payloadJson: json,
+      expectedRev: sourceRev,
+    );
+    if (!wrote) {
+      return (days: const <Map<String, dynamic>>[], readStartedAtMs: inputReadStartedAtMs);
+    }
     return (days: days, readStartedAtMs: inputReadStartedAtMs);
   }
 

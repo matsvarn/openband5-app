@@ -9,6 +9,7 @@ import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
+import 'cycle.dart';
 import 'medication.dart';
 import 'nutrition.dart';
 import 'theme.dart';
@@ -20,11 +21,13 @@ class OpenBandJournal extends StatefulWidget {
   final OpenBandController controller;
   final FutureOr<void> Function(String day)? onEdit;
   final FutureOr<void> Function()? onNutrition;
+  final FutureOr<void> Function()? onCycle;
   const OpenBandJournal({
     super.key,
     required this.controller,
     this.onEdit,
     this.onNutrition,
+    this.onCycle,
   });
   @override
   State<OpenBandJournal> createState() => _OpenBandJournalState();
@@ -45,10 +48,14 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
   Object? _targetsError;
   Future<CaffeineSleepPattern>? _pattern;
   Object? _patternError;
+  bool? _cycleEnabled;
+  bool _cycleReadError = false;
+  OpenBandDay? _cycleSeenDay;
   int _journalSeq = 0;
   int _mealsSeq = 0;
   int _targetsSeq = 0;
   int _patternSeq = 0;
+  int _cycleSeq = 0;
   int _writeSeq = 0;
 
   OpenBandController get _c => widget.controller;
@@ -66,6 +73,9 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_onController);
       widget.controller.addListener(_onController);
+      _cycleEnabled = null;
+      _cycleReadError = false;
+      _cycleSeenDay = _c.day;
       _reload(_c.selectedDay);
     }
   }
@@ -77,7 +87,16 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
   }
 
   void _onController() {
-    if (_loadedDay != _c.selectedDay) _reload(_c.selectedDay);
+    final day = _c.selectedDay;
+    if (_loadedDay != day) {
+      _cycleSeenDay = _c.day;
+      _reload(day);
+      return;
+    }
+    if (!identical(_cycleSeenDay, _c.day)) {
+      _cycleSeenDay = _c.day;
+      unawaited(_loadCycle(day, ++_cycleSeq));
+    }
   }
 
   Future<void> _reload(
@@ -86,6 +105,7 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
     bool meals = true,
     bool targets = true,
     bool pattern = true,
+    bool cycle = true,
   }) {
     final dayChanged = _loadedDay != day;
     _loadedDay = day;
@@ -122,8 +142,38 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
       _patternError = null;
       tasks.add(_loadPattern(day, seq));
     }
+    if (cycle) {
+      final seq = ++_cycleSeq;
+      tasks.add(_loadCycle(day, seq));
+    }
     if (mounted) setState(() {});
     return Future.wait(tasks);
+  }
+
+  Future<void> _loadCycle(String day, int seq) async {
+    final repo = _c.repository;
+    try {
+      final settings = await repo.readCycleSettings();
+      if (!mounted ||
+          seq != _cycleSeq ||
+          _loadedDay != day ||
+          !identical(repo, _c.repository)) {
+        return;
+      }
+      setState(() {
+        _cycleEnabled = settings.enabled;
+        _cycleReadError = false;
+      });
+    } catch (_) {
+      if (!mounted ||
+          seq != _cycleSeq ||
+          _loadedDay != day ||
+          !identical(repo, _c.repository)) {
+        return;
+      }
+      // A failed read is not an opt-out. Keep the last acknowledged setting.
+      setState(() => _cycleReadError = true);
+    }
   }
 
   Future<void> _loadJournal(String day, int seq) async {
@@ -315,6 +365,30 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
     await _reload(day, journal: false, pattern: false);
   }
 
+  Future<void> _openCycle() async {
+    final day = _c.selectedDay;
+    final onCycle = widget.onCycle;
+    if (onCycle != null) {
+      await onCycle();
+    } else {
+      await OpenBandCycle.push(
+        context,
+        repository: _c.repository,
+        day: day,
+        now: _c.now,
+        synthetic: _c.day?.synthetic == true,
+      );
+    }
+    if (!mounted || _loadedDay != day) return;
+    await _reload(
+      day,
+      journal: false,
+      meals: false,
+      targets: false,
+      pattern: false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: _c,
@@ -444,6 +518,26 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                 ),
               ),
             ),
+            if (_cycleEnabled == true || _cycleReadError) ...[
+              const SizedBox(height: 10),
+              OBCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 4,
+                ),
+                child: SetRow(
+                  LucideIcons.droplet,
+                  OB.of(context).muted,
+                  'Zyklus',
+                  key: const ValueKey('cycle-journal'),
+                  value: _cycleReadError ? '—' : '',
+                  sub: _cycleReadError ? 'Daten nicht geladen' : '',
+                  onTap: _cycleReadError
+                      ? () => _loadCycle(_c.selectedDay, ++_cycleSeq)
+                      : _openCycle,
+                ),
+              ),
+            ],
           ],
         ),
       );
@@ -726,6 +820,7 @@ class OBPatternCard extends StatelessWidget {
         ],
       );
     }
+
     if (error) {
       return OBCard(
         child: Column(
@@ -808,7 +903,9 @@ class OBPatternCard extends StatelessWidget {
 
   Widget _meaningfulBody(BuildContext context, OB p, CaffeineSleepPattern s) {
     final nightStyle = p.text(13, color: p.muted).copyWith(height: 18 / 13);
-    final comparisonStyle = p.text(13, color: p.muted).copyWith(height: 18 / 13);
+    final comparisonStyle = p
+        .text(13, color: p.muted)
+        .copyWith(height: 18 / 13);
     final stacked =
         MediaQuery.textScalerOf(context).scale(13) > 20 ||
         MediaQuery.sizeOf(context).width < 360;

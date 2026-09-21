@@ -27,9 +27,12 @@ import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/appearance.dart';
+import '../../openband/cycle.dart';
+import '../../openband/local_repository.dart';
 import '../../openband/notification_settings.dart';
 import '../../openband/units.dart';
 import '../../openband/theme.dart' show OBPageHeader, OB;
+import '../../data/day_label.dart';
 import '../../platform/app_icon.dart';
 import '../../platform/tasker_bridge.dart';
 import '../../state/app_state.dart';
@@ -162,7 +165,6 @@ class _MoreSettingsState extends State<MoreSettings> {
       onGallery: () => goto(c, const GalleryScreen()),
       units: unitsChoiceLabel(c, units.system),
       appearance: appearanceChoiceLabel(c, theme.choice),
-      cycleTracking: app.cycleTrackingEnabled,
       appIcon: _icon,
       onPickIcon: _pickIcon,
       phoneSteps: app.phoneStepsEnabled,
@@ -188,8 +190,14 @@ class _MoreSettingsState extends State<MoreSettings> {
       onAutomation: () => goto(c, const AutomationSettings()),
       onOpenUnits: () => goto(c, const UnitsSettings()),
       onCycleAppearance: () => goto(c, const AppearanceSettings()),
-      onToggleCycleTracking: () =>
-          app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
+      onOpenCycle: () => goto(
+        c,
+        OpenBandCycle(
+          repository: LocalOpenBandRepository(app),
+          day: todayLabel(),
+          settingsOnly: true,
+        ),
+      ),
       onTogglePhoneSteps: () => app.phoneStepsEnabled
           ? app.disablePhoneSteps()
           : app.requestPhoneSteps(),
@@ -478,7 +486,7 @@ Future<void> _confirmReset(BuildContext c, AppState app) async {
 
 class MoreSettingsView extends StatelessWidget {
   final String units, appearance;
-  final bool phoneSteps, telemetry, barcodeLookup, cycleTracking;
+  final bool phoneSteps, telemetry, barcodeLookup;
 
   /// The home-screen icon, or null where the OS will not change it — Android,
   /// and the managed iOS configurations that refuse. Null means the row is not
@@ -522,10 +530,10 @@ class MoreSettingsView extends StatelessWidget {
       onAutomation,
       onOpenUnits,
       onCycleAppearance,
+      onOpenCycle,
       onTogglePhoneSteps,
       onToggleTelemetry,
       onToggleBarcodeLookup,
-      onToggleCycleTracking,
       onToggleHealthShare,
       onToggleHealthSync,
       onToggleUpdateChecks,
@@ -543,7 +551,6 @@ class MoreSettingsView extends StatelessWidget {
     this.healthStore = 'Apple Health',
     this.telemetry = false,
     this.barcodeLookup = true,
-    this.cycleTracking = false,
     this.showHealthShare = false,
     this.healthShare = false,
     this.showUpdateChecks = false,
@@ -562,10 +569,10 @@ class MoreSettingsView extends StatelessWidget {
     this.onAutomation,
     this.onOpenUnits,
     this.onCycleAppearance,
+    this.onOpenCycle,
     this.onTogglePhoneSteps,
     this.onToggleTelemetry,
     this.onToggleBarcodeLookup,
-    this.onToggleCycleTracking,
     this.onToggleHealthShare,
     this.onToggleHealthSync,
     this.onToggleUpdateChecks,
@@ -637,16 +644,9 @@ class MoreSettingsView extends StatelessWidget {
                       value: appearance, onTap: onCycleAppearance),
                   if (appIcon != null)
                     _IconRow(chosen: appIcon!, onPick: onPickIcon),
-                  // Opt-in, and it says what it does rather than what it is
-                  // about — "Cycle tracking" alone leaves you guessing whether
-                  // switching it off throws the entries away.
                   SetRow(LucideIcons.droplet, C.pink,
-                      l?.settingsCycleTrackingRowTitle ?? 'Cycle tracking',
-                      sub: l?.settingsCycleTrackingRowSub ??
-                          'Adds the Cycle tab to Wellness. Off hides it and '
-                              'keeps everything already logged',
-                      value: cycleTracking ? on : off,
-                      onTap: onToggleCycleTracking),
+                      l?.settingsCycleTrackingRowTitle ?? 'Cycle',
+                      onTap: onOpenCycle),
                 ]),
                 settingsGroup(c, l?.settingsGroupYourData ?? 'Your data', [
                   SetRow(LucideIcons.download, C.green,

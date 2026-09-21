@@ -254,6 +254,7 @@ void main() {
     }) async {
       final envelope = <String, dynamic>{
         'algo_version': kAlgoVersion,
+        'source_rev': await LocalDb.crossDaySourceRevision(),
         'built_for_day': dayLabelOf(DateTime.now()),
         'days': days,
       };

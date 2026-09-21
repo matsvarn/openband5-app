@@ -6,6 +6,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
 
+import '../data/cycle_store.dart';
 import '../data/db.dart';
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
@@ -30,14 +31,23 @@ class LocalOpenBandRepository implements OpenBandRepository {
     ImportedMeasurementImporter? measurementImporter,
     Future<GlucoseSnapshot> Function()? glucoseRefresh,
     Future<void> Function()? reminderRefresh,
+    Future<CycleSettings> Function()? cycleSettingsRead,
+    Future<void> Function(CycleSettings)? cycleSettingsSave,
+    Future<void> Function()? cycleContextRefresh,
   })  : _measurementImporter = measurementImporter,
         _glucoseRefresh = glucoseRefresh,
-        _reminderRefresh = reminderRefresh;
+        _reminderRefresh = reminderRefresh,
+        _cycleSettingsRead = cycleSettingsRead,
+        _cycleSettingsSave = cycleSettingsSave,
+        _cycleContextRefresh = cycleContextRefresh;
 
   final AppState app;
   final ImportedMeasurementImporter? _measurementImporter;
   final Future<GlucoseSnapshot> Function()? _glucoseRefresh;
   final Future<void> Function()? _reminderRefresh;
+  final Future<CycleSettings> Function()? _cycleSettingsRead;
+  final Future<void> Function(CycleSettings)? _cycleSettingsSave;
+  final Future<void> Function()? _cycleContextRefresh;
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -2987,6 +2997,108 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return MedicationMutationResult.savedRemindersFailed(
         plan: plan,
         entry: entry,
+      );
+    }
+  }
+
+  @override
+  Future<CycleSettings> readCycleSettings() {
+    return (_cycleSettingsRead ?? app.readCycleSettings)();
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleSettings(CycleSettings settings) async {
+    await (_cycleSettingsSave ?? app.saveCycleSettings)(settings);
+    return _cycleWriteResult(settings: settings);
+  }
+
+  @override
+  Future<CycleSnapshot> readCycle(String day, {DateTime? now}) async {
+    requireCycleCalendarDay(day);
+    final settings = await readCycleSettings();
+    final db = await LocalDb.instance;
+    return CycleStore.read(db, day: day, settings: settings);
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleStart(
+    CycleStart desired, {
+    CycleStart? expected,
+    DateTime? now,
+  }) async {
+    final db = await LocalDb.instance;
+    final written = await CycleStore.saveStart(
+      db,
+      desired,
+      expected: expected,
+      now: now ?? DateTime.now(),
+    );
+    if (!written.committed) return written;
+    return _cycleWriteResult(start: written.start);
+  }
+
+  @override
+  Future<CycleWriteResult> removeCycleStart(CycleStart expected) async {
+    final db = await LocalDb.instance;
+    final written = await CycleStore.removeStart(db, expected);
+    if (!written.committed) return written;
+    return _cycleWriteResult(start: written.start);
+  }
+
+  @override
+  Future<CycleWriteResult> restoreCycleStart(
+    CycleStart removed, {
+    DateTime? now,
+  }) async {
+    final db = await LocalDb.instance;
+    final written = await CycleStore.restoreStart(
+      db,
+      removed,
+      now: now ?? DateTime.now(),
+    );
+    if (!written.committed) return written;
+    return _cycleWriteResult(start: written.start);
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleObservation(
+    CycleObservation desired, {
+    CycleObservation? expected,
+    DateTime? now,
+  }) async {
+    final db = await LocalDb.instance;
+    final written = await CycleStore.saveObservation(
+      db,
+      desired,
+      expected: expected,
+      now: now ?? DateTime.now(),
+    );
+    if (!written.committed) return written;
+    return _cycleWriteResult(observation: written.observation);
+  }
+
+  @override
+  Future<void> refreshCycleContext() {
+    return (_cycleContextRefresh ?? app.refreshCycleContext)();
+  }
+
+  Future<CycleWriteResult> _cycleWriteResult({
+    CycleStart? start,
+    CycleObservation? observation,
+    CycleSettings? settings,
+  }) async {
+    try {
+      await refreshCycleContext();
+      return CycleWriteResult.saved(
+        start: start,
+        observation: observation,
+        settings: settings,
+      );
+    } catch (_) {
+      return CycleWriteResult.savedContextRefreshFailed(
+        start: start,
+        observation: observation,
+        settings: settings,
       );
     }
   }

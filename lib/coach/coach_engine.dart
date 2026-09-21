@@ -789,7 +789,16 @@ class CoachEngine {
           return await _action(confirm, ActionRequest(
             tool: name, title: 'Log period',
             summary: 'Log a period start on ${args['date']}.', args: args,
-          ), () async { await api.postCycleLog('${args['date']}', kind: 'start'); return 'Period logged.'; });
+          ), () async {
+            final date = '${args['date']}';
+            if (!isJournalDayId(date) || date.compareTo(todayLabel()) > 0) {
+              throw CoachActionError(
+                'That date cannot be logged as a period start.',
+              );
+            }
+            await api.postCycleLog(date, kind: 'start');
+            return 'Period logged.';
+          });
         case 'start_workout':
           return await _action(confirm, ActionRequest(
             tool: name, title: 'Start workout',

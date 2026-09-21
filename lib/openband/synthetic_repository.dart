@@ -314,6 +314,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     ]);
     _seedFixtureGlucose();
     _seedFixtureMedication();
+    _seedFixtureCycle();
   }
 
   BandSnapshot get band {
@@ -683,6 +684,29 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, List<MedicationPlanRevision>> _medRevisions = {};
   final List<MedicationStoredDose> _medDoses = [];
   int _medRevisionSeq = 0;
+
+  static const cycleFixtureDay = '2026-09-15';
+  static const cycleFixtureStarts = [
+    '2026-06-01',
+    '2026-06-29',
+    '2026-07-31',
+    '2026-08-24',
+  ];
+  static final cycleFixtureNow = DateTime(2026, 9, 15, 12);
+
+  bool failCycleRead = false;
+  bool failCycleWrite = false;
+  bool failCycleContextRefresh = false;
+  int cycleContextRefreshCalls = 0;
+  CycleSettings cycleSettings = const CycleSettings(
+    enabled: true,
+    estimatesEnabled: true,
+    lengthReviewEnabled: false,
+  );
+  final Map<String, CycleStart> _cycleStarts = {};
+  final Map<String, CycleObservation> _cycleObservations = {};
+  final List<Map<Object?, Object?>> _cycleUnreadableStarts = [];
+  final List<Map<Object?, Object?>> _cycleUnreadableObservations = [];
 
   void seedGlucoseReading(GlucoseReading reading) =>
       _glucoseReadings.add(reading);
@@ -3738,6 +3762,265 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   Future<void> refreshMedicationReminders() async {
     if (failMedicationReminders) {
       throw StateError('synthetic medication reminder refresh failure');
+    }
+  }
+
+  void seedCycleStart(CycleStart start) => _cycleStarts[start.date] = start;
+
+  void seedCycleObservation(CycleObservation observation) =>
+      _cycleObservations[observation.date] = observation;
+
+  void seedUnreadableCycleStart(Map<Object?, Object?> row) =>
+      _cycleUnreadableStarts.add(row);
+
+  void seedUnreadableCycleObservation(Map<Object?, Object?> row) =>
+      _cycleUnreadableObservations.add(row);
+
+  void clearCycleLogs() {
+    _cycleStarts.clear();
+    _cycleObservations.clear();
+    _cycleUnreadableStarts.clear();
+    _cycleUnreadableObservations.clear();
+  }
+
+  void _seedFixtureCycle() {
+    for (final date in cycleFixtureStarts) {
+      _cycleStarts[date] = CycleStart(date: date, kind: kCycleStartKind);
+    }
+  }
+
+  CycleLogParse _synthCycleLog(String day) => parseCycleLog(
+        startRows: [
+          for (final s in _cycleStarts.values)
+            {'date': s.date, 'kind': s.kind, 'note': s.note},
+          ..._cycleUnreadableStarts,
+        ],
+        observationRows: [
+          for (final o in _cycleObservations.values)
+            {
+              'date': o.date,
+              'symptoms_json': jsonEncode(o.tags),
+              'note': o.note,
+              'updated_at': o.updatedAt,
+            },
+          ..._cycleUnreadableObservations,
+        ],
+        asOf: day,
+      );
+
+  void _requireCycleReadable() {
+    if (failCycleRead) throw StateError('synthetic cycle read failure');
+  }
+
+  void _requireCycleWritable() {
+    if (failCycleWrite) throw StateError('synthetic cycle write failure');
+  }
+
+  @override
+  Future<CycleSettings> readCycleSettings() async {
+    _requireCycleReadable();
+    return cycleSettings;
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleSettings(CycleSettings settings) async {
+    _requireCycleWritable();
+    cycleSettings = settings;
+    return _cycleWriteResult(settings: settings);
+  }
+
+  @override
+  Future<CycleSnapshot> readCycle(String day, {DateTime? now}) async {
+    _requireCycleReadable();
+    requireCycleCalendarDay(day);
+    final parsed = _synthCycleLog(day);
+    return buildCycleSnapshot(
+      day: day,
+      settings: cycleSettings,
+      starts: parsed.starts,
+      observations: parsed.observations,
+      unreadableCount: parsed.unreadableCount,
+      unreadableStarts: parsed.unreadableStarts,
+    );
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleStart(
+    CycleStart desired, {
+    CycleStart? expected,
+    DateTime? now,
+  }) async {
+    _requireCycleWritable();
+    if (desired.kind.isEmpty) {
+      throw ArgumentError.value(desired.kind, 'kind', 'Cycle kind is required.');
+    }
+    final at = now ?? DateTime.now();
+    requireCycleWriteDay(desired.date, at);
+    if (expected != null) {
+      requireCycleCalendarDay(expected.date, 'expected.date');
+    }
+    final atDesired = _cycleStarts[desired.date];
+    if (expected == null) {
+      if (atDesired == desired) {
+        return _cycleWriteResult(start: atDesired);
+      }
+      if (atDesired != null) {
+        return CycleWriteResult.conflict(currentStart: atDesired);
+      }
+      _cycleStarts[desired.date] = desired;
+      return _cycleWriteResult(start: desired);
+    }
+    if (expected.date == desired.date) {
+      if (atDesired == desired) {
+        return _cycleWriteResult(start: atDesired);
+      }
+      if (atDesired != expected) {
+        return CycleWriteResult.conflict(currentStart: atDesired);
+      }
+      _cycleStarts[desired.date] = desired;
+      return _cycleWriteResult(start: desired);
+    }
+    final atSource = _cycleStarts[expected.date];
+    if (atDesired == desired && atSource == null) {
+      return _cycleWriteResult(start: atDesired);
+    }
+    if (atSource != expected) {
+      return CycleWriteResult.conflict(currentStart: atSource);
+    }
+    if (atDesired != null) {
+      return CycleWriteResult.conflict(currentStart: atDesired);
+    }
+    final previous = Map<String, CycleStart>.from(_cycleStarts);
+    try {
+      _cycleStarts.remove(expected.date);
+      _cycleStarts[desired.date] = desired;
+      return _cycleWriteResult(start: desired);
+    } on Object {
+      _cycleStarts
+        ..clear()
+        ..addAll(previous);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<CycleWriteResult> removeCycleStart(CycleStart expected) async {
+    _requireCycleWritable();
+    requireCycleCalendarDay(expected.date, 'expected.date');
+    final current = _cycleStarts[expected.date];
+    if (current == null) {
+      return _cycleWriteResult(start: expected);
+    }
+    if (current != expected) {
+      return CycleWriteResult.conflict(currentStart: current);
+    }
+    _cycleStarts.remove(expected.date);
+    return _cycleWriteResult(start: expected);
+  }
+
+  @override
+  Future<CycleWriteResult> restoreCycleStart(
+    CycleStart removed, {
+    DateTime? now,
+  }) async {
+    _requireCycleWritable();
+    if (removed.kind.isEmpty) {
+      throw ArgumentError.value(removed.kind, 'kind', 'Cycle kind is required.');
+    }
+    final at = now ?? DateTime.now();
+    requireCycleWriteDay(removed.date, at);
+    final current = _cycleStarts[removed.date];
+    if (current == removed) {
+      return _cycleWriteResult(start: current);
+    }
+    if (current != null) {
+      return CycleWriteResult.conflict(currentStart: current);
+    }
+    _cycleStarts[removed.date] = removed;
+    return _cycleWriteResult(start: removed);
+  }
+
+  @override
+  Future<CycleWriteResult> saveCycleObservation(
+    CycleObservation desired, {
+    CycleObservation? expected,
+    DateTime? now,
+  }) async {
+    _requireCycleWritable();
+    final at = now ?? DateTime.now();
+    requireCycleWriteDay(desired.date, at);
+    if (expected != null) {
+      requireCycleCalendarDay(expected.date, 'expected.date');
+      if (expected.date != desired.date) {
+        throw ArgumentError.value(
+          desired.date,
+          'date',
+          'Observation date cannot move.',
+        );
+      }
+    }
+    final current = _cycleObservations[desired.date];
+    if (desired.isClear) {
+      if (current == null) return _cycleWriteResult();
+      if (cycleObservationsContentEqual(current, desired)) {
+        _cycleObservations.remove(desired.date);
+        return _cycleWriteResult();
+      }
+      if (expected != null && current != expected) {
+        return CycleWriteResult.conflict(currentObservation: current);
+      }
+      if (expected == null) {
+        return CycleWriteResult.conflict(currentObservation: current);
+      }
+      _cycleObservations.remove(desired.date);
+      return _cycleWriteResult();
+    }
+    if (cycleObservationsContentEqual(current, desired)) {
+      return _cycleWriteResult(observation: current);
+    }
+    if (expected == null) {
+      if (current != null) {
+        return CycleWriteResult.conflict(currentObservation: current);
+      }
+    } else if (current != expected) {
+      return CycleWriteResult.conflict(currentObservation: current);
+    }
+    final saved = CycleObservation(
+      date: desired.date,
+      tags: List<String>.unmodifiable(desired.tags),
+      note: desired.note,
+      updatedAt: at.millisecondsSinceEpoch,
+    );
+    _cycleObservations[desired.date] = saved;
+    return _cycleWriteResult(observation: saved);
+  }
+
+  @override
+  Future<void> refreshCycleContext() async {
+    cycleContextRefreshCalls++;
+    if (failCycleContextRefresh) {
+      throw StateError('synthetic cycle context refresh failure');
+    }
+  }
+
+  Future<CycleWriteResult> _cycleWriteResult({
+    CycleStart? start,
+    CycleObservation? observation,
+    CycleSettings? settings,
+  }) async {
+    try {
+      await refreshCycleContext();
+      return CycleWriteResult.saved(
+        start: start,
+        observation: observation,
+        settings: settings,
+      );
+    } catch (_) {
+      return CycleWriteResult.savedContextRefreshFailed(
+        start: start,
+        observation: observation,
+        settings: settings,
+      );
     }
   }
 }

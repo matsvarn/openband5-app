@@ -438,7 +438,53 @@
     "4E83-0": "A07c Einnahme · 375 große Schrift · Dunkel",
     "4E9I-0": "A07c Medikament hinzufügen · 375 große Schrift · Dunkel",
     "4EBM-0": "A07c Einnahme bearbeiten · Dunkel",
-    "4ED3-0": "A07c Einnahme · historische Angaben fehlen · Dunkel"
+    "4ED3-0": "A07c Einnahme · historische Angaben fehlen · Dunkel",
+    "4EI2-0": "A07c Zyklus · Zyklus",
+    "4EKD-0": "A07c Zyklus · Einstellungen",
+    "4EMW-0": "A07c Zyklus · Beginn eintragen",
+    "4EQI-0": "A07c Zyklus · Beobachtung",
+    "4EOX-0": "A07c Zyklus · Leer",
+    "4F9V-0": "A07c Zyklus · Verlauf",
+    "4F30-0": "A07c Zyklus · Erster Beginn",
+    "4F4H-0": "A07c Zyklus · Schätzung offen",
+    "4F62-0": "A07c Zyklus · Lesefehler",
+    "4F7J-0": "A07c Zyklus · Speicherfehler",
+    "4F8I-0": "A07c Zyklus · Einrichten",
+    "4ESF-0": "A07c Zyklus · Zyklus · Dunkel",
+    "4EU0-0": "A07c Zyklus · Einstellungen · Dunkel",
+    "4EV5-0": "A07c Zyklus · Beginn eintragen · Dunkel",
+    "4EW4-0": "A07c Zyklus · Beobachtung · Dunkel",
+    "4EY0-0": "A07c Zyklus · Leer · Dunkel",
+    "4FCC-0": "A07c Zyklus · Teilweise lesbar",
+    "4FDX-0": "A07c Zyklus · Verlauf · Dunkel",
+    "4FFN-0": "A07c Zyklus · Erster Beginn · Dunkel",
+    "4FH4-0": "A07c Zyklus · Schätzung offen · Dunkel",
+    "4FIP-0": "A07c Zyklus · Lesefehler · Dunkel",
+    "4FJX-0": "A07c Zyklus · Speicherfehler · Dunkel",
+    "4FKY-0": "A07c Zyklus · Einrichten · Dunkel",
+    "4FM3-0": "A07c Zyklus · Teilweise lesbar · Dunkel",
+    "4FSH-0": "A07c Zyklus · Zyklus · 375 große Schrift",
+    "4FU2-0": "A07c Zyklus · Beobachtung · 375 große Schrift",
+    "4FVY-0": "A07c Zyklus · Einstellungen · 375 große Schrift",
+    "4FX6-0": "A07c Zyklus · Zyklus · 375 große Schrift · Dunkel",
+    "4FZL-0": "A07c Zyklus · Beobachtung · 375 große Schrift · Dunkel",
+    "4G2I-0": "A07c Zyklus · Einstellungen · 375 große Schrift · Dunkel",
+    "4G4D-0": "A07c Zyklus · Info",
+    "4G5Y-0": "A07c Zyklus · Info · Dunkel",
+    "4G8B-0": "A07c Zyklus · Situation",
+    "4G9G-0": "A07c Zyklus · Situation · Dunkel",
+    "4GC8-0": "A07c Zyklus · Beginn bearbeiten",
+    "4GD7-0": "A07c Zyklus · Beginn bearbeiten · Dunkel",
+    "4GEA-0": "A07c Zyklus · Beginn entfernen",
+    "4GFB-0": "A07c Zyklus · Beginn entfernen · Dunkel",
+    "4GH3-0": "A07c Zyklus · Datum",
+    "4GI2-0": "A07c Zyklus · Datum · Dunkel",
+    "4GOR-0": "A07c Zyklus · Gespeichert · Aktualisierung offen",
+    "4GPS-0": "A07c Zyklus · Gespeichert · Aktualisierung offen · Dunkel",
+    "4GQT-0": "A07c Zyklus · Beginn entfernt",
+    "4GSJ-0": "A07c Zyklus · Beginn entfernt · Dunkel",
+    "4GVO-0": "A07c Zyklus · Journal · Zyklus nicht geladen",
+    "4H0S-0": "A07c Zyklus · Journal · Zyklus nicht geladen · Dunkel"
   },
   "blocks": [
     {
@@ -630,7 +676,9 @@
       "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below.",
       "variantPaperNodes": {
         "large": "4EEM-0",
-        "largeDark": "4EEZ-0"
+        "largeDark": "4EEZ-0",
+        "cycleObservationLarge": "4FVH-0",
+        "cycleObservationLargeDark": "4G10-0"
       }
     },
     {
@@ -1479,12 +1527,20 @@
         "3ZPA-0",
         "3ZTC-0",
         "4069-0",
-        "40BJ-0"
+        "40BJ-0",
+        "4GVO-0",
+        "4H0S-0"
       ],
       "variantPaperNodes": {
         "glucoseEntry": "4BAP-0",
         "medicationEntry": "4DWS-0",
-        "medicationEntryDark": "4DX2-0"
+        "medicationEntryDark": "4DX2-0",
+        "cycleEntry": "4GUV-0",
+        "cycleEntryDark": "4GVB-0",
+        "cycleEntryUnknown": "4GWL-0",
+        "cycleEntryUnknownDark": "4H1P-0",
+        "cycleEntryLarge": "4H6M-0",
+        "cycleEntryLargeDark": "4H6T-0"
       }
     },
     {
@@ -1522,7 +1578,9 @@
       "usedIn": [
         "3HPD-0",
         "3W90-0",
-        "3WAH-0"
+        "3WAH-0",
+        "4GH3-0",
+        "4GI2-0"
       ],
       "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json."
     },
@@ -2056,7 +2114,11 @@
         "3UNC-0",
         "3UON-0",
         "3UQ6-0",
-        "3URH-0"
+        "3URH-0",
+        "4EQI-0",
+        "4EW4-0",
+        "4FU2-0",
+        "4FZL-0"
       ],
       "notes": "Shared explicit choices for theme and notification sheets:48 minimum row,15 regular/600 selected,18 fixed check lane. Theme choice changes after durable save."
     },
@@ -2540,17 +2602,20 @@
       "notes": "Retained draft commit and append use atomic CAS. Pending additions merge over latest base without resurrecting concurrent removals. Failure retains intent and retry until explicit cancellation; committed reload is read-only."
     },
     {
-      "name": "OBFoodUndo",
-      "paperNode": "41M7-0",
-      "widget": "_OpenBandNutritionState._showFoodSnack",
-      "file": "nutrition.dart",
+      "name": "OBUndoNotice",
+      "paperNode": "4GUG-0",
+      "widget": "showOpenBandUndoNotice",
+      "file": "undo_notice.dart",
       "usedIn": [
-        "41IF-0"
+        "41IF-0",
+        "4GQT-0",
+        "4GSJ-0"
       ],
-      "notes": "Exact deleted snapshot belongs to its repository/day/operation. Successful restore and failed subsequent read have separate retries. At large text the message precedes a wrapping action row.",
+      "notes": "Shared Alpin presentation for retained-source Undo and retry. Callers own repository/day identity, conflict and committed/read-only retry state. Existing nutrition rendering and 2x wrapping are preserved. Canonical blocks are on A00b; screen clones retain the same geometry.",
       "variantPaperNodes": {
-        "large": "438J-0",
-        "large.dark": "43C9-0"
+        "dark": "4GUJ-0",
+        "large": "4GUM-0",
+        "large.dark": "4GUP-0"
       }
     },
     {
@@ -2800,6 +2865,30 @@
         "375 / large text"
       ],
       "notes": "Stored civil slot, frozen name/dose when present and explicit unknown historical metadata. No missed-dose inference or adherence. Native large text stacks time above details. Canonical row composes the retained medication day/history entries."
+    },
+    {
+      "name": "OBCycleSummary",
+      "paperNode": "4EOH-0",
+      "widget": "_CycleSummaryCard",
+      "file": "cycle.dart",
+      "usedIn": [
+        "4EI2-0",
+        "4ESF-0",
+        "4FSH-0",
+        "4FX6-0",
+        "4EOX-0",
+        "4EY0-0",
+        "4F30-0",
+        "4FFN-0",
+        "4F4H-0",
+        "4FH4-0",
+        "4FCC-0",
+        "4FM3-0"
+      ],
+      "variantPaperNodes": {
+        "dark": "4G45-0"
+      },
+      "notes": "Civil day from actual stored starts only. Unreadable start rows withhold cycle day regardless of estimate setting; available source dates remain visible. Optional median/MAD range uses pinned analytics and refuses gaps over60days; no fertility or ovulation claim."
     }
   ],
   "openBlocks": [

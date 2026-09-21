@@ -20,6 +20,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
 import '../compute/substrate.dart' show beatTimesMs;
 // The ONE thing this layer takes from compute/: the running build's algo
@@ -229,6 +230,25 @@ class _OpenBandFoodCasConflict implements Exception {
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
+
+  /// Queued/running derive reason for a cycle-start invalidation.
+  static const String kCycleContextJobReason = 'cycle_context';
+
+  /// Fired AFTER a committed start-set mutation that already called
+  /// [invalidateCycleContext] in the same transaction. DATA's store should
+  /// call the helper itself and then [AppState.refreshCycleContext]; this
+  /// callback is for coach/import paths that go through [putCycleLog].
+  static void Function()? onCycleContextInvalidated;
+
+  /// Test seam: throw inside the cycle_log import txn after a start-set
+  /// change is detected, before [invalidateCycleContext].
+  @visibleForTesting
+  static Future<void> Function(DatabaseExecutor txn)?
+      debugBeforeCycleLogImportInvalidate;
+
+  /// Test seam: after a table's import txn has committed.
+  @visibleForTesting
+  static Future<void> Function(String table)? debugAfterImportedTable;
 
   static Future<Database> get instance async {
     final db = _db;
@@ -10027,6 +10047,16 @@ class LocalDb {
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
+      // Day sources changed: bump the local fence and drop regenerable
+      // cross-day artifacts. Do not enqueue — the in-flight/durable pass
+      // still owns refresh and will republish under the new revision.
+      await bumpCrossDaySourceRevision(txn);
+      await txn.delete('baselines', where: 'key = ?', whereArgs: ['crossday']);
+      await txn.delete(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday_input'],
+      );
     });
   }
 
@@ -10675,7 +10705,21 @@ class LocalDb {
       }
     }
 
+    var startsChanged = false;
     await db.transaction((txn) async {
+      final startsBefore = await _cycleStartDatesOn(txn);
+      var daySourcesChanged = false;
+      for (final chunk in _sqlVarChunks(sorted)) {
+        final ph = List.filled(chunk.length, '?').join(',');
+        final existing = await txn.rawQuery(
+          'SELECT 1 FROM day_result WHERE day_id IN ($ph) LIMIT 1',
+          chunk,
+        );
+        if (existing.isNotEmpty) {
+          daySourcesChanged = true;
+          break;
+        }
+      }
       for (final dayId in sorted) {
         final (startSec, endSec) = _localDayWindow(dayId);
         deleted += await txn.delete(
@@ -10725,11 +10769,13 @@ class LocalDb {
             [startSec, endSec],
           );
         }
-        deleted += await txn.delete(
+        final sessionDeleted = await txn.delete(
           'sessions',
           where: 'start_ts >= ? AND start_ts < ?',
           whereArgs: [startSec, endSec],
         );
+        deleted += sessionDeleted;
+        if (sessionDeleted > 0) daySourcesChanged = true;
         deleted += await txn.delete(
           'live_coverage',
           where: 'end_ts > ? AND start_ts < ?',
@@ -10752,7 +10798,17 @@ class LocalDb {
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
       await deleteByIn(txn, 'nap_recalc_job', 'day_id', sorted);
+      final startsAfter = await _cycleStartDatesOn(txn);
+      startsChanged = !_sameStartList(startsBefore, startsAfter);
+      if (startsChanged || daySourcesChanged) {
+        await invalidateCycleContext(
+          txn,
+          daySourcesChanged: daySourcesChanged,
+        );
+        startsChanged = true;
+      }
     });
+    if (startsChanged) onCycleContextInvalidated?.call();
     return deleted;
   }
 
@@ -11157,24 +11213,51 @@ class LocalDb {
           }
           final cols = await destCols(t);
           if (cols.isEmpty) continue; // table absent in THIS build
-          // FINALIZED-DAY PROTECTION: a local day_result row with finalized=1 is
-          // LOCKED (this device's own fully-derived history — the long-term
-          // system of record). A foreign export merged with REPLACE must never
-          // clobber it on a (day_id, algo_version) collision; non-finalized rows
-          // keep the plain REPLACE behavior (the import may well be fresher).
-          var protectedKeys = const <String>{};
-          if (t == 'day_result') {
-            final fin = await db.query(
-              'day_result',
-              columns: ['day_id', 'algo_version'],
-              where: 'finalized = 1',
-            );
-            protectedKeys = {
-              for (final r in fin) '${r['day_id']}|${r['algo_version']}',
-            };
-          }
           var copied = 0;
+          var importedDaySources = false;
           var page = firstPage;
+          if (t == 'cycle_log') {
+            var startsChanged = false;
+            await db.transaction((txn) async {
+              final before = await _cycleStartDatesOn(txn);
+              var logPage = page;
+              var logLastRowid = 0;
+              while (logPage.isNotEmpty) {
+                for (final r in logPage) {
+                  final row = <String, Object?>{
+                    for (final e in r.entries)
+                      if (cols.contains(e.key)) e.key: e.value,
+                  };
+                  if (row.isEmpty) continue;
+                  await txn.insert(
+                    'cycle_log',
+                    row,
+                    conflictAlgorithm: ConflictAlgorithm.replace,
+                  );
+                  copied++;
+                }
+                logLastRowid = (logPage.last[rowidKey] as num).toInt();
+                if (logPage.length < pageSize) break;
+                logPage = await src.rawQuery(
+                  'SELECT rowid AS $rowidKey, * FROM cycle_log '
+                  'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
+                  [logLastRowid, pageSize],
+                );
+              }
+              final after = await _cycleStartDatesOn(txn);
+              if (!_sameStartList(before, after)) {
+                final beforeInv = debugBeforeCycleLogImportInvalidate;
+                if (beforeInv != null) await beforeInv(txn);
+                await invalidateCycleContext(txn);
+                startsChanged = true;
+              }
+            });
+            if (startsChanged) onCycleContextInvalidated?.call();
+            counts[t] = copied;
+            final afterTable = debugAfterImportedTable;
+            if (afterTable != null) await afterTable(t);
+            continue;
+          }
           // ONE TRANSACTION PER PAGE, not per table. The whole-table transaction
           // this replaces could only ever commit if the entire table fit in
           // memory first, which is the bug. Per-page commits keep peak residency
@@ -11196,6 +11279,18 @@ class LocalDb {
                 await batch.commit(noResult: true);
                 batch = txn.batch();
                 ops = 0;
+              }
+
+              var protectedKeys = const <String>{};
+              if (t == 'day_result') {
+                final fin = await txn.query(
+                  'day_result',
+                  columns: ['day_id', 'algo_version'],
+                  where: 'finalized = 1',
+                );
+                protectedKeys = {
+                  for (final r in fin) '${r['day_id']}|${r['algo_version']}',
+                };
               }
 
               final rows = <Map<String, Object?>>[];
@@ -11229,6 +11324,16 @@ class LocalDb {
                 // present, and the SharedPreferences mirror re-establishes it
                 // if the database was rebuilt.
                 if (t == 'device' && row['id'] == kPrimaryDeviceId) continue;
+                // Derived cross-day output/cache is local: it is built from this
+                // install's cycle starts and day_result rows. Finalized local
+                // day_results are protected below, so a foreign cache would mix
+                // another device's compact days with this phone's locked rows.
+                // Importing `crossday` after cycle_log invalidation would also
+                // resurrect stale luteal output. Other baseline keys still merge.
+                if (t == 'baselines') {
+                  final key = row['key']?.toString();
+                  if (key == 'crossday' || key == 'crossday_input') continue;
+                }
                 if (t == 'day_result') {
                   if (protectedKeys.contains(
                     '${row['day_id']}|${row['algo_version']}',
@@ -11330,13 +11435,21 @@ class LocalDb {
                 if (++ops >= chunkOps) await flush();
               }
               await flush();
-            });
+              if ((t == 'day_result' || t == 'sessions') && rows.isNotEmpty) {
+                await invalidateCycleContext(txn, daySourcesChanged: true);
+                importedDaySources = true;
+              }
+            }, exclusive: t == 'day_result');
             if (t == 'imported_measurement' ||
                 t == 'imported_measurement_receipt' ||
                 t == 'imported_measurement_source_setting') {
               await runImportedMeasurementOp(writePage);
             } else {
               await writePage();
+              if (importedDaySources) {
+                onCycleContextInvalidated?.call();
+                importedDaySources = false;
+              }
             }
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
@@ -11346,6 +11459,8 @@ class LocalDb {
             page = await nextPage();
           }
           counts[t] = copied;
+          final afterTable = debugAfterImportedTable;
+          if (afterTable != null) await afterTable(t);
         } catch (_) {
           // One table's worth of loss, not the whole salvage. A user-initiated
           // restore still rethrows: reporting a partial import as a success is
@@ -12320,50 +12435,250 @@ class LocalDb {
       where: 'state = ?',
       whereArgs: ['running'],
     );
+    await db.update(
+      'compute_jobs',
+      {'state': 'queued', 'updated_at': now, 'next_run_at': null},
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['failed', kCycleContextJobReason],
+    );
   }
 
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
+    DatabaseExecutor? executor,
   }) async {
+    if (executor != null) {
+      await _enqueueDeriveJobOn(executor, type: type, reason: reason);
+      return;
+    }
+    final db = await instance;
+    await db.transaction(
+      (txn) => _enqueueDeriveJobOn(txn, type: type, reason: reason),
+    );
+  }
+
+  /// One queue rule: coalesce queued same-type jobs; a RUNNING heavy job
+  /// does not swallow a successor (cycle invalidation must survive).
+  static Future<void> _enqueueDeriveJobOn(
+    DatabaseExecutor txn, {
+    required String type,
+    required String reason,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final active = await txn.query(
+      'compute_jobs',
+      columns: ['id', 'type', 'state', 'reason'],
+      where: 'scope = ? AND state IN (?, ?)',
+      whereArgs: ['derive', 'queued', 'running'],
+    );
+    bool hasQueued(String t) => active.any(
+      (row) => row['type']?.toString() == t && row['state'] == 'queued',
+    );
+    bool hasRunning(String t) => active.any(
+      (row) => row['type']?.toString() == t && row['state'] == 'running',
+    );
+    if (type == 'derive_light') {
+      if (hasQueued('derive_light') ||
+          hasQueued('derive_heavy') ||
+          hasRunning('derive_light') ||
+          hasRunning('derive_heavy')) {
+        return;
+      }
+    } else if (type == 'derive_heavy') {
+      await txn.delete(
+        'compute_jobs',
+        where: 'scope = ? AND state = ? AND type = ?',
+        whereArgs: ['derive', 'queued', 'derive_light'],
+      );
+      Map<String, Object?>? queuedHeavy;
+      for (final row in active) {
+        if (row['type']?.toString() == 'derive_heavy' &&
+            row['state'] == 'queued') {
+          queuedHeavy = row;
+          break;
+        }
+      }
+      if (queuedHeavy != null) {
+        final existingReason = queuedHeavy['reason']?.toString();
+        final merged =
+            reason == kCycleContextJobReason ||
+                existingReason == kCycleContextJobReason
+            ? kCycleContextJobReason
+            : reason;
+        await txn.update(
+          'compute_jobs',
+          {
+            'reason': merged,
+            'priority': 200,
+            'updated_at': now,
+            'next_run_at': null,
+          },
+          where: 'id = ?',
+          whereArgs: [queuedHeavy['id']],
+        );
+        return;
+      }
+      // Running heavy: insert a queued successor. Do not return.
+    }
+    await txn.insert('compute_jobs', {
+      'id': 'derive_${type}_${const Uuid().v4()}',
+      'type': type,
+      'scope': 'derive',
+      'priority': type == 'derive_heavy' ? 200 : 100,
+      'state': 'queued',
+      'reason': reason,
+      'depends_on': null,
+      'input_from_ts': null,
+      'input_to_ts': null,
+      'algo_version': null,
+      'attempts': 0,
+      'next_run_at': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  /// Local-only fence for cross-day input/output publication. Stored in
+  /// `compute_freshness` (not merged from backups). Additive JSON, no schema
+  /// bump: orchestration eligibility, not analytics output.
+  static const String kCrossDaySourceRevKey = 'crossday_source_rev';
+
+  static Future<int> crossDaySourceRevision([DatabaseExecutor? ex]) async {
+    final db = ex ?? await instance;
+    final rows = await db.query(
+      'compute_freshness',
+      columns: ['payload_json'],
+      where: 'key = ?',
+      whereArgs: [kCrossDaySourceRevKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return 0;
+    try {
+      final decoded = jsonDecode(rows.first['payload_json'] as String);
+      if (decoded is Map && decoded['v'] is int) return decoded['v'] as int;
+    } catch (_) {}
+    return 0;
+  }
+
+  static Future<int> bumpCrossDaySourceRevision(DatabaseExecutor txn) async {
+    final next = await crossDaySourceRevision(txn) + 1;
+    await txn.insert('compute_freshness', {
+      'key': kCrossDaySourceRevKey,
+      'payload_json': jsonEncode({'v': next}),
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return next;
+  }
+
+  /// Drop cross-day OUTPUT and enqueue a durable refresh in [txn].
+  /// When [daySourcesChanged], also drop `crossday_input` and bump the local
+  /// source revision. Cycle-start-only edits keep valid day input.
+  /// Signature for DATA: `LocalDb.invalidateCycleContext(DatabaseExecutor txn)`
+  static Future<void> invalidateCycleContext(
+    DatabaseExecutor txn, {
+    bool daySourcesChanged = false,
+  }) async {
+    await txn.delete('baselines', where: 'key = ?', whereArgs: ['crossday']);
+    if (daySourcesChanged) {
+      await txn.delete(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday_input'],
+      );
+      await bumpCrossDaySourceRevision(txn);
+    }
+    await _enqueueDeriveJobOn(
+      txn,
+      type: 'derive_heavy',
+      reason: kCycleContextJobReason,
+    );
+  }
+
+  static Future<bool> hasRunningCycleContextJob() async {
+    final db = await instance;
+    final rows = await db.query(
+      'compute_jobs',
+      columns: ['id'],
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['running', kCycleContextJobReason],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  static Future<void> requeueFailedCycleContextJobs() async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.transaction((txn) async {
-      final active = await txn.query(
-        'compute_jobs',
-        columns: ['id', 'type', 'state'],
-        where: 'scope = ? AND state IN (?, ?)',
-        whereArgs: ['derive', 'queued', 'running'],
-      );
-      bool hasType(String t) =>
-          active.any((row) => row['type']?.toString() == t);
-      if (type == 'derive_light') {
-        if (hasType('derive_light') || hasType('derive_heavy')) return;
-      } else if (type == 'derive_heavy') {
-        if (hasType('derive_heavy')) return;
-        await txn.delete(
-          'compute_jobs',
-          where: 'scope = ? AND state = ? AND type = ?',
-          whereArgs: ['derive', 'queued', 'derive_light'],
-        );
-      }
-      await txn.insert('compute_jobs', {
-        'id': 'derive_${type}_$now',
-        'type': type,
-        'scope': 'derive',
-        'priority': type == 'derive_heavy' ? 200 : 100,
-        'state': 'queued',
-        'reason': reason,
-        'depends_on': null,
-        'input_from_ts': null,
-        'input_to_ts': null,
-        'algo_version': null,
-        'attempts': 0,
-        'next_run_at': null,
-        'created_at': now,
-        'updated_at': now,
-      });
+    await db.update(
+      'compute_jobs',
+      {'state': 'queued', 'updated_at': now, 'next_run_at': null},
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['failed', kCycleContextJobReason],
+    );
+  }
+
+  static Future<List<String>> cycleStartDates([
+    DatabaseExecutor? executor,
+  ]) async {
+    final db = executor ?? await instance;
+    return _cycleStartDatesOn(db);
+  }
+
+  static Future<List<String>> _cycleStartDatesOn(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'cycle_log',
+      columns: ['date', 'kind'],
+      orderBy: 'date ASC',
+    );
+    return [
+      for (final r in rows)
+        if (r['kind'] == 'start' && r['date'] is String) r['date'] as String,
+    ];
+  }
+
+  /// Write the cross-day OUTPUT only if starts and source revision still match.
+  static Future<bool> commitCrossDayIfStartsUnchanged({
+    required String payloadJson,
+    required List<String> expectedStarts,
+    int expectedSourceRev = 0,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _cycleStartDatesOn(txn);
+      if (!_sameStartList(current, expectedStarts)) return false;
+      if (await crossDaySourceRevision(txn) != expectedSourceRev) return false;
+      await txn.insert('baselines', {
+        'key': 'crossday',
+        'payload_json': payloadJson,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
     });
+  }
+
+  static Future<bool> commitCrossDayInputIfRevUnchanged({
+    required String payloadJson,
+    required int expectedRev,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      if (await crossDaySourceRevision(txn) != expectedRev) return false;
+      await txn.insert('baselines', {
+        'key': 'crossday_input',
+        'payload_json': payloadJson,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
+    });
+  }
+
+  static bool _sameStartList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() async {
@@ -12414,14 +12729,18 @@ class LocalDb {
     await db.delete('compute_jobs', where: 'id = ?', whereArgs: [id]);
   }
 
-  static Future<void> failComputeJob(String id, String error) async {
+  static Future<void> failComputeJob(
+    String id,
+    String error, {
+    bool preserveReason = false,
+  }) async {
     final db = await instance;
     await db.update(
       'compute_jobs',
       {
         'state': 'failed',
-        'reason': error,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
+        if (!preserveReason) 'reason': error,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -13443,22 +13762,93 @@ class LocalDb {
 
   // ── cycle log I/O ─────────────────────────────────────────────────────────────
 
+  static void _assertWritableCycleDate(String date, {DateTime? now}) {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Expected a Gregorian YYYY-MM-DD.',
+      );
+    }
+    if (date.compareTo(todayLabel(now)) > 0) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Cycle writes cannot be after local today.',
+      );
+    }
+  }
+
+  static bool _cycleStartSetChanged({
+    required bool existed,
+    required String? oldKind,
+    required String newKind,
+  }) {
+    final wasStart = oldKind == 'start';
+    final isStart = newKind == 'start';
+    if (!existed) return isStart;
+    return wasStart != isStart;
+  }
+
   static Future<void> putCycleLog(
     String date,
     String kind, {
     String? note,
+    DateTime? now,
   }) async {
+    _assertWritableCycleDate(date, now: now);
     final db = await instance;
-    await db.insert('cycle_log', {
-      'date': date,
-      'kind': kind,
-      'note': note,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    var changedStarts = false;
+    await db.transaction((txn) async {
+      final existing = await txn.query(
+        'cycle_log',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      await txn.insert('cycle_log', {
+        'date': date,
+        'kind': kind,
+        'note': note,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final oldKind =
+          existing.isEmpty ? null : existing.first['kind']?.toString();
+      if (_cycleStartSetChanged(
+        existed: existing.isNotEmpty,
+        oldKind: oldKind,
+        newKind: kind,
+      )) {
+        changedStarts = true;
+        await invalidateCycleContext(txn);
+      }
+    });
+    if (changedStarts) onCycleContextInvalidated?.call();
   }
 
   static Future<void> deleteCycleLog(String date) async {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Expected a Gregorian YYYY-MM-DD.',
+      );
+    }
     final db = await instance;
-    await db.delete('cycle_log', where: 'date = ?', whereArgs: [date]);
+    var changedStarts = false;
+    await db.transaction((txn) async {
+      final existing = await txn.query(
+        'cycle_log',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      await txn.delete('cycle_log', where: 'date = ?', whereArgs: [date]);
+      if (existing.isNotEmpty && existing.first['kind'] == 'start') {
+        changedStarts = true;
+        await invalidateCycleContext(txn);
+      }
+    });
+    if (changedStarts) onCycleContextInvalidated?.call();
   }
 
   /// All cycle markers, oldest first.

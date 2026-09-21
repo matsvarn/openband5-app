@@ -1137,6 +1137,12 @@ void main() {
 
       await seedServedDay(day, computedAtMs: stampMs);
       snapshot = await repository.readSleepPlan(day, now: now);
+      expect(snapshot.plan, isNull);
+      expect(snapshot.status, SleepPlanStatus.missing);
+      expect(snapshot.issue, SleepPlanIssue.missingArtifact);
+
+      await store(artifact());
+      snapshot = await repository.readSleepPlan(day, now: now);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.staleInputs);
       expect(snapshot.status, SleepPlanStatus.stale);
       expect(snapshot.plan!.needSeconds, fixtureNeedSec);
@@ -1151,6 +1157,7 @@ void main() {
       expect(snapshot.plan!.inputReadStartedAtMs, raceStamp);
 
       await seedServedDay(day, computedAtMs: builtAt * 1000 + 400);
+      await store(artifact(inputReadStartedAtMs: raceStamp));
       snapshot = await repository.readSleepPlan(day, now: raceNow);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.staleInputs);
       expect(snapshot.status, SleepPlanStatus.stale);
@@ -1160,6 +1167,7 @@ void main() {
       await seedWindow();
       await store(artifact());
       await seedServedDay('2026-09-13', computedAtMs: stampMs - 1);
+      await store(artifact());
       var snapshot = await repository.readSleepPlan(day, now: now);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.staleInputs);
 
@@ -1168,6 +1176,7 @@ void main() {
         computedAtMs: stampMs - 1,
         skipped: true,
       );
+      await store(artifact());
       snapshot = await repository.readSleepPlan(day, now: now);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.fresh);
       expect(snapshot.status, SleepPlanStatus.available);
@@ -1195,6 +1204,7 @@ void main() {
       expect(snapshot.status, isNot(SleepPlanStatus.available));
 
       await seedWindow();
+      await store(artifact());
       snapshot = await repository.readSleepPlan(day, now: now);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.fresh);
       expect(snapshot.status, SleepPlanStatus.available);

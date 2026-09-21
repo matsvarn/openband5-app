@@ -5,6 +5,7 @@ import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
+import 'openband/cycle.dart';
 import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
@@ -714,6 +715,13 @@ class _ShellState extends State<_Shell> {
                 onBarcode: _nutritionBarcode,
               ),
             ),
+          ),
+          onCycle: () => OpenBandCycle.push(
+            c,
+            repository: _day.repository,
+            day: _day.selectedDay,
+            now: _day.now,
+            synthetic: _day.day?.synthetic == true,
           ),
         ),
       },
