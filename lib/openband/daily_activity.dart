@@ -9,11 +9,13 @@ class StepsCard extends StatelessWidget {
   final OpenBandDay day;
   final DateTime Function() now;
   final VoidCallback? onNutrition;
+  final bool showIntake;
   const StepsCard({
     super.key,
     required this.day,
     required this.now,
     this.onNutrition,
+    this.showIntake = true,
   });
 
   void _details(BuildContext context, {bool intake = false}) {
@@ -93,6 +95,7 @@ class StepsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!showIntake) return _ReleaseStepsCard(day: day, now: now, onOpen: () => _details(context));
     final p = OB.of(context);
     final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     return OBCard(
@@ -134,32 +137,123 @@ class StepsCard extends StatelessWidget {
                     ),
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: _DayValue(
-              label: 'Wasser',
-              icon: LucideIcons.droplet,
-              color: p.sleep,
-              value: day.intake.waterMl == null
-                  ? '—'
-                  : obNumber(day.intake.waterMl! / 1000, digits: 2),
-              unit: day.intake.waterMl == null ? null : 'l',
-              onTap: () => _details(context, intake: true),
+          if (showIntake)
+            Expanded(
+              flex: 2,
+              child: _DayValue(
+                label: 'Wasser',
+                icon: LucideIcons.droplet,
+                color: p.sleep,
+                value: day.intake.waterMl == null
+                    ? '—'
+                    : obNumber(day.intake.waterMl! / 1000, digits: 2),
+                unit: day.intake.waterMl == null ? null : 'l',
+                onTap: () => _details(context, intake: true),
+              ),
             ),
-          ),
-          Expanded(
-            flex: 2,
-            child: _DayValue(
-              label: 'Energie',
-              icon: LucideIcons.utensils,
-              color: p.food,
-              value: obNumber(day.intake.kcal),
-              unit: day.intake.kcal == null ? null : 'kcal',
-              onTap: () => _details(context, intake: true),
+          if (showIntake)
+            Expanded(
+              flex: 2,
+              child: _DayValue(
+                label: 'Energie',
+                icon: LucideIcons.utensils,
+                color: p.food,
+                value: obNumber(day.intake.kcal),
+                unit: day.intake.kcal == null ? null : 'kcal',
+                onTap: () => _details(context, intake: true),
+              ),
             ),
-          ),
         ],
       ),
+    );
+  }
+}
+
+class _ReleaseStepsCard extends StatelessWidget {
+  final OpenBandDay day;
+  final DateTime Function() now;
+  final VoidCallback onOpen;
+  const _ReleaseStepsCard({
+    required this.day,
+    required this.now,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
+    final buckets = day.stepIntervals.isEmpty
+        ? const <double>[]
+        : stepsByHour(day.stepIntervals);
+    return OBCard(
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.footprints, size: 16, color: p.strain),
+                const SizedBox(width: 6),
+                Text(
+                  'Schritte',
+                  style: p.text(13, weight: FontWeight.w600, color: p.muted),
+                ),
+                const Spacer(),
+                if (last != null)
+                  Text(
+                    'bis ${obTime(last)}',
+                    style: p.text(13, weight: FontWeight.w500, color: p.muted),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              obNumber(day.steps.value),
+              style: p
+                  .text(34, weight: FontWeight.w800, display: true)
+                  .copyWith(height: 36 / 34),
+            ),
+            if (buckets.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 40,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _StepsPainter(
+                    buckets,
+                    day.day == todayLabel() ? now().hour : 23,
+                    p.strain,
+                    p.strainTint,
+                    p.line,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const _StepHourAxis(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepHourAxis extends StatelessWidget {
+  const _StepHourAxis();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final style = p.text(11, weight: FontWeight.w500, color: p.muted);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (final label in const ['0', '6', '12', '18', '24'])
+          Text(label, style: style),
+      ],
     );
   }
 }

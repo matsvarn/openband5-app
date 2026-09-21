@@ -8,6 +8,8 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/notification_service.dart';
+import '../notify/tap_router.dart';
+import 'release_scope.dart';
 import '../state/app_state.dart';
 import '../ui2/profile/band_notifications.dart';
 import 'settings_controls.dart';
@@ -42,6 +44,7 @@ class NotificationSettings extends StatefulWidget {
     this.onRefreshBattery,
     this.relaySupported,
     this.synthetic = false,
+    this.releaseReduced = false,
   });
 
   final Future<NotificationPrefs> Function()? loadPrefs;
@@ -54,6 +57,9 @@ class NotificationSettings extends StatefulWidget {
   final Future<void> Function(NotificationPrefs prefs)? onRefreshBattery;
   final bool? relaySupported;
   final bool synthetic;
+
+  /// Hides toggles whose tap would open a parked flow. Stored prefs stay.
+  final bool releaseReduced;
 
   @override
   State<NotificationSettings> createState() => _NotificationSettingsState();
@@ -404,6 +410,7 @@ class _NotificationSettingsState extends State<NotificationSettings>
       busy: _busy,
       relaySupported: _relaySupported,
       synthetic: widget.synthetic,
+      releaseReduced: widget.releaseReduced,
       loadError: _loadError,
       permissionError: _permissionError,
       saveError: _saveError,
@@ -425,6 +432,7 @@ class NotificationSettingsView extends StatelessWidget {
   final bool busy;
   final bool relaySupported;
   final bool synthetic;
+  final bool releaseReduced;
   final String? loadError;
   final String? permissionError;
   final String? saveError;
@@ -447,6 +455,7 @@ class NotificationSettingsView extends StatelessWidget {
     this.busy = false,
     this.relaySupported = false,
     this.synthetic = false,
+    this.releaseReduced = false,
     this.loadError,
     this.permissionError,
     this.saveError,
@@ -505,6 +514,8 @@ class NotificationSettingsView extends StatelessWidget {
     final p = OB.of(context);
     final interactive =
         loaded && !busy && (onEdit != null || onChanged != null);
+    bool parked(String route) =>
+        openBandReleaseParksRoute(route, reduced: releaseReduced);
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
@@ -667,11 +678,7 @@ class NotificationSettingsView extends StatelessWidget {
                           ),
                         OBSettingsToggleRow(
                           key: const ValueKey('notif-alarm-latch'),
-                          label: _s(
-                            context,
-                            'Alarmfehler',
-                            'Alarm error',
-                          ),
+                          label: _s(context, 'Alarmfehler', 'Alarm error'),
                           value: prefs.alarmLatchFailedEnabled,
                           interactive: interactive,
                           onToggle: () => _set(
@@ -712,38 +719,40 @@ class NotificationSettingsView extends StatelessWidget {
                                 p.copyWith(recoveryEnabled: !p.recoveryEnabled),
                           ),
                         ),
-                        OBSettingsToggleRow(
-                          key: const ValueKey('notif-weekly'),
-                          label: _s(
-                            context,
-                            'Wochenrückblick',
-                            'Weekly lookback',
-                            l10n: (l) => l.settingsWeeklyLookbackRowTitle,
-                          ),
-                          value: prefs.remindersEnabled,
-                          interactive: interactive,
-                          onToggle: () => _set(
-                            (p) => p.copyWith(
-                              remindersEnabled: !p.remindersEnabled,
+                        if (!parked(kRouteRecap))
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-weekly'),
+                            label: _s(
+                              context,
+                              'Wochenrückblick',
+                              'Weekly lookback',
+                              l10n: (l) => l.settingsWeeklyLookbackRowTitle,
+                            ),
+                            value: prefs.remindersEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) => p.copyWith(
+                                remindersEnabled: !p.remindersEnabled,
+                              ),
                             ),
                           ),
-                        ),
-                        OBSettingsToggleRow(
-                          key: const ValueKey('notif-autodetect'),
-                          label: _s(
-                            context,
-                            'Erkannte Aktivitäten',
-                            'Detected activities',
-                            l10n: (l) => l.settingsDetectedWorkoutsRowTitle,
-                          ),
-                          value: prefs.autoDetectEnabled,
-                          interactive: interactive,
-                          onToggle: () => _set(
-                            (p) => p.copyWith(
-                              autoDetectEnabled: !p.autoDetectEnabled,
+                        if (!parked(kRouteWorkoutSuggestion))
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-autodetect'),
+                            label: _s(
+                              context,
+                              'Erkannte Aktivitäten',
+                              'Detected activities',
+                              l10n: (l) => l.settingsDetectedWorkoutsRowTitle,
+                            ),
+                            value: prefs.autoDetectEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) => p.copyWith(
+                                autoDetectEnabled: !p.autoDetectEnabled,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -764,6 +773,7 @@ class NotificationSettingsView extends StatelessWidget {
                                 p.copyWith(movementEnabled: !p.movementEnabled),
                           ),
                         ),
+                        if (!parked(kRouteBreathing))
                         OBSettingsToggleRow(
                           key: const ValueKey('notif-winddown'),
                           label: _s(
@@ -794,50 +804,54 @@ class NotificationSettingsView extends StatelessWidget {
                                 p.copyWith(stepGoalEnabled: !p.stepGoalEnabled),
                           ),
                         ),
-                        OBSettingsToggleRow(
-                          key: const ValueKey('notif-meds'),
-                          label: _s(
-                            context,
-                            'Medikamente',
-                            'Medication',
-                            l10n: (l) => l.settingsMedicationRemindersRowTitle,
+                        if (!parked(kRouteMeds))
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-meds'),
+                            label: _s(
+                              context,
+                              'Medikamente',
+                              'Medication',
+                              l10n: (l) =>
+                                  l.settingsMedicationRemindersRowTitle,
+                            ),
+                            value: prefs.medsEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) => p.copyWith(medsEnabled: !p.medsEnabled),
+                            ),
                           ),
-                          value: prefs.medsEnabled,
-                          interactive: interactive,
-                          onToggle: () => _set(
-                            (p) => p.copyWith(medsEnabled: !p.medsEnabled),
+                        if (!parked(kRouteJournalCompose))
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-checkin'),
+                            label: _s(
+                              context,
+                              'Tages-Check-in',
+                              'Daily check-in',
+                              l10n: (l) => l.settingsDailyCheckInRowTitle,
+                            ),
+                            value: prefs.checkInEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) =>
+                                  p.copyWith(checkInEnabled: !p.checkInEnabled),
+                            ),
                           ),
-                        ),
-                        OBSettingsToggleRow(
-                          key: const ValueKey('notif-checkin'),
-                          label: _s(
-                            context,
-                            'Tages-Check-in',
-                            'Daily check-in',
-                            l10n: (l) => l.settingsDailyCheckInRowTitle,
+                        if (!parked(kRouteWater))
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-water'),
+                            label: _s(
+                              context,
+                              'Wasser',
+                              'Water',
+                              l10n: (l) => l.settingsWaterReminderRowTitle,
+                            ),
+                            value: prefs.waterEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) => p.copyWith(waterEnabled: !p.waterEnabled),
+                            ),
                           ),
-                          value: prefs.checkInEnabled,
-                          interactive: interactive,
-                          onToggle: () => _set(
-                            (p) =>
-                                p.copyWith(checkInEnabled: !p.checkInEnabled),
-                          ),
-                        ),
-                        OBSettingsToggleRow(
-                          key: const ValueKey('notif-water'),
-                          label: _s(
-                            context,
-                            'Wasser',
-                            'Water',
-                            l10n: (l) => l.settingsWaterReminderRowTitle,
-                          ),
-                          value: prefs.waterEnabled,
-                          interactive: interactive,
-                          onToggle: () => _set(
-                            (p) => p.copyWith(waterEnabled: !p.waterEnabled),
-                          ),
-                        ),
-                        if (prefs.waterEnabled)
+                        if (!parked(kRouteWater) && prefs.waterEnabled)
                           OBSettingsValueRow(
                             key: const ValueKey('notif-water-interval'),
                             label: _s(
@@ -1021,8 +1035,12 @@ class NotificationSettingsView extends StatelessWidget {
                 Text(
                   _s(
                     sheet,
-                    'Hinweise: auffällige Werte, Bandstatus, unbestätigter Alarm, fehlender Abend-Alarm, fertige Erholung, Wochenrückblick, erkannte Aktivitäten — nur mit eingeschaltetem Schalter.',
-                    'Alerts: unusual readings, band status, unconfirmed alarm, missing evening alarm, recovery ready, weekly lookback, detected activities — only when that switch is on.',
+                    releaseReduced
+                        ? 'Hinweise: auffällige Werte, Bandstatus, unbestätigter Alarm, fehlender Abend-Alarm, fertige Erholung — nur mit eingeschaltetem Schalter.'
+                        : 'Hinweise: auffällige Werte, Bandstatus, unbestätigter Alarm, fehlender Abend-Alarm, fertige Erholung, Wochenrückblick, erkannte Aktivitäten — nur mit eingeschaltetem Schalter.',
+                    releaseReduced
+                        ? 'Alerts: unusual readings, band status, unconfirmed alarm, missing evening alarm, recovery ready — only when that switch is on.'
+                        : 'Alerts: unusual readings, band status, unconfirmed alarm, missing evening alarm, recovery ready, weekly lookback, detected activities — only when that switch is on.',
                   ),
                   style: sp.text(14),
                 ),
@@ -1030,8 +1048,12 @@ class NotificationSettingsView extends StatelessWidget {
                 Text(
                   _s(
                     sheet,
-                    'Erinnerungen: Bewegung, Schlafenszeit, Schrittziel, Medikamente, Check-in, Wasser.',
-                    'Reminders: movement, bedtime, step goal, medication, check-in, water.',
+                    releaseReduced
+                        ? 'Erinnerungen: Bewegung, Schrittziel.'
+                        : 'Erinnerungen: Bewegung, Schlafenszeit, Schrittziel, Medikamente, Check-in, Wasser.',
+                    releaseReduced
+                        ? 'Reminders: movement, step goal.'
+                        : 'Reminders: movement, bedtime, step goal, medication, check-in, water.',
                   ),
                   style: sp.text(14),
                 ),

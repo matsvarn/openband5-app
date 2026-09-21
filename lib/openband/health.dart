@@ -18,7 +18,15 @@ import 'weight.dart';
 
 class OpenBandHealth extends StatefulWidget {
   final OpenBandController controller;
-  const OpenBandHealth({super.key, required this.controller});
+
+  /// Stored band metrics only, with a back header titled Messwerte.
+  /// Weight, manual VO₂, labs and glucose stay on the full Gesundheit tab.
+  final bool bandMetricsOnly;
+  const OpenBandHealth({
+    super.key,
+    required this.controller,
+    this.bandMetricsOnly = false,
+  });
   @override
   State<OpenBandHealth> createState() => _OpenBandHealthState();
 }
@@ -33,26 +41,31 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
       final p = OB.of(context);
       final c = widget.controller;
       final day = c.day;
-      return ColoredBox(
+      final page = ColoredBox(
         color: p.canvas,
         child: ListView(
           key: const PageStorageKey('openband.health'),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Text(
-                'Gesundheit',
-                style: p.text(30, weight: FontWeight.w800, display: true),
+            if (widget.bandMetricsOnly)
+              const OBPageHeader(title: 'Messwerte', subtitle: '')
+            else
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  'Gesundheit',
+                  style: p.text(30, weight: FontWeight.w800, display: true),
+                ),
               ),
-            ),
             const SizedBox(height: 12),
-            OBSegmented(
-              labels: const ['7 Nächte', '30 Nächte'],
-              selected: nights == 7 ? 0 : 1,
-              onChanged: (i) => setState(() => nights = i == 0 ? 7 : 30),
-            ),
-            const SizedBox(height: 12),
+            if (!widget.bandMetricsOnly) ...[
+              OBSegmented(
+                labels: const ['7 Nächte', '30 Nächte'],
+                selected: nights == 7 ? 0 : 1,
+                onChanged: (i) => setState(() => nights = i == 0 ? 7 : 30),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (day != null) ...[
               OBAdaptiveValues(
                 children: [
@@ -143,115 +156,119 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
               ),
               const SizedBox(height: 10),
             ],
-            for (final (key, label, unit, icon, color, tint) in [
-              (
-                MetricKey.hrv,
-                'HRV',
-                'ms',
-                LucideIcons.activity,
-                p.recovery,
-                p.recoveryTint,
-              ),
-              (
-                MetricKey.restingHr,
-                'Ruhepuls',
-                '/min',
-                LucideIcons.heart,
-                p.pulse,
-                p.pulseTint,
-              ),
-              (
-                MetricKey.recovery,
-                'Erholung',
-                'von 100',
-                LucideIcons.heartPulse,
-                p.recovery,
-                p.recoveryTint,
-              ),
-            ])
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: FutureBuilder<List<MetricPoint>>(
-                  key: ValueKey('${key.name}-$nights-${c.selectedDay}'),
-                  future: c.repository.readMetricHistory(
-                    key,
-                    c.selectedDay,
-                    nights,
+            if (!widget.bandMetricsOnly)
+              for (final (key, label, unit, icon, color, tint) in [
+                (
+                  MetricKey.hrv,
+                  'HRV',
+                  'ms',
+                  LucideIcons.activity,
+                  p.recovery,
+                  p.recoveryTint,
+                ),
+                (
+                  MetricKey.restingHr,
+                  'Ruhepuls',
+                  '/min',
+                  LucideIcons.heart,
+                  p.pulse,
+                  p.pulseTint,
+                ),
+                (
+                  MetricKey.recovery,
+                  'Erholung',
+                  'von 100',
+                  LucideIcons.heartPulse,
+                  p.recovery,
+                  p.recoveryTint,
+                ),
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: FutureBuilder<List<MetricPoint>>(
+                    key: ValueKey('${key.name}-$nights-${c.selectedDay}'),
+                    future: c.repository.readMetricHistory(
+                      key,
+                      c.selectedDay,
+                      nights,
+                    ),
+                    builder: (context, snapshot) => OBTrendCard(
+                      label: label,
+                      unit: unit,
+                      icon: icon,
+                      color: color,
+                      tint: tint,
+                      nights: nights,
+                      points: snapshot.data,
+                      baseline: switch (key) {
+                        MetricKey.hrv => day?.hrv.baseline,
+                        MetricKey.restingHr => day?.restingHr.baseline,
+                        MetricKey.respiration => day?.respiration.baseline,
+                        MetricKey.skinTemperature => null,
+                        MetricKey.recovery => null,
+                        MetricKey.sleepDuration => day?.sleep.duration.baseline,
+                        MetricKey.strain => day?.strain.baseline,
+                      },
+                      error: snapshot.hasError,
+                    ),
                   ),
-                  builder: (context, snapshot) => OBTrendCard(
-                    label: label,
-                    unit: unit,
-                    icon: icon,
-                    color: color,
-                    tint: tint,
-                    nights: nights,
-                    points: snapshot.data,
-                    baseline: switch (key) {
-                      MetricKey.hrv => day?.hrv.baseline,
-                      MetricKey.restingHr => day?.restingHr.baseline,
-                      MetricKey.respiration => day?.respiration.baseline,
-                      MetricKey.skinTemperature => null,
-                      MetricKey.recovery => null,
-                      MetricKey.sleepDuration => day?.sleep.duration.baseline,
-                      MetricKey.strain => day?.strain.baseline,
-                    },
-                    error: snapshot.hasError,
+                ),
+            if (!widget.bandMetricsOnly) ...[
+              OBCard(
+                padding: EdgeInsets.zero,
+                child: _HealthWeightRow(
+                  key: ValueKey('weight-${c.selectedDay}'),
+                  repository: c.repository,
+                  endDay: c.selectedDay,
+                  now: c.now,
+                  refreshRequest: c.refreshRequest,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OBCard(
+                padding: EdgeInsets.zero,
+                child: _HealthVo2Row(
+                  key: ValueKey('vo2-${c.selectedDay}'),
+                  repository: c.repository,
+                  endDay: c.selectedDay,
+                  now: c.now,
+                  refreshRequest: c.refreshRequest,
+                ),
+              ),
+              const SizedBox(height: 10),
+              OBCard(
+                child: SetRow(
+                  LucideIcons.flaskConical,
+                  p.muted,
+                  'Laborwerte',
+                  key: const ValueKey('laborwerte'),
+                  onTap: () => OpenBandLabs.push(
+                    context,
+                    repository: c.repository,
+                    now: c.now,
                   ),
                 ),
               ),
-            OBCard(
-              padding: EdgeInsets.zero,
-              child: _HealthWeightRow(
-                key: ValueKey('weight-${c.selectedDay}'),
-                repository: c.repository,
-                endDay: c.selectedDay,
-                now: c.now,
-                refreshRequest: c.refreshRequest,
-              ),
-            ),
-            const SizedBox(height: 10),
-            OBCard(
-              padding: EdgeInsets.zero,
-              child: _HealthVo2Row(
-                key: ValueKey('vo2-${c.selectedDay}'),
-                repository: c.repository,
-                endDay: c.selectedDay,
-                now: c.now,
-                refreshRequest: c.refreshRequest,
-              ),
-            ),
-            const SizedBox(height: 10),
-            OBCard(
-              child: SetRow(
-                LucideIcons.flaskConical,
-                p.muted,
-                'Laborwerte',
-                key: const ValueKey('laborwerte'),
-                onTap: () => OpenBandLabs.push(
-                  context,
-                  repository: c.repository,
-                  now: c.now,
+              const SizedBox(height: 10),
+              OBCard(
+                child: SetRow(
+                  LucideIcons.droplet,
+                  p.muted,
+                  'Glukose',
+                  key: const ValueKey('glukose'),
+                  onTap: () => OpenBandGlucose.push(
+                    context,
+                    repository: c.repository,
+                    now: c.now,
+                    synthetic: c.day?.synthetic == true,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            OBCard(
-              child: SetRow(
-                LucideIcons.droplet,
-                p.muted,
-                'Glukose',
-                key: const ValueKey('glukose'),
-                onTap: () => OpenBandGlucose.push(
-                  context,
-                  repository: c.repository,
-                  now: c.now,
-                  synthetic: c.day?.synthetic == true,
-                ),
-              ),
-            ),
+            ],
           ],
         ),
       );
+      return page;
     },
   );
 }

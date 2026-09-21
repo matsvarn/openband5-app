@@ -7,6 +7,7 @@ import 'dart:math';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ai/ai_prefs.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/coach/coach_config.dart';
 import 'package:openstrap_edge/coach/coach_engine.dart';
@@ -18,6 +19,7 @@ import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_service.dart';
 import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
+import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/medication.dart';
 import 'package:openstrap_edge/openband/medication_data.dart';
 import 'package:openstrap_edge/openband/nutrition_route.dart';
@@ -132,6 +134,7 @@ void main() {
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+      NotificationCenter.instance.releaseReduced = false;
       cancelled.clear();
       svc.invalidatePermissionCache();
       svc.debugProbePermission = () async => true;
@@ -146,6 +149,7 @@ void main() {
     });
 
     tearDown(() {
+      NotificationCenter.instance.releaseReduced = kOpenBandReleaseReduced;
       svc.debugProbePermission = null;
       svc.debugRequestPermission = null;
       svc.debugCancel = null;
@@ -218,6 +222,58 @@ void main() {
         ),
       ]);
       expect(maxDepth, 1);
+    });
+
+    test('reduced release cancels parked ids and does not rearm them', () async {
+      var armed = 0;
+      svc.debugZonedSchedule = () async {
+        armed++;
+      };
+      final enabled = NotificationPrefs(
+        medsEnabled: true,
+        remindersEnabled: true,
+        waterEnabled: true,
+        waterIntervalMin: 60,
+        checkInEnabled: true,
+        windDownEnabled: true,
+        alarmNightCheckEnabled: false,
+        movementEnabled: true,
+        stepGoalEnabled: true,
+        recoveryEnabled: true,
+      );
+      await NotificationCenter.instance.scheduleStandingReminders(
+        enabled,
+        bedtimeMinOfDay: 23 * 60,
+        weeklyFinding: 'A week happened',
+        checkInDoneToday: false,
+        medInstants: null,
+        armedTonight: false,
+        now: DateTime(2026, 8, 20, 10),
+        releaseReduced: true,
+      );
+      expect(cancelled, contains(NotificationService.idWeeklyRecap));
+      expect(cancelled, contains(NotificationService.idWindDown));
+      expect(cancelled, contains(NotificationService.idCheckIn));
+      expect(cancelled, contains(NotificationService.idWaterBase));
+      expect(cancelled, contains(NotificationService.idMedsBase));
+      expect(cancelled, contains(NotificationService.idAlarmNightCheck));
+      expect(
+        cancelled,
+        isNot(contains(NotificationService.idStillness)),
+      );
+      await NotificationCenter.instance.scheduleAiReminders(
+        enabled,
+        const AiPrefs(),
+        aiConfigured: true,
+        bedtimeMinOfDay: 23 * 60,
+        journalDoneToday: false,
+        sweepHeadline: 'A finding',
+        releaseReduced: true,
+      );
+      expect(cancelled, contains(NotificationService.idMorningBrief));
+      expect(cancelled, contains(NotificationService.idEveningBrief));
+      expect(cancelled, contains(NotificationService.idJournalLog));
+      expect(armed, 0);
     });
   });
 

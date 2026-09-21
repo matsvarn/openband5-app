@@ -20,12 +20,16 @@ enum ShellDomain {
 class AppShell extends StatefulWidget {
   final Widget Function(BuildContext, ShellDomain) builder;
   final ShellDomain initial;
+
+  /// Null keeps the four-tab shell. A single domain hides the bar.
+  final List<ShellDomain>? domains;
   final ValueChanged<ShellDomain>? onSelect;
   final Widget? banner;
   const AppShell({
     super.key,
     required this.builder,
     this.initial = ShellDomain.home,
+    this.domains,
     this.onSelect,
     this.banner,
   });
@@ -34,8 +38,13 @@ class AppShell extends StatefulWidget {
 }
 
 class AppShellState extends State<AppShell> {
+  List<ShellDomain> get _domains =>
+      widget.domains == null || widget.domains!.isEmpty
+      ? ShellDomain.values
+      : widget.domains!;
+
   late ShellDomain _current = widget.initial;
-  late final Set<ShellDomain> _built = {widget.initial};
+  late Set<ShellDomain> _built = {widget.initial};
   final _keys = {
     for (final d in ShellDomain.values) d: GlobalKey<NavigatorState>(),
   };
@@ -48,7 +57,17 @@ class AppShellState extends State<AppShell> {
     });
   }
 
+  @override
+  void initState() {
+    super.initState();
+    if (!_domains.contains(_current)) {
+      _current = _domains.first;
+      _built = {_current};
+    }
+  }
+
   void select(ShellDomain domain) {
+    if (!_domains.contains(domain)) return;
     setState(() {
       _current = domain;
       _built.add(domain);
@@ -57,6 +76,7 @@ class AppShellState extends State<AppShell> {
   }
 
   void open(ShellDomain domain, Widget screen) {
+    if (!_domains.contains(domain)) return;
     select(domain);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -105,7 +125,7 @@ class AppShellState extends State<AppShell> {
               ],
             ),
           ),
-          bottomNavigationBar: !atRoot
+          bottomNavigationBar: !atRoot || _domains.length < 2
               ? null
               : Container(
                   decoration: BoxDecoration(
@@ -119,7 +139,7 @@ class AppShellState extends State<AppShell> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          for (final domain in ShellDomain.values)
+                          for (final domain in _domains)
                             Expanded(child: _tab(context, domain)),
                         ],
                       ),

@@ -6,8 +6,9 @@
     {
       "id": "release-navigation",
       "outcome": "One Übersicht root; retained band/sleep/metric/Profile/data destinations; parked entry points closed, including saved tabs, notifications and gestures. Existing active sessions remain finishable.",
-      "status": "in-progress",
-      "owner": "release-implementation"
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Navigation and parked-entry gates reviewed; 2206 OpenBand tests, 131 affected notification tests, analysis and manifest pass. Pro and mini release captures inspected, including missing/error and 2x lower content. See IMPLEMENTATION_VERIFICATION.md, 22 September 2026."
     },
     {
       "id": "release-sleep-metrics",
@@ -22,7 +23,9 @@
     {
       "id": "release-data",
       "outcome": "Essential Profile/settings and export, backup, restore; private export migration and retained-source evidence checked.",
-      "status": "pending"
+      "status": "in-progress",
+      "owner": "restore-owner",
+      "evidence": "Private-copy audit found durable restore omissions. Isolated worker7f1de9a2 assignment227c5ac2 owns repair; no private records supplied to worker."
     },
     {
       "id": "release-paper",

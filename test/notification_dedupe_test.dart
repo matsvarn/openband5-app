@@ -108,16 +108,19 @@ void main() {
   final center = NotificationCenter.instance;
   late Future<bool> Function(NotificationEvent, {bool allowPermissionPrompt})
       original;
+  final previousReduced = center.releaseReduced;
 
   setUp(() {
     // Quiet hours off + all categories on, so gating never interferes with the
     // dedupe-focused tests (the gating tests set their own values).
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
     original = center.presentSink;
+    center.releaseReduced = false;
   });
 
   tearDown(() {
     center.presentSink = original;
+    center.releaseReduced = previousReduced;
   });
 
   group('emit dedupe (issue #136)', () {

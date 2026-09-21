@@ -20,6 +20,10 @@ import 'theme.dart';
 class OpenBandOverview extends StatelessWidget {
   final OpenBandController controller;
   final VoidCallback? onProfile, onJournal, onNutrition, onTraining, onSync;
+
+  /// Paper order for the reduced release: rings, night, HRV and Ruhepuls,
+  /// then Alle Messwerte. Steps stay, without water or energy.
+  final bool reduced;
   const OpenBandOverview({
     super.key,
     required this.controller,
@@ -28,6 +32,7 @@ class OpenBandOverview extends StatelessWidget {
     this.onNutrition,
     this.onTraining,
     this.onSync,
+    this.reduced = false,
   });
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -140,6 +145,9 @@ class OpenBandOverview extends StatelessWidget {
                   onResume: onSync,
                   now: controller.now,
                 ),
+                if (reduced &&
+                    (day.correction != null || controller.calculating))
+                  CorrectionBanner(controller: controller),
                 OBCard(
                   padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                   child: Column(
@@ -289,8 +297,13 @@ class OpenBandOverview extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (day.correction != null || controller.calculating)
+                if (!reduced &&
+                    (day.correction != null || controller.calculating))
                   CorrectionBanner(controller: controller),
+                if (reduced) ...[
+                  _ReleaseNight(night: day.sleep, onOpen: sleep),
+                  const SizedBox(height: 12),
+                ],
                 OBAdaptiveValues(
                   children: [
                     OBMetricCard(
@@ -331,67 +344,84 @@ class OpenBandOverview extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: sleep,
-                  borderRadius: BorderRadius.circular(20),
-                  child: OBCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Deine Nacht',
-                                style: p.text(15, weight: FontWeight.w600),
-                              ),
-                            ),
-                            Text(
-                              '${obTime(day.sleep.onset)}–${obTime(day.sleep.wake)}',
-                              style: p.text(12, color: p.muted),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              LucideIcons.chevronRight,
-                              size: 14,
-                              color: p.muted,
-                            ),
-                          ],
+                if (reduced) ...[
+                  const SizedBox(height: 12),
+                  _MesswerteRow(
+                    onOpen: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => OpenBandHealth(
+                          controller: controller,
+                          bandMetricsOnly: true,
                         ),
-                        const SizedBox(height: 10),
-                        NightChart(night: day.sleep, showGapCaption: false),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: Wrap(
-                            alignment: WrapAlignment.spaceBetween,
-                            spacing: 20,
-                            runSpacing: 4,
+                      ),
+                    ),
+                  ),
+                ],
+                if (!reduced) ...[
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: sleep,
+                    borderRadius: BorderRadius.circular(20),
+                    child: OBCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Text(
-                                '${obDuration(day.sleep.bedMinutes)} im Bett',
-                                style: p.text(12, color: p.muted),
+                              Expanded(
+                                child: Text(
+                                  'Deine Nacht',
+                                  style: p.text(15, weight: FontWeight.w600),
+                                ),
                               ),
                               Text(
-                                '${obNumber(day.sleep.awakeMinutes)} Min. wach',
+                                '${obTime(day.sleep.onset)}–${obTime(day.sleep.wake)}',
                                 style: p.text(12, color: p.muted),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                LucideIcons.chevronRight,
+                                size: 14,
+                                color: p.muted,
                               ),
                             ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 10),
+                          NightChart(night: day.sleep, showGapCaption: false),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Wrap(
+                              alignment: WrapAlignment.spaceBetween,
+                              spacing: 20,
+                              runSpacing: 4,
+                              children: [
+                                Text(
+                                  '${obDuration(day.sleep.bedMinutes)} im Bett',
+                                  style: p.text(12, color: p.muted),
+                                ),
+                                Text(
+                                  '${obNumber(day.sleep.awakeMinutes)} Min. wach',
+                                  style: p.text(12, color: p.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
+                if (reduced) const SizedBox(height: 12),
                 StepsCard(
                   day: day,
                   now: controller.now,
-                  onNutrition: onNutrition,
+                  onNutrition: reduced ? null : onNutrition,
+                  showIntake: !reduced,
                 ),
                 const SizedBox(height: 12),
-                if (onJournal != null)
+                if (!reduced && onJournal != null)
                   OBCard(
                     child: _ActionRow(
                       'Dein Journal',
@@ -399,7 +429,7 @@ class OpenBandOverview extends StatelessWidget {
                       onJournal!,
                     ),
                   ),
-                if (onTraining != null)
+                if (!reduced && onTraining != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: OBCard(
@@ -473,9 +503,103 @@ List<DateTime> _sleepAxisTimes(SleepNight night) {
   ];
 }
 
+class _ReleaseNight extends StatelessWidget {
+  final SleepNight night;
+  final VoidCallback onOpen;
+  const _ReleaseNight({required this.night, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Deine Nacht',
+                  style: p.text(20, weight: FontWeight.w800, display: true),
+                ),
+              ),
+              Text(
+                '${obTime(night.onset)} – ${obTime(night.wake)}',
+                style: p.text(13, weight: FontWeight.w500, color: p.muted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(24),
+          child: OBCard(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                NightChart(night: night, showGapCaption: false),
+                if (OBStageLegend.facts(
+                  night,
+                  p,
+                  onlyStored: true,
+                ).isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  OBStageLegend(night: night, onlyStored: true),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MesswerteRow extends StatelessWidget {
+  final VoidCallback onOpen;
+  const _MesswerteRow({required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return InkWell(
+      key: const ValueKey('alle-messwerte'),
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(24),
+      child: OBCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 52),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Alle Messwerte',
+                  style: p.text(15, weight: FontWeight.w600),
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class OBStageLegend extends StatelessWidget {
   final SleepNight night;
-  const OBStageLegend({super.key, required this.night});
+
+  /// Omit stages whose stored minutes are absent. A dash is not a stage.
+  final bool onlyStored;
+  const OBStageLegend({
+    super.key,
+    required this.night,
+    this.onlyStored = false,
+  });
 
   static const double swatchSize = 8;
   static const double swatchGap = 6;
@@ -494,23 +618,33 @@ class OBStageLegend extends StatelessWidget {
 
   static List<({String label, Color? swatch, String value})> facts(
     SleepNight night,
-    OB p,
-  ) => [
-    (label: 'Tief', swatch: p.stageDeep, value: obDuration(night.deepMinutes)),
-    (
-      label: 'Leicht',
-      swatch: p.stageLight,
-      value: obDuration(night.lightMinutes),
-    ),
-    (label: 'REM', swatch: p.stageRem, value: obDuration(night.remMinutes)),
-    (
-      label: 'Wach',
-      swatch: p.wake,
-      value: night.awakeMinutes == null
-          ? '—'
-          : '${obNumber(night.awakeMinutes)} Min.',
-    ),
-    (label: 'Im Bett', swatch: null, value: obDuration(night.bedMinutes)),
+    OB p, {
+    bool onlyStored = false,
+  }) => [
+    if (!onlyStored || night.deepMinutes != null)
+      (
+        label: 'Tief',
+        swatch: p.stageDeep,
+        value: obDuration(night.deepMinutes),
+      ),
+    if (!onlyStored || night.lightMinutes != null)
+      (
+        label: 'Leicht',
+        swatch: p.stageLight,
+        value: obDuration(night.lightMinutes),
+      ),
+    if (!onlyStored || night.remMinutes != null)
+      (label: 'REM', swatch: p.stageRem, value: obDuration(night.remMinutes)),
+    if (!onlyStored || night.awakeMinutes != null)
+      (
+        label: 'Wach',
+        swatch: p.wake,
+        value: night.awakeMinutes == null
+            ? '—'
+            : '${obNumber(night.awakeMinutes)} Min.',
+      ),
+    if (!onlyStored || night.bedMinutes != null)
+      (label: 'Im Bett', swatch: null, value: obDuration(night.bedMinutes)),
   ];
 
   static int columnsFor({
@@ -533,7 +667,7 @@ class OBStageLegend extends StatelessWidget {
     final dir = Directionality.of(context);
     final labels = labelStyle(p, scaler.scale(12));
     final values = valueStyle(p, scaler.scale(17));
-    final items = facts(night, p);
+    final items = facts(night, p, onlyStored: onlyStored);
     final itemWidths = <double>[];
     for (final item in items) {
       final labelWidth =

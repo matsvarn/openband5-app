@@ -19,6 +19,7 @@ import 'openband/exercise_picker.dart';
 import 'openband/template_editor.dart';
 import 'openband/templates.dart';
 import 'openband/session.dart';
+import 'openband/release_scope.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'notify/notification_prefs.dart';
@@ -67,12 +68,17 @@ class OpenBandGallery extends StatefulWidget {
   final bool showControls;
   final Brightness initialBrightness;
   final double? initialTextScale;
+
+  /// Full gallery by default. The release scenario uses the same reduced
+  /// surface as a production build, without a personal database or Bluetooth.
+  final bool releaseReduced;
   const OpenBandGallery({
     super.key,
     required this.repository,
     this.showControls = true,
     this.initialBrightness = Brightness.light,
     this.initialTextScale,
+    this.releaseReduced = false,
   });
   @override
   State<OpenBandGallery> createState() => _OpenBandGalleryState();
@@ -174,21 +180,25 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     ),
   );
   Widget _shell(BuildContext context) => AppShell(
+    domains: widget.releaseReduced ? kOpenBandReleaseDomains : null,
     onSelect: (domain) {
       if (domain == ShellDomain.health) controller.refresh();
     },
     builder: (c, domain) => switch (domain) {
       ShellDomain.home => OpenBandOverview(
         controller: controller,
+        reduced: widget.releaseReduced,
         onProfile: () => _options(context),
-        onNutrition: () => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) => OpenBandNutritionRoute(
-              controller: controller,
-              onBarcode: _syntheticBarcode,
-            ),
-          ),
-        ),
+        onNutrition: widget.releaseReduced
+            ? null
+            : () => Navigator.of(c).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => OpenBandNutritionRoute(
+                    controller: controller,
+                    onBarcode: _syntheticBarcode,
+                  ),
+                ),
+              ),
         onSync: () {
           widget.repository.scenario = SyntheticScenario.complete;
           controller.updateBand(widget.repository.band);
@@ -407,85 +417,91 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               },
             ),
           ),
-          const ListTile(title: Text('Zyklustage · synthetische Zustände')),
-          ListTile(
-            title: const Text('Zyklustage'),
-            onTap: () {
-              widget.repository.seedCycleMedianFixture();
-              Navigator.pop(c);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OpenBandCycle(
-                    repository: widget.repository,
-                    day: '2026-09-15',
-                    now: () => DateTime(2026, 9, 15, 9, 41),
-                    synthetic: true,
+          if (!widget.releaseReduced)
+            const ListTile(title: Text('Zyklustage · synthetische Zustände')),
+          if (!widget.releaseReduced)
+            ListTile(
+              title: const Text('Zyklustage'),
+              onTap: () {
+                widget.repository.seedCycleMedianFixture();
+                Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OpenBandCycle(
+                      repository: widget.repository,
+                      day: '2026-09-15',
+                      now: () => DateTime(2026, 9, 15, 9, 41),
+                      synthetic: true,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            title: const Text('Zyklustage · Mediane'),
-            onTap: () {
-              widget.repository.seedCycleMedianFixture();
-              Navigator.pop(c);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OpenBandCycleMedians(
-                    repository: widget.repository,
-                    day: '2026-09-15',
-                    now: () => DateTime(2026, 9, 15, 9, 41),
-                    synthetic: true,
+                );
+              },
+            ),
+          if (!widget.releaseReduced)
+            ListTile(
+              title: const Text('Zyklustage · Mediane'),
+              onTap: () {
+                widget.repository.seedCycleMedianFixture();
+                Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OpenBandCycleMedians(
+                      repository: widget.repository,
+                      day: '2026-09-15',
+                      now: () => DateTime(2026, 9, 15, 9, 41),
+                      synthetic: true,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            title: const Text('Zyklus · Vergleich'),
-            onTap: () {
-              widget.repository.seedCycleComparisonFixture();
-              Navigator.pop(c);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OpenBandCycleComparison(
-                    repository: widget.repository,
-                    day: '2026-09-15',
-                    now: () => DateTime(2026, 9, 15, 9, 41),
-                    synthetic: true,
+                );
+              },
+            ),
+          if (!widget.releaseReduced)
+            ListTile(
+              title: const Text('Zyklus · Vergleich'),
+              onTap: () {
+                widget.repository.seedCycleComparisonFixture();
+                Navigator.pop(c);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OpenBandCycleComparison(
+                      repository: widget.repository,
+                      day: '2026-09-15',
+                      now: () => DateTime(2026, 9, 15, 9, 41),
+                      synthetic: true,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          const ListTile(title: Text('Übungen · synthetische Zustände')),
-          ListTile(
-            title: const Text('Übung · Kopieren'),
-            onTap: () async {
-              Navigator.pop(c);
-              await widget.repository.createCustomExercise(
-                CustomExerciseDraft(
-                  id: 'gallery-curl',
-                  label: 'Kurzhantel-Curl',
-                  mode: ExerciseCaptureMode.repetitions,
-                  equipment: ExerciseEquipmentCategory.dumbbell,
-                  loadBasis: ExerciseLoadBasis.perDevice,
-                  deviceCount: 2,
-                  repetitionBasis: ExerciseRepetitionBasis.perSide,
-                  primaryMuscles: const ['biceps'],
-                  secondaryMuscles: const ['forearms'],
-                ),
-              );
-              if (!context.mounted) return;
-              await Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      OpenBandExercisePicker(repository: widget.repository),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
+          if (!widget.releaseReduced)
+            const ListTile(title: Text('Übungen · synthetische Zustände')),
+          if (!widget.releaseReduced)
+            ListTile(
+              title: const Text('Übung · Kopieren'),
+              onTap: () async {
+                Navigator.pop(c);
+                await widget.repository.createCustomExercise(
+                  CustomExerciseDraft(
+                    id: 'gallery-curl',
+                    label: 'Kurzhantel-Curl',
+                    mode: ExerciseCaptureMode.repetitions,
+                    equipment: ExerciseEquipmentCategory.dumbbell,
+                    loadBasis: ExerciseLoadBasis.perDevice,
+                    deviceCount: 2,
+                    repetitionBasis: ExerciseRepetitionBasis.perSide,
+                    primaryMuscles: const ['biceps'],
+                    secondaryMuscles: const ['forearms'],
+                  ),
+                );
+                if (!context.mounted) return;
+                await Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        OpenBandExercisePicker(repository: widget.repository),
+                  ),
+                );
+              },
+            ),
           const ListTile(title: Text('Alarm · synthetische Zustände')),
           ..._alarmGalleryStates().map(
             (entry) => ListTile(

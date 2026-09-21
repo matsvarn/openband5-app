@@ -26,7 +26,11 @@ import '../ui2.dart';
 import 'profile.dart';
 
 class BandGestures extends StatelessWidget {
-  const BandGestures({super.key});
+  /// Saved parked actions stay visible and do nothing. Production settings
+  /// passes the release switch; the default keeps the full gesture list.
+  final bool releaseReduced;
+
+  const BandGestures({super.key, this.releaseReduced = false});
 
   @override
   Widget build(BuildContext c) {
@@ -40,6 +44,7 @@ class BandGestures extends StatelessWidget {
         chosen: g.doubleTap,
         supported: g.supported,
         onPick: g.setDoubleTap,
+        releaseReduced: releaseReduced,
       ),
     );
   }
@@ -53,11 +58,16 @@ class BandGesturesView extends StatelessWidget {
 
   final ValueChanged<DeviceAction>? onPick;
 
+  /// Saved parked actions stay visible and do nothing. They cannot be
+  /// chosen again; another row is an explicit change.
+  final bool releaseReduced;
+
   const BandGesturesView({
     super.key,
     required this.chosen,
     required this.supported,
     this.onPick,
+    this.releaseReduced = false,
   });
 
   @override
@@ -68,7 +78,11 @@ class BandGesturesView extends StatelessWidget {
     // the way back out), then the in-app actions, then whatever the OS offered.
     final offered = [
       DeviceAction.none,
-      ...DeviceAction.values.where((a) => a.isInApp && supported.contains(a)),
+      ...DeviceAction.values.where((a) {
+        if (!a.isInApp || !supported.contains(a)) return false;
+        if (releaseReduced && a.releaseParked && a != chosen) return false;
+        return true;
+      }),
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
     final noPhoneActions = !offered.any((a) => a.isNative);
@@ -112,7 +126,12 @@ class BandGesturesView extends StatelessWidget {
                       _ActionRow(
                         action: a,
                         selected: a == chosen,
-                        onTap: onPick == null ? null : () => onPick!(a),
+                        inactive: releaseReduced && a.releaseParked,
+                        onTap:
+                            onPick == null ||
+                                (releaseReduced && a.releaseParked)
+                            ? null
+                            : () => onPick!(a),
                       ),
                   ]),
                   if (noPhoneActions) ...[
@@ -152,19 +171,29 @@ class BandGesturesView extends StatelessWidget {
 class _ActionRow extends StatelessWidget {
   final DeviceAction action;
   final bool selected;
+  final bool inactive;
   final VoidCallback? onTap;
 
-  const _ActionRow({required this.action, required this.selected, this.onTap});
+  const _ActionRow({
+    required this.action,
+    required this.selected,
+    this.inactive = false,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
     final l = AppLocalizations.of(c);
+    final inactiveLine = Localizations.localeOf(c).languageCode == 'de'
+        ? 'Gespeichert. In dieser Version ohne Wirkung.'
+        : 'Saved. It does nothing in this version.';
     return Pressable(
       onTap: onTap,
-      semanticLabel:
-          '${action.localizedLabel(c)}. ${action.localizedBlurb(c)}'
-          '${selected ? (l?.settingsSelectedSuffix ?? ' Selected.') : ''}',
+      semanticLabel: inactive
+          ? '${action.localizedLabel(c)}. $inactiveLine'
+          : '${action.localizedLabel(c)}. ${action.localizedBlurb(c)}'
+                '${selected ? (l?.settingsSelectedSuffix ?? ' Selected.') : ''}',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: ConstrainedBox(
@@ -185,6 +214,10 @@ class _ActionRow extends StatelessWidget {
                         weight: selected ? FontWeight.w600 : FontWeight.w500,
                       ),
                     ),
+                    if (inactive) ...[
+                      const SizedBox(height: 2),
+                      Text(inactiveLine, style: p.text(13, color: p.muted)),
+                    ],
                   ],
                 ),
               ),

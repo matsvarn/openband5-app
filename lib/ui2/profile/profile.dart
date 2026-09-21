@@ -18,6 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../../openband/alp_tokens.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
+import '../../openband/release_scope.dart';
 import '../../openband/theme.dart';
 import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
@@ -284,7 +285,10 @@ class _ProfileHomeState extends State<ProfileHome> {
           onDevices: () => _open(c, const MyDevices()),
           onSettings: () => _open(c, const MoreSettings()),
           onEdit: () => _open(c, const EditProfile()),
-          onCoach: () => _open(c, const CoachSetup()),
+          showCoach: !kOpenBandReleaseReduced,
+          onCoach: kOpenBandReleaseReduced
+              ? null
+              : () => _open(c, const CoachSetup()),
         ),
       );
 }
@@ -297,6 +301,7 @@ class ProfileHomeView extends StatelessWidget {
   final BandSnapshot? band;
   final String? bandName;
   final VoidCallback? onDevices, onSettings, onEdit, onCoach;
+  final bool showCoach;
 
   const ProfileHomeView(
       {super.key,
@@ -308,6 +313,7 @@ class ProfileHomeView extends StatelessWidget {
       this.onCoach,
       this.onSettings,
       this.onEdit,
+      this.showCoach = true,
       });
 
   @override
@@ -354,7 +360,8 @@ class ProfileHomeView extends StatelessWidget {
                   //
                   // `watch` rather than `read` so the sub-line stops saying
                   // "Not set up" the moment it is.
-                  Builder(builder: (c) => SetRow(
+                  if (showCoach)
+                    Builder(builder: (c) => SetRow(
                       LucideIcons.sparkles, C.purple,
                       AppLocalizations.of(c)?.profileAiCoach ?? 'AI coach',
                       sub: coachSubtitle(c) ??

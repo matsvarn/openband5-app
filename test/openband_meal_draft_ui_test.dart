@@ -21,7 +21,6 @@ class _DraftRepo extends SyntheticOpenBandRepository {
   int reads = 0;
   int restores = 0;
   bool failRead = false;
-  bool failDayRead = false;
   Completer<void>? readGate;
   Completer<void>? mealsGate;
   Completer<void>? restoreGate;

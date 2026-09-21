@@ -85,6 +85,7 @@ import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
+import '../openband/release_scope.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -157,6 +158,10 @@ class AppState extends ChangeNotifier {
   /// compute on read). Screens still guard on `repo == null` exactly as they did
   /// on `api`.
   LocalRepository? repo;
+
+  /// Reduced release suppresses parked reminders. The testing constructor
+  /// starts from the full schedule so existing cases keep their assertions.
+  bool releaseReduced = kOpenBandReleaseReduced;
 
   /// The on-device compute orchestrator. Kicked (light) after every drain/flush
   /// completion, and (heavy) on foreground finalize + throttled reconnect
@@ -1392,6 +1397,7 @@ class AppState extends ChangeNotifier {
       onMarkMoment: markMomentFromGesture,
       onWorkoutToggle: _toggleWorkoutFromGesture,
       onLogWater: _logWaterFromGesture,
+      releaseReduced: kOpenBandReleaseReduced,
     );
     engine = BleEngine(
       onRecord: _onRecord,
@@ -1498,7 +1504,7 @@ class AppState extends ChangeNotifier {
   /// stream arming throws). When supplied it is used AS GIVEN — its callbacks
   /// are the test's responsibility, not wired back into this AppState.
   @visibleForTesting
-  AppState.forTesting({BleEngine? engine}) {
+  AppState.forTesting({BleEngine? engine, this.releaseReduced = false}) {
     _background = false;
     _gestureDispatcher = GestureDispatcher(
       settings: gestureSettings,
@@ -1696,9 +1702,16 @@ class AppState extends ChangeNotifier {
   /// only — not proof the strap will buzz.
   Future<void> armWaterReminder([NotificationPrefs? prefs]) async {
     final p = prefs ?? await NotificationPrefs.load();
+    // In-memory timer only. A disabled plan does not open a radio.
+    final parkWater = openBandReleaseParksRoute(
+      kRouteWater,
+      reduced: releaseReduced,
+    );
     _waterBuzzer.configure(
-      enabled: p.waterEnabled,
-      slotMinutes: NotificationCenter.waterSlotMinutes(p),
+      enabled: !parkWater && p.waterEnabled,
+      slotMinutes: parkWater
+          ? const <int>[]
+          : NotificationCenter.waterSlotMinutes(p),
     );
   }
 
@@ -2911,7 +2924,8 @@ class AppState extends ChangeNotifier {
     // when the OS plugin later throws. Prefs off or a resolved list updates
     // / clears the buzzer here; an unknown read leaves it alone. OS cancel-
     // then-arm is not atomic — a throw after cancel can drop phone arms.
-    if (!prefs.medsEnabled) {
+    if (openBandReleaseParksRoute(kRouteMeds, reduced: releaseReduced) ||
+        !prefs.medsEnabled) {
       _medBuzzer.configure(slotInstants: const []);
     } else if (meds != null) {
       final plan = NotificationCenter.medReminderPlan(
@@ -2933,6 +2947,7 @@ class AppState extends ChangeNotifier {
       medInstants: meds,
       armedTonight: _alarmArmedTonight,
       now: clock,
+      releaseReduced: releaseReduced,
     );
     // AI slots. The nightly sweep is armed only when today actually produced
     // a finding — see [_sweepHeadlineNow], which is also where the body of
@@ -2945,6 +2960,7 @@ class AppState extends ChangeNotifier {
       bedtimeMinOfDay: cd.bedtimeMin,
       journalDoneToday: BriefingStore.journalDoneToday(),
       sweepHeadline: await _sweepHeadlineNow(),
+      releaseReduced: releaseReduced,
     );
     // Unknown/unreadable meds were preserved above. The refresh still fails
     // so LocalRepository can surface savedRemindersFailed — a successful
@@ -6831,7 +6847,7 @@ class AppState extends ChangeNotifier {
           body:
               'Nothing above resting effort has been recorded for '
               '${w.idleWatch.nudgeAfter.inMinutes} minutes. If the session '
-              'is over, finish it from the Workout tab.',
+              'is over, open the app to finish it.',
           date: todayLabel(),
           route: kRouteWorkoutIdle,
         ),

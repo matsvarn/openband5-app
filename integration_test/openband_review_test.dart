@@ -190,7 +190,6 @@ class _NutritionReviewRepo extends SyntheticOpenBandRepository {
   int draftReads = 0;
   int restores = 0;
   bool failDraftRead = false;
-  bool failDayRead = false;
 
   _NutritionReviewRepo(super.summary, super.detail, {super.activity, super.run})
     : super.fromMaps();
@@ -898,16 +897,18 @@ void main() {
         kOpenBandReviewFlow != 'respiration' &&
         kOpenBandReviewFlow != 'temperature' &&
         kOpenBandReviewFlow != 'weight' &&
-        kOpenBandReviewFlow != 'vo2') {
+        kOpenBandReviewFlow != 'vo2' &&
+        kOpenBandReviewFlow != 'release') {
       throw StateError(
         'Unknown OPENBAND_REVIEW_FLOW: $kOpenBandReviewFlow '
-        '(expected all, journal, journal-hub, nutrition-entry, nutrition-parent, sleep-plan, exercise-picker, custom-exercise, exercise-copy, custom-load, glucose, medications, cycle, cycle-measurements, cycle-observations, cycle-gaps, cycle-medians, cycle-comparison, night-scalar, night-cards, sleep-legend, respiration, temperature, weight, or vo2)',
+        '(expected all, journal, journal-hub, nutrition-entry, nutrition-parent, sleep-plan, exercise-picker, custom-exercise, exercise-copy, custom-load, glucose, medications, cycle, cycle-measurements, cycle-observations, cycle-gaps, cycle-medians, cycle-comparison, night-scalar, night-cards, sleep-legend, respiration, temperature, weight, vo2, or release)',
       );
     }
     await initializeDateFormatting('de_DE');
     final semantics = tester.ensureSemantics();
     final previousHitTestPolicy = WidgetController.hitTestWarningShouldBeFatal;
     WidgetController.hitTestWarningShouldBeFatal = true;
+    var flowFailed = false;
     try {
       Finder verticalScrollable() => find.byWidgetPredicate(
         (widget) =>
@@ -948,9 +949,12 @@ void main() {
         SyntheticScenario scenario = SyntheticScenario.complete,
         Brightness brightness = Brightness.light,
         double? scale,
+        bool release = false,
+        bool failRead = false,
       }) async {
         final repository = await loadGalleryRepository();
         repository.scenario = scenario;
+        repository.failDayRead = failRead;
         await tester.pumpWidget(
           OpenBandGallery(
             key: UniqueKey(),
@@ -958,6 +962,7 @@ void main() {
             showControls: false,
             initialBrightness: brightness,
             initialTextScale: scale,
+            releaseReduced: release,
           ),
         );
         await tester.pumpAndSettle();
@@ -20406,6 +20411,85 @@ void main() {
 
       binding.reportData ??= <String, dynamic>{};
       binding.reportData!['flow'] = kOpenBandReviewFlow;
+      if (kOpenBandReviewFlow == 'release') {
+        Future<void> openMesswerte(String name) async {
+          final row = find.byKey(const ValueKey('alle-messwerte'));
+          final scrollable = verticalScrollable().last;
+          tester.state<ScrollableState>(scrollable).position.jumpTo(0);
+          await tester.pump();
+          await tester.scrollUntilVisible(
+            row,
+            200,
+            scrollable: scrollable,
+          );
+          await tester.tap(row);
+          await tester.pumpAndSettle();
+          expect(find.text('Messwerte'), findsOneWidget);
+          expect(find.text('7 Nächte'), findsNothing);
+          expect(find.text('Laborwerte'), findsNothing);
+          expect(find.text('Glukose'), findsNothing);
+          expect(find.text('Atemfrequenz'), findsOneWidget);
+          expect(find.text('Hauttemperatur'), findsOneWidget);
+          final back = tester.getRect(find.byTooltip('Zurück').last);
+          final inset =
+              tester.view.padding.top / tester.view.devicePixelRatio;
+          expect(
+            back.top,
+            greaterThanOrEqualTo(inset),
+            reason: 'Messwerte header must clear the status-bar inset',
+          );
+          await capture(name);
+          await reviewTapHeaderBack(tester);
+        }
+
+        await mount(release: true);
+        expect(find.text('Training'), findsNothing);
+        expect(find.text('Journal'), findsNothing);
+        expect(find.text('Wasser'), findsNothing);
+        expect(find.text('Energie'), findsNothing);
+        expect(find.text('Alle Messwerte'), findsOneWidget);
+        expect(find.text('Dein Journal'), findsNothing);
+        await capture('release-happy-light');
+        await tester.scrollUntilVisible(
+          find.textContaining('Datenstand'),
+          300,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-happy-light-bottom');
+        await openMesswerte('release-messwerte-light');
+
+        await mount(release: true, brightness: Brightness.dark);
+        await capture('release-happy-dark');
+        await tester.scrollUntilVisible(
+          find.textContaining('Datenstand'),
+          300,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-happy-dark-bottom');
+        await openMesswerte('release-messwerte-dark');
+
+        await mount(release: true, scenario: SyntheticScenario.missing);
+        expect(find.text('Tief'), findsNothing);
+        expect(find.text('Wasser'), findsNothing);
+        await capture('release-missing');
+        await openMesswerte('release-messwerte-missing');
+
+        await mount(release: true, failRead: true);
+        expect(find.text('Daten konnten nicht geladen werden.'), findsOneWidget);
+        expect(find.text('Alle Messwerte'), findsNothing);
+        await capture('release-error');
+
+        await mount(release: true, scale: 2);
+        expect(find.text('Training'), findsNothing);
+        await capture('release-large');
+        await tester.scrollUntilVisible(
+          find.textContaining('Datenstand'),
+          300,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-large-bottom');
+        return;
+      }
       if (kOpenBandReviewFlow == 'journal' ||
           kOpenBandReviewFlow == 'journal-hub') {
         await reviewJournal();
@@ -22246,10 +22330,15 @@ void main() {
 
       await reviewWeight();
       await reviewNutritionEntry();
+    } catch (_) {
+      flowFailed = true;
+      rethrow;
     } finally {
       WidgetController.hitTestWarningShouldBeFatal = previousHitTestPolicy;
       semantics.dispose();
-      reviewEnsureRequestedCaptures(captureFilter, capturedNames);
+      if (!flowFailed) {
+        reviewEnsureRequestedCaptures(captureFilter, capturedNames);
+      }
     }
   });
 }

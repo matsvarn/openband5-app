@@ -9,6 +9,7 @@ import 'openband/cycle.dart';
 import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
+import 'openband/release_scope.dart';
 import 'openband/screens.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
@@ -434,46 +435,67 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 Future<void> _nutritionBarcode(BuildContext context, String day, String meal) =>
     LogFoodSheet.show(context, date: day, meal: meal);
 
-Widget? screenForRoute(
+/// A reduced release has only Home. Retained screens stay gated in
+/// [releaseScreenForRoute]; a parked route still pushes nothing.
+/// A full development build keeps [domainForRoute].
+ShellDomain releaseDomainForRoute(String route, {required bool reduced}) {
+  if (reduced) return ShellDomain.home;
+  return domainForRoute(route);
+}
+
+ShellDomain releaseDomainForTab(int tab, {required bool reduced}) {
+  final domain = domainForTab(tab);
+  if (reduced && domain != ShellDomain.home) return ShellDomain.home;
+  return domain;
+}
+
+Widget? releaseScreenForRoute(
   String route, {
+  required bool reduced,
   OpenBandRepository? repository,
-}) => switch (routePath(route)) {
-  kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
-  kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
-  kRouteJournalCompose => const OpenBandJournalEditorRoute(),
-  kRouteBreathing => const CalmBreathing(),
-  // The hydration reminder lands on Nutrition, where the water tile carries
-  // its own − / + and is beside the food it belongs with. There used to be
-  // a whole screen for this one field; it was reachable ONLY from here,
-  // which is how the tile that everybody actually used stayed add-only for
-  // so long — the thing that could clear a value was behind a notification.
-  kRouteWater => OpenBandNutritionRoute(
-    date: todayLabel(),
-    onBarcode: _nutritionBarcode,
-  ),
-  // Same shape as water: a focused screen pushed over Journal. Missing or
-  // ended plans open the canonical day without mutating — the screen reads.
-  kRouteMeds => repository == null
-      ? null
-      : OpenBandMedications(
-          repository: repository,
-          day: todayLabel(),
-        ),
-  // The detected bout, with the three answers to it: log it, adjust the
-  // times first, or say it never happened.
-  kRouteWorkoutSuggestion => WorkoutSuggestionScreen(focusId: routeId(route)),
-  // Battery, band and sources all live behind this one.
-  kRouteProfile => const ProfileHome(),
-  // The alarm safety notifications land where either can actually be
-  // fixed — the schedule itself.
-  kRouteAlarm => const AlarmScreen(),
-  // The weekly recap used to land on the Health tab and push nothing,
-  // because there was no recap screen to push. There is now: the sweep's
-  // findings, which the app has been computing every night and delivering
-  // only as a notification you could dismiss into nothing.
-  kRouteRecap => const WhatChangedScreen(),
-  _ => null,
-};
+}) {
+  if (reduced && !openBandReleaseKeepsRoute(route)) return null;
+  return screenForRoute(route, repository: repository);
+}
+
+Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
+    switch (routePath(route)) {
+      kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
+      kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
+      kRouteJournalCompose => const OpenBandJournalEditorRoute(),
+      kRouteBreathing => const CalmBreathing(),
+      // The hydration reminder lands on Nutrition, where the water tile carries
+      // its own − / + and is beside the food it belongs with. There used to be
+      // a whole screen for this one field; it was reachable ONLY from here,
+      // which is how the tile that everybody actually used stayed add-only for
+      // so long — the thing that could clear a value was behind a notification.
+      kRouteWater => OpenBandNutritionRoute(
+        date: todayLabel(),
+        onBarcode: _nutritionBarcode,
+      ),
+      // Same shape as water: a focused screen pushed over Journal. Missing or
+      // ended plans open the canonical day without mutating — the screen reads.
+      kRouteMeds =>
+        repository == null
+            ? null
+            : OpenBandMedications(repository: repository, day: todayLabel()),
+      // The detected bout, with the three answers to it: log it, adjust the
+      // times first, or say it never happened.
+      kRouteWorkoutSuggestion => WorkoutSuggestionScreen(
+        focusId: routeId(route),
+      ),
+      // Battery, band and sources all live behind this one.
+      kRouteProfile => const ProfileHome(),
+      // The alarm safety notifications land where either can actually be
+      // fixed — the schedule itself.
+      kRouteAlarm => const AlarmScreen(),
+      // The weekly recap used to land on the Health tab and push nothing,
+      // because there was no recap screen to push. There is now: the sweep's
+      // findings, which the app has been computing every night and delivering
+      // only as a notification you could dismiss into nothing.
+      kRouteRecap => const WhatChangedScreen(),
+      _ => null,
+    };
 
 class _Shell extends StatefulWidget {
   const _Shell();
@@ -490,18 +512,11 @@ class _ShellState extends State<_Shell> {
   Object? _lastBandState;
   bool? _lastDeriving;
 
-  ShellDomain _restoredDomain() {
-    final saved = Prefs.getString('ui.openband.tab', '');
-    for (final domain in ShellDomain.values) {
-      if (domain.name == saved) return domain;
-    }
-    return switch (Prefs.getInt(Prefs.shellTab, 0)) {
-      1 => ShellDomain.health,
-      2 || 4 => ShellDomain.wellness,
-      3 => ShellDomain.workout,
-      _ => ShellDomain.home,
-    };
-  }
+  ShellDomain _restoredDomain() => shellDomainForRestore(
+    reduced: kOpenBandReleaseReduced,
+    savedName: Prefs.getString(kOpenBandTabPref, ''),
+    legacyTab: Prefs.getInt(Prefs.shellTab, 0),
+  );
 
   void _sourceChanged() {
     final app = _app!;
@@ -609,20 +624,30 @@ class _ShellState extends State<_Shell> {
     // A screen route carries its own domain; the tab index alongside it is
     // the base the payload was built with, not a second destination.
     if (s != null && s.isNotEmpty) {
-      _go(domainForRoute(s));
-      final screen = screenForRoute(s, repository: _day.repository);
+      final domain = releaseDomainForRoute(s, reduced: kOpenBandReleaseReduced);
+      _go(domain);
+      final screen = releaseScreenForRoute(
+        s,
+        reduced: kOpenBandReleaseReduced,
+        repository: _day.repository,
+      );
       if (screen != null) {
-        _shellKey.currentState?.open(domainForRoute(s), screen);
+        _shellKey.currentState?.open(domain, screen);
       }
       return;
     }
-    if (tab >= 0) _go(domainForTab(tab));
+    if (tab >= 0) {
+      _go(releaseDomainForTab(tab, reduced: kOpenBandReleaseReduced));
+    }
   }
 
   void _go(ShellDomain d) {
+    if (kOpenBandReleaseReduced && d != ShellDomain.home) {
+      d = ShellDomain.home;
+    }
     _domain = d;
     _shellKey.currentState?.select(d);
-    Prefs.setString('ui.openband.tab', d.name);
+    persistOpenBandTab(reduced: kOpenBandReleaseReduced, name: d.name);
   }
 
   @override
@@ -640,9 +665,11 @@ class _ShellState extends State<_Shell> {
     // SELECT, not watch: a bool that flips twice a workout, not the ~1 Hz
     // AppState tick.
     final live = context.select<AppState, bool>((a) => a.activeWorkout != null);
+    final reduced = kOpenBandReleaseReduced;
     return AppShell(
       key: _shellKey,
       initial: _domain,
+      domains: reduced ? kOpenBandReleaseDomains : null,
       banner: live
           ? _LiveSessionBar(
               repository: _day.repository,
@@ -651,25 +678,28 @@ class _ShellState extends State<_Shell> {
           : null,
       onSelect: (d) {
         _domain = d;
-        Prefs.setString('ui.openband.tab', d.name);
+        persistOpenBandTab(reduced: reduced, name: d.name);
         if (d == ShellDomain.health) unawaited(_day.refresh());
       },
       builder: (c, d) => switch (d) {
         ShellDomain.home => OpenBandOverview(
           controller: _day,
+          reduced: reduced,
           onProfile: () => Navigator.of(
             c,
           ).push(MaterialPageRoute<void>(builder: (_) => const ProfileHome())),
-          onJournal: () => _go(ShellDomain.wellness),
-          onNutrition: () => Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandNutritionRoute(
-                controller: _day,
-                onBarcode: _nutritionBarcode,
-              ),
-            ),
-          ),
-          onTraining: () => _go(ShellDomain.workout),
+          onJournal: reduced ? null : () => _go(ShellDomain.wellness),
+          onNutrition: reduced
+              ? null
+              : () => Navigator.of(c).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OpenBandNutritionRoute(
+                      controller: _day,
+                      onBarcode: _nutritionBarcode,
+                    ),
+                  ),
+                ),
+          onTraining: reduced ? null : () => _go(ShellDomain.workout),
           onSync: () => _app!.openSession(),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),

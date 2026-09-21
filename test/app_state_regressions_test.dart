@@ -163,6 +163,8 @@ class _FailingCommand {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final previousReduced = NotificationCenter.instance.releaseReduced;
+
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -181,6 +183,11 @@ void main() {
     AlarmOwner.resetForTest();
     SharedPreferences.setMockInitialValues({});
     await LocalDb.clearAlarmSchedule();
+    NotificationCenter.instance.releaseReduced = false;
+  });
+
+  tearDown(() {
+    NotificationCenter.instance.releaseReduced = previousReduced;
   });
 
   group('actual alarm command failure notification', () {

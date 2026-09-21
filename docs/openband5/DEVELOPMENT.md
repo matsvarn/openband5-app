@@ -10,7 +10,7 @@ Run from `edge`, using the pinned SDK. These commands target dedicated **OpenBan
 # Keep this process attached; press r after a Dart edit for hot reload.
 python3 tool/ui_review.py gallery
 
-# Drive real iOS-rendered screens and export screenshots + accessibility text.
+# Review the reduced release on native iOS and export screenshots + accessibility text.
 python3 tool/ui_review.py capture
 
 # The smaller 375×812 device, including large-text states.
@@ -22,7 +22,7 @@ flutter test --no-pub test/openband_flow_test.dart
 
 The runner creates/reuses an iPhone 15 Pro (393×852) or iPhone 13 mini (375×812) on the already installed iOS 26.5 runtime. The gallery supports state, light/dark and text-size changes; its default text scaling follows the OS. The workspace also includes **OpenBand 5: synthetic UI (hot reload)** for editor-driven hot reload and Flutter Inspector.
 
-`capture` uses Flutter's SDK `integration_test` package and real iOS rendering. At each checkpoint a temporary loopback-only helper asks `simctl` for the whole display, so the native keyboard and status bar are included. The helper accepts only screenshot names, runs only for this review, and closes afterward. A direct `flutter drive` invocation without the runner falls back to app-surface captures and labels that limitation in `frames.json`. It navigates through overview variants, the full calendar route and selected-night preview, correction entry/preview/save, native keyboard fields, draft keep/discard, save and calculation retries, return/restore and larger text. A 350 ms checkpoint delay lets UIKit finish its independent chrome updates after Flutter frames settle. The test entry point hides the gallery controls so captures have the product's actual viewport. No AppState, real database, Bluetooth, analytics evaluation or personal data is initialized.
+`capture` uses Flutter's SDK `integration_test` package and real iOS rendering. At each checkpoint a temporary loopback-only helper asks `simctl` for the whole display, so the native keyboard and status bar are included. The helper accepts only screenshot names, runs only for this review, and closes afterward. A direct `flutter drive` invocation without the runner falls back to app-surface captures and labels that limitation in `frames.json`. The default `release` flow covers the reduced product, including representative light/dark, missing/error and larger-text states. Use `--flow all` for the archived full-product journey, or a named flow for an affected feature. Each capture waits for the requested Flutter frame to rasterize before the native display checkpoint. The test entry point hides the gallery controls so captures have the product's actual viewport. No AppState, real database, Bluetooth, analytics evaluation or personal data is initialized.
 
 Each run gets its own `build/ui-review/<timestamp>/` directory with:
 

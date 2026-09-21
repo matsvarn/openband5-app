@@ -31,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../ai/ai_prefs.dart';
 import '../ai/reminder_plan.dart';
 import '../data/day_label.dart';
+import '../openband/release_scope.dart';
 import '../data/journal_fields.dart';
 import 'fired_keys.dart';
 import 'notification_event.dart';
@@ -71,6 +72,10 @@ class NotificationCenter {
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].
   final FiredKeyStore _fired = const FiredKeyStore();
+
+  /// Production follows [kOpenBandReleaseReduced]. Tests that exercise the
+  /// full schedule set this false, or pass `releaseReduced:` on a call.
+  bool releaseReduced = kOpenBandReleaseReduced;
 
   /// Tail of a chained-Future lock that serialises the claim-present-release
   /// critical section in [emit]. It keeps two overlapping emits in THIS isolate
@@ -132,6 +137,10 @@ class NotificationCenter {
     bool allowPermissionPrompt = true,
     bool Function()? stillValid,
   }) async {
+    // Before the fired-key claim. A parked route is not a fire.
+    if (openBandReleaseParksRoute(e.route, reduced: releaseReduced)) {
+      return false;
+    }
     var presented = false;
     try {
       final prefs = await NotificationPrefs.load();
@@ -268,6 +277,7 @@ class NotificationCenter {
     List<MedReminderInstant>? medInstants,
     bool armedTonight = false,
     DateTime? now,
+    bool? releaseReduced,
   }) =>
       _synchronized(() => _scheduleStandingReminders(
             prefs,
@@ -277,6 +287,7 @@ class NotificationCenter {
             medInstants: medInstants,
             armedTonight: armedTonight,
             now: now,
+            releaseReduced: releaseReduced,
           ));
 
   Future<void> _scheduleStandingReminders(
@@ -287,7 +298,9 @@ class NotificationCenter {
     List<MedReminderInstant>? medInstants,
     bool armedTonight = false,
     DateTime? now,
+    bool? releaseReduced,
   }) async {
+    final reduced = releaseReduced ?? this.releaseReduced;
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idWeeklyRecap);
     // The night-check is decided fresh on every call (armedTonight is always a
@@ -297,7 +310,20 @@ class NotificationCenter {
     // Wind-down follows the standing rule — cancel what this call cannot put
     // back, and only that. A null slot (switch off, or no LEARNED bedtime yet)
     // cancels; a real slot is armed below.
-    final windDownMin = windDownSlot(prefs, bedtimeMinOfDay);
+    final parkBreathing = openBandReleaseParksRoute(
+      kRouteBreathing,
+      reduced: reduced,
+    );
+    final parkJournal = openBandReleaseParksRoute(
+      kRouteJournalCompose,
+      reduced: reduced,
+    );
+    final parkMeds = openBandReleaseParksRoute(kRouteMeds, reduced: reduced);
+    final parkWater = openBandReleaseParksRoute(kRouteWater, reduced: reduced);
+    final parkRecap = openBandReleaseParksRoute(kRouteRecap, reduced: reduced);
+    final windDownMin = parkBreathing
+        ? null
+        : windDownSlot(prefs, bedtimeMinOfDay);
     if (windDownMin == null) {
       await svc.cancel(NotificationService.idWindDown);
     }
@@ -310,7 +336,7 @@ class NotificationCenter {
     // unrelated toggle. Cancelling then would drop tonight's prompt, and
     // re-arming would risk asking for a day already answered, so neither
     // happens and the next foreground pass (which does know) decides.
-    if (!prefs.checkInEnabled || checkInDoneToday != null) {
+    if (parkJournal || !prefs.checkInEnabled || checkInDoneToday != null) {
       await svc.cancel(NotificationService.idCheckIn);
     }
     // The medication band is cancelled when the switch is OFF — that is where
@@ -331,7 +357,7 @@ class NotificationCenter {
     // re-arming is impossible and cancelling would silently disarm doses that
     // are still real. Collapsing both into `const []` chose preserve for both,
     // so the deleted-medication case never got its cancel.
-    if (!prefs.medsEnabled || medInstants != null) {
+    if (parkMeds || !prefs.medsEnabled || medInstants != null) {
       for (var i = 0; i < NotificationService.maxMedSlots; i++) {
         await svc.cancel(NotificationService.idMedsBase + i);
       }
@@ -353,14 +379,17 @@ class NotificationCenter {
     for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
       await svc.cancel(NotificationService.idWaterBase + i);
     }
-    final water = waterSlotMinutes(prefs);
-    final wantWeekly = prefs.remindersEnabled && weeklyFinding != null;
+    final water = parkWater ? const <int>[] : waterSlotMinutes(prefs);
+    final wantWeekly =
+        !parkRecap && prefs.remindersEnabled && weeklyFinding != null;
     final clock = now ?? DateTime.now();
-    final checkIn = checkInDoneToday == null
+    final checkIn = parkJournal || checkInDoneToday == null
         ? null
         : checkInSlot(prefs, bedtimeMinOfDay,
             doneToday: checkInDoneToday, nowMin: clock.hour * 60 + clock.minute);
-    final meds = medReminderPlan(prefs, medInstants, now: clock);
+    final meds = parkMeds
+        ? const <MedReminderSlot>[]
+        : medReminderPlan(prefs, medInstants, now: clock);
     final nightCheck = alarmNightCheckSlot(prefs,
         armedTonight: armedTonight, nowMin: clock.hour * 60 + clock.minute);
     if (water.isEmpty &&
@@ -824,7 +853,9 @@ class NotificationCenter {
     double? bedtimeMinOfDay,
     required bool journalDoneToday,
     String? sweepHeadline,
+    bool? releaseReduced,
   }) async {
+    final reduced = releaseReduced ?? this.releaseReduced;
     final svc = NotificationService.instance;
     await svc.cancel(NotificationService.idMorningBrief);
     await svc.cancel(NotificationService.idEveningBrief);
@@ -836,7 +867,9 @@ class NotificationCenter {
       bedtimeMinOfDay: bedtimeMinOfDay,
       journalDoneToday: journalDoneToday,
       sweepHeadline: sweepHeadline,
-    ).where((s) => NotificationService.maySchedule(s.id)).toList();
+    ).where((s) =>
+        NotificationService.maySchedule(s.id) &&
+        !openBandReleaseParksRoute(s.route, reduced: reduced)).toList();
     if (plan.isEmpty) return;
     await svc.ensureTimezone();
     final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;

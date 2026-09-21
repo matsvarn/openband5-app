@@ -134,6 +134,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failPinRead = false;
   Future<void>? templateWriteBarrier;
   bool failJournalRead = false;
+  bool failDayRead = false;
   Future<void>? journalReadBarrier;
   bool failVo2Read = false;
   bool failVo2Write = false;
@@ -2658,6 +2659,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<OpenBandDay> readDay(String day) async {
+    if (failDayRead) {
+      throw StateError('Tag konnte nicht gelesen werden');
+    }
     if (day == _day) return _withNightScalarCards(_overlay(_baseDay()));
     return _withNightScalarCards(
       OpenBandDay(

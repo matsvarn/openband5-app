@@ -17,7 +17,7 @@
   },
   "screens": {
     "3G8S-0": "A02 Schlaf · Nacht",
-    "3GQP-0": "A08 Profil · Dein Bereich (lib/ui2/profile/profile.dart)",
+    "3GQP-0": "Release Profil · Hell (lib/ui2/profile/profile.dart)",
     "3I5L-0": "A05 Gesundheit · HRV · Hell",
     "3IBK-0": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
     "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
@@ -35,7 +35,13 @@
     "55CK-0": "Release Übersicht · Hell",
     "55IW-0": "Release Übersicht · Dunkel",
     "55NA-0": "Release Messwerte · Hell",
-    "55SE-0": "Release Messwerte · Dunkel"
+    "55SE-0": "Release Messwerte · Dunkel",
+    "5619-0": "Release Profil · Dunkel (lib/ui2/profile/profile.dart)",
+    "55UX-0": "Release Daten & Sicherung · Hell (lib/ui2/profile/data.dart)",
+    "55Y8-0": "Release Daten & Sicherung · Dunkel (lib/ui2/profile/data.dart)",
+    "3P8X-0": "Einrichtung · Auswertung nicht geladen (lib/ui2/onboarding/first_sync.dart)",
+    "565V-0": "Einrichtung · Übertragung unterbrochen · Hell (lib/ui2/onboarding/first_sync.dart)",
+    "567A-0": "Einrichtung · Übertragung unterbrochen · Dunkel (lib/ui2/onboarding/first_sync.dart)"
   },
   "blocks": [
     {
@@ -47,9 +53,7 @@
       "replaces": "OBPageHeader (rewrite: title only, 'Heute' when today, 'Di, 15. Sep.' otherwise; no eyebrow)",
       "usedIn": [
         "55CK-0",
-        "55IW-0",
-        "55NA-0",
-        "55SE-0"
+        "55IW-0"
       ],
       "implemented": "screens.dart / health.dart / training.dart / journal.dart (inline title)",
       "notes": "Inline hub titles in OpenBandOverview / OpenBandHealth / OpenBandTraining / OpenBandJournal; not OBPageHeader."
@@ -68,7 +72,9 @@
         "3KI7-0",
         "3KJW-0",
         "3KTM-0",
-        "3KUQ-0"
+        "3KUQ-0",
+        "55NA-0",
+        "55SE-0"
       ],
       "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
       "variantPaperNodes": {
@@ -87,9 +93,7 @@
       "file": "screens.dart",
       "usedIn": [
         "55CK-0",
-        "55IW-0",
-        "55NA-0",
-        "55SE-0"
+        "55IW-0"
       ],
       "notes": "Battery % and connection dot are independent facts; dot colour = recovery when connected, gap when not.",
       "implemented": "screens.dart (_BandPill)"
@@ -447,7 +451,11 @@
       "usedIn": [
         "3G8S-0",
         "55NA-0",
-        "55SE-0"
+        "55SE-0",
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0"
       ],
       "variantPaperNodes": {
         "glucoseEntry": "4BAP-0",
@@ -487,7 +495,9 @@
       "file": "screens.dart",
       "usedIn": [
         "55CK-0",
-        "55IW-0"
+        "55IW-0",
+        "565V-0",
+        "567A-0"
       ]
     },
     {

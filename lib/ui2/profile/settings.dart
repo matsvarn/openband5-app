@@ -30,6 +30,7 @@ import '../../openband/appearance.dart';
 import '../../openband/cycle.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/notification_settings.dart';
+import '../../openband/release_scope.dart';
 import '../../openband/units.dart';
 import '../../openband/theme.dart' show OBPageHeader, OB;
 import '../../data/day_label.dart';
@@ -157,7 +158,9 @@ class _MoreSettingsState extends State<MoreSettings> {
     final app = c.watch<AppState>();
     final units = c.watch<UnitsController>();
     final theme = c.watch<ThemeController>();
+    final reduced = kOpenBandReleaseReduced;
     return MoreSettingsView(
+      releaseReduced: reduced,
       version: _version,
       devMode: _dev,
       onVersionTap: _tapVersion,
@@ -185,19 +188,22 @@ class _MoreSettingsState extends State<MoreSettings> {
       updateMandatory: app.updateMandatory,
       onEditProfile: () => goto(c, const EditProfile()),
       onAlarm: () => goto(c, const AlarmScreen()),
-      onNotifications: () => goto(c, const NotificationSettings()),
+      onNotifications: () =>
+          goto(c, NotificationSettings(releaseReduced: reduced)),
       onData: () => goto(c, const DataScreen()),
       onAutomation: () => goto(c, const AutomationSettings()),
       onOpenUnits: () => goto(c, const UnitsSettings()),
       onCycleAppearance: () => goto(c, const AppearanceSettings()),
-      onOpenCycle: () => goto(
-        c,
-        OpenBandCycle(
-          repository: LocalOpenBandRepository(app),
-          day: todayLabel(),
-          settingsOnly: true,
-        ),
-      ),
+      onOpenCycle: reduced
+          ? null
+          : () => goto(
+              c,
+              OpenBandCycle(
+                repository: LocalOpenBandRepository(app),
+                day: todayLabel(),
+                settingsOnly: true,
+              ),
+            ),
       onTogglePhoneSteps: () => app.phoneStepsEnabled
           ? app.disablePhoneSteps()
           : app.requestPhoneSteps(),
@@ -521,6 +527,9 @@ class MoreSettingsView extends StatelessWidget {
   /// a feature: nothing in it is for anyone who has not deliberately asked.
   final bool devMode;
 
+  /// Hides Cycle and the component gallery. Saved preferences stay.
+  final bool releaseReduced;
+
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
   final VoidCallback? onEditProfile,
@@ -559,6 +568,7 @@ class MoreSettingsView extends StatelessWidget {
     this.updateMandatory = false,
     this.version = '',
     this.devMode = false,
+    this.releaseReduced = false,
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
@@ -644,9 +654,10 @@ class MoreSettingsView extends StatelessWidget {
                       value: appearance, onTap: onCycleAppearance),
                   if (appIcon != null)
                     _IconRow(chosen: appIcon!, onPick: onPickIcon),
-                  SetRow(LucideIcons.droplet, C.pink,
-                      l?.settingsCycleTrackingRowTitle ?? 'Cycle',
-                      onTap: onOpenCycle),
+                  if (!releaseReduced)
+                    SetRow(LucideIcons.droplet, C.pink,
+                        l?.settingsCycleTrackingRowTitle ?? 'Cycle',
+                        onTap: onOpenCycle),
                 ]),
                 settingsGroup(c, l?.settingsGroupYourData ?? 'Your data', [
                   SetRow(LucideIcons.download, C.green,
@@ -679,7 +690,8 @@ class MoreSettingsView extends StatelessWidget {
                           sub: AppLocalizations.of(c)
                                   ?.settingsDoubleTapRowSub ??
                               'What a double-tap on the band does',
-                          onTap: () => goto(c, const BandGestures()))),
+                          onTap: () => goto(
+                              c, BandGestures(releaseReduced: releaseReduced)))),
                   SetRow(LucideIcons.workflow, C.indigo,
                       l?.settingsTaskerShortcutsRowTitle ??
                           'Tasker and Shortcuts',
@@ -753,7 +765,7 @@ class MoreSettingsView extends StatelessWidget {
                               'https://openstrap.github.io/edge/notice.html'),
                           mode: LaunchMode.externalApplication)),
                 ]),
-                if (devMode)
+                if (devMode && !releaseReduced)
                   settingsGroup(c, l?.settingsGroupDeveloper ?? 'Developer', [
                     SetRow(LucideIcons.layoutGrid, C.purple,
                         l?.settingsComponentGalleryRowTitle ??
