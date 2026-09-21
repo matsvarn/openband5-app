@@ -3090,12 +3090,19 @@ class LocalOpenBandRepository implements OpenBandRepository {
       }
     }
 
+    final rawPayloads = [for (final r in snapshot.dayRows) r['payload_json']];
+    // dart:convert last-wins; sqlite json_extract is first-wins. Needed keys
+    // only, off-isolate, so unused series never expand on the UI isolate.
+    final payloads = rawPayloads.isEmpty
+        ? const <Map<String, Object?>?>[]
+        : await Isolate.run(() => _projectCycleNightPayloads(rawPayloads));
+
     final rows = <CycleNightSourceRow>[];
-    for (final r in snapshot.dayRows) {
+    for (var i = 0; i < snapshot.dayRows.length; i++) {
+      final r = snapshot.dayRows[i];
       final date = r['day_id'];
       if (date is! String) continue;
-      final raw = r['payload_json'];
-      final payload = _payload(raw);
+      final payload = i < payloads.length ? payloads[i] : null;
       final correction = correctionByDay[date];
       final published =
           correction != null && !blockedJob.contains(date) ? correction : null;
@@ -3306,6 +3313,32 @@ GlucoseSnapshot _glucoseSnapshotFromRead(
     truncated: read.historyTruncated,
     unreadableCount: unreadable + unreadTokens.length + receipt.unreadable,
   );
+}
+
+const _kCycleNightPayloadKeys = [
+  'imported',
+  'sleep_source',
+  'sleep',
+  'clinical',
+];
+
+List<Map<String, Object?>?> _projectCycleNightPayloads(List<Object?> raws) {
+  return [for (final raw in raws) _projectCycleNightPayload(raw)];
+}
+
+Map<String, Object?>? _projectCycleNightPayload(Object? json) {
+  if (json is! String || json.isEmpty) return null;
+  try {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map) return null;
+    final out = <String, Object?>{};
+    for (final key in _kCycleNightPayloadKeys) {
+      if (decoded.containsKey(key)) out[key] = decoded[key];
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Isolate entry: one field × one outcome, lag 1. Returns a sendable map.

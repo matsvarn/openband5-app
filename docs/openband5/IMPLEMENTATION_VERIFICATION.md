@@ -414,3 +414,15 @@ Paper Phase3 main4L7S/dark4LBD; canonical bars4MOQ/dark4MQG.38 real screen expor
 - `python3 tool/ui_review.py capture --flow cycle-gaps --output build/ui-review/cycle-gaps-20260921`: **32 checkpoints, PASS71.92s**, dedicated iPhone15Pro393×852. `--small --output build/ui-review/cycle-gaps-mini-20260921`: **32 checkpoints, PASS108.74s**, dedicated iPhone13mini375×812. **All64 native PNGs**, run.json, frames.json and HTML indexes inspected. Root/back, selected32-day interval, older single interval, chooser, missing/disabled/insufficient/unreadable/long-gap/error/retry, settings save/refresh failure, light/dark,2x top/bottom and both complete scrollable info bodies covered. Final source unchanged after required checks and these runs; hashes in task `cycle-gaps-accepted-artifacts.json`.
 
 Synthetic fixture/simulator proof only. Cross-cycle medians/comparisons and their legacy destinations remain open. No personal data, physical-device, Bluetooth or physiological validation. Nothing pushed.
+
+
+## Cycle-night reader projection · 21 September 2026
+
+`readCycleMeasurements` decodes its bounded payload list in an isolate and retains only the four roots used by `parseCycleNightSource`. It no longer expands unused compact series. Dart last-wins duplicate-key handling, imported boolean handling, sleep bounds, full clinical envelopes, algorithm90 and correction receipts remain unchanged. SQLite still materializes up to120 raw strings; the worker still parses unused JSON arrays before dropping them. This is not a year-window memory guarantee.
+
+- Required Flutter3.41.6 OpenBand suite: **1624 passed**,42s (`/private/tmp/openband-alpin-20260919/cycle-reader-full-tests.log`). Required analysis: **88 items, no issues**,5.8s (`cycle-reader-analyze.log`).
+- Responsible worker6233f821 finalccd1cdb6: **48 contract/store tests** under America/Los_Angeles, scoped analysis clean. Actual logs in `cycle-reader-clone/build/cycle-reader-checks/` inspected. Four new cases cover large unused series, malformed/non-object payloads, boolean type preservation and duplicate relevant keys. The fat/slim test establishes source equivalence; it is not a timing assertion.
+- Fresh reviewer7db41698/bca0da10 inspected isolate capture/sendability and source parity against immutable source. Lead inspected the final diff and snapshot delta: production comment only; removed test benchmark/import/prints. No unresolved correctness findings. A single local probe returned333 projected JSON bytes from100443 input bytes and confirmed no expanded curves; timings are not generalized benchmark evidence.
+- No UI change or regenerated PNG. Existing measured-cycle Paper4HBH/4HG7 and accepted native evidence remain applicable to layout. Manifest125blocks/559screens; whitespace check clean.
+
+No schema, algorithm, dependency or version change. Synthetic local tests only; no physiological or physical-device proof. The cross-cycle median flow remains in progress. Nothing pushed.

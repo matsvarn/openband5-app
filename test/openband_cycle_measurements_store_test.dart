@@ -719,6 +719,188 @@ void main() {
       throwsA(anything),
     );
   });
+
+  CycleMeasurementsSnapshot expectedAsOf({
+    required List<CycleNightMeasurement> nights,
+    CycleMetricLatest? latestRhr,
+    CycleMetricLatest? latestHrv,
+    int excludedCount = 0,
+    int unreadableCount = 0,
+  }) {
+    final hasMetric = latestRhr != null || latestHrv != null;
+    return CycleMeasurementsSnapshot(
+      asOfDay: '2026-09-15',
+      settings: settings,
+      reason: hasMetric
+          ? CycleMeasurementsReason.available
+          : CycleMeasurementsReason.metricUnavailable,
+      selectedStartDay: '2026-08-24',
+      selected: _kOpenPeriod,
+      periods: const [_kOpenPeriod],
+      nights: nights,
+      latestRhr: latestRhr,
+      latestHrv: latestHrv,
+      excludedCount: excludedCount,
+      unreadableCount: unreadableCount,
+      partial: excludedCount > 0 || unreadableCount > 0,
+    );
+  }
+
+  List<CycleNightMeasurement> openNights({
+    CycleNightMeasurement Function(String day, int cycleDay)? at,
+  }) {
+    final days =
+        cycleCivilDaysInclusive('2026-08-24', '2026-09-15');
+    return [
+      for (var i = 0; i < days.length; i++)
+        at?.call(days[i], i + 1) ??
+            CycleNightMeasurement(day: days[i], cycleDay: i + 1),
+    ];
+  }
+
+  test('large unused series matches the slim payload snapshot', () async {
+    await seedStart('2026-08-24');
+    const samples = 20000;
+    final fat = _literalClone();
+    fat['series'] = {
+      'hr_curve': {
+        't0': 0,
+        'dt': 60,
+        'v': List<int>.filled(samples, 60),
+      },
+    };
+    fat['activity_curve'] = {
+      't0': 0,
+      'dt': 60,
+      'v': List<int>.filled(samples, 1),
+    };
+    await seedLiteral('2026-09-15', fat);
+    final fatSnap = await repository.readCycleMeasurements('2026-09-15');
+    await seedLiteral('2026-09-15', _literalClone());
+    final slimSnap = await repository.readCycleMeasurements('2026-09-15');
+    expect(fatSnap, slimSnap);
+    expect(
+      fatSnap,
+      expectedAsOf(
+        nights: openNights(
+          at: (day, cycleDay) => day == '2026-09-15'
+              ? _literalEligibleNight(day, cycleDay)
+              : CycleNightMeasurement(day: day, cycleDay: cycleDay),
+        ),
+        latestRhr: const CycleMetricLatest(day: '2026-09-15', value: 62.996665),
+        latestHrv: const CycleMetricLatest(day: '2026-09-15', value: 19.9),
+      ),
+    );
+  });
+
+  test('malformed and non-object payloads stay unreadable', () async {
+    await seedStart('2026-08-24');
+    await seedNight('2026-09-12', payloadJson: '{');
+    await seedNight('2026-09-13', payloadJson: '[]');
+    await seedNight('2026-09-14', payloadJson: '"nope"');
+    await seedNight('2026-09-15', payloadJson: 'null');
+    final snap = await repository.readCycleMeasurements('2026-09-15');
+    expect(
+      snap,
+      expectedAsOf(
+        nights: openNights(),
+        unreadableCount: 4,
+      ),
+    );
+  });
+
+  test('imported true is refused; 1 and string true stay eligible', () async {
+    await seedStart('2026-08-24');
+    final importedTrue = _literalClone();
+    importedTrue['imported'] = true;
+    await seedLiteral('2026-09-12', importedTrue);
+    final importedOne = _literalClone();
+    importedOne['imported'] = 1;
+    await seedLiteral('2026-09-13', importedOne);
+    final importedString = _literalClone();
+    importedString['imported'] = 'true';
+    await seedLiteral('2026-09-14', importedString);
+    await seedLiteral('2026-09-15', _literalClone());
+    final snap = await repository.readCycleMeasurements('2026-09-15');
+    expect(
+      snap,
+      expectedAsOf(
+        nights: openNights(
+          at: (day, cycleDay) {
+            if (day == '2026-09-12') {
+              return CycleNightMeasurement(day: day, cycleDay: cycleDay);
+            }
+            if (day == '2026-09-13' ||
+                day == '2026-09-14' ||
+                day == '2026-09-15') {
+              return _literalEligibleNight(day, cycleDay);
+            }
+            return CycleNightMeasurement(day: day, cycleDay: cycleDay);
+          },
+        ),
+        latestRhr: const CycleMetricLatest(day: '2026-09-15', value: 62.996665),
+        latestHrv: const CycleMetricLatest(day: '2026-09-15', value: 19.9),
+        excludedCount: 1,
+      ),
+    );
+  });
+
+  test('duplicate relevant keys keep the last Dart object', () async {
+    await seedStart('2026-08-24');
+    final last = jsonEncode({
+      'imported': false,
+      ..._kLiteralStoredNightPayload,
+    });
+    const first = '{"imported":true,"sleep_source":"none","sleep":{"window":'
+        '{"value":{"onset_ms":1,"offset_ms":2}}},"clinical":[]}';
+    final duplicated =
+        '${first.substring(0, first.length - 1)},${last.substring(1)}';
+    await seedNight('2026-09-15', payloadJson: duplicated);
+    final snap = await repository.readCycleMeasurements('2026-09-15');
+    expect(
+      snap,
+      expectedAsOf(
+        nights: openNights(
+          at: (day, cycleDay) => day == '2026-09-15'
+              ? _literalEligibleNight(day, cycleDay)
+              : CycleNightMeasurement(day: day, cycleDay: cycleDay),
+        ),
+        latestRhr: const CycleMetricLatest(day: '2026-09-15', value: 62.996665),
+        latestHrv: const CycleMetricLatest(day: '2026-09-15', value: 19.9),
+      ),
+    );
+  });
+}
+
+const _kOpenPeriod = CycleMeasurementPeriod(
+  startDay: '2026-08-24',
+  endDay: '2026-09-15',
+  open: true,
+);
+
+CycleNightMeasurement _literalEligibleNight(String day, int cycleDay) {
+  return CycleNightMeasurement(
+    day: day,
+    cycleDay: cycleDay,
+    windowStart: DateTime.fromMillisecondsSinceEpoch(1577923200000, isUtc: true),
+    windowEnd: DateTime.fromMillisecondsSinceEpoch(1577951999000, isUtc: true),
+    rhr: const CycleNightMetric(
+      value: 62.996665,
+      confidence: 0.95,
+      note: 'lowest-30-min mean + 1st-percentile; HR=0 excluded as off-skin',
+      tier: 'HIGH',
+      inputsUsed: ['hr_1hz'],
+    ),
+    hrv: const CycleNightMetric(
+      value: 19.9,
+      confidence: 0.3,
+      note: 'sleep-session HRV: mean RMSSD over cleaned 5-min windows.',
+      tier: 'HIGH',
+      inputsUsed: ['rr_sleep_window'],
+    ),
+    algoVersion: kAlgoVersion,
+    sleepSource: 'auto',
+  );
 }
 
 /// Independent of [cycleNightSourcePayload]. Canonical v90 clinical envelopes,
