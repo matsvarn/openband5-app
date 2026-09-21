@@ -465,7 +465,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 65;
+  static const int schemaVersion = 66;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1232,6 +1232,13 @@ class LocalDb {
           // current heads snapshot at migration NOW, never created_at.
           await upgradeMedTables(db);
         }
+        if (oldV < 66) {
+          // Per-row provenance on day_result. Additive nullable TEXT, no
+          // DEFAULT, never backfilled — including not from
+          // metric_series_version (date-only, can describe another payload).
+          // Existing rows stay NULL.
+          await _ensureDayResultSourceColumn(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1328,6 +1335,7 @@ class LocalDb {
     await _relaxDecodedHrNull(db);
     await _ensureDayResultSkippedColumn(db);
     await _ensureDayResultPartialColumn(db);
+    await _ensureDayResultSourceColumn(db);
     await _createNotifFired(db);
     await _createAlarmSchedule(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
@@ -1573,6 +1581,14 @@ class LocalDb {
         'day_result',
         'partial',
         'INTEGER NOT NULL DEFAULT 0',
+      );
+
+  static Future<void> _ensureDayResultSourceColumn(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'day_result',
+        'source',
+        'TEXT',
       );
 
   // ── MENSTRUAL SYMPTOM LOG ──────────────────────────────────────────────────
@@ -5938,6 +5954,11 @@ class LocalDb {
   // The serve seam reads the LATEST algo_version per day_id. A day stays
   // recomputable for ~48 h after its wake (finalized=0); then it LOCKS
   // (finalized=1) and is no longer recomputed even on a version bump.
+  //
+  // `source` is WHO produced THIS row ('band' / 'whoop_export' / 'cloud_v2' /
+  // NULL). It is per (day_id, algo_version) and is never inferred from
+  // metric_series_version — that stamp is date-only and can describe another
+  // payload. Existing rows stay NULL; never backfilled.
   static Future<void> _createDayResult(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS day_result (
@@ -5952,6 +5973,7 @@ class LocalDb {
         readiness REAL,
         skipped INTEGER NOT NULL DEFAULT 0,
         partial INTEGER NOT NULL DEFAULT 0,
+        source TEXT,
         PRIMARY KEY (day_id, algo_version)
       )
     ''');
@@ -9949,9 +9971,12 @@ class LocalDb {
     double? readiness,
     Map<String, double?> series = const {},
     // WHO produced these scalars — 'band' for a day this app derived from 1 Hz
-    // records, a vendor tag for an importer. NULL is the default and means
-    // UNKNOWN; it is never filled in with a guess, because the whole point of
-    // the column is that a guessed provenance is worse than none. See
+    // records, a vendor tag for an importer ('whoop_export', 'cloud_v2').
+    // NULL is the default and means UNKNOWN; it is never filled in with a
+    // guess. Written onto THIS day_result row on every write (partial,
+    // skipped, and empty-series included). The metric_series_version stamp
+    // still only moves when a non-partial non-empty series is written; that
+    // stamp is date-only and must not be treated as this row's source. See
     // [_createMetricSeriesVersion].
     String? source,
     // WHICH BAND'S UNITS these scalars are in — the substrate's own
@@ -10009,6 +10034,7 @@ class LocalDb {
         'rhr': rhr,
         'rmssd': rmssd,
         'readiness': readiness,
+        'source': source,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       // A `partial` row already doesn't count as "derived" for the raw-pruning
       // guard (see above) — extend the same caution to the rolling baselines:
