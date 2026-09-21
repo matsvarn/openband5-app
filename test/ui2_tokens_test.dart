@@ -204,8 +204,14 @@ const _notComponents = {
   'BootSplash', 'WelcomeScreen', 'WelcomeView', 'PairingScreen', 'PairingView',
   'ProfileSetupScreen', 'ProfileSetupView',
   // A Scaffold route that reads the live band snapshot — a gallery case
-  // would be a photograph of a fixture.
-  'FirstSyncScreen',
+  // would be a photograph of a fixture. `FirstSyncView` is the pure half
+  // (same split as WelcomeView) and is what `first_sync_test.dart` and
+  // `openband_first_sync_test.dart` pump; synthetic frames are
+  // `FirstSyncScreen` in `main_gallery.dart`.
+  'FirstSyncScreen', 'FirstSyncView',
+  // OpenBand Baustein 3PAB, not a ui2 grammar widget. Rendered in-page by
+  // those first-sync gallery frames and tests, not as a ui2 cell.
+  'OBSetupStatusCard',
   // profile routes
   'ProfileHome', 'ProfileHomeView', 'MoreSettings', 'MoreSettingsView',
   'NotificationSettings', 'NotificationSettingsView', 'EditProfile',
@@ -259,7 +265,7 @@ const _notComponents = {
   'StartCard',
   // tabs and drill-downs
   'HomeScreen', 'HealthScreen', 'WorkoutScreen',
-  'WellnessScreen', 'CycleTab', 'MetricDetail', 'ReadinessDetail',
+  'WellnessScreen', 'MetricDetail', 'ReadinessDetail',
   'SleepDetail', 'CircadianDetail', 'DayStrainDetail', 'DayStepsDetail',
   'ZonesDetail',
   // Reads the day bundle AND the raw beat store to draw one night's Poincaré

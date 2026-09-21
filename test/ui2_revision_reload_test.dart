@@ -421,7 +421,6 @@ void main() {
       'health_screen',
       'workout_screen',
       'wellness_screen',
-      'cycle_screen',
     ]) {
       expect(
         File('lib/ui2/screens/$f.dart').readAsStringSync(),

@@ -8,6 +8,7 @@ import '../data/day_label.dart';
 import 'alp_tokens.dart';
 import 'calendar.dart';
 import 'confirm_sheet.dart';
+import 'cycle_comparison.dart';
 import 'cycle_gaps.dart';
 import 'cycle_measurements.dart';
 import 'cycle_medians.dart';
@@ -269,6 +270,17 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
 
   Future<void> _openMeasurements() async {
     await OpenBandCycleMeasurements.push(
+      context,
+      repository: _repo,
+      day: _day,
+      now: _now,
+      synthetic: widget.synthetic,
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _openComparison() async {
+    await OpenBandCycleComparison.push(
       context,
       repository: _repo,
       day: _day,
@@ -555,6 +567,12 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
                       value: '',
                       chevron: true,
                       onTap: _openMedians,
+                    ),
+                    OBSettingsValueRow(
+                      label: 'Vergleich',
+                      value: '',
+                      chevron: true,
+                      onTap: _openComparison,
                     ),
                     OBSettingsValueRow(
                       label: 'Beobachtungen',
@@ -2196,6 +2214,9 @@ String _estimateValue(CycleEstimate estimate) {
   if (estimate.from != null && estimate.to != null) {
     final from = DateTime.parse(estimate.from!);
     final to = DateTime.parse(estimate.to!);
+    if (from.year == to.year && from.month == to.month && from.day == to.day) {
+      return DateFormat('d. MMM', 'de_DE').format(to);
+    }
     if (from.year == to.year && from.month == to.month) {
       return '${from.day}.–${DateFormat('d. MMM', 'de_DE').format(to)}';
     }

@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'openband/controller.dart';
 import 'openband/cycle.dart';
+import 'openband/cycle_comparison.dart';
 import 'openband/cycle_medians.dart';
 import 'openband/health.dart';
 import 'openband/journal.dart';
@@ -428,6 +429,23 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => OpenBandCycleMedians(
+                    repository: widget.repository,
+                    day: '2026-09-15',
+                    now: () => DateTime(2026, 9, 15, 9, 41),
+                    synthetic: true,
+                  ),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            title: const Text('Zyklus · Vergleich'),
+            onTap: () {
+              widget.repository.seedCycleComparisonFixture();
+              Navigator.pop(c);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => OpenBandCycleComparison(
                     repository: widget.repository,
                     day: '2026-09-15',
                     now: () => DateTime(2026, 9, 15, 9, 41),

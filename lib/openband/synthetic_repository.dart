@@ -701,12 +701,25 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   ];
   static const cycleMedianFixtureAnchor = '2026-09-15';
   static final cycleMedianFixtureNow = DateTime(2026, 9, 15, 12);
+  static const cycleComparisonFixtureStarts = [
+    '2026-05-28',
+    '2026-06-29',
+    '2026-07-31',
+    '2026-08-24',
+  ];
+  static const cycleComparisonFixtureAnchor = '2026-09-15';
+  static final cycleComparisonFixtureNow = DateTime(2026, 9, 15, 12);
+  static const cycleComparisonFixtureSameDayRhr = [50.0, 52.0, 54.0];
+  static const cycleComparisonFixtureSameDayHrv = [45.0, 47.0, 49.0];
+  static const cycleComparisonFixtureCurrentRhrAdd = 2.0;
+  static const cycleComparisonFixtureCurrentHrvAdd = 3.0;
 
   bool failCycleRead = false;
   bool failCycleWrite = false;
   bool failCycleContextRefresh = false;
   bool failCycleMeasurementsRead = false;
   bool failCycleMediansRead = false;
+  bool failCycleComparisonRead = false;
   int cycleContextRefreshCalls = 0;
   CycleSettings cycleSettings = const CycleSettings(
     enabled: true,
@@ -3819,12 +3832,16 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String start, {
     bool includeRhr = true,
     bool includeHrv = true,
+    num rhrAdd = 0,
+    num hrvAdd = 0,
   }) {
     final last = cycleAddDays(start, kCyclePaperRhr.length - 1);
     final days = cycleCivilDaysInclusive(start, last);
     for (var i = 0; i < days.length; i++) {
-      final rhr = includeRhr ? kCyclePaperRhr[i] : null;
-      final hrv = includeHrv ? kCyclePaperHrv[i] : null;
+      final rhrRaw = includeRhr ? kCyclePaperRhr[i] : null;
+      final hrvRaw = includeHrv ? kCyclePaperHrv[i] : null;
+      final rhr = rhrRaw == null ? null : rhrRaw + rhrAdd;
+      final hrv = hrvRaw == null ? null : hrvRaw + hrvAdd;
       if (rhr == null && hrv == null) continue;
       final day = days[i];
       _cycleNights[day] = CycleNightSourceRow(
@@ -3838,6 +3855,69 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         ),
       );
     }
+  }
+
+  /// Opt-in Paper comparison fixture. Default cycle seeding stays 4 starts
+  /// (including 2026-06-01) and one selected-cycle night run.
+  void seedCycleComparisonFixture({
+    bool includeRhr = true,
+    bool includeHrv = true,
+  }) {
+    _cycleStarts
+      ..clear()
+      ..addAll({
+        for (final date in cycleComparisonFixtureStarts)
+          date: CycleStart(date: date, kind: kCycleStartKind),
+      });
+    _cycleUnreadableStarts.clear();
+    _cycleNights.clear();
+    final current = cycleComparisonFixtureStarts.last;
+    for (final date in cycleComparisonFixtureStarts) {
+      final last = date == current;
+      seedCyclePaperNightsFrom(
+        date,
+        includeRhr: includeRhr,
+        includeHrv: includeHrv,
+        rhrAdd: last ? cycleComparisonFixtureCurrentRhrAdd : 0,
+        hrvAdd: last ? cycleComparisonFixtureCurrentHrvAdd : 0,
+      );
+    }
+    for (var i = 0; i < cycleComparisonFixtureStarts.length - 1; i++) {
+      final start = cycleComparisonFixtureStarts[i];
+      if (includeRhr) {
+        _overrideCycleNightMetric(
+          cycleAddDays(start, 22),
+          rhr: cycleComparisonFixtureSameDayRhr[i],
+        );
+      }
+      if (includeHrv) {
+        _overrideCycleNightMetric(
+          cycleAddDays(start, 21),
+          hrv: cycleComparisonFixtureSameDayHrv[i],
+        );
+      }
+    }
+  }
+
+  void _overrideCycleNightMetric(
+    String day, {
+    double? rhr,
+    double? hrv,
+  }) {
+    final existing = _cycleNights[day];
+    final parsed = existing == null
+        ? null
+        : parseCycleNightSource(existing, algoVersion: kAlgoVersion);
+    _cycleNights[day] = CycleNightSourceRow(
+      day: day,
+      algoVersion: kAlgoVersion,
+      payload: cycleNightSourcePayload(
+        rhr: rhr ?? parsed?.rhr?.value,
+        hrv: hrv ?? parsed?.hrv?.value,
+        onsetMs: cycleNightOnsetMs(day),
+        offsetMs: cycleNightOffsetMs(day),
+      ),
+    );
   }
 
   void clearCycleLogs() {
@@ -3957,6 +4037,37 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       pageOffset: pageOffset,
     );
     return buildCycleMediansSnapshot(
+      settings: cycleSettings,
+      log: _synthCycleLog(window.endDay),
+      algoVersion: kAlgoVersion,
+      window: window,
+      rows: _cycleNights.values.toList(),
+    );
+  }
+
+  @override
+  Future<CycleComparisonSnapshot> readCycleComparison(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
+  }) async {
+    if (failCycleComparisonRead || failCycleRead) {
+      throw StateError('synthetic cycle comparison read failure');
+    }
+    requireCycleCalendarDay(anchorEnd, 'anchorEnd');
+    final at = now ?? DateTime.now();
+    if (cycleDateIsAfterToday(anchorEnd, at)) {
+      throw ArgumentError.value(
+        anchorEnd,
+        'anchorEnd',
+        'Cycle median anchor cannot be after local today.',
+      );
+    }
+    final window = cycleMedianWindow(
+      anchorEnd: anchorEnd,
+      pageOffset: pageOffset,
+    );
+    return buildCycleComparisonSnapshot(
       settings: cycleSettings,
       log: _synthCycleLog(window.endDay),
       algoVersion: kAlgoVersion,

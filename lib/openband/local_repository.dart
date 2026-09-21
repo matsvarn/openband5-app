@@ -3112,6 +3112,50 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
+  Future<CycleComparisonSnapshot> readCycleComparison(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
+  }) async {
+    requireCycleCalendarDay(anchorEnd, 'anchorEnd');
+    final at = now ?? DateTime.now();
+    if (cycleDateIsAfterToday(anchorEnd, at)) {
+      throw ArgumentError.value(
+        anchorEnd,
+        'anchorEnd',
+        'Cycle median anchor cannot be after local today.',
+      );
+    }
+    final window = cycleMedianWindow(
+      anchorEnd: anchorEnd,
+      pageOffset: pageOffset,
+    );
+    final settings = await readCycleSettings();
+    final db = await LocalDb.instance;
+    final snapshot = await db.transaction((txn) async {
+      final parsed = await CycleStore.load(txn, asOf: window.endDay);
+      if (!settings.enabled) {
+        return (parsed: parsed, rows: const <CycleNightSourceRow>[]);
+      }
+      return (
+        parsed: parsed,
+        rows: await _readExactAlgoCycleNights(
+          txn,
+          startDay: cycleComparisonQueryStart(window),
+          endDay: window.endDay,
+        ),
+      );
+    });
+    return buildCycleComparisonSnapshot(
+      settings: settings,
+      log: snapshot.parsed,
+      algoVersion: kAlgoVersion,
+      window: window,
+      rows: snapshot.rows,
+    );
+  }
+
+  @override
   Future<CycleWriteResult> saveCycleStart(
     CycleStart desired, {
     CycleStart? expected,

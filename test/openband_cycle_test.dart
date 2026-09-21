@@ -248,6 +248,24 @@ void main() {
     await expectLater(capture(), matchesGoldenFile('openband_goldens/$name'));
   }
 
+  /// Header back sits in the page list. After scrolling to Verlauf/Einstellungen
+  /// it is offstage; bring it on-screen before tapping.
+  Future<void> tapCycleBack(WidgetTester tester) async {
+    Finder hit() => find.byTooltip('Zurück').hitTestable();
+    if (hit().evaluate().isEmpty) {
+      final hidden = find.byTooltip('Zurück', skipOffstage: false);
+      expect(
+        hidden,
+        findsWidgets,
+        reason: 'Expected a Zurück control on the current route.',
+      );
+      await tester.ensureVisible(hidden.first);
+      await tester.pumpAndSettle();
+    }
+    expect(hit(), findsWidgets);
+    await tester.tap(hit().first);
+  }
+
   Finder noteEditable() => find.descendant(
     of: find.byKey(const ValueKey('cycle-note')),
     matching: find.byType(EditableText),
@@ -271,9 +289,29 @@ void main() {
     expect(find.text('3 bisherige Abstände'), findsOneWidget);
     expect(find.text('Beginn eintragen'), findsOneWidget);
     expect(find.text('Selbst eintragen'), findsNothing);
+    expect(find.text('Vergleich'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Zyklustage')).dy,
+      lessThan(tester.getTopLeft(find.text('Vergleich')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Vergleich')).dy,
+      lessThan(tester.getTopLeft(find.text('Beobachtungen')).dy),
+    );
     await expectGolden(tester, 'cycle-main.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-main-dark.png');
+  });
+
+  testWidgets('equal estimate bounds collapse to one date', (tester) async {
+    repo.seedCycleComparisonFixture();
+    await mount(tester);
+    expect(find.text('Nächster Beginn · geschätzt'), findsOneWidget);
+    expect(find.text('25. Sept.'), findsOneWidget);
+    expect(find.text('25.–25. Sept.'), findsNothing);
+    expect(find.text('17.–25. Sept.'), findsNothing);
+    expect(find.text('3 bisherige Abstände'), findsOneWidget);
+    expect(find.text('Tag 23'), findsOneWidget);
   });
 
   testWidgets('empty is not a read failure', (tester) async {
@@ -413,6 +451,11 @@ void main() {
       const CycleObservation(date: '2026-09-15', tags: ['cramps']),
     );
     await mount(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     expect(find.text('15. September'), findsOneWidget);
@@ -437,6 +480,11 @@ void main() {
       const CycleObservation(date: '2026-09-15', tags: ['cramps']),
     );
     await mount(tester, day: '2026-08-24');
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     expect(find.text('15. September'), findsNothing);
@@ -686,7 +734,12 @@ void main() {
         const CycleObservation(date: '2026-09-15', tags: ['nausea']),
       );
       await mount(tester);
-      await tester.tap(find.text('Verlauf'));
+      await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Verlauf'));
       await tester.pumpAndSettle();
       expect(find.text('Übelkeit'), findsOneWidget);
       expect(find.text('Beginn'), findsOneWidget);
@@ -710,6 +763,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('cycle-journal')));
     await tester.pumpAndSettle();
     expect(find.text('Di., 15. Sept.'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24. August'));
@@ -720,9 +778,9 @@ void main() {
     );
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
     expect(journalController.selectedDay, '2026-09-15');
   });
@@ -737,7 +795,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(
       find.byKey(const ValueKey('cycle-overview')),
-      const Offset(0, -120),
+      const Offset(0, -300),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Einstellungen'));
@@ -751,9 +809,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.cycleSettings.enabled, isFalse);
     expect((await repo.readCycle('2026-09-15')).starts, isNotEmpty);
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('cycle-journal')), findsNothing);
     await mount(tester, settingsOnly: true);
@@ -794,9 +852,24 @@ void main() {
     expect(find.text('Tag 23'), findsOneWidget);
     await expectGolden(tester, 'cycle-2x.png');
     await mount(tester, width: 320, height: 568);
-    await tester.scrollUntilVisible(find.text('Einstellungen'), 150);
-    expect(find.text('Einstellungen'), findsOneWidget);
+    expect(find.text('Zyklus'), findsWidgets);
+    expect(find.text('Tag 23').hitTestable(), findsOneWidget);
+    expect(find.byTooltip('Zurück').hitTestable(), findsOneWidget);
+    await tester.pumpAndSettle();
     await expectGolden(tester, 'cycle-320.png');
+    await tester.scrollUntilVisible(
+      find.text('Einstellungen'),
+      80,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('cycle-overview')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Einstellungen').hitTestable(), findsOneWidget);
+    await expectGolden(tester, 'cycle-320-bottom.png');
     await mount(tester, width: 375, height: 812);
     await tester.tap(find.text('Beginn eintragen'));
     await tester.pumpAndSettle();
@@ -922,6 +995,11 @@ void main() {
   testWidgets('history empty and partial are labelled', (tester) async {
     repo.clearCycleLogs();
     await mount(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     expect(find.text('Keine Einträge'), findsOneWidget);
@@ -932,6 +1010,11 @@ void main() {
     );
     repo.seedUnreadableCycleStart({'date': '2026-05-01', 'kind': 1});
     await mount(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     expect(find.text('Einträge teilweise lesbar'), findsOneWidget);
@@ -1021,6 +1104,11 @@ void main() {
       ),
     );
     await mount(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24. August'));
@@ -1152,6 +1240,11 @@ void main() {
     tester,
   ) async {
     await mount(tester);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Datum'));
@@ -1189,6 +1282,11 @@ void main() {
   }
 
   Future<void> removeFromHistory(WidgetTester tester) async {
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24. August'));
@@ -1220,6 +1318,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Rückgängig'), findsOneWidget);
     expect(repo.startRemoves, 1);
+    await tester.drag(
+      find.byKey(const ValueKey('cycle-overview')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Zurück'));
@@ -1296,10 +1399,10 @@ void main() {
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
     await removeFromHistory(tester);
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
     expect(find.text('Rückgängig'), findsOneWidget);
-    await tester.tap(find.byTooltip('Zurück'));
+    await tapCycleBack(tester);
     await tester.pumpAndSettle();
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Rückgängig'), findsNothing);

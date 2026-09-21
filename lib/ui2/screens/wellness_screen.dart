@@ -1,11 +1,9 @@
 // Wellness — softer than Health, same system.
 //
 // Health tells you what your body did. Wellness is where you tell it back, and
-// where the app explains itself. Four sub-tabs: Mind, Recovery, Habits, Cycle.
-// Cycle is a SUB-TAB and not a sixth shell tab — see `app_shell.dart`; anything
-// that feels like a sixth domain belongs inside the domain that owns it.
+// where the app explains itself. Three sub-tabs: Mind, Recovery, Habits.
 // Medication lives on the canonical OpenBand screen pushed over Journal, not
-// here.
+// here. Cycle tracking is an OpenBand route from Journal/Settings, not a tab.
 //
 // Habits are a CONSISTENCY, never a streak. "5 of 7 days" cannot reset to
 // zero, so a missed day costs a day rather than costing everything.
@@ -28,7 +26,6 @@ import '../../openband/journal_fields.dart';
 import '../../openband/local_repository.dart';
 import 'calm_breathing.dart';
 import 'driver_breakdown.dart';
-import 'cycle_screen.dart';
 import 'home_screen.dart' show envValue, metricOf;
 import 'journal_compose.dart';
 import 'start_card.dart';
@@ -38,13 +35,9 @@ import 'sleep_detail.dart';
 class WellnessScreen extends StatefulWidget {
   const WellnessScreen({super.key});
 
-  /// Cycle is LAST on purpose: it is the one tab that can be switched off
-  /// (Profile → Preferences → Cycle tracking, off by default), and dropping a
-  /// trailing tab leaves every other tab's index where it was.
-  ///
   /// Fallback labels only — index bookkeeping uses `.length`, and the actual
   /// display labels are localized in `build`.
-  static const tabs = ['Mind', 'Recovery', 'Habits', 'Cycle'];
+  static const tabs = ['Mind', 'Recovery', 'Habits'];
 
   @override
   State<WellnessScreen> createState() => _WellnessScreenState();
@@ -167,21 +160,12 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final last = _breathing.isEmpty ? null : _breathing.first;
-    // `select`, not `watch`: this screen lives in the shell's IndexedStack and
-    // stays mounted, so a plain watch would rebuild it on every unrelated
-    // AppState notification for the life of the app.
-    final showCycle =
-        c.select<AppState, bool>((a) => a.cycleTrackingEnabled);
     final labels = [
       l?.wellnessTabMind ?? 'Mind',
       l?.wellnessTabRecovery ?? 'Recovery',
       l?.wellnessTabHabits ?? 'Habits',
-      l?.wellnessTabCycle ?? 'Cycle',
     ];
-    final tabs = showCycle ? labels : labels.take(labels.length - 1).toList();
-    // Clamped rather than reset: switching Cycle off while standing on it
-    // lands on Habits, not back at Mind.
-    final tab = _tab.clamp(0, tabs.length - 1);
+    final tab = _tab.clamp(0, labels.length - 1);
     // Same rule as Workout: the LIST drops its side padding and hands it to
     // every child except the hero, which is how that one runs edge to edge.
     // The card cannot escape its own parent — a negative margin asserts and an
@@ -192,14 +176,14 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       children: [
         for (final w in <Widget>[
           ScreenTitle(l?.wellnessTitle ?? 'Wellness'),
-          SubTabs(tabs, tab, (i) => setState(() => _tab = i),
+          SubTabs(labels, tab, (i) => setState(() => _tab = i),
               color: C.domMind),
           const SizedBox(height: S.x5),
           if (_loading)
             const Center(child: CircularProgressIndicator())
           else ...[
             // Mind is the only tab here with something to START. The other
-            // three are logs and reviews.
+            // two are logs and reviews.
             if (tab == 0) ...[
               StartCard(
                 label: l?.wellnessStartASitting ?? 'START A SITTING',
@@ -242,7 +226,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               ),
               const SizedBox(height: S.x4),
             ],
-            [_mind, _recovery, _habitsTab, _cycle][tab](c),
+            [_mind, _recovery, _habitsTab][tab](c),
           ],
         ])
           if (w is StartCard)
@@ -497,12 +481,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       ],
     );
   }
-
-  // ── CYCLE ────────────────────────────────────────────────────────────────
-
-  /// Owns its own load: the tab is off for most users and its query touches two
-  /// tables plus 120 derived days, which nobody should pay for by opening Mind.
-  Widget _cycle(BuildContext c) => const CycleTab();
 
   // ── HABITS ───────────────────────────────────────────────────────────────
 

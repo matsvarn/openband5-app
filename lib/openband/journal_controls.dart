@@ -244,26 +244,42 @@ class OBJournalChip extends StatelessWidget {
   }
 }
 
-void showOpenBandJournalInfo(
+class OBInfoSheetAction {
+  const OBInfoSheetAction({required this.id, required this.label});
+  final Object id;
+  final String label;
+}
+
+Future<Object?> showOpenBandJournalInfo(
   BuildContext context, {
   required String title,
   required String body,
+  List<OBInfoSheetAction> actions = const [],
 }) {
-  showModalBottomSheet<void>(
+  return showModalBottomSheet<Object>(
     context: context,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
     elevation: 0,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (context) => _OpenBandInfoSheet(title: title, body: body),
+    builder: (context) => _OpenBandInfoSheet(
+      title: title,
+      body: body,
+      actions: actions,
+    ),
   );
 }
 
 class _OpenBandInfoSheet extends StatelessWidget {
   final String title;
   final String body;
-  const _OpenBandInfoSheet({required this.title, required this.body});
+  final List<OBInfoSheetAction> actions;
+  const _OpenBandInfoSheet({
+    required this.title,
+    required this.body,
+    this.actions = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +371,18 @@ class _OpenBandInfoSheet extends StatelessWidget {
                                             FontVariation('opsz', opsz),
                                           ],
                                         ),
+                                  ),
+                                ],
+                                for (final action in actions) ...[
+                                  const SizedBox(height: 12),
+                                  OBAction(
+                                    action.label,
+                                    secondary: true,
+                                    ink: true,
+                                    onPressed: () => Navigator.pop(
+                                      context,
+                                      action.id,
+                                    ),
                                   ),
                                 ],
                               ],

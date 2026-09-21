@@ -5,6 +5,7 @@ import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import '../health/glucose_contract.dart';
 import 'package:uuid/uuid.dart';
+import 'cycle_comparison_data.dart';
 import 'cycle_data.dart';
 import 'cycle_measurements_data.dart';
 import 'cycle_medians_data.dart';
@@ -16,6 +17,7 @@ import 'sleep_plan_data.dart';
 export '../data/nutrition_store.dart'
     show FoodEntry, FoodSource, NutritionWindow, NutritionDay, NutrientTotal;
 export '../health/glucose_contract.dart';
+export 'cycle_comparison_data.dart';
 export 'cycle_data.dart';
 export 'cycle_measurements_data.dart';
 export 'cycle_medians_data.dart';
@@ -2304,6 +2306,22 @@ abstract interface class OpenBandRepository {
   /// Tracking off, no contributing starts, or unreadable starts do not decode
   /// day payloads. Database failure throws.
   Future<CycleMediansSnapshot> readCycleMedians(
+    String anchorEnd, {
+    int pageOffset = 0,
+    DateTime? now,
+  });
+
+  /// Twelve-calendar-month latest-night comparison ending on [anchorEnd],
+  /// paged by whole-year [pageOffset]. Reuses [cycleMedianWindow]. [anchorEnd]
+  /// is an independent civil end date, not today; it must exist and must not
+  /// follow local today of [now] (clock default). Tracking off does not decode
+  /// day payloads. Latest and prior-21 do not require starts. Same-cycle-day
+  /// comparison withholds on unreadable starts, empty starts, or an unassigned
+  /// latest. Per-metric latest is available, missing, unavailable (refused
+  /// window source) or unreadable (corrupt/duplicate window source). Snapshot
+  /// excluded/unreadable counts cover the displayed year and selected prior-21
+  /// ranges, not unused query padding. Database failure throws.
+  Future<CycleComparisonSnapshot> readCycleComparison(
     String anchorEnd, {
     int pageOffset = 0,
     DateTime? now,
