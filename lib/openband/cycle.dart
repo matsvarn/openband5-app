@@ -9,6 +9,7 @@ import 'alp_tokens.dart';
 import 'calendar.dart';
 import 'confirm_sheet.dart';
 import 'cycle_measurements.dart';
+import 'cycle_observations.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
 import 'settings_controls.dart';
@@ -275,6 +276,17 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
     if (mounted) await _load();
   }
 
+  Future<void> _openObservations() async {
+    await OpenBandCycleObservations.push(
+      context,
+      repository: _repo,
+      day: _day,
+      now: _now,
+      synthetic: widget.synthetic,
+    );
+    if (mounted) await _load();
+  }
+
   Future<void> _openHistory() async {
     var identity = _identity;
     final repo = _repo;
@@ -509,6 +521,12 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
                       value: '',
                       chevron: true,
                       onTap: _openMeasurements,
+                    ),
+                    OBSettingsValueRow(
+                      label: 'Beobachtungen',
+                      value: '',
+                      chevron: true,
+                      onTap: _openObservations,
                     ),
                     OBSettingsValueRow(
                       label: 'Verlauf',
