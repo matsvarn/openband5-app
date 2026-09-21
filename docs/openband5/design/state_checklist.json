@@ -13,7 +13,8 @@
     {
       "id": "release-sleep-metrics",
       "outcome": "Retained sleep, correction, naps, goals and stored metric flows remain reachable, truthful and visually consistent.",
-      "status": "pending"
+      "status": "verified",
+      "evidence": "Discovery014a769c and lead source review confirm retained routes to night signals, naps and sleep goal; durable correction retry and explicit goal removal remain intact. Existing per-unit Paper/native evidence in IMPLEMENTATION_VERIFICATION.md; current2206-test gate passes. No duplicate rebuild."
     },
     {
       "id": "release-band",
@@ -24,8 +25,8 @@
       "id": "release-data",
       "outcome": "Essential Profile/settings and export, backup, restore; private export migration and retained-source evidence checked.",
       "status": "in-progress",
-      "owner": "restore-owner",
-      "evidence": "Private-copy audit found durable restore omissions. Isolated worker7f1de9a2 assignment227c5ac2 owns repair; no private records supplied to worker."
+      "owner": "restore-sol",
+      "evidence": "Private-copy audit found durable restore omissions. Isolated worker9017e301 assignmentf295d6eb owns repair; no private records supplied to worker."
     },
     {
       "id": "release-paper",
@@ -36,9 +37,9 @@
     {
       "id": "release-device-evidence",
       "outcome": "Reconcile the provided database with actual device capture, storage and recovery claims; report any proof limits without substituting simulator proof.",
-      "status": "in-progress",
+      "status": "verified",
       "owner": "lead",
-      "evidence": "User supplied the full database in Downloads. Read-only inspection underway; original stays outside Git."
+      "evidence": "Read-only source inspection and isolated migration/export inventory complete. Gen5 capture/source retention and recorded retry are present; controlled phone-kill/disconnect chronology, zero loss and physiological validity are not established by this snapshot. Source hash unchanged; private artifacts remain in OpenBand5Lab. Restore acceptance remains separately open under release-data."
     },
     {
       "id": "release-acceptance",
