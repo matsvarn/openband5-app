@@ -8,9 +8,10 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
 import 'controller.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented, obMetricStatus;
+import 'health.dart' show OBSegmented;
 import 'journal_controls.dart';
 import 'night_signals.dart';
+import 'screens.dart' show obMetricComparisonStatus;
 import 'settings_controls.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
@@ -97,6 +98,7 @@ class OpenBandNightScalarDetail extends StatefulWidget {
   final Color Function(OB) color;
   final Color Function(OB) tint;
   final OpenBandNightScalarRead? read;
+  final int digits;
 
   const OpenBandNightScalarDetail({
     super.key,
@@ -108,7 +110,8 @@ class OpenBandNightScalarDetail extends StatefulWidget {
     required this.color,
     required this.tint,
     this.read,
-  });
+    this.digits = 0,
+  }) : assert(digits >= 0);
 
   @override
   State<OpenBandNightScalarDetail> createState() =>
@@ -295,7 +298,25 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     }
   }
 
-  bool get _hrv => widget.metricKey == MetricKey.hrv;
+  String get _storedKindLabel => switch (widget.metricKey) {
+    MetricKey.hrv => 'RMSSD',
+    MetricKey.restingHr => 'Ruhepuls',
+    MetricKey.respiration => 'Atemfrequenz',
+    MetricKey.recovery ||
+    MetricKey.sleepDuration ||
+    MetricKey.strain => widget.label,
+  };
+
+  NightSignalKind get _overnightKind => switch (widget.metricKey) {
+    MetricKey.hrv => NightSignalKind.hrv,
+    MetricKey.restingHr => NightSignalKind.pulse,
+    MetricKey.respiration => NightSignalKind.respiration,
+    MetricKey.recovery ||
+    MetricKey.sleepDuration ||
+    MetricKey.strain => throw StateError(
+      'Night scalar overnight is HRV, resting pulse, or respiration only.',
+    ),
+  };
 
   bool get _calcOverlay =>
       _loading &&
@@ -321,7 +342,11 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       case NightScalarState.current:
         switch (_baselineTone(snap.baseline)) {
           case _BaselineTone.trusted:
-            return obMetricStatus(snap.value, snap.baseline?.value);
+            return obMetricComparisonStatus(
+              snap.value!,
+              snap.baseline!.value!,
+              digits: widget.digits,
+            );
           case _BaselineTone.provisional:
             return 'Vorläufige Basis';
           case _BaselineTone.stale:
@@ -352,7 +377,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     if (snap == null || snap.withheld || snap.baseline?.value == null) {
       return '—';
     }
-    return '${obNumber(snap.baseline!.value)} ${widget.unit}';
+    return '${_metricNumber(snap.baseline!.value)} ${widget.unit}';
   }
 
   Future<void> _info({required bool baselineOnly}) async {
@@ -388,7 +413,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     if (snap == null) return ['Die Nachtwerte werden geladen.'];
     if (snap.withheld) return _withheldParagraphs(snap);
     final first = <String>[
-      '${_hrv ? 'RMSSD' : 'Ruhepuls'} · gespeicherter Wert',
+      '$_storedKindLabel · gespeicherter Wert',
       if (_windowInfo(snap) != null) _windowInfo(snap)!,
       if (snap.partial || snap.state == NightScalarState.partial)
         'Unvollständige Nacht.',
@@ -399,6 +424,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     ];
     final second = <String>[
       if (_sourceInfo(snap) != null) _sourceInfo(snap)!,
+      if (_envelopeInfo(snap) != null) _envelopeInfo(snap)!,
       if (snap.computedAt != null)
         'Berechnet am ${DateFormat('d. MMMM, HH:mm', 'de_DE').format(snap.computedAt!.toLocal())}',
       if (snap.algoVersion != null) 'Algorithmus ${snap.algoVersion}',
@@ -408,7 +434,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       final n = snap.baseline!.nValid;
       third.add(
         [
-          'Basis ${obNumber(snap.baseline!.value)} ${widget.unit}',
+          'Basis ${_metricNumber(snap.baseline!.value)} ${widget.unit}',
           if (n != null) '$n gültige Nächte',
         ].join(' · '),
       );
@@ -439,17 +465,18 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     final stored = snap.storedForInfo;
     final first = stored == null
         ? status
-        : '$status\nZuletzt gespeichert: ${obNumber(stored)} ${widget.unit}';
+        : '$status\nZuletzt gespeichert: ${_metricNumber(stored)} ${widget.unit}';
     final meta = <String>[
       if (_windowInfo(snap) != null) _windowInfo(snap)!,
       if (_sourceInfo(snap) != null) _sourceInfo(snap)!,
+      if (_envelopeInfo(snap) != null) _envelopeInfo(snap)!,
       if (snap.computedAt != null)
         'Berechnet am ${DateFormat('d. MMMM, HH:mm', 'de_DE').format(snap.computedAt!.toLocal())}',
       if (snap.algoVersion != null) 'Algorithmus ${snap.algoVersion}',
     ];
     final previousBaseline = <String>[
       if (snap.baseline?.value != null)
-        'Vorherige Basis ${obNumber(snap.baseline!.value)} ${widget.unit}',
+        'Vorherige Basis ${_metricNumber(snap.baseline!.value)} ${widget.unit}',
       if (snap.baseline?.nValid != null)
         '${snap.baseline!.nValid} gültige Nächte',
       if (_baselineStatusLabel(snap.baseline?.status) case final status?)
@@ -466,7 +493,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     final baseline = snap?.baseline;
     if (baseline?.value == null) return ['Basis noch offen.'];
     final lines = <String>[
-      '${snap!.withheld ? 'Vorherige Basis' : 'Basis'} ${obNumber(baseline!.value)} ${widget.unit}',
+      '${snap!.withheld ? 'Vorherige Basis' : 'Basis'} ${_metricNumber(baseline!.value)} ${widget.unit}',
       if (baseline.nValid != null) '${baseline.nValid} gültige Nächte',
     ];
     final status = _baselineStatusLabel(baseline.status);
@@ -511,6 +538,52 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     return parts.isEmpty ? null : parts.toSet().join(' · ');
   }
 
+  String? _envelopeInfo(NightScalarDetail snap) {
+    final envelope = snap.envelope;
+    if (envelope == null || envelope.isEmpty) return null;
+    final parts = <String>[];
+    final tier = envelope.tier?.trim();
+    if (tier != null && tier.isNotEmpty) parts.add('Stufe $tier');
+    final confidence = envelope.confidence;
+    if (confidence != null && confidence.isFinite) {
+      parts.add('Qualitätswert ${_metadataNumber(confidence)} / 1');
+    }
+    final inputs = envelope.inputsUsed;
+    if (inputs != null && inputs.isNotEmpty) {
+      parts.add('Eingaben ${inputs.join(', ')}');
+    }
+    final note = envelope.note?.trim();
+    if (note != null && note.isNotEmpty) parts.add('Hinweis: $note');
+    final brpm = envelope.brpm;
+    if (brpm != null && brpm.isFinite) {
+      parts.add('RSA-Atemfrequenz ${_metricNumber(brpm)} ${widget.unit}');
+    }
+    final peakHz = envelope.peakHz;
+    if (peakHz != null && peakHz.isFinite) {
+      parts.add('Spektralspitze ${_metadataNumber(peakHz)} Hz');
+    }
+    final power = envelope.power;
+    if (power != null && power.isFinite) {
+      parts.add('Spektralleistung ${_metadataNumber(power)}');
+    }
+    final source = envelope.source?.trim();
+    if (source != null && source.isNotEmpty) parts.add('Methode $source');
+    return parts.isEmpty ? null : parts.join('\n');
+  }
+
+  String _metricNumber(double? value) => obNumber(value, digits: widget.digits);
+
+  String _metadataNumber(double value) {
+    var formatted = obNumber(value, digits: 3);
+    while (formatted.contains(',') && formatted.endsWith('0')) {
+      formatted = formatted.substring(0, formatted.length - 1);
+    }
+    if (formatted.endsWith(',')) {
+      formatted = formatted.substring(0, formatted.length - 1);
+    }
+    return formatted;
+  }
+
   String? _importInfo(NightScalarDetail snap) {
     if (snap.counts.imported <= 0 && snap.counts.sources.isEmpty) return null;
     final parts = <String>[];
@@ -544,7 +617,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
         builder: (_) => OpenBandNightSignals(
           repository: widget.controller.repository,
           day: widget.controller.selectedDay,
-          initial: _hrv ? NightSignalKind.hrv : NightSignalKind.pulse,
+          initial: _overnightKind,
         ),
       ),
     );
@@ -637,7 +710,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                obNumber(value),
+                _metricNumber(value),
                 style: p
                     .text(44, weight: FontWeight.w800, display: true)
                     .copyWith(height: 46 / 44),
@@ -788,7 +861,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     };
     final basisText = baseline == null
         ? null
-        : 'Basis ${obNumber(baseline)}\u00A0${widget.unit}$qualifier';
+        : 'Basis ${_metricNumber(baseline)}\u00A0${widget.unit}$qualifier';
     final basisStyle = p
         .text(12, weight: FontWeight.w600, color: p.smallText(color))
         .copyWith(height: 16 / 12);

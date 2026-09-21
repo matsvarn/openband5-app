@@ -1,5 +1,6 @@
-// Typed HRV / resting-pulse night scalars. Repositories decode storage here.
-// Published `scalars.rmssd` / `scalars.rhr` only — not session envelopes.
+// Typed HRV / resting-pulse / respiration night scalars. Repositories decode
+// storage here. HRV/RHR use SQL `rmssd`/`rhr`; respiration uses payload
+// `scalars.resp_rate` (no SQL column). Not session envelopes or day curves.
 // Civil-date windows; no interpolation, refold, or invented provenance.
 
 import 'dart:convert';
@@ -23,9 +24,43 @@ const List<double> kNightScalarPaperRhr = [
 
 const double kNightScalarPaperHrvBaseline = 40;
 const double kNightScalarPaperRhrBaseline = 56;
+const double kNightScalarPaperRespRate = 16;
+
+/// Paper fixture nights ending 2026-09-15: 14 stored priors plus selected 16.
+const List<double> kNightScalarPaperResp = [
+  14, 18, 14.5, 17.5, 15, 17, 15.5, 16.5, 14, 18, 15, 17, 15.5, 16.5, 16,
+];
+
 const String kNightScalarPaperDay = '2026-09-15';
 
-enum NightScalarMetric { hrv, rhr }
+enum NightScalarMetric {
+  hrv,
+  rhr,
+  respiration;
+
+  String get series => switch (this) {
+    hrv => 'rmssd',
+    rhr => 'rhr',
+    respiration => 'resp_rate',
+  };
+
+  String get baselinePath => switch (this) {
+    hrv => 'hrv',
+    rhr => 'resting_hr',
+    respiration => 'resp',
+  };
+
+  String? get sqlColumn => switch (this) {
+    hrv => 'rmssd',
+    rhr => 'rhr',
+    respiration => null,
+  };
+
+  String? get payloadScalar => switch (this) {
+    respiration => 'resp_rate',
+    _ => null,
+  };
+}
 
 enum NightScalarState {
   current,
@@ -89,6 +124,65 @@ class StoredNightBaseline {
   @override
   int get hashCode =>
       Object.hash(value, status, nValid, nightsSinceUpdate, note);
+}
+
+/// Genuine `respiration.rsa` envelope. Spectral [peakHz]/[power]/[source] and
+/// [brpm] come from present `value` (power is not an error bound). Missing
+/// confidence stays null and is never defaulted to 0.5.
+class NightScalarEnvelope {
+  const NightScalarEnvelope({
+    this.tier,
+    this.confidence,
+    this.inputsUsed,
+    this.note,
+    this.brpm,
+    this.peakHz,
+    this.power,
+    this.source,
+  });
+
+  final String? tier;
+  final double? confidence;
+  final List<String>? inputsUsed;
+  final String? note;
+  final double? brpm;
+  final double? peakHz;
+  final double? power;
+  final String? source;
+
+  bool get isEmpty =>
+      tier == null &&
+      confidence == null &&
+      (inputsUsed == null || inputsUsed!.isEmpty) &&
+      note == null &&
+      brpm == null &&
+      peakHz == null &&
+      power == null &&
+      source == null;
+
+  @override
+  bool operator ==(Object other) =>
+      other is NightScalarEnvelope &&
+      other.tier == tier &&
+      other.confidence == confidence &&
+      _sameStringList(other.inputsUsed, inputsUsed) &&
+      other.note == note &&
+      other.brpm == brpm &&
+      other.peakHz == peakHz &&
+      other.power == power &&
+      other.source == source;
+
+  @override
+  int get hashCode => Object.hash(
+    tier,
+    confidence,
+    inputsUsed == null ? null : Object.hashAll(inputsUsed!),
+    note,
+    brpm,
+    peakHz,
+    power,
+    source,
+  );
 }
 
 class NightScalarJob {
@@ -206,6 +300,7 @@ class NightScalarRow {
     this.baseline,
     this.windowStartMs,
     this.windowEndMs,
+    this.envelope,
   });
 
   final String day;
@@ -222,6 +317,7 @@ class NightScalarRow {
   final StoredNightBaseline? baseline;
   final int? windowStartMs;
   final int? windowEndMs;
+  final NightScalarEnvelope? envelope;
 }
 
 class NightScalarDetail {
@@ -246,6 +342,7 @@ class NightScalarDetail {
     this.recordingTimezone,
     this.history = const [],
     this.counts = const NightScalarCounts(),
+    this.envelope,
   });
 
   final String day;
@@ -268,6 +365,7 @@ class NightScalarDetail {
   final String? recordingTimezone;
   final List<NightScalarHistoryNight> history;
   final NightScalarCounts counts;
+  final NightScalarEnvelope? envelope;
 
   bool get withheld =>
       state == NightScalarState.pending ||
@@ -283,11 +381,8 @@ class NightScalarDetail {
     _ => null,
   };
 
-  String get series =>
-      key == NightScalarMetric.hrv ? 'rmssd' : 'rhr';
-
-  String get baselinePath =>
-      key == NightScalarMetric.hrv ? 'hrv' : 'resting_hr';
+  String get series => key.series;
+  String get baselinePath => key.baselinePath;
 
   @override
   bool operator ==(Object other) =>
@@ -312,7 +407,8 @@ class NightScalarDetail {
       other.deviceFamily == deviceFamily &&
       other.recordingTimezone == recordingTimezone &&
       _sameNights(other.history, history) &&
-      other.counts == counts;
+      other.counts == counts &&
+      other.envelope == envelope;
 
   @override
   int get hashCode => Object.hash(
@@ -340,6 +436,7 @@ class NightScalarDetail {
           recordingTimezone,
           Object.hashAll(history),
           counts,
+          envelope,
         ),
       );
 }
@@ -376,6 +473,23 @@ List<String> nightScalarDaysEnding(String endDay, int nights) {
 double? nightScalarFinite(Object? raw) {
   if (raw is! num || !raw.isFinite) return null;
   return raw.toDouble();
+}
+
+/// Stored unit-interval confidence. Out-of-range and nonfinite stay null.
+double? nightScalarUnitInterval(Object? raw) {
+  final n = nightScalarFinite(raw);
+  if (n == null || n < 0 || n > 1) return null;
+  return n;
+}
+
+/// Keep only nonempty trimmed strings. Never [Object.toString] coerce.
+List<String>? nightScalarStringList(Object? raw) {
+  if (raw is! List) return null;
+  final out = <String>[
+    for (final item in raw)
+      if (item is String && item.trim().isNotEmpty) item.trim(),
+  ];
+  return out.isEmpty ? null : List<String>.unmodifiable(out);
 }
 
 int? nightScalarInt(Object? raw) {
@@ -443,6 +557,30 @@ StoredNightBaseline? nightScalarBaseline({
     nValid: nightScalarNonnegInt(nValid),
     nightsSinceUpdate: nightScalarNonnegInt(nightsSinceUpdate),
     note: nightScalarLabel(note),
+  );
+  return parsed.isEmpty ? null : parsed;
+}
+
+/// Copy stored `respiration.rsa` fields that are actually present. Spectral
+/// provenance lives on present `value`. Never default confidence. Published
+/// rate stays `scalars.resp_rate`, not [NightScalarEnvelope.brpm].
+NightScalarEnvelope? nightScalarEnvelope(Object? rsa) {
+  if (rsa is! Map) return null;
+  double? confidence;
+  if (rsa.containsKey('confidence')) {
+    confidence = nightScalarUnitInterval(rsa['confidence']);
+  }
+  final value = rsa['value'];
+  final spectral = value is Map ? value : const <Object?, Object?>{};
+  final parsed = NightScalarEnvelope(
+    tier: nightScalarLabel(rsa['tier']),
+    confidence: confidence,
+    inputsUsed: nightScalarStringList(rsa['inputs_used']),
+    note: nightScalarLabel(rsa['note']),
+    brpm: nightScalarFinite(spectral['brpm']),
+    peakHz: nightScalarFinite(spectral['peak_hz']),
+    power: nightScalarFinite(spectral['power']),
+    source: nightScalarLabel(spectral['source']),
   );
   return parsed.isEmpty ? null : parsed;
 }
@@ -623,10 +761,12 @@ double? nightScalarCardBaseline({
 
 /// dart:convert last-wins nested fields only. sqlite json_extract is first-wins.
 /// Sleep series, clinical envelopes, and curves stay out of the projection.
+/// [scalarKey] is payload `scalars.*` for metrics without a SQL column.
 Map<String, Object?>? projectNightScalarPayload(
   Object? json,
-  String baselineRoot,
-) {
+  String baselineRoot, [
+  String? scalarKey,
+]) {
   if (json is! String || json.isEmpty) return null;
   try {
     final decoded = jsonDecode(json);
@@ -636,6 +776,15 @@ Map<String, Object?>? projectNightScalarPayload(
     final value = window is Map ? window['value'] : null;
     final baselines = decoded['baselines'];
     final block = baselines is Map ? baselines[baselineRoot] : null;
+    final scalars = decoded['scalars'];
+    final respiration = decoded['respiration'];
+    final rsa = respiration is Map ? respiration['rsa'] : null;
+    final envelope = <String, Object?>{};
+    if (rsa is Map) {
+      rsa.forEach((k, v) {
+        if (k is String) envelope[k] = v;
+      });
+    }
     return {
       'imported': decoded['imported'],
       'source': decoded['source'],
@@ -649,6 +798,9 @@ Map<String, Object?>? projectNightScalarPayload(
       'baseline_nights_since_update':
           block is Map ? block['nights_since_update'] : null,
       'baseline_note': block is Map ? block['note'] : null,
+      if (scalarKey != null)
+        'scalar': scalars is Map ? scalars[scalarKey] : null,
+      if (envelope.isNotEmpty) 'envelope': envelope,
     };
   } catch (_) {
     return null;
@@ -657,9 +809,13 @@ Map<String, Object?>? projectNightScalarPayload(
 
 List<Map<String, Object?>?> projectNightScalarPayloads(
   List<Object?> raws,
-  String baselineRoot,
-) {
-  return [for (final raw in raws) projectNightScalarPayload(raw, baselineRoot)];
+  String baselineRoot, [
+  String? scalarKey,
+]) {
+  return [
+    for (final raw in raws)
+      projectNightScalarPayload(raw, baselineRoot, scalarKey),
+  ];
 }
 
 NightScalarDetail buildNightScalarDetail({
@@ -846,6 +1002,7 @@ NightScalarDetail buildNightScalarDetail({
     vendorSource: vendorSource,
     deviceFamily: deviceFamily,
     recordingTimezone: nightScalarLabel(recordingTimezone),
+    envelope: payloadUnreadable ? null : selected?.envelope,
     history: List.unmodifiable(history),
     counts: NightScalarCounts(
       compared: compared,
@@ -857,6 +1014,15 @@ NightScalarDetail buildNightScalarDetail({
       sources: Map.unmodifiable(sources),
     ),
   );
+}
+
+bool _sameStringList(List<String>? a, List<String>? b) {
+  if (identical(a, b)) return true;
+  if (a == null || b == null || a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 bool _sameNights(

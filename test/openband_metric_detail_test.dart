@@ -110,6 +110,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('respiration detail routes to the night-scalar screen', (
+    tester,
+  ) async {
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(
+          Brightness.light,
+        ).copyWith(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(top: 59, bottom: 34),
+            disableAnimations: true,
+          ),
+          child: child!,
+        ),
+        home: OpenBandMetricDetail(
+          controller: controller,
+          metricKey: MetricKey.respiration,
+          label: 'Atmung',
+          subtitle: 'Atemfrequenz',
+          unit: '/min',
+          icon: LucideIcons.wind,
+          color: (p) => p.sleep,
+          tint: (p) => p.sleepTint,
+          digits: 1,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
+    expect(find.text('Atmung'), findsWidgets);
+    expect(find.text('Tag für Tag'), findsNothing);
+    expect(find.text('Herzratenvariabilität'), findsNothing);
+    expect(find.text('Nachtverlauf'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tapping 7 nights changes the observed count label', (
     tester,
   ) async {

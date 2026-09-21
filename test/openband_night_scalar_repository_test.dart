@@ -39,6 +39,7 @@ void main() {
     String day, {
     double? rmssd,
     double? rhr,
+    double? respRate,
     int algo = kAlgoVersion,
     bool skipped = false,
     bool partial = false,
@@ -49,6 +50,8 @@ void main() {
     String? payloadJson,
     Map<String, Object?>? baselineHrv,
     Map<String, Object?>? baselineRhr,
+    Map<String, Object?>? baselineResp,
+    Map<String, Object?>? rsa,
     int? onsetMs,
     int? offsetMs,
     int? computedAt,
@@ -62,7 +65,12 @@ void main() {
             'source': ?source,
             'sleep_source': ?sleepSource,
             'device_family': ?deviceFamily,
-            'scalars': {'rmssd': rmssd, 'rhr': rhr},
+            'scalars': {
+              'rmssd': rmssd,
+              'rhr': rhr,
+              'resp_rate': ?respRate,
+            },
+            if (rsa != null) 'respiration': {'rsa': rsa},
             if (onsetMs != null || offsetMs != null)
               'sleep': {
                 'window': {
@@ -75,6 +83,7 @@ void main() {
             'baselines': {
               'hrv': ?baselineHrv,
               'resting_hr': ?baselineRhr,
+              'resp': ?baselineResp,
             },
           }),
       windowJson: '{}',
@@ -102,6 +111,7 @@ void main() {
     String day, {
     double? rmssd,
     double? rhr,
+    double? respRate,
     int algo = kAlgoVersion,
     bool partial = false,
     bool imported = false,
@@ -113,6 +123,7 @@ void main() {
         day,
         rmssd: rmssd,
         rhr: rhr,
+        respRate: respRate,
         algo: algo,
         partial: partial,
         imported: imported,
@@ -1111,5 +1122,490 @@ void main() {
       ),
       throwsArgumentError,
     );
+  });
+
+  test('payload resp_rate is independent of SQL rhr/rmssd', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      rmssd: 48,
+      rhr: 54,
+      respRate: 16,
+      computedAt: 900,
+    );
+    final day = await repository.readDay('2026-09-15');
+    expect(day.hrv.value, 48);
+    expect(day.restingHr.value, 54);
+    expect(day.respiration.value, 16);
+    expect(day.respiration.nightScalar, NightScalarState.current);
+    final resp = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(resp.value, 16);
+    expect(resp.key, NightScalarMetric.respiration);
+    expect(day.respiration.value, resp.value);
+    expect(day.respiration.nightScalar, resp.state);
+    expect(resp.envelope, isNull);
+
+    final db = await LocalDb.instance;
+    await db.update(
+      'day_result',
+      {
+        'rhr': 99,
+        'rmssd': 11,
+        'payload_json': jsonEncode({
+          'scalars': {'rmssd': 11, 'rhr': 99, 'resp_rate': 16},
+        }),
+      },
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    final mismatched = await repository.readDay('2026-09-15');
+    expect(mismatched.hrv.value, 11);
+    expect(mismatched.restingHr.value, 99);
+    expect(mismatched.respiration.value, 16);
+    final hrv = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    final rhr = await repository.readNightScalarDetail(
+      MetricKey.restingHr,
+      '2026-09-15',
+      7,
+    );
+    final stillResp = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.value, 11);
+    expect(rhr.value, 99);
+    expect(stillResp.value, 16);
+  });
+
+  test('null invalid and nonfinite resp_rate stay missing', () async {
+    await putCoveredNight('2026-09-15', rhr: 54, computedAt: 900);
+    final absent = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(absent.state, NightScalarState.missing);
+    expect(absent.value, isNull);
+    final absentDay = await repository.readDay('2026-09-15');
+    expect(absentDay.respiration.value, isNull);
+    expect(absentDay.respiration.nightScalar, NightScalarState.missing);
+    expect(absentDay.restingHr.value, 54);
+
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: jsonEncode({
+        'scalars': {'rhr': 54, 'resp_rate': '16'},
+      }),
+    );
+    expect(
+      (await repository.readNightScalarDetail(
+        MetricKey.respiration,
+        '2026-09-15',
+        7,
+      )).value,
+      isNull,
+    );
+
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: jsonEncode({
+        'scalars': {'rhr': 54, 'resp_rate': true},
+      }),
+    );
+    expect(
+      (await repository.readNightScalarDetail(
+        MetricKey.respiration,
+        '2026-09-15',
+        7,
+      )).state,
+      NightScalarState.missing,
+    );
+
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson: '{"scalars":{"rhr":54,"resp_rate":null}}',
+    );
+    expect(
+      (await repository.readDay('2026-09-15')).respiration.value,
+      isNull,
+    );
+  });
+
+  test('corrupt payload keeps stored algo for respiration history', () async {
+    await putNight(
+      '2026-09-15',
+      rmssd: 48,
+      rhr: 54,
+      respRate: 16,
+      computedAt: 900,
+      payloadJson: '{not-json',
+    );
+    await expectLater(
+      repository.readDay('2026-09-15'),
+      throwsA(isA<FormatException>()),
+    );
+    final resp = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(resp.state, NightScalarState.unreadable);
+    expect(resp.value, isNull);
+    expect(resp.envelope, isNull);
+    expect(resp.historyAnchor, kAlgoVersion);
+    expect(resp.algoVersion, kAlgoVersion);
+    final hrv = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(hrv.state, NightScalarState.unreadable);
+    expect(hrv.value, isNull);
+    expect(hrv.historyAnchor, kAlgoVersion);
+  });
+
+  test('respiration current older imported and partial stay labeled', () async {
+    await putCoveredNight(
+      '2026-09-14',
+      rhr: 56,
+      respRate: 15.5,
+      partial: true,
+      computedAt: 800,
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      rhr: 54,
+      respRate: 16,
+      imported: true,
+      source: 'whoop_export',
+      computedAt: 900,
+    );
+    final current = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(current.state, NightScalarState.current);
+    expect(current.value, 16);
+    expect(current.history.last.imported, isTrue);
+    expect(current.history[5].partial, isTrue);
+    expect(current.history[5].value, 15.5);
+
+    final db = await LocalDb.instance;
+    await db.delete(
+      'day_result',
+      where: 'day_id = ?',
+      whereArgs: ['2026-09-15'],
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      rhr: 54,
+      respRate: 16.5,
+      algo: kAlgoVersion - 2,
+      computedAt: 900,
+    );
+    final older = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(older.state, NightScalarState.older);
+    expect(older.value, 16.5);
+    expect(older.historyAnchor, kAlgoVersion - 2);
+    expect(older.algoVersion, kAlgoVersion - 2);
+
+    await db.delete(
+      'day_result',
+      where: 'day_id = ?',
+      whereArgs: ['2026-09-15'],
+    );
+    await putCoveredNight(
+      '2026-09-15',
+      rhr: 54,
+      respRate: 14,
+      partial: true,
+      computedAt: 900,
+    );
+    final partial = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(partial.state, NightScalarState.partial);
+    expect(partial.value, 14);
+    expect(partial.partial, isTrue);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.respiration.value, 14);
+    expect(day.respiration.nightScalar, NightScalarState.partial);
+    expect(day.respiration.readiness, MetricReadiness.partial);
+  });
+
+  test('respiration sleep and nap jobs preserve receipts', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      rmssd: 48,
+      rhr: 54,
+      respRate: 16,
+      computedAt: 900,
+    );
+    await putSleepJob('2026-09-15', status: 'pending');
+    final pending = await repository.readDay('2026-09-15');
+    expect(pending.respiration.value, isNull);
+    expect(pending.respiration.nightScalar, NightScalarState.pending);
+    expect(pending.hrv.nightScalar, NightScalarState.pending);
+    expect(pending.correction, isNotNull);
+    final pendingDetail = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(pendingDetail.state, NightScalarState.pending);
+    expect(pendingDetail.storedForInfo, 16);
+
+    final db = await LocalDb.instance;
+    await db.update(
+      'openband_calculation_job',
+      {'status': 'failed', 'error': 'staging timeout'},
+      where: 'day_id = ?',
+      whereArgs: ['2026-09-15'],
+    );
+    final failed = await repository.readDay('2026-09-15');
+    expect(failed.respiration.nightScalar, NightScalarState.failed);
+    expect(failed.hrv.nightScalar, NightScalarState.failed);
+    expect(failed.correction!.error, 'staging timeout');
+
+    await putCoveredNight(
+      '2026-09-14',
+      rhr: 56,
+      respRate: 15,
+      computedAt: 800,
+    );
+    await putNapJob('2026-09-14', status: 'failed');
+    final napFailed = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-14',
+      7,
+    );
+    expect(napFailed.state, NightScalarState.failed);
+    expect(napFailed.storedForInfo, 15);
+  });
+
+  test('missing respiration selected does not borrow prior or series', () async {
+    await putCoveredNight('2026-09-14', rhr: 56, respRate: 15, computedAt: 800);
+    final missing = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(missing.state, NightScalarState.missing);
+    expect(missing.value, isNull);
+    expect(missing.history.last.gap, NightScalarGap.missing);
+    expect(missing.history[5].value, 15);
+    await LocalDb.putMetricSeriesValue('2026-09-15', 'resp_rate', 19);
+    await LocalDb.putMetricSeriesValue('2026-09-13', 'resp_rate', 18);
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.state, NightScalarState.missing);
+    expect(snap.value, isNull);
+    expect(snap.history.last.gap, NightScalarGap.unversioned);
+    expect(snap.history.last.value, isNull);
+    expect(snap.history[4].gap, NightScalarGap.unversioned);
+    expect(snap.history[4].value, isNull);
+    expect(snap.counts.excludedUnversioned, 2);
+    final day = await repository.readDay('2026-09-15');
+    expect(day.respiration.value, isNull);
+    expect(day.respiration.nightScalar, NightScalarState.missing);
+  });
+
+  test('respiration baseline trust open and stale match cards', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      rhr: 54,
+      respRate: 16,
+      computedAt: 900,
+    );
+    final db = await LocalDb.instance;
+    Future<void> setStatus(String status) async {
+      await db.update(
+        'day_result',
+        {
+          'payload_json': jsonEncode({
+            'scalars': {'rhr': 54, 'resp_rate': 16},
+            'baselines': {
+              'resp': {
+                'baseline': 15.2,
+                'status': status,
+                'n_valid': 14,
+                'nights_since_update': 1,
+              },
+            },
+          }),
+        },
+        where: 'day_id = ? AND algo_version = ?',
+        whereArgs: ['2026-09-15', kAlgoVersion],
+      );
+    }
+
+    await setStatus('trusted');
+    final trusted = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(trusted.baseline?.value, 15.2);
+    expect(trusted.baseline?.status, 'trusted');
+    expect(trusted.baseline?.nValid, 14);
+    expect(trusted.baseline?.nightsSinceUpdate, 1);
+    expect((await repository.readDay('2026-09-15')).respiration.baseline, 15.2);
+
+    await setStatus(' Trusted ');
+    expect(
+      (await repository.readDay('2026-09-15')).respiration.baseline,
+      15.2,
+    );
+
+    await setStatus('open');
+    expect(
+      (await repository.readDay('2026-09-15')).respiration.baseline,
+      isNull,
+    );
+    expect(
+      (await repository.readNightScalarDetail(
+        MetricKey.respiration,
+        '2026-09-15',
+        7,
+      )).baseline?.status,
+      'open',
+    );
+
+    await setStatus('stale');
+    expect(
+      (await repository.readDay('2026-09-15')).respiration.baseline,
+      isNull,
+    );
+  });
+
+  test('stored rsa envelope is copied without inventing confidence', () async {
+    await putCoveredNight(
+      '2026-09-15',
+      rhr: 54,
+      respRate: 16,
+      computedAt: 900,
+    );
+    final db = await LocalDb.instance;
+    await db.update(
+      'day_result',
+      {
+        'payload_json': jsonEncode({
+          'scalars': {'rhr': 54, 'resp_rate': 16.4},
+          'respiration': {
+            'rsa': {
+              'value': {
+                'brpm': 12.2,
+                'source': 'rsa',
+                'peak_hz': 0.27,
+                'power': 2.5,
+              },
+              'confidence': 0.72,
+              'tier': 'estimate',
+              'inputs_used': ['rr_cleaned', 'beat_times'],
+              'note': 'stable HF peak',
+            },
+          },
+        }),
+      },
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    final heart = await app.repo!.getDayHeart('2026-09-15');
+    expect(heart['resp']?['confidence'], 0.72);
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.value, 16.4);
+    expect(snap.envelope!.tier, 'estimate');
+    expect(snap.envelope!.confidence, 0.72);
+    expect(snap.envelope!.inputsUsed, ['rr_cleaned', 'beat_times']);
+    expect(snap.envelope!.note, 'stable HF peak');
+    expect(snap.envelope!.brpm, 12.2);
+    expect(snap.envelope!.peakHz, 0.27);
+    expect(snap.envelope!.power, 2.5);
+    expect(snap.envelope!.source, 'rsa');
+    expect(snap.value, isNot(snap.envelope!.brpm));
+    expect((await repository.readDay('2026-09-15')).respiration.value, 16.4);
+
+    await db.update(
+      'day_result',
+      {
+        'payload_json': jsonEncode({
+          'scalars': {'resp_rate': 16},
+          'respiration': {
+            'rsa': {
+              'tier': 'estimate',
+              'inputs_used': ['rr_cleaned'],
+              'note': 'too few beats for an RSA spectral estimate (need ≥20)',
+            },
+          },
+        }),
+      },
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: ['2026-09-15', kAlgoVersion],
+    );
+    final noConfidence = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(noConfidence.value, 16);
+    expect(noConfidence.envelope!.confidence, isNull);
+    expect(noConfidence.envelope!.tier, 'estimate');
+    expect(noConfidence.envelope!.note, contains('too few beats'));
+    final heartGuess = await app.repo!.getDayHeart('2026-09-15');
+    expect(heartGuess['resp']?['confidence'], 0.5);
+    expect(
+      (await repository.readDay('2026-09-15')).respiration.value,
+      16,
+    );
+  });
+
+  test('respiration last-wins payload scalar, not sqlite first-wins', () async {
+    await putNight(
+      '2026-09-15',
+      rhr: 54,
+      computedAt: 900,
+      payloadJson:
+          '{"scalars":{"resp_rate":9,"resp_rate":16,"rhr":54},'
+          '"baselines":{"resp":{"baseline":12,"baseline":15,'
+          '"status":"open","status":"trusted"}}}',
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.value, 16);
+    expect(snap.baseline?.value, 15);
+    expect(snap.baseline?.status, 'trusted');
+    expect((await repository.readDay('2026-09-15')).respiration.value, 16);
+    expect((await repository.readDay('2026-09-15')).respiration.baseline, 15);
   });
 }

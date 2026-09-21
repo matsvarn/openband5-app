@@ -649,7 +649,23 @@ class OBAdaptiveValues extends StatelessWidget {
         );
 }
 
-String? _compactMetricStatus(DayMetric metric) {
+String obMetricComparisonStatus(
+  double value,
+  double baseline, {
+  required int digits,
+}) {
+  if (digits == 0) return obMetricStatus(value, baseline);
+  final difference = value - baseline;
+  var halfUnit = .5;
+  for (var i = 0; i < digits; i++) {
+    halfUnit /= 10;
+  }
+  if (difference.abs() < halfUnit) return 'wie Basis';
+  return '${difference > 0 ? '+' : '−'}${obNumber(difference.abs(), digits: digits)} '
+      '${difference > 0 ? 'über' : 'unter'} Basis';
+}
+
+String? _compactMetricStatus(DayMetric metric, {required int digits}) {
   switch (metric.nightScalar) {
     case NightScalarState.pending:
       return kNightScalarPendingLabel;
@@ -668,10 +684,18 @@ String? _compactMetricStatus(DayMetric metric) {
       return 'Ältere Berechnung';
     case NightScalarState.current:
       if (metric.value == null || metric.baseline == null) return null;
-      return obMetricStatus(metric.value, metric.baseline);
+      return obMetricComparisonStatus(
+        metric.value!,
+        metric.baseline!,
+        digits: digits,
+      );
     case null:
       if (metric.value == null || metric.baseline == null) return null;
-      return obMetricStatus(metric.value, metric.baseline);
+      return obMetricComparisonStatus(
+        metric.value!,
+        metric.baseline!,
+        digits: digits,
+      );
   }
 }
 
@@ -680,6 +704,7 @@ class OBMetricCard extends StatelessWidget {
   final DayMetric metric;
   final IconData icon;
   final Color color;
+  final int digits;
   final VoidCallback? onTap;
   const OBMetricCard({
     super.key,
@@ -688,13 +713,14 @@ class OBMetricCard extends StatelessWidget {
     required this.metric,
     required this.icon,
     required this.color,
+    this.digits = 0,
     this.onTap,
-  });
+  }) : assert(digits >= 0);
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final scaler = MediaQuery.textScalerOf(context);
-    final status = _compactMetricStatus(metric);
+    final status = _compactMetricStatus(metric, digits: digits);
     final compared =
         status != null &&
         metric.value != null &&
@@ -736,7 +762,7 @@ class OBMetricCard extends StatelessWidget {
                   ],
                 ),
                 _MetricValueUnit(
-                  value: obNumber(metric.value),
+                  value: obNumber(metric.value, digits: digits),
                   unit: metric.value == null ? null : unit,
                   valueSize: valueSize,
                   unitSize: unitSize,

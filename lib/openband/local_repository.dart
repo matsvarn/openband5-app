@@ -464,6 +464,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       ),
       hrv: nightCard(row?['rmssd'], 'hrv'),
       restingHr: nightCard(row?['rhr'], 'resting_hr'),
+      respiration: nightCard(_numAt(payload, 'scalars.resp_rate'), 'resp'),
       // day_total is the derived day's published result. Resolved spans may be
       // useful detail but are not silently substituted for a missing metric.
       steps: _metric(
@@ -1541,7 +1542,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
     String endDay,
     int nights,
   ) async {
-    if (key == MetricKey.hrv || key == MetricKey.restingHr) {
+    if (key == MetricKey.hrv ||
+        key == MetricKey.restingHr ||
+        key == MetricKey.respiration) {
       return nightScalarHistoryPoints(
         await readNightScalarDetail(key, endDay, nights),
       );
@@ -1567,9 +1570,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
     requireNightScalarNights(nights);
     final days = nightScalarDaysEnding(day, nights);
     final startDay = days.first;
-    final column = metric == NightScalarMetric.hrv ? 'rmssd' : 'rhr';
-    final baselineRoot =
-        metric == NightScalarMetric.hrv ? 'hrv' : 'resting_hr';
+    final sqlColumn = metric.sqlColumn;
+    final baselineRoot = metric.baselinePath;
+    final seriesKey = metric.series;
+    final scalarKey = metric.payloadScalar;
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
       final selectedRows = await txn.rawQuery(
@@ -1586,7 +1590,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
       if (selectedMap != null) {
         final selectedRaw = selectedMap['payload_json'];
         final projected = await Isolate.run(
-          () => projectNightScalarPayloads([selectedRaw], baselineRoot),
+          () => projectNightScalarPayloads(
+            [selectedRaw],
+            baselineRoot,
+            scalarKey,
+          ),
         );
         final first = projected.first;
         selectedProjected =
@@ -1606,7 +1614,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
             'partial',
             'algo_version',
             'computed_at',
-            column,
+            ?sqlColumn,
             'payload_json',
           ],
           where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
@@ -1618,7 +1626,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
         if (batch.isEmpty) break;
         final rawPayloads = [for (final r in batch) r['payload_json']];
         final payloads = await Isolate.run(
-          () => projectNightScalarPayloads(rawPayloads, baselineRoot),
+          () => projectNightScalarPayloads(
+            rawPayloads,
+            baselineRoot,
+            scalarKey,
+          ),
         );
         for (var i = 0; i < batch.length; i++) {
           final r = Map<String, Object?>.from(batch[i])..remove('payload_json');
@@ -1638,7 +1650,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final seriesRows = await txn.rawQuery(
         'SELECT date, value FROM metric_series '
         'WHERE key = ? AND date >= ? AND date <= ? AND value IS NOT NULL',
-        [column, startDay, day],
+        [seriesKey, startDay, day],
       );
       final sleepRows = await txn.rawQuery(
         'SELECT c.day_id AS day_id, '
@@ -1708,14 +1720,25 @@ class LocalOpenBandRepository implements OpenBandRepository {
             : null,
         windowStartMs: valid ? nightScalarMillis(projected['onset_ms']) : null,
         windowEndMs: valid ? nightScalarMillis(projected['offset_ms']) : null,
+        envelope: valid && scalarKey != null
+            ? nightScalarEnvelope(projected['envelope'])
+            : null,
       );
+    }
+
+    Object? selectedScalar(Map<String, Object?> r, Map<String, Object?>? projected) {
+      if (sqlColumn != null) return r[sqlColumn];
+      return projected?['scalar'];
     }
 
     final selected = snapshot.selected == null
         ? null
         : rowFrom(
             snapshot.selected!,
-            scalar: snapshot.selected![column],
+            scalar: selectedScalar(
+              snapshot.selected!,
+              snapshot.selectedProjected,
+            ),
             projected: snapshot.selectedProjected,
           );
     final matching = <String, NightScalarRow>{
@@ -1723,7 +1746,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
         if (r['day_id'] is String)
           r['day_id'] as String: rowFrom(
             r,
-            scalar: r[column],
+            scalar: selectedScalar(
+              r,
+              r['projected'] as Map<String, Object?>?,
+            ),
             projected: r['projected'] as Map<String, Object?>?,
           ),
     };

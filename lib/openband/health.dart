@@ -92,6 +92,28 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                 ],
               ),
               const SizedBox(height: 10),
+              OBMetricCard(
+                key: const ValueKey('atemfrequenz'),
+                label: 'Atemfrequenz',
+                unit: '/min',
+                metric: day.respiration,
+                icon: LucideIcons.wind,
+                digits: 1,
+                color: p.sleep,
+                onTap: () => OpenBandMetricDetail.push(
+                  context,
+                  controller: c,
+                  metricKey: MetricKey.respiration,
+                  label: 'Atmung',
+                  subtitle: 'Atemfrequenz',
+                  unit: '/min',
+                  icon: LucideIcons.wind,
+                  color: (p) => p.sleep,
+                  tint: (p) => p.sleepTint,
+                  digits: 1,
+                ),
+              ),
+              const SizedBox(height: 10),
             ],
             for (final (key, label, unit, icon, color, tint) in [
               (
@@ -139,6 +161,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                     baseline: switch (key) {
                       MetricKey.hrv => day?.hrv.baseline,
                       MetricKey.restingHr => day?.restingHr.baseline,
+                      MetricKey.respiration => day?.respiration.baseline,
                       MetricKey.recovery => null,
                       MetricKey.sleepDuration => day?.sleep.duration.baseline,
                       MetricKey.strain => day?.strain.baseline,

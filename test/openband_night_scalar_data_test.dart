@@ -32,6 +32,7 @@ NightScalarRow row(
   String? sleepSource,
   String? deviceFamily,
   StoredNightBaseline? baseline,
+  NightScalarEnvelope? envelope,
   int? onsetMs,
   int? offsetMs,
   int? computedAtMs = 1000,
@@ -51,6 +52,7 @@ NightScalarRow row(
       baseline: baseline,
       windowStartMs: onsetMs,
       windowEndMs: offsetMs,
+      envelope: envelope,
     );
 
 NightScalarDetail snap({
@@ -97,6 +99,23 @@ void main() {
       nightScalarMetricOf(MetricKey.restingHr),
       NightScalarMetric.rhr,
     );
+    expect(
+      nightScalarMetricOf(MetricKey.respiration),
+      NightScalarMetric.respiration,
+    );
+    expect(NightScalarMetric.hrv.series, 'rmssd');
+    expect(NightScalarMetric.hrv.baselinePath, 'hrv');
+    expect(NightScalarMetric.hrv.sqlColumn, 'rmssd');
+    expect(NightScalarMetric.hrv.payloadScalar, isNull);
+    expect(NightScalarMetric.rhr.series, 'rhr');
+    expect(NightScalarMetric.rhr.baselinePath, 'resting_hr');
+    expect(NightScalarMetric.rhr.sqlColumn, 'rhr');
+    expect(NightScalarMetric.rhr.payloadScalar, isNull);
+    expect(NightScalarMetric.respiration.series, 'resp_rate');
+    expect(NightScalarMetric.respiration.baselinePath, 'resp');
+    expect(NightScalarMetric.respiration.sqlColumn, isNull);
+    expect(NightScalarMetric.respiration.payloadScalar, 'resp_rate');
+    expect(MetricKey.respiration.series, 'resp_rate');
   });
 
   test('trailing 30 and 90 are local calendar days, including DST', () {
@@ -145,6 +164,63 @@ void main() {
     expect(
       [for (final n in rhr.history) n.value],
       [57, 55, 56, 55, 57, 56, 54],
+    );
+  });
+
+  test('synthetic Paper respiration 16/min, 15 nights, no trusted baseline',
+      () async {
+    final resp = await repo().readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      30,
+    );
+    expect(resp.key, NightScalarMetric.respiration);
+    expect(resp.state, NightScalarState.current);
+    expect(resp.value, kNightScalarPaperRespRate);
+    expect(resp.baseline, isNull);
+    expect(resp.envelope, isNull);
+    expect(resp.history, hasLength(30));
+    expect(
+      [
+        for (final n in resp.history)
+          if (n.value != null) n.value,
+      ],
+      kNightScalarPaperResp,
+    );
+    expect(resp.counts.compared, 15);
+    final seven = await repo().readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(
+      [for (final n in seven.history) n.value],
+      [14, 18, 15, 17, 15.5, 16.5, 16],
+    );
+    final ninety = await repo().readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      90,
+    );
+    expect(ninety.history, hasLength(90));
+    expect(ninety.history.last.value, 16);
+    expect(
+      () => repo().readNightScalarDetail(MetricKey.respiration, '2026-09-15', 14),
+      throwsArgumentError,
+    );
+    final day = await repo().readDay('2026-09-15');
+    expect(day.respiration.value, 16);
+    expect(day.respiration.baseline, isNull);
+    expect(day.respiration.nightScalar, NightScalarState.current);
+    final history = await repo().readMetricHistory(
+      MetricKey.respiration,
+      '2026-09-15',
+      30,
+    );
+    expect(history, hasLength(30));
+    expect(
+      [for (final p in history) if (p.value != null) p.value],
+      kNightScalarPaperResp,
     );
   });
 
@@ -726,6 +802,55 @@ void main() {
     expect(nightScalarLabel(last['sleep_source']), 'manual');
     expect(nightScalarNonnegInt(last['baseline_n_valid']), 3);
 
+    final resp = projectNightScalarPayload(
+      '{"scalars":{"resp_rate":9,"resp_rate":16},'
+      '"baselines":{"resp":{"baseline":12,"baseline":14.5,'
+      '"status":"open","status":"trusted"}},'
+      '"respiration":{"rsa":{"confidence":0.2,"confidence":0.72,'
+      '"tier":"high","tier":"estimate",'
+      '"inputs_used":["rr_cleaned","beat_times"],'
+      '"note":"stable HF peak",'
+      '"value":{"brpm":12,"brpm":12.2,"source":"riiv","source":"rsa",'
+      '"peak_hz":0.1,"peak_hz":0.27,"power":1,"power":2.5}}}}',
+      'resp',
+      'resp_rate',
+    );
+    expect(nightScalarFinite(resp!['scalar']), 16);
+    expect(nightScalarFinite(resp['baseline_value']), 14.5);
+    expect(nightScalarStatus(resp['baseline_status']), 'trusted');
+    final env = nightScalarEnvelope(resp['envelope']);
+    expect(env!.confidence, 0.72);
+    expect(env.tier, 'estimate');
+    expect(env.inputsUsed, ['rr_cleaned', 'beat_times']);
+    expect(env.note, 'stable HF peak');
+    expect(env.brpm, 12.2);
+    expect(env.peakHz, 0.27);
+    expect(env.power, 2.5);
+    expect(env.source, 'rsa');
+    expect(nightScalarEnvelope(null), isNull);
+    expect(nightScalarEnvelope({}), isNull);
+    expect(nightScalarEnvelope({'confidence': 0.5})!.confidence, 0.5);
+    expect(nightScalarEnvelope({'tier': 'estimate'})!.confidence, isNull);
+    expect(nightScalarEnvelope({'confidence': double.nan}), isNull);
+    expect(nightScalarEnvelope({'confidence': 1.2, 'tier': 'HIGH'})!.confidence, isNull);
+    expect(nightScalarEnvelope({'confidence': 0})!.confidence, 0);
+    expect(
+      nightScalarEnvelope({
+        'inputs_used': ['rr_cleaned', 1, true, '  ', {'k': 1}, null],
+      })!.inputsUsed,
+      ['rr_cleaned'],
+    );
+    expect(nightScalarEnvelope({'inputs_used': [1, true, {'k': 1}]}), isNull);
+    expect(
+      nightScalarEnvelope({
+        'value': '—',
+        'confidence': 0,
+        'tier': 'ESTIMATE',
+        'note': 'need nn_beats',
+      })!.peakHz,
+      isNull,
+    );
+
     expect(nightScalarJsonTrue('true'), isFalse);
     expect(nightScalarJsonTrue('1'), isFalse);
     expect(nightScalarNonnegInt(-1), isNull);
@@ -855,6 +980,8 @@ void main() {
     expect(processing.hrv.baseline, isNull);
     expect(processing.hrv.readiness, MetricReadiness.processing);
     expect(processing.hrv.nightScalar, NightScalarState.pending);
+    expect(processing.respiration.value, isNull);
+    expect(processing.respiration.nightScalar, NightScalarState.pending);
     expect(processing.recovery.value, isNotNull);
     expect(processing.recovery.readiness, MetricReadiness.processing);
     expect(processing.strain.value, isNotNull);
@@ -868,12 +995,17 @@ void main() {
     expect(failed.hrv.baseline, isNull);
     expect(failed.hrv.nightScalar, NightScalarState.failed);
     expect(failed.restingHr.value, isNull);
+    expect(failed.respiration.value, isNull);
+    expect(failed.respiration.nightScalar, NightScalarState.failed);
 
     final complete = await repo().readDay('2026-09-15');
     expect(complete.hrv.value, 48);
     expect(complete.hrv.baseline, isNull);
     expect(complete.hrv.nightScalar, NightScalarState.current);
     expect(complete.restingHr.value, 54);
+    expect(complete.respiration.value, 16);
+    expect(complete.respiration.baseline, isNull);
+    expect(complete.respiration.nightScalar, NightScalarState.current);
     expect(complete.sleep.duration.value, isNotNull);
 
     final partial = await repo(scenario: SyntheticScenario.partial)
@@ -1047,6 +1179,9 @@ void main() {
     expect(day.restingHr.value, isNull);
     expect(day.restingHr.baseline, isNull);
     expect(day.restingHr.nightScalar, NightScalarState.missing);
+    expect(day.respiration.value, isNull);
+    expect(day.respiration.baseline, isNull);
+    expect(day.respiration.nightScalar, NightScalarState.missing);
     final rhr = await r.readNightScalarDetail(
       MetricKey.restingHr,
       '2026-09-15',
@@ -1140,5 +1275,168 @@ void main() {
     );
     expect(history.last.day, '2026-09-14');
     expect(history.last.value, 40);
+  });
+
+  test('respiration envelope is disclosed and never invents confidence 0.5', () {
+    const envelope = NightScalarEnvelope(
+      tier: 'estimate',
+      confidence: 0.72,
+      inputsUsed: ['rr_cleaned', 'beat_times'],
+      note: 'stable HF peak',
+      brpm: 12.2,
+      peakHz: 0.27,
+      power: 2.5,
+      source: 'rsa',
+    );
+    final selected = row(
+      '2026-09-15',
+      value: 16,
+      envelope: envelope,
+    );
+    final detail = snap(
+      key: NightScalarMetric.respiration,
+      selected: selected,
+      matching: {'2026-09-15': selected},
+    );
+    expect(detail.key, NightScalarMetric.respiration);
+    expect(detail.series, 'resp_rate');
+    expect(detail.baselinePath, 'resp');
+    expect(detail.value, 16);
+    expect(detail.value, isNot(envelope.brpm));
+    expect(detail.envelope, envelope);
+    expect(detail.envelope!.confidence, isNot(0.5));
+    expect(detail.envelope!.peakHz, 0.27);
+    expect(detail.envelope!.power, 2.5);
+    expect(detail.envelope!.source, 'rsa');
+    expect(detail.envelope!.brpm, 12.2);
+
+    final noConfidence = snap(
+      key: NightScalarMetric.respiration,
+      selected: row(
+        '2026-09-15',
+        value: 16,
+        envelope: const NightScalarEnvelope(tier: 'estimate'),
+      ),
+    );
+    expect(noConfidence.envelope!.confidence, isNull);
+    expect(noConfidence.envelope!.tier, 'estimate');
+
+    final unreadable = snap(
+      key: NightScalarMetric.respiration,
+      selected: row(
+        '2026-09-15',
+        value: 16,
+        unreadable: true,
+        envelope: envelope,
+      ),
+    );
+    expect(unreadable.state, NightScalarState.unreadable);
+    expect(unreadable.envelope, isNull);
+
+    const trusted = StoredNightBaseline(
+      value: 15,
+      status: kNightScalarTrustedBaseline,
+      nValid: 14,
+      nightsSinceUpdate: 0,
+    );
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.current,
+        value: 16,
+        baseline: trusted,
+      ).baseline,
+      15,
+    );
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.current,
+        value: 16,
+        baseline: const StoredNightBaseline(value: 15, status: 'open'),
+      ).baseline,
+      isNull,
+    );
+    expect(
+      dayMetricFromNightScalar(
+        state: NightScalarState.current,
+        value: 16,
+        baseline: const StoredNightBaseline(value: 15, status: 'stale'),
+      ).baseline,
+      isNull,
+    );
+  });
+
+  test('respiration missing selected does not borrow a prior night', () {
+    final detail = snap(
+      key: NightScalarMetric.respiration,
+      selected: null,
+      matching: {
+        '2026-09-14': row('2026-09-14', value: 15),
+      },
+    );
+    expect(detail.state, NightScalarState.missing);
+    expect(detail.value, isNull);
+    expect(detail.history.last.gap, NightScalarGap.missing);
+    expect(detail.history[5].value, 15);
+  });
+
+  test('respiration unversioned metric_series is a gap, not a fallback', () {
+    final detail = snap(
+      key: NightScalarMetric.respiration,
+      selected: null,
+      seriesOnlyDays: {'2026-09-15', '2026-09-14'},
+    );
+    expect(detail.state, NightScalarState.missing);
+    expect(detail.value, isNull);
+    expect(detail.history.last.gap, NightScalarGap.unversioned);
+    expect(detail.history.last.value, isNull);
+    expect(detail.counts.excludedUnversioned, 2);
+  });
+
+  test('respiration seed stays coherent with cards and history', () async {
+    final r = repo();
+    const envelope = NightScalarEnvelope(
+      tier: 'estimate',
+      inputsUsed: ['rr_cleaned'],
+      note: 'too few beats for an RSA spectral estimate (need ≥20)',
+    );
+    final selected = row(
+      '2026-09-15',
+      value: 16,
+      envelope: envelope,
+      baseline: const StoredNightBaseline(
+        value: 15,
+        status: kNightScalarTrustedBaseline,
+      ),
+    );
+    r.seedNightScalarDetail(
+      key: MetricKey.respiration,
+      selected: selected,
+      matching: {
+        '2026-09-14': row('2026-09-14', value: 15.5),
+        '2026-09-15': selected,
+      },
+    );
+    final detail = await r.readNightScalarDetail(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(detail.value, 16);
+    expect(detail.envelope, envelope);
+    expect(detail.envelope!.confidence, isNull);
+    expect(detail.baseline?.value, 15);
+    final day = await r.readDay('2026-09-15');
+    expect(day.respiration.value, 16);
+    expect(day.respiration.baseline, 15);
+    expect(day.respiration.nightScalar, detail.state);
+    expect(day.hrv.value, isNull);
+    expect(day.restingHr.value, isNull);
+    final history = await r.readMetricHistory(
+      MetricKey.respiration,
+      '2026-09-15',
+      7,
+    );
+    expect(history.last.value, 16);
+    expect(history[5].value, 15.5);
   });
 }

@@ -104,6 +104,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<String, double> _sleepByDay = {};
   final Map<String, double> _hrvByDay = {};
   final Map<String, double> _rhrByDay = {};
+  final Map<String, double> _respByDay = {};
   final Map<String, double> _strainByDay = {};
   WeekendSleepEstimate? weekendEstimate;
   SetupEvaluation? setupEvaluation;
@@ -273,6 +274,12 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         Map<String, dynamic>.from(_summary['recovery'] as Map)['rhr_baseline'],
       ),
       _rhrByDay,
+    );
+    _indexBaseline(
+      _nums(
+        Map<String, dynamic>.from(_summary['recovery'] as Map)['resp_baseline'],
+      ),
+      _respByDay,
     );
     _indexBaseline(const [
       1.4,
@@ -2302,7 +2309,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String endDay,
     int nights,
   ) async {
-    if (key == MetricKey.hrv || key == MetricKey.restingHr) {
+    if (key == MetricKey.hrv ||
+        key == MetricKey.restingHr ||
+        key == MetricKey.respiration) {
       return nightScalarHistoryPoints(
         await readNightScalarDetail(key, endDay, nights),
       );
@@ -2312,7 +2321,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         scenario != SyntheticScenario.missing &&
         scenario != SyntheticScenario.processing;
     final source = switch (key) {
-      MetricKey.hrv || MetricKey.restingHr => const <String, double>{},
+      MetricKey.hrv ||
+      MetricKey.restingHr ||
+      MetricKey.respiration => const <String, double>{},
       MetricKey.recovery => {
         if (todayKnown) _day: (recovery['score'] as num).toDouble(),
       },
@@ -2339,9 +2350,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   final Map<NightScalarMetric, _NightScalarSeed> _nightScalarSeeds = {};
 
   /// Per-metric seed. [key] defaults to HRV so existing callers stay HRV-only.
-  /// Name [MetricKey.restingHr] to seed RHR. The other metric is not invented.
-  /// Pass the same [sleepJobs]/[napJobs] on both seeds when they share a
-  /// correction.
+  /// Name [MetricKey.restingHr] or [MetricKey.respiration] to seed those.
+  /// The other metrics are not invented. Pass the same [sleepJobs]/[napJobs]
+  /// on both seeds when they share a correction.
   void seedNightScalarDetail({
     MetricKey key = MetricKey.hrv,
     NightScalarRow? selected,
@@ -2423,7 +2434,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String day,
     List<String> days,
   ) {
-    final byDay = key == NightScalarMetric.hrv ? _hrvByDay : _rhrByDay;
+    final byDay = switch (key) {
+      NightScalarMetric.hrv => _hrvByDay,
+      NightScalarMetric.rhr => _rhrByDay,
+      NightScalarMetric.respiration => _respByDay,
+    };
     final recovery = Map<String, dynamic>.from(_summary['recovery'] as Map);
     final onFixtureDay = day == _day;
     final missing = scenario == SyntheticScenario.missing;
@@ -2434,16 +2449,21 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         onFixtureDay && scenario == SyntheticScenario.partial;
     double? selectedValue;
     if (onFixtureDay && !missing) {
-      selectedValue = key == NightScalarMetric.hrv
-          ? (recovery['hrv_ms'] as num).toDouble()
-          : (recovery['rhr_bpm'] as num).toDouble();
+      selectedValue = switch (key) {
+        NightScalarMetric.hrv => (recovery['hrv_ms'] as num).toDouble(),
+        NightScalarMetric.rhr => (recovery['rhr_bpm'] as num).toDouble(),
+        NightScalarMetric.respiration =>
+          (recovery['resp_per_min'] as num).toDouble(),
+      };
     } else if (!onFixtureDay) {
       selectedValue = byDay[day];
     }
     final baselineValue = onFixtureDay && selectedValue != null
-        ? (key == NightScalarMetric.hrv
-            ? kNightScalarPaperHrvBaseline
-            : kNightScalarPaperRhrBaseline)
+        ? switch (key) {
+            NightScalarMetric.hrv => kNightScalarPaperHrvBaseline,
+            NightScalarMetric.rhr => kNightScalarPaperRhrBaseline,
+            NightScalarMetric.respiration => null,
+          }
         : null;
     NightScalarRow? selected;
     if (selectedValue != null) {
@@ -2512,6 +2532,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             : const DayMetric.missing(),
         restingHr: _rhrByDay.containsKey(day)
             ? DayMetric(_rhrByDay[day])
+            : const DayMetric.missing(),
+        respiration: _respByDay.containsKey(day)
+            ? DayMetric(_respByDay[day])
             : const DayMetric.missing(),
         synthetic: true,
       ),
@@ -2603,6 +2626,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       strain: day.strain,
       hrv: card(metric: NightScalarMetric.hrv, published: day.hrv),
       restingHr: card(metric: NightScalarMetric.rhr, published: day.restingHr),
+      respiration: card(
+        metric: NightScalarMetric.respiration,
+        published: day.respiration,
+      ),
       steps: day.steps,
       stepIntervals: day.stepIntervals,
       calculatedAt: day.calculatedAt,
@@ -3511,6 +3538,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       strain: DayMetric((_summary['day_strain'] as num).toDouble()),
       hrv: DayMetric((recovery['hrv_ms'] as num).toDouble()),
       restingHr: DayMetric((recovery['rhr_bpm'] as num).toDouble()),
+      respiration: DayMetric((recovery['resp_per_min'] as num).toDouble()),
       steps: DayMetric((_summary['steps'] as num).toDouble()),
       calculatedAt: _baseBand.latestStoredAt,
       stepIntervals: [
@@ -3572,6 +3600,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           strain: pending(day.strain),
           hrv: pending(day.hrv),
           restingHr: pending(day.restingHr),
+          respiration: pending(day.respiration),
           steps: pending(day.steps),
           stepIntervals: day.stepIntervals,
           calculatedAt: day.calculatedAt,

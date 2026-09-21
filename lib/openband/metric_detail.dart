@@ -10,6 +10,11 @@ import 'night_scalar_detail.dart';
 import 'screens.dart';
 import 'theme.dart';
 
+bool _isNightScalar(MetricKey key) => switch (key) {
+  MetricKey.hrv || MetricKey.restingHr || MetricKey.respiration => true,
+  MetricKey.recovery || MetricKey.sleepDuration || MetricKey.strain => false,
+};
+
 /// Full-screen metric detail (Paper "Messwert-Detail"): hero, night-for-night
 /// bars and the rows leading into sleep and the baseline explanation.
 class OpenBandMetricDetail extends StatefulWidget {
@@ -72,9 +77,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
   bool _error = false;
   late String _heardDay;
 
-  bool get _nightScalar =>
-      widget.metricKey == MetricKey.hrv ||
-      widget.metricKey == MetricKey.restingHr;
+  bool get _nightScalar => _isNightScalar(widget.metricKey);
 
   @override
   void initState() {
@@ -96,9 +99,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
       _heardDay = widget.controller.selectedDay;
       widget.controller.addListener(_onController);
     }
-    final wasNight =
-        oldWidget.metricKey == MetricKey.hrv ||
-        oldWidget.metricKey == MetricKey.restingHr;
+    final wasNight = _isNightScalar(oldWidget.metricKey);
     if (wasNight && !_nightScalar) {
       _nights = 30;
       _points = null;
@@ -168,6 +169,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
   DayMetric _metric(OpenBandDay day) => switch (widget.metricKey) {
     MetricKey.hrv => day.hrv,
     MetricKey.restingHr => day.restingHr,
+    MetricKey.respiration => day.respiration,
     MetricKey.recovery => day.recovery,
     MetricKey.sleepDuration => day.sleep.duration,
     MetricKey.strain => day.strain,
@@ -215,6 +217,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
         icon: widget.icon,
         color: widget.color,
         tint: widget.tint,
+        digits: widget.digits,
       );
     }
     return AnimatedBuilder(
@@ -260,9 +263,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                           child: Text(
                             widget.controller.selectedDay == todayLabel()
                                 ? (_nightly ? 'Nacht auf heute' : 'Heute')
-                                : obDayTitle(
-                                    widget.controller.selectedDay,
-                                  ),
+                                : obDayTitle(widget.controller.selectedDay),
                             style: p.text(
                               13,
                               weight: FontWeight.w600,
@@ -296,13 +297,17 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                       ],
                     ),
                     Text(
-                      obMetricStatus(metric.value, metric.baseline),
+                      metric.value == null || metric.baseline == null
+                          ? obMetricStatus(metric.value, metric.baseline)
+                          : obMetricComparisonStatus(
+                              metric.value!,
+                              metric.baseline!,
+                              digits: widget.digits,
+                            ),
                       style: p.text(
                         13,
                         weight: FontWeight.w600,
-                        color:
-                            metric.baseline != null &&
-                                metric.value != null
+                        color: metric.baseline != null && metric.value != null
                             ? p.smallText(color)
                             : p.muted,
                       ),

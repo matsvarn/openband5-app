@@ -50,7 +50,7 @@ class DayMetric {
   final MetricReadiness readiness;
   final String? reason;
   final double? baseline;
-  /// Typed night-scalar overlay for HRV/RHR cards. Null on other metrics.
+  /// Typed night-scalar overlay for nightly scalar cards. Null on other metrics.
   final NightScalarState? nightScalar;
   const DayMetric(
     this.value, {
@@ -66,7 +66,7 @@ class DayMetric {
       nightScalar = null;
 }
 
-/// Compact HRV/RHR card. Comparison [DayMetric.baseline] is only a current
+/// Compact nightly-scalar card. Comparison [DayMetric.baseline] is only a current
 /// complete scalar with stored status `trusted`. Typed detail keeps the rest.
 DayMetric dayMetricFromNightScalar({
   required NightScalarState state,
@@ -392,7 +392,7 @@ class DayIntake {
 class OpenBandDay {
   final String day;
   final SleepNight sleep;
-  final DayMetric recovery, strain, hrv, restingHr, steps;
+  final DayMetric recovery, strain, hrv, restingHr, respiration, steps;
   final SleepCorrection? correction;
   final List<StepInterval> stepIntervals;
   final DateTime? calculatedAt;
@@ -405,6 +405,7 @@ class OpenBandDay {
     this.strain = const DayMetric.missing(),
     this.hrv = const DayMetric.missing(),
     this.restingHr = const DayMetric.missing(),
+    this.respiration = const DayMetric.missing(),
     this.steps = const DayMetric.missing(),
     this.correction,
     this.stepIntervals = const [],
@@ -426,6 +427,7 @@ class MetricPoint {
 enum MetricKey {
   hrv('rmssd'),
   restingHr('rhr'),
+  respiration('resp_rate'),
   recovery('readiness'),
   sleepDuration('tst_min'),
   strain('strain');
@@ -437,10 +439,11 @@ enum MetricKey {
 NightScalarMetric nightScalarMetricOf(MetricKey key) => switch (key) {
   MetricKey.hrv => NightScalarMetric.hrv,
   MetricKey.restingHr => NightScalarMetric.rhr,
+  MetricKey.respiration => NightScalarMetric.respiration,
   _ => throw ArgumentError.value(
     key,
     'key',
-    'Night scalar detail is HRV or resting pulse only.',
+    'Night scalar detail is HRV, resting pulse, or respiration only.',
   ),
 };
 
@@ -2262,10 +2265,10 @@ abstract interface class OpenBandRepository {
     String endDay,
     int nights,
   );
-  /// Stored RMSSD / resting-pulse night scalar for [day], plus a 7/30/90
-  /// local-calendar history at the selected row's algorithm. [key] is HRV or
-  /// resting pulse. Pending or failed sleep/nap receipts withhold the hero
-  /// and that history day; a finite stored scalar stays on
+  /// Stored RMSSD / resting-pulse / respiration night scalar for [day], plus a
+  /// 7/30/90 local-calendar history at the selected row's algorithm. [key] is
+  /// HRV, resting pulse, or respiration. Pending or failed sleep/nap receipts
+  /// withhold the hero and that history day; a finite stored scalar stays on
   /// [NightScalarDetail.storedForInfo]. Database failure throws.
   Future<NightScalarDetail> readNightScalarDetail(
     MetricKey key,

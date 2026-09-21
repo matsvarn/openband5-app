@@ -126,6 +126,8 @@ void main() {
     await mount(tester);
     expect(find.text('Gesundheit'), findsOneWidget);
     expect(find.text('7 Nächte'), findsWidgets);
+    expect(find.text('Atemfrequenz'), findsOneWidget);
+    expect(find.byKey(const ValueKey('atemfrequenz')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),

@@ -133,6 +133,83 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('metric card digits format value and comparison consistently', (
+    tester,
+  ) async {
+    const preciseKey = ValueKey('metric-precise');
+    const defaultKey = ValueKey('metric-default');
+    const missingKey = ValueKey('metric-missing');
+    const roundedKey = ValueKey('metric-rounded-comparison');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: const [
+              OBMetricCard(
+                key: preciseKey,
+                label: 'Atmung präzise',
+                unit: '/min',
+                metric: DayMetric(16.5, baseline: 16),
+                icon: Icons.air,
+                color: Colors.blue,
+                digits: 1,
+              ),
+              OBMetricCard(
+                key: defaultKey,
+                label: 'Atmung Standard',
+                unit: '/min',
+                metric: DayMetric(16.5, baseline: 16),
+                icon: Icons.air,
+                color: Colors.blue,
+              ),
+              OBMetricCard(
+                key: missingKey,
+                label: 'Atmung fehlt',
+                unit: '/min',
+                metric: DayMetric(null, baseline: 16),
+                icon: Icons.air,
+                color: Colors.blue,
+                digits: 1,
+              ),
+              OBMetricCard(
+                key: roundedKey,
+                label: 'Atmung rundet',
+                unit: '/min',
+                metric: DayMetric(16.54, baseline: 16.5),
+                icon: Icons.air,
+                color: Colors.blue,
+                digits: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Finder inside(Key key, String text) =>
+        find.descendant(of: find.byKey(key), matching: find.text(text));
+
+    expect(inside(preciseKey, '16,5'), findsOneWidget);
+    expect(inside(preciseKey, '+0,5 über Basis'), findsOneWidget);
+    expect(inside(defaultKey, '17'), findsOneWidget);
+    expect(inside(defaultKey, '+1 über Basis'), findsOneWidget);
+    expect(inside(missingKey, '—'), findsOneWidget);
+    expect(inside(missingKey, '/min'), findsNothing);
+    expect(inside(missingKey, 'Basis noch offen'), findsNothing);
+    expect(inside(roundedKey, '16,5'), findsOneWidget);
+    expect(inside(roundedKey, 'wie Basis'), findsOneWidget);
+    expect(find.text('+0,0 über Basis'), findsNothing);
+    expect(find.text('−0,0 unter Basis'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('iOS back swipe keeps the edited draft for reopening', (
     tester,
   ) async {

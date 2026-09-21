@@ -1189,8 +1189,8 @@
         "status": "partial",
         "archiveNode": "24SE-0",
         "source": "lib/openband/health.dart; lib/openband/screens.dart; lib/openband/local_repository.dart; lib/openband/night_scalar_data.dart",
-        "evidence": "test/openband_metric_card_test.dart; test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_health_test.dart; integration_test/openband_review_test.dart night-cards flow",
-        "note": "Shared Overview/Sleep/Health HRV and resting-pulse cards now use the same selected SQL scalar, correction receipt and version policy as detail. Health history preserves partial flags and version anchoring; only a trusted current baseline supports comparison, with no inferred range. Full Health hub with body values, rhythm, retrospective, coverage and method/quality destinations remains open.",
+        "evidence": "test/openband_metric_card_test.dart; test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_health_test.dart; integration_test/openband_review_test.dart night-cards flow; test/openband_respiration_test.dart",
+        "note": "Shared Overview/Sleep/Health HRV and resting-pulse cards now use the same selected SQL scalar, correction receipt and version policy as detail. Health history preserves partial flags and version anchoring; only a trusted current baseline supports comparison, with no inferred range. Full Health hub with body values, rhythm, retrospective, coverage and method/quality destinations remains open. Respiration now follows the same receipt/version policy from the payload scalar, with precision preserved and no invented confidence or bounds; see Alle Messwerte.",
         "nativeReview": "night-cards-pro-20260921-v4:23 checkpoints, PASS83.18s; night-cards-mini-20260921:15 affected checkpoints, PASS95.49s, all interactions retained. All38 PNGs inspected; light/dark, missing/partial/error, root/detail/back, generic strain and2x cards. Synthetic simulator proof."
       },
       "Herzintervalle · unzuverlässig": {
@@ -1217,6 +1217,14 @@
         "evidence": "test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; test/openband_night_scalar_detail_test.dart; integration_test/openband_review_test.dart",
         "note": "Current stored night plus selectable7/30/90 civil-day history at the same stored algorithm. The archived invented spread band and period-average headline are replaced by actual individual nights and the stored scalar baseline. All existing HRV/RHR detail callers use this shared family; no old detail layout remains reachable. Missing, unreadable, partial, older and correction receipt states are explicit.",
         "nativeReview": "build/ui-review/night-scalar-pro-20260921-v2 and night-scalar-mini-20260921-v2:36 checkpoints each, all72 PNGs inspected. Shared period selector, RHR light/dark, missing/partial/error/retry, actual night/correction destinations,2x top/bottom. Synthetic simulator proof."
+      },
+      "Alle Messwerte": {
+        "status": "partial",
+        "paperNode": "4XTE-0",
+        "source": "lib/openband/health.dart; lib/openband/night_scalar_detail.dart; lib/openband/night_scalar_data.dart; lib/openband/local_repository.dart",
+        "evidence": "test/openband_respiration_test.dart; test/openband_night_scalar_data_test.dart; test/openband_night_scalar_repository_test.dart; integration_test/openband_review_test.dart respiration flow",
+        "note": "Respiration is now reachable from Health: actual published payload scalar, selected-result algorithm history, correction receipts, trusted-only baseline, one decimal and actual RSA metadata in Info. Overnight destination opens respiration. HRV/RHR remain on the same shared family. Temperature, body/manual VO2, rhythm and full Health hub parity remain open.",
+        "nativeReview": "respiration-pro-20260921 PASS72.71s and respiration-mini-20260921 PASS95.48s,21 checkpoints each. Safe-area fixture corrected; replacement Health entry/detail captures respiration-pro-health-20260921 PASS62.4s and respiration-mini-health-20260921 PASS66.94s. All46 PNGs inspected; original two Health entry captures superseded.14 goldens inspected. Synthetic simulator proof only."
       }
     },
     "A04 · System": {

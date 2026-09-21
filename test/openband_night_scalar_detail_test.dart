@@ -86,15 +86,12 @@ void main() {
           child: OpenBandNightScalarDetail(
             controller: controller,
             metricKey: key,
-            label: key == MetricKey.hrv ? 'HRV' : 'Ruhepuls',
-            unit: key == MetricKey.hrv ? 'ms' : '/min',
-            icon: key == MetricKey.hrv
-                ? LucideIcons.activity
-                : LucideIcons.heart,
-            color: key == MetricKey.hrv ? (p) => p.recovery : (p) => p.pulse,
-            tint: key == MetricKey.hrv
-                ? (p) => p.recoveryTint
-                : (p) => p.pulseTint,
+            label: _nightLabel(key),
+            unit: _nightUnit(key),
+            icon: _nightIcon(key),
+            color: _nightColor(key),
+            tint: _nightTint(key),
+            digits: _nightDigits(key),
           ),
         ),
       ),
@@ -161,20 +158,12 @@ void main() {
     await pumpAt(1);
     expect(
       find.byType(CustomPaint),
-      paints
-        ..line(
-          color: color.withValues(alpha: 0.5),
-          strokeWidth: 1.5,
-        ),
+      paints..line(color: color.withValues(alpha: 0.5), strokeWidth: 1.5),
     );
     await pumpAt(2);
     expect(
       find.byType(CustomPaint),
-      paints
-        ..line(
-          color: color.withValues(alpha: 0.5),
-          strokeWidth: 1.5,
-        ),
+      paints..line(color: color.withValues(alpha: 0.5), strokeWidth: 1.5),
     );
   });
 
@@ -226,11 +215,7 @@ void main() {
   ) async {
     for (final width in [375.0, 393.0]) {
       _seedTrusted(repo, key: MetricKey.restingHr);
-      await mount(
-        tester,
-        key: MetricKey.restingHr,
-        size: Size(width, 852),
-      );
+      await mount(tester, key: MetricKey.restingHr, size: Size(width, 852));
       final basis = find.textContaining('Basis 56');
       expect(basis, findsOneWidget);
       expect(tester.getSize(basis).height, 16);
@@ -645,10 +630,7 @@ void main() {
         value: 48,
         imported: true,
         source: 'cloud_v2',
-        baseline: const StoredNightBaseline(
-          value: 40,
-          status: 'trusted',
-        ),
+        baseline: const StoredNightBaseline(value: 40, status: 'trusted'),
       ),
       matching: {
         ..._paperHrv(),
@@ -680,10 +662,7 @@ void main() {
         day: kNightScalarPaperDay,
         algoVersion: kAlgoVersion,
         value: 48,
-        baseline: const StoredNightBaseline(
-          value: 40,
-          status: 'trusted',
-        ),
+        baseline: const StoredNightBaseline(value: 40, status: 'trusted'),
         windowStartMs: DateTime.utc(2026, 9, 14, 21, 10).millisecondsSinceEpoch,
         windowEndMs: DateTime.utc(2026, 9, 15, 4, 54).millisecondsSinceEpoch,
       ),
@@ -726,7 +705,10 @@ void main() {
     await tester.tap(find.text('Persönliche Basis'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Vorherige Basis 40 ms'), findsOneWidget);
-    expect(find.textContaining('Vorheriger Status: Verlässlich'), findsOneWidget);
+    expect(
+      find.textContaining('Vorheriger Status: Verlässlich'),
+      findsOneWidget,
+    );
     expect(find.textContaining('\nStatus: Verlässlich'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -870,59 +852,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'partial count header stays one line at ordinary width',
-    (tester) async {
-      Future<void> expectCanonicalSelectedPartial() async {
-        expect(find.text('Unvollständige Nacht'), findsOneWidget);
-        expect(find.text('48'), findsOneWidget);
-        expect(find.text('15 von 30 · teils unvollständig'), findsOneWidget);
-        expect(find.textContaining('Basis 40'), findsOneWidget);
-        expect(find.text('Basis noch offen'), findsNothing);
-        expect(find.text('+8 über Basis'), findsNothing);
-        expect(tester.takeException(), isNull);
-      }
-
-      Future<void> expectOneLine() async {
-        final title = tester.getRect(find.text('Nacht für Nacht'));
-        final count = tester.getRect(
-          find.textContaining('teils unvollständig'),
-        );
-        expect(title.height, 18);
-        expect(count.height, 18);
-        expect(count.top, closeTo(title.top, 0.5));
-        expect(title.width, lessThan(150));
-        expect(count.left, closeTo(title.right + 8, 1));
-        expect(tester.takeException(), isNull);
-      }
-
-      _seedSelectedPartial(repo);
-      await mount(tester);
-      await expectCanonicalSelectedPartial();
-      await expectOneLine();
-      await expectLater(
-        find.byKey(const ValueKey('capture')),
-        matchesGoldenFile('openband_goldens/hrv-partial.png'),
-      );
-
-      _seedSelectedPartial(repo);
-      await mount(tester, size: const Size(375, 812));
-      await expectCanonicalSelectedPartial();
-      await expectOneLine();
-
-      _seedSelectedPartial(repo);
-      await mount(tester, size: const Size(320, 812));
-      await expectCanonicalSelectedPartial();
-
-      _seedSelectedPartial(repo);
-      await mount(tester, scale: 2, size: const Size(375, 812));
+  testWidgets('partial count header stays one line at ordinary width', (
+    tester,
+  ) async {
+    Future<void> expectCanonicalSelectedPartial() async {
       expect(find.text('Unvollständige Nacht'), findsOneWidget);
-      expect(find.textContaining('teils unvollständig'), findsOneWidget);
+      expect(find.text('48'), findsOneWidget);
+      expect(find.text('15 von 30 · teils unvollständig'), findsOneWidget);
       expect(find.textContaining('Basis 40'), findsOneWidget);
+      expect(find.text('Basis noch offen'), findsNothing);
       expect(find.text('+8 über Basis'), findsNothing);
       expect(tester.takeException(), isNull);
-    },
-  );
+    }
+
+    Future<void> expectOneLine() async {
+      final title = tester.getRect(find.text('Nacht für Nacht'));
+      final count = tester.getRect(find.textContaining('teils unvollständig'));
+      expect(title.height, 18);
+      expect(count.height, 18);
+      expect(count.top, closeTo(title.top, 0.5));
+      expect(title.width, lessThan(150));
+      expect(count.left, closeTo(title.right + 8, 1));
+      expect(tester.takeException(), isNull);
+    }
+
+    _seedSelectedPartial(repo);
+    await mount(tester);
+    await expectCanonicalSelectedPartial();
+    await expectOneLine();
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/hrv-partial.png'),
+    );
+
+    _seedSelectedPartial(repo);
+    await mount(tester, size: const Size(375, 812));
+    await expectCanonicalSelectedPartial();
+    await expectOneLine();
+
+    _seedSelectedPartial(repo);
+    await mount(tester, size: const Size(320, 812));
+    await expectCanonicalSelectedPartial();
+
+    _seedSelectedPartial(repo);
+    await mount(tester, scale: 2, size: const Size(375, 812));
+    expect(find.text('Unvollständige Nacht'), findsOneWidget);
+    expect(find.textContaining('teils unvollständig'), findsOneWidget);
+    expect(find.textContaining('Basis 40'), findsOneWidget);
+    expect(find.text('+8 über Basis'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'independent 7 then 30 then 7 responses cannot paint stale data',
@@ -992,51 +971,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'delayed same-day repository swap clears the old snapshot',
-    (tester) async {
-      _seedTrusted(repo);
-      await mount(tester);
-      expect(find.text('48'), findsOneWidget);
+  testWidgets('delayed same-day repository swap clears the old snapshot', (
+    tester,
+  ) async {
+    _seedTrusted(repo);
+    await mount(tester);
+    expect(find.text('48'), findsOneWidget);
 
-      final previous = controller;
-      final nextRepo = _GateRepo();
-      nextRepo.seedNightScalarDetail(
-        selected: NightScalarRow(
-          day: kNightScalarPaperDay,
-          algoVersion: kAlgoVersion,
-          value: 32,
-          computedAtMs: 1000,
-          baseline: const StoredNightBaseline(
-            value: kNightScalarPaperHrvBaseline,
-            status: 'trusted',
-          ),
-          windowStartMs: _onsetStamp,
-          windowEndMs: _wakeStamp,
+    final previous = controller;
+    final nextRepo = _GateRepo();
+    nextRepo.seedNightScalarDetail(
+      selected: NightScalarRow(
+        day: kNightScalarPaperDay,
+        algoVersion: kAlgoVersion,
+        value: 32,
+        computedAtMs: 1000,
+        baseline: const StoredNightBaseline(
+          value: kNightScalarPaperHrvBaseline,
+          status: 'trusted',
         ),
-        matching: _paperHrv(),
-        currentAlgo: kAlgoVersion,
-      );
-      nextRepo.delayReads = true;
-      controller = OpenBandController(
-        repository: nextRepo,
-        initialDay: kNightScalarPaperDay,
-        band: nextRepo.band,
-        now: () => DateTime(2026, 9, 15, 9, 41),
-      );
-      addTearDown(previous.dispose);
-      await mount(tester, settle: false);
-      await tester.pump();
-      expect(find.text('48'), findsNothing);
-      expect(find.text('32'), findsNothing);
-      expect(nextRepo.pendingReads, isNotEmpty);
-      nextRepo.completeRead(0);
-      await tester.pumpAndSettle();
-      expect(find.text('32'), findsOneWidget);
-      expect(find.text('48'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        windowStartMs: _onsetStamp,
+        windowEndMs: _wakeStamp,
+      ),
+      matching: _paperHrv(),
+      currentAlgo: kAlgoVersion,
+    );
+    nextRepo.delayReads = true;
+    controller = OpenBandController(
+      repository: nextRepo,
+      initialDay: kNightScalarPaperDay,
+      band: nextRepo.band,
+      now: () => DateTime(2026, 9, 15, 9, 41),
+    );
+    addTearDown(previous.dispose);
+    await mount(tester, settle: false);
+    await tester.pump();
+    expect(find.text('48'), findsNothing);
+    expect(find.text('32'), findsNothing);
+    expect(nextRepo.pendingReads, isNotEmpty);
+    nextRepo.completeRead(0);
+    await tester.pumpAndSettle();
+    expect(find.text('32'), findsOneWidget);
+    expect(find.text('48'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('2x 375 does not overflow and keeps a reliable count', (
     tester,
@@ -1062,32 +1040,109 @@ void main() {
 int get _onsetStamp => DateTime(2026, 9, 14, 23, 10).millisecondsSinceEpoch;
 int get _wakeStamp => DateTime(2026, 9, 15, 6, 54).millisecondsSinceEpoch;
 
+String _nightLabel(MetricKey key) => switch (key) {
+  MetricKey.hrv => 'HRV',
+  MetricKey.restingHr => 'Ruhepuls',
+  MetricKey.respiration => 'Atmung',
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
+int _nightDigits(MetricKey key) => switch (key) {
+  MetricKey.respiration => 1,
+  MetricKey.hrv || MetricKey.restingHr => 0,
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
+String _nightUnit(MetricKey key) => switch (key) {
+  MetricKey.hrv => 'ms',
+  MetricKey.restingHr || MetricKey.respiration => '/min',
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
+IconData _nightIcon(MetricKey key) => switch (key) {
+  MetricKey.hrv => LucideIcons.activity,
+  MetricKey.restingHr => LucideIcons.heart,
+  MetricKey.respiration => LucideIcons.wind,
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
+Color Function(OB) _nightColor(MetricKey key) => switch (key) {
+  MetricKey.hrv => (p) => p.recovery,
+  MetricKey.restingHr => (p) => p.pulse,
+  MetricKey.respiration => (p) => p.sleep,
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
+Color Function(OB) _nightTint(MetricKey key) => switch (key) {
+  MetricKey.hrv => (p) => p.recoveryTint,
+  MetricKey.restingHr => (p) => p.pulseTint,
+  MetricKey.respiration => (p) => p.sleepTint,
+  MetricKey.recovery ||
+  MetricKey.sleepDuration ||
+  MetricKey.strain => throw ArgumentError.value(key),
+};
+
 void _seedTrusted(_GateRepo repo, {MetricKey key = MetricKey.hrv}) {
-  final hrv = key == MetricKey.hrv;
-  repo.seedNightScalarDetail(
-    key: key,
-    selected: hrv
-        ? _selected(
-            baseline: const StoredNightBaseline(
-              value: kNightScalarPaperHrvBaseline,
-              status: 'trusted',
-            ),
-          )
-        : NightScalarRow(
-            day: kNightScalarPaperDay,
-            algoVersion: kAlgoVersion,
-            value: 54,
-            computedAtMs: 1000,
-            baseline: const StoredNightBaseline(
-              value: kNightScalarPaperRhrBaseline,
-              status: 'trusted',
-            ),
-            windowStartMs: _onsetStamp,
-            windowEndMs: _wakeStamp,
+  switch (key) {
+    case MetricKey.hrv:
+      repo.seedNightScalarDetail(
+        key: key,
+        selected: _selected(
+          baseline: const StoredNightBaseline(
+            value: kNightScalarPaperHrvBaseline,
+            status: 'trusted',
           ),
-    matching: hrv ? _paperHrv() : _paperRhr(),
-    currentAlgo: kAlgoVersion,
-  );
+        ),
+        matching: _paperHrv(),
+        currentAlgo: kAlgoVersion,
+      );
+    case MetricKey.restingHr:
+      repo.seedNightScalarDetail(
+        key: key,
+        selected: NightScalarRow(
+          day: kNightScalarPaperDay,
+          algoVersion: kAlgoVersion,
+          value: 54,
+          computedAtMs: 1000,
+          baseline: const StoredNightBaseline(
+            value: kNightScalarPaperRhrBaseline,
+            status: 'trusted',
+          ),
+          windowStartMs: _onsetStamp,
+          windowEndMs: _wakeStamp,
+        ),
+        matching: _paperRhr(),
+        currentAlgo: kAlgoVersion,
+      );
+    case MetricKey.respiration:
+      repo.seedNightScalarDetail(
+        key: key,
+        selected: NightScalarRow(
+          day: kNightScalarPaperDay,
+          algoVersion: kAlgoVersion,
+          value: kNightScalarPaperRespRate,
+          computedAtMs: 1000,
+          windowStartMs: _onsetStamp,
+          windowEndMs: _wakeStamp,
+        ),
+        matching: _paperResp(),
+        currentAlgo: kAlgoVersion,
+      );
+    case MetricKey.recovery:
+    case MetricKey.sleepDuration:
+    case MetricKey.strain:
+      throw ArgumentError.value(key);
+  }
 }
 
 void _seedPartialHistory(_GateRepo repo) {
@@ -1172,6 +1227,19 @@ Map<String, NightScalarRow> _paperRhr({int? algo}) {
         day: days[start + i],
         algoVersion: algo ?? kAlgoVersion,
         value: kNightScalarPaperRhr[i],
+      ),
+  };
+}
+
+Map<String, NightScalarRow> _paperResp({int? algo}) {
+  final days = nightScalarDaysEnding(kNightScalarPaperDay, 30);
+  final start = days.length - kNightScalarPaperResp.length;
+  return {
+    for (var i = 0; i < kNightScalarPaperResp.length; i++)
+      days[start + i]: NightScalarRow(
+        day: days[start + i],
+        algoVersion: algo ?? kAlgoVersion,
+        value: kNightScalarPaperResp[i],
       ),
   };
 }
