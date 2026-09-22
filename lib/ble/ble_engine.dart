@@ -4721,10 +4721,11 @@ class BleEngine {
       //   1. sample rate. 24-50 Hz is ~12-25 samples per cardiac cycle,
       //      nowhere near enough to locate a dicrotic notch, and gen4's v25 is
       //      13-27 s bursts every ~20 min.
-      //   2. multiplexing. v26's subChannel means one burst is several
-      //      interleaved optical channels, not one signal, and 0.2% of records
-      //      report a channel we don't know (protocol's `subChannelKnown` is
-      //      the gate, and it returning null is the common failure).
+      //   2. reconstruction is lossy. v26's window is one absolute i32 code
+      //      plus 24 saturated i16 deltas — a rail delta poisons the rest of
+      //      the window with no in-band signal that it happened. (An earlier
+      //      reading here claimed channel multiplexing via `subChannel`; that
+      //      byte is byte 2 of the i32 first sample — refuted in protocol.)
       //   3. amplitude. the band re-tunes gain per record, and morphology IS
       //      amplitude-shape, so pulse shape is not comparable across records
       //      without a normalisation nobody has validated.
