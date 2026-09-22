@@ -78,7 +78,11 @@
         "55NA-0",
         "55SE-0",
         "569H-0",
-        "56A9-0"
+        "56A9-0",
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0"
       ],
       "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
       "variantPaperNodes": {
@@ -410,12 +414,13 @@
       "widget": "ProfileHomeView._identityCard",
       "file": "ui2/profile/profile.dart",
       "usedIn": [
-        "3GQP-0"
+        "3GQP-0",
+        "5619-0"
       ],
       "children": [
         "OBAvatar"
       ],
-      "notes": "No Alpin profile hub; identity card is inline on ProfileHomeView."
+      "notes": "Shared identity card in the compact ProfileHomeView; no second profile implementation."
     },
     {
       "name": "OBBandCard",
@@ -423,13 +428,18 @@
       "widget": "ProfileHomeView._bandCard",
       "file": "ui2/profile/profile.dart",
       "usedIn": [
-        "3GQP-0"
+        "3GQP-0",
+        "5619-0"
       ],
       "children": [
         "OBBatteryBar",
         "OBSyncFacts"
       ],
-      "notes": "Datenstand (band), Gespeichert (iPhone receipt) and Archiv are independent facts. Band card is inline on ProfileHomeView; no OBBandCard class."
+      "notes": "Datenstand (band), Gespeichert (iPhone receipt) and Archiv are independent facts. Band card is inline on ProfileHomeView; no OBBandCard class. Large-text facts use stacked value/label rows to avoid broken words; production acceptance tracked in release-data.",
+      "variantPaperNodes": {
+        "largeFacts": "56DX-0",
+        "largeFactsDark": "56EA-0"
+      }
     },
     {
       "name": "OBSettingsGroup",
@@ -437,13 +447,19 @@
       "widget": "settingsGroup",
       "file": "ui2/profile/profile.dart",
       "usedIn": [
-        "3GQP-0"
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0"
       ],
       "children": [
         "OBSettingsRow"
       ],
       "implemented": "settingsGroup() in ui2/profile/profile.dart",
-      "note": "Paper name OBSettingsGroup; Dart function settingsGroup (ui2 shared furniture, Alpin tokens)."
+      "note": "One shared settingsGroup function; optional heading and outer padding preserve existing defaults. Compact Profile and Data reuse the same card/dividers.",
+      "variantPaperNodes": {
+        "subtitle": "56B1-0"
+      }
     },
     {
       "name": "OBSettingsRow",
@@ -451,7 +467,7 @@
       "widget": "SetRow",
       "file": "ui2/profile/profile.dart",
       "implemented": "SetRow in ui2/profile/profile.dart",
-      "note": "Paper name OBSetRow/OBSettingsRow; Dart class SetRow (ui2 shared furniture).",
+      "note": "SetRow uses52-point default rows and a60-point subtitle variant for Data. Both grow with content; existing controls and value alignment are shared.",
       "usedIn": [
         "3G8S-0",
         "55NA-0",
@@ -470,7 +486,8 @@
         "cycleEntryUnknown": "4GWL-0",
         "cycleEntryUnknownDark": "4H1P-0",
         "cycleEntryLarge": "4H6M-0",
-        "cycleEntryLargeDark": "4H6T-0"
+        "cycleEntryLargeDark": "4H6T-0",
+        "subtitle": "56B2-0"
       }
     },
     {

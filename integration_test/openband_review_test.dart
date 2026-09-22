@@ -20491,6 +20491,66 @@ void main() {
         );
         await capture('release-large-bottom');
 
+        Future<void> openReleaseProfile() async {
+          await tester.tap(find.byTooltip('Profil'));
+          await tester.pumpAndSettle();
+          expect(find.text('Daten & Sicherung'), findsOneWidget);
+          expect(find.text('Community'), findsNothing);
+        }
+
+        Future<void> openReleaseData() async {
+          final data = find.text('Daten & Sicherung');
+          await tester.ensureVisible(data);
+          await tester.tap(data);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('data-export-database')),
+              findsOneWidget);
+          expect(find.text('Glukose'), findsNothing);
+        }
+
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          await mount(release: true, brightness: brightness);
+          await openReleaseProfile();
+          await capture('release-profile-$suffix');
+          await openReleaseData();
+          await capture('release-data-$suffix');
+        }
+
+        await mount(release: true, scale: 2);
+        await openReleaseProfile();
+        await capture('release-profile-large');
+        await openReleaseData();
+        await capture('release-data-large');
+        await tester.scrollUntilVisible(
+          find.byKey(const ValueKey('data-reanalyze')),
+          220,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-data-large-bottom');
+
+        await mount(release: true);
+        await openReleaseProfile();
+        await openReleaseData();
+        final exportDatabase = find.byKey(const ValueKey('data-export-database'));
+        await tester.tap(exportDatabase);
+        await tester.pumpAndSettle();
+        final exportFailure = find.textContaining('synthetischer Schreibfehler');
+        await tester.ensureVisible(exportFailure);
+        expect(exportFailure, findsOneWidget);
+        await capture('release-data-export-error');
+        await tester.ensureVisible(exportDatabase);
+        await tester.tap(exportDatabase);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Export erstellt'));
+        expect(exportFailure, findsNothing);
+        await capture('release-data-export-retry');
+        final cadence = find.byKey(const ValueKey('data-backup-cadence'));
+        await tester.ensureVisible(cadence);
+        await tester.tap(cadence);
+        await tester.pumpAndSettle();
+        expect(find.text('Täglich'), findsOneWidget);
+
         const restoreReceipt = ImportOutcome(
           source: 'OpenStrap backup',
           restoredRows: 12,

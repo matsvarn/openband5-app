@@ -1539,79 +1539,76 @@ void main() {
     expect(snap.lastImportedAt, DateTime.fromMillisecondsSinceEpoch(50 * 1000));
   });
 
-  test('lookahead unread after newest-N is counted off the latest day', () async {
-    await openDb('glucose_lookahead_unread.db');
-    final db = await LocalDb.instance;
-    Future<void> put({
-      required String uuid,
-      required DateTime at,
-      Object value = 95.0,
-    }) async {
-      if (value is String) {
-        await db.rawInsert(
-          'INSERT INTO imported_measurement '
-          '(uuid, ts, kind, value, unit, source, source_key) '
-          'VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [
-            uuid,
-            at.millisecondsSinceEpoch ~/ 1000,
-            kKindGlucose,
-            value,
-            kGlucoseUnitMilligramPerDeciliter,
-            'Dexcom',
-            'apple:com.dexcom.G7',
-          ],
-        );
-      } else {
-        await db.insert('imported_measurement', {
-          'uuid': uuid,
-          'ts': at.millisecondsSinceEpoch ~/ 1000,
-          'kind': kKindGlucose,
-          'value': value,
-          'unit': kGlucoseUnitMilligramPerDeciliter,
-          'source': 'Dexcom',
-          'source_key': 'apple:com.dexcom.G7',
-        });
+  test(
+    'lookahead unread after newest-N is counted off the latest day',
+    () async {
+      await openDb('glucose_lookahead_unread.db');
+      final db = await LocalDb.instance;
+      Future<void> put({
+        required String uuid,
+        required DateTime at,
+        Object value = 95.0,
+      }) async {
+        if (value is String) {
+          await db.rawInsert(
+            'INSERT INTO imported_measurement '
+            '(uuid, ts, kind, value, unit, source, source_key) '
+            'VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+              uuid,
+              at.millisecondsSinceEpoch ~/ 1000,
+              kKindGlucose,
+              value,
+              kGlucoseUnitMilligramPerDeciliter,
+              'Dexcom',
+              'apple:com.dexcom.G7',
+            ],
+          );
+        } else {
+          await db.insert('imported_measurement', {
+            'uuid': uuid,
+            'ts': at.millisecondsSinceEpoch ~/ 1000,
+            'kind': kKindGlucose,
+            'value': value,
+            'unit': kGlucoseUnitMilligramPerDeciliter,
+            'source': 'Dexcom',
+            'source_key': 'apple:com.dexcom.G7',
+          });
+        }
       }
-    }
 
-    for (var i = 0; i < 5; i++) {
-      await put(
-        uuid: 'new$i',
-        at: DateTime(2026, 9, 15, 12 - i),
-      );
-    }
-    for (var i = 0; i < 10; i++) {
-      await put(
-        uuid: 'bad$i',
-        at: DateTime(2026, 9, 14, 12 - i),
-        value: 'nope',
-      );
-    }
-    for (var i = 0; i < 5; i++) {
-      await put(
-        uuid: 'old$i',
-        at: DateTime(2026, 9, 13, 12 - i),
-      );
-    }
-    SharedPreferences.setMockInitialValues({});
-    Prefs.debugReset();
-    await Prefs.ensureLoaded();
-    final app = AppState.forTesting();
-    addTearDown(app.dispose);
-    final snap = await LocalOpenBandRepository(app).readGlucose(limit: 5);
-    expect(snap.history.map((r) => r.uuid), [
-      'new0',
-      'new1',
-      'new2',
-      'new3',
-      'new4',
-    ]);
-    expect(snap.truncated, isTrue);
-    expect(snap.unreadableCount, 10);
-    expect(snap.series, hasLength(5));
-    expect(snap.sources.single.readingCount, 20);
-  });
+      for (var i = 0; i < 5; i++) {
+        await put(uuid: 'new$i', at: DateTime(2026, 9, 15, 12 - i));
+      }
+      for (var i = 0; i < 10; i++) {
+        await put(
+          uuid: 'bad$i',
+          at: DateTime(2026, 9, 14, 12 - i),
+          value: 'nope',
+        );
+      }
+      for (var i = 0; i < 5; i++) {
+        await put(uuid: 'old$i', at: DateTime(2026, 9, 13, 12 - i));
+      }
+      SharedPreferences.setMockInitialValues({});
+      Prefs.debugReset();
+      await Prefs.ensureLoaded();
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      final snap = await LocalOpenBandRepository(app).readGlucose(limit: 5);
+      expect(snap.history.map((r) => r.uuid), [
+        'new0',
+        'new1',
+        'new2',
+        'new3',
+        'new4',
+      ]);
+      expect(snap.truncated, isTrue);
+      expect(snap.unreadableCount, 10);
+      expect(snap.series, hasLength(5));
+      expect(snap.sources.single.readingCount, 20);
+    },
+  );
 
   test('explicit legacy key and null-key name share one identity', () async {
     await openDb('glucose_legacy_key_match.db');
@@ -1656,43 +1653,44 @@ void main() {
     expect(hidden.history.map((r) => r.uuid), ['explicit-key', 'null-key']);
   });
 
-  test('same-ts mixed units page past 32; newest uuid unknown withholds plot',
-      () async {
-    await openDb('glucose_same_ts_units.db');
-    final db = await LocalDb.instance;
-    final ts = DateTime(2026, 9, 15, 8).millisecondsSinceEpoch ~/ 1000;
-    for (var i = 0; i < 40; i++) {
-      final uuid = 'u${i.toString().padLeft(2, '0')}';
-      final unknown = i == 39;
-      await db.insert('imported_measurement', {
-        'uuid': uuid,
-        'ts': ts,
-        'kind': kKindGlucose,
-        'value': unknown ? 5.2 : (i.isEven ? 5.2 : 95.0),
-        'unit': unknown
-            ? 'stones'
-            : (i.isEven
-                ? kGlucoseUnitMillimolePerLiter
-                : kGlucoseUnitMilligramPerDeciliter),
-        'source': 'Dexcom',
-        'source_key': 'apple:com.dexcom.G7',
-      });
-    }
-    SharedPreferences.setMockInitialValues({});
-    Prefs.debugReset();
-    await Prefs.ensureLoaded();
-    final app = AppState.forTesting();
-    addTearDown(app.dispose);
-    final snap = await LocalOpenBandRepository(app).readGlucose(limit: 1);
-    expect(snap.history.single.uuid, 'u39');
-    expect(snap.history.single.unitKind, GlucoseUnitKind.unknown);
-    expect(snap.series, isEmpty);
-    expect(snap.lastMeasuredAt, DateTime(2026, 9, 15, 8));
-    expect(snap.sources.single.readingCount, 40);
-  });
+  test(
+    'same-ts mixed units page past 32; newest uuid unknown withholds plot',
+    () async {
+      await openDb('glucose_same_ts_units.db');
+      final db = await LocalDb.instance;
+      final ts = DateTime(2026, 9, 15, 8).millisecondsSinceEpoch ~/ 1000;
+      for (var i = 0; i < 40; i++) {
+        final uuid = 'u${i.toString().padLeft(2, '0')}';
+        final unknown = i == 39;
+        await db.insert('imported_measurement', {
+          'uuid': uuid,
+          'ts': ts,
+          'kind': kKindGlucose,
+          'value': unknown ? 5.2 : (i.isEven ? 5.2 : 95.0),
+          'unit': unknown
+              ? 'stones'
+              : (i.isEven
+                    ? kGlucoseUnitMillimolePerLiter
+                    : kGlucoseUnitMilligramPerDeciliter),
+          'source': 'Dexcom',
+          'source_key': 'apple:com.dexcom.G7',
+        });
+      }
+      SharedPreferences.setMockInitialValues({});
+      Prefs.debugReset();
+      await Prefs.ensureLoaded();
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      final snap = await LocalOpenBandRepository(app).readGlucose(limit: 1);
+      expect(snap.history.single.uuid, 'u39');
+      expect(snap.history.single.unitKind, GlucoseUnitKind.unknown);
+      expect(snap.series, isEmpty);
+      expect(snap.lastMeasuredAt, DateTime(2026, 9, 15, 8));
+      expect(snap.sources.single.readingCount, 40);
+    },
+  );
 
-  test('invalid imported_at is partial; older valid stamp remains',
-      () async {
+  test('invalid imported_at is partial; older valid stamp remains', () async {
     await openDb('glucose_imported_at_corrupt.db');
     final db = await LocalDb.instance;
     await db.insert('imported_measurement', {
@@ -1747,12 +1745,11 @@ void main() {
       'legacy-null',
     ]);
     expect(snap.unreadableCount, 2);
+    expect(snap.lastImportedAt, DateTime.fromMillisecondsSinceEpoch(50 * 1000));
     expect(
-      snap.lastImportedAt,
-      DateTime.fromMillisecondsSinceEpoch(50 * 1000),
+      snap.history.where((r) => r.uuid == 'legacy-null').single.importedAt,
+      isNull,
     );
-    expect(snap.history.where((r) => r.uuid == 'legacy-null').single.importedAt,
-        isNull);
   });
 
   test('numeric ts Infinity does not drop sibling readable rows', () async {
@@ -1841,7 +1838,16 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: buildTheme(Brightness.light),
-          home: PhoneImport(repository: repo),
+          home: PhoneImport(repository: repo, releaseReduced: true),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('phone-import-glucose')), findsNothing);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: PhoneImport(repository: repo, releaseReduced: false),
         ),
       );
       await tester.pump();

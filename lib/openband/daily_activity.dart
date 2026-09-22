@@ -69,9 +69,7 @@ class StepsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 if (day.stepIntervals.isEmpty)
-                  const Text(
-                    'Für diesen Tag ist noch kein zeitlicher Verlauf verfügbar. Ein gespeicherter Tageswert bleibt davon unabhängig.',
-                  )
+                  const Text('Kein Stundenverlauf.')
                 else
                   for (final interval in day.stepIntervals)
                     Padding(
@@ -95,7 +93,13 @@ class StepsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!showIntake) return _ReleaseStepsCard(day: day, now: now, onOpen: () => _details(context));
+    if (!showIntake) {
+      return _ReleaseStepsCard(
+        day: day,
+        now: now,
+        onOpen: () => _details(context),
+      );
+    }
     final p = OB.of(context);
     final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     return OBCard(

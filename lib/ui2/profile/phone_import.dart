@@ -42,6 +42,7 @@ import '../../l10n/app_localizations.dart';
 import '../../openband/domain.dart';
 import '../../openband/glucose.dart';
 import '../../openband/local_repository.dart';
+import '../../openband/release_scope.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'devices.dart' show formatDayTime;
@@ -69,7 +70,12 @@ Map<String, String> _kindLabels(BuildContext c) {
 
 class PhoneImport extends StatefulWidget {
   final OpenBandRepository? repository;
-  const PhoneImport({super.key, this.repository});
+  final bool releaseReduced;
+  const PhoneImport({
+    super.key,
+    this.repository,
+    this.releaseReduced = kOpenBandReleaseReduced,
+  });
 
   @override
   State<PhoneImport> createState() => _PhoneImportState();
@@ -127,7 +133,8 @@ class _PhoneImportState extends State<PhoneImport> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _note = AppLocalizations.of(context)?.dataFailed(e.toString()) ??
+          _note =
+              AppLocalizations.of(context)?.dataFailed(e.toString()) ??
               'Failed: $e';
           _noteFailed = true;
         });
@@ -297,11 +304,13 @@ class _PhoneImportState extends State<PhoneImport> {
                       // The spread is what makes this a range rather than a
                       // number, so it stays — but as a range the reader can
                       // picture, not as the word "spread".
-                      sub: l?.phoneImportUsuallyRange(
-                              (seed.baseline - seed.spread).round(),
-                              (seed.baseline + seed.spread).round(),
-                              seed.nValid,
-                              storeName) ??
+                      sub:
+                          l?.phoneImportUsuallyRange(
+                            (seed.baseline - seed.spread).round(),
+                            (seed.baseline + seed.spread).round(),
+                            seed.nValid,
+                            storeName,
+                          ) ??
                           'usually ${(seed.baseline - seed.spread).round()}'
                               '–${(seed.baseline + seed.spread).round()} bpm, '
                               'over ${seed.nValid} days from $storeName',
@@ -315,9 +324,9 @@ class _PhoneImportState extends State<PhoneImport> {
                     StatusCard(
                       cmp.disagrees
                           ? (l?.phoneImportDisagreeTitle ??
-                              'The phone and the band disagree')
+                                'The phone and the band disagree')
                           : (l?.phoneImportAgreeTitle ??
-                              'The phone and the band agree'),
+                                'The phone and the band agree'),
                       cmp.disagrees
                           ? (l?.phoneImportDisagreeBody(
                                   storeName,
@@ -325,21 +334,23 @@ class _PhoneImportState extends State<PhoneImport> {
                                   cmp.deltaBpm > 0
                                       ? (l.phoneImportHigher)
                                       : (l.phoneImportLower),
-                                  cmp.bandNights) ??
-                              '$storeName puts your resting heart rate '
-                                  '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm '
-                                  '${cmp.deltaBpm > 0 ? 'higher' : 'lower'} than '
-                                  'this band measures it over '
-                                  '${cmp.bandNights} nights. They are not describing '
-                                  'the same thing, so it stays unused.')
+                                  cmp.bandNights,
+                                ) ??
+                                '$storeName puts your resting heart rate '
+                                    '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm '
+                                    '${cmp.deltaBpm > 0 ? 'higher' : 'lower'} than '
+                                    'this band measures it over '
+                                    '${cmp.bandNights} nights. They are not describing '
+                                    'the same thing, so it stays unused.')
                           : (l?.phoneImportAgreeBody(
                                   cmp.bandNights,
                                   cmp.deltaBpm.abs().toStringAsFixed(1),
-                                  storeName) ??
-                              'Over ${cmp.bandNights} nights the band lands within '
-                                  '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm of '
-                                  'what $storeName said. It still is not used for '
-                                  'anything.'),
+                                  storeName,
+                                ) ??
+                                'Over ${cmp.bandNights} nights the band lands within '
+                                    '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm of '
+                                    'what $storeName said. It still is not used for '
+                                    'anything.'),
                       icon: cmp.disagrees
                           ? LucideIcons.triangleAlert
                           : LucideIcons.check,
@@ -348,7 +359,8 @@ class _PhoneImportState extends State<PhoneImport> {
                   const SizedBox(height: S.x6),
                   // ── SD-12 ───────────────────────────────────────────────────
                   Section(
-                    l?.phoneImportMeasuredElsewhere ?? 'Measured by something else',
+                    l?.phoneImportMeasuredElsewhere ??
+                        'Measured by something else',
                     Surface(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,14 +394,16 @@ class _PhoneImportState extends State<PhoneImport> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: S.x3),
-                  SetRow(
-                    LucideIcons.droplet,
-                    C.teal,
-                    labels[kKindGlucose]!,
-                    key: const ValueKey('phone-import-glucose'),
-                    onTap: _openGlucose,
-                  ),
+                  if (!widget.releaseReduced) ...[
+                    const SizedBox(height: S.x3),
+                    SetRow(
+                      LucideIcons.droplet,
+                      C.teal,
+                      labels[kKindGlucose]!,
+                      key: const ValueKey('phone-import-glucose'),
+                      onTap: _openGlucose,
+                    ),
+                  ],
                   for (final (kind, _) in kImportedKindLabels)
                     if (kind != kKindGlucose)
                       if (_latest[kind] case final row?) ...[
@@ -403,18 +417,20 @@ class _PhoneImportState extends State<PhoneImport> {
                           sub: _sourceLine(row),
                         ),
                       ],
-                  const SizedBox(height: S.x5),
-                  // The two reads that MOVED, said once, so somebody who
-                  // remembers them being here is not left hunting.
-                  StatusCard(
-                    l?.phoneImportMovedTitle ?? 'Height, weight and workouts moved',
-                    l?.phoneImportMovedBody ??
-                        'Height and weight are on Edit profile now, and workouts '
-                            'this phone recorded are on Workout, under History. '
-                            'Each one sits on the screen it fills.',
-                    icon: LucideIcons.arrowRight,
-                  ),
-                  const SizedBox(height: S.x2),
+                  if (!widget.releaseReduced) ...[
+                    const SizedBox(height: S.x5),
+                    // The destination named here is parked in the reduced app.
+                    StatusCard(
+                      l?.phoneImportMovedTitle ??
+                          'Height, weight and workouts moved',
+                      l?.phoneImportMovedBody ??
+                          'Height and weight are on Edit profile now, and workouts '
+                              'this phone recorded are on Workout, under History. '
+                              'Each one sits on the screen it fills.',
+                      icon: LucideIcons.arrowRight,
+                    ),
+                    const SizedBox(height: S.x2),
+                  ],
                   if (_busy) ...[
                     const SizedBox(height: S.x6),
                     Center(
@@ -450,9 +466,6 @@ String _formatValue(Object? v) {
   if (d == null) return '';
   return d == d.roundToDouble() ? '${d.round()}' : d.toStringAsFixed(1);
 }
-
-
-
 
 /// "Omron Connect · Thu 4 Sep, 07:12". The source is not optional decoration:
 /// a reading this app did not take, shown without saying who did, is a reading

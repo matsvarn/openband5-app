@@ -85,6 +85,16 @@ class Prefs {
     }
   }
 
+  /// Acknowledged string write for choices whose UI must not claim a value
+  /// that the platform refused to persist.
+  static Future<bool> setStringAcked(String key, String value) async {
+    try {
+      return await _sp?.setString(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── selection keys (one namespace; keep them disjoint) ──────────────────────
   static const String shellTab = 'ui.shell_tab';
   static const String recapRange = 'ui.recap_range';

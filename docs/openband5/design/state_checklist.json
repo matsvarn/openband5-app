@@ -19,14 +19,15 @@
     {
       "id": "release-band",
       "outcome": "Pairing, transfer, stored-through time, connection and failure/recovery remain clear and reachable.",
-      "status": "pending"
+      "status": "in-progress",
+      "owner": "band-sol16192240/f725f649; lead integration and acceptance"
     },
     {
       "id": "release-data",
       "outcome": "Essential Profile/settings and export, backup, restore; private export migration and retained-source evidence checked.",
-      "status": "in-progress",
-      "owner": "restore-sol",
-      "evidence": "Durable restore accepted after independent review,2214 required tests,63 affected checks and final private-copy roundtrip. Compact Profile/Data implementation remains open."
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Durable restore accepted in6284c1bd, including isolated device-copy roundtrip. Compact production Profile/Data and acknowledged backup scheduling accepted after fresh review:2225 required tests,115-target analysis,28 release-scope tests and17 inspected Pro/mini PNGs including the corrected large-text replacement. See IMPLEMENTATION_VERIFICATION.md,22September2026."
     },
     {
       "id": "release-paper",
@@ -39,7 +40,7 @@
       "outcome": "Reconcile the provided database with actual device capture, storage and recovery claims; report any proof limits without substituting simulator proof.",
       "status": "verified",
       "owner": "lead",
-      "evidence": "Read-only source inspection and isolated migration/export inventory complete. Gen5 capture/source retention and recorded retry are present; controlled phone-kill/disconnect chronology, zero loss and physiological validity are not established by this snapshot. Source hash unchanged; private artifacts remain in OpenBand5Lab. Restore acceptance remains separately open under release-data."
+      "evidence": "Read-only source inspection and isolated migration/export inventory complete. Gen5 capture/source retention and recorded retry are present; controlled phone-kill/disconnect chronology, zero loss and physiological validity are not established by this snapshot. Source hash unchanged; private artifacts remain in OpenBand5Lab. Durable restore separately accepted in6284c1bd under release-data."
     },
     {
       "id": "release-acceptance",

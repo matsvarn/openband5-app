@@ -31,10 +31,14 @@ import 'state/units_controller.dart';
 import 'theme/theme_controller.dart';
 import 'openband/training.dart';
 import 'compute/derivation_engine.dart' show kAlgoVersion;
+import 'data/auto_backup.dart' show BackupCadence;
 import 'state/alarm_schedule.dart';
 import 'ui2/app_shell.dart';
 import 'ui2/onboarding/first_sync.dart';
+import 'ui2/onboarding/welcome.dart' show ImportOutcome;
 import 'ui2/profile/alarm.dart';
+import 'ui2/profile/data.dart';
+import 'ui2/profile/profile.dart';
 
 /// Separate entry point: no AppState, Bluetooth, real database or user profile.
 Future<void> main() async {
@@ -188,7 +192,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ShellDomain.home => OpenBandOverview(
         controller: controller,
         reduced: widget.releaseReduced,
-        onProfile: () => _options(context),
+        onProfile: widget.releaseReduced
+            ? () => _openSyntheticProfile(c)
+            : () => _options(context),
         onNutrition: widget.releaseReduced
             ? null
             : () => Navigator.of(c).push(
@@ -327,6 +333,37 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     );
   }
 
+  void _openSyntheticProfile(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (profileContext) => ProfileHomeView(
+          releaseReduced: true,
+          stats: const ProfileStats(
+            name: 'Mats',
+            sources: 1,
+            storageBytes: 4509715661,
+          ),
+          user: const {
+            'name': 'Mats',
+            'birth_date': '1995-09-21',
+            'height_cm': 182.0,
+            'weight_kg': 78.4,
+          },
+          band: widget.repository.band,
+          bandName: 'WHOOP 5.0',
+          languageLabel: 'Deutsch',
+          onData: () => _openSyntheticData(profileContext),
+        ),
+      ),
+    );
+  }
+
+  void _openSyntheticData(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const _SyntheticDataHost()));
+  }
+
   Future<void> _options(BuildContext context) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -366,6 +403,23 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                 Navigator.pop(c);
               },
             ),
+          ),
+          const ListTile(title: Text('Profil & Daten · synthetische Zustände')),
+          ListTile(
+            key: const ValueKey('gallery-profile'),
+            title: const Text('Profil · reduziert'),
+            onTap: () {
+              Navigator.pop(c);
+              _openSyntheticProfile(context);
+            },
+          ),
+          ListTile(
+            key: const ValueKey('gallery-data'),
+            title: const Text('Daten & Sicherung · reduziert'),
+            onTap: () {
+              Navigator.pop(c);
+              _openSyntheticData(context);
+            },
           ),
           const ListTile(title: Text('Darstellung · synthetische Zustände')),
           ..._appearanceGalleryStates().map(
@@ -521,6 +575,92 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         ],
       ),
     ),
+  );
+}
+
+/// Stateful synthetic collaborator for the production Data composition. It
+/// never opens a database, share sheet, picker, or personal storage.
+class _SyntheticDataHost extends StatefulWidget {
+  const _SyntheticDataHost();
+
+  @override
+  State<_SyntheticDataHost> createState() => _SyntheticDataHostState();
+}
+
+class _SyntheticDataHostState extends State<_SyntheticDataHost> {
+  BackupCadence _cadence = BackupCadence.off;
+  DateTime? _lastBackupAt;
+  String? _note;
+  bool _failed = false;
+  bool _databaseFailedOnce = false;
+  ImportOutcome? _outcome;
+
+  void _receipt(String text, {bool failed = false}) {
+    setState(() {
+      _note = text;
+      _failed = failed;
+      _outcome = null;
+    });
+  }
+
+  void _exportDatabase() {
+    if (!_databaseFailedOnce) {
+      _databaseFailedOnce = true;
+      _receipt(
+        'Export konnte nicht erstellt werden: synthetischer Schreibfehler.',
+        failed: true,
+      );
+      return;
+    }
+    _receipt('Export erstellt');
+  }
+
+  void _cycleCadence() {
+    setState(() {
+      _cadence = BackupCadence
+          .values[(_cadence.index + 1) % BackupCadence.values.length];
+      _note = _cadence == BackupCadence.off
+          ? 'Automatische Sicherung aus'
+          : 'Sicherung erstellt';
+      _failed = false;
+      _outcome = null;
+      if (_cadence != BackupCadence.off) {
+        _lastBackupAt = DateTime(2026, 9, 18, 9, 41);
+      }
+    });
+  }
+
+  void _backup() {
+    setState(() {
+      _lastBackupAt = DateTime(2026, 9, 18, 9, 41);
+      _note = 'Sicherung erstellt';
+      _failed = false;
+      _outcome = null;
+    });
+  }
+
+  void _import() {
+    setState(() {
+      _note = null;
+      _failed = false;
+      _outcome = const ImportOutcome(source: 'Synthetische Sicherung', days: 3);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => DataScreenView(
+    cadence: _cadence,
+    lastBackupAt: _lastBackupAt,
+    note: _note,
+    noteFailed: _failed,
+    outcome: _outcome,
+    onExportDatabase: _exportDatabase,
+    onExportEncrypted: () => _receipt('Export erstellt'),
+    onExportCsv: () => _receipt('Export erstellt'),
+    onCadence: _cycleCadence,
+    onBackupNow: _backup,
+    onImport: _import,
+    onReanalyze: () => _receipt('3 Tage neu berechnet'),
   );
 }
 

@@ -40,7 +40,12 @@ import '../ble/live_cadence.dart';
 import '../ble/polar_pmd_link.dart';
 import '../ble/live_step_runs.dart';
 import '../ble/ble_state.dart'
-    show AlarmConfirmation, AlarmDisableOutcome, AlarmEffect, AlarmReadbackState, SyncActivityWindow;
+    show
+        AlarmConfirmation,
+        AlarmDisableOutcome,
+        AlarmEffect,
+        AlarmReadbackState,
+        SyncActivityWindow;
 import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
@@ -580,7 +585,9 @@ class AppState extends ChangeNotifier {
       final stillPending = await LocalDb.pendingOpenBandSleepCorrections();
       final importedKeys = importedPending.map(correctionKey).toSet();
       counts['openband_sleep_pending'] = stillPending
-          .where((correction) => importedKeys.contains(correctionKey(correction)))
+          .where(
+            (correction) => importedKeys.contains(correctionKey(correction)),
+          )
           .length;
       importRollupError = rollupError;
     } catch (e) {
@@ -990,9 +997,7 @@ class AppState extends ChangeNotifier {
 
   /// Merge + persist local profile fields. Returns the updated map. Replaces the
   /// old cloud PATCH /profile (no network).
-  Future<Map<String, dynamic>> updateProfile(
-    Map<String, dynamic> fields,
-  ) {
+  Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> fields) {
     return _serializeProfileWrite(() async {
       final updated = {...?user, ...fields}..remove('age');
       final value = updated['birth_date'];
@@ -1076,9 +1081,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> saveCycleSettings(CycleSettings settings) async {
-    await updateProfile(
-      Map<String, dynamic>.from(settings.toProfileFields()),
-    );
+    await updateProfile(Map<String, dynamic>.from(settings.toProfileFields()));
   }
 
   /// Requeue failed cycle work and wake an already-durable queue.
@@ -1115,10 +1118,24 @@ class AppState extends ChangeNotifier {
   /// Change the cadence. Switching it ON takes a backup immediately rather
   /// than waiting for the interval — otherwise nothing visible happens and the
   /// setting looks broken.
-  Future<void> setBackupCadence(BackupCadence cadence) async {
-    Prefs.setString(Prefs.backupCadence, cadence.name);
+  Future<BackupOutcome?> setBackupCadence(BackupCadence cadence) async {
+    final previous = backupCadence;
+    final saved = await Prefs.setStringAcked(Prefs.backupCadence, cadence.name);
+    if (!saved) {
+      // SharedPreferences mutates its in-memory cache before the platform
+      // acknowledges a write. An acknowledged write of the prior value also
+      // restores that optimistic cache; its own failure is contained by Prefs.
+      await Prefs.setStringAcked(Prefs.backupCadence, previous.name);
+      notifyListeners();
+      throw StateError('Backup frequency could not be saved.');
+    }
     notifyListeners();
-    if (cadence != BackupCadence.off) await runBackupNow();
+    if (cadence == BackupCadence.off) return null;
+
+    // The schedule and this immediate copy are separate outcomes. Keep a
+    // successfully saved schedule even when this attempt fails so the next
+    // due foreground run can retry it.
+    return runBackupNow();
   }
 
   void _markBackupRun(DateTime when) {
@@ -1126,11 +1143,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Test-only replacement for the filesystem backup attempt. Production
+  /// leaves this null; Data still goes through this same outcome contract.
+  @visibleForTesting
+  Future<BackupOutcome> Function()? debugRunBackupNow;
+
   /// Take one now, whatever the schedule says. Returns what happened so the
   /// caller can say so — a backup that silently did not happen is the failure
   /// this feature exists to prevent.
   Future<BackupOutcome> runBackupNow() async {
-    final outcome = await runBackup();
+    final outcome = await (debugRunBackupNow?.call() ?? runBackup());
     if (outcome.succeeded) _markBackupRun(DateTime.now());
     return outcome;
   }
@@ -1695,11 +1717,10 @@ class AppState extends ChangeNotifier {
   /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 uncertain)
   /// without going through the BLE event path. Tests only.
   @visibleForTesting
-  void debugHandleAlarmEvent(int id, {int? ts}) =>
-      _handleAlarmEvent(
-        id,
-        ts ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      );
+  void debugHandleAlarmEvent(int id, {int? ts}) => _handleAlarmEvent(
+    id,
+    ts ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+  );
 
   /// Re-read alarm prefs into the confirmation machine. Tests only — production
   /// [_initSteps] already does this; [AppState.forTesting] skips init.
@@ -1789,71 +1810,71 @@ class AppState extends ChangeNotifier {
       TelemetryService.instance.breadcrumb('derive: $mode done');
       if (_disposed) return;
       try {
-      // A drain can bank band coverage and a day can have rolled over since the
-      // last read — both change which source owns today's steps.
-      unawaited(_refreshPhoneStepsToday());
-      // The drain that triggered this pass may have landed the 1 Hz window of a
-      // workout the app slept through, whose strain/calories were scored from
-      // whatever few minutes the foreground tally saw (issue #206). Re-score
-      // recent sessions against the substrate now that it is here, so the
-      // workout LIST is corrected too and not just a detail screen someone
-      // happens to open. Monotone and idempotent — see reconcileSessionScore.
-      try {
-        final fixed = await repo?.rescoreRecentSessions() ?? 0;
-        if (fixed > 0) {
-          _log('[derive] rescored $fixed session(s) from substrate');
+        // A drain can bank band coverage and a day can have rolled over since the
+        // last read — both change which source owns today's steps.
+        unawaited(_refreshPhoneStepsToday());
+        // The drain that triggered this pass may have landed the 1 Hz window of a
+        // workout the app slept through, whose strain/calories were scored from
+        // whatever few minutes the foreground tally saw (issue #206). Re-score
+        // recent sessions against the substrate now that it is here, so the
+        // workout LIST is corrected too and not just a detail screen someone
+        // happens to open. Monotone and idempotent — see reconcileSessionScore.
+        try {
+          final fixed = await repo?.rescoreRecentSessions() ?? 0;
+          if (fixed > 0) {
+            _log('[derive] rescored $fixed session(s) from substrate');
+          }
+        } catch (e) {
+          _log('[derive] session rescore failed: $e');
         }
-      } catch (e) {
-        _log('[derive] session rescore failed: $e');
-      }
-      await LocalDb.refreshComputeFreshness();
-      if (_disposed) return;
-      bumpInsights();
-      notifyListeners(); // screens re-fetch from the derived store
-      // Same signal, for the surfaces that can't listen: home/lock-screen
-      // widget, Watch mirror, Siri intents (WidgetService.refresh).
-      unawaited(WidgetService.refresh(repo));
-      // A heavy finalize is where a freshly-closed sleep window + recovery for a
-      // new physiological day lands — fire the "recovery ready" push off it.
-      if (heavy) {
-        unawaited(_maybeNotifyRecoveryReady());
-        // Baseline-dirty rescan: new data may have shifted the rolling baseline,
-        // so refresh baseline-dependent scalars (readiness/illness/stress) on
-        // recent FINALIZED days. Cheap when the baseline is unchanged (a single
-        // signature read). Best-effort — never throws into the BLE path.
-        unawaited(() async {
-          try {
-            final n = await _derive.rescanRecent(_profile);
-            if (n > 0) {
-              notifyListeners(); // screens re-read the refreshed scalars
+        await LocalDb.refreshComputeFreshness();
+        if (_disposed) return;
+        bumpInsights();
+        notifyListeners(); // screens re-fetch from the derived store
+        // Same signal, for the surfaces that can't listen: home/lock-screen
+        // widget, Watch mirror, Siri intents (WidgetService.refresh).
+        unawaited(WidgetService.refresh(repo));
+        // A heavy finalize is where a freshly-closed sleep window + recovery for a
+        // new physiological day lands — fire the "recovery ready" push off it.
+        if (heavy) {
+          unawaited(_maybeNotifyRecoveryReady());
+          // Baseline-dirty rescan: new data may have shifted the rolling baseline,
+          // so refresh baseline-dependent scalars (readiness/illness/stress) on
+          // recent FINALIZED days. Cheap when the baseline is unchanged (a single
+          // signature read). Best-effort — never throws into the BLE path.
+          unawaited(() async {
+            try {
+              final n = await _derive.rescanRecent(_profile);
+              if (n > 0) {
+                notifyListeners(); // screens re-read the refreshed scalars
+              }
+            } catch (e) {
+              _log('[derive] rescan failed: $e');
             }
-          } catch (e) {
-            _log('[derive] rescan failed: $e');
-          }
-        }());
-      }
-      // Continuous health export: push freshly-derived days (incl. TODAY) to Apple
-      // Health / Health Connect AS SOON as they're computed — runs on BOTH the
-      // light (every drain) and heavy passes, not only on finalize. Idempotent
-      // (delete-then-write), best-effort, never throws into the BLE/derive path.
-      if (healthSyncEnabled) {
-        unawaited(() async {
-          try {
-            final n = await _runHealthExport();
-            if (n > 0) _log('[health] exported $n day(s)');
-          } catch (e) {
-            _log('[health] export failed: $e');
-          }
-        }());
-      }
-      // Companion (opt-in): flush any queued telemetry now that we're doing network
-      // work anyway, and — on a heavy (finalize) pass — consider the once/day full
-      // .db upload (itself gated on Wi-Fi + charging + >24h). Both best-effort.
-      if (telemetryConsent) unawaited(TelemetryService.instance.flush());
-      if (heavy && healthShareConsent) {
-        unawaited(HealthUploader.instance.maybeUpload(consented: true));
-      }
-      if (heavy) unawaited(_maybeReclaimDiskSpace());
+          }());
+        }
+        // Continuous health export: push freshly-derived days (incl. TODAY) to Apple
+        // Health / Health Connect AS SOON as they're computed — runs on BOTH the
+        // light (every drain) and heavy passes, not only on finalize. Idempotent
+        // (delete-then-write), best-effort, never throws into the BLE/derive path.
+        if (healthSyncEnabled) {
+          unawaited(() async {
+            try {
+              final n = await _runHealthExport();
+              if (n > 0) _log('[health] exported $n day(s)');
+            } catch (e) {
+              _log('[health] export failed: $e');
+            }
+          }());
+        }
+        // Companion (opt-in): flush any queued telemetry now that we're doing network
+        // work anyway, and — on a heavy (finalize) pass — consider the once/day full
+        // .db upload (itself gated on Wi-Fi + charging + >24h). Both best-effort.
+        if (telemetryConsent) unawaited(TelemetryService.instance.flush());
+        if (heavy && healthShareConsent) {
+          unawaited(HealthUploader.instance.maybeUpload(consented: true));
+        }
+        if (heavy) unawaited(_maybeReclaimDiskSpace());
       } catch (e, st) {
         _log('[derive] post-drain failed: $e');
         TelemetryService.instance.recordNonFatal(
@@ -1864,11 +1885,7 @@ class AppState extends ChangeNotifier {
       }
     } catch (e, st) {
       _log('[derive] derivation failed: $e');
-      TelemetryService.instance.recordNonFatal(
-        e,
-        st,
-        reason: 'derive_failed',
-      );
+      TelemetryService.instance.recordNonFatal(e, st, reason: 'derive_failed');
       rethrow;
     } finally {
       TelemetryService.instance.setContext('derive_active', false);
@@ -2031,8 +2048,8 @@ class AppState extends ChangeNotifier {
   /// saved-but-not-applied. Background callers use [_ensureRemindersScheduled],
   /// which logs and swallows. A successful return is "the plugin accepted the
   /// schedule/cancel calls", not that a notification was delivered.
-  Future<void> refreshAiReminders() =>
-      NotificationService.instance.reportingScheduleFailures(_scheduleReminders);
+  Future<void> refreshAiReminders() => NotificationService.instance
+      .reportingScheduleFailures(_scheduleReminders);
 
   /// Screens that just wrote a briefing/journal state call this so Today's
   /// AI card (which reads BriefingStore synchronously at build) repaints.
@@ -2961,14 +2978,8 @@ class AppState extends ChangeNotifier {
         !prefs.medsEnabled) {
       _medBuzzer.configure(slotInstants: const []);
     } else if (meds != null) {
-      final plan = NotificationCenter.medReminderPlan(
-        prefs,
-        meds,
-        now: clock,
-      );
-      _medBuzzer.configure(
-        slotInstants: [for (final s in plan) s.at],
-      );
+      final plan = NotificationCenter.medReminderPlan(prefs, meds, now: clock);
+      _medBuzzer.configure(slotInstants: [for (final s in plan) s.at]);
     }
     await NotificationCenter.instance.scheduleStandingReminders(
       prefs,
@@ -4803,7 +4814,8 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshAlarmIntent() async {
     final intent = await AlarmOwner.load();
     if (_disposed) return;
-    final changed = _alarmIntent?.generation != intent.generation ||
+    final changed =
+        _alarmIntent?.generation != intent.generation ||
         _savedAlarm != intent.armedEpoch;
     _alarmIntent = intent;
     _savedAlarm = intent.armedEpoch;
@@ -4823,7 +4835,9 @@ class AppState extends ChangeNotifier {
       if (intent.disableWritten) _alarm.markDisableWritten();
       _alarmGraceTimer?.cancel();
     } else if (changed && _savedAlarm != null) {
-      _armAlarmGraceTimer(DateTime.fromMillisecondsSinceEpoch(_savedAlarm! * 1000));
+      _armAlarmGraceTimer(
+        DateTime.fromMillisecondsSinceEpoch(_savedAlarm! * 1000),
+      );
     }
     notifyListeners();
   }
@@ -4932,7 +4946,8 @@ class AppState extends ChangeNotifier {
   AlarmReadbackState get alarmReadbackState {
     if (!isConnected) return AlarmReadbackState.unknown;
     final proof = AlarmOwner.readbackFor(engine, _alarmIntent?.generation);
-    if (proof.state == AlarmReadbackState.storedSeconds && proof.wallEpoch != alarmEpoch) {
+    if (proof.state == AlarmReadbackState.storedSeconds &&
+        proof.wallEpoch != alarmEpoch) {
       return AlarmReadbackState.unknown;
     }
     return proof.state;
@@ -5009,7 +5024,7 @@ class AppState extends ChangeNotifier {
     final outcome = await AlarmOwner.reconcile(engine);
     await _refreshAlarmIntent();
     if ((outcome == AlarmDisableOutcome.writeFailed ||
-        outcome == AlarmDisableOutcome.rejected) &&
+            outcome == AlarmDisableOutcome.rejected) &&
         alarmReadbackState != AlarmReadbackState.allSlotsInactive) {
       throw Exception('Alarm not disabled');
     }
@@ -5044,7 +5059,8 @@ class AppState extends ChangeNotifier {
         // that is no longer armed. Clear state AND the persisted epoch.
         // Historical execution must not delete a newer desired target.
         // Only retire the observed epoch once its wall target has passed.
-        if ((_savedAlarm ?? 0) <= DateTime.now().millisecondsSinceEpoch ~/ 1000) {
+        if ((_savedAlarm ?? 0) <=
+            DateTime.now().millisecondsSinceEpoch ~/ 1000) {
           _savedAlarm = null;
           device.alarmEpoch = null;
           _persistAlarmObservation(intent, fired: true);
@@ -6151,12 +6167,7 @@ class AppState extends ChangeNotifier {
         throw StateError('Einheit konnte nicht gestartet werden.');
       }
       if (activeWorkout != null) return;
-      _armLiveWorkout(
-        id: id,
-        type: type,
-        start: start,
-        targetKcal: targetKcal,
-      );
+      _armLiveWorkout(id: id, type: type, start: start, targetKcal: targetKcal);
     });
   }
 
@@ -6497,9 +6508,8 @@ class AppState extends ChangeNotifier {
       final strengthPlan = await LocalDb.openBandStrengthSession(id);
       if (_disposed) return;
       if (!resumed && activeWorkout != null) return;
-      final recent = ageMs != null &&
-          ageMs >= 0 &&
-          ageMs <= _kMaxLiveWorkoutAgeMs;
+      final recent =
+          ageMs != null && ageMs >= 0 && ageMs <= _kMaxLiveWorkoutAgeMs;
       // A strength snapshot is an explicit in-progress plan. Do not auto-
       // finalize it at the 6h ceiling — that would block collapse/resume.
       if (!resumed && (recent || strengthPlan != null)) {
@@ -6522,9 +6532,7 @@ class AppState extends ChangeNotifier {
           ...row,
           'status': 'done',
           'end_ts': row['end_ts'] ?? reconciledEndTs,
-          'end_ts_fabricated': hadRealEnd
-              ? (row['end_ts_fabricated'] ?? 0)
-              : 1,
+          'end_ts_fabricated': hadRealEnd ? (row['end_ts_fabricated'] ?? 0) : 1,
         });
         _log(
           '[workout] finalized a stale live-session row from a previous run (id=${row['id']}).',
@@ -6541,7 +6549,9 @@ class AppState extends ChangeNotifier {
     final startMs = (startSec ?? 0) * 1000;
     final id = row['id'] as String? ?? 'w$startMs';
     final profileAtStart = _profile.forDate(
-      DateTime.fromMillisecondsSinceEpoch(startSec != null ? startSec * 1000 : startMs),
+      DateTime.fromMillisecondsSinceEpoch(
+        startSec != null ? startSec * 1000 : startMs,
+      ),
     );
     activeWorkout = LiveWorkoutState(
       startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
@@ -6555,10 +6565,7 @@ class AppState extends ChangeNotifier {
       // ANY positive reading as active — a forgotten session idling at
       // resting heart rate would never be asked about after a restart,
       // the exact case the watch exists for.
-      hrMax: estimatedMaxHr(
-        profileAtStart.ageYears,
-        engine.linkDeviceFamily,
-      ),
+      hrMax: estimatedMaxHr(profileAtStart.ageYears, engine.linkDeviceFamily),
       zoneSet: trainingZones(
         age: profileAtStart.ageYears,
         deviceFamily: engine.linkDeviceFamily,
@@ -6843,10 +6850,7 @@ class AppState extends ChangeNotifier {
         return;
       }
       await r.patchJournalDay(
-        JournalDayPatch.fromBase(
-          snap,
-          tags: [...snap.tags, tag],
-        ),
+        JournalDayPatch.fromBase(snap, tags: [...snap.tags, tag]),
       );
       _log('[gesture] moment marked at $hhmm');
       await HapticFeedback.mediumImpact();
