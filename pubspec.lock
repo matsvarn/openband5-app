@@ -952,8 +952,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "9b827a960a6054be346a1e46e4086a1406a63241"
-      resolved-ref: "9b827a960a6054be346a1e46e4086a1406a63241"
+      ref: "2503ca127f78847def0db6f363f000431789d254"
+      resolved-ref: "2503ca127f78847def0db6f363f000431789d254"
       url: "https://github.com/matsvarn/openband5-analytics.git"
     source: git
     version: "1.0.0"

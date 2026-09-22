@@ -1643,7 +1643,17 @@ import 'substrate.dart';
 // skin_temp_adc/skin_temp_z/readiness's temp driver produce real output.
 // Protocol repin adds GET_DATA_RANGE read-cursor fields (diagnostics only —
 // band_backlog, not a metric).
-const int kAlgoVersion = 92;
+// 93 — beat-clock findings from the field census. `rrTsMs` is now clamped
+// non-decreasing at both assembly points (beat_ts_ms is exact within a record
+// but errs <1 RR at record boundaries — ~0.3% backward steps that violated
+// cardioStager's sortedness assumption and could misplace beats at slice/window
+// edges). `hrvTime` now receives the corrector's artifactFraction like its
+// siblings (confidence was under-penalized). `_hrvTimeline` skips successive
+// diffs across dropped runs (same seam rule hrvTime uses — a dropped run was
+// injecting one phantom diff into the display curve). Analytics repin: cycles'
+// per-minute RMSSD no longer diffs across a dropped out-of-range beat (NaN slot
+// preserves adjacency). Read-side only: `getNightBeats` coalesces beat_ts_ms.
+const int kAlgoVersion = 93;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1818,7 +1828,7 @@ const int kAlgoVersion = 92;
 // `nightlySkinTemp` stops refusing every gen5 night → skin_temp_adc /
 // skin_temp_z / readiness's temp driver produce real output. OUTPUT CHANGE —
 // part of the v92 bump.
-const String kAnalyticsPin = '9b827a960a6054be346a1e46e4086a1406a63241';
+const String kAnalyticsPin = '2503ca127f78847def0db6f363f000431789d254';
 // REPIN (this branch, superseded by the merge): polar pmd's own protocol
 // needs `feat/polar-pmd-protocol` (87ee803), but protocol's own `origin/main`
 // tip below is THAT SAME PR's merge commit — verified

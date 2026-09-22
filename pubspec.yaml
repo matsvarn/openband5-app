@@ -433,7 +433,10 @@ dependencies:
       # REPIN @ 9b827a9 (v92): measured gen5 skin-temp settle band (250
       # centi-°C; seven real gen5 nights, clean ≥0.94 settled, cold-segment
       # night 0.855) — `nightlySkinTemp` stops refusing every gen5 night.
-      ref: 9b827a960a6054be346a1e46e4086a1406a63241
+      #
+      # REPIN @ 2503ca1 (v93): sleep-cycle per-minute RMSSD no longer diffs
+      # across a dropped out-of-range beat (NaN slot preserves adjacency).
+      ref: 2503ca127f78847def0db6f363f000431789d254
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

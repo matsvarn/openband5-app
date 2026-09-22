@@ -860,7 +860,11 @@ class LocalRepositoryImpl extends LocalRepository {
     );
     final ts = <double>[], rr = <double>[];
     for (final r in rows) {
-      final t = r['rr_ts_ms'] as num?, v = r['rr_ms'] as num?;
+      // Same coalesce the derive path applies (derive_prepare.dart): beat_ts_ms
+      // is the real per-beat time; rr_ts_ms is the whole-second staircase
+      // fallback for rows banked before the column existed.
+      final t = (r['beat_ts_ms'] as num?) ?? (r['rr_ts_ms'] as num?);
+      final v = r['rr_ms'] as num?;
       if (t == null || v == null) continue;
       ts.add(t.toDouble());
       rr.add(v.toDouble());

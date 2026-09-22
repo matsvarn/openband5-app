@@ -699,11 +699,12 @@ class _PrepareAccumulator {
         // out of the time base. COALESCE, never fabricate — the column is NULL
         // for every row banked before it existed and for any source with no
         // sub-second, and there the staircase is still the honest best answer.
-        rrTsMs.add(
+        rrTsMs.add(clampBeatTsNonDecreasing(
           _num(beat['beat_ts_ms'])?.toDouble() ??
               _num(beat['rr_ts_ms'])?.toDouble() ??
               recTs * 1000.0,
-        );
+          rrTsMs,
+        ));
         rrMs.add(rr);
       }
     }

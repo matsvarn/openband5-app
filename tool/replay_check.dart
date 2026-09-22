@@ -11,7 +11,6 @@
 // Run: dart run tool/replay_check.dart /path/to/openstrap.db
 // ignore_for_file: avoid_print
 
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -109,13 +108,15 @@ void main(List<String> args) async {
     }
   }
 
-  print('matched ${matched}/${sub.length} replayed seconds to stored rows');
+  print('matched $matched/${sub.length} replayed seconds to stored rows');
   print('  hr mismatches:      $hrDiff');
   print('  skin-temp mismatch: $tempDiff  (c stored vs centi replayed)');
   print('  step mismatches:    $stepDiff');
   print('  replayed seconds with NO stored row: $absentInStore '
       '(commit-before-ACK violation if >0)');
-  for (final e in examples) print('   !! $e');
+  for (final e in examples) {
+    print('   !! $e');
+  }
   await db.close();
   exit(absentInStore > 0 || hrDiff > 0 || tempDiff > 0 ? 1 : 0);
 }

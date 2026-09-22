@@ -402,7 +402,8 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // Whole-window time-domain HRV is kept for SDNN / detail rows only. The
   // nightly headline HRV is the mean of 5-min cleaned-window RMSSDs across the
   // detected sleep session, not one RMSSD over the whole night's NN stream.
-  final hrvT = hrvTime(nn, nnTimesMs: nnTimes);
+  final hrvT = hrvTime(nn,
+      nnTimesMs: nnTimes, artifactFraction: artifactFraction);
   // Keep the robust estimator as a secondary detail only; the canonical nightly
   // RMSSD follows the sleep-session windowed formulation.
   final nremMask = _nremMaskAlignedToNn(d, nnTimes, d.sleepRrTsMs);
@@ -1809,12 +1810,19 @@ List<Map<String, num>> _hrvTimeline(
     // windows, with nothing marking it as the outlier-prone sample it is.
     if (nnTimes[i] - nnTimes[0] < winMs) continue;
     if (i - lo >= 10) {
-      var ssd = 0.0;
+      var ssd = 0.0, pairs = 0;
       for (var k = lo + 1; k <= i; k++) {
+        // Same seam rule hrvTime applies: a pair is contiguous only when the
+        // elapsed beat time IS the interval. correctRr drops multi-beat runs
+        // while advancing the clock across them, so without this a dropped run
+        // injects one phantom diff into the curve per seam.
+        if (nnTimes[k] - nnTimes[k - 1] > nn[k] + 0.5) continue;
         final diff = nn[k] - nn[k - 1];
         ssd += diff * diff;
+        pairs++;
       }
-      final rmssd = math.sqrt(ssd / (i - lo));
+      if (pairs == 0) continue;
+      final rmssd = math.sqrt(ssd / pairs);
       final tSec = ((originMs + nnTimes[i]) / 1000).round();
       if (out.isEmpty || tSec - out.last['t']! > 60) {
         out.add({'t': tSec, 'v': _round(rmssd, 1)});

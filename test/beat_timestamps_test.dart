@@ -10,7 +10,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:openstrap_edge/compute/substrate.dart' show beatTimesMs;
+import 'package:openstrap_edge/compute/substrate.dart'
+    show beatTimesMs, clampBeatTsNonDecreasing;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/models.dart';
 
@@ -87,6 +88,23 @@ void main() {
 
     test('an empty record produces nothing', () {
       expect(beatTimesMs(1000, 500, const []), isEmpty);
+    });
+  });
+
+  group('clampBeatTsNonDecreasing', () {
+    test('a record-leading beat reconstructed early clamps forward', () {
+      // The boundary case from the field census: record N's first beat placed
+      // ~100 ms before record N-1's last because each record's anchor errs by
+      // <1 RR. The interval is exact — only the scaffold offset is off — so the
+      // clock moves forward and the interval is untouched.
+      final acc = <double>[999300.0];
+      expect(clampBeatTsNonDecreasing(999200.0, acc), 999300.0);
+      expect(clampBeatTsNonDecreasing(999350.0, acc), 999350.0);
+    });
+
+    test('an empty accumulator and equal times pass through', () {
+      expect(clampBeatTsNonDecreasing(100.0, const []), 100.0);
+      expect(clampBeatTsNonDecreasing(100.0, [100.0]), 100.0);
     });
   });
 

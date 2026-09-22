@@ -180,6 +180,17 @@ List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs) {
   return out;
 }
 
+/// Forward-clamp for the reconstructed beat clock. [beatTimesMs] is exact
+/// WITHIN a record, but each record's anchor (its emit timestamp) sits up to
+/// ~1 RR after the last reported beat actually ended — so ~0.3 % of
+/// record-leading beats land just BEFORE the previous record's last beat. That
+/// is a scaffold artifact, not physiology, and consumers may assume
+/// non-decreasing times (`cardioStager` binary-searches them). The clamp fixes
+/// the ordering only; interval values are untouched. `acc` is the array being
+/// appended to — pass the same list every time so the clamp is per-append O(1).
+double clampBeatTsNonDecreasing(double ts, List<double> acc) =>
+    acc.isNotEmpty && ts < acc.last ? acc.last : ts;
+
 /// The decoded 1 Hz substrate — the only decoded form (ARCHITECTURE_V2).
 ///
 /// All HR/accel/ADC arrays are parallel and 1:1 with [tsSec] (one sample per
@@ -755,7 +766,8 @@ Substrate decodeSubstrate(List<String> hexes) {
       final rr = plausibleRrOrNull(r.rrIntervalsMs[b]);
       if (rr != null) {
         rrMs.add(rr);
-        rrTsMs.add(beatTs[b]?.toDouble() ?? t);
+        rrTsMs.add(
+            clampBeatTsNonDecreasing(beatTs[b]?.toDouble() ?? t, rrTsMs));
       }
     }
   }
