@@ -1291,6 +1291,13 @@ int _nextLocalMidnight(int epochSec) {
   return DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch ~/ 1000;
 }
 
+/// How many sorted 1 Hz record timestamps fall in [startSec, endSec). Record
+/// density IS the worn-coverage measure this stream has — off-wrist time
+/// produces no rows at all — so this is the count a windowed step source is
+/// reconciled against when a whole-day counter also exists.
+int countTsBetween(List<int> tsSec, int startSec, int endSec) =>
+    _lowerBound(tsSec, endSec) - _lowerBound(tsSec, startSec);
+
 /// First index i in sorted [xs] with xs[i] >= target (std lower_bound).
 int _lowerBound(List<int> xs, int target) {
   var lo = 0, hi = xs.length;

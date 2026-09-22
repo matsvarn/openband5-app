@@ -1622,7 +1622,15 @@ import 'substrate.dart';
 // day's main night). HR-led sleep fallback waits until the wake morning is
 // in the substrate, so a mid-drain truncated night is not banked. Pins
 // unchanged.
-const int kAlgoVersion = 90;
+// 90 → 91: post-audit repair pass. Steps: the gen5 on-chip counter is now
+// PRIMARY on gen5 days (counter + windowed share outside band-recorded
+// time), fixing windowed totals of 2–83 min suppressing the all-day count
+// (published 87–4,621 where the chip measured 6,187–16,348). Nap notes now
+// count post-attribution-filter naps instead of pre-filter candidates. The
+// movement refusal note reports the real 14-day frozen-floor gate, not the
+// analytics enrollment minimum. Every bundle stamps build provenance
+// (algo/pins/schema). Pins unchanged.
+const int kAlgoVersion = 91;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -4252,6 +4260,28 @@ class DerivationEngine {
           ),
       ];
 
+      // UNCOVERED WINDOWED SHARE — the part of the resolved windowed count the
+      // strap's on-chip counter cannot already contain. The counter is a
+      // whole-day cumulative over band-worn time: adding windowed totals
+      // wholesale would double-count every covered walk, but dropping them
+      // loses the steps a windowed source counted while the band was off.
+      // Each credited span contributes only the share of its steps that fell
+      // outside band-recorded time — record density IS the worn-coverage
+      // measure at 1 Hz, so a worn-but-sparse stretch under-reads coverage
+      // and over-credits, bounded by the span's own step count.
+      var liveStepsUncovered = 0;
+      var liveStepsUncoveredStrap = 0;
+      for (final s in liveSteps.spans) {
+        final dur = s.endTs - s.startTs;
+        if (dur <= 0 || s.steps <= 0) continue;
+        final uncoveredSec =
+            dur - countTsBetween(daySub.tsSec, s.startTs, s.endTs);
+        if (uncoveredSec <= 0) continue;
+        final share = (s.steps * uncoveredSec / dur).round();
+        liveStepsUncovered += share;
+        if (s.fromBand) liveStepsUncoveredStrap += share;
+      }
+
       final blocksInput = _DayBlocksInput(
         daySub: daySub,
         napSub: day.napSub,
@@ -4269,6 +4299,8 @@ class DerivationEngine {
         maxHrUsed: (bundle['max_hr_used'] as num?)?.round(),
         liveStepsReal: liveSteps.total,
         liveStepsFromStrap: liveSteps.strap,
+        liveStepsUncovered: liveStepsUncovered,
+        liveStepsUncoveredStrap: liveStepsUncoveredStrap,
         // The same resolution's credited spans, so the walking-cadence term
         // prices exactly the steps the day's total already counted — never a
         // raw row the ladder took back.
@@ -4488,6 +4520,15 @@ class DerivationEngine {
         throw StateError('derivation revision is stale for ${day.date}');
       }
     }
+    // PROVENANCE. `algo_version` alone cannot distinguish two builds that
+    // share it — the Sep-22 capture ran an analytics checkout two commits
+    // past the declared pin and produced rows indistinguishable from a pinned
+    // build's. Every persisted bundle now names the code that produced it; a
+    // same-version different-build row is identifiable instead of silently
+    // confounded. (The pins stamp the DECLARED sibling refs — a local
+    // pubspec_overrides build is runtime-invisible and stamps its declared
+    // pin regardless.)
+    bundle['build'] = buildProvenance();
     await LocalDb.putDayResult(
       expectedSleepCorrectionRevision: day.sleepCorrectionRevision,
       expectedNapRevision: expectedNapRevision.toInt(),
@@ -5886,6 +5927,8 @@ class DerivationEngine {
     double? dynFloorG,
     int liveStepsReal = 0,
     int liveStepsFromStrap = 0,
+    int liveStepsUncovered = 0,
+    int liveStepsUncoveredStrap = 0,
     int dynHistoryDays = 0,
     List<List<int>> stepSpans = const [],
     /// This day's `sessions` rows (`LocalDb.sessionsInRange`), for the
@@ -5961,6 +6004,8 @@ class DerivationEngine {
       profile,
       liveStepsReal,
       liveStepsFromStrap,
+      liveStepsUncovered,
+      liveStepsUncoveredStrap,
       dynFloorG,
       dynHistoryDays,
     );
@@ -6189,13 +6234,22 @@ class DerivationEngine {
   ///
   /// [bandSteps] is the gen5 strap's OWN pedometer total for the day (see
   /// [hardwareStepsFromCounter]) — a genuine on-wrist gait counter, not a 1 Hz
-  /// inference, so it outranks the phone. Null on every gen4 day, and on a gen5
-  /// day whose records predate schema v34; that is the absent case, not zero.
+  /// inference, measured over the WHOLE band-worn day. Null on every gen4 day,
+  /// and on a gen5 day whose records predate schema v34; that is the absent
+  /// case, not zero.
+  ///
+  /// [liveStepsUncovered] is the share of the resolved windowed count that
+  /// fell outside band-recorded time — steps the counter cannot already
+  /// contain (computed at the call site, where the credited spans and the
+  /// day's substrate coexist). [liveStepsUncoveredStrap] is the band-sourced
+  /// part of it.
   static void _writeSteps(
     Map<String, dynamic> bundle,
     Map<String, dynamic>? scMap,
     int liveStepsReal, {
     int liveStepsFromStrap = 0,
+    int liveStepsUncovered = 0,
+    int liveStepsUncoveredStrap = 0,
     int? bandSteps,
   }) {
     // THE SOURCE LADDER, and where each rung is actually decided.
@@ -6206,20 +6260,31 @@ class DerivationEngine {
     // already a sum of resolved spans and `liveStepsFromStrap` is the band's
     // share of it. Nothing here re-decides that.
     //
-    // Rung 2, the gen5 ON-CHIP COUNTER, cannot join that sum honestly. It is a
+    // Rung 2, the gen5 ON-CHIP COUNTER, is PRIMARY on a gen5 day. It is a
     // cumulative u16 with no midnight reset and no timestamps of its own
-    // (`hardwareStepsFromCounter` differences it across the day's records): a
-    // whole-day total with no window behind it. Slicing it into spans would
-    // mean inventing an extent for it, and adding it to windowed spans would
-    // double-count every walk the other two already counted. So it stays a
-    // WHOLE-DAY FALLBACK — used only when no span source covered the day at
-    // all. That inversion is deliberate: whole-day precedence for this counter
-    // is exactly the bug being fixed (622 steps published over the phone's
-    // 18,856 on a day the strap synced for part of).
+    // (`hardwareStepsFromCounter` differences it across the day's records) —
+    // but that whole-day extent is exactly why it outranks the windowed sum:
+    // the windowed resolution only ever sees the spans a source banked, which
+    // on a normal day is a fraction of the worn time. The old ladder inverted
+    // this — any nonzero windowed total suppressed the counter entirely — and
+    // published 2–83 minutes of partial coverage over the counter's all-day
+    // count (e.g. 87 steps shown against 6,187 measured on-chip, and 4,621
+    // against 16,348).
+    //
+    // The honest composition: counter for everything band-covered, PLUS only
+    // the windowed share that fell outside band-recorded time (a walk the
+    // phone counted while the strap charged cannot be inside the counter).
+    // Covered windowed steps are dropped — the counter already priced that
+    // time — never added on top. A windowed total that still exceeds the
+    // union is all measured too and wins: the counter can under-read across a
+    // dropped reset delta, it cannot over-read.
     final strap = liveStepsFromStrap.clamp(0, liveStepsReal);
     final phone = liveStepsReal - strap;
-    final useBand = liveStepsReal <= 0 && bandSteps != null && bandSteps > 0;
-    final steps = useBand ? bandSteps : liveStepsReal;
+    final uncoveredStrap = liveStepsUncoveredStrap.clamp(0, liveStepsUncovered);
+    final uncoveredPhone = liveStepsUncovered - uncoveredStrap;
+    final counterUnion = (bandSteps ?? 0) + liveStepsUncovered;
+    final useBand = counterUnion > liveStepsReal && counterUnion > 0;
+    final steps = useBand ? counterUnion : liveStepsReal;
     final haveRealSteps = steps > 0;
     if (haveRealSteps) {
       scMap?['steps'] = steps.toDouble();
@@ -6229,6 +6294,10 @@ class DerivationEngine {
     bundle['steps'] = <String, dynamic>{
       'value': haveRealSteps ? steps : null,
       'real_measured': liveStepsReal,
+      // The windowed share credited OUTSIDE band-recorded time — what a
+      // windowed source measured while the counter was not running. Zero on a
+      // fully band-covered day.
+      'windowed_uncovered': liveStepsUncovered,
       // What the strap's own pedometer counted, independent of which source
       // won. Null (never 0) when this generation has no counter at all.
       'band_measured': bandSteps,
@@ -6238,9 +6307,11 @@ class DerivationEngine {
       // sensor was there and counted nothing", which is a different claim.
       'by_source': haveRealSteps
           ? <String, int>{
-              if (useBand)
-                'strap_counter': steps
-              else ...{
+              if (useBand) ...{
+                'strap_counter': bandSteps ?? 0,
+                if (uncoveredStrap > 0) 'strap': uncoveredStrap,
+                if (uncoveredPhone > 0) 'phone': uncoveredPhone,
+              } else ...{
                 if (strap > 0) 'strap': strap,
                 if (phone > 0) 'phone': phone,
               },
@@ -6249,7 +6320,7 @@ class DerivationEngine {
       'source': !haveRealSteps
           ? null
           : useBand
-              ? 'strap_counter'
+              ? (liveStepsUncovered > 0 ? 'mixed' : 'strap_counter')
               : (strap > 0 && phone > 0)
                   ? 'mixed'
                   : (strap > 0 ? 'strap' : 'phone'),
@@ -6271,16 +6342,27 @@ class DerivationEngine {
       'inputs_used': !haveRealSteps
           ? const <String>[]
           : useBand
-              ? const ['band_step_counter']
+              ? <String>[
+                  'band_step_counter',
+                  if (uncoveredStrap > 0) 'band_pedometer_100hz',
+                  if (uncoveredPhone > 0) 'phone_pedometer',
+                ]
               : <String>[
                   if (strap > 0) 'band_pedometer_100hz',
                   if (phone > 0) 'phone_pedometer',
                 ],
       'note': haveRealSteps
           ? (useBand
-              ? 'the strap\'s own on-chip pedometer, summed from its cumulative '
-                  'counter; wrapped and reset boundaries contribute nothing '
-                  'rather than a guess'
+              ? (liveStepsUncovered > 0
+                  ? 'the strap\'s own on-chip pedometer for the band-worn day '
+                      '(summed from its cumulative counter; wrapped and reset '
+                      'boundaries contribute nothing rather than a guess), '
+                      'plus the steps a windowed source measured while the '
+                      'band was not recording'
+                  : 'the strap\'s own on-chip pedometer, summed from its '
+                      'cumulative counter across the whole band-worn day; '
+                      'wrapped and reset boundaries contribute nothing rather '
+                      'than a guess')
               : (strap > 0 && phone > 0)
                   ? 'counted over measured windows only, each window by the '
                       'better sensor that was actually recording it — the '
@@ -6316,6 +6398,8 @@ class DerivationEngine {
     Profile profile,
     int liveStepsReal,
     int liveStepsFromStrap,
+    int liveStepsUncovered,
+    int liveStepsUncoveredStrap,
     double? dynFloorG,
     int dynHistoryDays,
   ) {
@@ -6337,6 +6421,8 @@ class DerivationEngine {
         scMap,
         liveStepsReal,
         liveStepsFromStrap: liveStepsFromStrap,
+        liveStepsUncovered: liveStepsUncovered,
+        liveStepsUncoveredStrap: liveStepsUncoveredStrap,
         bandSteps: hardwareStepsFromCounter(
           daySub,
           cumulativeCounterModulus:
@@ -6402,7 +6488,19 @@ class DerivationEngine {
         // after it changed active minutes by exactly zero on every day tested.
         'inputs_used': const ['dyn_amp_1hz', 'personal_dyn_floor'],
         'note': v == null
-            ? (est.note ?? 'need_baseline')
+            // Report the gate that is ACTUALLY blocking, in the gate's own
+            // units. `est.note` counts analytics' 5-day enrollment minimum,
+            // but this edge refuses the floor until it has frozen at
+            // `enrollmentDaysForFrozenFloor` (14) — forwarding `need=5` told
+            // a 5-day user the metric should already exist.
+            ? (motion.isEmpty
+                ? (est.note ?? 'no motion minutes')
+                : dynFloorG == null
+                    ? ana.needBaselineNote(
+                        have: dynHistoryDays,
+                        need: ana.enrollmentDaysForFrozenFloor,
+                      )
+                    : (est.note ?? 'need_baseline'))
             : 'minutes of sustained wrist movement — activity volume, NOT '
                 'walking, and deliberately not converted to steps',
       };
@@ -7588,6 +7686,21 @@ class DerivationEngine {
     };
   }
 
+  /// The persisted nap note, corrected for attribution filtering. The
+  /// detector's own note counts its raw candidates; [dropped] is how many the
+  /// nocturnal/edge-attribution filters reassigned elsewhere, and [credited]
+  /// is what the day now reports (post user-edit merge). A note that says "2
+  /// naps" beside an empty list is a lie — rewrite it.
+  static String _napNote(String? detectorNote, int credited, int dropped) {
+    if (dropped <= 0) return detectorNote ?? '';
+    final base = credited == 0
+        ? 'no qualifying nap (15 min–6 h, HR-corroborated) outside the main '
+            'sleep window'
+        : '$credited nap(s) credited';
+    return '$base; $dropped nocturnal or edge-anchored bout(s) attributed to '
+        'the main night or an adjacent day instead';
+  }
+
   static List<Map<String, dynamic>>? _attachNaps(
     Map<String, dynamic> bundle,
     Map<String, dynamic>? scMap,
@@ -7709,13 +7822,20 @@ class DerivationEngine {
       ];
       final merged = applyNapEdits(detected, napEdits);
 
+      // The detector's note counts its PRE-FILTER candidates — it can claim
+      // "2 naps" on a day whose nocturnal/attribution filters left zero, and
+      // the persisted note used to repeat that claim verbatim. Count what the
+      // filters actually credited.
+      final dropped = m.value!.length - naps.length;
+      final note = _napNote(m.note, merged.length, dropped);
+
       bundle['naps'] = <String, dynamic>{
         'value': merged,
         'count': merged.length,
         'confidence': m.confidence,
         'tier': m.tier,
         'inputs_used': m.inputs_used,
-        'note': napEdits.isEmpty ? m.note : '${m.note} (edited)',
+        'note': napEdits.isEmpty ? note : '$note (edited)',
       };
 
       // TST, never TIB. Crediting in-bed minutes against sleep need
@@ -7947,6 +8067,8 @@ class DerivationEngine {
       dynFloorG: inp.dynFloorG,
       liveStepsReal: inp.liveStepsReal,
       liveStepsFromStrap: inp.liveStepsFromStrap,
+      liveStepsUncovered: inp.liveStepsUncovered,
+      liveStepsUncoveredStrap: inp.liveStepsUncoveredStrap,
       dynHistoryDays: inp.dynHistoryDays,
       stepSpans: inp.stepSpans,
       sessions: inp.savedSessions,
@@ -8623,6 +8745,17 @@ Future<R> runCancellableIsolate<R>(
 }) =>
     DerivationEngine._runIsolateCancellable(compute, timeout, label: label);
 
+/// The build provenance stamped into every persisted day_result bundle.
+/// `algo_version` alone cannot distinguish two builds that share it; these
+/// compile-time constants name the code that produced the row. See the call
+/// site for the capture that motivated it.
+Map<String, dynamic> buildProvenance() => <String, dynamic>{
+      'algo_version': kAlgoVersion,
+      'analytics_pin': kAnalyticsPin,
+      'protocol_pin': kProtocolPin,
+      'schema_version': LocalDb.schemaVersion,
+    };
+
 /// Sendable input for [DerivationEngine._computeDayBlocks] — crosses the
 /// `Isolate.run` boundary, so every field is plain data (Substrate is int/double
 /// lists; Profile is a primitive data class). DB reads that the
@@ -8647,6 +8780,13 @@ class _DayBlocksInput {
   /// the bundle can say which sensor counted without re-reading the DB from the
   /// isolate, which has no handle.
   final int liveStepsFromStrap;
+
+  /// The share of the resolved windowed count that fell OUTSIDE band-recorded
+  /// time — steps a whole-day on-chip counter could not already contain.
+  /// Computed on the main isolate where the credited spans and the day's
+  /// substrate coexist; see `_writeSteps` for how they combine.
+  final int liveStepsUncovered;
+  final int liveStepsUncoveredStrap;
 
   /// The SAME resolution's credited spans, as `[startSec, endSec, steps]` —
   /// the walking-cadence energy term prices wake minutes off these (see
@@ -8705,6 +8845,8 @@ class _DayBlocksInput {
     required this.maxHrUsed,
     required this.liveStepsReal,
     this.liveStepsFromStrap = 0,
+    this.liveStepsUncovered = 0,
+    this.liveStepsUncoveredStrap = 0,
     this.stepSpans = const [],
     required this.dynFloorG,
     required this.dynHistoryDays,

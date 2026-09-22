@@ -348,6 +348,7 @@ class LocalDb {
     'baselines',
     'raw_archive',
     'raw_records',
+    'raw_blob',
     'live_coverage',
     'workout_suggestions',
     'device_coverage',
@@ -1389,6 +1390,11 @@ class LocalDb {
     // working copy after backfill; recreate the durable table so a backup can
     // restore records that exist only in this ledger.
     await _createRaw(db);
+    // The compressed replay source for the whole historical stream. Additive,
+    // no backfill (pre-existing rows are simply not replayable — the honest
+    // answer, not a thing to invent), so it rides the same-version self-heal
+    // path rather than a schema number.
+    await _createRawBlob(db);
   }
 
   /// The column names [table] currently has (empty if the table is absent).
@@ -5627,6 +5633,15 @@ class LocalDb {
       }
     }
 
+    // REPLAY SOURCE, encoded ahead of the write. The whole `raws` stream — the
+    // decoded seconds AND the slots the mapper passed on — is what a decoder
+    // revision needs back, and hex-per-row in `raw_records` priced that at
+    // ~24 MB/day. One DEFLATE blob per commit lands it at ~4-5 MB/day inside
+    // the same ACK-gating transaction below: the band never trims a byte this
+    // phone has not committed. Null when raws is empty or the encode itself
+    // failed — the blob is the audit copy, never a reason to fail the commit.
+    final rawBlob = _encodeRawBlob(raws);
+
     final db = await instance;
     // POWER-LOSS DURABILITY WINDOW. This is the ACK-gating commit: once it
     // returns, the caller writes the BLE batch-ACK and the band trims its flash.
@@ -5738,6 +5753,7 @@ class LocalDb {
             if (++ops >= chunkOps) await flushChunk();
           }
         }
+        var blobMinCtr = 0, blobMaxCtr = 0, blobMinTs = 0, blobMaxTs = 0;
         for (var i = 0; i < raws.length; i++) {
           final raw = raws[i];
           final recTs = _recTsFor(raw);
@@ -5767,8 +5783,27 @@ class LocalDb {
           );
           if (raw.counter > maxCounter) maxCounter = raw.counter;
           if (recTs > maxRecTs) maxRecTs = recTs;
+          if (i == 0 || raw.counter < blobMinCtr) blobMinCtr = raw.counter;
+          if (raw.counter > blobMaxCtr) blobMaxCtr = raw.counter;
+          if (i == 0 || recTs < blobMinTs) blobMinTs = recTs;
+          if (recTs > blobMaxTs) blobMaxTs = recTs;
           sampleSecs[i] = recTs;
           if (ops >= chunkOps) await flushChunk();
+        }
+        // The replay source commits INSIDE the same transaction as the rows it
+        // generated: an ACK must never trim a byte the phone does not hold.
+        if (rawBlob != null) {
+          await txn.insert('raw_blob', {
+            'device_id': deviceId,
+            'first_counter': blobMinCtr,
+            'last_counter': blobMaxCtr,
+            'first_ts': blobMinTs,
+            'last_ts': blobMaxTs,
+            'n': raws.length,
+            'codec': 1,
+            'payload': rawBlob,
+            'captured_at': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
         }
         // NEUTRAL ROWS. No flash counter to advance maxCounter from — both
         // current writers (ble_hrs, oura) hard-code counter: 0 and leave a
@@ -7914,6 +7949,121 @@ class LocalDb {
     );
   }
 
+  // raw_blob — the durable REPLAY source for the whole historical record
+  // stream, one gzip-compressed blob per committed sync batch. `raw_records`
+  // proved the need and priced the naive shape: ~86 400 rows/day of hex TEXT is
+  // ~24 MB/day and still loses nothing a decoder revision would want back.
+  // Here each record is stored as `[u16le length][raw frame bytes]` inside one
+  // DEFLATE stream per commit — self-describing, generation-agnostic (gen4
+  // R24 lands here exactly like gen5 v18), ~4-5 MB/day measured, and every
+  // field a future decoder interpretation could need survives, including the
+  // ones today's mapper deliberately drops (spo2 candidate byte, optical
+  // saturation flags). Inflate → slice → hex → RawRecord and the existing
+  // decode paths re-derive the day end to end.
+  //
+  // Identity is content-derived — (device_id, first_counter, last_counter,
+  // first_ts, n) — so a batch re-committed after a crash mid-sync re-produces
+  // the same key and the IGNORE dedups it exactly. A re-flood sliced
+  // differently can duplicate individual records inside another blob —
+  // bounded, rare, and cheaper than a per-record uniqueness index on the
+  // write-hot path. `captured_at` stays a plain column (commit wall time).
+  static Future<void> _createRawBlob(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS raw_blob (
+        device_id TEXT NOT NULL DEFAULT '',
+        first_counter INTEGER NOT NULL,
+        last_counter INTEGER NOT NULL,
+        first_ts INTEGER NOT NULL DEFAULT 0,
+        last_ts INTEGER NOT NULL DEFAULT 0,
+        n INTEGER NOT NULL,
+        codec INTEGER NOT NULL DEFAULT 1,
+        payload BLOB NOT NULL,
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (device_id, first_counter, last_counter, first_ts, n)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_raw_blob_ts ON raw_blob(device_id, first_ts)',
+    );
+  }
+
+  /// One compressed batch for [commitSyncBatch]: every record in [raws],
+  /// length-prefixed, in commit order. Returns null for an empty batch (and on
+  /// any encode failure — the blob is the audit copy, never the thing a commit
+  /// must die for). Built OUTSIDE the commit transaction: the bytes are
+  /// immutable the moment the caller hands them over, and DEFLATE work has no
+  /// business inside the ACK-gating write window.
+  static Uint8List? _encodeRawBlob(List<RawRecord> raws) {
+    if (raws.isEmpty) return null;
+    try {
+      final out = BytesBuilder(copy: false);
+      for (final r in raws) {
+        final bytes = proto.hexToBytes(r.hex);
+        if (bytes.length > 0xFFFF) return null; // length prefix is u16
+        out.add([bytes.length & 0xFF, (bytes.length >> 8) & 0xFF]);
+        out.add(bytes);
+      }
+      return Uint8List.fromList(gzip.encode(out.toBytes()));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Read back the raw records a [commitSyncBatch] persisted, in commit order.
+  /// The future re-decode path pages these by counter/ts range; a decoder that
+  /// only wants ONE batch filters on (first_counter, last_counter). Hex is
+  /// re-materialised per record so every existing `RawRecord`-shaped decode
+  /// entry point works unmodified.
+  static Future<List<RawRecord>> rawBlobRecords({
+    String deviceId = kPrimaryDeviceId,
+    int? afterCounter,
+    int limit = 50,
+  }) async {
+    final db = await instance;
+    final rows = await db.query(
+      'raw_blob',
+      where: afterCounter == null
+          ? 'device_id = ?'
+          : 'device_id = ? AND last_counter > ?',
+      whereArgs:
+          afterCounter == null ? [deviceId] : [deviceId, afterCounter],
+      orderBy: 'first_counter ASC',
+      limit: limit,
+    );
+    final out = <RawRecord>[];
+    for (final row in rows) {
+      final codec = (row['codec'] as num).toInt();
+      final payload = row['payload'];
+      if (codec != 1 || payload is! Uint8List) continue;
+      final raw = gzip.decode(payload);
+      var i = 0;
+      while (i + 2 <= raw.length) {
+        final len = raw[i] | (raw[i + 1] << 8);
+        if (len <= 0 || i + 2 + len > raw.length) break;
+        final frame = raw.sublist(i + 2, i + 2 + len);
+        // The counter rides inside the frame (u32 @[3:7] on header records —
+        // see RawRecord); shorter frames are the counter-less kind.
+        final counter = frame.length >= 7
+            ? frame[3] |
+                (frame[4] << 8) |
+                (frame[5] << 16) |
+                (frame[6] << 24)
+            : 0;
+        final hex = [
+          for (final b in frame) b.toRadixString(16).padLeft(2, '0'),
+        ].join();
+        out.add(RawRecord(
+          counter: counter,
+          packetType: frame[0],
+          hex: hex,
+          capturedAt: (row['captured_at'] as num).toInt(),
+        ));
+        i += 2 + len;
+      }
+    }
+    return out;
+  }
+
   /// Add the additive `rec_ts` column to an EXISTING raw_records table (upgrade
   /// path only). NOT NULL with a DEFAULT 0 so legacy rows are well-formed until
   /// the backfill rewrites them.
@@ -9566,11 +9716,18 @@ class LocalDb {
       }
     }
     if (metaPatch != null) meta.addAll(metaPatch);
+    // A first-write-with-ACK row is born already acked: `now` is sampled AFTER
+    // the caller captured `ackedAt`, so `created_at` would read up to ~250 ms
+    // LATER than the ack — a row that says it was acked before it existed.
+    // Clamp the new row's created_at down to the ack stamp; existing rows keep
+    // theirs (the insert is a REPLACE merge, not a re-birth).
+    final createdAt = (existing?['created_at'] as num?)?.toInt() ??
+        (ackedAt != null && ackedAt < now ? ackedAt : now);
     await db.insert('sync_ledger', {
       'chunk_id': chunkId,
       'kind': kind,
       'status': status,
-      'created_at': (existing?['created_at'] as num?)?.toInt() ?? now,
+      'created_at': createdAt,
       'updated_at': now,
       'acked_at': ackedAt ?? (existing?['acked_at'] as num?)?.toInt(),
       'last_error': lastError,
@@ -11161,6 +11318,13 @@ class LocalDb {
     'openband_session_detail': ['session_id'],
     'sessions': ['id'],
     'raw_records': ['counter'],
+    'raw_blob': [
+      'device_id',
+      'first_counter',
+      'last_counter',
+      'first_ts',
+      'n',
+    ],
   };
 
   static Future<List<Map<String, Object?>>> _sourceParentRows(
@@ -11907,6 +12071,7 @@ class LocalDb {
       'openband_session_detail',
       'sessions',
       'raw_records',
+      'raw_blob',
     ];
     int total(String suffix) => durable.fold(
       0,
@@ -12005,6 +12170,10 @@ class LocalDb {
       // boots both survive the merge.
       'raw_archive',
       'raw_records',
+      // The compressed replay stream — same never-lose-a-frame reasoning as
+      // raw_archive, keyed by its content identity so a re-imported identical
+      // batch dedups instead of doubling.
+      'raw_blob',
       'band_events',
       'band_battery',
       'day_result',

@@ -1163,7 +1163,8 @@ void main() {
       expect(snapshot.status, SleepPlanStatus.stale);
     });
 
-    test('newest-90 served rows that would enter or stay skipped', () async {
+    test('newest-version served rows that would enter or stay skipped',
+        () async {
       await seedWindow();
       await store(artifact());
       await seedServedDay('2026-09-13', computedAtMs: stampMs - 1);
@@ -1184,7 +1185,8 @@ void main() {
 
     test('served join ignores newer-than-current algo rows', () async {
       await seedWindow();
-      await seedServedDay(day, computedAtMs: stampMs + 5000, version: 91);
+      await seedServedDay(day,
+          computedAtMs: stampMs + 5000, version: kAlgoVersion + 1);
       await store(artifact());
       final snapshot = await repository.readSleepPlan(day, now: now);
       expect(snapshot.plan!.freshness, SleepPlanFreshness.fresh);

@@ -218,7 +218,7 @@ CycleComparisonSnapshot _snap({
 
 void main() {
   test('kAlgoVersion remains the cycle-night pin', () {
-    expect(kAlgoVersion, 90);
+    expect(kAlgoVersion, 91);
   });
 
   test('reuses the fixed-anchor twelve-month window and year-1 query pad', () {
@@ -264,7 +264,7 @@ void main() {
     expect(snap.rhr.latest?.cycleDay, 23);
     expect(snap.rhr.latest?.startDay, '2026-08-24');
     expect(snap.rhr.latest?.sleepSource, 'auto');
-    expect(snap.rhr.latest?.algoVersion, 90);
+    expect(snap.rhr.latest?.algoVersion, 91);
 
     expect(snap.hrv.latestReason, CycleComparisonLatestReason.available);
     expect(snap.hrv.latest?.nightDay, '2026-09-14');
