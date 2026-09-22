@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/settings_controls.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -103,7 +104,7 @@ void main() {
       expect(labelStyle?.height, 20 / 15);
       expect(
         tester.widget<InkWell>(find.byType(InkWell)).borderRadius,
-        BorderRadius.circular(24),
+        BorderRadius.circular(AlpRadius.card),
       );
 
       final label = tester.getRect(find.text('Eigenes Schlafziel'));

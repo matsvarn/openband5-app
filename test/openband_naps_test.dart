@@ -324,10 +324,20 @@ void main() {
     tester,
   ) async {
     await mount(tester, width: 375, scale: 2);
-    await tester.ensureVisible(find.text('14:10–14:42'));
+    await tester.scrollUntilVisible(
+      find.text('14:10–14:42'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('14:10–14:42'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Nickerchen entfernen'));
+    await tester.scrollUntilVisible(
+      find.text('Nickerchen entfernen'),
+      200,
+      scrollable: find
+          .ancestor(of: find.text('Beginn'), matching: find.byType(Scrollable))
+          .first,
+    );
     await tester.tap(find.text('Nickerchen entfernen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Entfernen').last);

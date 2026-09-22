@@ -2624,7 +2624,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             : null,
         baseline: baselineValue == null
             ? null
-            : StoredNightBaseline(value: baselineValue),
+            : StoredNightBaseline(value: baselineValue, status: 'trusted'),
         windowStartMs: onFixtureDay ? _onset.millisecondsSinceEpoch : null,
         windowEndMs: onFixtureDay ? _wake.millisecondsSinceEpoch : null,
       );
@@ -2751,11 +2751,22 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       if (metric != NightScalarMetric.skinTemperature &&
           !(scenario == SyntheticScenario.missing && day.day == _day)) {
         if (day.day == _day) {
+          final baselineValue = switch (metric) {
+            NightScalarMetric.hrv => kNightScalarPaperHrvBaseline,
+            NightScalarMetric.rhr => kNightScalarPaperRhrBaseline,
+            _ => null,
+          };
           selected = NightScalarRow(
             day: day.day,
             algoVersion: kAlgoVersion,
             partial: scenario == SyntheticScenario.partial,
             computedAtMs: _baseBand.latestStoredAt?.millisecondsSinceEpoch,
+            baseline: baselineValue == null
+                ? null
+                : StoredNightBaseline(
+                    value: baselineValue,
+                    status: 'trusted',
+                  ),
             windowStartMs: _onset.millisecondsSinceEpoch,
             windowEndMs: _wake.millisecondsSinceEpoch,
           );

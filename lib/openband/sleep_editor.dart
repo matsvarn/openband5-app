@@ -337,6 +337,7 @@ class _SleepEditorState extends State<SleepEditor> {
                       children: [
                         OBPageHeader(
                           title: title,
+                          backText: 'Schlaf',
                           subtitle:
                               '${original.onset == null ? '' : '${original.onset!.day}./'}${obDate(day)}${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
                           onBack: _leave,
@@ -451,7 +452,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                       'Zeiten gespeichert',
                                       '${obTime(receipt!.onset)}–${obTime(receipt!.wake)}',
                                       LucideIcons.circleCheck,
-                                      p.recoveryText,
+                                      p.ink,
                                     ),
                                     _statusRow(
                                       'Schlaf & Erholung',
@@ -515,16 +516,16 @@ class _SleepEditorState extends State<SleepEditor> {
                                 'Automatische Zeiten wiederherstellen',
                                 LucideIcons.refreshCw,
                                 p.action,
-                              () async {
-                                final restored = await restoreAutomaticSleep(
-                                  context,
-                                  widget.controller,
-                                  day,
-                                );
-                                if (restored && context.mounted) {
-                                  Navigator.pop(context);
-                                }
-                              },
+                                () async {
+                                  final restored = await restoreAutomaticSleep(
+                                    context,
+                                    widget.controller,
+                                    day,
+                                  );
+                                  if (restored && context.mounted) {
+                                    Navigator.pop(context);
+                                  }
+                                },
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -575,11 +576,7 @@ class _SleepEditorState extends State<SleepEditor> {
                   children: [
                     Text(
                       obDuration(draft!.timeInBed.inMinutes),
-                      style: p.text(
-                        34,
-                        weight: FontWeight.w800,
-                        display: true,
-                      ),
+                      style: p.text(34, weight: FontWeight.w800, display: true),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -677,12 +674,9 @@ class _SleepEditorState extends State<SleepEditor> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(LucideIcons.checkCheck, size: 18, color: p.recoveryText),
+                Icon(LucideIcons.checkCheck, size: 18, color: p.led),
                 const SizedBox(width: 8),
-                Text(
-                  'Zeiten korrigiert',
-                  style: p.text(14, color: p.recoveryText),
-                ),
+                Text('Zeiten korrigiert', style: p.text(14, color: p.ink)),
               ],
             ),
             const SizedBox(height: 8),

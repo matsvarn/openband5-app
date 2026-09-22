@@ -19,6 +19,7 @@ import '../../openband/alp_tokens.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/release_scope.dart';
+import '../../openband/scale.dart';
 import '../../openband/theme.dart';
 import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
@@ -74,7 +75,7 @@ class SetRow extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
-    final tint = danger ? p.danger : p.muted;
+    final tint = danger ? p.danger : p.ink;
     return Pressable(
       onTap: onTap,
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
@@ -150,13 +151,10 @@ Widget settingsGroup(
         if (title.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              title,
-              style: p.text(13, weight: FontWeight.w600, color: p.muted),
-            ),
+            child: Text(title.toUpperCase(), style: p.label(size: 11)),
           ),
         OBCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             children: [
               for (var i = 0; i < rows.length; i++) ...[
@@ -711,14 +709,11 @@ class ProfileHomeView extends StatelessWidget {
                     width: releaseReduced ? 40 : 36,
                     height: releaseReduced ? 40 : 36,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: releaseReduced ? p.recoveryTint : p.sleepTint,
-                      borderRadius: BorderRadius.circular(AlpRadius.card / 2),
-                    ),
+                    decoration: p.insetDecoration(radius: AlpRadius.card / 2),
                     child: Icon(
                       LucideIcons.bluetooth,
                       size: releaseReduced ? 20 : 18,
-                      color: releaseReduced ? p.recovery : p.sleep,
+                      color: p.ink,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -733,21 +728,30 @@ class ProfileHomeView extends StatelessWidget {
                             weight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          statusUnavailable
-                              ? (de
-                                    ? 'Bandstatus nicht verfügbar'
-                                    : 'Band status unavailable')
-                              : connected
-                              ? (de ? 'Verbunden' : 'Connected')
-                              : (de ? 'Getrennt' : 'Disconnected'),
-                          style: p.text(
-                            13,
-                            weight: FontWeight.w500,
-                            color: !statusUnavailable && connected
-                                ? p.recoveryText
-                                : p.muted,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            OBLed(on: !statusUnavailable && connected, size: 7),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                statusUnavailable
+                                    ? (de
+                                          ? 'Bandstatus nicht verfügbar'
+                                          : 'Band status unavailable')
+                                    : connected
+                                    ? (de ? 'Verbunden' : 'Connected')
+                                    : (de ? 'Getrennt' : 'Disconnected'),
+                                style: p.text(
+                                  13,
+                                  weight: FontWeight.w600,
+                                  color: !statusUnavailable && connected
+                                      ? p.ink
+                                      : p.muted,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -783,24 +787,16 @@ class ProfileHomeView extends StatelessWidget {
                 ],
               ),
               if (b.batteryPercent != null) ...[
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: R.rSm,
-                  child: SizedBox(
-                    height: releaseReduced ? 6 : 4,
-                    child: Stack(
-                      children: [
-                        Container(color: p.well),
-                        FractionallySizedBox(
-                          widthFactor: (b.batteryPercent! / 100).clamp(
-                            0.0,
-                            1.0,
-                          ),
-                          child: Container(color: p.recovery),
-                        ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 8),
+                OBScale(
+                  min: 0,
+                  max: 100,
+                  value: b.batteryPercent!.toDouble(),
+                  fill: p.ink,
+                  labels: ('0 %', de ? 'Akku' : 'Battery', '100 %'),
+                  semanticsLabel: de
+                      ? 'Akku ${b.batteryPercent} Prozent'
+                      : 'Battery ${b.batteryPercent} percent',
                 ),
               ],
               SizedBox(height: releaseReduced ? 12 : 14),

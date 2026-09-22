@@ -7,6 +7,7 @@ import 'controller.dart';
 import 'domain.dart';
 import 'health.dart';
 import 'night_scalar_detail.dart';
+import 'scale.dart';
 import 'screens.dart';
 import 'theme.dart';
 
@@ -27,6 +28,9 @@ class OpenBandMetricDetail extends StatefulWidget {
   final IconData icon;
   final Color Function(OB) color, tint;
   final int digits;
+
+  /// The parent screen's title for the back pill.
+  final String? backText;
   const OpenBandMetricDetail({
     super.key,
     required this.controller,
@@ -38,6 +42,7 @@ class OpenBandMetricDetail extends StatefulWidget {
     required this.color,
     required this.tint,
     this.digits = 0,
+    this.backText,
   });
 
   static void push(
@@ -51,6 +56,7 @@ class OpenBandMetricDetail extends StatefulWidget {
     required Color Function(OB) color,
     required Color Function(OB) tint,
     int digits = 0,
+    String? backText,
   }) => Navigator.push(
     context,
     MaterialPageRoute<void>(
@@ -64,6 +70,7 @@ class OpenBandMetricDetail extends StatefulWidget {
         color: color,
         tint: tint,
         digits: digits,
+        backText: backText,
       ),
     ),
   );
@@ -222,6 +229,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
         color: widget.color,
         tint: widget.tint,
         digits: widget.digits,
+        backText: widget.backText,
       );
     }
     return AnimatedBuilder(
@@ -232,227 +240,255 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
         final tint = widget.tint(p);
         final day = widget.controller.day;
         final metric = day == null ? const DayMetric.missing() : _metric(day);
+        final strain = widget.metricKey == MetricKey.strain;
+        final today = widget.controller.selectedDay == todayLabel();
+        final max = strain ? 21.0 : 100.0;
         return Scaffold(
           backgroundColor: p.canvas,
-          appBar: AppBar(
-            backgroundColor: p.canvas,
-            centerTitle: true,
-            title: Column(
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                Text(widget.label, style: p.text(17, weight: FontWeight.w700)),
-                Text(widget.subtitle, style: p.text(12, color: p.muted)),
-              ],
-            ),
-            actions: [
-              IconButton(
-                tooltip: 'Info',
-                onPressed: () {},
-                icon: Icon(LucideIcons.info, size: 18, color: p.muted),
-              ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-            children: [
-              OBCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 6,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(widget.icon, size: 16, color: color),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            widget.controller.selectedDay == todayLabel()
-                                ? (_nightly ? 'Nacht auf heute' : 'Heute')
-                                : obDayTitle(widget.controller.selectedDay),
-                            style: p.text(
-                              13,
-                              weight: FontWeight.w600,
-                              color: p.muted,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          obNumber(metric.value, digits: widget.digits),
-                          style: p.text(
-                            44,
-                            weight: FontWeight.w800,
-                            display: true,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          widget.unit,
-                          style: p.text(
-                            14,
-                            weight: FontWeight.w500,
-                            color: p.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      metric.value == null || metric.baseline == null
-                          ? obMetricStatus(metric.value, metric.baseline)
-                          : obMetricComparisonStatus(
-                              metric.value!,
-                              metric.baseline!,
-                              digits: widget.digits,
-                            ),
-                      style: p.text(
-                        13,
-                        weight: FontWeight.w600,
-                        color: metric.baseline != null && metric.value != null
-                            ? p.smallText(color)
-                            : p.muted,
-                      ),
-                    ),
-                  ],
+                OBPageHeader(
+                  title: widget.label,
+                  subtitle: widget.subtitle,
+                  backText: widget.backText,
+                  onInfo: _nightly ? () => _basis(context) : null,
+                  infoLabel: 'So entsteht die Basis',
                 ),
-              ),
-              const SizedBox(height: 12),
-              OBSegmented(
-                labels: [for (final n in _nightOptions) '$n $_period'],
-                selected: _nightOptions.indexOf(_nights),
-                onChanged: (i) => setState(() {
-                  _nights = _nightOptions[i];
-                  _load();
-                }),
-              ),
-              const SizedBox(height: 12),
-              OBCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 8,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _nightly ? 'Nacht für Nacht' : 'Tag für Tag',
-                            style: p.text(
-                              13,
-                              weight: FontWeight.w600,
-                              color: p.muted,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${_points?.where((e) => e.value != null).length ?? 0} von $_nights ${_nightly ? 'Nächten' : 'Tagen'}',
-                          style: p.text(
-                            13,
-                            weight: FontWeight.w500,
-                            color: p.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      height: 100,
-                      width: double.infinity,
-                      child: CustomPaint(
-                        painter: _NightBarsPainter(
-                          _points,
-                          metric.baseline,
-                          color,
-                          tint,
-                          p.gap,
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        if (_points?.isNotEmpty == true)
-                          Text(
-                            DateFormat(
-                              'd. MMM',
-                              'de_DE',
-                            ).format(DateTime.parse(_points!.first.day)),
-                            style: p.text(
-                              12,
-                              weight: FontWeight.w500,
-                              color: p.muted,
-                            ),
-                          ),
-                        const Spacer(),
-                        if (metric.baseline != null)
-                          Text(
-                            'Basis ${obNumber(metric.baseline)}',
-                            style: p.text(
-                              12,
-                              weight: FontWeight.w600,
-                              color: p.smallText(color),
-                            ),
-                          ),
-                        const Spacer(),
-                        if (_points?.isNotEmpty == true)
-                          Text(
-                            DateFormat(
-                              'd. MMM',
-                              'de_DE',
-                            ).format(DateTime.parse(_points!.last.day)),
-                            style: p.text(
-                              12,
-                              weight: FontWeight.w500,
-                              color: p.muted,
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (_error)
-                      Text(
-                        'Verlauf konnte nicht geladen werden.',
-                        style: p.text(13, color: p.danger),
-                      ),
-                  ],
-                ),
-              ),
-              if (_nightly) const SizedBox(height: 12),
-              if (_nightly)
                 OBCard(
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 10,
                     children: [
-                      _row(
-                        p,
-                        LucideIcons.moon,
-                        p.sleep,
-                        p.sleepTint,
-                        'Verlauf in der Nacht',
-                        day?.sleep.onset != null && day?.sleep.wake != null
-                            ? '${obTime(day!.sleep.onset)} – ${obTime(day.sleep.wake)}'
-                            : '—',
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                OpenBandSleep(controller: widget.controller),
+                      Text(
+                        (today
+                                ? (_nightly ? 'Nacht auf heute' : 'Heute')
+                                : obDayTitle(widget.controller.selectedDay))
+                            .toUpperCase(),
+                        style: p.label(),
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  obNumber(metric.value, digits: widget.digits),
+                                  style: p.text(
+                                    60,
+                                    weight: FontWeight.w700,
+                                    display: true,
+                                    color: metric.value == null
+                                        ? p.gap
+                                        : strain
+                                        ? p.ink
+                                        : color,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  widget.unit,
+                                  style: p.text(14, color: p.muted),
+                                ),
+                              ],
+                            ),
                           ),
+                          if (strain && today && metric.value != null)
+                            Container(
+                              height: 26,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              decoration: p.insetDecoration(radius: 13),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: 6,
+                                children: [
+                                  OBLed(on: true, color: p.ink, size: 6),
+                                  Text(
+                                    'läuft',
+                                    style: p.text(12, weight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      Text(
+                        metric.value == null || metric.baseline == null
+                            ? obMetricStatus(metric.value, metric.baseline)
+                            : obMetricComparisonStatus(
+                                metric.value!,
+                                metric.baseline!,
+                                digits: widget.digits,
+                              ),
+                        style: p.text(
+                          13,
+                          weight:
+                              metric.baseline != null && metric.value != null
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: metric.baseline != null && metric.value != null
+                              ? p.ink
+                              : p.muted,
                         ),
                       ),
-                      Container(height: 1, color: p.line),
-                      _row(
-                        p,
-                        LucideIcons.info,
-                        p.ink,
-                        p.well,
-                        'So entsteht die Basis',
-                        '30 Nächte',
-                        () => _basis(context),
+                      OBScale(
+                        min: 0,
+                        max: max,
+                        value: metric.value,
+                        target: metric.baseline,
+                        fill: strain ? p.strain : color,
+                        labels: (
+                          '0',
+                          metric.baseline == null
+                              ? null
+                              : 'Basis ${obNumber(metric.baseline, digits: widget.digits)}',
+                          strain ? '21' : '100',
+                        ),
                       ),
                     ],
                   ),
                 ),
-            ],
+                const SizedBox(height: 12),
+                OBSegmented(
+                  labels: [for (final n in _nightOptions) '$n $_period'],
+                  selected: _nightOptions.indexOf(_nights),
+                  onChanged: (i) => setState(() {
+                    _nights = _nightOptions[i];
+                    _load();
+                  }),
+                ),
+                const SizedBox(height: 12),
+                OBCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 8,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _nightly ? 'Nacht für Nacht' : 'Tag für Tag',
+                              style: p.text(
+                                13,
+                                weight: FontWeight.w600,
+                                color: p.muted,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${_points?.where((e) => e.value != null).length ?? 0} von $_nights ${_nightly ? 'Nächten' : 'Tagen'}',
+                            style: p.text(
+                              13,
+                              weight: FontWeight.w500,
+                              color: p.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(
+                        height: 100,
+                        width: double.infinity,
+                        child: CustomPaint(
+                          painter: _NightBarsPainter(
+                            _points,
+                            metric.baseline,
+                            color,
+                            tint,
+                            p.gap,
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          if (_points?.isNotEmpty == true)
+                            Text(
+                              DateFormat(
+                                'd. MMM',
+                                'de_DE',
+                              ).format(DateTime.parse(_points!.first.day)),
+                              style: p.text(
+                                12,
+                                weight: FontWeight.w500,
+                                color: p.muted,
+                              ),
+                            ),
+                          const Spacer(),
+                          if (metric.baseline != null)
+                            Text(
+                              'Basis ${obNumber(metric.baseline)}',
+                              style: p.text(
+                                12,
+                                weight: FontWeight.w600,
+                                color: p.smallText(color),
+                              ),
+                            ),
+                          const Spacer(),
+                          if (_points?.isNotEmpty == true)
+                            Text(
+                              DateFormat(
+                                'd. MMM',
+                                'de_DE',
+                              ).format(DateTime.parse(_points!.last.day)),
+                              style: p.text(
+                                12,
+                                weight: FontWeight.w500,
+                                color: p.muted,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (_error)
+                        Text(
+                          'Verlauf konnte nicht geladen werden.',
+                          style: p.text(13, color: p.danger),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_nightly) const SizedBox(height: 12),
+                if (_nightly)
+                  OBCard(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
+                    child: Column(
+                      children: [
+                        _row(
+                          p,
+                          LucideIcons.moon,
+                          p.sleep,
+                          p.sleepTint,
+                          'Verlauf in der Nacht',
+                          day?.sleep.onset != null && day?.sleep.wake != null
+                              ? '${obTime(day!.sleep.onset)} – ${obTime(day.sleep.wake)}'
+                              : '—',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  OpenBandSleep(controller: widget.controller),
+                            ),
+                          ),
+                        ),
+                        Container(height: 1, color: p.line),
+                        _row(
+                          p,
+                          LucideIcons.info,
+                          p.ink,
+                          p.well,
+                          'So entsteht die Basis',
+                          '30 Nächte',
+                          () => _basis(context),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -473,15 +509,10 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
       height: 52,
       child: Row(
         children: [
-          Container(
-            width: 36,
+          SizedBox(
+            width: 28,
             height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 18, color: fg),
+            child: Icon(icon, size: 18, color: p.ink),
           ),
           const SizedBox(width: 12),
           Expanded(

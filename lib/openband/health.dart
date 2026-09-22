@@ -48,7 +48,11 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
           children: [
             if (widget.bandMetricsOnly)
-              const OBPageHeader(title: 'Messwerte', subtitle: '')
+              const OBPageHeader(
+                title: 'Messwerte',
+                subtitle: '',
+                backText: 'Heute',
+              )
             else
               Padding(
                 padding: const EdgeInsets.only(left: 4),
@@ -77,6 +81,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                     color: p.recovery,
                     onTap: () => OpenBandMetricDetail.push(
                       context,
+                      backText: widget.bandMetricsOnly ? 'Messwerte' : null,
                       controller: c,
                       metricKey: MetricKey.hrv,
                       label: 'HRV',
@@ -95,6 +100,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                     color: p.pulse,
                     onTap: () => OpenBandMetricDetail.push(
                       context,
+                      backText: widget.bandMetricsOnly ? 'Messwerte' : null,
                       controller: c,
                       metricKey: MetricKey.restingHr,
                       label: 'Ruhepuls',
@@ -120,6 +126,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                     color: p.sleep,
                     onTap: () => OpenBandMetricDetail.push(
                       context,
+                      backText: widget.bandMetricsOnly ? 'Messwerte' : null,
                       controller: c,
                       metricKey: MetricKey.respiration,
                       label: 'Atmung',
@@ -141,6 +148,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                     color: p.ink,
                     onTap: () => OpenBandMetricDetail.push(
                       context,
+                      backText: widget.bandMetricsOnly ? 'Messwerte' : null,
                       controller: c,
                       metricKey: MetricKey.skinTemperature,
                       label: 'Hauttemperatur',
@@ -163,8 +171,8 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   'HRV',
                   'ms',
                   LucideIcons.activity,
-                  p.recovery,
-                  p.recoveryTint,
+                  p.ink,
+                  p.line,
                 ),
                 (
                   MetricKey.restingHr,
@@ -539,10 +547,7 @@ class OBSegmented extends StatelessWidget {
                 width: width,
                 height: wellH,
                 padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: p.well,
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                decoration: p.insetDecoration(radius: 14),
                 child: Row(
                   children: [
                     for (final (i, _) in labels.indexed) ...[
@@ -553,8 +558,9 @@ class OBSegmented extends StatelessWidget {
                           child: Container(
                             height: inner,
                             decoration: BoxDecoration(
-                              color: i == selected ? p.ink : null,
+                              color: i == selected ? p.card : null,
                               borderRadius: BorderRadius.circular(11),
+                              boxShadow: i == selected ? p.raised : null,
                             ),
                           ),
                         ),
@@ -590,7 +596,7 @@ class OBSegmented extends StatelessWidget {
                                       weight: i == selected
                                           ? FontWeight.w600
                                           : FontWeight.w500,
-                                      color: i == selected ? p.card : p.muted,
+                                      color: i == selected ? p.ink : p.muted,
                                     )
                                     .copyWith(height: 18 / 14),
                               ),
@@ -623,8 +629,8 @@ class OBSegmented extends StatelessWidget {
   TextStyle _plainStyle(OB p, bool chosen) => p
       .text(
         14,
-        weight: chosen ? FontWeight.w600 : FontWeight.w500,
-        color: chosen ? (p.dark ? p.canvas : Colors.white) : p.muted,
+        weight: chosen ? FontWeight.w700 : FontWeight.w500,
+        color: chosen ? p.ink : p.muted,
       )
       .copyWith(height: 18 / 14);
 
@@ -677,10 +683,7 @@ class OBSegmented extends StatelessWidget {
               width: maxWidth.isFinite ? maxWidth : null,
               height: wellH,
               padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: p.card,
-                borderRadius: BorderRadius.circular(14),
-              ),
+              decoration: p.insetDecoration(radius: 14),
               child: Row(
                 children: [
                   for (final (i, _) in labels.indexed) ...[
@@ -691,8 +694,9 @@ class OBSegmented extends StatelessWidget {
                         child: Container(
                           height: inner,
                           decoration: BoxDecoration(
-                            color: i == selected ? p.ink : null,
+                            color: i == selected ? p.card : null,
                             borderRadius: BorderRadius.circular(11),
+                            boxShadow: i == selected ? p.raised : null,
                           ),
                         ),
                       ),
@@ -748,10 +752,7 @@ class OBSegmented extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: p.card,
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: p.insetDecoration(radius: 14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         spacing: 2,
@@ -771,8 +772,9 @@ class OBSegmented extends StatelessWidget {
                     padding: const EdgeInsets.all(8),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: i == selected ? p.ink : null,
+                      color: i == selected ? p.card : null,
                       borderRadius: BorderRadius.circular(11),
+                      boxShadow: i == selected ? p.raised : null,
                     ),
                     child: Text(
                       label,

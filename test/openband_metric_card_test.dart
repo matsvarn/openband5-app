@@ -468,7 +468,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(OBMetricCard).first);
+    await tester.tap(find.text('HRV · MS'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
     expect(find.text('HRV'), findsWidgets);

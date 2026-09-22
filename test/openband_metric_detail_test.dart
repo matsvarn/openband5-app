@@ -147,6 +147,7 @@ void main() {
     expect(find.text('Atmung'), findsWidgets);
     expect(find.text('Tag für Tag'), findsNothing);
     expect(find.text('Herzratenvariabilität'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Nachtverlauf'), 100);
     expect(find.text('Nachtverlauf'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

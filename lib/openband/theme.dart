@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show DateFormat, NumberFormat;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/day_label.dart';
@@ -11,9 +12,45 @@ class OB {
   factory OB.of(BuildContext context) =>
       OB(Theme.of(context).brightness == Brightness.dark);
   Color _pick(Color light, Color darkColor) => dark ? darkColor : light;
-  Color get canvas => _pick(AlpColor.well, AlpColor.darkCanvas);
+  Color get canvas => _pick(AlpColor.page, AlpColor.darkCanvas);
   Color get card => _pick(AlpColor.canvas, AlpColor.darkCard);
   Color get well => _pick(AlpColor.well, AlpColor.darkWell);
+  Color get inset => _pick(AlpColor.inset, AlpColor.darkInset);
+  Color get led => _pick(AlpColor.led, AlpColor.darkLed);
+  Color get signal => _pick(AlpColor.signal, AlpColor.darkSignal);
+
+  /// Drop shadow only — for selected chips that sit on an inset track.
+  List<BoxShadow> get raised => dark
+      ? const [
+          BoxShadow(
+            color: Color(0x99000000),
+            offset: Offset(0, 1),
+            blurRadius: 2,
+          ),
+          BoxShadow(
+            color: Color(0x66000000),
+            offset: Offset(0, 3),
+            blurRadius: 8,
+          ),
+        ]
+      : const [
+          BoxShadow(
+            color: Color(0x24000000),
+            offset: Offset(0, 1),
+            blurRadius: 2,
+          ),
+          BoxShadow(
+            color: Color(0x0F000000),
+            offset: Offset(0, 3),
+            blurRadius: 8,
+          ),
+        ];
+
+  Decoration insetDecoration({double radius = AlpRadius.card, Color? color}) =>
+      OBBezel(color: color ?? inset, radius: radius, inset: true, dark: dark);
+
+  Decoration raisedDecoration({double radius = AlpRadius.card}) =>
+      OBBezel(color: card, radius: radius, inset: false, dark: dark);
   Color get ink => _pick(AlpColor.ink, AlpColor.darkInk);
   Color get muted => _pick(AlpColor.muted, AlpColor.darkMuted);
   Color get line => _pick(AlpColor.line, AlpColor.darkLine);
@@ -58,7 +95,8 @@ class OB {
     Color? color,
     bool display = false,
   }) => TextStyle(
-    fontFamily: display ? AlpFont.display : AlpFont.sans,
+    fontFamily: family(display: display, weight: weight),
+    fontFamilyFallback: _apple ? const <String>[] : const [AlpFont.sans],
     fontSize: size,
     height: display ? 1.08 : (size >= 24 ? 1.12 : 1.36),
     fontWeight: weight,
@@ -66,6 +104,22 @@ class OB {
     letterSpacing: display ? -.03 * size : (size >= 24 ? -.8 : 0),
     fontFeatures: const [FontFeature.tabularFigures()],
   );
+
+  static bool get _apple =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// Paper's G2 face. Weight selects Regular / Medium / Bold on Apple.
+  static String family({
+    bool display = false,
+    FontWeight weight = FontWeight.w400,
+  }) => _apple ? 'Helvetica Neue' : (display ? AlpFont.display : AlpFont.sans);
+
+  /// Spaced small caps label: "ERHOLUNG ›", "NACHT FÜR NACHT".
+  TextStyle label({double size = 10, Color? color}) => text(
+    size,
+    weight: FontWeight.w500,
+    color: color ?? muted,
+  ).copyWith(letterSpacing: 0.14 * size, height: 1.3);
 }
 
 ThemeData openBandTheme(Brightness brightness) {
@@ -73,7 +127,7 @@ ThemeData openBandTheme(Brightness brightness) {
   final base = ThemeData(
     brightness: brightness,
     useMaterial3: true,
-    fontFamily: AlpFont.sans,
+    fontFamily: OB.family(),
     colorScheme: ColorScheme.fromSeed(
       seedColor: p.action,
       brightness: brightness,
@@ -99,7 +153,7 @@ ThemeData openBandTheme(Brightness brightness) {
       ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: p.card,
+      backgroundColor: p.canvas,
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -110,15 +164,22 @@ ThemeData openBandTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: p.action,
-        foregroundColor: p.dark ? p.canvas : Colors.white,
+        foregroundColor: p.dark ? p.canvas : p.card,
         minimumSize: const Size(44, 44),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AlpRadius.row),
-        ),
-        textStyle: p.text(15, weight: FontWeight.w600),
+        elevation: 0,
+        shape: const StadiumBorder(),
+        textStyle: p.text(15, weight: FontWeight.w700),
       ),
     ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStatePropertyAll(p.card),
+      trackColor: WidgetStateProperty.resolveWith(
+        (s) => s.contains(WidgetState.selected) ? p.ink : p.inset,
+      ),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+    ),
+    dividerTheme: DividerThemeData(color: p.line, thickness: 1, space: 1),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: p.action,
@@ -146,6 +207,9 @@ ThemeData openBandTheme(Brightness brightness) {
 class OBPageHeader extends StatelessWidget {
   final String title, subtitle;
   final String backLabel;
+
+  /// The parent screen's title, shown in the back pill like iOS does.
+  final String? backText;
   final VoidCallback? onBack, onInfo, onDate;
   final bool showBack;
   final String infoLabel;
@@ -155,6 +219,7 @@ class OBPageHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.backLabel = 'Zurück',
+    this.backText,
     this.onBack,
     this.showBack = true,
     this.onInfo,
@@ -167,11 +232,12 @@ class OBPageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     Widget circle(IconData icon, String tooltip, VoidCallback onPressed) =>
-        SizedBox(
+        Container(
           width: 44,
           height: 44,
+          decoration: p.raisedDecoration(radius: 22),
           child: Material(
-            color: p.card,
+            type: MaterialType.transparency,
             shape: const CircleBorder(),
             clipBehavior: Clip.antiAlias,
             child: IconButton(
@@ -184,7 +250,7 @@ class OBPageHeader extends StatelessWidget {
           ),
         );
     final headingStyle = p
-        .text(18, weight: FontWeight.w600)
+        .text(18, weight: FontWeight.w700)
         .copyWith(height: 24 / 18);
     final heading = Column(
       mainAxisSize: MainAxisSize.min,
@@ -207,13 +273,33 @@ class OBPageHeader extends StatelessWidget {
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
             child: child,
           );
-    final back = showBack
-        ? circle(
-            LucideIcons.chevronLeft,
-            backLabel,
-            onBack ?? () => Navigator.maybePop(context),
-          )
-        : const SizedBox(width: 44, height: 44);
+    final backAction = onBack ?? () => Navigator.maybePop(context);
+    final back = !showBack
+        ? const SizedBox(width: 44, height: 44)
+        : backText == null
+        ? circle(LucideIcons.chevronLeft, backLabel, backAction)
+        : Semantics(
+            button: true,
+            label: backLabel,
+            excludeSemantics: true,
+            child: OBKey(
+              tooltip: backLabel,
+              onTap: backAction,
+              padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(LucideIcons.chevronLeft, size: 18, color: p.ink),
+                  const SizedBox(width: 2),
+                  Text(
+                    backText!,
+                    maxLines: 1,
+                    style: p.text(14, weight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+          );
     final info = onInfo == null
         ? const SizedBox(width: 44, height: 44)
         : circle(infoIcon, infoLabel, onInfo!);
@@ -251,10 +337,7 @@ class OBPageHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: titled(heading),
-                ),
+                SizedBox(width: double.infinity, child: titled(heading)),
               ],
             );
           }
@@ -322,29 +405,114 @@ List<String> openBandDaysEnding(String endDay, int nights) {
   ];
 }
 
-String obDayTitle(String day) => day == todayLabel()
+String obDayTitle(String day, [DateTime? now]) => day == todayLabel(now)
     ? 'Heute'
     : DateFormat('EEE, d. MMM', 'de_DE').format(DateTime.parse(day));
 String obTime(DateTime? time) =>
     time == null ? '—' : DateFormat('HH:mm', 'de_DE').format(time);
 
+/// A raised panel, or with [inset] a pressed-in surface for refused and
+/// missing values.
 class OBCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final bool inset;
   const OBCard({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(14),
+    this.inset = false,
+  });
+  const OBCard.inset({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(14),
+  }) : inset = true;
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Container(
+      decoration: inset ? p.insetDecoration() : p.raisedDecoration(),
+      padding: padding,
+      child: child,
+    );
+  }
+}
+
+/// Status LED: lit when [on], a dark socket otherwise.
+class OBLed extends StatelessWidget {
+  final bool on;
+  final Color? color;
+  final double size;
+  const OBLed({super.key, required this.on, this.color, this.size = 8});
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final lit = color ?? p.led;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: on ? lit : p.gap,
+        boxShadow: on
+            ? [BoxShadow(color: lit.withValues(alpha: .6), blurRadius: 6)]
+            : null,
+      ),
+    );
+  }
+}
+
+/// A raised round or pill key. Every tappable surface in the language.
+class OBKey extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  final String? tooltip;
+  final double height;
+  final EdgeInsetsGeometry padding;
+  final bool pressed;
+  const OBKey({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.tooltip,
+    this.height = 44,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14),
+    this.pressed = false,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: OB.of(context).card,
-      borderRadius: BorderRadius.circular(AlpRadius.card),
-    ),
-    padding: padding,
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final radius = BorderRadius.circular(height / 2);
+    Widget key = Container(
+      height: height,
+      constraints: BoxConstraints(minWidth: height),
+      decoration: pressed
+          ? p.insetDecoration(radius: height / 2)
+          : p.raisedDecoration(radius: height / 2),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: padding,
+            child: Center(widthFactor: 1, child: child),
+          ),
+        ),
+      ),
+    );
+    if (height < 44) {
+      key = SizedBox(
+        width: padding == EdgeInsets.zero ? 44 : null,
+        height: 44,
+        child: Center(child: key),
+      );
+    }
+    if (tooltip != null) key = Tooltip(message: tooltip!, child: key);
+    return key;
+  }
 }
 
 /// Icon + title + body + optional fix line, on a white card — the onboarding
@@ -408,68 +576,52 @@ class OBAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    if (!ink) {
-      return SizedBox(
-        width: double.infinity,
-        child: secondary
-            ? FilledButton.tonal(
-                style: FilledButton.styleFrom(
-                  backgroundColor: p.card,
-                  foregroundColor: destructive ? p.danger : p.action,
-                ),
-                onPressed: onPressed,
-                child: Text(label, textAlign: TextAlign.center),
-              )
-            : FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: p.action,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: p.action.withValues(alpha: 0.4),
-                  disabledForegroundColor: Colors.white,
-                ),
-                onPressed: onPressed,
-                child: Text(label, textAlign: TextAlign.center),
-              ),
-      );
-    }
-    final background = secondary ? p.card : p.ink;
-    final foreground = secondary
+    final enabled = onPressed != null;
+    final background = !enabled ? p.inset : (secondary ? p.card : p.ink);
+    final foreground = !enabled
+        ? p.muted
+        : secondary
         ? (destructive ? p.danger : p.ink)
-        : (p.dark ? p.canvas : Colors.white);
+        : (p.dark ? p.canvas : p.card);
     final labelStyle = p
-        .text(15, weight: FontWeight.w600)
+        .text(15, weight: FontWeight.w700)
         .copyWith(height: 18 / 15, color: foreground);
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          disabledBackgroundColor: background.withValues(alpha: 0.4),
-          disabledForegroundColor: foreground,
-          minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: enabled ? p.raised : null,
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: background,
+            foregroundColor: foreground,
+            disabledBackgroundColor: background,
+            disabledForegroundColor: foreground,
+            minimumSize: Size(48, secondary ? 48 : 52),
+            elevation: 0,
+            shape: const StadiumBorder(),
+            textStyle: labelStyle,
           ),
-          textStyle: labelStyle,
-        ),
-        onPressed: onPressed,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18, color: foreground),
-              const SizedBox(width: 8),
-            ],
-            Flexible(
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: labelStyle,
+          onPressed: onPressed,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: foreground),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: labelStyle,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -679,4 +831,149 @@ class OBTimeField extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Paper G2 bezel: raised Gehäuse or a pressed-in well.
+class OBBezel extends Decoration {
+  final Color color;
+  final double radius;
+  final bool inset;
+  final bool dark;
+  const OBBezel({
+    required this.color,
+    required this.radius,
+    required this.inset,
+    required this.dark,
+  });
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) =>
+      _OBBezelPainter(this);
+
+  @override
+  bool hitTest(Size size, Offset position, {TextDirection? textDirection}) =>
+      RRect.fromRectAndRadius(
+        Offset.zero & size,
+        Radius.circular(radius),
+      ).contains(position);
+}
+
+class _OBBezelPainter extends BoxPainter {
+  final OBBezel d;
+  _OBBezelPainter(this.d);
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration config) {
+    final size = config.size;
+    if (size == null || size.isEmpty) return;
+    final rect = offset & size;
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(d.radius));
+    if (d.inset) {
+      final lip = d.dark ? const Color(0x0DFFFFFF) : const Color(0xB3FFFFFF);
+      canvas.drawRRect(rrect.shift(const Offset(0, 1)), Paint()..color = lip);
+      canvas.drawRRect(rrect, Paint()..color = d.color);
+      canvas.save();
+      canvas.clipRRect(rrect);
+      canvas.drawRect(
+        Rect.fromLTWH(rect.left, rect.top, rect.width, 2),
+        Paint()
+          ..color = d.dark ? const Color(0x8C000000) : const Color(0x1F000000)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1),
+      );
+      canvas.restore();
+      return;
+    }
+    final tight = d.dark ? const Color(0x99000000) : const Color(0x24000000);
+    final soft = d.dark ? const Color(0x66000000) : const Color(0x0F000000);
+    canvas.drawRRect(
+      rrect.shift(const Offset(0, 3)),
+      Paint()
+        ..color = soft
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+    canvas.drawRRect(
+      rrect.shift(const Offset(0, 1)),
+      Paint()
+        ..color = tight
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1),
+    );
+    canvas.drawRRect(rrect, Paint()..color = d.color);
+    canvas.save();
+    canvas.clipRRect(rrect);
+    canvas.drawLine(
+      Offset(rect.left + 1, rect.top + 0.5),
+      Offset(rect.right - 1, rect.top + 0.5),
+      Paint()
+        ..color = d.dark ? const Color(0x0FFFFFFF) : const Color(0xE6FFFFFF)
+        ..strokeWidth = 1,
+    );
+    canvas.restore();
+  }
+}
+
+/// Paper G2 chevron: 2.5 stroke, round caps, the same path as the frames.
+class OBChevron extends StatelessWidget {
+  final AxisDirection direction;
+  final double size;
+  final Color? color;
+  const OBChevron({
+    super.key,
+    this.direction = AxisDirection.right,
+    this.size = 14,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return CustomPaint(
+      size: Size.square(size),
+      painter: _ChevronPainter(color ?? p.muted, direction),
+    );
+  }
+}
+
+class _ChevronPainter extends CustomPainter {
+  final Color color;
+  final AxisDirection direction;
+  const _ChevronPainter(this.color, this.direction);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5 * size.width / 14
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final s = size.width / 24;
+    final path = Path();
+    switch (direction) {
+      case AxisDirection.down:
+        path
+          ..moveTo(6 * s, 9 * s)
+          ..lineTo(12 * s, 15 * s)
+          ..lineTo(18 * s, 9 * s);
+      case AxisDirection.up:
+        path
+          ..moveTo(6 * s, 15 * s)
+          ..lineTo(12 * s, 9 * s)
+          ..lineTo(18 * s, 15 * s);
+      case AxisDirection.left:
+        path
+          ..moveTo(15 * s, 6 * s)
+          ..lineTo(9 * s, 12 * s)
+          ..lineTo(15 * s, 18 * s);
+      case AxisDirection.right:
+        path
+          ..moveTo(9 * s, 6 * s)
+          ..lineTo(15 * s, 12 * s)
+          ..lineTo(9 * s, 18 * s);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ChevronPainter old) =>
+      old.color != color || old.direction != direction;
 }

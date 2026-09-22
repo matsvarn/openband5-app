@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
 import 'domain.dart';
+import 'alp_tokens.dart';
 import 'theme.dart';
 
 class StepsCard extends StatelessWidget {
@@ -173,6 +174,9 @@ class StepsCard extends StatelessWidget {
   }
 }
 
+/// Paper G2 Schritte card: spaced label over the count, 24 hourly bars at
+/// the right — ink where steps were counted, grey stubs for recorded empty
+/// hours, pale stubs for hours not yet reached.
 class _ReleaseStepsCard extends StatelessWidget {
   final OpenBandDay day;
   final DateTime Function() now;
@@ -186,80 +190,94 @@ class _ReleaseStepsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     final buckets = day.stepIntervals.isEmpty
         ? const <double>[]
         : stepsByHour(day.stepIntervals);
-    return OBCard(
-      child: InkWell(
-        onTap: onOpen,
-        borderRadius: BorderRadius.circular(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(LucideIcons.footprints, size: 16, color: p.strain),
-                const SizedBox(width: 6),
-                Text(
-                  'Schritte',
-                  style: p.text(13, weight: FontWeight.w600, color: p.muted),
-                ),
-                const Spacer(),
-                if (last != null)
-                  Text(
-                    'bis ${obTime(last)}',
-                    style: p.text(13, weight: FontWeight.w500, color: p.muted),
+    final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
+    final reached = day.day == todayLabel() ? (last?.hour ?? now().hour) : 23;
+    return Semantics(
+      button: true,
+      label:
+          'Schritte ${obNumber(day.steps.value)}${last == null ? '' : ' bis ${obTime(last)}'}',
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(AlpRadius.card),
+          child: ExcludeSemantics(
+            child: OBCard(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: 4,
+                      children: [
+                        Text(
+                          'SCHRITTE',
+                          style: p.label(size: 11).copyWith(height: 14 / 11),
+                        ),
+                        Text(
+                          obNumber(day.steps.value),
+                          style: p
+                              .text(
+                                28,
+                                weight: FontWeight.w700,
+                                color: day.steps.value == null ? p.gap : p.ink,
+                              )
+                              .copyWith(height: 34 / 28, letterSpacing: -.56),
+                        ),
+                      ],
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              obNumber(day.steps.value),
-              style: p
-                  .text(34, weight: FontWeight.w800, display: true)
-                  .copyWith(height: 36 / 34),
-            ),
-            if (buckets.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 40,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _StepsPainter(
-                    buckets,
-                    day.day == todayLabel() ? now().hour : 23,
-                    p.strain,
-                    p.strainTint,
-                    p.line,
-                  ),
-                ),
+                  if (buckets.isNotEmpty)
+                    SizedBox(
+                      width: 120,
+                      height: 36,
+                      child: CustomPaint(
+                        painter: _HourBarsPainter(p, buckets, reached),
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const _StepHourAxis(),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _StepHourAxis extends StatelessWidget {
-  const _StepHourAxis();
+class _HourBarsPainter extends CustomPainter {
+  final OB p;
+  final List<double> buckets;
+  final int reached;
+  _HourBarsPainter(this.p, this.buckets, this.reached);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final maxValue = buckets.fold<double>(0, math.max);
+    final pitch = size.width / 24, w = pitch * .6;
+    for (var h = 0; h < 24; h++) {
+      final v = buckets[h];
+      final height = v > 0 && maxValue > 0
+          ? math.max(5.0, size.height * v / maxValue)
+          : 3.0;
+      final color = v > 0 ? p.ink : (h <= reached ? p.gap : p.inset);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(h * pitch, size.height - height, w, height),
+          const Radius.circular(1),
+        ),
+        Paint()..color = color,
+      );
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final style = p.text(11, weight: FontWeight.w500, color: p.muted);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        for (final label in const ['0', '6', '12', '18', '24'])
-          Text(label, style: style),
-      ],
-    );
-  }
+  bool shouldRepaint(_HourBarsPainter old) =>
+      old.buckets != buckets || old.reached != reached || old.p.dark != p.dark;
 }
 
 class _DayValue extends StatelessWidget {

@@ -184,7 +184,7 @@ void main() {
     }
   });
 
-  testWidgets('dark 393 well uses card and inverse selected text', (
+  testWidgets('dark 393 inset track with raised ink selected key', (
     tester,
   ) async {
     await mount(
@@ -196,8 +196,8 @@ void main() {
     expect(tester.getSize(find.byKey(const ValueKey('capture'))).width, 393);
     expectHorizontal(tester, contentWidth: 361);
     final chosen = tester.widget<Text>(find.text('Woche'));
-    expect(chosen.style!.color, OB(true).canvas);
-    expect(chosen.style!.fontWeight, FontWeight.w600);
+    expect(chosen.style!.color, OB(true).ink);
+    expect(chosen.style!.fontWeight, FontWeight.w700);
     final idle = tester.widget<Text>(find.text('Tag'));
     expect(idle.style!.fontWeight, FontWeight.w500);
     await expectLater(
@@ -227,10 +227,13 @@ void main() {
       final style = tester.widget<Text>(find.text('Lebensmittel')).style!;
       expect(style.fontSize, 14);
       expect(style.height, 18 / 14);
-      expect(tester.widget<Text>(find.text('Tag')).style!.color, Colors.white);
+      expect(
+        tester.widget<Text>(find.text('Tag')).style!.color,
+        OB(false).ink,
+      );
       expect(
         tester.widget<Text>(find.text('Tag')).style!.fontWeight,
-        FontWeight.w600,
+        FontWeight.w700,
       );
       expect(
         tester
@@ -261,7 +264,7 @@ void main() {
     expect(tester.getSize(find.byKey(const ValueKey('capture'))).width, 375);
     expectStacked52(tester, contentWidth: 343);
     final chosen = tester.widget<Text>(find.text('Tag'));
-    expect(chosen.style!.color, OB(true).canvas);
+    expect(chosen.style!.color, OB(true).ink);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/segmented-large-dark.png'),

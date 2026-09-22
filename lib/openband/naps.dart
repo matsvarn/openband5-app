@@ -147,6 +147,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
             children: [
               OBPageHeader(
                 title: 'Nickerchen',
+                backText: 'Schlaf',
                 subtitle: obDate(day),
                 onDate: () => chooseOpenBandDay(context, controller),
                 onInfo: () => _napInfo(context, naps),
@@ -196,6 +197,10 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                               .text(13, color: p.muted)
                               .copyWith(height: 16 / 13),
                         ),
+                      ],
+                      if (naps.sessions.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _NapTimeline(day: day, sessions: naps.sessions),
                       ],
                       if (naps.recordingTimezone == null) ...[
                         const SizedBox(height: 8),
@@ -334,6 +339,87 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
       ],
     );
   }
+}
+
+/// The waking day 06:00–22:00 as a ticked track with each stored nap drawn
+/// at its real clock position.
+class _NapTimeline extends StatelessWidget {
+  final String day;
+  final List<NapSession> sessions;
+  const _NapTimeline({required this.day, required this.sessions});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final d = DateTime.parse(day);
+    final from = DateTime(d.year, d.month, d.day, 6);
+    final to = DateTime(d.year, d.month, d.day, 22);
+    final caption = p.text(10, weight: FontWeight.w500, color: p.muted);
+    return ExcludeSemantics(
+      child: Column(
+        children: [
+          SizedBox(
+            height: 34,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _NapTimelinePainter(p, from, to, sessions),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('06:00', style: caption),
+              Text('14:00', style: caption),
+              Text('22:00', style: caption),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NapTimelinePainter extends CustomPainter {
+  final OB p;
+  final DateTime from, to;
+  final List<NapSession> sessions;
+  _NapTimelinePainter(this.p, this.from, this.to, this.sessions);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final span = to.difference(from).inSeconds.toDouble();
+    double x(DateTime t) =>
+        (t.difference(from).inSeconds / span).clamp(0.0, 1.0) * size.width;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 8, size.width, 14),
+        const Radius.circular(4),
+      ),
+      Paint()..color = p.line,
+    );
+    for (final s in sessions) {
+      final x0 = x(s.start), x1 = x(s.end);
+      if (x1 <= x0) continue;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(x0, 8, x1 < x0 + 3 ? x0 + 3 : x1, 22),
+          const Radius.circular(2),
+        ),
+        Paint()..color = p.ink,
+      );
+    }
+    final tick = Paint()..color = p.muted;
+    for (var i = 0; i <= 4; i++) {
+      final tx = (size.width - 1) * i / 4 + .5;
+      final major = i % 2 == 0;
+      tick.strokeWidth = major ? 1.4 : 1;
+      canvas.drawLine(Offset(tx, 26), Offset(tx, major ? 34 : 30), tick);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_NapTimelinePainter old) =>
+      old.sessions != sessions || old.p.dark != p.dark;
 }
 
 class _NapRow extends StatelessWidget {
@@ -727,6 +813,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                       title: editing
                           ? 'Nickerchen bearbeiten'
                           : 'Nickerchen ergänzen',
+                      backText: 'Nickerchen',
                       subtitle: obDate(day),
                     ),
                     Text(
@@ -751,6 +838,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                     title: editing
                         ? 'Nickerchen bearbeiten'
                         : 'Nickerchen ergänzen',
+                    backText: 'Nickerchen',
                     subtitle: obDate(day),
                     onInfo: () => _napInfo(
                       context,

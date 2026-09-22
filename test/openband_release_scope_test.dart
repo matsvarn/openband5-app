@@ -376,21 +376,24 @@ void main() {
     expect(find.text('Training'), findsNothing);
     expect(find.text('Wasser'), findsNothing);
     expect(find.text('Energie'), findsNothing);
-    expect(find.text('Alle Messwerte'), findsOneWidget);
-    expect(find.text('Deine Nacht'), findsOneWidget);
+    expect(find.text('DEINE NACHT'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Schritte'),
+      find.text('Alle Messwerte'),
       200,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.text('Schritte'), findsOneWidget);
+    expect(find.text('Alle Messwerte'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('SCHRITTE'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('SCHRITTE'), findsOneWidget);
     expect(find.text('Wasser'), findsNothing);
-    expect(find.text('0'), findsWidgets);
-    expect(find.text('24'), findsOneWidget);
     final messwerte = tester.getRect(
       find.byKey(const ValueKey('alle-messwerte')),
     );
-    final steps = tester.getRect(find.text('Schritte'));
+    final steps = tester.getRect(find.text('SCHRITTE'));
     expect(steps.top, greaterThanOrEqualTo(messwerte.bottom + 12));
     await tester.tap(find.byKey(const ValueKey('alle-messwerte')));
     await tester.pumpAndSettle();

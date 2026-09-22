@@ -115,6 +115,7 @@ class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
               children: [
                 OBPageHeader(
                   title: 'Schlafziel',
+                  backText: 'Schlaf',
                   subtitle: 'Ab ${obDate(widget.day)}',
                   infoLabel: 'Schlafziel',
                   onInfo: () => _goalInfo(context, widget.day),
@@ -338,6 +339,7 @@ class _OpenBandSleepGoalEditorState extends State<OpenBandSleepGoalEditor> {
           children: [
             OBPageHeader(
               title: 'Schlafziel bearbeiten',
+              backText: 'Schlafziel',
               subtitle: 'Ab ${obDate(widget.day)}',
             ),
             if (error != null) ...[

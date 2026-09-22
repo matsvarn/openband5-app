@@ -284,7 +284,7 @@ void main() {
           )
           .first,
     );
-    expect((box.decoration as BoxDecoration).color, OB(true).card);
+    expect((box.decoration as OBBezel).color, OB(true).card);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-detail-dark.png'),

@@ -9,6 +9,7 @@ import '../data/day_label.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'health.dart' show OBSegmented;
+import 'scale.dart';
 import 'journal_controls.dart';
 import 'calendar_line.dart';
 import 'night_signals.dart';
@@ -100,6 +101,7 @@ class OpenBandNightScalarDetail extends StatefulWidget {
   final Color Function(OB) tint;
   final OpenBandNightScalarRead? read;
   final int digits;
+  final String? backText;
 
   const OpenBandNightScalarDetail({
     super.key,
@@ -112,6 +114,7 @@ class OpenBandNightScalarDetail extends StatefulWidget {
     required this.tint,
     this.read,
     this.digits = 0,
+    this.backText,
   }) : assert(digits >= 0);
 
   @override
@@ -767,7 +770,8 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final color = widget.color(p);
+    // G2: night values are ink; only Erholung carries the signal colour.
+    final color = p.ink;
     final snap = _snapshot;
     return Scaffold(
       key: const ValueKey('night-scalar-detail'),
@@ -779,6 +783,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: OBPageHeader(
                 title: widget.label,
+                backText: widget.backText,
                 subtitle: '',
                 onInfo: () => _info(baselineOnly: false),
               ),
@@ -830,24 +835,12 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
         ? ''
         : _heroStatus(snap);
     final compared = !overlay && snap != null && _comparisonValid(snap);
+    final scale = _heroScale(snap, value);
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(widget.icon, size: 16, color: color),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  _nightLabel(),
-                  style: p
-                      .text(13, weight: FontWeight.w600, color: p.muted)
-                      .copyWith(height: 18 / 13),
-                ),
-              ),
-            ],
-          ),
+          Text(_nightLabel().toUpperCase(), style: p.label()),
           const SizedBox(height: 6),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -858,8 +851,13 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                     ? obTemperatureNumber(value, snap?.unit)
                     : _metricNumber(value),
                 style: p
-                    .text(44, weight: FontWeight.w800, display: true)
-                    .copyWith(height: 46 / 44),
+                    .text(
+                      56,
+                      weight: FontWeight.w700,
+                      display: true,
+                      color: value == null ? p.gap : p.ink,
+                    )
+                    .copyWith(height: 58 / 56),
               ),
               const SizedBox(width: 4),
               Visibility(
@@ -889,13 +887,49 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
               style: p
                   .text(
                     13,
-                    weight: FontWeight.w600,
-                    color: compared ? p.smallText(color) : p.muted,
+                    weight: compared ? FontWeight.w700 : FontWeight.w500,
+                    color: compared ? p.ink : p.muted,
                   )
                   .copyWith(height: 18 / 13),
             ),
           ],
+          if (scale != null) ...[const SizedBox(height: 10), scale],
         ],
+      ),
+    );
+  }
+
+  /// The value on a scale spanning the observed nights. No range is
+  /// assumed: with fewer than three stored nights there is no scale.
+  Widget? _heroScale(NightScalarDetail? snap, double? value) {
+    if (snap == null || value == null || _temperature) return null;
+    final seen = [
+      for (final n in snap.history)
+        if (n.value != null) n.value!,
+    ];
+    if (seen.length < 3) return null;
+    final tone = _baselineTone(snap.baseline);
+    final base =
+        !snap.withheld &&
+            (tone == _BaselineTone.trusted ||
+                tone == _BaselineTone.provisional ||
+                tone == _BaselineTone.stale)
+        ? snap.baseline?.value
+        : null;
+    final all = [...seen, value, ?base];
+    final lo = all.reduce(math.min), hi = all.reduce(math.max);
+    final pad = math.max((hi - lo) * .15, 1.0);
+    final min = (lo - pad).floorToDouble(), max = (hi + pad).ceilToDouble();
+    String n(double v) => obNumber(v, digits: widget.digits);
+    return OBScale(
+      min: min,
+      max: max,
+      value: value,
+      target: base,
+      labels: (
+        n(min),
+        base == null ? '${seen.length} Nächte' : 'Basis ${n(base)}',
+        n(max),
       ),
     );
   }
@@ -1133,15 +1167,10 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     );
   }
 
-  Widget _tile(Color bg, Color fg, IconData icon) => Container(
-    width: 36,
+  Widget _tile(Color bg, Color fg, IconData icon) => SizedBox(
+    width: 28,
     height: 36,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Icon(icon, size: 18, color: fg),
+    child: Icon(icon, size: 18, color: OB.of(context).ink),
   );
 }
 

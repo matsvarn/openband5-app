@@ -20428,6 +20428,8 @@ void main() {
             200,
             scrollable: scrollable,
           );
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
           await tester.tap(row);
           await tester.pumpAndSettle();
           expect(find.text('Messwerte'), findsOneWidget);
@@ -20457,7 +20459,7 @@ void main() {
         expect(find.text('Dein Journal'), findsNothing);
         await capture('release-happy-light');
         await tester.scrollUntilVisible(
-          find.textContaining('Datenstand'),
+          find.text('Schritte'),
           300,
           scrollable: verticalScrollable().last,
         );
@@ -20467,7 +20469,7 @@ void main() {
         await mount(release: true, brightness: Brightness.dark);
         await capture('release-happy-dark');
         await tester.scrollUntilVisible(
-          find.textContaining('Datenstand'),
+          find.text('Schritte'),
           300,
           scrollable: verticalScrollable().last,
         );
@@ -20489,7 +20491,7 @@ void main() {
         expect(find.text('Training'), findsNothing);
         await capture('release-large');
         await tester.scrollUntilVisible(
-          find.textContaining('Datenstand'),
+          find.text('Schritte'),
           300,
           scrollable: verticalScrollable().last,
         );

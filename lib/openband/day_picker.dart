@@ -79,6 +79,7 @@ class _DayPickerState extends State<_DayPicker> {
           children: [
             OBPageHeader(
               title: 'Datum wählen',
+              backText: 'Abbrechen',
               subtitle: widget.controller.day?.synthetic == true
                   ? 'Synthetische Daten'
                   : 'Gespeicherte Nächte',

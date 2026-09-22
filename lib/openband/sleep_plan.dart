@@ -195,15 +195,11 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
     final p = OB.of(context);
     final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
     final plan = _visiblePlan;
-    final need = plan == null
-        ? '—'
-        : sleepPlanNeedLabel(plan.needSeconds);
+    final need = plan == null ? '—' : sleepPlanNeedLabel(plan.needSeconds);
     final bedtime = plan == null
         ? '—'
         : sleepPlanClockLabel(plan.bedtimeMinuteOfDay);
-    final wake = plan == null
-        ? '—'
-        : sleepPlanClockLabel(plan.wakeMinuteOfDay);
+    final wake = plan == null ? '—' : sleepPlanClockLabel(plan.wakeMinuteOfDay);
     final timesMissing =
         plan != null &&
         (plan.bedtimeMinuteOfDay == null || plan.wakeMinuteOfDay == null);
@@ -217,6 +213,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
           children: [
             OBPageHeader(
               title: _tonight ? 'Heute Nacht' : 'Nacht',
+              backText: 'Schlaf',
               subtitle: sleepPlanNightRangeLabel(widget.day),
               infoLabel: 'Zur Schätzung',
               onInfo: _openInfo,
@@ -241,10 +238,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                       need,
                       style: p
                           .text(48, weight: FontWeight.w700, display: true)
-                          .copyWith(
-                            height: 54 / 48,
-                            letterSpacing: -0.02 * 48,
-                          ),
+                          .copyWith(height: 54 / 48, letterSpacing: -0.02 * 48),
                     ),
                     for (final note in notes)
                       Text(
@@ -275,11 +269,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                           .text(15, weight: FontWeight.w600)
                           .copyWith(height: 20 / 15),
                     ),
-                    _TimesRow(
-                      stacked: stacked,
-                      bedtime: bedtime,
-                      wake: wake,
-                    ),
+                    _TimesRow(stacked: stacked, bedtime: bedtime, wake: wake),
                     if (timesMissing)
                       Text(
                         'Zeitplanung unvollständig',
@@ -405,10 +395,7 @@ String _napCreditMinutes(double minutes) {
   return '$value Min';
 }
 
-String sleepPlanInfoBody({
-  ComingNightSleepPlan? plan,
-  bool withheld = false,
-}) {
+String sleepPlanInfoBody({ComingNightSleepPlan? plan, bool withheld = false}) {
   final parts = <String>[
     'Aus gespeicherten Nächten, Belastung und Nickerchen. Kein gemessener persönlicher Schlafbedarf.',
     'Die Abendplanung nutzt typische Aufwachzeiten und Schlafeffizienz. Sie stellt keinen Wecker.',

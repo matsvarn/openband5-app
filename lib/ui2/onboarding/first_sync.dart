@@ -525,7 +525,7 @@ class _StatusRow extends StatelessWidget {
       SetupStatusIcon.done => Icon(
         LucideIcons.circleCheck,
         size: 20,
-        color: p.recovery,
+        color: p.led,
       ),
       SetupStatusIcon.active => Container(
         width: 20,

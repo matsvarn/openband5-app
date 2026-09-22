@@ -187,7 +187,6 @@ void main() {
     expect(find.text('Atemfrequenz'), findsOneWidget);
     expect(cardText('16,0'), findsOneWidget);
     expect(cardText('/min'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.wind), findsWidgets);
     expect(find.text('Deaktiviert'), findsNothing);
     expect(find.text('Bald'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('atemfrequenz')));
@@ -259,7 +258,7 @@ void main() {
     await mountDetail(tester);
     expect(detailText('Atmung'), findsOneWidget);
     expect(detailText('16,0'), findsOneWidget);
-    expect(detailText('Di., 15. Sept.'), findsOneWidget);
+    expect(detailText('DI., 15. SEPT.'), findsOneWidget);
     expect(detailText('Basis noch offen'), findsOneWidget);
     expect(detailText('15 von 30 Nächten'), findsOneWidget);
     expect(detailText('Nachtverlauf'), findsOneWidget);

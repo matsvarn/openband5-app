@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'alp_tokens.dart';
 import 'charts.dart';
@@ -12,6 +15,7 @@ import 'night_signals.dart';
 import '../data/day_label.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 import 'naps.dart';
+import 'scale.dart';
 import 'sleep_editor.dart';
 import 'sleep_goal.dart';
 import 'sleep_plan.dart';
@@ -51,73 +55,22 @@ class OpenBandOverview extends StatelessWidget {
           onRefresh: controller.refresh,
           child: ListView(
             key: const PageStorageKey('openband.overview'),
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 40),
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 0, 0),
-                child: Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  runSpacing: 8,
-                  children: [
-                    TextButton(
-                      onPressed: () => chooseOpenBandDay(context, controller),
-                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              obDayTitle(controller.selectedDay),
-                              style: p.text(
-                                30,
-                                weight: FontWeight.w800,
-                                display: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Icon(
-                              LucideIcons.chevronDown,
-                              size: 18,
-                              color: p.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _BandPill(
-                          band: controller.band,
-                          onTap: () =>
-                              showBandStatus(context, controller, onSync),
-                        ),
-                        if (onProfile != null) ...[
-                          const SizedBox(width: 8),
-                          _CircleButton(
-                            tooltip: 'Profil',
-                            icon: LucideIcons.userRound,
-                            onPressed: onProfile!,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
+              _OverviewHeader(
+                controller: controller,
+                synthetic: day?.synthetic == true,
+                onBand: () => showBandStatus(context, controller, onSync),
+                onProfile: onProfile,
               ),
-              if (day?.synthetic == true)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4, top: 2),
-                  child: Text(
-                    'Synthetische Daten',
-                    style: p.text(12, color: p.muted),
-                  ),
+              const SizedBox(height: 16),
+              if (controller.band.latestStoredAt != null &&
+                  !OBSyncState.showsFor(controller.band, controller.now))
+                _DataStrip(
+                  band: controller.band,
+                  night: day?.sleep,
+                  onTap: () => showBandStatus(context, controller, onSync),
                 ),
-              const SizedBox(height: 12),
               if (controller.loadError != null)
                 OBCard(
                   child: Column(
@@ -145,283 +98,97 @@ class OpenBandOverview extends StatelessWidget {
                   onResume: onSync,
                   now: controller.now,
                 ),
-                if (reduced &&
-                    (day.correction != null || controller.calculating))
+                if (day.correction != null || controller.calculating) ...[
                   CorrectionBanner(controller: controller),
+                  const SizedBox(height: 12),
+                ],
                 OBCard(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                  child: _RingTrio(
+                    day: day,
+                    controller: controller,
+                    onSleep: sleep,
+                  ),
+                ),
+                _OverviewSection(
+                  title: 'Deine Nacht',
+                  top: 24,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: p.well,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: OBAdaptiveValues(
-                          children: [
-                            MetricRing(
-                              label: 'Schlaf',
-                              value: obDuration(day.sleep.duration.value),
-                              unit: _sleepDelta(day.sleep.duration),
-                              color: p.sleep,
-                              tint: p.sleepTint,
-                              night: day.sleep,
-                              onTap: sleep,
-                            ),
-                            MetricRing(
-                              label: 'Erholung',
-                              value: obNumber(day.recovery.value),
-                              unit: day.recovery.value == null
-                                  ? null
-                                  : 'von 100',
-                              color: p.recovery,
-                              tint: p.recoveryTint,
-                              fraction: day.recovery.value == null
-                                  ? null
-                                  : day.recovery.value! / 100,
-                              onTap: () => OpenBandMetricDetail.push(
-                                context,
-                                controller: controller,
-                                metricKey: MetricKey.recovery,
-                                label: 'Erholung',
-                                subtitle: 'aus der Nacht',
-                                unit: 'von 100',
-                                icon: LucideIcons.heartPulse,
-                                color: (p) => p.recovery,
-                                tint: (p) => p.recoveryTint,
-                              ),
-                            ),
-                            MetricRing(
-                              label: 'Belastung',
-                              value: obNumber(day.strain.value, digits: 1),
-                              unit: day.strain.value == null ? null : 'von 21',
-                              color: p.strain,
-                              tint: p.strainTint,
-                              fraction: day.strain.value == null
-                                  ? null
-                                  : day.strain.value! / 21,
-                              onTap: () => OpenBandMetricDetail.push(
-                                context,
-                                controller: controller,
-                                metricKey: MetricKey.strain,
-                                label: 'Belastung',
-                                subtitle: 'heute bis jetzt',
-                                unit: 'von 21',
-                                icon: LucideIcons.flame,
-                                digits: 1,
-                                color: (p) => p.strain,
-                                tint: (p) => p.strainTint,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      InkWell(
-                        onTap: sleep,
-                        borderRadius: BorderRadius.circular(12),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 44),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: p.sleepTint,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  LucideIcons.moon,
-                                  size: 18,
-                                  color: p.sleep,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  (day.sleep.unobservedMinutes ?? 0) > 0
-                                      ? '${obGapMinutes(day.sleep.unobservedMinutes!)} fehlen'
-                                      : day.sleep.duration.value != null &&
-                                            day.sleep.duration.readiness ==
-                                                MetricReadiness.available
-                                      ? 'Schlaf ansehen'
-                                      : _nightLabel(day.sleep),
-                                  style: p.text(15, weight: FontWeight.w600),
-                                ),
-                              ),
-                              if (day.sleep.duration.value != null &&
-                                  MediaQuery.textScalerOf(context).scale(14) <=
-                                      20) ...[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 5,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        ((day.sleep.unobservedMinutes ?? 0) > 0
-                                                ? p.strain
-                                                : p.recovery)
-                                            .withValues(alpha: .1),
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                  child: Text(
-                                    (day.sleep.unobservedMinutes ?? 0) > 0
-                                        ? 'Teilweise'
-                                        : 'Nacht erfasst',
-                                    style: p.text(
-                                      12,
-                                      color:
-                                          (day.sleep.unobservedMinutes ?? 0) > 0
-                                          ? p.strainText
-                                          : p.recoveryText,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              Icon(
-                                LucideIcons.chevronRight,
-                                size: 14,
-                                color: p.muted,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (!reduced &&
-                    (day.correction != null || controller.calculating))
-                  CorrectionBanner(controller: controller),
-                if (reduced) ...[
-                  _ReleaseNight(night: day.sleep, onOpen: sleep),
-                  const SizedBox(height: 12),
-                ],
-                OBAdaptiveValues(
-                  children: [
-                    OBMetricCard(
-                      label: 'HRV',
-                      metric: day.hrv,
-                      unit: 'ms',
-                      icon: LucideIcons.activity,
-                      color: p.recovery,
-                      onTap: () => OpenBandMetricDetail.push(
-                        context,
-                        controller: controller,
-                        metricKey: MetricKey.hrv,
-                        label: 'HRV',
-                        subtitle: 'Herzratenvariabilität',
-                        unit: 'ms',
-                        icon: LucideIcons.activity,
-                        color: (p) => p.recovery,
-                        tint: (p) => p.recoveryTint,
-                      ),
-                    ),
-                    OBMetricCard(
-                      label: 'Ruhepuls',
-                      metric: day.restingHr,
-                      unit: '/min',
-                      icon: LucideIcons.heart,
-                      color: p.pulse,
-                      onTap: () => OpenBandMetricDetail.push(
-                        context,
-                        controller: controller,
-                        metricKey: MetricKey.restingHr,
-                        label: 'Ruhepuls',
-                        subtitle: 'in der Nacht',
-                        unit: '/min',
-                        icon: LucideIcons.heart,
-                        color: (p) => p.pulse,
-                        tint: (p) => p.pulseTint,
-                      ),
-                    ),
-                  ],
-                ),
-                if (reduced) ...[
-                  const SizedBox(height: 12),
-                  _MesswerteRow(
-                    onOpen: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => OpenBandHealth(
-                          controller: controller,
-                          bandMetricsOnly: true,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                if (!reduced) ...[
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: sleep,
-                    borderRadius: BorderRadius.circular(20),
-                    child: OBCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      _NightSummaryRow(night: day.sleep, onOpen: sleep),
+                      const SizedBox(height: 10),
+                      OBAdaptiveValues(
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Deine Nacht',
-                                  style: p.text(15, weight: FontWeight.w600),
-                                ),
-                              ),
-                              Text(
-                                '${obTime(day.sleep.onset)}–${obTime(day.sleep.wake)}',
-                                style: p.text(12, color: p.muted),
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                LucideIcons.chevronRight,
-                                size: 14,
-                                color: p.muted,
-                              ),
-                            ],
+                          _VitalTile(
+                            label: 'HRV · MS',
+                            metricKey: MetricKey.hrv,
+                            metric: day.hrv,
+                            controller: controller,
+                            onTap: () => OpenBandMetricDetail.push(
+                              context,
+                              backText: 'Heute',
+                              controller: controller,
+                              metricKey: MetricKey.hrv,
+                              label: 'HRV',
+                              subtitle: 'Herzratenvariabilität',
+                              unit: 'ms',
+                              icon: LucideIcons.activity,
+                              color: (p) => p.ink,
+                              tint: (p) => p.line,
+                            ),
                           ),
-                          const SizedBox(height: 10),
-                          NightChart(night: day.sleep, showGapCaption: false),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: Wrap(
-                              alignment: WrapAlignment.spaceBetween,
-                              spacing: 20,
-                              runSpacing: 4,
-                              children: [
-                                Text(
-                                  '${obDuration(day.sleep.bedMinutes)} im Bett',
-                                  style: p.text(12, color: p.muted),
-                                ),
-                                Text(
-                                  '${obNumber(day.sleep.awakeMinutes)} Min. wach',
-                                  style: p.text(12, color: p.muted),
-                                ),
-                              ],
+                          _VitalTile(
+                            label: 'PULS · /MIN',
+                            metricKey: MetricKey.restingHr,
+                            metric: day.restingHr,
+                            controller: controller,
+                            onTap: () => OpenBandMetricDetail.push(
+                              context,
+                              backText: 'Heute',
+                              controller: controller,
+                              metricKey: MetricKey.restingHr,
+                              label: 'Ruhepuls',
+                              subtitle: 'in der Nacht',
+                              unit: '/min',
+                              icon: LucideIcons.heart,
+                              color: (p) => p.ink,
+                              tint: (p) => p.line,
                             ),
                           ),
                         ],
                       ),
-                    ),
+                      if (reduced) ...[
+                        const SizedBox(height: 10),
+                        _MesswerteRow(
+                          onOpen: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => OpenBandHealth(
+                                controller: controller,
+                                bandMetricsOnly: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                ],
-                if (reduced) const SizedBox(height: 12),
-                StepsCard(
-                  day: day,
-                  now: controller.now,
-                  onNutrition: reduced ? null : onNutrition,
-                  showIntake: !reduced,
                 ),
-                const SizedBox(height: 12),
-                if (!reduced && onJournal != null)
+                _OverviewSection(
+                  title: 'Dein Tag',
+                  top: 10,
+                  trailing: controller.band.latestStoredAt == null
+                      ? null
+                      : 'bis ${obTime(controller.band.latestStoredAt)}',
+                  child: StepsCard(
+                    day: day,
+                    now: controller.now,
+                    onNutrition: reduced ? null : onNutrition,
+                    showIntake: !reduced,
+                  ),
+                ),
+                if (!reduced && onJournal != null) ...[
+                  const SizedBox(height: 10),
                   OBCard(
                     child: _ActionRow(
                       'Dein Journal',
@@ -429,26 +196,28 @@ class OpenBandOverview extends StatelessWidget {
                       onJournal!,
                     ),
                   ),
-                if (!reduced && onTraining != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: OBCard(
-                      child: _ActionRow(
-                        'Training',
-                        LucideIcons.dumbbell,
-                        onTraining!,
-                      ),
+                ],
+                if (!reduced && onTraining != null) ...[
+                  const SizedBox(height: 10),
+                  OBCard(
+                    child: _ActionRow(
+                      'Training',
+                      LucideIcons.dumbbell,
+                      onTraining!,
                     ),
                   ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => showBandStatus(context, controller, onSync),
+                ],
+                _BandFooter(band: controller.band),
+              ],
+              if (day == null &&
+                  !controller.loading &&
+                  controller.loadError == null)
+                OBCard(
                   child: Text(
-                    'Datenstand · ${controller.band.latestStoredAt == null ? 'noch offen' : obTime(controller.band.latestStoredAt)}',
-                    style: p.text(12, color: p.muted),
+                    'Keine Daten für diesen Tag.',
+                    style: p.text(14, color: p.muted),
                   ),
                 ),
-              ],
             ],
           ),
         ),
@@ -503,57 +272,776 @@ List<DateTime> _sleepAxisTimes(SleepNight night) {
   ];
 }
 
-class _ReleaseNight extends StatelessWidget {
-  final SleepNight night;
-  final VoidCallback onOpen;
-  const _ReleaseNight({required this.night, required this.onOpen});
+/// Spaced-caps section label over its content (Paper G2: 10 pt to content).
+class _OverviewSection extends StatelessWidget {
+  final String title;
+  final String? trailing;
+  final double top;
+  final Widget child;
+  const _OverviewSection({
+    required this.title,
+    required this.child,
+    this.trailing,
+    this.top = 10,
+  });
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Deine Nacht',
-                  style: p.text(20, weight: FontWeight.w800, display: true),
+    final caption = p.text(11, weight: FontWeight.w500, color: p.muted);
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: p.label(size: 11).copyWith(height: 14 / 11),
+                  ),
                 ),
+                if (trailing != null)
+                  Text(trailing!, style: caption.copyWith(height: 14 / 11)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// Paper G2 night panel: "NACHT ›" and the window, the stage strip in its
+/// recess, then the four stored stage totals edge to edge. Without stored
+/// stages the honest label stands in.
+class _NightSummaryRow extends StatelessWidget {
+  final SleepNight night;
+  final VoidCallback onOpen;
+  const _NightSummaryRow({required this.night, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final facts = OBStageLegend.facts(
+      night,
+      p,
+      onlyStored: true,
+    ).where((f) => f.swatch != null).toList();
+    final window = night.onset == null || night.wake == null
+        ? null
+        : '${obTime(night.onset)} – ${obTime(night.wake)}';
+    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    Widget fact(({String label, Color? swatch, String value}) f, bool end) =>
+        Column(
+          crossAxisAlignment: end
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          spacing: 2,
+          children: [
+            Text(
+              f.label.toUpperCase(),
+              style: p.label().copyWith(letterSpacing: 1.2, height: 12 / 10),
+            ),
+            Text(
+              f.value,
+              maxLines: 1,
+              style: p
+                  .text(15, weight: FontWeight.w700)
+                  .copyWith(height: 18 / 15),
+            ),
+          ],
+        );
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(AlpRadius.card),
+        child: OBCard(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: 12,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'NACHT ›',
+                      style: p.label(size: 11).copyWith(height: 14 / 11),
+                    ),
+                  ),
+                  if (window != null)
+                    Text(
+                      window,
+                      style: p
+                          .text(12, weight: FontWeight.w500, color: p.muted)
+                          .copyWith(height: 16 / 12),
+                    ),
+                ],
+              ),
+              if (night.segments.isNotEmpty) OBStageStrip(night: night),
+              if (facts.isEmpty)
+                Text(_nightLabel(night), style: p.text(13, color: p.muted))
+              else if (large)
+                Wrap(
+                  spacing: 18,
+                  runSpacing: 8,
+                  children: [for (final f in facts) fact(f, false)],
+                )
+              else
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final (i, f) in facts.indexed)
+                      fact(f, i == facts.length - 1 && facts.length > 1),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A night value tile (Paper G2): spaced label and the delta to the
+/// baseline on top, the value and the last seven nights as bars below.
+/// Non-current states show their reason in the delta slot, never a number.
+class _VitalTile extends StatefulWidget {
+  final String label;
+  final MetricKey metricKey;
+  final DayMetric metric;
+  final OpenBandController controller;
+  final VoidCallback onTap;
+  const _VitalTile({
+    required this.label,
+    required this.metricKey,
+    required this.metric,
+    required this.controller,
+    required this.onTap,
+  });
+
+  @override
+  State<_VitalTile> createState() => _VitalTileState();
+}
+
+class _VitalTileState extends State<_VitalTile> {
+  late String _day = widget.controller.selectedDay;
+  late Future<List<MetricPoint>> _history = _read();
+
+  Future<List<MetricPoint>> _read() => widget.controller.repository
+      .readMetricHistory(widget.metricKey, widget.controller.selectedDay, 7);
+
+  @override
+  void didUpdateWidget(_VitalTile old) {
+    super.didUpdateWidget(old);
+    if (widget.controller.selectedDay != _day) {
+      _day = widget.controller.selectedDay;
+      _history = _read();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final m = widget.metric;
+    final status = _compactMetricStatus(m, digits: 0);
+    final comparable =
+        m.value != null &&
+        m.baseline != null &&
+        (m.nightScalar == null || m.nightScalar == NightScalarState.current);
+    final delta = comparable ? (m.value! - m.baseline!).round() : null;
+    final corner = delta != null
+        ? (delta == 0 ? '±0' : '${delta > 0 ? '+' : '−'}${delta.abs()}')
+        : (m.value == null ? null : status);
+    return Semantics(
+      button: true,
+      label:
+          '${widget.label}, ${obNumber(m.value)}${status == null ? '' : ', $status'}',
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(AlpRadius.card),
+          child: ExcludeSemantics(
+            child: OBCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: 12,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.label,
+                          maxLines: 1,
+                          style: p.label().copyWith(height: 12 / 10),
+                        ),
+                      ),
+                      if (corner != null)
+                        Text(
+                          corner,
+                          maxLines: 1,
+                          style: p.text(
+                            11,
+                            weight: delta != null
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: delta != null ? p.ink : p.muted,
+                          ),
+                        ),
+                    ],
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          obNumber(m.value),
+                          style: p
+                              .text(
+                                28,
+                                weight: FontWeight.w700,
+                                color: m.value == null ? p.gap : p.ink,
+                              )
+                              .copyWith(height: 30 / 28, letterSpacing: -.56),
+                        ),
+                      ),
+                      FutureBuilder<List<MetricPoint>>(
+                        future: _history,
+                        builder: (context, snap) => SizedBox(
+                          width: 56,
+                          height: 22,
+                          child: CustomPaint(
+                            painter: _WeekBarsPainter(
+                              p,
+                              snap.hasError ? const [] : snap.data ?? const [],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Seven nights as bars scaled to their own spread; the newest is ink. A
+/// night without a value is a hollow stub, not a zero.
+class _WeekBarsPainter extends CustomPainter {
+  final OB p;
+  final List<MetricPoint> points;
+  _WeekBarsPainter(this.p, this.points);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+    final shown = points.length > 7
+        ? points.sublist(points.length - 7)
+        : points;
+    final values = [
+      for (final e in shown)
+        if (e.value != null) e.value!,
+    ];
+    if (values.isEmpty) return;
+    final lo = values.reduce(math.min), hi = values.reduce(math.max);
+    final span = hi - lo;
+    const n = 7;
+    final bw = size.width * 8 / 80, pitch = size.width * 12 / 80;
+    final offset = (n - shown.length) * pitch;
+    for (final (i, e) in shown.indexed) {
+      final x = offset + i * pitch;
+      if (e.value == null) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(x + .5, size.height - 4.5, bw - 1, 4),
+            const Radius.circular(1),
+          ),
+          Paint()
+            ..color = p.gap
+            ..style = PaintingStyle.stroke,
+        );
+        continue;
+      }
+      final f = span <= 0 ? .6 : .45 + .55 * (e.value! - lo) / span;
+      final h = size.height * f;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, size.height - h, bw, h),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = i == shown.length - 1 ? p.ink : p.gap,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WeekBarsPainter old) =>
+      old.points != points || old.p.dark != p.dark;
+}
+
+/// Heute's header (Paper G2): day title with its picker chevron, the date
+/// line, then the battery key and the profile key.
+class _OverviewHeader extends StatelessWidget {
+  final OpenBandController controller;
+  final bool synthetic;
+  final VoidCallback onBand;
+  final VoidCallback? onProfile;
+  const _OverviewHeader({
+    required this.controller,
+    required this.synthetic,
+    required this.onBand,
+    required this.onProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final dateStyle = p
+        .text(11, weight: FontWeight.w500, color: p.muted)
+        .copyWith(letterSpacing: 0.08 * 11, height: 14 / 11);
+    final title = Semantics(
+      button: true,
+      child: InkWell(
+        onTap: () => chooseOpenBandDay(context, controller),
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            spacing: 4,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      obDayTitle(controller.selectedDay, controller.now()),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: p
+                          .text(26, weight: FontWeight.w700)
+                          .copyWith(height: 32 / 26, letterSpacing: -.52),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  OBChevron(direction: AxisDirection.down, color: p.muted),
+                ],
               ),
               Text(
-                '${obTime(night.onset)} – ${obTime(night.wake)}',
-                style: p.text(13, weight: FontWeight.w500, color: p.muted),
+                synthetic
+                    ? '${_dateLine(controller.selectedDay)} · SYNTHETISCHE DATEN'
+                    : _dateLine(controller.selectedDay),
+                maxLines: 1,
+                style: dateStyle,
               ),
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: onOpen,
-          borderRadius: BorderRadius.circular(24),
-          child: OBCard(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                NightChart(night: night, showGapCaption: false),
-                if (OBStageLegend.facts(
-                  night,
-                  p,
-                  onlyStored: true,
-                ).isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  OBStageLegend(night: night, onlyStored: true),
+      ),
+    );
+    final keys = <Widget>[
+      _BandPill(band: controller.band, onTap: onBand),
+      if (onProfile != null)
+        OBKey(
+          tooltip: 'Profil',
+          height: 40,
+          padding: EdgeInsets.zero,
+          onTap: onProfile,
+          child: Icon(LucideIcons.user, size: 18, color: p.ink),
+        ),
+    ];
+    if (large) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 10,
+          runSpacing: 8,
+          children: [title, ...keys],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Align(alignment: Alignment.centerLeft, child: title),
+          ),
+          const SizedBox(width: 10),
+          for (final (i, k) in keys.indexed) ...[
+            if (i > 0) const SizedBox(width: 10),
+            k,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Letzter Bandwert 07:41 · Übertragung 07:42" — only the times that exist.
+class _BandFooter extends StatelessWidget {
+  final BandSnapshot band;
+  const _BandFooter({required this.band});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final parts = [
+      if (band.latestStoredAt != null)
+        'Letzter Bandwert ${obTime(band.latestStoredAt)}',
+      if (band.receivedAt != null) 'Übertragung ${obTime(band.receivedAt)}',
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Text(
+        parts.join(' · '),
+        textAlign: TextAlign.center,
+        style: p
+            .text(11, weight: FontWeight.w500, color: p.muted)
+            .copyWith(letterSpacing: .66, height: 14 / 11),
+      ),
+    );
+  }
+}
+
+/// The three Messleisten on one raised panel, hairlines between rows. Values
+/// grow in on load unless animations are disabled.
+class _RingTrio extends StatefulWidget {
+  final OpenBandDay day;
+  final OpenBandController controller;
+  final VoidCallback onSleep;
+  const _RingTrio({
+    required this.day,
+    required this.controller,
+    required this.onSleep,
+  });
+
+  @override
+  State<_RingTrio> createState() => _RingTrioState();
+}
+
+class _RingTrioState extends State<_RingTrio> {
+  late String _goalDay = widget.day.day;
+  late Future<SleepGoalSnapshot> _goal = _readGoal();
+
+  Future<SleepGoalSnapshot> _readGoal() =>
+      widget.controller.repository.readSleepGoal(widget.day.day);
+
+  @override
+  void didUpdateWidget(_RingTrio old) {
+    super.didUpdateWidget(old);
+    if (widget.day.day != _goalDay) {
+      _goalDay = widget.day.day;
+      _goal = _readGoal();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final day = widget.day;
+    final controller = widget.controller;
+    final today = day.day == todayLabel(controller.now());
+    return FutureBuilder<SleepGoalSnapshot>(
+      future: _goal,
+      builder: (context, snap) {
+        final goal = snap.hasError
+            ? null
+            : snap.data?.targetMinutes?.toDouble();
+        Widget trio(double progress) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _Messleiste(
+              label: 'Erholung',
+              value: obNumber(day.recovery.value),
+              unit: day.recovery.value == null ? 'kein Wert' : 'von 100',
+              valueColor: day.recovery.value == null ? p.gap : p.recovery,
+              scale: OBScale(
+                min: 0,
+                max: 100,
+                value: _grow(day.recovery.value, progress),
+                fill: p.recovery,
+                labels: ('0', '50', '100'),
+              ),
+              onTap: () => OpenBandMetricDetail.push(
+                context,
+                backText: 'Heute',
+                controller: controller,
+                metricKey: MetricKey.recovery,
+                label: 'Erholung',
+                subtitle: 'aus der Nacht',
+                unit: 'von 100',
+                icon: LucideIcons.heartPulse,
+                color: (p) => p.recovery,
+                tint: (p) => p.recoveryTint,
+              ),
+            ),
+            Container(height: 1, color: p.line),
+            _Messleiste(
+              label: 'Schlaf',
+              value: obDuration(day.sleep.duration.value),
+              unit: _sleepDelta(day.sleep.duration),
+              valueColor: day.sleep.duration.value == null ? p.gap : p.ink,
+              scale: OBScale(
+                min: 0,
+                max: 600,
+                value: _grow(day.sleep.duration.value, progress),
+                target: goal,
+                targetLabel: goal == null ? null : 'Ziel ${obDuration(goal)}',
+                fill: p.sleep,
+                labels: ('0 h', '5 h', '10 h'),
+              ),
+              onTap: widget.onSleep,
+            ),
+            Container(height: 1, color: p.line),
+            _Messleiste(
+              label: 'Belastung',
+              value: obNumber(day.strain.value, digits: 1),
+              unit: day.strain.value == null
+                  ? 'kein Wert'
+                  : today
+                  ? 'läuft'
+                  : 'von 21',
+              valueColor: day.strain.value == null ? p.gap : p.ink,
+              scale: OBScale(
+                min: 0,
+                max: 21,
+                value: _grow(day.strain.value, progress),
+                fill: p.strain,
+                labels: ('0', '10,5', '21'),
+              ),
+              onTap: () => OpenBandMetricDetail.push(
+                context,
+                backText: 'Heute',
+                controller: controller,
+                metricKey: MetricKey.strain,
+                label: 'Belastung',
+                subtitle: 'heute bis jetzt',
+                unit: 'von 21',
+                icon: LucideIcons.flame,
+                digits: 1,
+                color: (p) => p.strain,
+                tint: (p) => p.strainTint,
+              ),
+            ),
+          ],
+        );
+        if (MediaQuery.disableAnimationsOf(context)) return trio(1);
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeOutCubic,
+          builder: (context, progress, _) => trio(progress),
+        );
+      },
+    );
+  }
+
+  static double? _grow(double? v, double t) => v == null ? null : v * t;
+}
+
+/// One Messleiste row (Paper G2): 108-pt reading column — spaced label over
+/// the value, a short note beside it — and the scale filling the rest.
+/// Stacks under the value at large text.
+class _Messleiste extends StatelessWidget {
+  final String label, value;
+  final String? unit;
+  final Color valueColor;
+  final Widget scale;
+  final VoidCallback onTap;
+  const _Messleiste({
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.valueColor,
+    required this.scale,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    // "von 100" is the scale's right end and a delta lives on Schlaf; only
+    // a state note ("läuft", "kein Wert") sits beside the value.
+    final note = unit == 'läuft' || unit == 'kein Wert' ? unit : null;
+    final reading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      spacing: 2,
+      children: [
+        Text(
+          '${label.toUpperCase()} ›',
+          style: p.label().copyWith(height: 12 / 10),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: p
+                      .text(34, weight: FontWeight.w700, color: valueColor)
+                      .copyWith(height: 36 / 34, letterSpacing: -.03 * 34),
+                ),
+              ),
+            ),
+            if (note != null) ...[
+              const SizedBox(width: 4),
+              Text(
+                note,
+                maxLines: 1,
+                style: p.text(11, color: p.muted).copyWith(height: 14 / 11),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+    return Semantics(
+      button: true,
+      label: '$label, $value ${unit ?? ''}',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: large
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [reading, const SizedBox(height: 8), scale],
+                  )
+                : Row(
+                    children: [
+                      SizedBox(width: 108, child: reading),
+                      const SizedBox(width: 13),
+                      Expanded(child: scale),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "DI 15.09" under the day title.
+String _dateLine(String day) {
+  final d = DateTime.parse(day);
+  final weekday = DateFormat('EEE', 'de_DE').format(d).replaceAll('.', '');
+  return '${weekday.toUpperCase()} ${DateFormat('dd.MM', 'de_DE').format(d)}';
+}
+
+/// "Daten bis HH:mm" strip under the header: the stored-data edge and the
+/// night's coverage, tapping into the Datenstand sheet. Only built when
+/// [BandSnapshot.latestStoredAt] exists — no fabricated freshness.
+class _DataStrip extends StatelessWidget {
+  final BandSnapshot band;
+  final SleepNight? night;
+  final VoidCallback onTap;
+  const _DataStrip({
+    required this.band,
+    required this.night,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final at = band.latestStoredAt!;
+    final missing = night?.unobservedMinutes ?? 0;
+    final gap = missing > 0;
+    final coverage = night == null
+        ? null
+        : night!.duration.value == null
+        ? _nightLabel(night!)
+        : gap
+        ? 'Nacht · ${obGapMinutes(missing)} Lücke'
+        : 'Nacht lückenlos';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Semantics(
+        label:
+            'Daten bis ${obTime(at)}${coverage == null ? '' : ', $coverage'}',
+        button: true,
+        excludeSemantics: true,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: p.insetDecoration(radius: 22),
+              child: Row(
+                children: [
+                  OBLed(
+                    on: band.connection == BandConnection.connected,
+                    color: gap ? p.warning : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    flex: 0,
+                    fit: FlexFit.loose,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.sizeOf(context).width * .55,
+                      ),
+                      child: Text(
+                        'Daten bis ${obTime(at)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: p.text(13, weight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  if (coverage != null) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        coverage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: p.text(13, color: p.muted),
+                      ),
+                    ),
+                  ] else
+                    const Spacer(),
+                  OBChevron(color: p.muted),
                 ],
-              ],
+              ),
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -575,13 +1063,21 @@ class _MesswerteRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 52),
           child: Row(
             children: [
+              Icon(LucideIcons.activity, size: 20, color: p.ink),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Alle Messwerte',
-                  style: p.text(15, weight: FontWeight.w600),
+                  style: p
+                      .text(15, weight: FontWeight.w700)
+                      .copyWith(height: 18 / 15),
                 ),
               ),
-              Icon(LucideIcons.chevronRight, size: 18, color: p.muted),
+              if (MediaQuery.textScalerOf(context).scale(14) <= 20) ...[
+                Text('Atmung · Haut', style: p.text(13, color: p.muted)),
+                const SizedBox(width: 12),
+              ],
+              Text('›', style: p.text(16, color: p.gap).copyWith(height: 1.25)),
             ],
           ),
         ),
@@ -901,8 +1397,6 @@ class OBMetricCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(icon, size: 16, color: color),
-                    const SizedBox(width: 6),
                     Flexible(
                       child: Text(
                         label,
@@ -912,9 +1406,11 @@ class OBMetricCard extends StatelessWidget {
                               weight: FontWeight.w600,
                               color: p.muted,
                             )
-                            .copyWith(height: 18 / 13, letterSpacing: 0),
+                            .copyWith(height: 18 / 13, letterSpacing: 0.4),
                       ),
                     ),
+                    if (onTap != null)
+                      Text(' ›', style: p.text(labelSize, color: p.muted)),
                   ],
                 ),
                 _MetricValueUnit(
@@ -931,8 +1427,8 @@ class OBMetricCard extends StatelessWidget {
                     style: p
                         .text(
                           labelSize,
-                          weight: FontWeight.w600,
-                          color: compared ? p.smallText(color) : p.muted,
+                          weight: compared ? FontWeight.w700 : FontWeight.w500,
+                          color: compared ? p.ink : p.muted,
                         )
                         .copyWith(height: 18 / 13, letterSpacing: 0),
                   ),
@@ -962,7 +1458,7 @@ class _MetricValueUnit extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final valueStyle = p
-        .text(valueSize, weight: FontWeight.w800, display: true)
+        .text(valueSize, weight: FontWeight.w700, display: true)
         .copyWith(height: 36 / 34);
     final unitStyle = p
         .text(unitSize, weight: FontWeight.w500, color: p.muted)
@@ -1021,31 +1517,6 @@ double _textWidth(
   return width;
 }
 
-class _CircleButton extends StatelessWidget {
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
-  const _CircleButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-  });
-  @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      style: IconButton.styleFrom(
-        backgroundColor: p.card,
-        foregroundColor: p.ink,
-        fixedSize: const Size(40, 40),
-      ),
-      icon: Icon(icon, size: 20),
-    );
-  }
-}
-
 /// Sync status pill under the overview header. Says nothing when there is
 /// nothing to say — a progress track would need a real progress value, which
 /// [BandSnapshot] does not carry, so none is drawn. Passive states retain their
@@ -1077,6 +1548,16 @@ class OBSyncState extends StatelessWidget {
     this.resumeLabel = 'Fortsetzen',
     this.retryLabel = 'Erneut',
   });
+
+  /// Whether the passive strip has something to say for [band].
+  static bool showsFor(BandSnapshot band, DateTime Function() now) =>
+      switch (band.transfer) {
+        TransferState.receiving || TransferState.interrupted => true,
+        TransferState.idle => switch (band.receivedAt) {
+          final at? => now().difference(at).inMinutes.abs() <= 10,
+          null => false,
+        },
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -1156,7 +1637,7 @@ class OBSyncState extends StatelessWidget {
         TransferState.idle => switch (band.receivedAt) {
           final at? when now().difference(at).inMinutes.abs() <= 10 => (
             LucideIcons.check,
-            p.recovery,
+            p.led,
             'Gespeichert $stored',
             Text(
               'vor ${now().difference(at).inMinutes.abs()} Min.',
@@ -1197,10 +1678,7 @@ class OBSyncState extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: iconColor),
               Expanded(
-                child: Text(
-                  text!,
-                  style: p.text(13, weight: FontWeight.w600),
-                ),
+                child: Text(text!, style: p.text(13, weight: FontWeight.w600)),
               ),
               ?trailing,
             ],
@@ -1215,10 +1693,7 @@ class OBSyncState extends StatelessWidget {
             horizontal: 14,
             vertical: stackAction ? 4 : 0,
           ),
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: BorderRadius.circular(actionable ? 22 : 20),
-          ),
+          decoration: p.insetDecoration(radius: 22),
           child: content,
         ),
       ),
@@ -1233,63 +1708,73 @@ class _BandPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    final pct = band.batteryPercent;
     return Semantics(
       label:
-          'Band, ${band.connection == BandConnection.connected ? 'verbunden' : 'nicht verbunden'}, Akku ${band.batteryPercent == null ? 'unbekannt' : '${band.batteryPercent} Prozent'}',
+          'Band, ${band.connection == BandConnection.connected ? 'verbunden' : 'nicht verbunden'}, Akku ${pct == null ? 'unbekannt' : '$pct Prozent'}',
       button: true,
-      child: InkWell(
+      excludeSemantics: true,
+      child: OBKey(
+        height: 40,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: ExcludeSemantics(
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.fromLTRB(10, 0, 12, 0),
-            decoration: BoxDecoration(
-              color: p.card,
-              borderRadius: BorderRadius.circular(20),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 8,
+          children: [
+            SizedBox(
+              width: 10,
+              height: 16,
+              child: CustomPaint(painter: _BatteryGlyph(p, pct)),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 17,
-                  height: 22,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Icon(LucideIcons.watch, size: 17, color: p.ink),
-                      Positioned(
-                        left: 9,
-                        top: 12,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: band.connection == BandConnection.connected
-                                ? p.recovery
-                                : p.gap,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: p.card, width: 1.5),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  band.batteryPercent == null
-                      ? '—'
-                      : '${band.batteryPercent} %',
-                  style: p.text(15, weight: FontWeight.w700, display: true),
-                ),
-              ],
+            Text(
+              pct == null ? '—' : '$pct %',
+              style: p
+                  .text(14, weight: FontWeight.w700)
+                  .copyWith(height: 18 / 14),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
+}
+
+/// Upright battery outline filled to the observed charge; empty when the
+/// charge is unknown.
+class _BatteryGlyph extends CustomPainter {
+  final OB p;
+  final int? percent;
+  _BatteryGlyph(this.p, this.percent);
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(1, 1, size.width - 2, size.height - 2),
+        const Radius.circular(2.5),
+      ),
+      Paint()
+        ..color = p.muted
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    final pct = percent;
+    if (pct == null) return;
+    final inner = size.height - 6;
+    final h = inner * (pct.clamp(0, 100) / 100);
+    if (h <= 0) return;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(3, 3 + inner - h, size.width - 6, h),
+        const Radius.circular(1),
+      ),
+      Paint()..color = p.ink,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_BatteryGlyph old) =>
+      old.percent != percent || old.p.dark != p.dark;
 }
 
 Future<void> showBandStatus(
@@ -1310,51 +1795,65 @@ Future<void> showBandStatus(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Dein Datenstand', style: p.text(18, weight: FontWeight.w600)),
+            Text('BAND · WHOOP 5.0', style: p.label(size: 11)),
+            const SizedBox(height: 2),
+            Text(
+              'Dein Datenstand',
+              style: p.text(24, weight: FontWeight.w700, display: true),
+            ),
+            const SizedBox(height: 14),
+            OBCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Column(
+                children: [
+                  _Fact('Verbindung heute', switch (b.connection) {
+                    BandConnection.connected => 'Verbunden',
+                    BandConnection.connecting => 'Verbindung wird aufgebaut',
+                    BandConnection.disconnected => 'Nicht verbunden',
+                  }),
+                  _Fact(
+                    'Akku',
+                    b.batteryPercent == null
+                        ? 'Unbekannt'
+                        : '${b.batteryPercent} %',
+                  ),
+                  _Fact(
+                    'Akku beobachtet',
+                    b.batteryObservedAt == null
+                        ? 'Zeitpunkt unbekannt'
+                        : '${obDate(b.batteryObservedAt!.toIso8601String().substring(0, 10))} · ${obTime(b.batteryObservedAt)}',
+                  ),
+                  _Fact(
+                    'Gespeicherte Banddaten bis',
+                    b.latestStoredAt == null
+                        ? 'Noch keine bestätigten Daten'
+                        : '${obDate(b.latestStoredAt!.toIso8601String().substring(0, 10))} · ${obTime(b.latestStoredAt)}',
+                  ),
+                  _Fact(
+                    'Auf dem iPhone gespeichert',
+                    b.receivedAt == null
+                        ? 'Zeitpunkt unbekannt'
+                        : obTime(b.receivedAt),
+                  ),
+                  _Fact(
+                    'Nacht am ${obDate(controller.selectedDay)}',
+                    controller.day == null
+                        ? 'Wird geladen'
+                        : _nightLabel(controller.day!.sleep),
+                  ),
+                  _Fact(
+                    'Auswertung',
+                    controller.calculating
+                        ? 'Wird berechnet'
+                        : controller.day?.sleep.duration.reason ??
+                              _nightLabel(
+                                controller.day?.sleep ?? const SleepNight(),
+                              ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 16),
-            _Fact('Verbindung heute', switch (b.connection) {
-              BandConnection.connected => 'Verbunden',
-              BandConnection.connecting => 'Verbindung wird aufgebaut',
-              BandConnection.disconnected => 'Nicht verbunden',
-            }),
-            _Fact(
-              'Akku',
-              b.batteryPercent == null ? 'Unbekannt' : '${b.batteryPercent} %',
-            ),
-            _Fact(
-              'Akku beobachtet',
-              b.batteryObservedAt == null
-                  ? 'Zeitpunkt unbekannt'
-                  : '${obDate(b.batteryObservedAt!.toIso8601String().substring(0, 10))} · ${obTime(b.batteryObservedAt)}',
-            ),
-            _Fact(
-              'Gespeicherte Banddaten bis',
-              b.latestStoredAt == null
-                  ? 'Noch keine bestätigten Daten'
-                  : '${obDate(b.latestStoredAt!.toIso8601String().substring(0, 10))} · ${obTime(b.latestStoredAt)}',
-            ),
-            _Fact(
-              'Auf dem iPhone gespeichert',
-              b.receivedAt == null
-                  ? 'Zeitpunkt unbekannt'
-                  : obTime(b.receivedAt),
-            ),
-            _Fact(
-              'Nacht am ${obDate(controller.selectedDay)}',
-              controller.day == null
-                  ? 'Wird geladen'
-                  : _nightLabel(controller.day!.sleep),
-            ),
-            _Fact(
-              'Auswertung',
-              controller.calculating
-                  ? 'Wird berechnet'
-                  : controller.day?.sleep.duration.reason ??
-                        _nightLabel(
-                          controller.day?.sleep ?? const SleepNight(),
-                        ),
-            ),
-            const SizedBox(height: 12),
             if (onSync != null)
               OBAction(
                 'Übertragung fortsetzen',
@@ -1363,6 +1862,7 @@ Future<void> showBandStatus(
                   onSync();
                 },
               ),
+            const SizedBox(height: 10),
             OBAction(
               'Schließen',
               secondary: true,
@@ -1394,6 +1894,7 @@ class OpenBandSleep extends StatelessWidget {
             children: [
               OBPageHeader(
                 title: 'Schlaf',
+                backText: 'Heute',
                 subtitle:
                     '${night.onset == null ? '' : '${night.onset!.day}./'}${obDate(controller.selectedDay)}',
                 onDate: () => chooseOpenBandDay(context, controller),
@@ -1427,36 +1928,43 @@ class OpenBandSleep extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           spacing: 12,
                           children: [
+                            if (night.onset != null && night.wake != null)
+                              Text(
+                                'GESCHLAFEN · ${obTime(night.onset)} – ${obTime(night.wake)}',
+                                style: p.label(),
+                              ),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.baseline,
-                                  textBaseline: TextBaseline.alphabetic,
-                                  children: [
-                                    Text(
-                                      obDuration(night.duration.value),
-                                      style: p.text(
-                                        34,
-                                        weight: FontWeight.w800,
-                                        display: true,
-                                      ),
-                                    ),
-                                    if (night.duration.baseline != null) ...[
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        _sleepDeltaLabel(night.duration),
-                                        style: p.text(
-                                          13,
-                                          weight: FontWeight.w600,
-                                          color: p.smallText(p.sleep),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          obDuration(night.duration.value),
+                                          style: p.text(
+                                            56,
+                                            weight: FontWeight.w700,
+                                            display: true,
+                                          ),
                                         ),
                                       ),
+                                      if (night.duration.baseline != null)
+                                        Text(
+                                          _sleepDeltaLabel(night.duration),
+                                          style: p.text(
+                                            13,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ),
                                     ],
-                                  ],
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
@@ -1518,6 +2026,10 @@ class OpenBandSleep extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (day.correction != null || controller.calculating)
                   CorrectionBanner(controller: controller),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+                  child: Text('IN DIESER NACHT', style: p.label(size: 11)),
+                ),
                 OBAdaptiveValues(
                   children: [
                     OBMetricCard(
@@ -1528,6 +2040,7 @@ class OpenBandSleep extends StatelessWidget {
                       color: p.recovery,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
+                        backText: 'Schlaf',
                         controller: controller,
                         metricKey: MetricKey.hrv,
                         label: 'HRV',
@@ -1546,6 +2059,7 @@ class OpenBandSleep extends StatelessWidget {
                       color: p.pulse,
                       onTap: () => OpenBandMetricDetail.push(
                         context,
+                        backText: 'Schlaf',
                         controller: controller,
                         metricKey: MetricKey.restingHr,
                         label: 'Ruhepuls',
@@ -1560,6 +2074,7 @@ class OpenBandSleep extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 OBCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
                       SetRow(
@@ -1575,6 +2090,7 @@ class OpenBandSleep extends StatelessWidget {
                           ),
                         ),
                       ),
+                      Divider(color: p.line),
                       SetRow(
                         LucideIcons.moon,
                         p.sleep,
@@ -1591,6 +2107,7 @@ class OpenBandSleep extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 OBCard(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
                       if (controller.selectedDay ==
@@ -1615,6 +2132,9 @@ class OpenBandSleep extends StatelessWidget {
                             );
                           },
                         ),
+                      if (controller.selectedDay ==
+                          todayLabel(controller.now()))
+                        Divider(color: p.line),
                       SetRow(
                         LucideIcons.target,
                         p.sleep,
@@ -1704,7 +2224,7 @@ class CorrectionBanner extends StatelessWidget {
                       : failed
                       ? LucideIcons.circleAlert
                       : LucideIcons.refreshCw,
-                  color: complete ? p.recovery : p.action,
+                  color: complete ? p.led : p.action,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -1786,15 +2306,19 @@ class _Fact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: p.line)),
+      ),
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
         spacing: 20,
         runSpacing: 4,
         children: [
-          Text(label, style: p.text(13, color: p.muted)),
-          Text(value, style: p.text(14)),
+          Text(label, style: p.text(14, color: p.muted)),
+          Text(value, style: p.text(14, weight: FontWeight.w700)),
         ],
       ),
     );

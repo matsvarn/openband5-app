@@ -172,7 +172,7 @@ void main() {
     await mount(tester);
     expect(find.text('HRV'), findsWidgets);
     expect(find.text('48'), findsOneWidget);
-    expect(find.text('Nacht auf heute'), findsOneWidget);
+    expect(find.text('NACHT AUF HEUTE'), findsOneWidget);
     expect(find.text('+8 über Basis'), findsOneWidget);
     expect(find.text('15 von 30 Nächten'), findsOneWidget);
     expect(find.text('Nachtverlauf'), findsOneWidget);
@@ -192,17 +192,15 @@ void main() {
     );
   });
 
-  testWidgets('rhr complete uses heart icon', (tester) async {
+  testWidgets('rhr complete shows value, comparison and baseline', (
+    tester,
+  ) async {
     _seedTrusted(repo, key: MetricKey.restingHr);
     await mount(tester, key: MetricKey.restingHr);
     expect(find.text('Ruhepuls'), findsWidgets);
     expect(find.text('54'), findsOneWidget);
     expect(find.text('−2 unter Basis'), findsOneWidget);
     expect(find.text('56 /min'), findsOneWidget);
-    expect(
-      tester.widget<Icon>(find.byIcon(LucideIcons.heart).first).icon,
-      LucideIcons.heart,
-    );
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
