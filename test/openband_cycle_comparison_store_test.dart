@@ -234,7 +234,7 @@ void main() {
       expect(snap.window.startDay, '2025-09-16');
       expect(snap.window.endDay, '2026-09-15');
       expect(snap.reason, CycleComparisonReason.available);
-      expect(snap.algoVersion, 91);
+      expect(snap.algoVersion, kAlgoVersion);
       expect(snap.rhr.latest?.nightDay, '2026-09-15');
       expect(snap.rhr.latest?.metric.value, 56);
       expect(snap.rhr.latest?.cycleDay, 23);

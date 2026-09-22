@@ -180,7 +180,7 @@ void main() {
       expect(snap.window.page, 0);
       expect(snap.window.expectedNightCount, 365);
       expect(snap.reason, CycleMediansReason.available);
-      expect(snap.algoVersion, 91);
+      expect(snap.algoVersion, kAlgoVersion);
       expect(snap.periods.map((p) => p.startDay), [
         '2026-06-29',
         '2026-07-31',

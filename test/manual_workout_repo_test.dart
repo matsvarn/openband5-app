@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/data/models.dart';
@@ -77,6 +78,15 @@ void main() {
     LocalDb.dbName = 'openstrap_manual_workout_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
+    // The personal quiet-HRR level session scoring resolves (edge#226). One
+    // measured prior day is the shape a real install has; without it strain
+    // abstains — the honest production answer, but not what these
+    // substrate-scoring tests pin.
+    await LocalDb.putMetricSeriesValue(
+      dayLabelOf(DateTime.now().subtract(const Duration(days: 1))),
+      'quiet_waking_hrr',
+      0.20,
+    );
   });
 
   tearDownAll(() async {

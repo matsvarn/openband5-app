@@ -264,7 +264,7 @@ void main() {
     expect(snap.rhr.latest?.cycleDay, 23);
     expect(snap.rhr.latest?.startDay, '2026-08-24');
     expect(snap.rhr.latest?.sleepSource, 'auto');
-    expect(snap.rhr.latest?.algoVersion, 91);
+    expect(snap.rhr.latest?.algoVersion, kAlgoVersion);
 
     expect(snap.hrv.latestReason, CycleComparisonLatestReason.available);
     expect(snap.hrv.latest?.nightDay, '2026-09-14');
