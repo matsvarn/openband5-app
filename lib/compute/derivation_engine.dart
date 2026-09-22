@@ -1663,7 +1663,16 @@ import 'substrate.dart';
 // substrate arrived NaN-empty and finalized days banked `optical_trusted_pct:
 // null` forever. The bump re-derives those days onto the column that now
 // actually reaches the accumulator. No semantic change from intended-v94.
-const int kAlgoVersion = 95;
+// 96 — beat_ts_ms continuity anchor, PPG-measured. The emit anchor sits
+// uniform-inside the trailing RR interval (~±300 ms per-record phase jitter
+// against the band's own 25 Hz PPG onsets, 200 accepted episodes). beatTimesMs
+// now re-anchors each record's first beat to prev-last + its own interval
+// when the junction proves out: within-episode jitter MAD 220 → 42 ms over
+// ~7k real beats (analysis/2026-09-22-v26-ppg/beat_anchor_check.py). Interval
+// values are untouched; the timestamp axis tightens, which can move which
+// beats a window boundary counts as inside — an input-semantics change to
+// rrTsMs, same class as v93's beat-clock fix.
+const int kAlgoVersion = 96;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///

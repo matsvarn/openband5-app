@@ -11,7 +11,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/substrate.dart'
-    show beatTimesMs, clampBeatTsNonDecreasing;
+    show BeatClock, beatTimesMs, clampBeatTsNonDecreasing;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/models.dart';
 
@@ -88,6 +88,77 @@ void main() {
 
     test('an empty record produces nothing', () {
       expect(beatTimesMs(1000, 500, const []), isEmpty);
+    });
+  });
+
+  group('beatTimesMs continuity anchor', () {
+    test(
+        'beat 0 chains to the previous record\'s last beat + its own '
+        'interval, and the whole record shifts by one delta', () {
+      // Emit answer would be [999274, 1000000] — the anchor lag is whatever
+      // the emit instant happens to carry. The measured junction is
+      // prevLast + rr[0]: beat 0 IS that interval after the previous beat.
+      expect(
+        beatTimesMs(1000, 0, [800, 726], prevLastBeatMs: 998500),
+        [999300, 999300 + 726],
+      );
+    });
+
+    test('a stale predecessor fails the record-span window — emit stands', () {
+      // 100 s old is not this record's neighbour: chained would land
+      // ~99 s before the record even starts.
+      expect(
+        beatTimesMs(1000, 0, [800, 726], prevLastBeatMs: 900000),
+        [999274, 1000000],
+      );
+    });
+
+    test('an implausible first interval cannot carry the junction', () {
+      // rr[0] = 9000 is outside 250..2400 — the gap it claims is untrusted,
+      // so the emit anchor stands even though beat 0 itself placed fine.
+      expect(
+        beatTimesMs(1000, 0, [9000, 726], prevLastBeatMs: 998500),
+        [1000000 - 726, 1000000],
+      );
+    });
+
+    test('a null beat 0 leaves nothing to chain onto', () {
+      // The mid-record break nulls beat 0 (rr[1] implausible), so there is
+      // no junction position — emit anchor stands for the placed run.
+      expect(
+        beatTimesMs(1000, 0, [700, 9000, 690], prevLastBeatMs: 998500),
+        [null, 1000000 - 690, 1000000],
+      );
+    });
+  });
+
+  group('BeatClock', () {
+    test('chains across contiguous records, resets across a rec_ts gap', () {
+      final clock = BeatClock();
+      expect(clock.place(1000, 0, [800]), [1000000]);
+      // Contiguous: beat 0 = 1000000 + 800, shifted from its emit position.
+      expect(clock.place(1001, 0, [800]), [1000800]);
+      // A 3-second jump: records we never saw stand between — the junction
+      // is refused and this record's emit anchor stands.
+      expect(clock.place(1004, 0, [800]), [1004000]);
+    });
+
+    test('a beat-less record carries the chain through', () {
+      final clock = BeatClock();
+      clock.place(1000, 0, [800]);
+      clock.place(1001, 0, const []); // nothing emitted that second
+      // rr[0] still measures from the same predecessor beat — the chained
+      // instant can legitimately land inside the emission-less second.
+      expect(clock.place(1002, 0, [800]), [1000800]);
+    });
+
+    test('a record whose beats all failed placement breaks the chain', () {
+      final clock = BeatClock();
+      clock.place(1000, 0, [800]);
+      // Beats emitted but unplaceable (no sub-second): the next record's
+      // first interval measures from a beat we cannot name.
+      clock.place(1001, null, [800]);
+      expect(clock.place(1002, 0, [800]), [1002000]);
     });
   });
 
@@ -181,6 +252,66 @@ void main() {
       // model is reversible.
       final onehz = await db.query('decoded_onehz', orderBy: 'rec_ts');
       expect(onehz.map((r) => r['ts_subsec']), [16384, null]);
+    });
+
+    test('contiguous records persist continuity-anchored beat times', () async {
+      LocalDb.dbName = 'beat_ts_chain_test.db';
+      await LocalDb.close();
+      final db = await LocalDb.instance;
+      await db.delete('decoded_rr');
+      await db.delete('decoded_onehz');
+
+      final samples = [
+        Sample(
+          tsEpoch: 1700000000,
+          counter: 1,
+          hr: 74,
+          rrIntervalsMs: const [700, 726],
+          ax: 0.1,
+          ay: 0.2,
+          az: 0.9,
+          spo2RedRaw: 1,
+          spo2IrRaw: 1,
+          skinTempRaw: 1,
+          tsSubsec: 16384, // emit anchor at +500 ms
+        ),
+        Sample(
+          tsEpoch: 1700000001,
+          counter: 2,
+          hr: 74,
+          rrIntervalsMs: const [812],
+          ax: 0.1,
+          ay: 0.2,
+          az: 0.9,
+          spo2RedRaw: 1,
+          spo2IrRaw: 1,
+          skinTempRaw: 1,
+          tsSubsec: 0, // emit anchor at the second boundary
+        ),
+      ];
+      await LocalDb.insertRecordsBatch(
+        [
+          for (final s in samples)
+            RawRecord(
+              counter: s.counter,
+              packetType: 47,
+              hex: 'ff${s.counter}',
+              capturedAt: s.tsEpoch * 1000,
+              recTs: s.tsEpoch,
+            ),
+        ],
+        samples,
+      );
+
+      final rows = await db.query('decoded_rr', orderBy: 'rec_ts, beat_index');
+      // Record 1 emit-anchors at +500 ms. Record 2's first beat is the
+      // measured junction: prev last (1700000000500) + its interval (812),
+      // not its own emit instant at 1700000001000.
+      expect(rows.map((r) => r['beat_ts_ms']), [
+        1700000000500 - 726,
+        1700000000500,
+        1700000000500 + 812,
+      ]);
     });
   });
 }

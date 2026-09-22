@@ -148,7 +148,20 @@ bool accelPlausible(double ax, double ay, double az) {
 /// A non-positive interval BREAKS THE CHAIN: the gap before that beat is
 /// unknown, so every EARLIER beat in the record becomes unplaceable and gets
 /// null rather than a position computed as if the missing gap were zero.
-List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs) {
+///
+/// [prevLastBeatMs] is the CONTINUITY anchor: the previous record's last
+/// placed beat. The emit anchor sits uniform-inside the trailing interval —
+/// measured ~±300 ms per-record phase jitter against the band's own PPG
+/// onsets (within-episode MAD 220 ms). Re-anchoring beat 0 to
+/// `prevLastBeatMs + rrMs[0]` — the measured junction — cuts that to MAD 42
+/// (PPG-onset residuals over ~7 k beats, analysis/2026-09-22-v26-ppg). It is
+/// applied as a whole-record shift, so intervals, nulls and ordering are
+/// untouched. The junction has to be PROVEN, or the emit anchor stands:
+/// beat 0 placed, its own interval plausible, and the chained instant inside
+/// this record's plausible span — a stale or fabricated predecessor fails
+/// that window and costs nothing.
+List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs,
+    {int? prevLastBeatMs}) {
   final out = List<int?>.filled(rrMs.length, null);
   if (tsSubsec == null || rrMs.isEmpty) return out;
   // THE TICK COUNT IS BOUNDED, for the same reason [kMaxPlausibleHr] is: this
@@ -177,7 +190,56 @@ List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs) {
     if (rr == null) break;
     back += rr.toInt();
   }
+  // Continuity anchor — see the doc above. A whole-record shift keeps every
+  // interval and every null exactly where the walk-back put them; only the
+  // record-level anchor error (uniform in the trailing interval) is removed.
+  final first = out[0];
+  if (prevLastBeatMs != null &&
+      first != null &&
+      plausibleRrOrNull(rrMs[0]) != null) {
+    final chained = prevLastBeatMs + rrMs[0];
+    if (chained >= recTs * 1000 - kMaxPlausibleRrMs &&
+        chained <= recTs * 1000 + kMaxPlausibleRrMs) {
+      final delta = chained - first;
+      for (var i = 0; i < out.length; i++) {
+        final v = out[i];
+        if (v != null) out[i] = v + delta;
+      }
+    }
+  }
   return out;
+}
+
+/// Cross-record state for [beatTimesMs]'s continuity anchor.
+///
+/// Records place independently when fed nothing — same as before. A caller
+/// that walks records in time order can hand each one the last beat the
+/// previous record placed via [place], which applies the chain rules here
+/// instead of in every caller:
+///   * chain only across ADJACENT record seconds — a rec_ts jump means an
+///     unseen record's beats stand between, and `rrMs[0]` measures from a
+///     beat we cannot name, so the junction is refused;
+///   * a record that carried intervals but placed NO beat breaks the chain —
+///     same reason;
+///   * a record with NO intervals carries the chain through — the next
+///     record's first interval is still measured from the same predecessor.
+class BeatClock {
+  int? _lastBeatMs;
+  int? _prevRecTs;
+
+  /// Place [rrMs]'s beats for the record at [recTs], chaining off the
+  /// previous record's last beat when that junction is provable.
+  List<int?> place(int recTs, int? tsSubsec, List<int> rrMs) {
+    final prev = (_prevRecTs != null && recTs == _prevRecTs! + 1)
+        ? _lastBeatMs
+        : null;
+    final out = beatTimesMs(recTs, tsSubsec, rrMs, prevLastBeatMs: prev);
+    _prevRecTs = recTs;
+    if (rrMs.isNotEmpty) {
+      _lastBeatMs = out.lastWhere((t) => t != null, orElse: () => null);
+    }
+    return out;
+  }
 }
 
 /// Forward-clamp for the reconstructed beat clock. [beatTimesMs] is exact
@@ -783,6 +845,7 @@ Substrate decodeSubstrate(List<String> hexes) {
   final stepCount = List<int>.filled(n, -1);
   final signalQualityLogVar = Float64List(n)
     ..fillRange(0, n, double.nan);
+  final beatClock = BeatClock();
   for (var i = 0; i < n; i++) {
     final r = recs[i];
     tsSec[i] = r.ts;
@@ -799,11 +862,12 @@ Substrate decodeSubstrate(List<String> hexes) {
     stepCount[i] = r.stepCount ?? -1;
     final lv = r.signalQualityLogVar;
     if (lv != null && lv.isFinite) signalQualityLogVar[i] = lv;
-    // RR beats: placed at their MEASURED instant (`beatTimesMs` — the record's
-    // own sub-second anchor, intervals walked backwards from it), falling back
-    // to the record second only when the record carries no sub-second.
+    // RR beats: placed at their MEASURED instant (`beatTimesMs` — chained to
+    // the previous record's last beat when the junction proves out, else the
+    // record's own sub-second anchor), falling back to the record second only
+    // when the record carries no sub-second.
     final t = r.ts * 1000.0;
-    final beatTs = beatTimesMs(r.ts, r.tsSubsec, r.rrIntervalsMs);
+    final beatTs = beatClock.place(r.ts, r.tsSubsec, r.rrIntervalsMs);
     for (var b = 0; b < r.rrIntervalsMs.length; b++) {
       final rr = plausibleRrOrNull(r.rrIntervalsMs[b]);
       if (rr != null) {

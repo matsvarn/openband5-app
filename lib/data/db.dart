@@ -23,7 +23,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
-import '../compute/substrate.dart' show beatTimesMs;
+import '../compute/substrate.dart' show BeatClock, beatTimesMs;
 // The ONE thing this layer takes from compute/: the running build's algo
 // version, which every day_result read applies as a CEILING (see [dayResult]).
 // `show` keeps the rest of the engine out of this namespace.
@@ -5756,6 +5756,10 @@ class LocalDb {
           }
         }
         var blobMinCtr = 0, blobMaxCtr = 0, blobMinTs = 0, blobMaxTs = 0;
+        // Records arrive in band emission order — share one beat clock so
+        // each second's first beat anchors to the measured junction instead
+        // of a fresh emit instant (~±300 ms -> ~40 ms PPG-measured jitter).
+        final beatClock = BeatClock();
         for (var i = 0; i < raws.length; i++) {
           final raw = raws[i];
           final recTs = _recTsFor(raw);
@@ -5782,6 +5786,7 @@ class LocalDb {
             sample,
             deviceFamily: deviceFamily,
             deviceId: deviceId,
+            beatClock: beatClock,
           );
           if (raw.counter > maxCounter) maxCounter = raw.counter;
           if (recTs > maxRecTs) maxRecTs = recTs;
@@ -8337,6 +8342,7 @@ class LocalDb {
     // opposite default would let a forgotten argument write every row at
     // ('', 0), where REPLACE collapses the entire store to ONE row.
     bool preDeviceKey = false,
+    BeatClock? beatClock,
   }) {
     final decoded = _decodeOneHzSample(raw, preferred: sample);
     if (decoded == null) {
@@ -8355,6 +8361,7 @@ class LocalDb {
           deviceFamily: deviceFamily,
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
+          beatClock: beatClock,
         );
       }
       return 0;
@@ -8452,6 +8459,7 @@ class LocalDb {
           deviceFamily: deviceFamily,
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
+          beatClock: beatClock,
         );
   }
 
@@ -8482,6 +8490,12 @@ class LocalDb {
     String? deviceFamily,
     String deviceId = kPrimaryDeviceId,
     bool preDeviceKey = false,
+    // Cross-record beat clock: a caller walking records in time order shares
+    // one [BeatClock] so each record's first beat anchors to the measured
+    // junction (prev last beat + its interval — ~5x tighter absolute phase
+    // than the emit anchor, PPG-measured). Null = per-record emit anchor,
+    // exactly as before.
+    BeatClock? beatClock,
   }) {
     // SCOPED TO THE WRITING DEVICE (v47). Unscoped, this cleared every device's
     // beats for the second — so a second band writing one row deleted the
@@ -8495,7 +8509,9 @@ class LocalDb {
         [deviceId, recTs * 1000],
       );
     }
-    final beatTs = beatTimesMs(recTs, decoded.tsSubsec, decoded.rrIntervalsMs);
+    final beatTs = beatClock?.place(
+            recTs, decoded.tsSubsec, decoded.rrIntervalsMs) ??
+        beatTimesMs(recTs, decoded.tsSubsec, decoded.rrIntervalsMs);
     var ops = 1;
     for (var i = 0; i < decoded.rrIntervalsMs.length; i++) {
       final rr = decoded.rrIntervalsMs[i];
@@ -8628,6 +8644,9 @@ class LocalDb {
     await _ensureBeatTimeColumn(db);
     const pageSize = 1000;
     int afterCounter = -1;
+    // One clock across pages — the page boundary is a read chunk, not a
+    // record gap.
+    final beatClock = BeatClock();
     while (true) {
       final rows = await db.query(
         'raw_records',
@@ -8649,7 +8668,8 @@ class LocalDb {
         );
         // MID-LADDER: `device_id` / `ts_ms` do not exist yet (v47 rung). See
         // _queueDecodedOneHz's `preDeviceKey`.
-        _queueDecodedOneHz(batch, raw, null, preDeviceKey: true);
+        _queueDecodedOneHz(batch, raw, null,
+            preDeviceKey: true, beatClock: beatClock);
       }
       await batch.commit(noResult: true);
       afterCounter = (rows.last['counter'] as num?)?.toInt() ?? afterCounter;
@@ -9683,10 +9703,11 @@ class LocalDb {
     final db = await instance;
     await db.transaction((txn) async {
       final batch = txn.batch();
+      final beatClock = BeatClock();
       for (var i = 0; i < raws.length; i++) {
         final raw = raws[i];
         final sample = samples[i];
-        _queueDecodedOneHz(batch, raw, sample);
+        _queueDecodedOneHz(batch, raw, sample, beatClock: beatClock);
       }
       await batch.commit(noResult: true);
     });
