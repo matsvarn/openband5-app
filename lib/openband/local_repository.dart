@@ -1208,7 +1208,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'AND date NOT IN ('
         'SELECT date FROM metric_series_version '
         'WHERE date >= ? AND date <= ? '
-        "AND date IS NOT NULL AND source IS NOT NULL AND source <> 'band' "
+        "AND date IS NOT NULL AND source <> 'band' "
         'UNION '
         'SELECT r.day_id FROM day_result r '
         'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result '
