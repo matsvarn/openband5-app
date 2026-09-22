@@ -408,6 +408,10 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // RMSSD follows the sleep-session windowed formulation.
   final nremMask = _nremMaskAlignedToNn(d, nnTimes, d.sleepRrTsMs);
   final robustRmssd = nocturnalRmssd(nn, nnTimes, stageMaskPerSec: nremMask);
+  // The headline takes RAW RR, not `corrected`: its own fixed ±20% local-
+  // median gate rejects sustained artifact bursts that correctRr's adaptive
+  // threshold accepts (measured on the retained corpus — see
+  // sleepSessionWindowedRmssd's doc). Two cleaners is the design, not drift.
   final sleepSessionRmssdMetric = sleepSessionWindowedRmssd(
     d.sleepRrMs,
     d.sleepRrTsMs,
