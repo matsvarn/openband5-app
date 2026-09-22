@@ -11714,11 +11714,11 @@
   "@bandStatusBluetoothDeniedTitle": {
     "description": "BandStatus card title: app-level Bluetooth permission denied"
   },
-  "bandStatusBluetoothDeniedReason": "The phone is withholding the Bluetooth radio from OpenStrap, so nothing can be scanned or connected. This is not the band — walking closer to it will not help.",
+  "bandStatusBluetoothDeniedReason": "The phone is withholding the Bluetooth radio from OpenBand 5, so nothing can be scanned or connected. This is not the band — walking closer to it will not help.",
   "@bandStatusBluetoothDeniedReason": {
     "description": "BandStatus card body: app-level Bluetooth permission denied"
   },
-  "bandStatusBluetoothDeniedFix": "Open Settings → OpenStrap and allow Bluetooth",
+  "bandStatusBluetoothDeniedFix": "Open Settings → OpenBand 5 and allow Bluetooth",
   "@bandStatusBluetoothDeniedFix": {
     "description": "BandStatus fix action: app-level Bluetooth permission denied"
   },

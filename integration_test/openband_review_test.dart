@@ -10,6 +10,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/ble/ble_state.dart' show BleBlocker;
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -58,6 +59,9 @@ import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
+import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
+import 'package:openstrap_edge/ui2/onboarding/first_sync.dart';
+import 'package:openstrap_edge/ui2/pairing/device_picker.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:provider/provider.dart';
@@ -20571,6 +20575,152 @@ void main() {
         await reviewMountImportReceipt(tester, restoreReceipt, scale: 2);
         await tester.ensureVisible(find.text('2 Neuberechnungen ausstehend'));
         await capture('release-restore-partial-large');
+
+        Future<void> mountBandView(
+          Widget child, {
+          Brightness brightness = Brightness.light,
+          double scale = 1,
+        }) async {
+          await tester.pumpWidget(MaterialApp(
+            key: UniqueKey(),
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('de'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: openBandTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(scale),
+              ),
+              child: child!,
+            ),
+            home: child,
+          ));
+          await tester.pumpAndSettle();
+        }
+
+        var pairingActions = 0;
+        Widget pairingFixture({PairPhase initial = PairPhase.idle}) {
+          var phase = initial;
+          return StatefulBuilder(builder: (context, setState) => PairingView(
+            phase: phase,
+            blocker: phase == PairPhase.bluetoothBlocked
+                ? BleBlocker.permissionDenied : null,
+            onPair: () {
+              pairingActions++;
+              setState(() => phase = PairPhase.bluetoothBlocked);
+            },
+            onBack: () => pairingActions++,
+            onSkip: () => pairingActions++,
+          ));
+        }
+
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          await mountBandView(pairingFixture(), brightness: brightness);
+          expect(find.text('WHOOP 5.0'), findsOneWidget);
+          await capture('release-pairing-$suffix');
+          final pairAction = find.byType(OBAction).first;
+          await tester.tap(pairAction);
+          await tester.pumpAndSettle();
+          expect(pairingActions, greaterThan(0));
+          expect(find.text('WHOOP 5.0'), findsNothing);
+          await capture('release-pairing-permission-$suffix');
+        }
+        await mountBandView(pairingFixture(), scale: 2);
+        await capture('release-pairing-large');
+        await tester.scrollUntilVisible(
+          find.text('WHOOP-App schließen'), 200,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-pairing-large-bottom');
+
+        var resumeCalls = 0;
+        var doneCalls = 0;
+        FirstSyncScreen syncFixture() {
+          var band = BandSnapshot(
+            connection: BandConnection.connected,
+            transfer: TransferState.interrupted,
+            latestStoredAt: DateTime(2026, 9, 15, 2, 10),
+          );
+          return FirstSyncScreen(
+            synthetic: true,
+            now: () => DateTime(2026, 9, 15, 9, 41),
+            onDone: () => doneCalls++,
+            readBand: () async => band,
+            readSetupEvaluation: (day) async => SetupEvaluation(
+              day: day, currentAlgo: kAlgoVersion,
+              state: SetupEvalState.missing,
+            ),
+            onResume: () async {
+              resumeCalls++;
+              band = BandSnapshot(
+                connection: resumeCalls == 1
+                    ? BandConnection.disconnected : BandConnection.connected,
+                transfer: TransferState.idle,
+                latestStoredAt: DateTime(2026, 9, 15, 2, 10),
+              );
+            },
+          );
+        }
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          resumeCalls = 0;
+          await mountBandView(syncFixture(), brightness: brightness);
+          expect(find.text('bis 02:10'), findsOneWidget);
+          await capture('release-sync-interrupted-$suffix');
+          await tester.tap(find.text('Fortsetzen'));
+          await tester.pumpAndSettle();
+          expect(resumeCalls, 1);
+          expect(find.text('Verbunden'), findsNothing);
+          expect(find.text('Erneut'), findsOneWidget);
+          await capture('release-sync-failed-$suffix');
+          await tester.tap(find.text('Erneut'));
+          await tester.pumpAndSettle();
+          expect(resumeCalls, 2);
+          expect(find.text('Verbunden'), findsOneWidget);
+          expect(find.text('Erneut'), findsNothing);
+          expect(find.text('bis 02:10'), findsOneWidget);
+          await capture('release-sync-retry-$suffix');
+          await tester.tap(find.text('Weiter zum Profil'));
+          await tester.pumpAndSettle();
+        }
+        expect(doneCalls, 2);
+        resumeCalls = 0;
+        await mountBandView(syncFixture(), scale: 2);
+        await capture('release-sync-large');
+        await tester.ensureVisible(find.text('Fortsetzen'));
+        await capture('release-sync-large-bottom');
+        await tester.tap(find.text('Weiter zum Profil'));
+        await tester.pumpAndSettle();
+        expect(doneCalls, 3);
+
+        final sensorQuery = TextEditingController();
+        var scanCalls = 0;
+        BleBlocker? scanBlocker = BleBlocker.permissionDenied;
+        await mountBandView(StatefulBuilder(
+          builder: (context, setState) => DevicePickerView(
+            query: sensorQuery,
+            title: 'Sensor verbinden',
+            subtitle: 'Synthetische Daten',
+            scanBlocker: scanBlocker,
+            onScan: () => setState(() {
+              scanCalls++;
+              scanBlocker = null;
+            }),
+          ),
+        ));
+        await capture('release-sensor-permission');
+        final retry = find.text(AppLocalizations.of(
+          tester.element(find.byType(DevicePickerView)),
+        )!.pairingTryAgain);
+        await tester.tap(retry);
+        await tester.pumpAndSettle();
+        expect(scanCalls, 1);
+        await capture('release-sensor-empty');
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        sensorQuery.dispose();
         return;
       }
       if (kOpenBandReviewFlow == 'journal' ||

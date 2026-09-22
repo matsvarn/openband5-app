@@ -147,6 +147,7 @@ class OBPageHeader extends StatelessWidget {
   final String title, subtitle;
   final String backLabel;
   final VoidCallback? onBack, onInfo, onDate;
+  final bool showBack;
   final String infoLabel;
   final IconData infoIcon;
   const OBPageHeader({
@@ -155,6 +156,7 @@ class OBPageHeader extends StatelessWidget {
     required this.subtitle,
     this.backLabel = 'Zurück',
     this.onBack,
+    this.showBack = true,
     this.onInfo,
     this.onDate,
     this.infoLabel = 'Information',
@@ -205,11 +207,13 @@ class OBPageHeader extends StatelessWidget {
             style: TextButton.styleFrom(padding: EdgeInsets.zero),
             child: child,
           );
-    final back = circle(
-      LucideIcons.chevronLeft,
-      backLabel,
-      onBack ?? () => Navigator.maybePop(context),
-    );
+    final back = showBack
+        ? circle(
+            LucideIcons.chevronLeft,
+            backLabel,
+            onBack ?? () => Navigator.maybePop(context),
+          )
+        : const SizedBox(width: 44, height: 44);
     final info = onInfo == null
         ? const SizedBox(width: 44, height: 44)
         : circle(infoIcon, infoLabel, onInfo!);

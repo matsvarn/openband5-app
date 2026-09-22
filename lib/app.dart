@@ -39,9 +39,8 @@ import 'ui2/activity/catalogue.dart';
 import 'ui2/activity/live.dart';
 import 'ui2/activity/tiles.dart' show mapTilesAllowed;
 import 'ui2/onboarding/first_sync.dart';
-import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
+import 'ui2/onboarding/pairing.dart' show OnboardingBypass, PairingScreen;
 import 'ui2/onboarding/profile_setup.dart';
-import 'ui2/pairing/device_picker.dart';
 import 'ui2/onboarding/splash.dart';
 import 'ui2/onboarding/welcome.dart';
 import 'ui2/profile/alarm.dart';
@@ -266,7 +265,7 @@ class _Gate extends StatelessWidget {
           AppRoute.loading => const _Loading(),
           AppRoute.failed => const _InitFailed(),
           AppRoute.welcome => const WelcomeScreen(),
-          AppRoute.pairing => DevicePickerScreen(
+          AppRoute.pairing => PairingScreen(
             onBack: () => context.read<AppState>().returnToWelcome(),
             onSkip: () => OnboardingBypass.mark(OnboardingBypass.kPairing),
           ),

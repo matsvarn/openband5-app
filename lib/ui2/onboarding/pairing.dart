@@ -108,10 +108,16 @@ PairPhase classifyPairError(Object error, {int bondRefusals = 0}) {
 }
 
 class PairingScreen extends StatefulWidget {
-  /// Walk past pairing and open the app anyway. Supplied by the router.
+  /// Gate callbacks are explicit because the gate is the navigator's sole
+  /// route: it must change AppState instead of popping itself. Pushed re-pair
+  /// screens omit [onBack] and provide [onPaired] for exactly one pop.
+  final VoidCallback? onBack;
+  final VoidCallback? onPaired;
+
+  /// Walk past pairing and open the app anyway. Supplied only by the router.
   final VoidCallback? onSkip;
 
-  const PairingScreen({super.key, this.onSkip});
+  const PairingScreen({super.key, this.onBack, this.onPaired, this.onSkip});
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -141,6 +147,13 @@ class _PairingScreenState extends State<PairingScreen> {
         await app.pairWith(found);
       }
       if (!mounted) return;
+      // AccessorySetup cancellation is platform-owned and has changed shape
+      // across iOS releases. Persistence is the source of truth: a callback
+      // returning normally without an actual paired row is not success.
+      if (!app.isPaired) {
+        setState(() => _phase = PairPhase.cancelled);
+        return;
+      }
       setState(() => _phase = PairPhase.paired);
     } catch (e) {
       if (!mounted) return;
@@ -158,8 +171,11 @@ class _PairingScreenState extends State<PairingScreen> {
     detail: _detail,
     blocker: _blocker,
     onPair: _pair,
-    onBack: () => Navigator.of(c).pop(c.read<AppState>().isPaired),
-    onContinue: () => Navigator.of(c).pop(true),
+    onBack:
+        widget.onBack ?? () => Navigator.of(c).pop(c.read<AppState>().isPaired),
+    onContinue:
+        widget.onPaired ??
+        (widget.onBack == null ? () => Navigator.of(c).pop(true) : null),
     onSkip: widget.onSkip,
   );
 }
@@ -171,6 +187,7 @@ class PairingView extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onContinue;
   final VoidCallback? onSkip;
+  final VoidCallback? onInfo;
 
   /// Which phone-side blocker, when [phase] is `bluetoothBlocked`.
   final BleBlocker? blocker;
@@ -184,12 +201,12 @@ class PairingView extends StatelessWidget {
     this.detail = '',
     this.blocker,
     this.onSkip,
+    this.onInfo,
   });
 
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
-    final l = AppLocalizations.of(c);
     final busy = phase == PairPhase.scanning;
     // The copy for this one lives in the BLE layer, so this screen and the
     // Devices screen cannot drift into two different accounts of one state.
@@ -199,6 +216,15 @@ class PairingView extends StatelessWidget {
             bandStatusFor(connection: 'disconnected', blocker: blocker),
           )
         : null;
+    final stateDetail = phase == PairPhase.idle
+        ? _s(
+            c,
+            'Band nah ans iPhone halten.',
+            'Hold the band close to the phone.',
+          )
+        : blocked == null
+        ? _body(c, phase, blocker)
+        : blocked.fix ?? blocked.reason;
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
@@ -207,51 +233,140 @@ class PairingView extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: OBPageHeader(
-                title: l?.devicePickerTitle ?? 'Connect your devices',
-                subtitle: '',
+                title: _s(c, 'Band verbinden', 'Connect band'),
+                subtitle: onSkip == null
+                    ? ''
+                    : _s(
+                        c,
+                        'Einrichtung · Schritt 1 von 3',
+                        'Setup · Step 1 of 3',
+                      ),
                 onBack: onBack,
+                onInfo: onInfo ?? () => _showInfo(c),
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 32, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                 children: [
-                  Icon(
-                    blocked == null
-                        ? LucideIcons.bluetooth
-                        : LucideIcons.bluetoothOff,
-                    size: 36,
-                    color: p.action,
+                  OBCard(
+                    child: Column(
+                      children: [
+                        Container(
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: p.well,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _PairDeviceIcon(icon: LucideIcons.watch),
+                              const SizedBox(width: 16),
+                              _PairLink(
+                                activeBars: switch (phase) {
+                                  PairPhase.paired => 3,
+                                  PairPhase.idle || PairPhase.scanning => 2,
+                                  _ => 0,
+                                },
+                              ),
+                              const SizedBox(width: 16),
+                              _PairDeviceIcon(icon: LucideIcons.smartphone),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: p.sleepTint,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: busy
+                                  ? Padding(
+                                      padding: const EdgeInsets.all(9),
+                                      child: CircularProgressIndicator(
+                                        color: p.sleep,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      blocked == null
+                                          ? phase == PairPhase.paired
+                                                ? LucideIcons.circleCheck
+                                                : LucideIcons.bluetooth
+                                          : LucideIcons.bluetoothOff,
+                                      size: 18,
+                                      color: p.sleep,
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    phase == PairPhase.idle
+                                        ? 'WHOOP 5.0'
+                                        : _title(c, phase, blocker),
+                                    style: p.text(15, weight: FontWeight.w600),
+                                  ),
+                                  Text(
+                                    stateDetail,
+                                    style: p.text(13, color: p.muted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    _title(c, phase, blocker),
-                    style: p.text(30, weight: FontWeight.w800, display: true),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _body(c, phase, blocker),
-                    style: p.text(15, color: p.muted),
-                  ),
-                  if (blocked?.fix != null) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      blocked!.fix!,
-                      style: p.text(
-                        15,
-                        weight: FontWeight.w600,
-                        color: p.action,
+                  if (phase != PairPhase.bluetoothBlocked) ...[
+                    const SizedBox(height: 10),
+                    OBCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      child: Column(
+                        children: [
+                          _PairStep(
+                            '1',
+                            _s(
+                              c,
+                              'Band tragen oder laden',
+                              'Wear or charge the band',
+                            ),
+                          ),
+                          _PairStep(
+                            '2',
+                            _s(c, 'Bluetooth einschalten', 'Turn on Bluetooth'),
+                          ),
+                          _PairStep(
+                            '3',
+                            _s(c, 'WHOOP-App schließen', 'Close the WHOOP app'),
+                            last: true,
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                  if (busy) ...[
-                    const SizedBox(height: 32),
-                    Center(child: CircularProgressIndicator(color: p.action)),
-                  ],
-                  ..._advice(c, phase, detail),
-                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
                   OBAction(
                     _cta(c, phase),
+                    ink: true,
                     onPressed: busy
                         ? null
                         : phase == PairPhase.paired
@@ -259,27 +374,64 @@ class PairingView extends StatelessWidget {
                         : onPair,
                   ),
                   if (onSkip != null && phase != PairPhase.paired) ...[
-                    const SizedBox(height: 12),
-                    // Never disabled, not even mid-scan: waiting out a scan you
-                    // already know will fail is exactly the trap this exists for.
-                    OBAction(
-                      AppLocalizations.of(c)?.pairingSkipForNow ??
-                          'Skip for now',
-                      secondary: true,
-                      onPressed: onSkip,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      AppLocalizations.of(c)?.pairingSkipNote ??
-                          'The app opens without a band. Nothing is measured until one '
-                              'is paired.',
-                      style: p.text(13, color: p.muted),
+                    const SizedBox(height: 10),
+                    // Never disabled mid-scan: the escape hatch must not make
+                    // someone wait out a scan they already chose to leave.
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: onSkip,
+                        style: TextButton.styleFrom(
+                          foregroundColor: p.muted,
+                          minimumSize: const Size(44, 44),
+                        ),
+                        child: Text(
+                          _s(c, 'Später verbinden', 'Connect later'),
+                          style: p.text(
+                            15,
+                            weight: FontWeight.w600,
+                            color: p.muted,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showInfo(BuildContext context) {
+    final p = OB.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.card,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _title(sheet, phase, blocker),
+                style: p.text(18, weight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Text(_body(sheet, phase, blocker), style: p.text(14)),
+              ..._advice(sheet, phase, detail),
+              const SizedBox(height: 16),
+              OBAction(
+                _s(sheet, 'Schließen', 'Close'),
+                ink: true,
+                onPressed: () => Navigator.pop(sheet),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -342,7 +494,7 @@ class PairingView extends StatelessWidget {
   static String _cta(BuildContext c, PairPhase phase) {
     final l = AppLocalizations.of(c);
     return switch (phase) {
-      PairPhase.idle => l?.pairingFindMyBand ?? 'Find my band',
+      PairPhase.idle => _s(c, 'Verbinden', 'Connect'),
       PairPhase.scanning => l?.pairingSearching ?? 'Searching…',
       PairPhase.cancelled =>
         l?.pairingOpenPickerAgain ?? 'Open the picker again',
@@ -397,6 +549,98 @@ class PairingView extends StatelessWidget {
     };
   }
 }
+
+class _PairDeviceIcon extends StatelessWidget {
+  final IconData icon;
+  const _PairDeviceIcon({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Icon(icon, size: 28, color: p.ink),
+    );
+  }
+}
+
+class _PairLink extends StatelessWidget {
+  final int activeBars;
+  const _PairLink({required this.activeBars});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Row(
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          Container(
+            width: 10,
+            height: 3,
+            decoration: BoxDecoration(
+              color: i < activeBars ? p.action : p.line,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          if (i < 2) const SizedBox(width: 4),
+        ],
+      ],
+    );
+  }
+}
+
+class _PairStep extends StatelessWidget {
+  final String number;
+  final String label;
+  final bool last;
+  const _PairStep(this.number, this.label, {this.last = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: last
+          ? null
+          : BoxDecoration(
+              border: Border(bottom: BorderSide(color: p.line)),
+            ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 20,
+            child: Text(
+              number,
+              style: p.text(
+                15,
+                weight: FontWeight.w700,
+                display: true,
+                color: p.muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: p.text(15, weight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+bool _german(BuildContext context) =>
+    Localizations.maybeLocaleOf(context)?.languageCode == 'de';
+
+String _s(BuildContext context, String de, String en) =>
+    _german(context) ? de : en;
 
 /// The raw error, kept but demoted. It is useless to most people and the only
 /// thing that helps in a bug report.

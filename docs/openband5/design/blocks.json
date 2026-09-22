@@ -4,7 +4,7 @@
     "paperFileName": "OpenBand 5 · Designphase 3",
     "blocksPageId": "p-V-0",
     "blocksPageName": "Bausteine · Release · Alpin 3",
-    "exportedAt": "2026-09-21",
+    "exportedAt": "2026-09-22",
     "releasePageId": "U-0",
     "releasePageName": "Release · Alpin 3"
   },
@@ -20,8 +20,6 @@
     "3GQP-0": "Release Profil · Hell (lib/ui2/profile/profile.dart)",
     "3I5L-0": "A05 Gesundheit · HRV · Hell",
     "3IBK-0": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
-    "OB-Belastung-Detail": "Belastung · Detail (lib/openband/metric_detail.dart)",
-    "OB-Schlaf-Korrektur": "Schlaf · Zeiten korrigieren (lib/openband/sleep_editor.dart)",
     "3ISM-0": "A02 Nachtverlauf · Puls",
     "3IZO-0": "A02 Nachtverlauf · Dunkel",
     "3J78-0": "A02 Nachtverlauf · wenige Werte",
@@ -43,7 +41,9 @@
     "565V-0": "Einrichtung · Übertragung unterbrochen · Hell (lib/ui2/onboarding/first_sync.dart)",
     "567A-0": "Einrichtung · Übertragung unterbrochen · Dunkel (lib/ui2/onboarding/first_sync.dart)",
     "569H-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Hell (lib/ui2/onboarding/welcome.dart)",
-    "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)"
+    "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)",
+    "3IBJ-0": "Einrichtung · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
+    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)"
   },
   "blocks": [
     {
@@ -82,16 +82,24 @@
         "3GQP-0",
         "5619-0",
         "55UX-0",
-        "55Y8-0"
+        "55Y8-0",
+        "3IBJ-0",
+        "56BD-0",
+        "3IBK-0",
+        "3P4K-0",
+        "565V-0",
+        "567A-0",
+        "3P8X-0"
       ],
-      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected.",
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
       "variantPaperNodes": {
         "large": "4EEM-0",
         "largeDark": "4EEZ-0",
         "cycleObservationLarge": "4FVH-0",
         "cycleObservationLargeDark": "4G10-0",
         "exerciseCopy": "4SUC-0",
-        "exerciseCopyDark": "4SUQ-0"
+        "exerciseCopyDark": "4SUQ-0",
+        "root": "56F7-0"
       }
     },
     {
@@ -511,7 +519,7 @@
       "name": "OBSyncState",
       "widget": "OBSyncState",
       "implemented": "screens.dart",
-      "note": "Eine Zeile unter dem Kopf: Band wird gelesen · Unterbrochen (Fortsetzen) · Gespeichert bis. Nie eine Karte im Feed. Kein Fortschritt ohne echten Wert.",
+      "note": "Stored frontier and real transfer state only; no invented progress track. Interactive states use44-point targets; large text stacks the action. FirstSync adds actual resume pending/failure state without changing storage or BLE ownership.",
       "paperNode": "3I3P-0",
       "file": "screens.dart",
       "usedIn": [
@@ -519,7 +527,11 @@
         "55IW-0",
         "565V-0",
         "567A-0"
-      ]
+      ],
+      "variantPaperNodes": {
+        "largeText": "56GW-0",
+        "interrupted": "3I3Z-0"
+      }
     },
     {
       "name": "OBStepsHours",
@@ -567,12 +579,19 @@
     },
     {
       "name": "OBPairCard",
-      "paperNode": "edge-OBPairCard",
+      "paperNode": "56EK-0",
       "widget": "PairingView",
       "file": "ui2/onboarding/pairing.dart",
-      "implemented": "PairingView status card + _Detail card",
-      "usedIn": [],
-      "notes": "Pairing status uses OBNoticeCard + _Detail inside PairingView; no OBPairCard class."
+      "implemented": "PairingView hero card",
+      "usedIn": [
+        "3IBJ-0",
+        "56BD-0"
+      ],
+      "notes": "Canonical setup hero:120-point illustration well,64-point device slots,36-point state icon and concise phase-specific status. Typed permission/recovery states preserve their actual cause.",
+      "variantPaperNodes": {
+        "permission": "56FJ-0",
+        "permissionDark": "56G9-0"
+      }
     },
     {
       "name": "OBFormCard",
@@ -735,7 +754,10 @@
       "file": "ui2/onboarding/first_sync.dart",
       "usedIn": [
         "3IBK-0",
-        "3P4K-0"
+        "3P4K-0",
+        "565V-0",
+        "567A-0",
+        "3P8X-0"
       ],
       "variants": [
         "open",
@@ -843,7 +865,7 @@
   "openBlocks": [],
   "status": "Reduced release registry. Source mapping is checked; release native acceptance is tracked in state_checklist.json. Historical full-product registrations remain in the archive.",
   "schema": {
-    "version": 65,
+    "version": 67,
     "tables": [
       "openband_workout_template",
       "openband_meal_draft",
@@ -864,7 +886,8 @@
       "imported_measurement_source_setting",
       "med_def",
       "med_dose",
-      "med_plan_revision"
+      "med_plan_revision",
+      "manual_vo2"
     ]
   },
   "research": {

@@ -117,6 +117,7 @@ import '../../state/prefs.dart' show Prefs;
 import '../../sync/paired_device.dart' show cleanDeviceLabel;
 import '../../state/app_state.dart';
 import '../../openband/theme.dart' show OBPageHeader;
+import '../onboarding/pairing.dart' show PairingScreen;
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
@@ -1405,19 +1406,16 @@ Future<void> showReasonSheet(BuildContext c, String reason) async {
   );
 }
 
-/// Pairing, pushed rather than gated.
-///
-/// Close this route after the nested pairing screen returns a paired band.
+/// WHOOP pairing, pushed rather than gated. One successful Continue closes
+/// this route; the screen must not also pop itself through a nested picker.
 class RePair extends StatelessWidget {
   const RePair({super.key});
 
   @override
   Widget build(BuildContext c) {
-    // NO `onSkip`. That argument is first-run onboarding's "Skip for now",
-    // and its note says the app opens without a band and nothing is measured
-    // — a sentence about a decision this user made long ago. A re-pair backs
-    // out through `NavBar`'s own back button, exactly as `addSensor` does.
-    return DevicePickerScreen(onPaired: () => Navigator.of(c).pop());
+    // NO `onSkip`: that is first-run onboarding's escape hatch. The default
+    // back behavior pops this pushed route, and success performs one pop.
+    return PairingScreen(onPaired: () => Navigator.of(c).pop());
   }
 }
 

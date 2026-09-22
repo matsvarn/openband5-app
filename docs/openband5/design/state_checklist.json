@@ -19,8 +19,9 @@
     {
       "id": "release-band",
       "outcome": "Pairing, transfer, stored-through time, connection and failure/recovery remain clear and reachable.",
-      "status": "in-progress",
-      "owner": "band-sol16192240/f725f649; lead integration and acceptance"
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Direct pairing/re-pair and truthful state-based resume accepted after Sol implementation, fresh Devin SWE-2 review and lead source/native review.2226 required tests,115-target analysis pass;12 goldens inspected;32 Pro/mini PNGs inspected,26 accepted. See IMPLEMENTATION_VERIFICATION.md,22September2026."
     },
     {
       "id": "release-data",
@@ -32,8 +33,9 @@
     {
       "id": "release-paper",
       "outcome": "One Release page and one shared-block page first; old Alpin3 pages archived; representative light/dark and missing/error states match native.",
-      "status": "in-progress",
-      "owner": "lead"
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Release/shared pages first:28 representative Release screens,32 shared boards. Pairing light/dark, concise permission variants, root header and large-text sync row registered and compared with native.59-block/28-screen manifest passes. Old archives and Designphase2 preserved."
     },
     {
       "id": "release-device-evidence",
@@ -45,7 +47,9 @@
     {
       "id": "release-acceptance",
       "outcome": "Fresh review, required Flutter/manifest checks, targeted Pro and mini native review, all changed goldens inspected, versions/pins reconciled; local commits only.",
-      "status": "pending"
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Fresh independent reviews and lead diff/render acceptance complete.2226 required tests and115-target analysis pass; manifest and diff check pass. All12 changed/new goldens and32 Band native PNGs inspected. App/widget/watch0.9.31+67, schema67, algorithm90 and full pins/lock reconciled. Prior accepted navigation/sleep/data/device evidence reused; no repeated full-product matrix. Local commit only; device-proof and parked-suite limits remain explicit in IMPLEMENTATION_VERIFICATION.md."
     }
   ],
   "parked": [

@@ -1,34 +1,9 @@
-// The one door into pairing.
+// Secondary-sensor and development device picker.
 //
-// WHY THIS EXISTS. There used to be three: onboarding's `PairingScreen`
-// (WHOOP-only, one "Find my band" button), `devices.dart`'s `addSensor`
-// bottom sheet (a plain list of two rows), and `RePair` (a thin wrapper
-// around the first). Someone with a ring or a chest strap and no WHOOP yet
-// had nowhere to go from onboarding at all. This screen is the single
-// front door for all three call sites — first pair, re-pair, and add a
-// second sensor — so the flow, the back button and the copy cannot drift
-// into three different accounts of one action again.
-//
-// WHAT IT DOES NOT DO. It does not invent support. The category list below
-// is exactly [kBandRegistry] — real entries, not aspirational ones —
-// because a category tile for a scale or a blood-pressure cuff this
-// app cannot read from would be a promise with nothing behind it. See
-// ASSUMPTIONS R6 and `sensorIcon`'s own doc for the same rule applied
-// elsewhere.
-//
-// WHY NO BRAND LOGOS. A brand's wordmark is nominative fair use — naming a
-// product to say this app works with it. A brand's LOGO GRAPHIC is someone
-// else's copyrighted artwork on top of that, and a stylized mark or a
-// product photo reads as an implied partnership this app does not have and
-// has no license for. Every device below is a plain-text name and a
-// generic Lucide glyph, never a fetched brand asset.
-//
-// WHY WHOOP IS A SEPARATE PUSH, NOT A ROW IN THE SAME LIST. A framed band
-// pairs through `PairingScreen` — on iOS, through AccessorySetupKit's OWN
-// system sheet, which this app does not render and cannot fold into a
-// custom list alongside notify-class candidates. Tapping "Watches & bands"
-// here pushes that screen unchanged; this file adds a front door to it, it
-// does not rebuild what is already there.
+// Release onboarding and re-pair enter the WHOOP-specific `PairingScreen`
+// directly. This remains the production door for `addSensor` with
+// `includeBand: false`; registry entries use generic Lucide glyphs rather than
+// fetched brand artwork.
 
 import 'dart:async' show unawaited;
 
@@ -39,7 +14,7 @@ import 'package:provider/provider.dart';
 import '../../ble/adapters/_registry.dart';
 import '../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../ble/ble_state.dart'
-    show BleUnavailableException, bandStatusFor, classifyBleBlocker;
+    show BleBlocker, BleUnavailableException, bandStatusFor, classifyBleBlocker;
 import '../../ble/hrs_link.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -83,6 +58,8 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
   List<BandCandidate> _found = const [];
   bool _scanning = false;
   String? _heldBack;
+  BleBlocker? _scanBlocker;
+  String? _scanProblem;
   String? _problem;
 
   /// Remote id of whichever candidate — nearby row or category tile — is
@@ -117,7 +94,11 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
     final held = await HrsLink.scanHeldBackReason();
     if (!mounted) return;
     if (held != null) {
-      setState(() => _heldBack = held);
+      setState(() {
+        _heldBack = held;
+        _scanBlocker = null;
+        _scanProblem = null;
+      });
       return;
     }
     await _scan();
@@ -126,6 +107,8 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
   Future<void> _scan() async {
     setState(() {
       _scanning = true;
+      _scanBlocker = null;
+      _scanProblem = null;
       _problem = null;
       _heldBack = null;
       _found = const [];
@@ -142,12 +125,13 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       final blocker =
           e is BleUnavailableException ? e.blocker : classifyBleBlocker(error: e);
       if (!mounted) return;
-      setState(() => _problem = blocker != null
-          ? localizedBandStatus(context,
-                  bandStatusFor(connection: 'disconnected', blocker: blocker))
-              .reason
-          : (AppLocalizations.of(context)?.pairSensorScanDidNotRun(e.toString()) ??
-              'The scan did not run: $e'));
+      setState(() {
+        _scanBlocker = blocker;
+        _scanProblem = blocker == null
+            ? (AppLocalizations.of(context)?.pairSensorScanDidNotRun(e.toString()) ??
+                'The scan did not run: $e')
+            : null;
+      });
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
@@ -248,6 +232,8 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       found: _found,
       scanning: _scanning,
       heldBack: _heldBack,
+      scanBlocker: _scanBlocker,
+      scanProblem: _scanProblem,
       problem: _problem,
       busyRemoteId: _busy,
       categories: [
@@ -375,6 +361,8 @@ class DevicePickerView extends StatelessWidget {
   final List<BandCandidate> found;
   final bool scanning;
   final String? heldBack;
+  final BleBlocker? scanBlocker;
+  final String? scanProblem;
   final String? problem;
   final String? busyRemoteId;
 
@@ -394,6 +382,8 @@ class DevicePickerView extends StatelessWidget {
     this.found = const [],
     this.scanning = false,
     this.heldBack,
+    this.scanBlocker,
+    this.scanProblem,
     this.problem,
     this.busyRemoteId,
     this.categories = const [],
@@ -409,6 +399,14 @@ class DevicePickerView extends StatelessWidget {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final busy = busyRemoteId != null;
+    final scanStatus = scanBlocker == null
+        ? null
+        : localizedBandStatus(c, bandStatusFor(
+            connection: 'disconnected', blocker: scanBlocker));
+    final scanFailed = scanStatus != null || scanProblem != null;
+    final scanWhy = scanStatus == null
+        ? scanProblem
+        : scanStatus.fix ?? scanStatus.reason;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -434,13 +432,25 @@ class DevicePickerView extends StatelessWidget {
                     icon: LucideIcons.triangleAlert,
                     onFix: busy ? null : onScan,
                   )
-                else
+                else if (!scanFailed || found.isNotEmpty)
                   _NearbySection(
                     found: found,
                     scanning: scanning,
                     busyRemoteId: busyRemoteId,
                     onTap: onPickNearby,
                   ),
+                if (scanFailed) ...[
+                  if (heldBack == null && found.isNotEmpty)
+                    const SizedBox(height: S.x4),
+                  StatusCard(
+                    scanStatus?.title ??
+                        (l?.pairSensorThatDidNotWork ?? 'That did not work'),
+                    scanWhy!,
+                    fix: l?.pairingTryAgain ?? 'Try again',
+                    icon: LucideIcons.circleAlert,
+                    onFix: busy || scanning ? null : onScan,
+                  ),
+                ],
                 if (problem != null) ...[
                   const SizedBox(height: S.x4),
                   StatusCard(
@@ -471,22 +481,6 @@ class DevicePickerView extends StatelessWidget {
                       ]),
                     ),
                   ),
-                const SizedBox(height: S.x5),
-                Surface(
-                  color: p.card2,
-                  child: Row(children: [
-                    Icon(LucideIcons.shieldCheck, size: 18, color: p.on(C.blue)),
-                    const SizedBox(width: S.x3),
-                    Expanded(
-                      child: Text(
-                        l?.devicePickerPrivacyNote ??
-                            'Everything stays on this phone. Nothing is sent '
-                                'anywhere unless you choose to export it.',
-                        style: F.cap.copyWith(color: p.ink3, height: 1.4),
-                      ),
-                    ),
-                  ]),
-                ),
                 if (onSkip != null) ...[
                   const SizedBox(height: S.x5),
                   BigButton(l?.pairingSkipForNow ?? 'Skip for now',

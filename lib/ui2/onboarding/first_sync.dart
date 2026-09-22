@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
+import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
@@ -21,6 +22,7 @@ enum SetupStatusIcon { open, active, done }
 
 class FirstSyncScreen extends StatefulWidget {
   final VoidCallback onDone;
+  final VoidCallback? onBack;
 
   /// Reads the current band snapshot. Defaults to the production
   /// [LocalOpenBandRepository]; tests inject the synthetic fixture.
@@ -29,14 +31,20 @@ class FirstSyncScreen extends StatefulWidget {
   /// Current-local-day evaluation. Injected together with [readBand].
   final Future<SetupEvaluation> Function(String day)? readSetupEvaluation;
 
+  /// Starts or reclaims the production session. With injected reads this must
+  /// also be injected; synthetic hosts never resolve [AppState] implicitly.
+  final Future<void> Function()? onResume;
+
   final DateTime Function()? now;
   final bool synthetic;
 
   const FirstSyncScreen({
     super.key,
     required this.onDone,
+    this.onBack,
     this.readBand,
     this.readSetupEvaluation,
+    this.onResume,
     this.now,
     this.synthetic = false,
   });
@@ -54,6 +62,9 @@ class _FirstSyncScreenState extends State<FirstSyncScreen> {
   int _gen = 0;
   bool _reading = false;
   bool _queued = false;
+  bool _resuming = false;
+  bool _resumePending = false;
+  bool _resumeFailed = false;
 
   DateTime Function() get _clock => widget.now ?? DateTime.now;
 
@@ -121,12 +132,23 @@ class _FirstSyncScreenState extends State<FirstSyncScreen> {
     try {
       final band = await _loadBand();
       if (!mounted || gen != _gen) return;
-      if (_band != band || _bandError) {
-        setState(() {
-          _band = band;
-          _bandError = false;
-        });
-      }
+      final resumeSettled =
+          _resumePending && band.connection != BandConnection.connecting;
+      setState(() {
+        _band = band;
+        _bandError = false;
+        if (resumeSettled) {
+          _resumePending = false;
+          _resumeFailed =
+              band.connection == BandConnection.disconnected ||
+              band.transfer == TransferState.interrupted;
+        } else if (band.connection == BandConnection.connected &&
+            band.transfer != TransferState.interrupted) {
+          // A later supervisor reconnect is equally real evidence. Do not
+          // leave a stale failed-action label beside a freshly connected row.
+          _resumeFailed = false;
+        }
+      });
     } catch (_) {
       if (!mounted || gen != _gen) return;
       if (!_bandError) setState(() => _bandError = true);
@@ -155,6 +177,45 @@ class _FirstSyncScreenState extends State<FirstSyncScreen> {
     }
   }
 
+  Future<void> _resume() async {
+    if (_resuming || _resumePending) return;
+    final injected = widget.onResume;
+    // An injected repository is a synthetic/test boundary. Never cross it to
+    // a production AppState merely because its host omitted an action seam.
+    if (widget.readBand != null && injected == null) return;
+    setState(() {
+      _resuming = true;
+      _resumeFailed = false;
+    });
+    try {
+      if (injected != null) {
+        await injected();
+      } else {
+        await context.read<AppState>().openSession();
+      }
+      if (!mounted) return;
+      final band = await _loadBand();
+      if (!mounted) return;
+      setState(() {
+        _band = band;
+        _bandError = false;
+        _resumePending = band.connection == BandConnection.connecting;
+        _resumeFailed =
+            !_resumePending &&
+            (band.connection == BandConnection.disconnected ||
+                band.transfer == TransferState.interrupted);
+      });
+      // Resume and read-retry stay separate actions, but a successful session
+      // attempt may also have completed today's evaluation while it ran.
+      unawaited(_read());
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _resumeFailed = true);
+    } finally {
+      if (mounted) setState(() => _resuming = false);
+    }
+  }
+
   @override
   void dispose() {
     _gen++;
@@ -171,7 +232,13 @@ class _FirstSyncScreenState extends State<FirstSyncScreen> {
       evalError: _evalError,
       now: _clock(),
       onDone: widget.onDone,
+      onBack: widget.onBack,
       onRetry: () => unawaited(_read()),
+      onResume: widget.readBand != null && widget.onResume == null
+          ? null
+          : () => unawaited(_resume()),
+      resumeBusy: _resuming || _resumePending,
+      resumeFailed: _resumeFailed,
       synthetic: widget.synthetic,
     );
   }
@@ -185,7 +252,11 @@ class FirstSyncView extends StatelessWidget {
   final bool evalError;
   final DateTime now;
   final VoidCallback onDone;
+  final VoidCallback? onBack;
   final VoidCallback? onRetry;
+  final VoidCallback? onResume;
+  final bool resumeBusy;
+  final bool resumeFailed;
   final bool synthetic;
 
   const FirstSyncView({
@@ -196,7 +267,11 @@ class FirstSyncView extends StatelessWidget {
     this.evalError = false,
     required this.now,
     required this.onDone,
+    this.onBack,
     this.onRetry,
+    this.onResume,
+    this.resumeBusy = false,
+    this.resumeFailed = false,
     this.synthetic = false,
   });
 
@@ -215,6 +290,8 @@ class FirstSyncView extends StatelessWidget {
               child: OBPageHeader(
                 title: _s(context, 'Erste Übertragung', 'First transfer'),
                 subtitle: _s(context, 'Schritt 2 von 3', 'Step 2 of 3'),
+                onBack: onBack,
+                showBack: onBack != null || Navigator.canPop(context),
                 onInfo: () => _info(context),
               ),
             ),
@@ -227,6 +304,39 @@ class FirstSyncView extends StatelessWidget {
                     evaluation: evaluation,
                     now: now,
                   ),
+                  if (band?.transfer == TransferState.interrupted ||
+                      resumeBusy ||
+                      resumeFailed) ...[
+                    const SizedBox(height: 12),
+                    OBSyncState(
+                      band: band ?? const BandSnapshot(),
+                      now: () => now,
+                      onResume: onResume,
+                      showStoredTime: false,
+                      actionState: resumeBusy
+                          ? OBSyncActionState.pending
+                          : resumeFailed
+                          ? OBSyncActionState.failed
+                          : null,
+                      interruptedLabel: _s(
+                        context,
+                        'Unterbrochen',
+                        'Interrupted',
+                      ),
+                      pendingLabel: _s(
+                        context,
+                        'Verbindung wird hergestellt',
+                        'Connecting',
+                      ),
+                      failedLabel: _s(
+                        context,
+                        'Fortsetzen fehlgeschlagen',
+                        'Resume failed',
+                      ),
+                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
+                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                    ),
+                  ],
                   if (evalError) ...[
                     const SizedBox(height: 12),
                     OBSettingsErrorCard(
@@ -345,10 +455,7 @@ class OBSetupStatusCard extends StatelessWidget {
   final frontier = _frontier(context, band.latestStoredAt, now);
   return switch (band.transfer) {
     TransferState.receiving => (SetupStatusIcon.active, frontier),
-    TransferState.interrupted => (
-      SetupStatusIcon.open,
-      _s(context, 'Unterbrochen', 'Interrupted'),
-    ),
+    TransferState.interrupted => (SetupStatusIcon.open, frontier),
     TransferState.idle => (
       band.latestStoredAt == null ? SetupStatusIcon.open : SetupStatusIcon.done,
       frontier,
@@ -476,12 +583,10 @@ class _StatusRow extends StatelessWidget {
                         children: [
                           Expanded(child: Text(label, style: labelStyle)),
                           const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              shown,
-                              textAlign: TextAlign.right,
-                              style: valueStyle,
-                            ),
+                          Text(
+                            shown,
+                            textAlign: TextAlign.right,
+                            style: valueStyle,
                           ),
                         ],
                       ),

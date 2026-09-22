@@ -40,6 +40,12 @@ BandSnapshot _receiving() => BandSnapshot(
   latestStoredAt: _stored,
 );
 
+BandSnapshot _interrupted() => BandSnapshot(
+  connection: BandConnection.connected,
+  transfer: TransferState.interrupted,
+  latestStoredAt: _stored,
+);
+
 SetupEvaluation _eval(SetupEvalState state) => SetupEvaluation(
   day: '2026-09-15',
   currentAlgo: kAlgoVersion,
@@ -87,6 +93,171 @@ void main() {
       await _unmount(tester);
     },
   );
+
+  testWidgets('interrupted keeps the stored frontier and offers resume', (
+    tester,
+  ) async {
+    var resumes = 0;
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: _interrupted(),
+          onResume: () => resumes++,
+        ),
+      ),
+    );
+    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('Unterbrochen'), findsOneWidget);
+    expect(find.text('Fortsetzen'), findsOneWidget);
+    await tester.tap(find.text('Fortsetzen'));
+    expect(resumes, 1);
+    expect(
+      tester.getSize(find.widgetWithText(TextButton, 'Fortsetzen')).height,
+      greaterThanOrEqualTo(44),
+    );
+  });
+
+  testWidgets('large text stacks resume below an unbroken state label', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(375, 812),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: FirstSyncView(
+            now: _now,
+            onDone: () {},
+            band: _interrupted(),
+            onResume: () {},
+          ),
+        ),
+      ),
+    );
+    final state = tester.getRect(find.text('Unterbrochen'));
+    final action = tester.getRect(find.widgetWithText(TextButton, 'Fortsetzen'));
+    expect(action.top, greaterThanOrEqualTo(state.bottom));
+    expect(action.height, greaterThanOrEqualTo(44));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'swallowed resume failure reads disconnected idle and remains retryable',
+    (tester) async {
+      var attempts = 0;
+      var current = _interrupted();
+      await tester.pumpWidget(
+        _frame(
+          FirstSyncScreen(
+            onDone: () {},
+            now: () => _now,
+            readBand: () async => current,
+            readSetupEvaluation: (_) async => _eval(SetupEvalState.missing),
+            onResume: () async {
+              attempts++;
+              current = attempts == 1
+                  ? const BandSnapshot(
+                      connection: BandConnection.disconnected,
+                      transfer: TransferState.idle,
+                    )
+                  : BandSnapshot(
+                      connection: BandConnection.connected,
+                      transfer: TransferState.idle,
+                      latestStoredAt: _stored,
+                    );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('Fortsetzen'));
+      await tester.pump();
+      expect(find.text('Fortsetzen fehlgeschlagen'), findsOneWidget);
+      expect(find.text('Erneut'), findsOneWidget);
+      expect(find.text('Unterbrochen'), findsNothing);
+
+      await tester.tap(find.text('Erneut'));
+      await tester.pump();
+      expect(attempts, 2);
+      expect(find.text('Fortsetzen fehlgeschlagen'), findsNothing);
+      expect(find.text('Verbunden'), findsOneWidget);
+      await _unmount(tester);
+    },
+  );
+
+  testWidgets('a later connected poll clears stale failed-resume feedback', (
+    tester,
+  ) async {
+    var current = _interrupted();
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncScreen(
+          onDone: () {},
+          now: () => _now,
+          readBand: () async => current,
+          readSetupEvaluation: (_) async => _eval(SetupEvalState.missing),
+          onResume: () async {
+            current = const BandSnapshot(
+              connection: BandConnection.disconnected,
+              transfer: TransferState.idle,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Fortsetzen'));
+    await tester.pump();
+    expect(find.text('Fortsetzen fehlgeschlagen'), findsOneWidget);
+
+    current = BandSnapshot(
+      connection: BandConnection.connected,
+      transfer: TransferState.receiving,
+      latestStoredAt: _stored,
+    );
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.text('Fortsetzen fehlgeschlagen'), findsNothing);
+    expect(find.text('Verbunden'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsOneWidget);
+    await _unmount(tester);
+  });
+
+  testWidgets('resume duplicate taps are gated while connecting is pending', (
+    tester,
+  ) async {
+    final resume = Completer<void>();
+    var attempts = 0;
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncScreen(
+          onDone: () {},
+          now: () => _now,
+          readBand: () async => _interrupted(),
+          readSetupEvaluation: (_) async => _eval(SetupEvalState.missing),
+          onResume: () {
+            attempts++;
+            return resume.future;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Fortsetzen'));
+    await tester.pump();
+    expect(find.text('Verbindung wird hergestellt'), findsOneWidget);
+    expect(attempts, 1);
+    await tester.tap(find.text('Verbindung wird hergestellt'));
+    await tester.pump();
+    expect(attempts, 1);
+    resume.complete();
+    await tester.pump();
+    await _unmount(tester);
+  });
 
   testWidgets('an idle band with nothing stored shows three dashes', (
     tester,
@@ -390,6 +561,22 @@ void main() {
     expect(find.text('bis 06:54'), findsOneWidget);
     expect(maxInflight, 1);
     await _unmount(tester);
+  });
+
+  testWidgets('header back uses the injected root callback', (tester) async {
+    var backed = false;
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          onBack: () => backed = true,
+          band: _receiving(),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Zurück'));
+    expect(backed, isTrue);
   });
 
   testWidgets('English locale uses the English continue label', (tester) async {

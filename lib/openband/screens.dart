@@ -1046,18 +1046,36 @@ class _CircleButton extends StatelessWidget {
   }
 }
 
-/// 40-px sync status pill under the overview header. Says nothing when there
-/// is nothing to say — a progress track would need a real progress value,
-/// which [BandSnapshot] does not carry, so none is drawn.
+/// Sync status pill under the overview header. Says nothing when there is
+/// nothing to say — a progress track would need a real progress value, which
+/// [BandSnapshot] does not carry, so none is drawn. Passive states retain their
+/// compact geometry; the interactive resume state guarantees a 44-point hit
+/// area and grows with text rather than shrinking its button below that.
+enum OBSyncActionState { pending, failed }
+
 class OBSyncState extends StatelessWidget {
   final BandSnapshot band;
   final VoidCallback? onResume;
   final DateTime Function() now;
+  final bool showStoredTime;
+  final OBSyncActionState? actionState;
+  final String interruptedLabel;
+  final String pendingLabel;
+  final String failedLabel;
+  final String resumeLabel;
+  final String retryLabel;
   const OBSyncState({
     super.key,
     required this.band,
     this.onResume,
     required this.now,
+    this.showStoredTime = true,
+    this.actionState,
+    this.interruptedLabel = 'Unterbrochen',
+    this.pendingLabel = 'Verbindung wird hergestellt',
+    this.failedLabel = 'Fortsetzen fehlgeschlagen',
+    this.resumeLabel = 'Fortsetzen',
+    this.retryLabel = 'Erneut',
   });
 
   @override
@@ -1069,75 +1087,139 @@ class OBSyncState extends StatelessWidget {
       Color? iconColor,
       String? text,
       Widget? trailing,
-    ) = switch (band.transfer) {
-      TransferState.receiving => (
+    ) = switch (actionState) {
+      OBSyncActionState.pending => (
         LucideIcons.refreshCw,
         p.action,
-        'Band wird gelesen',
-        Text(
-          stored,
-          style: p.text(
-            13,
-            weight: FontWeight.w700,
-            display: true,
-            color: p.muted,
-          ),
+        pendingLabel,
+        const SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      TransferState.interrupted => (
+      OBSyncActionState.failed => (
         LucideIcons.bluetoothOff,
         p.warning,
-        'Unterbrochen · $stored',
+        failedLabel,
         onResume == null
             ? null
             : TextButton(
                 onPressed: onResume,
                 style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(44, 44),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: Text(
-                  'Fortsetzen',
-                  style: p.text(13, weight: FontWeight.w600, color: p.action),
+                  retryLabel,
+                  textAlign: TextAlign.center,
+                  style: p.text(13, weight: FontWeight.w600, color: p.ink),
                 ),
               ),
       ),
-      TransferState.idle => switch (band.receivedAt) {
-        final at? when now().difference(at).inMinutes.abs() <= 10 => (
-          LucideIcons.check,
-          p.recovery,
-          'Gespeichert $stored',
+      null => switch (band.transfer) {
+        TransferState.receiving => (
+          LucideIcons.refreshCw,
+          p.action,
+          'Band wird gelesen',
           Text(
-            'vor ${now().difference(at).inMinutes.abs()} Min.',
-            style: p.text(13, weight: FontWeight.w500, color: p.muted),
+            stored,
+            style: p.text(
+              13,
+              weight: FontWeight.w700,
+              display: true,
+              color: p.muted,
+            ),
           ),
         ),
-        _ => (null, null, null, null),
+        TransferState.interrupted => (
+          LucideIcons.bluetoothOff,
+          p.warning,
+          showStoredTime ? '$interruptedLabel · $stored' : interruptedLabel,
+          onResume == null
+              ? null
+              : TextButton(
+                  onPressed: onResume,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(44, 44),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    resumeLabel,
+                    textAlign: TextAlign.center,
+                    style: p.text(13, weight: FontWeight.w600, color: p.ink),
+                  ),
+                ),
+        ),
+        TransferState.idle => switch (band.receivedAt) {
+          final at? when now().difference(at).inMinutes.abs() <= 10 => (
+            LucideIcons.check,
+            p.recovery,
+            'Gespeichert $stored',
+            Text(
+              'vor ${now().difference(at).inMinutes.abs()} Min.',
+              style: p.text(13, weight: FontWeight.w500, color: p.muted),
+            ),
+          ),
+          _ => (null, null, null, null),
+        },
       },
     };
     if (icon == null) return const SizedBox.shrink();
+    final actionable =
+        actionState != null ||
+        (band.transfer == TransferState.interrupted && onResume != null);
+    final stackAction =
+        trailing != null && MediaQuery.textScalerOf(context).scale(13) > 18;
+    final content = stackAction
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 16, color: iconColor),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      text!,
+                      style: p.text(13, weight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              Align(alignment: Alignment.centerRight, child: trailing),
+            ],
+          )
+        : Row(
+            spacing: 10,
+            children: [
+              Icon(icon, size: 16, color: iconColor),
+              Expanded(
+                child: Text(
+                  text!,
+                  style: p.text(13, weight: FontWeight.w600),
+                ),
+              ),
+              ?trailing,
+            ],
+          );
     return Semantics(
       label: text,
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          constraints: BoxConstraints(minHeight: actionable ? 44 : 40),
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: stackAction ? 4 : 0,
+          ),
           decoration: BoxDecoration(
             color: p.card,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(actionable ? 22 : 20),
           ),
-          child: Row(
-            spacing: 10,
-            children: [
-              Icon(icon, size: 16, color: iconColor),
-              Expanded(
-                child: Text(text!, style: p.text(13, weight: FontWeight.w600)),
-              ),
-              ?trailing,
-            ],
-          ),
+          child: content,
         ),
       ),
     );

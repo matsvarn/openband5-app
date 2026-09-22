@@ -415,6 +415,7 @@ void main() {
     bool bandError = false,
     bool receivingTransfer = true,
     SetupEvalState state = SetupEvalState.missing,
+    VoidCallback? onResume,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = Size(width, height);
@@ -453,6 +454,7 @@ void main() {
             child: FirstSyncView(
               now: now,
               onDone: () {},
+              onResume: onResume,
               synthetic: true,
               band:
                   band ??
@@ -472,6 +474,34 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('Paper interrupted first-sync frames', (tester) async {
+    final interrupted = BandSnapshot(
+      connection: BandConnection.connected,
+      transfer: TransferState.interrupted,
+      latestStoredAt: DateTime(2026, 9, 15, 2, 10),
+    );
+    await pumpPaper(tester, band: interrupted, onResume: () {});
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/first-sync-interrupted-light.png'),
+    );
+    await pumpPaper(
+      tester,
+      brightness: Brightness.dark,
+      band: interrupted,
+      onResume: () {},
+    );
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/first-sync-interrupted-dark.png'),
+    );
+    expect(
+      tester.getSize(find.widgetWithText(TextButton, 'Fortsetzen')).height,
+      greaterThanOrEqualTo(44),
+    );
+    expect(find.text('bis 02:10'), findsOneWidget);
+  });
 
   testWidgets('Paper first-sync frames', (tester) async {
     await pumpPaper(tester);
@@ -515,6 +545,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Auswertung heute'), findsOneWidget);
     expect(tester.getSize(find.byTooltip('Information')).height, 44);
-    expect(tester.getSize(find.byTooltip('Zurück')).height, 44);
+    expect(find.byTooltip('Zurück'), findsNothing);
   });
 }

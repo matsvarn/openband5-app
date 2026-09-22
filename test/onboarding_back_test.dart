@@ -33,11 +33,11 @@ class _PairingApp extends AppState {
   @override
   Future<void> pairViaAccessorySetup({String? serial}) async {
     pairAttempts++;
-    paired = PairedDevice('test-band', null);
-    notifyListeners();
     if (failFirst && pairAttempts == 1) {
       throw StateError('Session failed after accessory authorization');
     }
+    paired = PairedDevice('test-band', null);
+    notifyListeners();
   }
 }
 
@@ -87,95 +87,43 @@ void main() {
 
     await tester.tap(find.text('Set up my band'));
     await tester.pumpAndSettle();
-    expect(find.byType(DevicePickerScreen), findsOneWidget);
+    expect(find.byType(PairingScreen), findsOneWidget);
+    expect(find.byType(DevicePickerScreen), findsNothing);
 
     await tester.tap(find.byIcon(LucideIcons.chevronLeft));
     await tester.pumpAndSettle();
     expect(find.byType(WelcomeScreen), findsOneWidget);
-    expect(find.byType(DevicePickerScreen), findsNothing);
-
-    await tester.tap(find.text('Set up my band'));
-    await tester.pumpAndSettle();
-    expect(find.byType(DevicePickerScreen), findsOneWidget);
+    expect(find.byType(PairingScreen), findsNothing);
   });
 
   for (final failFirst in [false, true]) {
-    testWidgets('paired Continue advances to profile (retry: $failFirst)', (
-      tester,
-    ) async {
-      final app = _PairingApp(failFirst: failFirst);
-      await _pumpApp(tester, app);
-      await tester.tap(find.text('Set up my band'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.text('WHOOP 4'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Find my band'));
-      await tester.pumpAndSettle();
-      if (failFirst) {
-        expect(find.text('Pairing did not complete'), findsOneWidget);
-        await tester.tap(find.text('Try again'));
+    testWidgets(
+      'direct pairing advances after persistence (retry: $failFirst)',
+      (tester) async {
+        final app = _PairingApp(failFirst: failFirst);
+        await _pumpApp(tester, app);
+        await tester.tap(find.text('Set up my band'));
         await tester.pumpAndSettle();
-      }
-      expect(find.text('Paired'), findsOneWidget);
-      final attempts = app.pairAttempts;
-      await tester.tap(find.text('Continue'));
-      await tester.pumpAndSettle();
-      expect(
-        app.pairAttempts,
-        attempts,
-        reason: 'Continue must not repeat accessory setup or start a session',
-      );
-      expect(find.byType(PairingScreen), findsNothing);
-      // A real pairing detours through Erste Übertragung once.
-      expect(find.byType(FirstSyncScreen), findsOneWidget);
-      await tester.tap(find.text('Continue to profile'));
-      await tester.pumpAndSettle();
-      expect(find.byType(ProfileSetupScreen), findsOneWidget);
-      expect(app.isPaired, isTrue);
-    });
+        await tester.tap(find.text('Connect'));
+        await tester.pumpAndSettle();
+        if (failFirst) {
+          expect(find.text('Pairing did not complete'), findsOneWidget);
+          await tester.tap(find.text('Try again'));
+          await tester.pumpAndSettle();
+        }
+        expect(find.byType(PairingScreen), findsNothing);
+        expect(find.byType(FirstSyncScreen), findsOneWidget);
+        expect(find.byIcon(LucideIcons.chevronLeft), findsNothing);
+        expect(app.isPaired, isTrue);
+        expect(app.pairAttempts, failFirst ? 2 : 1);
+        await tester.tap(find.text('Continue to profile'));
+        await tester.pumpAndSettle();
+        expect(find.byType(ProfileSetupScreen), findsOneWidget);
+      },
+    );
   }
 
-  testWidgets('band pairing can go back before pairing', (tester) async {
-    final app = _PairingApp();
-    await _pumpApp(tester, app);
-    await tester.tap(find.text('Set up my band'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.text('WHOOP 4'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byType(PairingScreen), findsNothing);
-    expect(find.byType(DevicePickerScreen), findsOneWidget);
-    expect(app.pairAttempts, 0);
-  });
-
-  testWidgets('Back after pairing keeps the band and reveals profile', (
-    tester,
-  ) async {
-    final app = _PairingApp();
-    await _pumpApp(tester, app);
-    await tester.tap(find.text('Set up my band'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.text('WHOOP 4'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Find my band'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
-    await tester.pumpAndSettle();
-    expect(find.byType(PairingScreen), findsNothing);
-    expect(find.byType(FirstSyncScreen), findsOneWidget);
-    await tester.tap(find.text('Continue to profile'));
-    await tester.pumpAndSettle();
-    expect(find.byType(ProfileSetupScreen), findsOneWidget);
-    expect(app.isPaired, isTrue);
-    expect(app.pairAttempts, 1);
-  });
-
-  testWidgets('re-pair closes both setup routes only after Continue', (
+  testWidgets('re-pair retains one pushed-route pop after Continue', (
     tester,
   ) async {
     final app = _PairingApp();
@@ -183,11 +131,8 @@ void main() {
     Navigator.of(
       tester.element(find.byType(WelcomeScreen)),
     ).push(MaterialPageRoute<void>(builder: (_) => const RePair()));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.text('WHOOP 4'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Find my band'));
+    await tester.tap(find.text('Connect'));
     await tester.pumpAndSettle();
     expect(find.text('Paired'), findsOneWidget);
     await tester.tap(find.text('Continue'));
@@ -195,9 +140,6 @@ void main() {
     expect(find.byType(PairingScreen), findsNothing);
     expect(find.byType(RePair), findsNothing);
     expect(find.byType(FirstSyncScreen), findsOneWidget);
-    await tester.tap(find.text('Continue to profile'));
-    await tester.pumpAndSettle();
-    expect(find.byType(ProfileSetupScreen), findsOneWidget);
     expect(app.pairAttempts, 1);
   });
 }

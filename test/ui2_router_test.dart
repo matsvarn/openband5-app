@@ -28,6 +28,7 @@ import 'package:openstrap_edge/openband/nutrition_route.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
 import 'package:openstrap_edge/import/backup_crypto.dart';
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart'
@@ -336,7 +337,7 @@ void main() {
           ),
         );
         if (phase == PairPhase.paired) continue;
-        await tester.tap(find.text('Skip for now'));
+        await tester.tap(find.text('Connect later'));
         expect(skipped, isTrue, reason: '$phase has no escape');
       }
     });
@@ -381,12 +382,15 @@ void main() {
       tester,
     ) async {
       _tallView(tester);
-      final s = bandStatusFor(
-        connection: 'disconnected',
-        blocker: BleBlocker.permissionDenied,
-      );
+      const reason = 'The phone is withholding the Bluetooth radio from '
+          'OpenBand 5, so nothing can be scanned or connected. This is not '
+          'the band — walking closer to it will not help.';
+      const fix = 'Open Settings → OpenBand 5 and allow Bluetooth';
       await tester.pumpWidget(
         MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           theme: buildTheme(Brightness.light),
           home: PairingView(
             phase: PairPhase.bluetoothBlocked,
@@ -395,9 +399,12 @@ void main() {
           ),
         ),
       );
-      expect(find.text(s.title), findsOneWidget);
-      expect(find.text(s.reason), findsOneWidget);
-      expect(find.text(s.fix!), findsOneWidget);
+      expect(find.text('Bluetooth is switched off for this app'), findsOneWidget);
+      expect(find.text(fix), findsOneWidget);
+      expect(find.text(reason), findsNothing);
+      await tester.tap(find.byTooltip('Information'));
+      await tester.pumpAndSettle();
+      expect(find.text(reason), findsOneWidget);
       // The state this used to land in.
       expect(find.text('No band in range'), findsNothing);
     });
