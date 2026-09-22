@@ -1658,7 +1658,12 @@ import 'substrate.dart';
 // calibrated −4.6 gate that reproduces the band's own v26 optical-acceptance
 // verdict (F1 0.87, measured on 18,087 labeled seconds). Null when the field
 // is absent (gen4) — additive key, every other output unchanged.
-const int kAlgoVersion = 94;
+// 95 — v94 shipped with the field unreachable: the derive path's decoded-page
+// SELECT (`decodedOneHzBatchByRecTsRange`) never fetched the column, so every
+// substrate arrived NaN-empty and finalized days banked `optical_trusted_pct:
+// null` forever. The bump re-derives those days onto the column that now
+// actually reaches the accumulator. No semantic change from intended-v94.
+const int kAlgoVersion = 95;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///

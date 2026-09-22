@@ -218,7 +218,7 @@ CycleComparisonSnapshot _snap({
 
 void main() {
   test('kAlgoVersion remains the cycle-night pin', () {
-    expect(kAlgoVersion, 94);
+    expect(kAlgoVersion, 95);
   });
 
   test('reuses the fixed-anchor twelve-month window and year-1 query pad', () {
