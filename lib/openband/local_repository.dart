@@ -425,11 +425,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
     final onset = _epochSeconds(sleepMap['onset_ts']);
     final wake = _epochSeconds(sleepMap['wake_ts']);
-    final unobserved = _unobservedMinutes(payload);
+    final gap = significantSleepGap(_unobservedMinutes(payload));
     final duration = _metric(
       sleepMap['duration_min'],
       reason: sleepMap['note']?.toString(),
-      partial: unobserved != null && unobserved > 0,
+      partial: gap != null,
       processing: app.deriving || app.derivePending,
     );
     String? recordingTimezone;
@@ -455,7 +455,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         remMinutes: _double(sleepMap['rem_min']),
         lightMinutes: _double(sleepMap['light_min']),
         deepMinutes: _double(sleepMap['deep_min']),
-        unobservedMinutes: unobserved,
+        unobservedMinutes: gap,
         segments: _segments(payload),
         source: source == null || source.isEmpty ? 'unknown' : source,
         history: history,

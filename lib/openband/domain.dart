@@ -223,6 +223,19 @@ class NightSegment {
   const NightSegment(this.start, this.end, this.stage);
 }
 
+/// Unobserved intervals shorter than this are sensor/boundary noise, not an
+/// incomplete night — no partial flag, "fehlen" copy, or gap caption. The
+/// segments still carry the real hole for the hypnogram.
+const double kSleepGapSignificantMinutes = 5;
+
+/// The unobserved minutes worth surfacing, or null when there are none or
+/// they fall under [kSleepGapSignificantMinutes].
+double? significantSleepGap(double? unobservedMinutes) =>
+    unobservedMinutes != null &&
+            unobservedMinutes >= kSleepGapSignificantMinutes
+        ? unobservedMinutes
+        : null;
+
 class SleepNight {
   final DateTime? onset;
   final DateTime? wake;

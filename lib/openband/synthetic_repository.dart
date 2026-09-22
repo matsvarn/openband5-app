@@ -3821,7 +3821,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       }
     }
     final sleep = rem + light + deep;
-    final partial = unobserved > 0;
+    final partial = significantSleepGap(unobserved) != null;
     return SleepNight(
       onset: onset,
       wake: wake,
