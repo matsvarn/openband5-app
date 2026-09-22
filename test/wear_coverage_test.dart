@@ -260,4 +260,66 @@ void main() {
       expect(f['note'], contains('skin temperature'));
     });
   });
+
+  group('optical_trusted_pct', () {
+    Substrate gen5Sub(List<(int, int)> spans, double Function(int i) logVar) {
+      final ts = <int>[];
+      for (final s in spans) {
+        for (var t = s.$1; t < s.$2; t++) {
+          ts.add(t);
+        }
+      }
+      final n = ts.length;
+      return Substrate(
+        tsSec: ts,
+        hr: List<int>.filled(n, 60),
+        rrTsMs: const [],
+        rrMs: const [],
+        ax: List<double>.filled(n, 0),
+        ay: List<double>.filled(n, 0),
+        az: List<double>.filled(n, 1),
+        spo2Red: List<int>.filled(n, 0),
+        spo2Ir: List<int>.filled(n, 0),
+        skinTemp: List<int>.filled(n, 0),
+        skinContact: List<int>.filled(n, 0),
+        signalQualityLogVar:
+            [for (var i = 0; i < n; i++) logVar(i)],
+        deviceFamily: 'gen5',
+      );
+    }
+
+    test('half the worn seconds under the −4.6 gate → 50', () {
+      final w = _wear(
+        gen5Sub([(nineAm, elevenAm)], (i) => i.isEven ? -5.0 : -2.0),
+        dayStartSec: dayStart,
+        dayCalendarEndSec: dayEnd,
+        dataNowSec: dayEnd,
+      );
+      expect(w['optical_trusted_pct'], 50);
+    });
+
+    test('absent field (gen4) → null, not 0 or 100', () {
+      final w = _wear(
+        _sub([(nineAm, elevenAm)]), // the shared fixture stamps gen4, no field
+        dayStartSec: dayStart,
+        dayCalendarEndSec: dayEnd,
+        dataNowSec: dayEnd,
+      );
+      expect(w['optical_trusted_pct'], isNull);
+    });
+
+    test('NaN seconds leave the denominator, not the verdict', () {
+      // Half the seconds carry no field at all; of the half that do, all pass.
+      // Honest answer is 100% of MEASURED seconds — the unmeasured half is
+      // "cannot say", not "rejected".
+      final w = _wear(
+        gen5Sub([(nineAm, elevenAm)],
+            (i) => i.isEven ? double.nan : -5.0),
+        dayStartSec: dayStart,
+        dayCalendarEndSec: dayEnd,
+        dataNowSec: dayEnd,
+      );
+      expect(w['optical_trusted_pct'], 100);
+    });
+  });
 }

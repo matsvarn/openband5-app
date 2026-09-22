@@ -473,6 +473,10 @@ class _PrepareAccumulator {
   final List<int> stepCount = [];
   final List<int> hrValid = [];
 
+  /// Gen5 optical-quality log-variance, `NaN` = absent (every gen4 row, any
+  /// non-finite gen5 value). See [Substrate.signalQualityLogVar].
+  final List<double> signalQualityLogVar = [];
+
   /// The DISTINCT non-null `device_family` stamps seen across every page fed in
   /// (see [Substrate.deviceFamily]). Exactly one ⇒ that is the substrate's
   /// family. Zero (nothing stamped: pre-v41 rows, imports, the raw-hex replay
@@ -584,6 +588,11 @@ class _PrepareAccumulator {
           ? sub.hrValid
           : List<int>.filled(sub.length, -1),
     );
+    signalQualityLogVar.addAll(
+      sub.signalQualityLogVar.length == sub.length
+          ? sub.signalQualityLogVar
+          : List<double>.filled(sub.length, double.nan),
+    );
   }
 
   void addDecodedPage(
@@ -681,6 +690,10 @@ class _PrepareAccumulator {
       // `device_family == 'gen5'` check that used to sit on top of it was a
       // band id in the neutral layer (BANDAGNOSTIC C12).
       hrValid.add(_num(row?['hr_valid'])?.toInt() ?? -1);
+      // NULL IS ABSENT (NaN), not 0: a gen4 row has no such column at all and
+      // a gen5 row stores NULL when the wire value was not finite.
+      final lv = _num(row?['signal_quality_logvar'])?.toDouble();
+      signalQualityLogVar.add(lv != null && lv.isFinite ? lv : double.nan);
       final beats = rrByRecTs[recTs];
       if (beats == null) continue;
       for (final beat in beats) {
@@ -737,6 +750,7 @@ class _PrepareAccumulator {
       skinContact: skinContact,
       stepCount: stepCount,
       hrValid: hrValid,
+      signalQualityLogVar: signalQualityLogVar,
       deviceFamily: deviceFamily,
       deviceIds: _deviceIds,
     );

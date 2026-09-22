@@ -268,6 +268,18 @@ class Substrate {
   /// Same absent-marker discipline as [stepCount] and [accelPresentAt].
   final List<int> hrValid;
 
+  /// Gen5's per-second optical-signal quality: log-variance of the PPG
+  /// residual the band computes at `inner[105:109]` — higher (closer to 0)
+  /// is WORSE. Parallel to [tsSec]. **`NaN` means absent**: every gen4 second
+  /// (R24 has no such field) and every gen5 record whose value was not finite.
+  ///
+  /// The field is carried raw, not interpreted here — what a "good" value is
+  /// was MEASURED against the band's own v26 morphology verdicts (18k labeled
+  /// seconds; `logvar < -4.6` reproduces the band's accept/reject at F1 0.87).
+  /// That calibrated threshold lives at the consumer (`_wearBlock`'s
+  /// `optical_trusted_pct`), not inside the array.
+  final List<double> signalQualityLogVar;
+
   /// WHICH STRAP MEASURED THIS SUBSTRATE — `'gen4'`, `'gen5'`, or null.
   ///
   /// Stamped at ingest into `decoded_onehz.device_family` and carried here so
@@ -329,6 +341,7 @@ class Substrate {
     required List<int> skinContact,
     List<int> stepCount = const [],
     List<int> hrValid = const [],
+    List<double> signalQualityLogVar = const [],
     String? deviceFamily,
     Set<String> deviceIds = const {},
   }) =>
@@ -348,6 +361,7 @@ class Substrate {
         skinContact: skinContact,
         stepCount: stepCount,
         hrValid: hrValid,
+        signalQualityLogVar: signalQualityLogVar,
       );
 
   const Substrate._({
@@ -364,6 +378,7 @@ class Substrate {
     required this.skinContact,
     this.stepCount = const [],
     this.hrValid = const [],
+    this.signalQualityLogVar = const [],
     this.deviceFamily,
     this.deviceIds = const {},
   });
@@ -484,8 +499,21 @@ class Substrate {
   List<int> _perSecSlice(List<int> src, int lo, int hi) =>
       src.length == tsSec.length ? src.sublist(lo, hi) : const [];
 
+  /// Double variant of [_perSecSlice] — same legacy-empty tolerance.
+  List<double> _perSecSliceD(List<double> src, int lo, int hi) =>
+      src.length == tsSec.length ? src.sublist(lo, hi) : const [];
+
   /// [stepCount] sliced to [lo, hi), tolerating the legacy empty list.
   List<int> _stepSlice(int lo, int hi) => _perSecSlice(stepCount, lo, hi);
+
+  /// The band's optical-quality log-variance for second [i], or `null` when
+  /// this record carried none — every gen4 second, plus any gen5 record whose
+  /// value was not finite on the wire. NaN in the array IS the absent marker.
+  double? signalQualityLogVarAt(int i) {
+    if (i < 0 || i >= signalQualityLogVar.length) return null;
+    final v = signalQualityLogVar[i];
+    return v.isNaN ? null : v;
+  }
 
   /// Slice to the half-open window [startSec, endSec) by record time. Returns a
   /// new Substrate with the 1 Hz arrays sliced and the sparse RR arrays filtered
@@ -511,6 +539,7 @@ class Substrate {
       skinContact: skinContact.sublist(lo, hi),
       stepCount: _stepSlice(lo, hi),
       hrValid: _perSecSlice(hrValid, lo, hi),
+      signalQualityLogVar: _perSecSliceD(signalQualityLogVar, lo, hi),
       deviceFamily: deviceFamily,
       deviceIds: deviceIds,
       rrTsMs: rr.$1,
@@ -540,6 +569,7 @@ class Substrate {
       skinContact: skinContact.sublist(lo, hi),
       stepCount: _stepSlice(lo, hi),
       hrValid: _perSecSlice(hrValid, lo, hi),
+      signalQualityLogVar: _perSecSliceD(signalQualityLogVar, lo, hi),
       deviceFamily: deviceFamily,
       deviceIds: deviceIds,
       rrTsMs: rr.$1,
@@ -606,6 +636,7 @@ class Substrate {
         'skin_contact': skinContact,
         'step_count': stepCount,
         'hr_valid': hrValid,
+        'signal_quality_logvar': signalQualityLogVar,
         // Null (unknown provenance) is a real answer — emit the key regardless.
         'device_family': deviceFamily,
         'device_ids': deviceIds.toList(),
@@ -663,6 +694,13 @@ class Substrate {
       hrValid: () {
         final l = ints(m, 'hr_valid');
         return l.length == n ? l : List<int>.filled(n, -1);
+      }(),
+      // Absent marker is NaN — same shape as `hr_valid`, different sentinel.
+      signalQualityLogVar: () {
+        final l = dbls('signal_quality_logvar');
+        return l.length == n
+            ? l
+            : (Float64List(n)..fillRange(0, n, double.nan));
       }(),
       deviceFamily: m['device_family'] as String?,
       deviceIds: ((m['device_ids'] as List?) ?? const [])
@@ -743,6 +781,8 @@ Substrate decodeSubstrate(List<String> hexes) {
   final rrTsMs = <double>[], rrMs = <double>[];
 
   final stepCount = List<int>.filled(n, -1);
+  final signalQualityLogVar = Float64List(n)
+    ..fillRange(0, n, double.nan);
   for (var i = 0; i < n; i++) {
     final r = recs[i];
     tsSec[i] = r.ts;
@@ -757,6 +797,8 @@ Substrate decodeSubstrate(List<String> hexes) {
     skinTemp[i] = r.skinTempRaw;
     skinContact[i] = r.skinContact;
     stepCount[i] = r.stepCount ?? -1;
+    final lv = r.signalQualityLogVar;
+    if (lv != null && lv.isFinite) signalQualityLogVar[i] = lv;
     // RR beats: placed at their MEASURED instant (`beatTimesMs` — the record's
     // own sub-second anchor, intervals walked backwards from it), falling back
     // to the record second only when the record carries no sub-second.
@@ -808,6 +850,8 @@ Substrate decodeSubstrate(List<String> hexes) {
     // replay, which carries no device stamp either — so it would refuse at
     // `hrValidAt` regardless.
     hrValid: List<int>.filled(n, -1),
+    // NaN where the source record carried no field — gen4 entirely.
+    signalQualityLogVar: signalQualityLogVar,
   );
 }
 
@@ -898,6 +942,7 @@ class _Rec {
   final int skinTempRaw;
   final int skinContact;
   final int? stepCount;
+  final double? signalQualityLogVar;
 
   _Rec.gen4(proto.R24 r)
       : ts = r.tsEpoch,
@@ -913,7 +958,8 @@ class _Rec {
         skinTempRaw = r.skinTempRaw,
         // ignore: deprecated_member_use
         skinContact = r.skinContact,
-        stepCount = null;
+        stepCount = null,
+        signalQualityLogVar = null;
 
   _Rec.gen5(proto.Gen5HistorySample g)
       : ts = g.unix,
@@ -930,7 +976,8 @@ class _Rec {
         // which every consumer's `v > 0` gate already reads as "no reading".
         skinTempRaw = g.skinTempAvailable ? (g.skinTempC * 100).round() : 0,
         skinContact = 0,
-        stepCount = g.stepMotionCounter;
+        stepCount = g.stepMotionCounter,
+        signalQualityLogVar = g.signalQualityLogVariance;
 }
 
 class _Beat {

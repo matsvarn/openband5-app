@@ -1653,7 +1653,12 @@ import 'substrate.dart';
 // injecting one phantom diff into the display curve). Analytics repin: cycles'
 // per-minute RMSSD no longer diffs across a dropped out-of-range beat (NaN slot
 // preserves adjacency). Read-side only: `getNightBeats` coalesces beat_ts_ms.
-const int kAlgoVersion = 93;
+// 94 — wear block gains `optical_trusted_pct`: of the day's worn seconds
+// carrying a signal-quality log-variance (gen5), the fraction below the
+// calibrated −4.6 gate that reproduces the band's own v26 optical-acceptance
+// verdict (F1 0.87, measured on 18,087 labeled seconds). Null when the field
+// is absent (gen4) — additive key, every other output unchanged.
+const int kAlgoVersion = 94;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -7051,6 +7056,7 @@ class DerivationEngine {
         // Null only when there is no day to divide by at all (an unparseable
         // label), where a percentage would be division by nothing.
         'coverage_pct': observableSec > 0 ? 0 : null,
+        'optical_trusted_pct': null,
       };
     }
     const offGapSec = 120; // a >2-min hole in the 1 Hz stream = off / not worn
@@ -7100,6 +7106,24 @@ class DerivationEngine {
     }
     addOff(cursor, observableEnd);
 
+    // Optical-quality coverage: of the worn seconds where the band reports a
+    // signal-quality log-variance (gen5 v18), how many would pass the band's
+    // own optical-acceptance gate. Threshold −4.6 was MEASURED, not chosen:
+    // against 18,087 v26 morphology verdicts (the band's own accept/reject on
+    // the same second) it reproduces the verdict at F1 0.87 (prec 0.89,
+    // rec 0.86). It separates "worn" from "worn AND optically usable" — the
+    // difference between a motion-contaminated hour and a clean one.
+    // Denominator is seconds where the field is PRESENT: a source that cannot
+    // report quality (gen4) yields null, not a misleading 0 or 100.
+    const trustedLogVarMax = -4.6;
+    var presentSec = 0, trustedSec = 0;
+    for (var i = 0; i < s.length; i++) {
+      final lv = s.signalQualityLogVarAt(i);
+      if (lv == null) continue;
+      presentSec++;
+      if (lv < trustedLogVarMax) trustedSec++;
+    }
+
     return {
       'segments': segments,
       'first_on': firstOn,
@@ -7112,6 +7136,9 @@ class DerivationEngine {
       // sane.
       'coverage_pct': observableSec > 0
           ? (100 * wornSec / observableSec).round().clamp(0, 100).toInt()
+          : null,
+      'optical_trusted_pct': presentSec > 0
+          ? (100 * trustedSec / presentSec).round().clamp(0, 100).toInt()
           : null,
     };
   }

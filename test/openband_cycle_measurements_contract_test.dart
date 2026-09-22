@@ -26,7 +26,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('kAlgoVersion remains the cycle-night pin', () {
-    expect(kAlgoVersion, 93);
+    expect(kAlgoVersion, 94);
   });
 
   test('Paper cycle is 23 dense nights, RHR 54 on 15 Sep, HRV 48 on 14 Sep',

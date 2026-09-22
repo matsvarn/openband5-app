@@ -174,6 +174,26 @@ def main(path):
     big = sorted((g[1] for g in gaps if g[1] and g[1] > 300), reverse=True)[:8]
     print(f"rec_ts gaps >5 min: top {big}")
 
+    # Optical-trusted coverage: seconds the band's own pipeline would accept.
+    # The −4.6 gate was measured against 18,087 v26 morphology verdicts
+    # (F1 0.87, precision 0.89, recall 0.86) — see
+    # analysis/2026-09-22-v26-ppg/FINDINGS.md. Separates "no data" (the gaps
+    # above) from "data the band itself could not use".
+    r = q1(db, "SELECT COUNT(*), "
+               "SUM(signal_quality_logvar IS NOT NULL), "
+               "SUM(signal_quality_logvar < -4.6) FROM decoded_onehz")
+    if r[1]:
+        print(f"optical-trusted coverage: {r[2]}/{r[1]} seconds with a quality "
+              f"reading pass the −4.6 gate ({100*r[2]/r[1]:.0f}%)")
+        # per-day spread — flags a bad-contact day
+        for row in db.execute(
+            "SELECT date(rec_ts,'unixepoch','localtime') d, COUNT(*), "
+            "SUM(signal_quality_logvar < -4.6) FROM decoded_onehz "
+            "WHERE signal_quality_logvar IS NOT NULL GROUP BY d "
+            "ORDER BY d DESC LIMIT 8"):
+            print(f"   {row[0]}: {100*(row[2] or 0)/row[1]:.0f}% trusted "
+                  f"({row[2] or 0}/{row[1]})")
+
     # ── 6. day_result provenance ─────────────────────────────────────────
     vers = db.execute("SELECT algo_version, COUNT(*) FROM day_result "
                       "GROUP BY algo_version ORDER BY algo_version").fetchall()

@@ -120,7 +120,7 @@ CycleMediansSnapshot _snap({
 
 void main() {
   test('kAlgoVersion remains the cycle-night pin', () {
-    expect(kAlgoVersion, 93);
+    expect(kAlgoVersion, 94);
   });
 
   test('window is twelve civil months from a fixed anchor, not 365 or UTC', () {
