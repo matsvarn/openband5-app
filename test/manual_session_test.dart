@@ -311,6 +311,7 @@ void main() {
         profile: const Profile(ageYears: 30, heightCm: 180, sex: 'm'),
         hrMax: _hrMax,
         restingHr: 55,
+        quietHrr: 0.20,
       );
       expect(s.calories, isNull);
       expect(s.strain, isNotNull);
@@ -324,6 +325,7 @@ void main() {
         profile: _profile,
         hrMax: _hrMax,
         restingHr: 55,
+        quietHrr: 0.20,
       );
       expect(s.isUnscored, isFalse);
       expect(s.avgHr, 150);
@@ -342,6 +344,7 @@ void main() {
             profile: _profile,
             hrMax: _hrMax,
             restingHr: 55,
+            quietHrr: 0.20,
           );
       // THE WHOLE POINT of the feature: correcting 25 min → 60 min must
       // actually move the number the athlete came here to fix.
@@ -389,8 +392,9 @@ void main() {
   group('strainFromPerMinuteHr — the single strain method', () {
     test('a hard hour scores on-scale, nowhere near the old accrual', () {
       final perMin = List<double>.filled(60, 150);
+      // quietHrr 0.20 = the population level the pinned figures were derived at.
       final s = strainFromPerMinuteHr(perMin,
-          profile: _profile, restingHr: 55, hrMax: _hrMax)!;
+          profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20)!;
 
       // The canonical figure for this effort.
       expect(s, closeTo(11.62, 0.05));
@@ -408,7 +412,7 @@ void main() {
     test('never exceeds 21, even for an absurdly long maximal effort', () {
       // 12 h pinned at 190 bpm — the old accrual would read into the hundreds.
       final s = strainFromPerMinuteHr(List<double>.filled(720, 190),
-          profile: _profile, restingHr: 55, hrMax: _hrMax)!;
+          profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20)!;
       expect(s, lessThanOrEqualTo(21.0));
     });
 
@@ -417,7 +421,8 @@ void main() {
           List<double>.filled(minutes, bpm),
           profile: _profile,
           restingHr: 55,
-          hrMax: _hrMax)!;
+          hrMax: _hrMax,
+          quietHrr: 0.20)!;
       expect(at(60, 150), greaterThan(at(30, 150)));
       expect(at(60, 165), greaterThan(at(60, 150)));
     });
@@ -427,24 +432,33 @@ void main() {
       // No resting HR.
       expect(
           strainFromPerMinuteHr(perMin,
-              profile: _profile, restingHr: null, hrMax: _hrMax),
+              profile: _profile, restingHr: null, hrMax: _hrMax,
+              quietHrr: 0.20),
           isNull);
       // No ceiling — no age, OR a strap with no calibrated HRmax (TS-03a: an
       // unknown/unstamped device family REFUSES rather than borrowing gen4's).
       expect(
           strainFromPerMinuteHr(perMin,
-              profile: _profile, restingHr: 55, hrMax: null),
+              profile: _profile, restingHr: 55, hrMax: null, quietHrr: 0.20),
           isNull);
       // No sex → no Banister weighting constant.
       expect(
           strainFromPerMinuteHr(perMin,
               profile: const Profile(ageYears: 30), restingHr: 55,
-              hrMax: _hrMax),
+              hrMax: _hrMax, quietHrr: 0.20),
           isNull);
       // No HR at all.
       expect(
           strainFromPerMinuteHr(const [],
-              profile: _profile, restingHr: 55, hrMax: _hrMax),
+              profile: _profile, restingHr: 55, hrMax: _hrMax,
+              quietHrr: 0.20),
+          isNull);
+      // No measured quiet level → abstains; the population constant is never
+      // substituted back (edge#226).
+      expect(
+          strainFromPerMinuteHr(perMin,
+              profile: _profile, restingHr: 55, hrMax: _hrMax,
+              quietHrr: null),
           isNull);
     });
 
@@ -457,9 +471,10 @@ void main() {
         profile: _profile,
         hrMax: _hrMax,
         restingHr: 55,
+        quietHrr: 0.20,
       ).strain;
       final direct = strainFromPerMinuteHr(hrPerMinute(w.ts, w.bpm),
-          profile: _profile, restingHr: 55, hrMax: _hrMax);
+          profile: _profile, restingHr: 55, hrMax: _hrMax, quietHrr: 0.20);
       expect(viaStats, direct);
     });
   });
@@ -471,6 +486,7 @@ void main() {
       profile: _profile,
       hrMax: _hrMax,
       restingHr: 55,
+      quietHrr: 0.20,
     );
 
     test('a new entry is done/manual with a start-keyed id', () {
@@ -529,7 +545,14 @@ void main() {
         stats: const ManualSessionStats(),
         createdAtMs: 1,
       );
-      for (final k in ['calories', 'strain', 'max_hr', 'steps', 'hrr_bpm']) {
+      for (final k in [
+        'calories',
+        'strain',
+        'max_hr',
+        'steps',
+        'hrr_bpm',
+        'hr_covered_sec',
+      ]) {
         expect(row.containsKey(k), isTrue, reason: '$k must be present');
         expect(row[k], isNull, reason: '$k must be explicitly null');
       }
@@ -556,6 +579,46 @@ void main() {
       // Both described the OLD window; hrr_bpm is refilled by derivation.
       expect(row['steps'], isNull);
       expect(row['hrr_bpm'], isNull);
+    });
+
+    test('a same-window edit keeps billed HR coverage', () {
+      final row = buildManualSessionRow(
+        startSec: 1000,
+        endSec: 1000 + 3600,
+        type: 'cycling',
+        stats: scored,
+        createdAtMs: 1,
+        existing: const {
+          'id': 'w1',
+          'source': 'manual',
+          'created_at': 2,
+          'start_ts': 1000,
+          'end_ts': 1000 + 3600,
+          'hr_covered_sec': 180,
+        },
+      );
+      expect(row.containsKey('hr_covered_sec'), isTrue);
+      expect(row['hr_covered_sec'], 180);
+    });
+
+    test('a retime writes unknown billed HR coverage, not zero', () {
+      final row = buildManualSessionRow(
+        startSec: 2000,
+        endSec: 2000 + 3600,
+        type: 'run',
+        stats: scored,
+        createdAtMs: 1,
+        existing: const {
+          'id': 'w1',
+          'source': 'manual',
+          'created_at': 2,
+          'start_ts': 1000,
+          'end_ts': 1000 + 3600,
+          'hr_covered_sec': 180,
+        },
+      );
+      expect(row.containsKey('hr_covered_sec'), isTrue);
+      expect(row['hr_covered_sec'], isNull);
     });
 
     test('zone_min_json is a JSON list, empty when there are no zones', () {

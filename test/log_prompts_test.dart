@@ -17,45 +17,34 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/app.dart';
+import 'package:openstrap_edge/openband/local_repository.dart';
+import 'package:openstrap_edge/openband/medication.dart';
+import 'package:openstrap_edge/openband/nutrition_route.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart' show ShellDomain;
-import 'package:openstrap_edge/ui2/screens/wellness_screen.dart'
-    show WellnessScreen;
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
-import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_service.dart';
 import 'package:openstrap_edge/notify/tap_router.dart';
 
-/// A definition that existed long before any day under test, so `slotsForDay`'s
-/// created-at bound never trims a slot out from under a case.
-MedDef _def(String key, List<MedSchedule> schedule) => MedDef(
+MedReminderInstant _instant(
+  DateTime at, {
+  String key = 'a',
+  String? date,
+  int? slotMin,
+}) =>
+    (
       key: key,
-      label: key,
-      doseValue: 1000,
-      doseUnit: 'IU',
-      schedule: schedule,
-      createdAt: DateTime(2020, 1, 1).millisecondsSinceEpoch,
+      date: date ?? todayLabel(at),
+      slotMin: slotMin ?? at.hour * 60 + at.minute,
+      at: at,
     );
 
-/// One `med_dose` row in the shape `MedDb.dosesForDay` returns.
-Map<String, Map<int, Map<String, Object?>>> _doses(
-  String medKey,
-  int slotMin, {
-  bool taken = false,
-  bool skipped = false,
-}) =>
-    {
-      medKey: {
-        slotMin: {
-          'taken_ts': taken ? 1 : null,
-          'skipped': skipped ? 1 : 0,
-        }
-      }
-    };
-
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('the scheduler allow-list', () {
     test('takes the check-in and the whole medication band', () {
       expect(NotificationService.maySchedule(NotificationService.idCheckIn),
@@ -181,124 +170,82 @@ void main() {
     });
   });
 
-  group('medication prompts come off the schedule the user typed', () {
-    // A Thursday, mid-morning: the 08:00 dose is behind us, the 20:00 one is not.
+  group('medication prompts consume already-resolved instants', () {
     final now = DateTime(2026, 8, 20, 10, 0);
-    final defs = [
-      _def('d3', const [MedSchedule(8 * 60, []), MedSchedule(20 * 60, [])]),
-    ];
     const on = NotificationPrefs(medsEnabled: true);
+    final upcoming = [
+      _instant(DateTime(2026, 8, 20, 20), key: 'd3'),
+      _instant(DateTime(2026, 8, 21, 8), key: 'd3'),
+      _instant(DateTime(2026, 8, 21, 20), key: 'd3'),
+      _instant(DateTime(2026, 8, 22, 8), key: 'd3'),
+      _instant(DateTime(2026, 8, 22, 20), key: 'd3'),
+    ];
 
     test('off by default', () {
       expect(
-          NotificationCenter.medPromptSlots(
-              const NotificationPrefs(), defs, const {},
-              now: now),
-          isEmpty);
+        NotificationCenter.medReminderPlan(
+          const NotificationPrefs(),
+          upcoming,
+          now: now,
+        ),
+        isEmpty,
+      );
     });
 
-    test('every dose still due across the horizon, soonest first', () {
-      final s =
-          NotificationCenter.medPromptSlots(on, defs, const {}, now: now);
-      // today 20:00, then both slots on each of the next two days.
+    test('unknown source is a no-op plan — the caller preserves', () {
+      expect(
+        NotificationCenter.medReminderPlan(on, null, now: now),
+        isEmpty,
+      );
+    });
+
+    test('known empty cancels by producing nothing to arm', () {
+      expect(
+        NotificationCenter.medReminderPlan(on, const [], now: now),
+        isEmpty,
+      );
+    });
+
+    test('soonest first, past instants dropped, 3-day horizon', () {
+      final s = NotificationCenter.medReminderPlan(on, [
+        _instant(DateTime(2026, 8, 20, 8), key: 'past'),
+        ...upcoming,
+        _instant(DateTime(2026, 8, 23, 8), key: 'beyond'),
+      ], now: now);
       expect(s.length, 5);
-      expect(s.first.date, todayLabel(now));
-      expect(s.first.slotMin, 20 * 60);
+      expect(s.first.at, DateTime(2026, 8, 20, 20));
       for (var i = 1; i < s.length; i++) {
-        expect(NotificationCenter.medSlotInstant(s[i])!
-            .isAfter(NotificationCenter.medSlotInstant(s[i - 1])!), isTrue);
+        expect(s[i].at.isAfter(s[i - 1].at), isTrue);
       }
-    });
-
-    test('a dose already taken is never asked for', () {
-      final s = NotificationCenter.medPromptSlots(
-          on, defs, _doses('d3', 20 * 60, taken: true),
-          now: now);
-      expect(s.length, 4);
-      expect(s.where((x) => x.date == todayLabel(now)), isEmpty);
-    });
-
-    test('a dose deliberately skipped is not asked for either', () {
-      final s = NotificationCenter.medPromptSlots(
-          on, defs, _doses('d3', 20 * 60, skipped: true),
-          now: now);
-      expect(s.where((x) => x.date == todayLabel(now)), isEmpty);
-    });
-
-    test('a dose that already came due today is not chased', () {
-      // The 08:00 slot is a miss, not an upcoming dose. Arming it would be a
-      // notification about a thing that is over — the same "yesterday's news"
-      // rule emitOncePerDay carries.
-      final s =
-          NotificationCenter.medPromptSlots(on, defs, const {}, now: now);
-      expect(
-          s.where((x) => x.date == todayLabel(now) && x.slotMin == 8 * 60),
-          isEmpty);
-    });
-
-    test('a weekday-restricted course only fires on its days', () {
-      final mondays = [
-        _def('m', const [MedSchedule(9 * 60, [DateTime.monday])])
-      ];
-      // Thu 20 Aug + Fri + Sat — no Monday in the horizon.
-      expect(NotificationCenter.medPromptSlots(on, mondays, const {}, now: now),
-          isEmpty);
-      // From the Sunday, Monday is in it.
-      final s = NotificationCenter.medPromptSlots(on, mondays, const {},
-          now: DateTime(2026, 8, 23, 10, 0));
-      expect(s.length, 1);
-      expect(
-          DateTime.parse(s.first.date).weekday, DateTime.monday);
+      expect(s.any((x) => x.at.day == 23), isFalse);
     });
 
     test('two pills at the same minute are one interruption', () {
-      final pair = [
-        _def('a', const [MedSchedule(20 * 60, [])]),
-        _def('b', const [MedSchedule(20 * 60, [])]),
-      ];
-      final s = NotificationCenter.medPromptSlots(on, pair, const {}, now: now);
-      // One per day across the horizon, not two.
-      expect(s.length, 3);
-      expect(s.map((x) => x.date).toSet().length, 3);
+      final s = NotificationCenter.medReminderPlan(on, [
+        _instant(DateTime(2026, 8, 20, 20), key: 'a'),
+        _instant(DateTime(2026, 8, 20, 20), key: 'b'),
+        _instant(DateTime(2026, 8, 21, 20), key: 'a'),
+        _instant(DateTime(2026, 8, 21, 20), key: 'b'),
+      ], now: now);
+      expect(s.length, 2);
     });
 
-    test('an inactive definition is not armed', () {
-      final stopped = [
-        MedDef(
-          key: 'x',
-          label: 'x',
-          active: false,
-          schedule: const [MedSchedule(20 * 60, [])],
-          createdAt: DateTime(2020).millisecondsSinceEpoch,
-        )
-      ];
-      expect(NotificationCenter.medPromptSlots(on, stopped, const {}, now: now),
-          isEmpty);
-    });
-
-    test('never more slots than the id band has room for', () {
+    test('never more slots than the id band, ids 2300+, no drug names', () {
       final many = [
-        for (var i = 0; i < 8; i++)
-          _def('m$i', [MedSchedule(11 * 60 + i, const [])]),
+        for (var i = 0; i < 16; i++)
+          _instant(now.add(Duration(hours: i + 1)), key: 'm$i'),
       ];
-      final s = NotificationCenter.medPromptSlots(on, many, const {}, now: now);
+      final s = NotificationCenter.medReminderPlan(on, many, now: now);
       expect(s.length, NotificationService.maxMedSlots);
-      // And every one of them lands on an id inside the band.
       for (var i = 0; i < s.length; i++) {
-        expect(
-            NotificationService.maySchedule(NotificationService.idMedsBase + i),
-            isTrue);
+        expect(s[i].id, NotificationService.idMedsBase + i);
+        expect(NotificationService.maySchedule(s[i].id), isTrue);
+        expect(s[i].title, 'Medication');
+        expect(s[i].body, 'A dose is due.');
+        expect(s[i].title.toLowerCase(), isNot(contains('m$i')));
+        expect(s[i].body.toLowerCase(), isNot(contains('mg')));
+        expect(s[i].route, kRouteMeds);
       }
-    });
-
-    test('the instant is the day plus the minute the user entered', () {
-      final s =
-          NotificationCenter.medPromptSlots(on, defs, const {}, now: now).first;
-      final at = NotificationCenter.medSlotInstant(s)!;
-      expect(at.hour, 20);
-      expect(at.minute, 0);
-      expect(todayLabel(at), todayLabel(now));
-      expect(at.isAfter(now), isTrue);
     });
   });
 
@@ -309,21 +256,19 @@ void main() {
       expect(screenForRoute(kRouteJournalCompose), isNotNull);
     });
 
-    test('the medication reminder lands on Wellness, which owns the checklist',
-        () {
+    test('the medication reminder pushes OpenBandMedications over Journal', () {
       final t = resolveTapRoute(kRouteMeds);
-      // Not the Home fallback an unknown payload gets — the route is KNOWN,
-      // which is the half `/profile` and `/recap` were missing.
       expect(t.screen, kRouteMeds);
       expect(domainForRoute(kRouteMeds), ShellDomain.wellness);
-      // Still pushes nothing, and that is now the WORKING answer rather than
-      // the ceiling it used to be: the checklist is a sub-tab of a shell tab,
-      // so anything pushed would be a second copy of Wellness over Wellness.
-      // The shell asks the screen for the tab instead.
-      expect(screenForRoute(kRouteMeds), isNull);
-      // The number that deep link hands over. It is an index into a private
-      // list, so a reorder would silently land the tap on Habits.
-      expect(WellnessScreen.tabs[WellnessScreen.medsTab], 'Medication');
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      final screen = screenForRoute(
+        kRouteMeds,
+        repository: LocalOpenBandRepository(app),
+      );
+      expect(screen, isA<OpenBandMedications>());
+      expect((screen! as OpenBandMedications).day, todayLabel());
+      expect(screenForRoute(kRouteWater), isA<OpenBandNutritionRoute>());
     });
 
     test('an unknown route still falls back to Home rather than crashing', () {

@@ -1,0 +1,34 @@
+{
+  "source": {
+    "tabler": "../tabler (MIT, 3.46.0)",
+    "lucide": "../lucide (ISC, 1.33.0)"
+  },
+  "rule": "Sport pictograms come from Tabler outline; UI chrome stays Lucide. Both share the 24-grid / 2px round grammar.",
+  "sports": {
+    "Kraft": "tabler:barbell",
+    "Laufen": "tabler:run",
+    "Gehen": "tabler:walk",
+    "Rad": "tabler:bike",
+    "Schwimmen": "tabler:swimming",
+    "Wandern": "tabler:trekking",
+    "Intervalle": "tabler:jump-rope",
+    "Yoga": "tabler:yoga",
+    "Dehnen": "tabler:stretching",
+    "Tennis": "tabler:ball-tennis",
+    "Tischtennis": "tabler:ping-pong",
+    "Fußball": "tabler:ball-football",
+    "Basketball": "tabler:ball-basketball",
+    "Volleyball": "tabler:ball-volleyball",
+    "Rudern": "tabler:kayak",
+    "Kampfsport": "tabler:karate",
+    "Klettern": "tabler:mountain",
+    "Golf": "tabler:golf",
+    "Ski": "tabler:ski-jumping",
+    "Eislaufen": "tabler:ice-skating",
+    "Reiten": "tabler:horse",
+    "Segeln": "tabler:sailboat",
+    "Rollstuhl": "tabler:wheelchair",
+    "Atmen": "lucide:wind",
+    "Sonstiges": "lucide:activity"
+  }
+}

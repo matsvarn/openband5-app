@@ -72,7 +72,12 @@ final _rules = <_Rule>[
     // long a network round trip gets before the button gives up on it, and
     // `Timer` has no non-`Duration` constructor to dodge this the way
     // beats.dart's wall-clock math does.
-    allow: {_tokenFile, 'lib/ui2/screens/home_screen.dart'},
+    allow: {
+      _tokenFile,
+      'lib/ui2/screens/home_screen.dart',
+      // first_sync's `_poll` is a status re-read, not an animation.
+      'lib/ui2/onboarding/first_sync.dart',
+    },
   ),
   _Rule(
     'raw gesture detector',
@@ -198,6 +203,15 @@ const _notComponents = {
   // onboarding routes
   'BootSplash', 'WelcomeScreen', 'WelcomeView', 'PairingScreen', 'PairingView',
   'ProfileSetupScreen', 'ProfileSetupView',
+  // A Scaffold route that reads the live band snapshot — a gallery case
+  // would be a photograph of a fixture. `FirstSyncView` is the pure half
+  // (same split as WelcomeView) and is what `first_sync_test.dart` and
+  // `openband_first_sync_test.dart` pump; synthetic frames are
+  // `FirstSyncScreen` in `main_gallery.dart`.
+  'FirstSyncScreen', 'FirstSyncView',
+  // OpenBand Baustein 3PAB, not a ui2 grammar widget. Rendered in-page by
+  // those first-sync gallery frames and tests, not as a ui2 cell.
+  'OBSetupStatusCard',
   // profile routes
   'ProfileHome', 'ProfileHomeView', 'MoreSettings', 'MoreSettingsView',
   'NotificationSettings', 'NotificationSettingsView', 'EditProfile',
@@ -250,8 +264,8 @@ const _notComponents = {
   // asserts the copy is not truncated and nothing overflows.
   'StartCard',
   // tabs and drill-downs
-  'HomeScreen', 'HealthScreen', 'WorkoutScreen', 'NutritionScreen',
-  'WellnessScreen', 'CycleTab', 'MetricDetail', 'ReadinessDetail',
+  'HomeScreen', 'HealthScreen', 'WorkoutScreen',
+  'WellnessScreen', 'MetricDetail', 'ReadinessDetail',
   'SleepDetail', 'CircadianDetail', 'DayStrainDetail', 'DayStepsDetail',
   'ZonesDetail',
   // Reads the day bundle AND the raw beat store to draw one night's Poincaré
@@ -273,12 +287,10 @@ const _notComponents = {
   // `what_changed` and their empty and calibrating states — along with the one
   // row component each is built out of.
   'DayTimelineScreen', 'WhatChangedScreen',
-  // Two more day/history Scaffold routes. `NapsScreen` resolves a day, reads
-  // the bundle AND `sleep_nap`, and every control on it writes an edit and
-  // forces a re-derive; `FindingsLog` is a Scaffold over a recomputed history.
-  // The ROWS both are built out of — `nap_row`, `nap_row_none`,
-  // `nap_unjudged`, `finding_row`, `finding_row_plain` — are in the gallery.
-  'NapsScreen', 'FindingsLog',
+  // FindingsLog is a Scaffold over a recomputed history. Nap editing moved
+  // to Alpin OpenBandNaps. The rows FindingsLog is built out of —
+  // `finding_row`, `finding_row_plain` — are in the gallery.
+  'FindingsLog',
   // a live session — a stateful screen with a clock, per archetype
   'LiveShell', 'LiveTick', 'LiveMeasured', 'LiveStrength', 'LiveSwim',
   'LiveFlow', 'LiveMatch', 'LiveInterval',

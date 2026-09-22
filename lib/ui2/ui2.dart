@@ -14,4 +14,5 @@ export 'nudges.dart';
 export 'paint_activity.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
+export 'text_field.dart';
 export 'theme.dart';

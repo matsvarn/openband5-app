@@ -107,15 +107,29 @@ enum FoodSource {
   /// Identified from a photo. NEVER carries an energy total — see
   /// [FoodEntry.sanitised].
   photo,
+
+  /// A stored TEXT that is not a known code. [FoodEntry.sourceCode] is the
+  /// exact wire value, including empty.
+  unknown,
 }
 
-FoodSource _sourceOf(String s) => switch (s) {
-  'verified' => FoodSource.verified,
-  'barcode' => FoodSource.barcode,
-  'repeat' => FoodSource.repeat,
-  'photo' => FoodSource.photo,
-  _ => FoodSource.manual,
-};
+/// Decode the `source` column. Null is the schema default (`manual`). Empty
+/// and any other unknown string stay [FoodSource.unknown] with that exact
+/// code — they are not relabeled [FoodSource.manual].
+({FoodSource source, String code}) _sourceOf(String? raw) {
+  if (raw == null) return (source: FoodSource.manual, code: 'manual');
+  return switch (raw) {
+    'manual' => (source: FoodSource.manual, code: 'manual'),
+    'verified' => (source: FoodSource.verified, code: 'verified'),
+    'barcode' => (source: FoodSource.barcode, code: 'barcode'),
+    'repeat' => (source: FoodSource.repeat, code: 'repeat'),
+    'photo' => (source: FoodSource.photo, code: 'photo'),
+    _ => (source: FoodSource.unknown, code: raw),
+  };
+}
+
+String _sourceWire(FoodSource source, String code) =>
+    source == FoodSource.unknown ? code : source.name;
 
 /// Whether a source counts as manufacturer/USDA-backed. Search ranks on this,
 /// never on how often something was picked — popularity ranking quietly
@@ -144,10 +158,14 @@ class FoodEntry {
     this.sodiumMg,
     this.ironMg,
     this.calciumMg,
-    this.source = FoodSource.manual,
+    FoodSource source = FoodSource.manual,
     this.confirmed = false,
     this.note = '',
-  });
+    this.createdAt,
+    this.updatedAt,
+    String? sourceCode,
+  }) : _source = source,
+       _sourceCode = sourceCode;
 
   final String id;
 
@@ -156,8 +174,9 @@ class FoodEntry {
   final String meal;
   final String label;
 
-  /// Epoch SECONDS. Null means the time was not recorded, which costs the day
-  /// its span check — see [dayLogState].
+  /// Consumed-at, epoch SECONDS. Null unless the caller supplied a time —
+  /// the store never fills this from the selected day, evening, or now. A
+  /// missing time costs the day its span check — see [dayLogState].
   final int? atTs;
   final String? foodKey;
 
@@ -176,9 +195,30 @@ class FoodEntry {
       ironMg,
       calciumMg;
 
-  final FoodSource source;
+  final FoodSource _source;
+  final String? _sourceCode;
+
+  /// Wire TEXT, then the typed source. A known code is always that source —
+  /// `unknown` plus `photo` is [FoodSource.photo], so [sanitised] still
+  /// strips an unconfirmed photo total. Empty and any other code stay
+  /// [FoodSource.unknown].
+  String get _wire => _sourceWire(_source, _sourceCode ?? '');
+
+  FoodSource get source => _sourceOf(_wire).source;
+
+  /// Exact `source` TEXT. Known sources report their name; unknown reports
+  /// the stored code, including empty.
+  String get sourceCode => _sourceOf(_wire).code;
   final bool confirmed;
   final String note;
+
+  /// Epoch MILLISECONDS the row was first stored. Null on a value the UI has
+  /// just built — [NutritionDb.put] stamps it then and never re-stamps it.
+  final int? createdAt;
+
+  /// Epoch MILLISECONDS of the last write. Null until [NutritionDb.put]
+  /// sets the write timestamp. The clock can tie or move.
+  final int? updatedAt;
 
   /// A bare eating occasion: logged, but with no energy attached. Complete and
   /// valid as a log; it just cannot contribute to an energy average.
@@ -199,7 +239,10 @@ class FoodEntry {
           foodKey: foodKey,
           unit: unit,
           source: source,
+          sourceCode: sourceCode,
           note: note,
+          createdAt: createdAt,
+          updatedAt: updatedAt,
         )
       : this;
 
@@ -222,15 +265,16 @@ class FoodEntry {
     'sodium_mg': sodiumMg,
     'iron_mg': ironMg,
     'calcium_mg': calciumMg,
-    'source': source.name,
+    'source': _wire,
     'confirmed': confirmed ? 1 : 0,
     'note': note,
-    'created_at': nowMs,
-    'updated_at': nowMs,
+    'created_at': createdAt ?? nowMs,
+    'updated_at': updatedAt ?? nowMs,
   };
 
   static FoodEntry fromRow(Map<String, Object?> r) {
     double? d(String k) => (r[k] as num?)?.toDouble();
+    final src = _sourceOf(r['source'] as String?);
     return FoodEntry(
       id: r['id'] as String,
       date: r['date'] as String,
@@ -250,9 +294,12 @@ class FoodEntry {
       sodiumMg: d('sodium_mg'),
       ironMg: d('iron_mg'),
       calciumMg: d('calcium_mg'),
-      source: _sourceOf((r['source'] as String?) ?? 'manual'),
+      source: src.source,
+      sourceCode: src.code,
       confirmed: ((r['confirmed'] as num?)?.toInt() ?? 0) == 1,
       note: (r['note'] as String?) ?? '',
+      createdAt: (r['created_at'] as num?)?.toInt(),
+      updatedAt: (r['updated_at'] as num?)?.toInt(),
     );
   }
 }
@@ -466,12 +513,33 @@ class NutritionDb {
   /// Write one entry. [FoodEntry.sanitised] runs HERE rather than in the UI:
   /// a photo estimate must not be able to reach the table with a calorie
   /// total no matter which screen wrote it.
+  ///
+  /// An edit arrives as a fresh [FoodEntry] with no ledger stamps. The
+  /// stored [created_at] is read and the full row is REPLACE'd in one
+  /// IMMEDIATE transaction: creation is not restamped, and a NOT NULL miss
+  /// still fails the write. [updated_at] is the write timestamp.
+  /// [FoodEntry.atTs] is consumed-at and is written exactly as supplied,
+  /// including null.
   static Future<void> put(Database db, FoodEntry e) async {
-    await db.insert(
-      'food_entry',
-      e.sanitised.toRow(DateTime.now().millisecondsSinceEpoch),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final clean = e.sanitised;
+    await db.transaction((txn) async {
+      final prior = await txn.query(
+        'food_entry',
+        columns: ['created_at'],
+        where: 'id = ?',
+        whereArgs: [clean.id],
+        limit: 1,
+      );
+      final stored = prior.isEmpty
+          ? null
+          : (prior.first['created_at'] as num?)?.toInt();
+      await txn.insert('food_entry', {
+        ...clean.toRow(now),
+        'created_at': stored ?? clean.createdAt ?? now,
+        'updated_at': now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   static Future<void> delete(Database db, String id) =>
@@ -508,13 +576,29 @@ class NutritionDb {
   }
 
   /// The last distinct things eaten, newest first. This is what makes a repeat
-  /// entry a two-second job, and it is why there is no need for a "favourites"
-  /// concept on top.
+  /// entry a two-second job.
+  ///
+  /// Distinct means [FoodEntry.foodKey] when one is stored, otherwise the
+  /// (label, source) pair compared field-wise — a keyed oats and an unkeyed
+  /// oats stay two rows, and a delimiter in the label cannot fuse groups.
+  /// Order is ledger [created_at], then `id` so a lexical-max id cannot beat
+  /// an earlier occasion.
   static Future<List<FoodEntry>> recent(Database db, {int limit = 12}) async {
     final rows = await db.rawQuery(
-      'SELECT * FROM food_entry WHERE id IN '
-      '(SELECT MAX(id) FROM food_entry GROUP BY label) '
-      'ORDER BY created_at DESC LIMIT ?',
+      'SELECT * FROM food_entry e WHERE NOT EXISTS ('
+      '  SELECT 1 FROM food_entry o WHERE ('
+      "    (e.food_key IS NOT NULL AND e.food_key != ''"
+      '      AND o.food_key = e.food_key)'
+      '    OR ('
+      "      (e.food_key IS NULL OR e.food_key = '')"
+      "      AND (o.food_key IS NULL OR o.food_key = '')"
+      '      AND o.label = e.label AND o.source = e.source'
+      '    )'
+      '  ) AND ('
+      '    o.created_at > e.created_at'
+      '    OR (o.created_at = e.created_at AND o.id < e.id)'
+      '  )'
+      ') ORDER BY e.created_at DESC, e.id ASC LIMIT ?',
       [limit],
     );
     return [for (final r in rows) FoodEntry.fromRow(r)];
@@ -549,10 +633,27 @@ class NutritionDb {
     Database db,
     Map<String, Object?> def,
   ) async {
-    await db.insert('food_def', {
-      ...def,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final key = def['key'];
+    await db.transaction((txn) async {
+      int? stored;
+      if (key != null) {
+        final prior = await txn.query(
+          'food_def',
+          columns: ['created_at'],
+          where: 'key = ?',
+          whereArgs: [key],
+          limit: 1,
+        );
+        stored = prior.isEmpty
+            ? null
+            : (prior.first['created_at'] as num?)?.toInt();
+      }
+      await txn.insert('food_def', {
+        ...def,
+        'created_at': stored ?? (def['created_at'] as num?)?.toInt() ?? now,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   /// The trailing [days] days ending today, oldest first, already rolled up.

@@ -5,25 +5,21 @@
 // SCHEDULE plus one taken/skipped record per slot. Multiple rows per (day,
 // thing) is the whole reason for a table.
 //
-// `taken_ts IS NULL AND skipped = 0` on a PAST slot is the only thing that
-// counts as a miss. A slot still ahead of you today is neither taken nor
-// missed, and adherence that counts it is adherence that lies to you every
-// morning. That is why taken_ts is nullable rather than a boolean.
-//
-// THERE IS NO INTERACTION CHECKING, and there will not be one bolted on
-// quietly: no free authoritative source exists, and being wrong here is
-// dangerous. The UI says so in a StatusCard.
+// Schema 65 adds `med_plan_revision` as historical truth. `med_def` remains
+// the latest head cache. A missing answer is unknown, never skipped, and is
+// never a percentage. THERE IS NO INTERACTION CHECKING.
 
 import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../openband/medication_data.dart';
 import 'day_label.dart';
 
 // ══════════════════ SCHEMA ══════════════════
 
-/// schemaVersion 36.
-Future<void> createMedTables(Database db) async {
+/// schemaVersion 36 tables, plus schema 65 revision history and dose snapshots.
+Future<void> createMedTables(Database db, {DateTime? now}) async {
   await db.execute('''
     CREATE TABLE IF NOT EXISTS med_def (
       key           TEXT PRIMARY KEY,
@@ -53,288 +49,689 @@ Future<void> createMedTables(Database db) async {
   await db.execute(
     'CREATE INDEX IF NOT EXISTS idx_med_dose_date ON med_dose(date)',
   );
-}
-
-// ══════════════════ MODEL ══════════════════
-
-/// One scheduled time. [days] are `DateTime.weekday` values, 1 = Monday.
-class MedSchedule {
-  const MedSchedule(this.minuteOfDay, this.days);
-  final int minuteOfDay;
-  final List<int> days;
-
-  bool onDay(DateTime d) => days.isEmpty || days.contains(d.weekday);
-
-  Map<String, Object?> toJson() => {'minute_of_day': minuteOfDay, 'days': days};
-
-  static MedSchedule fromJson(Map<String, Object?> j) => MedSchedule(
-    (j['minute_of_day'] as num?)?.toInt() ?? 0,
-    [for (final d in (j['days'] as List?) ?? const []) (d as num).toInt()],
+  await _ensureMedDoseColumn(db, 'label', 'TEXT');
+  await _ensureMedDoseColumn(db, 'dose_unit', 'TEXT');
+  await _ensureMedDoseColumn(db, 'kind', 'TEXT');
+  await _ensureMedDoseColumn(db, 'taken_utc_offset_min', 'INTEGER');
+  await db.execute('''
+    CREATE TABLE IF NOT EXISTS med_plan_revision (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      med_key         TEXT NOT NULL,
+      effective_ts    INTEGER NOT NULL,
+      effective_date  TEXT NOT NULL,
+      effective_min   INTEGER NOT NULL,
+      label           TEXT NOT NULL,
+      dose_value      REAL,
+      dose_unit       TEXT,
+      kind            TEXT NOT NULL,
+      note            TEXT NOT NULL DEFAULT '',
+      schedule_json   TEXT NOT NULL,
+      active          INTEGER NOT NULL,
+      origin          TEXT NOT NULL
+    )
+  ''');
+  await db.execute(
+    'CREATE INDEX IF NOT EXISTS idx_med_plan_revision_key_ts '
+    'ON med_plan_revision(med_key, effective_ts, id)',
   );
+  await migrateMedPlanRevisions(db, now: now);
 }
 
-class MedDef {
-  const MedDef({
-    required this.key,
-    required this.label,
-    this.doseValue,
-    this.doseUnit = '',
-    this.kind = 'medication',
-    this.schedule = const [],
-    this.active = true,
-    this.note = '',
-    this.createdAt,
-  });
+Future<void> upgradeMedTables(Database db, {DateTime? now}) =>
+    createMedTables(db, now: now);
 
-  final String key;
-  final String label;
-
-  /// Epoch MILLISECONDS the definition was first stored. Null on a def the UI
-  /// has just built and not yet written — [MedDb.putDef] stamps it then, and
-  /// never re-stamps it. It bounds schedule resolution: nothing was scheduled
-  /// before the medication existed (see [slotsForDay]).
-  final int? createdAt;
-
-  /// Null means "as directed" — a real answer, not a missing one.
-  final double? doseValue;
-  final String doseUnit;
-
-  /// 'medication' | 'supplement'.
-  final String kind;
-  final List<MedSchedule> schedule;
-  final bool active;
-  final String note;
-
-  String get doseLabel {
-    final v = doseValue;
-    if (v == null) return doseUnit.isEmpty ? 'As directed' : doseUnit;
-    final n = v == v.roundToDouble() ? v.round().toString() : v.toString();
-    return doseUnit.isEmpty ? n : '$n $doseUnit';
-  }
-
-  Map<String, Object?> toRow(int nowMs) => {
-    'key': key,
-    'label': label,
-    'dose_value': doseValue,
-    'dose_unit': doseUnit,
-    'kind': kind,
-    'schedule_json': jsonEncode([for (final s in schedule) s.toJson()]),
-    'active': active ? 1 : 0,
-    'note': note,
-    // The def's own stamp wins over the clock: this row is written with
-    // REPLACE, so restamping on an edit would move the creation day forward and
-    // silently drop every dose that had already come due before it.
-    'created_at': createdAt ?? nowMs,
+Future<void> _ensureMedDoseColumn(
+  Database db,
+  String name,
+  String typeSql,
+) async {
+  final info = await db.rawQuery('PRAGMA table_info(med_dose)');
+  final cols = {
+    for (final c in info)
+      if (c['name'] is String) c['name'] as String,
   };
-
-  static MedDef fromRow(Map<String, Object?> r) {
-    final raw = jsonDecode((r['schedule_json'] as String?) ?? '[]');
-    return MedDef(
-      key: r['key'] as String,
-      label: r['label'] as String,
-      doseValue: (r['dose_value'] as num?)?.toDouble(),
-      doseUnit: (r['dose_unit'] as String?) ?? '',
-      kind: (r['kind'] as String?) ?? 'medication',
-      schedule: raw is List
-          ? [
-              for (final s in raw)
-                if (s is Map) MedSchedule.fromJson(s.cast<String, Object?>()),
-            ]
-          : const [],
-      active: ((r['active'] as num?)?.toInt() ?? 1) == 1,
-      note: (r['note'] as String?) ?? '',
-      createdAt: (r['created_at'] as num?)?.toInt(),
-    );
-  }
+  if (cols.contains(name)) return;
+  await db.execute('ALTER TABLE med_dose ADD COLUMN $name $typeSql');
 }
 
-/// What happened to one scheduled dose.
-enum DoseState { taken, skipped, missed, upcoming }
-
-/// One slot on one day, with its state resolved against the clock.
-class MedSlot {
-  const MedSlot({
-    required this.def,
-    required this.date,
-    required this.slotMin,
-    required this.state,
-  });
-
-  final MedDef def;
-  final String date;
-  final int slotMin;
-  final DoseState state;
-
-  String get timeLabel {
-    final h = (slotMin ~/ 60).toString().padLeft(2, '0');
-    final m = (slotMin % 60).toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
-  /// A slot that has passed and was neither taken nor deliberately skipped.
-  bool get isMiss => state == DoseState.missed;
-
-  /// Whether this slot may be counted at all. An upcoming slot is not yet an
-  /// opportunity, so it belongs in no adherence denominator.
-  bool get isDecided => state != DoseState.upcoming;
-}
-
-/// Resolve one day's slots for [defs]. [now] decides what "past" means, so the
-/// caller owns the clock and the tests do not have to wait for one.
-///
-/// A slot that came due BEFORE the definition was created is not emitted at
-/// all: it was never an opportunity, and resolving it as a miss is the same
-/// fabricated denominator this file's header refuses. Adding a medication at
-/// 15:00 with an 08:00 daily dose used to show "0 of 7" the moment it was
-/// saved. A slot that already carries a dose row is kept regardless — a
-/// recorded dose is real, whatever the stamp says.
-List<MedSlot> slotsForDay(
-  List<MedDef> defs,
-  String date,
-  Map<String, Map<int, Map<String, Object?>>> doses, {
-  required DateTime now,
-}) {
-  final startSec = localDayStartSec(date);
-  if (startSec == null) return const [];
-  final day = DateTime.fromMillisecondsSinceEpoch(startSec * 1000);
-  final nowMin = dayLabelOf(now) == date
-      ? now.hour * 60 + now.minute
-      : (now.isAfter(day) ? 24 * 60 : -1);
-  final out = <MedSlot>[];
-  for (final d in defs) {
-    if (!d.active) continue;
-    // Minute-of-day this def began to exist, or null when it predates the day
-    // entirely. A day BEFORE the creation day gets a bound past midnight, so
-    // every slot on it falls away.
-    final created = d.createdAt == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(d.createdAt!);
-    final int? existedFromMin;
-    if (created == null) {
-      existedFromMin = null;
-    } else if (dayLabelOf(created) == date) {
-      existedFromMin = created.hour * 60 + created.minute;
-    } else {
-      existedFromMin = created.isAfter(day) ? 24 * 60 + 1 : null;
-    }
-    for (final s in d.schedule) {
-      if (!s.onDay(day)) continue;
-      final row = doses[d.key]?[s.minuteOfDay];
-      if (row == null &&
-          existedFromMin != null &&
-          s.minuteOfDay < existedFromMin) {
-        continue;
-      }
-      final taken = (row?['taken_ts'] as num?) != null;
-      final skipped = ((row?['skipped'] as num?)?.toInt() ?? 0) == 1;
-      out.add(
-        MedSlot(
-          def: d,
-          date: date,
-          slotMin: s.minuteOfDay,
-          state: taken
-              ? DoseState.taken
-              : skipped
-              ? DoseState.skipped
-              : (s.minuteOfDay <= nowMin ? DoseState.missed : DoseState.upcoming),
-        ),
-      );
+/// Snapshot current `med_def` heads at [now], never `created_at`. Idempotent:
+/// a key that already has a revision is left alone. Copies stored columns as
+/// they are — corrupt kind/active/dose stay unreadable rather than becoming a
+/// known schedule or unknown amount.
+Future<void> migrateMedPlanRevisions(Database db, {DateTime? now}) async {
+  final at = now ?? DateTime.now();
+  final existing = await db.rawQuery(
+    'SELECT DISTINCT med_key FROM med_plan_revision',
+  );
+  final have = {
+    for (final r in existing)
+      if (r['med_key'] is String) r['med_key'] as String,
+  };
+  final defs = await db.query('med_def');
+  for (final row in defs) {
+    final key = row['key'] as String?;
+    if (key == null || key.isEmpty || have.contains(key)) continue;
+    try {
+      await _snapshotHeadRevision(db, row, now: at);
+    } catch (_) {
+      // Opening must not fail because one head cannot be snapshotted.
+      // A missing revision is counted unreadable at read, not backdated here.
     }
   }
-  out.sort((a, b) => a.slotMin.compareTo(b.slotMin));
-  return out;
 }
 
-/// Adherence as a COUNT with its window stated — never a percentage on its
-/// own. `(taken, of)` feeds `Consistency` directly.
-({int taken, int of}) adherence(List<MedSlot> slots) {
-  var taken = 0, of = 0;
-  for (final s in slots) {
-    if (!s.isDecided) continue;
-    of++;
-    if (s.state == DoseState.taken) taken++;
+String? _storedUnit(String? unit) {
+  final s = unit?.trim() ?? '';
+  return s.isEmpty ? null : s;
+}
+
+Object? _decodeScheduleJson(Object? raw) {
+  if (raw is List) return raw;
+  if (raw is! String || raw.isEmpty) return const [];
+  try {
+    return jsonDecode(raw);
+  } catch (_) {
+    return null;
   }
-  return (taken: taken, of: of);
 }
 
 // ══════════════════ STORE ══════════════════
 
+/// Runtime read surface (schema 65).
+///
+/// ```text
+/// MedDb.readPlans(db, {activeOnly}) -> Future<List<MedicationPlan>>
+/// MedDb.readPlan(db, key) -> Future<MedicationPlan>
+/// MedDb.readDay(db, date, {now, zone}) -> Future<MedicationDay>
+/// MedDb.readHistory(db, from, to, {now, zone}) -> Future<MedicationHistory>
+/// MedDb.coveringRevision(db, {key, date, slotMin}) -> Future<MedicationPlanRevision?>
+/// MedDb.revisionsForKey(db, key) -> Future<List<MedicationPlanRevision>>
+/// MedDb.upcomingReminderInstants(db, {now, horizonDays, zone})
+///   -> Future<List<({key, date, slotMin, at})>>
+/// ```
+///
+/// Writes: [MedDb.commitPlan], [MedDb.setActive], [MedDb.markDose].
 class MedDb {
   MedDb._();
 
-  static String keyFor(String label) =>
-      'custom_${label.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_')}';
-
-  static Future<List<MedDef>> defs(Database db, {bool activeOnly = true}) async {
+  static Future<bool> _hasPlan(DatabaseExecutor db, String key) async {
     final rows = await db.query(
       'med_def',
-      where: activeOnly ? 'active = 1' : null,
-      orderBy: 'label ASC',
+      columns: ['key'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
     );
-    return [for (final r in rows) MedDef.fromRow(r)];
+    return rows.isNotEmpty;
   }
 
-  /// Write a definition, creation stamp intact.
-  ///
-  /// An edit arrives as a whole new [MedDef] built by a screen, which has no
-  /// `createdAt`, and REPLACE rewrites the whole row — so the stored stamp is
-  /// read back first. Restamping would move the creation day to now and take
-  /// every dose the schedule had already come due for out of adherence.
-  static Future<void> putDef(Database db, MedDef d) async {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    var created = d.createdAt;
-    if (created == null) {
-      final prior = await db.query(
-        'med_def',
-        columns: ['created_at'],
-        where: 'key = ?',
-        whereArgs: [d.key],
-        limit: 1,
-      );
-      created = prior.isEmpty
-          ? null
-          : (prior.first['created_at'] as num?)?.toInt();
-    }
-    await db.insert('med_def', {
-      ...d.toRow(now),
-      'created_at': created ?? now,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
-
-  static Future<void> deleteDef(Database db, String key) async {
-    await db.delete('med_def', where: 'key = ?', whereArgs: [key]);
-    // The dose history stays: those doses were still taken, and a re-added key
-    // picks them back up. It is not orphaned data either — the medication CSV
-    // (`csv_export.dart`, the `medication` set) LEFT JOINs the definition, so
-    // an orphaned dose still exports, with the raw key in place of the label.
-  }
-
-  /// Doses over a date range, indexed `['med_key|date'][slot_min]`. The outer
-  /// key is COMPOSITE — one med has one row per day — unlike [dosesForDay],
-  /// whose outer key is the bare med_key and whose doc really does describe the
-  /// shape [slotsForDay] wants.
-  static Future<Map<String, Map<int, Map<String, Object?>>>> doses(
-    Database db, {
-    required String from,
-    required String to,
+  static Future<MedicationPlan> commitPlan(
+    Database db,
+    MedicationPlanDraft draft, {
+    required DateTime now,
   }) async {
-    final rows = await db.query(
-      'med_dose',
-      where: 'date >= ? AND date <= ?',
-      whereArgs: [from, to],
+    requireMedicationPlanDraft(draft);
+    final name = draft.name.trim();
+    final unit = _storedUnit(draft.doseUnit);
+    if (!draft.create) {
+      if (!await _hasPlan(db, draft.key!.trim())) {
+        throw StateError('No medication plan "${draft.key}" to update.');
+      }
+    }
+    final key = draft.create
+        ? (draft.key?.trim().isNotEmpty == true
+            ? draft.key!.trim()
+            : newMedicationPlanId())
+        : draft.key!.trim();
+    if (draft.create) {
+      if (await _hasPlan(db, key)) {
+        throw StateError('Medication plan "$key" already exists.');
+      }
+    }
+    final scheduleJson = jsonEncode([
+      for (final s in draft.schedule) s.toJson(),
+    ]);
+    final kind = medicationKindWire(draft.kind);
+    final ts = now.millisecondsSinceEpoch;
+    final committed = await db.transaction((txn) async {
+      final created = await _createdAtMs(txn, key) ?? ts;
+      await txn.insert(
+        'med_def',
+        {
+          'key': key,
+          'label': name,
+          'dose_value': draft.doseValue,
+          'dose_unit': unit ?? '',
+          'kind': kind,
+          'schedule_json': scheduleJson,
+          'active': draft.active ? 1 : 0,
+          'note': draft.note,
+          'created_at': created,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      final revisionId = await _insertRevision(
+        txn,
+        key: key,
+        label: name,
+        doseValue: draft.doseValue,
+        doseUnit: unit,
+        kind: kind,
+        note: draft.note,
+        scheduleJson: scheduleJson,
+        active: draft.active,
+        origin: MedicationPlanOrigin.user,
+        now: now,
+      );
+      return (revisionId: revisionId, createdAt: created);
+    });
+    return MedicationPlan(
+      key: key,
+      name: name,
+      doseValue: draft.doseValue,
+      doseUnit: unit,
+      kind: draft.kind,
+      note: draft.note,
+      schedule: draft.schedule,
+      active: draft.active,
+      createdAtMs: committed.createdAt,
+      revisionId: committed.revisionId,
+      effectiveTs: ts,
+      effectiveDate: dayLabelOf(now),
+      effectiveMin: now.hour * 60 + now.minute,
+      origin: MedicationPlanOrigin.user,
     );
-    final out = <String, Map<int, Map<String, Object?>>>{};
+  }
+
+  /// Typed current head for one key. Refuses an unreadable row rather than
+  /// inventing a kind or dropping invalid slots.
+  static Future<MedicationPlan> readPlan(Database db, String key) async {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(key, 'key');
+    }
+    final rows = await db.query(
+      'med_def',
+      where: 'key = ?',
+      whereArgs: [trimmed],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('No medication plan "$trimmed" to update.');
+    }
+    return _planFromHeadRow(db, rows.first);
+  }
+
+  static Future<MedicationPlan> setActive(
+    Database db,
+    String key, {
+    required bool active,
+    required DateTime now,
+  }) async {
+    final current = await readPlan(db, key);
+    if (current.scheduleUnreadableCount > 0) {
+      throw FormatException(
+        'Stored medication plan "${current.key}" has an unreadable schedule.',
+      );
+    }
+    return commitPlan(
+      db,
+      MedicationPlanDraft(
+        create: false,
+        key: current.key,
+        name: current.name,
+        doseValue: current.doseValue,
+        doseUnit: current.doseUnit,
+        kind: current.kind,
+        note: current.note,
+        schedule: current.schedule,
+        active: active,
+      ),
+      now: now,
+    );
+  }
+
+  static Future<int?> _createdAtMs(DatabaseExecutor db, String key) async {
+    final prior = await db.query(
+      'med_def',
+      columns: ['created_at'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (prior.isEmpty) return null;
+    return (prior.first['created_at'] is num)
+        ? parseMedicationInt(prior.first['created_at'])
+        : null;
+  }
+
+  static Future<MedicationDayEntry?> markDose(
+    Database db,
+    MedicationEntryDraft draft, {
+    required DateTime now,
+    String? zone,
+  }) async {
+    requireMedicationEntryDraft(draft, now: now);
+    final key = draft.key.trim();
+    return db.transaction((txn) async {
+      final revs = await revisionsForKey(txn, key);
+      final currentName = await _headLabel(txn, key);
+      if (draft.answer == MedicationEntryAnswer.clear) {
+        await txn.delete(
+          'med_dose',
+          where: 'med_key = ? AND date = ? AND slot_min = ?',
+          whereArgs: [key, draft.date, draft.slotMin],
+        );
+        return _entryFromMemory(
+          key: key,
+          date: draft.date,
+          slotMin: draft.slotMin,
+          now: now,
+          revisions: revs,
+          doses: const [],
+          currentName: currentName,
+          zone: zone,
+        );
+      }
+      final written = await _upsertDose(
+        txn,
+        key: key,
+        date: draft.date,
+        slotMin: draft.slotMin,
+        takenAt: draft.answer == MedicationEntryAnswer.taken
+            ? (draft.takenAt ?? now)
+            : null,
+        skipped: draft.answer == MedicationEntryAnswer.skipped,
+        note: draft.note,
+        now: now,
+        revisions: revs,
+      );
+      return _entryFromMemory(
+        key: key,
+        date: draft.date,
+        slotMin: draft.slotMin,
+        now: now,
+        revisions: revs,
+        doses: [written],
+        currentName: currentName,
+        zone: zone,
+      );
+    });
+  }
+
+  static Future<String?> _headLabel(DatabaseExecutor db, String key) async {
+    final rows = await db.query(
+      'med_def',
+      columns: ['label'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final label = rows.first['label'];
+    return label is String && label.isNotEmpty ? label : null;
+  }
+
+  static MedicationDayEntry? _entryFromMemory({
+    required String key,
+    required String date,
+    required int slotMin,
+    required DateTime now,
+    required List<MedicationPlanRevision> revisions,
+    required List<MedicationStoredDose> doses,
+    required String? currentName,
+    String? zone,
+  }) {
+    final resolved = resolveMedicationDay(
+      date: date,
+      now: now,
+      revisionsByKey: {key: revisions},
+      doses: doses,
+      currentNames: currentName == null ? const {} : {key: currentName},
+      zone: zone,
+    );
+    for (final e in resolved.entries) {
+      if (e.key == key && e.slotMin == slotMin) return e;
+    }
+    return null;
+  }
+
+  static Future<MedicationStoredDose> _upsertDose(
+    DatabaseExecutor db, {
+    required String key,
+    required String date,
+    required int slotMin,
+    required DateTime? takenAt,
+    required bool skipped,
+    String? note,
+    required DateTime now,
+    required List<MedicationPlanRevision> revisions,
+  }) async {
+    final existingRows = await db.query(
+      'med_dose',
+      where: 'med_key = ? AND date = ? AND slot_min = ?',
+      whereArgs: [key, date, slotMin],
+      limit: 1,
+    );
+    final existing =
+        existingRows.isEmpty ? null : _doseFromRow(existingRows.first);
+    final covering = coveringMedicationRevision(
+      revisions: revisions,
+      date: date,
+      slotMin: slotMin,
+    );
+    final takenTs =
+        takenAt == null ? null : takenAt.millisecondsSinceEpoch ~/ 1000;
+    final Object? offsetToStore;
+    if (existing != null && existing.takenTsSeconds == takenTs) {
+      offsetToStore = existing.takenUtcOffsetMinutes;
+    } else if (takenAt != null) {
+      offsetToStore = takenAt.timeZoneOffset.inMinutes;
+    } else {
+      offsetToStore = null;
+    }
+    final written = MedicationStoredDose(
+      medKey: key,
+      date: date,
+      slotMin: slotMin,
+      takenTsSeconds: takenTs,
+      skipped: skipped,
+      doseValue: existing != null ? existing.doseValue : covering?.doseValue,
+      doseUnit: existing != null ? existing.doseUnit : covering?.doseUnit,
+      label: existing != null ? existing.label : covering?.label,
+      kind: existing != null ? existing.kind : covering?.kind,
+      note: note ?? existing?.note ?? '',
+      takenUtcOffsetMinutes: offsetToStore is int ? offsetToStore : null,
+    );
+    await db.insert(
+      'med_dose',
+      {
+        'med_key': written.medKey,
+        'date': written.date,
+        'slot_min': written.slotMin,
+        'taken_ts': written.takenTsSeconds,
+        'skipped': written.skipped ? 1 : 0,
+        'dose_value': written.doseValue,
+        'dose_unit': written.doseUnit,
+        'label': written.label,
+        'kind': written.kind == null ? null : medicationKindWire(written.kind!),
+        'note': written.note,
+        'updated_at': now.millisecondsSinceEpoch,
+        'taken_utc_offset_min': offsetToStore,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return written;
+  }
+
+  static Future<List<MedicationPlan>> readPlans(
+    Database db, {
+    bool activeOnly = true,
+  }) async {
+    final rows = await db.query('med_def', orderBy: 'label ASC');
+    if (rows.isEmpty) return const [];
+    final out = <MedicationPlan>[];
     for (final r in rows) {
-      final key = '${r['med_key']}|${r['date']}';
-      (out[key] ??= {})[(r['slot_min'] as num).toInt()] = r;
+      final plan = await _planFromHeadRow(db, r);
+      if (!activeOnly || plan.active) out.add(plan);
     }
     return out;
   }
 
-  /// One day's doses, indexed `[med_key][slot_min]` — the shape
-  /// [slotsForDay] wants.
-  static Future<Map<String, Map<int, Map<String, Object?>>>> dosesForDay(
+  static Future<MedicationPlan> _planFromHeadRow(
     Database db,
+    Map<String, Object?> r,
+  ) async {
+    final key = r['key'];
+    final label = r['label'];
+    if (key is! String || key.isEmpty || label is! String || label.isEmpty) {
+      throw const FormatException('Stored medication plan is unreadable.');
+    }
+    final kindRaw = r['kind'];
+    final kind = kindRaw is String ? parseMedicationKind(kindRaw) : null;
+    if (kind == null) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable kind.',
+      );
+    }
+    final dose = parseMedicationStoredDose(r['dose_value']);
+    if (dose.unreadable) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable dose.',
+      );
+    }
+    final active = parseMedicationActiveFlag(r['active']);
+    if (active == null) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable active flag.',
+      );
+    }
+    final decoded = _decodeScheduleJson(r['schedule_json']);
+    if (decoded == null) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable schedule.',
+      );
+    }
+    final parsed = parseMedicationScheduleList(decoded);
+    if (parsed.unreadableCount > 0) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable schedule.',
+      );
+    }
+    final revs = await revisionsForKey(db, key);
+    MedicationPlanRevision? head;
+    for (final rev in revs) {
+      if (head == null || compareRevisionCover(rev, head) > 0) head = rev;
+    }
+    if ((head?.scheduleUnreadableCount ?? 0) > 0) {
+      throw FormatException(
+        'Stored medication plan "$key" has an unreadable schedule.',
+      );
+    }
+    return MedicationPlan(
+      key: key,
+      name: label,
+      doseValue: dose.value,
+      doseUnit: _storedUnit(r['dose_unit'] as String?),
+      kind: kind,
+      note: (r['note'] as String?) ?? '',
+      schedule: head?.schedule ?? parsed.slots,
+      active: active,
+      createdAtMs: parseMedicationInt(r['created_at']),
+      revisionId: head?.id ?? 0,
+      effectiveTs: head?.effectiveTs ?? (parseMedicationInt(r['created_at']) ?? 0),
+      effectiveDate: head?.effectiveDate ?? '',
+      effectiveMin: head?.effectiveMin ?? 0,
+      origin: head?.origin ?? MedicationPlanOrigin.user,
+      scheduleUnreadableCount:
+          head?.scheduleUnreadableCount ?? parsed.unreadableCount,
+    );
+  }
+
+  static Future<MedicationDay> readDay(
+    Database db,
+    String date, {
+    required DateTime now,
+    String? zone,
+  }) async {
+    if (!isMedicationCalendarDay(date)) {
+      throw ArgumentError.value(date, 'date', 'Expected a Gregorian YYYY-MM-DD.');
+    }
+    final loaded = await _allRevisions(db);
+    final stored = await _dosesOn(db, date);
+    final names = await _headLabels(db);
+    final resolved = resolveMedicationDay(
+      date: date,
+      now: now,
+      revisionsByKey: loaded.byKey,
+      doses: stored.doses,
+      currentNames: names,
+      zone: zone,
+    );
+    return MedicationDay(
+      day: date,
+      entries: resolved.entries,
+      unreadableCount:
+          resolved.unreadableCount + loaded.unreadable + stored.unreadable,
+    );
+  }
+
+  static Future<MedicationHistory> readHistory(
+    Database db,
+    String fromDay,
+    String toDay, {
+    required DateTime now,
+    String? zone,
+  }) async {
+    final days = medicationCivilDays(fromDay, toDay).toList();
+    final loaded = await _allRevisions(db);
+    final stored = await _dosesBetween(db, fromDay, toDay);
+    final names = await _headLabels(db);
+    final entries = <MedicationDayEntry>[];
+    var unreadable = loaded.unreadable + stored.unreadable;
+    for (final day in days) {
+      final resolved = resolveMedicationDay(
+        date: day,
+        now: now,
+        revisionsByKey: loaded.byKey,
+        doses: stored.doses,
+        currentNames: names,
+        zone: zone,
+      );
+      entries.addAll(resolved.entries);
+      unreadable += resolved.unreadableCount;
+    }
+    return MedicationHistory(
+      fromDay: fromDay,
+      toDay: toDay,
+      entries: entries,
+      unreadableCount: unreadable,
+    );
+  }
+
+  static Future<MedicationPlanRevision?> coveringRevision(
+    DatabaseExecutor db, {
+    required String key,
+    required String date,
+    required int slotMin,
+    String? zone,
+  }) async {
+    final revs = await revisionsForKey(db, key);
+    return coveringMedicationRevision(
+      revisions: revs,
+      date: date,
+      slotMin: slotMin,
+      zone: zone,
+    );
+  }
+
+  static Future<List<MedicationPlanRevision>> revisionsForKey(
+    DatabaseExecutor db,
+    String key,
+  ) async {
+    final rows = await db.query(
+      'med_plan_revision',
+      where: 'med_key = ?',
+      whereArgs: [key],
+      orderBy: 'effective_ts ASC, id ASC',
+    );
+    return [for (final r in rows) _revisionFromRow(r)];
+  }
+
+  /// Upcoming valid wall instants for reminder arming. DST gaps/folds are
+  /// omitted rather than shifted. A successful empty list is known-empty
+  /// (cancel armed reminders). Unreadable/partial store throws rather than
+  /// looking like known-empty.
+  static Future<List<({String key, String date, int slotMin, DateTime at})>>
+      upcomingReminderInstants(
+    Database db, {
+    required DateTime now,
+    int horizonDays = 3,
+    String? zone,
+  }) async {
+    final out = <({String key, String date, int slotMin, DateTime at})>[];
+    for (var i = 0; i < horizonDays; i++) {
+      final day = dayLabelOf(DateTime(now.year, now.month, now.day + i));
+      if (!isMedicationCalendarDay(day)) {
+        throw FormatException('Medication reminder day "$day" is unreadable.');
+      }
+      final resolved = await readDay(db, day, now: now, zone: zone);
+      if (resolved.unreadableCount > 0) {
+        throw const FormatException(
+          'Medication reminder slots are unreadable.',
+        );
+      }
+      for (final e in resolved.entries) {
+        if (e.status != MedicationSlotStatus.upcoming) continue;
+        final at = e.scheduledAt;
+        if (at == null) continue;
+        out.add((key: e.key, date: e.date, slotMin: e.slotMin, at: at));
+      }
+    }
+    return out;
+  }
+
+  static Future<Map<String, String>> _headLabels(DatabaseExecutor db) async {
+    final rows = await db.query('med_def', columns: ['key', 'label']);
+    final out = <String, String>{};
+    for (final r in rows) {
+      final key = r['key'];
+      final label = r['label'];
+      if (key is String && key.isNotEmpty && label is String && label.isNotEmpty) {
+        out[key] = label;
+      }
+    }
+    return out;
+  }
+
+  static Future<({Map<String, List<MedicationPlanRevision>> byKey, int unreadable})>
+      _allRevisions(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'med_plan_revision',
+      orderBy: 'med_key ASC, effective_ts ASC, id ASC',
+    );
+    final out = <String, List<MedicationPlanRevision>>{};
+    final failedKeys = <String>{};
+    final revisionKeys = <String>{};
+    var unreadable = 0;
+    for (final r in rows) {
+      final key = r['med_key'];
+      if (key is String && key.isNotEmpty) revisionKeys.add(key);
+      try {
+        final rev = _revisionFromRow(r);
+        (out[rev.medKey] ??= []).add(rev);
+      } on FormatException {
+        unreadable++;
+        if (key is String && key.isNotEmpty) failedKeys.add(key);
+      }
+    }
+    for (final key in failedKeys) {
+      out.remove(key);
+    }
+    unreadable += await _headRevisionHoles(db, revisionKeys);
+    return (byKey: out, unreadable: unreadable);
+  }
+
+  /// Heads with no revision row are unreadable covering, not known-empty.
+  /// Keys that already have a revision row (even an unreadable one) are not
+  /// holes — those are counted when the row fails to parse.
+  static Future<int> _headRevisionHoles(
+    DatabaseExecutor db,
+    Set<String> revisionKeys,
+  ) async {
+    final heads = await db.query('med_def', columns: ['key']);
+    var holes = 0;
+    for (final r in heads) {
+      final key = r['key'];
+      if (key is! String || key.isEmpty || !revisionKeys.contains(key)) {
+        holes++;
+      }
+    }
+    return holes;
+  }
+
+  static Future<({List<MedicationStoredDose> doses, int unreadable})> _dosesOn(
+    DatabaseExecutor db,
     String date,
   ) async {
     final rows = await db.query(
@@ -342,58 +739,233 @@ class MedDb {
       where: 'date = ?',
       whereArgs: [date],
     );
-    final out = <String, Map<int, Map<String, Object?>>>{};
+    return _parseDoseRows(rows);
+  }
+
+  static Future<({List<MedicationStoredDose> doses, int unreadable})>
+      _dosesBetween(DatabaseExecutor db, String fromDay, String toDay) async {
+    final rows = await db.query(
+      'med_dose',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [fromDay, toDay],
+    );
+    return _parseDoseRows(rows);
+  }
+
+  static ({List<MedicationStoredDose> doses, int unreadable}) _parseDoseRows(
+    List<Map<String, Object?>> rows,
+  ) {
+    final out = <MedicationStoredDose>[];
+    var unreadable = 0;
     for (final r in rows) {
-      (out[r['med_key'] as String] ??= {})[(r['slot_min'] as num).toInt()] = r;
+      try {
+        out.add(_doseFromRow(r));
+      } on FormatException {
+        unreadable++;
+      }
     }
-    return out;
+    return (doses: out, unreadable: unreadable);
   }
+}
 
-  static Future<void> mark(
-    Database db, {
-    required String medKey,
-    required String date,
-    required int slotMin,
-    required bool taken,
-    bool skipped = false,
-  }) async {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    await db.insert('med_dose', {
-      'med_key': medKey,
-      'date': date,
-      'slot_min': slotMin,
-      'taken_ts': taken ? nowMs ~/ 1000 : null,
-      'skipped': skipped ? 1 : 0,
-      'dose_value': null,
-      'note': '',
-      'updated_at': nowMs,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+Future<void> _snapshotHeadRevision(
+  DatabaseExecutor db,
+  Map<String, Object?> row, {
+  required DateTime now,
+}) async {
+  final key = row['key'] as String;
+  final kindRaw = row['kind'];
+  final kindWire = kindRaw is String
+      ? kindRaw
+      : (kindRaw == null ? '' : kindRaw.toString());
+  final activeParsed = parseMedicationInt(row['active']);
+  final Object activeWire;
+  if (activeParsed != null) {
+    activeWire = activeParsed;
+  } else if (row['active'] is num) {
+    activeWire = row['active'] as num;
+  } else {
+    activeWire = 2;
   }
+  final ts = now.millisecondsSinceEpoch;
+  await db.insert('med_plan_revision', {
+    'med_key': key,
+    'effective_ts': ts,
+    'effective_date': dayLabelOf(now),
+    'effective_min': now.hour * 60 + now.minute,
+    'label': (row['label'] as String?) ?? key,
+    'dose_value': row['dose_value'],
+    'dose_unit': _storedUnit((row['dose_unit'] as String?) ?? ''),
+    'kind': kindWire,
+    'note': (row['note'] as String?) ?? '',
+    'schedule_json': (row['schedule_json'] as String?) ?? '[]',
+    'active': activeWire,
+    'origin': medicationPlanOriginWire(MedicationPlanOrigin.migrated),
+  });
+}
 
-  /// Adherence over the trailing [days] days ending today.
-  static Future<({int taken, int of})> adherenceWindow(
-    Database db, {
-    int days = 7,
-    DateTime? now,
-  }) async {
-    final end = now ?? DateTime.now();
-    final defsList = await defs(db);
-    if (defsList.isEmpty) return (taken: 0, of: 0);
-    final labels = [
-      for (var i = days - 1; i >= 0; i--)
-        dayLabelOf(DateTime(end.year, end.month, end.day - i)),
-    ];
-    final all = await doses(db, from: labels.first, to: labels.last);
-    var taken = 0, of = 0;
-    for (final l in labels) {
-      final byMed = <String, Map<int, Map<String, Object?>>>{
-        for (final d in defsList)
-          if (all['${d.key}|$l'] != null) d.key: all['${d.key}|$l']!,
-      };
-      final a = adherence(slotsForDay(defsList, l, byMed, now: end));
-      taken += a.taken;
-      of += a.of;
+Future<int> _insertRevision(
+  DatabaseExecutor db, {
+  required String key,
+  required String label,
+  required double? doseValue,
+  required String? doseUnit,
+  required String kind,
+  required String note,
+  required String scheduleJson,
+  required bool active,
+  required MedicationPlanOrigin origin,
+  required DateTime now,
+}) async {
+  final ts = now.millisecondsSinceEpoch;
+  return db.insert('med_plan_revision', {
+    'med_key': key,
+    'effective_ts': ts,
+    'effective_date': dayLabelOf(now),
+    'effective_min': now.hour * 60 + now.minute,
+    'label': label,
+    'dose_value': doseValue,
+    'dose_unit': doseUnit,
+    'kind': kind,
+    'note': note,
+    'schedule_json': scheduleJson,
+    'active': active ? 1 : 0,
+    'origin': medicationPlanOriginWire(origin),
+  });
+}
+
+MedicationPlanRevision _revisionFromRow(Map<String, Object?> r) {
+  final id = parseMedicationInt(r['id']);
+  final ts = parseMedicationInt(r['effective_ts']);
+  final min = parseMedicationInt(r['effective_min']);
+  final date = r['effective_date'];
+  final key = r['med_key'];
+  final label = r['label'];
+  if (id == null ||
+      ts == null ||
+      min == null ||
+      date is! String ||
+      !isMedicationCalendarDay(date) ||
+      key is! String ||
+      key.isEmpty ||
+      label is! String ||
+      label.isEmpty) {
+    throw const FormatException('Stored medication revision is unreadable.');
+  }
+  final kindRaw = r['kind'];
+  final kind = kindRaw is String ? parseMedicationKind(kindRaw) : null;
+  if (kind == null) {
+    throw const FormatException(
+      'Stored medication revision kind is unreadable.',
+    );
+  }
+  final active = parseMedicationActiveFlag(r['active']);
+  if (active == null) {
+    throw const FormatException(
+      'Stored medication revision active flag is unreadable.',
+    );
+  }
+  final dose = parseMedicationStoredDose(r['dose_value']);
+  if (dose.unreadable) {
+    throw const FormatException(
+      'Stored medication revision dose is unreadable.',
+    );
+  }
+  final parsed = parseMedicationScheduleList(
+    _decodeScheduleJson(r['schedule_json']),
+  );
+  return MedicationPlanRevision(
+    id: id,
+    medKey: key,
+    effectiveTs: ts,
+    effectiveDate: date,
+    effectiveMin: min,
+    label: label,
+    doseValue: dose.value,
+    doseUnit: _storedUnit(r['dose_unit'] as String?),
+    kind: kind,
+    note: (r['note'] as String?) ?? '',
+    schedule: parsed.slots,
+    active: active,
+    origin: parseMedicationPlanOrigin(r['origin'] as String?),
+    scheduleUnreadableCount: parsed.unreadableCount,
+  );
+}
+
+MedicationStoredDose _doseFromRow(Map<String, Object?> r) {
+  final key = r['med_key'];
+  final date = r['date'];
+  final slot = parseMedicationInt(r['slot_min']);
+  if (key is! String ||
+      key.isEmpty ||
+      date is! String ||
+      !isMedicationCalendarDay(date) ||
+      slot == null ||
+      slot < 0 ||
+      slot > 1439) {
+    throw const FormatException('Stored medication dose is unreadable.');
+  }
+  final takenRaw = r['taken_ts'];
+  int? takenTs;
+  if (takenRaw != null) {
+    takenTs = parseMedicationInt(takenRaw);
+    if (takenTs == null) {
+      throw const FormatException(
+        'Stored medication taken time is unreadable.',
+      );
     }
-    return (taken: taken, of: of);
   }
+  final skippedRaw = r['skipped'];
+  final bool skipped;
+  if (skippedRaw == null) {
+    skipped = false;
+  } else {
+    final flag = parseMedicationInt(skippedRaw);
+    if (flag == 0) {
+      skipped = false;
+    } else if (flag == 1) {
+      skipped = true;
+    } else {
+      throw const FormatException(
+        'Stored medication skipped flag is unreadable.',
+      );
+    }
+  }
+  final dose = parseMedicationStoredDose(r['dose_value']);
+  if (dose.unreadable) {
+    throw const FormatException('Stored medication dose value is unreadable.');
+  }
+  final offsetRaw = r['taken_utc_offset_min'];
+  int? offset;
+  if (offsetRaw != null) {
+    offset = parseMedicationInt(offsetRaw);
+    if (offset == null) {
+      throw const FormatException(
+        'Stored medication UTC offset is unreadable.',
+      );
+    }
+  }
+  final kindRaw = r['kind'];
+  MedicationKind? kind;
+  if (kindRaw != null && kindRaw != '') {
+    kind = kindRaw is String ? parseMedicationKind(kindRaw) : null;
+    if (kind == null) {
+      throw const FormatException('Stored medication dose kind is unreadable.');
+    }
+  }
+  return MedicationStoredDose(
+    medKey: key,
+    date: date,
+    slotMin: slot,
+    takenTsSeconds: takenTs,
+    skipped: skipped,
+    doseValue: dose.value,
+    doseUnit: r.containsKey('dose_unit')
+        ? _storedUnit(r['dose_unit'] as String?)
+        : null,
+    label: r['label'] as String?,
+    kind: kind,
+    note: (r['note'] as String?) ?? '',
+    takenUtcOffsetMinutes: offset,
+  );
 }

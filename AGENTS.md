@@ -13,7 +13,8 @@ symbol names don't; verify against the source, not this doc.
 
 ## 1. What this is
 
-A Flutter app for a reverse-engineered WHOOP 4.0 band. **Fully on-device,
+OpenBand 5 is a Flutter app for WHOOP 5.0, with retained upstream WHOOP 4.0
+paths. **Fully on-device,
 local-first**: BLE offload → SQLite → on-device analytics → UI. No backend owns
 user data. Network use is limited to OTA update pointers, opt-in
 telemetry/Crashlytics, and BYOK LLM calls.
@@ -212,9 +213,9 @@ pinned the pre-fix analytics commit, requiring a manual merge-order gate; and
 the release uninstallable.
 `pubspec_overrides.yaml` redirects siblings to `../analytics` / `../protocol` and
 is gitignored — committing a path override fails CI `flutter pub get` (exit 66).
-Note the tracked `pubspec.lock` currently records `source: path` for both
-siblings, so it provides **no** pin guarantee; `pubspec.yaml` is the source of
-truth. `version:` must always keep its `+BUILD` suffix, and the iOS widget/watch
+The tracked `pubspec.lock` records Git sources and full resolved commits for both
+siblings. Verify those commits match `pubspec.yaml`; local ignored overrides do
+not establish release pins. `version:` must always keep its `+BUILD` suffix, and the iOS widget/watch
 `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` are bumped manually and drift.
 
 ### 4.10 Duplicated / inconsistent values across screens

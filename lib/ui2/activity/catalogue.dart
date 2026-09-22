@@ -18,6 +18,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/exercise_catalogue.dart';
 import '../theme.dart';
 
 /// How a session is tracked — which decides which live screen it opens, and
@@ -353,34 +354,9 @@ class ExerciseDef {
   const ExerciseDef(this.key, this.label, this.muscles, {this.step = 2.5});
 }
 
-const exerciseLibrary = <ExerciseDef>[
-  ExerciseDef('bench_press', 'Bench press',
-      {'chest': .6, 'triceps': .25, 'shoulders': .15}),
-  ExerciseDef('incline_db_press', 'Incline DB press',
-      {'chest': .5, 'shoulders': .3, 'triceps': .2},
-      step: 2),
-  ExerciseDef('cable_fly', 'Cable fly', {'chest': .8, 'shoulders': .2}),
-  ExerciseDef('overhead_press', 'Overhead press',
-      {'shoulders': .6, 'triceps': .3, 'core': .1}),
-  ExerciseDef('triceps_pushdown', 'Triceps pushdown', {'triceps': 1.0}),
-  ExerciseDef('overhead_extension', 'Overhead extension', {'triceps': 1.0}),
-  ExerciseDef('barbell_row', 'Barbell row',
-      {'back': .65, 'biceps': .25, 'core': .1}),
-  ExerciseDef('lat_pulldown', 'Lat pulldown', {'back': .7, 'biceps': .3}),
-  ExerciseDef('pull_up', 'Pull-up', {'back': .65, 'biceps': .25, 'core': .1}),
-  ExerciseDef('barbell_curl', 'Barbell curl', {'biceps': 1.0}),
-  ExerciseDef('back_squat', 'Back squat',
-      {'legs': .65, 'glutes': .25, 'core': .1}),
-  ExerciseDef('front_squat', 'Front squat',
-      {'legs': .6, 'glutes': .2, 'core': .2}),
-  ExerciseDef('deadlift', 'Deadlift',
-      {'back': .35, 'legs': .3, 'glutes': .3, 'core': .05}),
-  ExerciseDef('romanian_deadlift', 'Romanian deadlift',
-      {'glutes': .45, 'legs': .35, 'back': .2}),
-  ExerciseDef('hip_thrust', 'Hip thrust', {'glutes': .8, 'legs': .2}),
-  ExerciseDef('leg_press', 'Leg press', {'legs': .75, 'glutes': .25}),
-  ExerciseDef('plank', 'Plank', {'core': 1.0}, step: 0),
-  ExerciseDef('hanging_leg_raise', 'Hanging leg raise', {'core': 1.0}, step: 0),
+final exerciseLibrary = <ExerciseDef>[
+  for (final e in kExercisePresets)
+    ExerciseDef(e.id, e.labelEn, e.legacyMuscleShares, step: e.loadIncrement),
 ];
 
 final Map<String, ExerciseDef> _exercisesByKey = {

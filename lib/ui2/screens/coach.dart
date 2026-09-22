@@ -31,7 +31,6 @@ import '../ui2.dart';
 import 'ai_briefing.dart';
 import 'coach_figures.dart';
 import 'home_screen.dart' show go, pad, repoOf;
-import 'journal_compose.dart' show OsTextField;
 
 /// The coach's accent. Not a domain colour: the coach reads across all five.
 const Color kCoachAccent = C.purple;
@@ -117,6 +116,7 @@ class _CoachScreenState extends State<CoachScreen> {
       config: cfg,
       api: repo,
       storageKey: (app.user?['id'] ?? 'local').toString(),
+      onMedicationMutated: app.refreshAiReminders,
     );
     await engine.restore();
     if (!mounted) {

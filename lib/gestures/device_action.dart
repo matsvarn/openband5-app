@@ -196,6 +196,13 @@ extension DeviceActionX on DeviceAction {
     }
   }
 
+  /// Journal, a new workout, or water. The saved id stays; a reduced build
+  /// neither runs it nor offers it as a new choice.
+  bool get releaseParked =>
+      this == DeviceAction.markMoment ||
+      this == DeviceAction.workoutToggle ||
+      this == DeviceAction.logWater;
+
   /// In-app actions act on our own app/backend (handled in Dart, no native call,
   /// available on every platform). Everything else (except `none`) is native.
   bool get isInApp =>

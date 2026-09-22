@@ -31,6 +31,7 @@ import '../data/local_repository.dart';
 import '../data/med_store.dart';
 import '../data/nutrition_store.dart';
 import '../health/health_export.dart';
+import '../openband/medication_data.dart';
 
 /// Raised when the model's arguments cannot be honoured. The message goes back
 /// into the transcript so the model can correct itself rather than retrying the
@@ -196,9 +197,8 @@ class CoachActions {
 
   /// Write one or more numeric journal fields for a day.
   ///
-  /// `postJournalMetrics` replaces the WHOLE day — "the map IS the day, not a
-  /// patch on it" — so the stored day is read first and merged. Without that,
-  /// logging water at lunch would silently erase the morning's mood.
+  /// Only the keys in this call are patched. Other fields, note and tags stay.
+  /// A concurrent edit of the same field is refused rather than merged.
   ///
   /// Water is loggable here and is scored NOWHERE. There is no hydration score
   /// in this app and there is not going to be one.
@@ -213,7 +213,7 @@ class CoachActions {
     }
     final known = {for (final f in await repo.getJournalFields()) f.key: f};
     final at = str(a['time']).isEmpty ? null : minuteOfDay(a['time']);
-    final merged = {...await repo.getJournalMetrics(d)};
+    final pending = <String, ({JournalFieldSpec spec, double v})>{};
     final written = <String>[];
     for (final e in raw.entries) {
       final key = str(e.key);
@@ -228,13 +228,28 @@ class CoachActions {
       if (v == null) {
         throw CoachActionError('Field "$key" needs a number.');
       }
-      merged[key] = JournalMetricValue(
-        v,
-        atMinuteOfDay: spec.hasTime ? at : null,
-      );
+      pending[key] = (spec: spec, v: v);
       written.add(key);
     }
-    await repo.postJournalMetrics(d, merged);
+    try {
+      final snap = await repo.readJournalDay(d);
+      final metrics = <String, JournalMetricValue?>{
+        for (final e in pending.entries)
+          e.key: JournalMetricValue(
+            e.value.v,
+            atMinuteOfDay: e.value.spec.hasTime
+                ? (at ?? snap.metrics[e.key]?.atMinuteOfDay)
+                : snap.metrics[e.key]?.atMinuteOfDay,
+          ),
+      };
+      await repo.patchJournalDay(
+        JournalDayPatch.fromBase(snap, metrics: metrics),
+      );
+    } on JournalConflict {
+      throw CoachActionError(
+        'Those journal fields were updated elsewhere. Read them and retry.',
+      );
+    }
     return jsonEncode({'saved': true, 'date': d, 'fields': written});
   }
 
@@ -285,44 +300,66 @@ class CoachActions {
   static Future<String> medications(Database db, {DateTime? now}) async {
     final at = now ?? DateTime.now();
     final d = todayLabel(at);
-    final defs = await MedDb.defs(db);
-    final slots = slotsForDay(defs, d, await MedDb.dosesForDay(db, d), now: at);
+    final plans = await MedDb.readPlans(db);
+    final dayView = await MedDb.readDay(db, d, now: at);
+    Object? doseOf(MedicationPlan p) {
+      if (p.doseValue == null && (p.doseUnit == null || p.doseUnit!.isEmpty)) {
+        return null;
+      }
+      if (p.doseValue == null) return p.doseUnit;
+      final n = p.doseValue == p.doseValue!.roundToDouble()
+          ? p.doseValue!.round().toString()
+          : p.doseValue.toString();
+      final u = p.doseUnit ?? '';
+      return u.isEmpty ? n : '$n $u';
+    }
+
     return jsonEncode({
       'date': d,
       'medications': [
-        for (final def in defs)
+        for (final p in plans)
           {
-            'name': def.label,
-            'dose': def.doseLabel,
+            'key': p.key,
+            'name': p.name,
+            if (doseOf(p) != null) 'dose': doseOf(p),
             'schedule': [
-              for (final s in def.schedule)
+              for (final s in p.schedule)
                 {
-                  'time':
-                      '${(s.minuteOfDay ~/ 60).toString().padLeft(2, '0')}:'
-                      '${(s.minuteOfDay % 60).toString().padLeft(2, '0')}',
-                  'weekdays': s.days.isEmpty ? [1, 2, 3, 4, 5, 6, 7] : s.days,
+                  'time': medicationTimeLabel(s.minuteOfDay),
+                  'weekdays': s.weekdays.isEmpty
+                      ? [1, 2, 3, 4, 5, 6, 7]
+                      : s.weekdays,
                 },
             ],
           },
       ],
       'today': [
-        for (final s in slots)
-          {'name': s.def.label, 'time': s.timeLabel, 'state': s.state.name},
+        for (final s in dayView.entries)
+          {
+            'key': s.key,
+            'name': s.currentName ?? s.snapshotLabel ?? s.key,
+            'time': s.timeLabel,
+            'state': s.status.name,
+          },
       ],
     });
   }
 
-  /// Add (or replace) a medication schedule.
-  ///
-  /// [weekdays] are `DateTime.weekday` values, 1 = Monday. They are REQUIRED in
-  /// spirit and default to every day only because that is what most schedules
-  /// are — the user can change them on the Wellness screen, which is the
-  /// precondition this tool waited on: an AI that writes a schedule the person
-  /// cannot correct is worse than no tool at all.
+  static List<MedicationPlan> _uniqueNameMatches(
+    List<MedicationPlan> plans,
+    String name,
+  ) {
+    final needle = name.toLowerCase();
+    return [for (final p in plans) if (p.name.toLowerCase() == needle) p];
+  }
+
+  /// Add a time to a uniquely named plan, or create a new UUID identity.
+  /// Ambiguous name matches are refused rather than picking an arbitrary plan.
   static Future<String> addMedication(
     Database db,
-    Map<String, dynamic> a,
-  ) async {
+    Map<String, dynamic> a, {
+    DateTime? now,
+  }) async {
     final name = str(a['name']);
     if (name.isEmpty) throw CoachActionError('A medication needs a name.');
     final minute = minuteOfDay(a['time']);
@@ -331,74 +368,89 @@ class CoachActions {
         if (num_(d) != null) num_(d)!.round(),
     }..removeWhere((d) => d < 1 || d > 7);
     final dose = num_(a['dose_value']);
-    final key = MedDb.keyFor(name);
-    // ADD, not replace. `putDef` writes the whole row, so building a fresh
-    // MedDef here meant a second "add paracetamol at 22:00" silently deleted
-    // the 08:00 and 14:00 doses already on it — and blanked the dose, unit,
-    // kind and note whenever the model did not resend them. An assistant that
-    // destroys a medication schedule as a side effect of adding to it is worse
-    // than one with no tool at all.
-    final existing = (await MedDb.defs(db, activeOnly: false))
-        .where((d) => d.key == key)
-        .firstOrNull;
-    final slot = MedSchedule(
-      minute,
-      days.isEmpty ? const [1, 2, 3, 4, 5, 6, 7] : (days.toList()..sort()),
+    if (dose != null && (!dose.isFinite || dose <= 0)) {
+      throw CoachActionError('Dose must be a finite positive number when set.');
+    }
+    final all = await MedDb.readPlans(db, activeOnly: false);
+    final matches = _uniqueNameMatches(all, name);
+    if (matches.length > 1) {
+      throw CoachActionError(
+        'Several medications are called "$name". Name is not identity.',
+      );
+    }
+    final existing = matches.firstOrNull;
+    final weekdays =
+        days.isEmpty ? const [1, 2, 3, 4, 5, 6, 7] : (days.toList()..sort());
+    final slot = MedicationScheduleSlot(
+      minuteOfDay: minute,
+      weekdays: weekdays,
     );
-    // Same time of day twice is one entry, with the newer day-set winning —
-    // that is how a person edits which days a dose falls on.
     final schedule = [
-      ...?existing?.schedule.where((e) => e.minuteOfDay != minute),
+      for (final s in existing?.schedule ?? const <MedicationScheduleSlot>[])
+        if (s.minuteOfDay != minute && s.minuteOfDay >= 0) s,
       slot,
     ]..sort((x, y) => x.minuteOfDay.compareTo(y.minuteOfDay));
-    await MedDb.putDef(
+    final unit = str(a['dose_unit']);
+    final kindRaw = str(a['kind']);
+    final MedicationKind kind;
+    if (kindRaw.isEmpty) {
+      kind = existing?.kind ?? MedicationKind.medication;
+    } else if (kindRaw == 'supplement') {
+      kind = MedicationKind.supplement;
+    } else if (kindRaw == 'medication') {
+      kind = MedicationKind.medication;
+    } else {
+      throw CoachActionError('Kind must be medication or supplement.');
+    }
+    await MedDb.commitPlan(
       db,
-      MedDef(
-        key: key,
-        label: name,
+      MedicationPlanDraft(
+        create: existing == null,
+        key: existing?.key,
+        name: name,
         doseValue: dose ?? existing?.doseValue,
-        doseUnit: str(a['dose_unit']).isEmpty
-            ? (existing?.doseUnit ?? '')
-            : str(a['dose_unit']),
-        kind: str(a['kind']).isEmpty
-            ? (existing?.kind ?? 'medication')
-            : (str(a['kind']) == 'supplement' ? 'supplement' : 'medication'),
-        schedule: schedule,
+        doseUnit: unit.isEmpty ? existing?.doseUnit : unit,
+        kind: kind,
         note: existing?.note ?? '',
+        schedule: schedule,
         active: existing?.active ?? true,
-        createdAt: existing?.createdAt,
       ),
+      now: now ?? DateTime.now(),
     );
     return jsonEncode({
       'saved': true,
       'name': name,
-      'weekdays': days.isEmpty ? [1, 2, 3, 4, 5, 6, 7] : (days.toList()..sort()),
+      'weekdays': weekdays,
+      if (existing != null) 'key': existing.key,
     });
   }
 
   /// Record what happened to one scheduled dose.
   ///
-  /// `skipped` and `not_taken` are different facts and both are storable — the
-  /// distinction the store was built for and the UI could not enter until now.
+  /// `not_taken` clears the answer back to unknown. Ambiguous names refuse.
   static Future<String> markMedication(
     Database db,
-    Map<String, dynamic> a,
-  ) async {
+    Map<String, dynamic> a, {
+    DateTime? now,
+  }) async {
     final name = str(a['name']);
-    final defs = await MedDb.defs(db);
-    MedDef? def;
-    for (final x in defs) {
-      if (x.label.toLowerCase() == name.toLowerCase()) def = x;
-    }
-    if (def == null) {
+    final plans = await MedDb.readPlans(db, activeOnly: false);
+    final matches = _uniqueNameMatches(plans, name);
+    if (matches.length > 1) {
       throw CoachActionError(
-        'No medication called "$name". Known: '
-        '${defs.map((d) => d.label).join(', ')}.',
+        'Several medications are called "$name". Name is not identity.',
       );
     }
-    final d = day(a['date']);
+    if (matches.isEmpty) {
+      throw CoachActionError(
+        'No medication called "$name". Known: '
+        '${plans.map((p) => p.name).join(', ')}.',
+      );
+    }
+    final plan = matches.single;
+    final d = day(a['date'], now: now);
     final slot = str(a['time']).isEmpty
-        ? (def.schedule.isEmpty ? null : def.schedule.first.minuteOfDay)
+        ? (plan.schedule.isEmpty ? null : plan.schedule.first.minuteOfDay)
         : minuteOfDay(a['time']);
     if (slot == null) {
       throw CoachActionError('"$name" has no scheduled time to mark.');
@@ -407,19 +459,27 @@ class CoachActions {
     if (!const ['taken', 'skipped', 'not_taken'].contains(state)) {
       throw CoachActionError('State must be taken, skipped or not_taken.');
     }
-    await MedDb.mark(
+    final answer = switch (state) {
+      'taken' => MedicationEntryAnswer.taken,
+      'skipped' => MedicationEntryAnswer.skipped,
+      _ => MedicationEntryAnswer.clear,
+    };
+    await MedDb.markDose(
       db,
-      medKey: def.key,
-      date: d,
-      slotMin: slot,
-      taken: state == 'taken',
-      skipped: state == 'skipped',
+      MedicationEntryDraft(
+        key: plan.key,
+        date: d,
+        slotMin: slot,
+        answer: answer,
+      ),
+      now: now ?? DateTime.now(),
     );
     return jsonEncode({
       'saved': true,
-      'name': def.label,
+      'name': plan.name,
+      'key': plan.key,
       'date': d,
-      'state': state,
+      'state': state == 'not_taken' ? 'unknown' : state,
     });
   }
 }

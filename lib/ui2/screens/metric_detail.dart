@@ -25,7 +25,6 @@ import 'beats.dart';
 import 'day_steps.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
-import 'journal_compose.dart' show OsTextField;
 import '../profile/devices.dart'
     show
         DeviceFilter,

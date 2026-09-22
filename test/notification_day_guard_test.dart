@@ -84,10 +84,15 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final original = NotificationCenter.instance.presentSink;
-  tearDown(() => NotificationCenter.instance.presentSink = original);
+  final previousReduced = NotificationCenter.instance.releaseReduced;
+  tearDown(() {
+    NotificationCenter.instance.presentSink = original;
+    NotificationCenter.instance.releaseReduced = previousReduced;
+  });
 
   setUp(() {
     NotificationIds.instance.resetForTest();
+    NotificationCenter.instance.releaseReduced = false;
   });
 
   group('emit reports whether the event actually reached the OS', () {

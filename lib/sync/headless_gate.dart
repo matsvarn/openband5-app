@@ -18,8 +18,24 @@ import 'package:flutter/foundation.dart';
 
 import 'band_ownership.dart';
 
+/// Zone-local authority survives awaits, but is revoked before ownership is
+/// released. Orphan continuations must check it at every effect boundary.
+class HeadlessRunLease {
+  final Completer<void> _revoked = Completer<void>();
+  bool get active => !_revoked.isCompleted;
+  Future<void> get revoked => _revoked.future;
+  void revoke() {
+    if (active) _revoked.complete();
+  }
+}
+
 class HeadlessSyncGate {
   HeadlessSyncGate._();
+
+  static final Object _leaseKey = Object();
+  static HeadlessRunLease? get currentLease =>
+      Zone.current[_leaseKey] as HeadlessRunLease?;
+  static bool get continuationAllowed => currentLease?.active ?? true;
 
   static Future<void>? _running;
   static String? _runningOwner;
@@ -114,14 +130,19 @@ class HeadlessSyncGate {
     final done = Completer<void>();
     _running = done.future;
     _runningOwner = owner;
+    final lease = HeadlessRunLease();
     try {
       // The ceiling is what makes a skip temporary. TimeoutException completes
       // the future we're awaiting, so the finally below runs and the gate is
       // handed back even though the orphaned body is still out there — an
       // abandoned run is recoverable (the cursor is non-destructive), a gate
       // held for the life of the process is not.
-      return await body().timeout(ceiling ?? runCeiling);
+      return await runZoned(
+        body,
+        zoneValues: {_leaseKey: lease},
+      ).timeout(ceiling ?? runCeiling);
     } on TimeoutException {
+      lease.revoke();
       _timedOutRuns++;
       debugPrint(
         '[headless-gate] "$owner" exceeded ${(ceiling ?? runCeiling).inMinutes} '
@@ -141,6 +162,7 @@ class HeadlessSyncGate {
       BandOwnership.forceReleaseHeadless();
       return null;
     } finally {
+      lease.revoke();
       _running = null;
       _runningOwner = null;
       done.complete();

@@ -26,7 +26,10 @@ class Sample {
   /// day's steps are a difference between two records, never the value itself.
   final int? stepCount;
 
-  /// The band's own cadence for this second (steps/min).
+  /// The band's own cadence field for this second. The bytes behave like
+  /// steps/min (smooth over 51..254) but that reading is inference — nothing
+  /// yet ties them to steps as their producer. Carried unpinned, never a
+  /// substitute for the step counter's own deltas.
   final int? stepCadence;
 
   /// The band's own activity class: 0 = not committed to a class yet (NOT

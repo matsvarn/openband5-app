@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../data/db.dart';
+import 'derivation_engine.dart' show DerivationBusy;
 
 enum DeriveJobKind { light, heavy }
 
@@ -78,7 +81,20 @@ class DeriveScheduler {
   bool _pendingLight = false;
   bool _pendingHeavy = false;
   Timer? _timer;
-  bool _refreshing = false;
+  Future<void> _refreshTail = Future.value();
+  bool _disposed = false;
+
+  /// Test seam: pause a snapshot read so a write/wake can interleave.
+  @visibleForTesting
+  Future<void> Function()? debugHoldSnapshot;
+
+  /// Test seam: skip production settle so tests can await job predicates.
+  @visibleForTesting
+  Duration? debugSettle;
+
+  /// Test seam: await the production drain (same path as the armed timer).
+  @visibleForTesting
+  Future<void> debugDrain() => _drain();
 
   Future<void> init() async {
     await LocalDb.recoverComputeJobs();
@@ -107,6 +123,15 @@ class DeriveScheduler {
 
   void requestHeavy() {
     unawaited(_enqueue(type: 'derive_heavy', reason: 'capture_settled'));
+  }
+
+  /// Re-read the durable queue and arm if work is already pending.
+  /// Does not insert a job — cycle-start writes enqueue in the DB txn.
+  Future<void> wakeQueuedWork() async {
+    if (_disposed) return;
+    await _refreshSnapshot();
+    if (_disposed) return;
+    _arm();
   }
 
   /// Hold derivation for the duration of a live workout (see [_workoutActive]).
@@ -173,6 +198,7 @@ class DeriveScheduler {
   }
 
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     _timer = null;
     _workoutCapTimer?.cancel();
@@ -183,65 +209,95 @@ class DeriveScheduler {
     required String type,
     required String reason,
   }) async {
+    if (_disposed) return;
     await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+    if (_disposed) return;
     await _refreshSnapshot();
+    if (_disposed) return;
     _arm();
   }
 
   void _arm() {
-    if (_running || _offloadActive || _background || _workoutHeld) return;
+    if (_disposed || _running || _offloadActive || _background || _workoutHeld) {
+      return;
+    }
     if (!_pendingLight && !_pendingHeavy) {
       unawaited(_refreshSnapshot());
       return;
     }
     _timer?.cancel();
-    _timer = Timer(_pendingHeavy ? heavySettle : lightSettle, () {
+    _timer = Timer(
+      debugSettle ?? (_pendingHeavy ? heavySettle : lightSettle),
+      () {
+      if (_disposed) return;
       unawaited(_drain());
     });
     onChanged();
   }
 
+  String? _activeReason;
+  bool get activeJobCycleContext =>
+      _activeReason == LocalDb.kCycleContextJobReason;
+
+  bool get _held => _offloadActive || _background || _workoutHeld;
+
   Future<void> _drain() async {
-    if (_running || _offloadActive || _background || _workoutHeld) return;
+    if (_disposed || _running || _held) return;
+    _running = true;
     _timer?.cancel();
     _timer = null;
-    final job = await LocalDb.takeNextComputeJob();
-    if (job == null) {
-      await _refreshSnapshot();
-      return;
-    }
-    final id = job['id']?.toString();
-    // RE-CHECK THE GATES AFTER ACQUISITION. The checks above happened before a
-    // DB round-trip, and a workout can start (or an offload/background flip can
-    // land) inside it — at which point running the pass is exactly what the
-    // gate exists to prevent. The job is already marked `running` by
-    // takeNextComputeJob, so hand it back rather than leaving it claimed.
-    if (_offloadActive || _background || _workoutHeld) {
-      if (id != null && id.isNotEmpty) {
-        await LocalDb.requeueComputeJob(id);
+    String? id;
+    String? reason;
+    try {
+      final job = await LocalDb.takeNextComputeJob();
+      if (job == null) return;
+      id = job['id']?.toString();
+      reason = job['reason']?.toString();
+      _activeReason = reason;
+      // Recheck EVERY hold gate after the claim await. Reason is captured
+      // first so a failed requeue still preserves cycle intent.
+      if (_disposed || _held) {
+        if (id != null && id.isNotEmpty) {
+          await LocalDb.requeueComputeJob(id);
+        }
+        return;
       }
       await _refreshSnapshot();
-      return;
-    }
-    final kind = _parseKind(job['type']?.toString());
-    _running = true;
-    await _refreshSnapshot();
-    log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
-    try {
+      if (_disposed || _held) {
+        if (id != null && id.isNotEmpty) {
+          await LocalDb.requeueComputeJob(id);
+        }
+        return;
+      }
+      final kind = _parseKind(job['type']?.toString());
+      log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
       await run(kind: kind);
       if (id != null && id.isNotEmpty) {
         await LocalDb.completeComputeJob(id);
       }
+    } on DerivationBusy {
+      if (id != null && id.isNotEmpty) {
+        await LocalDb.requeueComputeJob(id);
+      }
     } catch (e) {
       if (id != null && id.isNotEmpty) {
-        await LocalDb.failComputeJob(id, '$e');
+        await LocalDb.failComputeJob(
+          id,
+          '$e',
+          preserveReason: reason == LocalDb.kCycleContextJobReason,
+        );
       }
-      rethrow;
+      log('[derive-scheduler] job failed: $e');
     } finally {
+      _activeReason = null;
       _running = false;
-      await _refreshSnapshot();
-      if (_pendingHeavy || _pendingLight) _arm();
-      onChanged();
+      if (!_disposed) {
+        await _refreshSnapshot();
+        if (!_disposed) {
+          if (_pendingHeavy || _pendingLight) _arm();
+          onChanged();
+        }
+      }
     }
   }
 
@@ -255,22 +311,30 @@ class DeriveScheduler {
     }
   }
 
-  Future<void> _refreshSnapshot() async {
-    if (_refreshing) return;
-    _refreshing = true;
-    try {
+  /// Wait for any in-flight snapshot, then read a fresh one. A concurrent
+  /// [wakeQueuedWork] must not _arm from stale pending=false while an older
+  /// query is still in flight.
+  Future<void> _refreshSnapshot() {
+    if (_disposed) return Future.value();
+    final previous = _refreshTail;
+    final done = Completer<void>();
+    _refreshTail = done.future;
+    return previous.catchError((_) {}).then((_) async {
+      if (_disposed) return;
+      final hold = debugHoldSnapshot;
+      if (hold != null) await hold();
+      if (_disposed) return;
       final jobs = await LocalDb.computeJobs(state: 'queued', limit: 50);
+      if (_disposed) return;
       _pendingLight = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_light',
+        (job) => job['type']?.toString() == 'derive_light',
       );
       _pendingHeavy = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_heavy',
+        (job) => job['type']?.toString() == 'derive_heavy',
       );
-    } finally {
-      _refreshing = false;
-      onChanged();
-    }
+    }).whenComplete(() {
+      if (!done.isCompleted) done.complete();
+      if (!_disposed) onChanged();
+    });
   }
 }

@@ -174,6 +174,14 @@ class DayBundleInput {
   /// matches today's raw mean (the old z-vs-z series was a unit mismatch bug).
   final List<double> skinTempAdcHistory;
 
+  /// Trailing measured quiet-waking HRR levels (`quiet_waking_hrr` series),
+  /// strictly before this day. The personal level strain subtracts its
+  /// baseline at is `median(history) ?? today's own measured median` — the
+  /// trait from prior days, bootstrapped by the day itself when no history
+  /// exists yet, and ABSENT (strain abstains) when neither is measurable.
+  /// See `dailyQuietWakingHrr` in analytics.
+  final List<double> quietHrrHistory;
+
   /// TS-03 — the highest heart rate the band has OBSERVED (held >=15 s with
   /// corroborating motion, `observed_max_hr.dart`) on any day STRICTLY BEFORE
   /// this one, or null when there is none. Not a physiological HRmax: if the
@@ -230,6 +238,7 @@ class DayBundleInput {
     this.respHistory = const [],
     this.rmssdHistory = const [],
     this.skinTempAdcHistory = const [],
+    this.quietHrrHistory = const [],
     this.observedHrCeilingBpm,
     this.dayConfidence = 0,
     this.dayFlags = const [],
@@ -260,6 +269,7 @@ class DayBundleInput {
     'resp_history': respHistory,
     'rmssd_history': rmssdHistory,
     'skin_temp_adc_history': skinTempAdcHistory,
+    'quiet_hrr_history': quietHrrHistory,
     'observed_hr_ceiling_bpm': observedHrCeilingBpm,
     'day_confidence': dayConfidence,
     'day_flags': dayFlags,
@@ -308,6 +318,7 @@ class DayBundleInput {
       respHistory: dbls('resp_history'),
       rmssdHistory: dbls('rmssd_history'),
       skinTempAdcHistory: dbls('skin_temp_adc_history'),
+      quietHrrHistory: dbls('quiet_hrr_history'),
       observedHrCeilingBpm: (m['observed_hr_ceiling_bpm'] as num?)?.toDouble(),
       dayConfidence: (m['day_confidence'] as num?)?.toDouble() ?? 0,
       dayFlags: strs('day_flags'),
@@ -391,11 +402,16 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // Whole-window time-domain HRV is kept for SDNN / detail rows only. The
   // nightly headline HRV is the mean of 5-min cleaned-window RMSSDs across the
   // detected sleep session, not one RMSSD over the whole night's NN stream.
-  final hrvT = hrvTime(nn, nnTimesMs: nnTimes);
+  final hrvT = hrvTime(nn,
+      nnTimesMs: nnTimes, artifactFraction: artifactFraction);
   // Keep the robust estimator as a secondary detail only; the canonical nightly
   // RMSSD follows the sleep-session windowed formulation.
   final nremMask = _nremMaskAlignedToNn(d, nnTimes, d.sleepRrTsMs);
   final robustRmssd = nocturnalRmssd(nn, nnTimes, stageMaskPerSec: nremMask);
+  // The headline takes RAW RR, not `corrected`: its own fixed ±20% local-
+  // median gate rejects sustained artifact bursts that correctRr's adaptive
+  // threshold accepts (measured on the retained corpus — see
+  // sleepSessionWindowedRmssd's doc). Two cleaners is the design, not drift.
   final sleepSessionRmssdMetric = sleepSessionWindowedRmssd(
     d.sleepRrMs,
     d.sleepRrTsMs,
@@ -820,21 +836,27 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // HEADLINE STRAIN = 0–21 map of the TRIMP earned ABOVE the quiet-waking
   // baseline; raw TRIMP kept as a detail. `perMin` is the wake window the TRIMP
   // was accumulated over, so it sets the baseline that gets subtracted.
+  //
+  // THE QUIET-WAKING LEVEL IS THIS USER'S (edge#226 landed). `quietToday`
+  // measures today's own median waking HRR; `quietPersonal` prefers the
+  // rolling median of prior measured days — a TRAIT, so a day spent walking
+  // for hours cannot subtract its own effort — and bootstraps on today's
+  // measurement when there is no history yet. When NEITHER exists (anchors
+  // missing, or under 60 measured waking minutes) it stays null and strain
+  // abstains: the population `quietWakingHrr` constant is never substituted
+  // back in — it sat below this user's real level and scored a nothing-day
+  // at 12/21 (MOT-03).
   final rawTrimp = trimp.present ? trimp.value : null;
+  final quietToday = dailyQuietWakingHrr(
+    perMin,
+    restingHr: rhrForTrimp,
+    maxHr: hrMax,
+  );
+  final quietPersonal = median(d.quietHrrHistory) ?? quietToday;
   final strainMetric = strainScoreMetric(
     rawTrimp,
     wakeMinutes: perMin.isEmpty ? null : perMin.length.toDouble(),
-    // THE REFERENCE LEVEL, NOT THIS USER'S (edge#226 is still open). analytics
-    // stopped defaulting the quiet-waking level so every caller has to state
-    // which one it means; `quietWakingHrr` is the constant the anchor table was
-    // generated at, so passing it reproduces the strain this app ships today
-    // and nobody's number moves on this commit. The real level is
-    // `dailyQuietWakingHrr` fed through a rolling personal median — a trait,
-    // not a day, and the workout scorers need the same one the day uses or a
-    // bout subtracts its own effort away. That plumbing is edge#226.
-    // ponytail: population constant, swap for the rolling personal median when
-    // edge#226 lands — see the same comment at the other four call sites.
-    quietHrr: quietWakingHrr,
+    quietHrr: quietPersonal,
     female: workoutSex(sex) == 'female',
   );
 
@@ -869,6 +891,9 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     restingHr: rhrForTrimp,
     maxHr: hrMax,
     sex: sex,
+    // The SAME personal level the headline subtracts — a curve priced on a
+    // different reference than the headline it ends at disagrees with itself.
+    quietHrr: quietPersonal,
   );
   final zoneTimeline = zoneSet == null
       ? const <Map<String, num>>[]
@@ -1411,6 +1436,17 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       'skin_temp_settled_frac': skinTempSettledFrac == null
           ? null
           : _round(skinTempSettledFrac, 4),
+      // The day's OWN measured quiet-waking level (`dailyQuietWakingHrr`) —
+      // this is the series the baseline cache feeds back as `quietHrrHistory`,
+      // so it must be emitted even on days strain abstains, or the personal
+      // level never accumulates. NULL when the day cannot measure it.
+      'quiet_waking_hrr': quietToday == null ? null : _round(quietToday, 4),
+      // The level strain actually subtracted: median(prior measured days) or
+      // today's own as the bootstrap. Kept next to `strain` so a score can be
+      // traced back to the reference it was priced against.
+      'quiet_hrr_applied': quietPersonal == null
+          ? null
+          : _round(quietPersonal, 4),
       'sdnn': hrvT.present ? hrvT.value!.sdnn : null,
       // CV-03 — deceleration capacity (ms). Personal trend only: PRSA anchors on
       // decelerations and pulse-arrival jitter attenuates DC by an amount that
@@ -1666,12 +1702,16 @@ List<Map<String, num>> _strainCurve(
   required double? restingHr,
   required double? maxHr,
   required String? sex,
+  required double? quietHrr,
 }) {
+  // No measured quiet-waking level ⇒ no curve: the population constant would
+  // draw a line the headline itself refuses to land on (MOT-03).
   if (wakeHr.isEmpty ||
       restingHr == null ||
       maxHr == null ||
       maxHr <= restingHr ||
-      sex == null) {
+      sex == null ||
+      quietHrr == null) {
     return const [];
   }
   // Banister's sex constants, via the ONE shared weighting factor. This used to
@@ -1700,9 +1740,7 @@ List<Map<String, num>> _strainCurve(
         strainScore(
           trimp,
           wakeMinutes: wakeMin,
-          // Reference level, not this user's — see onehz_pipeline's
-          // `strainMetric` for why, and edge#226 for the fix.
-          quietHrr: quietWakingHrr,
+          quietHrr: quietHrr,
           female: female,
         ),
         2,
@@ -1776,12 +1814,19 @@ List<Map<String, num>> _hrvTimeline(
     // windows, with nothing marking it as the outlier-prone sample it is.
     if (nnTimes[i] - nnTimes[0] < winMs) continue;
     if (i - lo >= 10) {
-      var ssd = 0.0;
+      var ssd = 0.0, pairs = 0;
       for (var k = lo + 1; k <= i; k++) {
+        // Same seam rule hrvTime applies: a pair is contiguous only when the
+        // elapsed beat time IS the interval. correctRr drops multi-beat runs
+        // while advancing the clock across them, so without this a dropped run
+        // injects one phantom diff into the curve per seam.
+        if (nnTimes[k] - nnTimes[k - 1] > nn[k] + 0.5) continue;
         final diff = nn[k] - nn[k - 1];
         ssd += diff * diff;
+        pairs++;
       }
-      final rmssd = math.sqrt(ssd / (i - lo));
+      if (pairs == 0) continue;
+      final rmssd = math.sqrt(ssd / pairs);
       final tSec = ((originMs + nnTimes[i]) / 1000).round();
       if (out.isEmpty || tSec - out.last['t']! > 60) {
         out.add({'t': tSec, 'v': _round(rmssd, 1)});

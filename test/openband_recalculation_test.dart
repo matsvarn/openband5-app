@@ -52,12 +52,14 @@ void main() {
         payloadJson: jsonEncode({
           'scalars': {'rmssd': 48, 'rhr': 54, 'readiness': 74},
           'baselines': {
-            'hrv': {'baseline': 40},
-            'resting_hr': {'baseline': 56},
+            'hrv': {'baseline': 40, 'status': 'trusted'},
+            'resting_hr': {'baseline': 56, 'status': 'trusted'},
           },
         }),
         windowJson: '{}',
         finalized: true,
+        rmssd: 48,
+        rhr: 54,
         series: {'rmssd': 48, 'rhr': 54},
       );
       final missing = await repository.readDay(today);

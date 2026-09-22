@@ -108,16 +108,19 @@ void main() {
   final center = NotificationCenter.instance;
   late Future<bool> Function(NotificationEvent, {bool allowPermissionPrompt})
       original;
+  final previousReduced = center.releaseReduced;
 
   setUp(() {
     // Quiet hours off + all categories on, so gating never interferes with the
     // dedupe-focused tests (the gating tests set their own values).
     SharedPreferences.setMockInitialValues({'notif_quiet_enabled': false});
     original = center.presentSink;
+    center.releaseReduced = false;
   });
 
   tearDown(() {
     center.presentSink = original;
+    center.releaseReduced = previousReduced;
   });
 
   group('emit dedupe (issue #136)', () {
@@ -244,6 +247,46 @@ void main() {
       await center.emit(e);
       await center.emit(e);
       expect(sink.shown.length, 1);
+    });
+  });
+
+  group('emit stillValid', () {
+    test('invalidation after claim releases the key so a valid retry presents',
+        () async {
+      final blocker = _GatedSink();
+      final shown = <String>[];
+      center.presentSink = (e, {bool allowPermissionPrompt = true}) async {
+        if (e.dedupeKey == '$_today:blocker') {
+          return blocker.call(e, allowPermissionPrompt: allowPermissionPrompt);
+        }
+        shown.add(e.dedupeKey);
+        return true;
+      };
+
+      final blocking = center.emit(_ev('$_today:blocker'));
+      await blocker.entered;
+
+      var valid = true;
+      var checks = 0;
+      final e = _ev('$_today:stale-intent');
+      final queued = center.emit(e, stillValid: () {
+        checks++;
+        return valid;
+      });
+      for (var i = 0; i < 50 && checks < 1; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(checks, greaterThanOrEqualTo(1));
+      valid = false;
+      blocker.release();
+      expect(await queued, isFalse);
+      await blocking;
+      expect(shown, isEmpty);
+      expect(checks, greaterThanOrEqualTo(2));
+      expect(await const FiredKeyStore().hasFired(e.dedupeKey), isFalse);
+
+      expect(await center.emit(e, stillValid: () => true), isTrue);
+      expect(shown, [e.dedupeKey]);
     });
   });
 

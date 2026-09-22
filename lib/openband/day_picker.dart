@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:intl/intl.dart';
 import '../data/day_label.dart';
+import 'calendar.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'theme.dart';
@@ -71,10 +71,7 @@ class _DayPickerState extends State<_DayPicker> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final now = DateTime.now();
-    final count = DateTime(month.year, month.month + 1, 0).day;
-    final offset = (month.weekday - 1) % 7;
-    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final now = widget.controller.now();
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -90,53 +87,10 @@ class _DayPickerState extends State<_DayPicker> {
               infoLabel: 'Gespeicherte Schlafwerte',
             ),
             OBCard(
+              padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        tooltip: 'Vorheriger Monat',
-                        onPressed: () => setState(
-                          () => month = DateTime(month.year, month.month - 1),
-                        ),
-                        icon: const Icon(LucideIcons.chevronLeft, size: 18),
-                      ),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () async {
-                            final date = await showDatePicker(
-                              context: context,
-                              locale: const Locale('de'),
-                              initialDate: selected,
-                              firstDate: DateTime(2000),
-                              lastDate: now,
-                            );
-                            if (date != null && mounted) _select(date);
-                          },
-                          child: Text(
-                            DateFormat('MMMM yyyy', 'de_DE').format(month),
-                            textAlign: TextAlign.center,
-                            style: p.text(15, weight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Nächster Monat',
-                        onPressed:
-                            !DateTime(month.year, month.month + 1).isBefore(now)
-                            ? null
-                            : () => setState(
-                                () => month = DateTime(
-                                  month.year,
-                                  month.month + 1,
-                                ),
-                              ),
-                        icon: const Icon(LucideIcons.chevronRight, size: 18),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Icon(LucideIcons.moon, size: 16, color: p.sleep),
@@ -147,125 +101,26 @@ class _DayPickerState extends State<_DayPicker> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      for (final label in ['M', 'D', 'M', 'D', 'F', 'S', 'S'])
-                        Expanded(
-                          child: Text(
-                            label,
-                            textAlign: TextAlign.center,
-                            style: p.text(12, color: p.muted),
-                          ),
-                        ),
-                    ],
-                  ),
+                  const SizedBox(height: 8),
                   FutureBuilder<Set<String>>(
                     future: days,
                     builder: (c, snapshot) => Column(
                       children: [
-                        for (
-                          var row = 0;
-                          row < (count + offset + 6) ~/ 7;
-                          row++
-                        )
-                          Row(
-                            children: [
-                              for (var col = 0; col < 7; col++)
-                                Expanded(
-                                  child: Builder(
-                                    builder: (c) {
-                                      final n = row * 7 + col - offset + 1;
-                                      if (n < 1 || n > count) {
-                                        return SizedBox(
-                                          height: large ? 64 : 50,
-                                        );
-                                      }
-                                      final date = DateTime(
-                                        month.year,
-                                        month.month,
-                                        n,
-                                      );
-                                      final day = dayLabelOf(date);
-                                      final chosen =
-                                          day == dayLabelOf(selected);
-                                      final future = date.isAfter(now);
-                                      final stored =
-                                          snapshot.data?.contains(day) == true;
-                                      return Semantics(
-                                        selected: chosen,
-                                        label:
-                                            '${DateFormat('EEEE, d. MMMM yyyy', 'de_DE').format(date)}${stored ? ', Schlafwert vorhanden' : ''}',
-                                        child: TextButton(
-                                          onPressed: future
-                                              ? null
-                                              : () => _select(date),
-                                          style: TextButton.styleFrom(
-                                            padding: EdgeInsets.zero,
-                                            minimumSize: Size(
-                                              44,
-                                              large ? 64 : 50,
-                                            ),
-                                            backgroundColor: chosen
-                                                ? p.action.withValues(
-                                                    alpha: .09,
-                                                  )
-                                                : null,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                          ),
-                                          child: ExcludeSemantics(
-                                            child: Column(
-                                              children: [
-                                                Text(
-                                                  '$n',
-                                                  style: p.text(
-                                                    14,
-                                                    weight: chosen
-                                                        ? FontWeight.w600
-                                                        : FontWeight.w400,
-                                                    color: future
-                                                        ? p.muted
-                                                        : p.ink,
-                                                  ),
-                                                ),
-                                                SizedBox(
-                                                  height: 8,
-                                                  child: Center(
-                                                    child: Container(
-                                                      width: 4,
-                                                      height: 4,
-                                                      decoration: BoxDecoration(
-                                                        shape: BoxShape.circle,
-                                                        color: stored
-                                                            ? p.sleep
-                                                            : Colors
-                                                                  .transparent,
-                                                        border:
-                                                            !stored &&
-                                                                !future &&
-                                                                snapshot.hasData
-                                                            ? Border.all(
-                                                                color: p.muted,
-                                                                width: .5,
-                                                              )
-                                                            : null,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                            ],
+                        OBCalendar(
+                          month: month,
+                          selected: selected,
+                          now: now,
+                          allowFuture: false,
+                          showAvailability: true,
+                          nights: snapshot.data ?? const {},
+                          onSelect: _select,
+                          onPrevMonth: () => setState(
+                            () => month = DateTime(month.year, month.month - 1),
                           ),
+                          onNextMonth: () => setState(
+                            () => month = DateTime(month.year, month.month + 1),
+                          ),
+                        ),
                         if (snapshot.hasError)
                           TextButton(
                             onPressed: () => setState(

@@ -1,0 +1,904 @@
+{
+  "source": {
+    "paperFileId": "01M2TRX5GZKAXKTSXK7D34E8AY",
+    "paperFileName": "OpenBand 5 · Designphase 3",
+    "blocksPageId": "p-V-0",
+    "blocksPageName": "Bausteine · Release · Alpin 3",
+    "exportedAt": "2026-09-22",
+    "releasePageId": "U-0",
+    "releasePageName": "Release · Alpin 3"
+  },
+  "conventions": {
+    "layerName": "Paper layer name is canonical. Variants use a dot suffix (OBSetRow.done). A block may map to a shared widget or an inline composition; the Dart owner need not match the Paper name.",
+    "canonical": "The node on the Bausteine page is canonical. Screens contain clones; a visual change is made on the Bausteine node first, then re-applied to the widget, then screens are re-derived.",
+    "package": "Existing ui2 code is reused — not every Paper block is a class in lib/openband. implementationStatus is explicit when the block is not in source; absent status means implemented when file and widget resolve.",
+    "honesty": "Absent input renders as — or is omitted. Partial totals are labeled; no ≥ prefix or invented length for unknown amounts. Progress requires an actual saved target.",
+    "sourceCheck": "tool/check_design_manifest.py verifies that implemented file/widget references exist in source. It does not verify routing or visual acceptance."
+  },
+  "screens": {
+    "3G8S-0": "A02 Schlaf · Nacht",
+    "3GQP-0": "Release Profil · Hell (lib/ui2/profile/profile.dart)",
+    "3I5L-0": "A05 Gesundheit · HRV · Hell",
+    "3IBK-0": "A03 Einrichtung · Erste Übertragung (lib/ui2/onboarding/first_sync.dart)",
+    "3ISM-0": "A02 Nachtverlauf · Puls",
+    "3IZO-0": "A02 Nachtverlauf · Dunkel",
+    "3J78-0": "A02 Nachtverlauf · wenige Werte",
+    "3KI7-0": "A02 Nickerchen · Tag",
+    "3KJW-0": "A02 Nickerchen · Dunkel",
+    "3KTM-0": "A02 Schlafziel · eigenes Ziel",
+    "3KUQ-0": "A02 Schlafziel · Dunkel",
+    "3P4K-0": "A03 Einrichtung · Erste Übertragung · Dunkel",
+    "4TO5-0": "A05 Gesundheit · HRV · Dunkel",
+    "4XLW-0": "A02 Schlaf · Nacht · Dunkel · adaptive Legende",
+    "55CK-0": "Release Übersicht · Hell",
+    "55IW-0": "Release Übersicht · Dunkel",
+    "55NA-0": "Release Messwerte · Hell",
+    "55SE-0": "Release Messwerte · Dunkel",
+    "5619-0": "Release Profil · Dunkel (lib/ui2/profile/profile.dart)",
+    "55UX-0": "Release Daten & Sicherung · Hell (lib/ui2/profile/data.dart)",
+    "55Y8-0": "Release Daten & Sicherung · Dunkel (lib/ui2/profile/data.dart)",
+    "3P8X-0": "Einrichtung · Auswertung nicht geladen (lib/ui2/onboarding/first_sync.dart)",
+    "565V-0": "Einrichtung · Übertragung unterbrochen · Hell (lib/ui2/onboarding/first_sync.dart)",
+    "567A-0": "Einrichtung · Übertragung unterbrochen · Dunkel (lib/ui2/onboarding/first_sync.dart)",
+    "569H-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Hell (lib/ui2/onboarding/welcome.dart)",
+    "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)",
+    "3IBJ-0": "Einrichtung · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
+    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)"
+  },
+  "blocks": [
+    {
+      "name": "OBPageHeader.hub",
+      "paperNode": "3EQN-0",
+      "widget": "OpenBandOverview",
+      "variant": "hub",
+      "file": "screens.dart",
+      "replaces": "OBPageHeader (rewrite: title only, 'Heute' when today, 'Di, 15. Sep.' otherwise; no eyebrow)",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ],
+      "implemented": "screens.dart / health.dart / training.dart / journal.dart (inline title)",
+      "notes": "Inline hub titles in OpenBandOverview / OpenBandHealth / OpenBandTraining / OpenBandJournal; not OBPageHeader."
+    },
+    {
+      "name": "OBPageHeader.detail",
+      "paperNode": "3ER6-0",
+      "widget": "OBPageHeader",
+      "variant": "detail",
+      "file": "theme.dart",
+      "usedIn": [
+        "3G8S-0",
+        "3ISM-0",
+        "3IZO-0",
+        "3J78-0",
+        "3KI7-0",
+        "3KJW-0",
+        "3KTM-0",
+        "3KUQ-0",
+        "55NA-0",
+        "55SE-0",
+        "569H-0",
+        "56A9-0",
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0",
+        "3IBJ-0",
+        "56BD-0",
+        "3IBK-0",
+        "3P4K-0",
+        "565V-0",
+        "567A-0",
+        "3P8X-0"
+      ],
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
+      "variantPaperNodes": {
+        "large": "4EEM-0",
+        "largeDark": "4EEZ-0",
+        "cycleObservationLarge": "4FVH-0",
+        "cycleObservationLargeDark": "4G10-0",
+        "exerciseCopy": "4SUC-0",
+        "exerciseCopyDark": "4SUQ-0",
+        "root": "56F7-0"
+      }
+    },
+    {
+      "name": "OBBandCapsule",
+      "paperNode": "3EQU-0",
+      "widget": "_BandPill",
+      "file": "screens.dart",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ],
+      "notes": "Battery % and connection dot are independent facts; dot colour = recovery when connected, gap when not.",
+      "implemented": "screens.dart (_BandPill)"
+    },
+    {
+      "name": "OBIconButton",
+      "paperNode": "3ER1-0",
+      "widget": "_CircleButton",
+      "file": "screens.dart",
+      "usedIn": [],
+      "notes": "Overview uses _CircleButton; OBPageHeader owns the canonical 44-point card-circle detail controls."
+    },
+    {
+      "name": "OBRingTrio",
+      "paperNode": "3EV6-0",
+      "widget": "MetricRing",
+      "file": "charts.dart",
+      "replaces": "MetricRing ×3 inside OpenBandOverview",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ],
+      "implemented": "screens.dart + charts.dart (MetricRing)"
+    },
+    {
+      "name": "OBMetricCard",
+      "paperNode": "3ESH-0",
+      "widget": "OBMetricCard",
+      "file": "screens.dart",
+      "replaces": "MetricCard",
+      "usedIn": [
+        "3G8S-0",
+        "55CK-0",
+        "55IW-0",
+        "55NA-0",
+        "55SE-0"
+      ],
+      "children": [
+        "OBStatusChip"
+      ],
+      "implemented": "screens.dart",
+      "notes": "Borderless card, radius24, padding14, minimum112; value/unit share a baseline and stack only when needed. Null omits the unit. Compact typed night states remain visible; comparison requires current complete data and an explicitly trusted stored baseline. No invented range marker or comparison arrow. Optional decimal precision preserves respiration values and baseline deltas; default integer formatting stays unchanged. Temperature uses typed SD or Celsius and signed SD formatting; unknown quantities show — without a unit.",
+      "variantPaperNodes": {
+        "current-light": "3ESH-0",
+        "current-dark": "4X0V-0",
+        "missing-light": "4X1I-0",
+        "missing-dark": "4X25-0",
+        "partial-light": "4X2S-0",
+        "partial-dark": "4X3F-0",
+        "pending-light": "4X42-0",
+        "pending-dark": "4X4P-0",
+        "failed-light": "4X5C-0",
+        "failed-dark": "4X5Z-0",
+        "older-light": "4X6M-0",
+        "older-dark": "4X79-0",
+        "open-light": "4X7W-0",
+        "open-dark": "4X8J-0",
+        "unreadable-light": "4X96-0",
+        "unreadable-dark": "4X9T-0",
+        "no-baseline-light": "4XAG-0",
+        "no-baseline-dark": "4XB3-0",
+        "large-light": "4XEE-0",
+        "large-dark": "4XF1-0",
+        "respiration-light": "4YNA-0",
+        "respiration-dark": "4YNL-0",
+        "temperature-light": "4ZQX-0",
+        "temperature-dark": "4ZR8-0"
+      }
+    },
+    {
+      "name": "OBStatusChip",
+      "paperNode": "3ESQ-0",
+      "widget": "obMetricStatus",
+      "file": "health.dart",
+      "notes": "Text only: '+8 über Basis', '-2 unter Basis' or 'wie Basis'. Compact cards omit an unsupported comparison; detail retains source and baseline qualification.",
+      "implemented": "health.dart",
+      "usedIn": []
+    },
+    {
+      "name": "OBTrendCard",
+      "paperNode": "3ET0-0",
+      "widget": "OBTrendCard",
+      "file": "health.dart",
+      "usedIn": [
+        "3G8S-0",
+        "55NA-0",
+        "55SE-0"
+      ],
+      "children": [
+        "OBTrendPlot"
+      ],
+      "implemented": "health.dart",
+      "variantPaperNodes": {
+        "partial-light": "4XH1-0",
+        "partial-dark": "4XHQ-0",
+        "historical-partial": "4XKG-0"
+      },
+      "notes": " Historical partial input is retained and qualified in the observed-count caption and semantics. No comparison claim from a partial series."
+    },
+    {
+      "name": "OBTrendPlot",
+      "paperNode": "4XGV-0",
+      "widget": "_TrendPainter",
+      "file": "health.dart",
+      "notes": "Baseline band, dotted mean, polyline, dashed gap marker, endpoint dot. Two axis labels only. Plot is inline in OBTrendCard via _TrendPainter; no OBTrendPlot type. Scalar baseline is a line, never an invented range band.",
+      "implemented": "health.dart",
+      "usedIn": []
+    },
+    {
+      "name": "OBWeekBars",
+      "paperNode": "3ETN-0",
+      "widget": "OBWeekBars",
+      "file": "training.dart",
+      "usedIn": [],
+      "children": [
+        "OBDeltaChip"
+      ],
+      "notes": "Today = dashed outline bar.",
+      "implemented": "training.dart"
+    },
+    {
+      "name": "OBNightChart",
+      "paperNode": "3EWD-0",
+      "widget": "NightChart",
+      "file": "charts.dart",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ],
+      "children": [
+        "OBHypnogram",
+        "OBStageLegend"
+      ]
+    },
+    {
+      "name": "OBHypnogram",
+      "paperNode": "3EWE-0",
+      "widget": "_NightPainter",
+      "file": "charts.dart",
+      "usedIn": [
+        "3G8S-0",
+        "55CK-0",
+        "55IW-0"
+      ],
+      "notes": "Drawn by NightChart._NightPainter; no OBHypnogram class."
+    },
+    {
+      "name": "OBStageLegend",
+      "paperNode": "4XIB-0",
+      "widget": "OBStageLegend",
+      "file": "screens.dart",
+      "usedIn": [
+        "3G8S-0",
+        "4XLW-0"
+      ],
+      "notes": "Adaptive five-stage facts in the Sleep hero. Actual stored durations or —; no Im Bett swatch. Equal measured columns use 8px gaps for five columns or 12px otherwise; 16px row gap. Labels Inter 12/14, values Inter Tight 17/20. At 375px and 2x text, two columns preserve full-size text. Canonical board instance 4XSP-0 replaces obsolete 3EX4-0. Full Sleep-page parity remains open. At375px/1x, four columns wrap Im Bett into the next row.",
+      "variantPaperNodes": {
+        "dark": "4XJ1-0",
+        "large": "4XFE-0",
+        "largeDark": "4XJR-0",
+        "compact": "4YFG-0",
+        "compactDark": "4YG6-0"
+      }
+    },
+    {
+      "name": "OBSectionHeader",
+      "paperNode": "3EXT-0",
+      "widget": "OpenBandTraining",
+      "file": "training.dart",
+      "usedIn": [
+        "55NA-0",
+        "55SE-0"
+      ],
+      "notes": "Inline section titles on hubs; no OBSectionHeader class."
+    },
+    {
+      "name": "OBSectionHeader.range",
+      "paperNode": "3EWA-0",
+      "widget": "OpenBandOverview",
+      "variant": "range",
+      "file": "screens.dart",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ],
+      "notes": "Inline 'Deine Nacht' range row; no OBSectionHeader class."
+    },
+    {
+      "name": "OBListCard",
+      "paperNode": "3EXW-0",
+      "widget": "OBCard",
+      "file": "theme.dart",
+      "children": [
+        "OBListRow"
+      ],
+      "usedIn": [
+        "55NA-0",
+        "55SE-0"
+      ],
+      "notes": "List grouping uses OBCard; no OBListCard class."
+    },
+    {
+      "name": "OBListRow",
+      "paperNode": "3EXX-0",
+      "widget": "_SessionRow",
+      "file": "training.dart",
+      "children": [
+        "OBLens"
+      ],
+      "notes": "Training session rows; overview also uses inline _ActionRow. No OBListRow class.",
+      "usedIn": []
+    },
+    {
+      "name": "OBLens",
+      "paperNode": "3EXY-0",
+      "widget": "OpenBandOverview",
+      "file": "screens.dart",
+      "notes": "36×36, radius 12, metric tint background, 18 px Lucide icon in metric colour. 36×36 metric tint icon is inline in OpenBandOverview; no OBLens class.",
+      "usedIn": []
+    },
+    {
+      "name": "OBActionPrimary",
+      "paperNode": "3EZ8-0",
+      "widget": "OBAction",
+      "variant": "primary",
+      "file": "theme.dart",
+      "replaces": "OBAction",
+      "usedIn": []
+    },
+    {
+      "name": "OBActionSecondary",
+      "paperNode": "3EZA-0",
+      "widget": "OBAction",
+      "variant": "secondary",
+      "file": "theme.dart",
+      "usedIn": [
+        "3G8S-0"
+      ]
+    },
+    {
+      "name": "OBActionDestructive",
+      "paperNode": "3EZC-0",
+      "widget": "OBAction",
+      "variant": "destructive",
+      "file": "theme.dart",
+      "note": "OBAction secondary with destructive foreground; shared alarm and editor action.",
+      "usedIn": []
+    },
+    {
+      "name": "OBSegmented",
+      "paperNode": "3EZE-0",
+      "widget": "OBSegmented",
+      "file": "health.dart",
+      "usedIn": [
+        "3ISM-0",
+        "3IZO-0",
+        "3J78-0",
+        "55NA-0",
+        "55SE-0"
+      ],
+      "implemented": "health.dart",
+      "notes": "Shared full-width 40-point visual well inside a 44-point target; centered 14/18 labels. Measurement uses selected weight. Stacks at narrow width or large text; compact g/% retains its own sizing."
+    },
+    {
+      "name": "OBChip",
+      "paperNode": "3EZO-0",
+      "widget": "OpenBandOverview",
+      "file": "screens.dart",
+      "notes": "Status pill is inline in OpenBandOverview; no OBChip class.",
+      "usedIn": []
+    },
+    {
+      "name": "OBLiveChip",
+      "paperNode": "3FUT-0",
+      "widget": "OpenBandRunLive",
+      "file": "run_live.dart",
+      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface. GPS chip is inline in the OpenBandRunLive AppBar; no OBLiveChip class.",
+      "implemented": "run_live.dart (GPS chip)",
+      "usedIn": []
+    },
+    {
+      "name": "OBEmptyState",
+      "paperNode": "3F06-0",
+      "widget": "OpenBandTraining",
+      "file": "training.dart",
+      "notes": "Title + stated reason + one action. Inline empty-session card; no OBEmptyState class.",
+      "usedIn": []
+    },
+    {
+      "name": "OBGapNotice",
+      "paperNode": "3F0E-0",
+      "widget": "CorrectionBanner",
+      "file": "screens.dart",
+      "replaces": "CorrectionBanner (partly)",
+      "usedIn": []
+    },
+    {
+      "name": "OBSleepHero",
+      "paperNode": "3G8S-0",
+      "widget": "OpenBandSleep",
+      "file": "screens.dart",
+      "usedIn": [
+        "3G8S-0"
+      ],
+      "notes": "Hero is inline in OpenBandSleep; no OBSleepHero class."
+    },
+    {
+      "name": "OBProfileRow",
+      "paperNode": "3GQR-0",
+      "widget": "ProfileHomeView._identityCard",
+      "file": "ui2/profile/profile.dart",
+      "usedIn": [
+        "3GQP-0",
+        "5619-0"
+      ],
+      "children": [
+        "OBAvatar"
+      ],
+      "notes": "Shared identity card in the compact ProfileHomeView; no second profile implementation."
+    },
+    {
+      "name": "OBBandCard",
+      "paperNode": "3GQZ-0",
+      "widget": "ProfileHomeView._bandCard",
+      "file": "ui2/profile/profile.dart",
+      "usedIn": [
+        "3GQP-0",
+        "5619-0"
+      ],
+      "children": [
+        "OBBatteryBar",
+        "OBSyncFacts"
+      ],
+      "notes": "Datenstand (band), Gespeichert (iPhone receipt) and Archiv are independent facts. Band card is inline on ProfileHomeView; no OBBandCard class. Large-text facts use stacked value/label rows to avoid broken words; production acceptance tracked in release-data.",
+      "variantPaperNodes": {
+        "largeFacts": "56DX-0",
+        "largeFactsDark": "56EA-0"
+      }
+    },
+    {
+      "name": "OBSettingsGroup",
+      "paperNode": "3GRM-0",
+      "widget": "settingsGroup",
+      "file": "ui2/profile/profile.dart",
+      "usedIn": [
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0"
+      ],
+      "children": [
+        "OBSettingsRow"
+      ],
+      "implemented": "settingsGroup() in ui2/profile/profile.dart",
+      "note": "One shared settingsGroup function; optional heading and outer padding preserve existing defaults. Compact Profile and Data reuse the same card/dividers.",
+      "variantPaperNodes": {
+        "subtitle": "56B1-0"
+      }
+    },
+    {
+      "name": "OBSettingsRow",
+      "paperNode": "3GRN-0",
+      "widget": "SetRow",
+      "file": "ui2/profile/profile.dart",
+      "implemented": "SetRow in ui2/profile/profile.dart",
+      "note": "SetRow uses52-point default rows and a60-point subtitle variant for Data. Both grow with content; existing controls and value alignment are shared.",
+      "usedIn": [
+        "3G8S-0",
+        "55NA-0",
+        "55SE-0",
+        "3GQP-0",
+        "5619-0",
+        "55UX-0",
+        "55Y8-0"
+      ],
+      "variantPaperNodes": {
+        "glucoseEntry": "4BAP-0",
+        "medicationEntry": "4DWS-0",
+        "medicationEntryDark": "4DX2-0",
+        "cycleEntry": "4GUV-0",
+        "cycleEntryDark": "4GVB-0",
+        "cycleEntryUnknown": "4GWL-0",
+        "cycleEntryUnknownDark": "4H1P-0",
+        "cycleEntryLarge": "4H6M-0",
+        "cycleEntryLargeDark": "4H6T-0",
+        "subtitle": "56B2-0"
+      }
+    },
+    {
+      "name": "OBCalendar",
+      "paperNode": "3HPT-0",
+      "widget": "OBCalendar",
+      "file": "calendar.dart",
+      "replaces": "existing calendar in day_picker.dart",
+      "usedIn": [],
+      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap. Weight uses min(selected day, today), no availability dots, and a year-1 previous-month guard."
+    },
+    {
+      "name": "OBDayPreview",
+      "paperNode": "3HPD-0",
+      "widget": "_DayPicker",
+      "file": "day_picker.dart",
+      "usedIn": [],
+      "notes": "Selected day summary: sleep / recovery / strain in metric colours. paperNode is the screen; block lives inline. Selected-day summary is inline in _DayPicker; no OBDayPreview class."
+    },
+    {
+      "name": "OBSyncState",
+      "widget": "OBSyncState",
+      "implemented": "screens.dart",
+      "note": "Stored frontier and real transfer state only; no invented progress track. Interactive states use44-point targets; large text stacks the action. FirstSync adds actual resume pending/failure state without changing storage or BLE ownership.",
+      "paperNode": "3I3P-0",
+      "file": "screens.dart",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0",
+        "565V-0",
+        "567A-0"
+      ],
+      "variantPaperNodes": {
+        "largeText": "56GW-0",
+        "interrupted": "3I3Z-0"
+      }
+    },
+    {
+      "name": "OBStepsHours",
+      "widget": "stepsByHour",
+      "implemented": "daily_activity.dart",
+      "note": "24 feste Stundenfächer; leere vergangene Stunden als Spur, Zukunft grau. Hour buckets via stepsByHour, drawn in StepsCard; no OBStepsHours class.",
+      "paperNode": "3I4C-0",
+      "file": "daily_activity.dart",
+      "usedIn": [
+        "55CK-0",
+        "55IW-0"
+      ]
+    },
+    {
+      "name": "OBMetricHero",
+      "widget": "OpenBandNightScalarDetail",
+      "implemented": "night_scalar_detail.dart",
+      "note": "Stored nightly HRV/RHR scalar, unit and honest state; no invented range. Comparison only for an explicitly trusted stored baseline. Correction-pending or unproven values remain behind Info.",
+      "paperNode": "3I95-0",
+      "file": "night_scalar_detail.dart",
+      "usedIn": [
+        "3I5L-0",
+        "4TO5-0"
+      ]
+    },
+    {
+      "name": "OBNightBars",
+      "widget": "NightScalarChart",
+      "implemented": "night_scalar_detail.dart",
+      "note": "Actual stored nights in a civil 7/30/90-day window, anchored to the selected stored algorithm. Explicit gaps; actual scalar baseline line. No interpolation, invented spread band or decorative gap markers. Seven-night bars are14px wide (rounded7px ends);30-night bars remain6px and90-night bars fit their actual calendar slots. Missing nights keep their slots.",
+      "paperNode": "3I9I-0",
+      "file": "night_scalar_detail.dart",
+      "usedIn": [
+        "3I5L-0",
+        "4TO5-0"
+      ]
+    },
+    {
+      "name": "OBNoticeCard",
+      "paperNode": "edge-OBNoticeCard",
+      "widget": "OBNoticeCard",
+      "file": "theme.dart",
+      "note": "Kein eigener Paper-Block — Status-/Hinweiskarte, geteilt von Einrichtung und OpenBand.",
+      "usedIn": []
+    },
+    {
+      "name": "OBPairCard",
+      "paperNode": "56EK-0",
+      "widget": "PairingView",
+      "file": "ui2/onboarding/pairing.dart",
+      "implemented": "PairingView hero card",
+      "usedIn": [
+        "3IBJ-0",
+        "56BD-0"
+      ],
+      "notes": "Canonical setup hero:120-point illustration well,64-point device slots,36-point state icon and concise phase-specific status. Typed permission/recovery states preserve their actual cause.",
+      "variantPaperNodes": {
+        "permission": "56FJ-0",
+        "permissionDark": "56G9-0"
+      }
+    },
+    {
+      "name": "OBFormCard",
+      "paperNode": "edge-OBFormCard",
+      "widget": "ProfileSetupView",
+      "file": "ui2/onboarding/profile_setup.dart",
+      "implemented": "_Field — Label 13/600 muted, Wert Inter Tight 24/700, Einheit",
+      "usedIn": [],
+      "notes": "Form is ProfileSetupView wrapping _Field rows; no OBFormCard class."
+    },
+    {
+      "name": "OBFormRow",
+      "paperNode": "edge-OBFormRow",
+      "widget": "_Field",
+      "file": "ui2/onboarding/profile_setup.dart",
+      "implemented": "row inside OBFormCard (Größe, Gewicht)",
+      "usedIn": []
+    },
+    {
+      "name": "OBNightSignalChart",
+      "paperNode": "3J38-0",
+      "widget": "OBNightSignalChart",
+      "file": "night_signals.dart",
+      "usedIn": [
+        "3ISM-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "children": [
+        "OBTrendPlot.night"
+      ],
+      "variants": [
+        "pulse",
+        "hrv",
+        "respiration",
+        "partial",
+        "missing",
+        "dark"
+      ],
+      "notes": "Uses OBCard and the existing metric hero type scale. Selected stored value only; pulse and respiration union same-version calendar bundles intersecting the actual night. Conflicting timestamps stay null. No invented averages, baseline, or coverage percentage; available calendar curves remain partial."
+    },
+    {
+      "name": "OBTrendPlot.night",
+      "paperNode": "3K9R-0",
+      "widget": "OBNightSignalPlot",
+      "file": "night_signals.dart",
+      "variant": "night",
+      "usedIn": [
+        "3ISM-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "notes": "Extends the OBTrendPlot visual language with absolute timestamps, source cadence breaks, stored HRV bounds, and nearest stored-point selection. No X markers, gap lines, smoothing, or interpolation of selected values."
+    },
+    {
+      "name": "OBSegmented.night",
+      "paperNode": "3K9K-0",
+      "widget": "OBSegmented",
+      "file": "health.dart",
+      "variant": "night",
+      "usedIn": [
+        "3ISM-0",
+        "3IZO-0",
+        "3J78-0"
+      ],
+      "notes": "Existing shared selector; only labels and selected index change. Height grows with system text size."
+    },
+    {
+      "name": "OBSettingsRow.schedule",
+      "paperNode": "3KWZ-0",
+      "widget": "OBScheduleTimeToggleRow",
+      "file": "settings_controls.dart",
+      "usedIn": []
+    },
+    {
+      "name": "OBSettingsRow.toggle",
+      "paperNode": "3LBP-0",
+      "widget": "OBSettingsToggleRow",
+      "file": "settings_controls.dart",
+      "usedIn": [],
+      "notes": "Canonical 56-point toggle row with a 44-point switch target; schedule variant remains64. Dark off track uses alp-line. Large text stacks controls."
+    },
+    {
+      "name": "OBNapRow",
+      "paperNode": "3KJ3-0",
+      "widget": "_NapRow",
+      "file": "naps.dart",
+      "usedIn": [
+        "3KI7-0",
+        "3KJW-0"
+      ],
+      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —."
+    },
+    {
+      "name": "OBTimeField.well",
+      "paperNode": "3M98-0",
+      "widget": "OBTimeField",
+      "file": "theme.dart",
+      "variant": "well",
+      "usedIn": [],
+      "notes": "Shared controller-backed time field; paired wells stack when text needs more width."
+    },
+    {
+      "name": "OBSettingsRow.value",
+      "paperNode": "3MB6-0",
+      "widget": "OBSettingsValueRow",
+      "file": "settings_controls.dart",
+      "usedIn": [
+        "3I5L-0",
+        "4TO5-0",
+        "55NA-0",
+        "55SE-0"
+      ],
+      "notes": "Shared value/navigation row. Compact notification metrics unchanged; comfortable goal variant uses64 minimum,14/20 padding,15/20 label and card-radius ink. Empty-value large-text label wraps beside chevron. Long values wrap at normal and large text; empty choices remain explicit. Empty-value navigation rows keep a fixed trailing chevron at all text scales; value-bearing rows retain the shared large-text stacked layout. Leading icon variant uses a36-point fixed tile,12-point label gap and56-point normal minimum. Existing compact/comfortable variants retain their layout. Leading value–chevron gap is12; existing non-leading gap remains4. Optional source/date subtitle wraps. Dated journal-weight entries use this same row, with regular date and medium muted value; large text follows the canonical stack.",
+      "variantPaperNodes": {
+        "comfortable": "45C7-0",
+        "leading": "4U6E-0",
+        "weightSource": "3G62-0",
+        "weightEntry": "50EO-0",
+        "weightEntryLarge": "51F6-0"
+      }
+    },
+    {
+      "name": "OBSettingsChoiceSheet",
+      "paperNode": "3MC1-0",
+      "widget": "OBSettingsChoiceSheet",
+      "file": "settings_controls.dart",
+      "usedIn": [],
+      "notes": "Canonical generic choice sheet shared by notification thresholds and explicit exercise equipment, capture mode, load and repetition basis; selected choice only, fixed check lane. Canonical bottom padding includes20 points plus the device safe area; native cycle-gap chooser verified at375/393px and2x text."
+    },
+    {
+      "name": "OBTimePicker",
+      "paperNode": "3NGR-0",
+      "widget": "showOpenBandTimePicker",
+      "file": "time_picker.dart",
+      "usedIn": [],
+      "variants": {
+        "dark": "3NI7-0",
+        "invalid": "3NUJ-0"
+      },
+      "notes": "Shared stock input-only time dialog with Alpin card/well/ink, 296×264 at1x and112×72 fields. Platform locale/24h and accessible input retained; no dial. Invalid entry stays open; cancellation returns no change."
+    },
+    {
+      "name": "OBSettingsChoiceRow",
+      "paperNode": "3MCG-0",
+      "widget": "OBSettingsChoiceRow",
+      "file": "settings_controls.dart",
+      "variants": [
+        "selected",
+        "unselected",
+        "disabled"
+      ],
+      "usedIn": [],
+      "notes": "Shared explicit choices for theme and notification sheets:48 minimum row,15 regular/600 selected,18 fixed check lane. Theme choice changes after durable save."
+    },
+    {
+      "name": "OBSetupStatusCard",
+      "paperNode": "3PAB-0",
+      "widget": "OBSetupStatusCard",
+      "file": "ui2/onboarding/first_sync.dart",
+      "usedIn": [
+        "3IBK-0",
+        "3P4K-0",
+        "565V-0",
+        "567A-0",
+        "3P8X-0"
+      ],
+      "variants": [
+        "open",
+        "active",
+        "complete",
+        "partial",
+        "read-error",
+        "dark"
+      ],
+      "notes": "Three independent source facts: connection, stored frontier and current-local-day evaluation. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
+    },
+    {
+      "name": "OBConfirmSheet",
+      "paperNode": "3SL4-0",
+      "widget": "OpenBandConfirmSheet",
+      "file": "confirm_sheet.dart",
+      "usedIn": [],
+      "notes": "Shared discard/remove sheet; optional short body explains which dated target boundary will change. Close/cancel retain draft. Paper canonical and Journal/goal clones reconciled to source:32% scrim and12px content bottom plus34px example safe area; no Flutter confirmation behavior changed."
+    },
+    {
+      "name": "OBSleepNeedSummary",
+      "paperNode": "45AL-0",
+      "widget": "OpenBandSleepPlan",
+      "file": "sleep_plan.dart",
+      "usedIn": [],
+      "notes": "Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Unknowns, partial contributions and stale data remain explicit. No prior-night attainment."
+    },
+    {
+      "name": "OBSleepSchedule",
+      "paperNode": "45AS-0",
+      "widget": "_TimesRow",
+      "file": "sleep_plan.dart",
+      "usedIn": [],
+      "notes": "Stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
+    },
+    {
+      "name": "OBAdaptiveValues",
+      "paperNode": "3ESE-0",
+      "widget": "OBAdaptiveValues",
+      "file": "screens.dart",
+      "implemented": "screens.dart",
+      "usedIn": [
+        "3G8S-0",
+        "55CK-0",
+        "55IW-0",
+        "55NA-0",
+        "55SE-0"
+      ],
+      "children": [
+        "OBMetricCard"
+      ],
+      "notes": "One shared pair for Overview, Sleep and Health. Equal-width row with10gap; full-width vertical cards when scaled14px text exceeds20px. Preserves values and supports large text without shrinking.",
+      "variantPaperNodes": {
+        "current-dark": "4X0J-0",
+        "missing-light": "4X16-0",
+        "missing-dark": "4X1T-0",
+        "partial-light": "4X2G-0",
+        "partial-dark": "4X33-0",
+        "pending-light": "4X3Q-0",
+        "pending-dark": "4X4D-0",
+        "failed-light": "4X50-0",
+        "failed-dark": "4X5N-0",
+        "older-light": "4X6A-0",
+        "older-dark": "4X6X-0",
+        "open-light": "4X7K-0",
+        "open-dark": "4X87-0",
+        "unreadable-light": "4X8U-0",
+        "unreadable-dark": "4X9H-0",
+        "no-baseline-light": "4XA4-0",
+        "no-baseline-dark": "4XAR-0",
+        "large-light": "4XE2-0",
+        "large-dark": "4XEP-0"
+      }
+    },
+    {
+      "name": "OBCalendarLine",
+      "paperNode": "4YO1-0",
+      "widget": "OBCalendarLine",
+      "file": "calendar_line.dart",
+      "implemented": "calendar_line.dart",
+      "usedIn": [],
+      "variantPaperNodes": {
+        "dark": "4YSR-0",
+        "weight": "51YA-0",
+        "weightDark": "51YU-0"
+      },
+      "notes": "Shared calendar-slot numeric line for stored temperature and the explicitly labelled journal-weight EWMA. Consecutive finite slots connect directly; actual gaps stay empty. Callers select signed zero-centered SD or absolute kilograms/Celsius. No metric computation or unit inference. Measured scaled labels set the gutter; existing temperature geometry is preserved when labels fit."
+    },
+    {
+      "name": "OBBackupImportReceipt",
+      "paperNode": "546R-0",
+      "widget": "ImportReport",
+      "file": "ui2/onboarding/welcome.dart",
+      "usedIn": [
+        "569H-0",
+        "56A9-0"
+      ],
+      "notes": "Canonical ImportReport card reused for durable restore counts, conflicts, unreadable entries and pending recalculation. Implementation/native acceptance is tracked in the release-data queue.",
+      "variantPaperNodes": {
+        "durablePartial": "569J-0",
+        "durablePartialDark": "56AB-0"
+      }
+    }
+  ],
+  "openBlocks": [],
+  "status": "Reduced release registry. Source mapping is checked; release native acceptance is tracked in state_checklist.json. Historical full-product registrations remain in the archive.",
+  "schema": {
+    "version": 67,
+    "tables": [
+      "openband_workout_template",
+      "openband_meal_draft",
+      "openband_session_detail",
+      "openband_lap",
+      "sleep_nap",
+      "nap_recalc_job",
+      "sleep_goal_period",
+      "lab_result",
+      "lab_marker_def",
+      "openband_pinned_template",
+      "openband_strength_session",
+      "nutrition_target_period",
+      "exercise_def",
+      "strength_set",
+      "imported_measurement",
+      "imported_measurement_receipt",
+      "imported_measurement_source_setting",
+      "med_def",
+      "med_dose",
+      "med_plan_revision",
+      "manual_vo2"
+    ]
+  },
+  "research": {
+    "nightSignals": {
+      "references": [
+        "https://mobbin.com/screens/b2cd07af-0637-4ab0-83bb-4aec356a5dff",
+        "https://mobbin.com/screens/1682cf89-ebad-47a3-9bc8-454af9b04991",
+        "https://mobbin.com/screens/f91de068-fb36-4d69-a8d0-5c5b77404fb0"
+      ],
+      "decision": "Alpin 3 remains the visual contract. Borrow compact metric context and clear trace hierarchy. Keep stored HRV uncertainty and refuse to connect samples across unsupported timing gaps."
+    }
+  },
+  "archive": "archive/blocks-20260921.json"
+}

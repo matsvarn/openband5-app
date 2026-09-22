@@ -56,6 +56,16 @@ void main() {
       const d = NotificationPrefs(quietEnabled: false);
       expect(d.inQuietHours(2 * 60), isFalse);
     });
+    test('start equals end is an empty window', () {
+      const d = NotificationPrefs(
+        quietEnabled: true,
+        quietStartMin: 8 * 60,
+        quietEndMin: 8 * 60,
+      );
+      expect(d.inQuietHours(8 * 60), isFalse);
+      expect(d.inQuietHours(0), isFalse);
+      expect(d.inQuietHours(12 * 60), isFalse);
+    });
   });
 
   group('the four classes', () {

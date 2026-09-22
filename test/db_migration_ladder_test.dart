@@ -1531,4 +1531,45 @@ void main() {
           reason: 'both devices\' identical frame must decode, not just one');
     },
   );
+
+  test('v66 upgrade adds manual_vo2 and keeps an existing journal row', () async {
+    const name = 'migrate_v66_vo2.db';
+    created.add(name);
+    await _seedOldDb(
+      name,
+      66,
+      [
+        '''
+        CREATE TABLE journal (
+          date TEXT PRIMARY KEY,
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          note TEXT NOT NULL DEFAULT '',
+          updated_at INTEGER NOT NULL
+        )
+        ''',
+      ],
+      seedRows: (db) async {
+        await db.insert('journal', {
+          'date': '2026-09-01',
+          'tags_json': '[]',
+          'note': 'kept',
+          'updated_at': 1,
+        });
+      },
+    );
+    expect(await _openThroughLocalDb(name), LocalDb.schemaVersion);
+    final db = await LocalDb.instance;
+    final journal = await db.query(
+      'journal',
+      where: 'date = ?',
+      whereArgs: ['2026-09-01'],
+    );
+    expect(journal.single['note'], 'kept');
+    final table = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'manual_vo2'",
+    );
+    expect(table, isNotEmpty);
+    final health = await LocalDb.schemaHealth();
+    expect(health['ok'], isTrue, reason: '$health');
+  });
 }

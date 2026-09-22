@@ -16,12 +16,14 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
 
-import '../compute/substrate.dart' show beatTimesMs;
+import '../compute/substrate.dart' show BeatClock, beatTimesMs;
 // The ONE thing this layer takes from compute/: the running build's algo
 // version, which every day_result read applies as a CEILING (see [dayResult]).
 // `show` keeps the rest of the engine out of this namespace.
@@ -29,14 +31,21 @@ import '../coach/coach_db.dart' show CoachDb;
 import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../ble/adapters/adapter.dart' show NeutralSample;
 import '../ble/adapters/signals.dart' show InputSignal;
+import '../health/glucose_contract.dart';
 import '../import/import_container.dart';
 import 'coverage_resolver.dart' show CoverageInterval;
 import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
+import 'backup_import_result.dart';
+import 'vo2_store.dart';
 import 'models.dart';
 import 'nutrition_store.dart';
+import 'nutrition_targets.dart';
+import '../openband/domain.dart' show MealDraftEntry, nextMealDraftRevision;
+import '../openband/exercise_catalogue.dart';
+import '../openband/exercise_load.dart';
 import 'observation.dart';
 import 'series_codec.dart';
 
@@ -47,6 +56,90 @@ typedef DbRebuild = ({
   String quarantinePath,
   Map<String, int> salvaged,
 });
+
+class ImportedMeasurementCommitInput {
+  final List<Map<String, Object?>> rows;
+  final List<String> kinds;
+
+  /// Query/authorization start. Written to [last_attempt_at].
+  final DateTime attemptedAt;
+
+  /// Persist wall time after Health I/O. Stamps [imported_at] / [last_success_at].
+  /// Null means the write is the attempt ([putImportedMeasurements]).
+  final DateTime? storedAt;
+
+  /// When set, every requested kind gets this outcome (auth/read/persist fail).
+  final String? forcedOutcome;
+  final Map<String, int> invalidByKind;
+  final Map<String, int> ignoredByKind;
+  final bool persistRows;
+  const ImportedMeasurementCommitInput({
+    required this.rows,
+    required this.kinds,
+    required this.attemptedAt,
+    this.storedAt,
+    this.forcedOutcome,
+    this.invalidByKind = const {},
+    this.ignoredByKind = const {},
+    this.persistRows = true,
+  });
+}
+
+class ImportedMeasurementCommitResult {
+  final int storedCount;
+  final int writtenCount;
+  final int skippedExcluded;
+  const ImportedMeasurementCommitResult({
+    required this.storedCount,
+    required this.writtenCount,
+    this.skippedExcluded = 0,
+  });
+}
+
+class ImportedGlucoseRead {
+  final List<Map<String, dynamic>> settings;
+  final Map<String, dynamic>? receipt;
+  final List<({String key, int storedCount, int? lastImportedAt})> groups;
+  final Map<String, Map<String, dynamic>> latestRows;
+  final List<Map<String, dynamic>> historyRows;
+  final List<Map<String, dynamic>> dayRows;
+  final int identityUnreadable;
+  final int importedAtUnreadable;
+  final String? selectedKey;
+  final bool historyTruncated;
+
+  /// Unreadable rows inspected after the visible newest-N window, used to
+  /// prove truncation without entering [historyRows].
+  final List<Map<String, dynamic>> historyLookaheadUnread;
+  const ImportedGlucoseRead({
+    required this.settings,
+    required this.receipt,
+    required this.groups,
+    required this.latestRows,
+    required this.historyRows,
+    required this.dayRows,
+    required this.identityUnreadable,
+    this.importedAtUnreadable = 0,
+    required this.selectedKey,
+    this.historyTruncated = false,
+    this.historyLookaheadUnread = const [],
+  });
+}
+
+/// Serializes imported-measurement Health I/O through the matching commit.
+class _SerialGate {
+  Future<void> _tail = Future.value();
+
+  Future<T> run<T>(Future<T> Function() job) {
+    final previous = _tail;
+    final done = Completer<void>();
+    _tail = done.future;
+    return previous.catchError((_) {}).then((_) => job()).whenComplete(() {
+      if (!done.isCompleted) done.complete();
+    });
+  }
+}
+
 
 // ── SUBSTRATE ADMISSION — the one predicate that decides what may become a
 //    number ───────────────────────────────────────────────────────────────────
@@ -132,9 +225,58 @@ String derivableSourceSql([String col = 'source']) => kDerivableSources.isEmpty
 /// widen [derivableSourceSql] and must NOT widen this one.
 const String kPrimaryBandSourceSql = 'source IS NULL';
 
+class _OpenBandFoodCasConflict implements Exception {
+  const _OpenBandFoodCasConflict(this.current);
+  final FoodEntry? current;
+}
+
+class _PreservingImportInterrupted implements Exception {
+  const _PreservingImportInterrupted(this.counts, this.cause);
+  final Map<String, int> counts;
+  final Object cause;
+}
+
+class _SleepImportInterrupted implements Exception {
+  const _SleepImportInterrupted(this.counts, this.cause);
+  final Map<String, int> counts;
+  final Object cause;
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
+
+  /// Queued/running derive reason for a cycle-start invalidation.
+  static const String kCycleContextJobReason = 'cycle_context';
+
+  /// Fired AFTER a committed start-set mutation that already called
+  /// [invalidateCycleContext] in the same transaction. DATA's store should
+  /// call the helper itself and then [AppState.refreshCycleContext]; this
+  /// callback is for coach/import paths that go through [putCycleLog].
+  static void Function()? onCycleContextInvalidated;
+
+  /// Test seam: throw inside the cycle_log import txn after a start-set
+  /// change is detected, before [invalidateCycleContext].
+  @visibleForTesting
+  static Future<void> Function(DatabaseExecutor txn)?
+      debugBeforeCycleLogImportInvalidate;
+
+  /// Test seam: after a table's import txn has committed.
+  @visibleForTesting
+  static Future<void> Function(String table)? debugAfterImportedTable;
+
+  /// Test seam: a full page has committed and the next source page is about to
+  /// be read. Throw here to stop between pages.
+  @visibleForTesting
+  static Future<void> Function(String table)? debugBeforeNextImportPage;
+
+  /// Test seam: forwarded to [Vo2Store.mergeImport]'s source reader.
+  @visibleForTesting
+  static Future<List<Map<String, Object?>>> Function(
+    String sql,
+    List<Object?>? arguments,
+  )?
+  debugVo2ImportRead;
 
   static Future<Database> get instance async {
     final db = _db;
@@ -170,13 +312,16 @@ class LocalDb {
     'journal_metric',
     'journal_field_def',
     'lab_result',
+    'manual_vo2',
     'lab_marker_def',
     'strength_set',
+    'openband_strength_session',
     'exercise_def',
     'food_entry',
     'food_def',
     'med_def',
     'med_dose',
+    'med_plan_revision',
     'cycle_log',
     'cycle_symptom',
     'sleep_override',
@@ -184,8 +329,17 @@ class LocalDb {
     'openband_sleep_correction',
     'openband_calculation_job',
     'sleep_nap',
+    'nap_recalc_job',
+    'sleep_goal_period',
+    'nutrition_target_period',
     'breathing_session',
+    'openband_workout_template',
+    'openband_pinned_template',
+    'openband_meal_draft',
+    'alarm_schedule',
     'sessions',
+    'openband_session_detail',
+    'openband_lap',
     'workout_route',
     'workout_split',
     // Derived once, from raw that no longer exists.
@@ -194,6 +348,10 @@ class LocalDb {
     'metric_series_version',
     'baselines',
     'raw_archive',
+    'raw_records',
+    'raw_blob',
+    'live_coverage',
+    'workout_suggestions',
     'device_coverage',
     'signal_priority',
     'sync_cursor',
@@ -272,6 +430,9 @@ class LocalDb {
         // as though a table by that name had survived — or "Empty: _days" as
         // though one had been lost. Drop it here; the card is the one surface
         // whose whole job is telling the truth about a data-loss event.
+        // `manual_vo2_conflict` and `manual_vo2_corrupt` are entry-id counts,
+        // not tables. They stay in this map. The card reports a positive count
+        // as not recovered and does not list those keys as tables.
         salvaged = Map.of(
           await _mergeFromDbFile(
             quarantine,
@@ -346,7 +507,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 52;
+  static const int schemaVersion = 67;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -459,7 +620,15 @@ class LocalDb {
         await _createWorkoutSuggestions(db);
         await _createSleepOverride(db);
         await _createOpenBandSleepState(db);
+        await _createOpenBandPlans(db);
+        await _createOpenBandPinnedTemplate(db);
+        await _createOpenBandStrengthRuntime(db);
+        await _ensureStrengthSetIdentity(db);
+        await _createOpenBandLaps(db);
         await _createSleepNap(db);
+        await _createNapRecalcJob(db);
+        await _createSleepGoalPeriod(db);
+        await _createNutritionTargetPeriod(db);
         await _createWorkoutRoute(db);
         await _createNotifFired(db);
         await _createAlarmSchedule(db);
@@ -1047,11 +1216,82 @@ class LocalDb {
           // rewritten. The same helper runs from onOpen for merged builds.
           await _createOpenBandSleepState(db);
         }
+        if (oldV < 53) {
+          // OpenBand training templates, meal drafts and session detail
+          // snapshots. Additive tables only; nothing existing is rewritten.
+          await _createOpenBandPlans(db);
+        }
+        if (oldV < 54) {
+          // User lap marks for live distance activities; additive.
+          await _createOpenBandLaps(db);
+        }
+        if (oldV < 55) {
+          // Independent nap recalculation job. Must not share
+          // openband_calculation_job.day_id with night corrections.
+          await _createNapRecalcJob(db);
+        }
+        if (oldV < 56) {
+          // Optional user sleep-goal periods. Additive; null minutes is an
+          // explicit "no target" boundary and does not delete earlier rows.
+          await _createSleepGoalPeriod(db);
+        }
+        if (oldV < 57) {
+          // Optional per-result report interval. Additive columns only.
+          await _ensureLabResultReportRange(db);
+        }
+        if (oldV < 58) {
+          await _createOpenBandPinnedTemplate(db);
+        }
+        if (oldV < 59) {
+          // OpenBand strength runtime snapshot + set identities. Additive.
+          await _createOpenBandStrengthRuntime(db);
+          await _ensureStrengthSetIdentity(db);
+          await _addColumnIfMissing(db, 'sessions', 'hr_covered_sec', 'INTEGER');
+        }
+        if (oldV < 60) {
+          // Additive archive flag; hide is not purge. Idempotent.
+          await _ensureJournalFieldDefHidden(db);
+        }
+        if (oldV < 61) {
+          // Empty targets end the prior period without deleting history.
+          await _createNutritionTargetPeriod(db);
+        }
+        if (oldV < 62) {
+          // Typed exercise registry snapshot. Additive columns only.
+          await _ensureExerciseDefRegistry(db);
+        }
+        if (oldV < 63) {
+          // Original load + frozen definition snapshot on recorded sets.
+          await _ensureStrengthSetLoadMetadata(db);
+        }
+        if (oldV < 64) {
+          // Glucose/import receipts + source exclusion. Additive columns only;
+          // legacy imported_at stays NULL — never backfilled.
+          await _createImportedMeasurement(db);
+        }
+        if (oldV < 65) {
+          // Medication plan revisions + frozen dose snapshots. Additive;
+          // current heads snapshot at migration NOW, never created_at.
+          await upgradeMedTables(db);
+        }
+        if (oldV < 66) {
+          // Per-row provenance on day_result. Additive nullable TEXT, no
+          // DEFAULT, never backfilled — including not from
+          // metric_series_version (date-only, can describe another payload).
+          // Existing rows stay NULL.
+          await _ensureDayResultSourceColumn(db);
+        }
+        if (oldV < 67) {
+          // User-entered VO2max revisions. Additive; nothing is backfilled.
+          await createVo2Tables(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
         // No calculation isolate survives a process restart.
         await db.update('openband_calculation_job', {'status': 'pending', 'error': null},
+            where: "status = 'calculating'");
+        await db.update('nap_recalc_job', {'status': 'pending', 'error': null},
             where: "status = 'calculating'");
       },
       version: schemaVersion,
@@ -1070,6 +1310,7 @@ class LocalDb {
     await _createBandSignals(db);
     await _ensureBandBatteryMillivolts(db);
     await _ensureBandBatteryChargeUnits(db);
+    await _ensureBandBacklogCursor(db);
     await _createRawArchive(db);
     await _createDerived(db);
     await _createDayResult(db);
@@ -1119,22 +1360,43 @@ class LocalDb {
     await _createWorkoutSuggestions(db);
     await _createSleepOverride(db);
     await _createOpenBandSleepState(db);
+    await _createOpenBandPlans(db);
+    await _createOpenBandPinnedTemplate(db);
+    await _createOpenBandStrengthRuntime(db);
+    await _ensureStrengthSetIdentity(db);
+    await _createOpenBandLaps(db);
     await _createSleepNap(db);
+    await _createNapRecalcJob(db);
+    await _createSleepGoalPeriod(db);
+    await _createNutritionTargetPeriod(db);
     await _createWorkoutRoute(db);
     await _ensureWorkoutRouteSpeed(db);
     await _createWorkoutSplit(db);
     await _ensureBreathingWindowColumns(db);
+    await _ensureLabResultReportRange(db);
+    await _ensureJournalFieldDefHidden(db);
+    await _ensureExerciseDefRegistry(db);
+    await _ensureStrengthSetLoadMetadata(db);
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
     await _ensureDayResultSkippedColumn(db);
     await _ensureDayResultPartialColumn(db);
+    await _ensureDayResultSourceColumn(db);
     await _createNotifFired(db);
     await _createAlarmSchedule(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
-    await _dropRawStore(db);
+    // Retained replay/debug ledger. Older migrations may have retired their
+    // working copy after backfill; recreate the durable table so a backup can
+    // restore records that exist only in this ledger.
+    await _createRaw(db);
+    // The compressed replay source for the whole historical stream. Additive,
+    // no backfill (pre-existing rows are simply not replayable — the honest
+    // answer, not a thing to invent), so it rides the same-version self-heal
+    // path rather than a schema number.
+    await _createRawBlob(db);
   }
 
   /// The column names [table] currently has (empty if the table is absent).
@@ -1374,6 +1636,14 @@ class LocalDb {
         'day_result',
         'partial',
         'INTEGER NOT NULL DEFAULT 0',
+      );
+
+  static Future<void> _ensureDayResultSourceColumn(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'day_result',
+        'source',
+        'TEXT',
       );
 
   // ── MENSTRUAL SYMPTOM LOG ──────────────────────────────────────────────────
@@ -1627,7 +1897,61 @@ class LocalDb {
         end_ts INTEGER NOT NULL,
         source TEXT NOT NULL,
         created_at INTEGER NOT NULL,
+        origin_start_ts INTEGER,
+        origin_end_ts INTEGER,
         PRIMARY KEY (day_id, start_ts)
+      )
+    ''');
+    await _addColumnIfMissing(db, 'sleep_nap', 'origin_start_ts', 'INTEGER');
+    await _addColumnIfMissing(db, 'sleep_nap', 'origin_end_ts', 'INTEGER');
+  }
+
+  /// Per-day nap recalculation receipt. Independent of
+  /// [openband_calculation_job] because that table is keyed on day_id and
+  /// already hosts the night-correction job.
+  static Future<void> _createNapRecalcJob(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS nap_recalc_job (
+        day_id TEXT PRIMARY KEY,
+        revision INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        requested_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error TEXT,
+        result_algo_version INTEGER,
+        result_computed_at INTEGER
+      )
+    ''');
+  }
+
+  static Future<void> _createSleepGoalPeriod(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sleep_goal_period (
+        valid_from_day TEXT PRIMARY KEY,
+        minutes INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (minutes IS NULL OR (minutes >= 1 AND minutes <= 1440))
+      )
+    ''');
+  }
+
+  static Future<void> _createNutritionTargetPeriod(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS nutrition_target_period (
+        valid_from_day TEXT PRIMARY KEY,
+        energy_kcal REAL,
+        protein_g REAL,
+        carbs_g REAL,
+        fat_g REAL,
+        revision INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (revision >= 1),
+        CHECK (energy_kcal IS NULL OR energy_kcal > 0),
+        CHECK (protein_g IS NULL OR protein_g >= 0),
+        CHECK (carbs_g IS NULL OR carbs_g >= 0),
+        CHECK (fat_g IS NULL OR fat_g >= 0)
       )
     ''');
   }
@@ -1697,6 +2021,1026 @@ class LocalDb {
     ''');
   }
 
+  /// Versioned workout templates (B23), resumable meal drafts (B05) and
+  /// frozen per-session detail snapshots (B19). Templates and drafts are
+  /// plans: starting or committing them writes into the existing session /
+  /// food_entry tables and never edits a recorded row.
+  static Future<void> _createOpenBandPlans(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_workout_template (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        exercises_json TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_meal_draft (
+        draft_id TEXT PRIMARY KEY,
+        day_id TEXT NOT NULL,
+        meal TEXT NOT NULL,
+        entries_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (day_id, meal)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_session_detail (
+        session_id TEXT PRIMARY KEY,
+        algo_version INTEGER NOT NULL,
+        computed_at INTEGER NOT NULL,
+        payload_json TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// One optional pinned plan for the training hub. Empty table = no pin.
+  static Future<void> _createOpenBandPinnedTemplate(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_pinned_template (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        template_id TEXT NOT NULL
+      )
+    ''');
+  }
+
+  /// Frozen plan of a strength session at start. Keyed by session_id so
+  /// [putSession] REPLACE on finish cannot drop the snapshot. Skip/add lists
+  /// live here; completed values live only in [strength_set].
+  static Future<void> _createOpenBandStrengthRuntime(
+    DatabaseExecutor db,
+  ) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_strength_session (
+        session_id TEXT PRIMARY KEY,
+        template_id TEXT NOT NULL,
+        template_version INTEGER NOT NULL,
+        plan_json TEXT NOT NULL,
+        skipped_json TEXT NOT NULL DEFAULT '[]',
+        added_json TEXT NOT NULL DEFAULT '[]',
+        rest_until_ts INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await _ensureOpenBandStrengthRuntimeColumns(db);
+  }
+
+  static Future<void> _ensureOpenBandStrengthRuntimeColumns(
+    DatabaseExecutor db,
+  ) async {
+    if (db is Database) {
+      await _addColumnIfMissing(
+        db,
+        'openband_strength_session',
+        'rest_until_ts',
+        'INTEGER',
+      );
+    }
+  }
+
+  /// Nullable planned-set / exercise identities on existing strength_set
+  /// rows. Absent on pre-v59 logs; never inferred from exercise_key.
+  static Future<void> _ensureStrengthSetIdentity(Database db) async {
+    await _addColumnIfMissing(db, 'strength_set', 'planned_set_id', 'TEXT');
+    await _addColumnIfMissing(db, 'strength_set', 'exercise_id', 'TEXT');
+  }
+
+  /// Insert the live session row and its plan snapshot in one transaction.
+  /// Rolls back both if either write fails. Refuses a second live session.
+  static Future<void> beginOpenBandStrengthSession({
+    required String sessionId,
+    required int startTs,
+    required int createdAt,
+    required String type,
+    String? deviceFamily,
+    required String templateId,
+    required int templateVersion,
+    required String planJson,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final live = await txn.query(
+        'sessions',
+        columns: ['id'],
+        where: "status = 'live'",
+        limit: 1,
+      );
+      if (live.isNotEmpty) {
+        throw StateError('Eine Einheit läuft bereits.');
+      }
+      await txn.insert('sessions', {
+        'id': sessionId,
+        'start_ts': startTs,
+        'end_ts': null,
+        'type': type,
+        'status': 'live',
+        'source': 'manual',
+        'device_family': deviceFamily,
+        'created_at': createdAt,
+      });
+      await txn.insert('openband_strength_session', {
+        'session_id': sessionId,
+        'template_id': templateId,
+        'template_version': templateVersion,
+        'plan_json': planJson,
+        'skipped_json': '[]',
+        'added_json': '[]',
+        'rest_until_ts': null,
+        'created_at': createdAt,
+      });
+    });
+  }
+
+  static Future<Map<String, dynamic>?> openBandStrengthSession(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<Map<String, dynamic>> _requireLiveStrengthSnap(
+    Transaction txn,
+    String sessionId,
+  ) async {
+    final live = await txn.query(
+      'sessions',
+      columns: ['id'],
+      where: "id = ? AND status = 'live'",
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (live.isEmpty) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    final snaps = await txn.query(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (snaps.isEmpty) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+    return snaps.first;
+  }
+
+  static Future<void> _writeStrengthSnap(
+    Transaction txn,
+    String sessionId,
+    Map<String, Object?> patch,
+  ) async {
+    if (patch.isEmpty) return;
+    final n = await txn.update(
+      'openband_strength_session',
+      patch,
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+    if (n != 1) {
+      throw StateError('Diese Einheit läuft nicht mehr.');
+    }
+  }
+
+  /// Plan + added set/exercise ids. Throws [FormatException] on unreadable
+  /// JSON instead of coercing to empty.
+  static ({
+    Set<String> setIds,
+    Map<String, String> setExercise,
+    Map<String, String> setExerciseKey,
+    Map<String, Map<String, dynamic>> setDefinition,
+    int? restSec,
+  })
+  _strengthPlanLookup(String planJson, String addedJson, String? setId) {
+    final setIds = <String>{};
+    final setExercise = <String, String>{};
+    final setExerciseKey = <String, String>{};
+    final setDefinition = <String, Map<String, dynamic>>{};
+    final restBySet = <String, int?>{};
+    void walk(Object? raw, {required bool requireExercises}) {
+      final exercises = raw is Map ? raw['exercises'] : raw;
+      if (exercises is! List || (requireExercises && exercises.isEmpty)) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      for (final e in exercises) {
+        if (e is! Map) {
+          throw const FormatException('Strength plan snapshot is unreadable.');
+        }
+        final eid = e['id'] as String? ?? '';
+        if (eid.isEmpty) {
+          throw const FormatException('Planned exercise is missing identity.');
+        }
+        final exerciseKey = e['exerciseKey'] as String? ?? '';
+        final rawDefinition = e['definition'];
+        Map<String, dynamic>? definition;
+        if (rawDefinition != null) {
+          if (rawDefinition is! Map) {
+            throw const FormatException(
+              'Exercise definition snapshot is unreadable.',
+            );
+          }
+          definition = Map<String, dynamic>.from(rawDefinition);
+        }
+        final sets = e['sets'];
+        if (sets is! List) {
+          throw const FormatException('Planned exercise has no sets.');
+        }
+        for (final s in sets) {
+          if (s is! Map) {
+            throw const FormatException('Planned set is missing a stable id.');
+          }
+          final sid = s['id'] as String? ?? '';
+          if (sid.isEmpty) {
+            throw const FormatException('Planned set is missing a stable id.');
+          }
+          if (!setIds.add(sid)) {
+            throw const FormatException('Strength plan has duplicate set ids.');
+          }
+          setExercise[sid] = eid;
+          setExerciseKey[sid] = exerciseKey;
+          if (definition != null) setDefinition[sid] = definition;
+          restBySet[sid] = (s['restSec'] as num?)?.toInt();
+        }
+      }
+    }
+
+    walk(jsonDecode(planJson), requireExercises: true);
+    final added = jsonDecode(addedJson);
+    if (added is! List) {
+      throw const FormatException('Strength added snapshot is unreadable.');
+    }
+    walk(added, requireExercises: false);
+    return (
+      setIds: setIds,
+      setExercise: setExercise,
+      setExerciseKey: setExerciseKey,
+      setDefinition: setDefinition,
+      restSec: setId == null ? null : restBySet[setId],
+    );
+  }
+
+  static List<String> _strengthStringIds(Object? raw, String label) {
+    if (raw is! String) {
+      throw FormatException('Strength $label snapshot is unreadable.');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) {
+      throw FormatException('Strength $label snapshot is unreadable.');
+    }
+    final out = <String>[];
+    for (final v in decoded) {
+      if (v is! String || v.isEmpty) {
+        throw FormatException('Strength $label snapshot is unreadable.');
+      }
+      out.add(v);
+    }
+    return out;
+  }
+
+  static Future<void> skipOpenBandPlannedSet(
+    String sessionId,
+    String plannedSetId,
+  ) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedJson = snap['added_json'];
+      if (planJson is! String || addedJson is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedJson, plannedSetId);
+      if (!lookup.setIds.contains(plannedSetId)) {
+        throw ArgumentError.value(plannedSetId, 'plannedSetId');
+      }
+      final skipped = _strengthStringIds(snap['skipped_json'], 'skipped');
+      if (skipped.contains(plannedSetId)) return;
+      skipped.add(plannedSetId);
+      await _writeStrengthSnap(txn, sessionId, {
+        'skipped_json': jsonEncode(skipped),
+      });
+    });
+  }
+
+  static Future<void> addOpenBandPlannedSet({
+    required String sessionId,
+    required Map<String, dynamic> exercise,
+    required Map<String, dynamic> set,
+  }) async {
+    final setId = set['id'] as String? ?? '';
+    if (setId.isEmpty) {
+      throw const FormatException('Planned set is missing a stable id.');
+    }
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedRaw = snap['added_json'];
+      if (planJson is! String || addedRaw is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedRaw, null);
+      if (lookup.setIds.contains(setId)) {
+        throw ArgumentError.value(setId, 'set.id');
+      }
+      _strengthStringIds(snap['skipped_json'], 'skipped');
+      final addedDecoded = jsonDecode(addedRaw);
+      if (addedDecoded is! List) {
+        throw const FormatException('Strength added snapshot is unreadable.');
+      }
+      final added = [
+        for (final e in addedDecoded) Map<String, dynamic>.from(e as Map),
+      ];
+      final eid = exercise['id'] as String? ?? '';
+      if (eid.isEmpty) {
+        throw const FormatException('Planned exercise is missing identity.');
+      }
+      final i = added.indexWhere((e) => e['id'] == eid);
+      if (i >= 0) {
+        final sets = [
+          for (final s in added[i]['sets'] as List)
+            Map<String, dynamic>.from(s as Map),
+          set,
+        ];
+        added[i] = {...added[i], 'sets': sets};
+      } else {
+        added.add({
+          ...exercise,
+          'sets': [set],
+        });
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'added_json': jsonEncode(added),
+      });
+    });
+  }
+
+  static Future<void> skipOpenBandRest(String sessionId) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      await _requireLiveStrengthSnap(txn, sessionId);
+      await _writeStrengthSnap(txn, sessionId, {'rest_until_ts': null});
+    });
+  }
+
+  static Future<void> extendOpenBandRest(
+    String sessionId, {
+    int seconds = 30,
+  }) async {
+    if (seconds <= 0) {
+      throw ArgumentError.value(seconds, 'seconds');
+    }
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final until = (snap['rest_until_ts'] as num?)?.toInt();
+      if (until == null) {
+        throw StateError('Keine Pause läuft.');
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'rest_until_ts': until + seconds,
+      });
+    });
+  }
+
+  /// Append one confirmed set. Same [plannedSetId] is a no-op retry, not a
+  /// duplicate row. Completed values live only here. The session must have a
+  /// live strength snapshot. A planned-set id must belong to that snapshot.
+  static Future<void> recordOpenBandStrengthSet({
+    required String sessionId,
+    required String exerciseKey,
+    required int setIndex,
+    int? reps,
+    int? holdSec,
+    double? loadKg,
+    required int atTs,
+    String? plannedSetId,
+    String? exerciseId,
+    int? restSec,
+    String? loadJson,
+    String? definitionJson,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final snap = await _requireLiveStrengthSnap(txn, sessionId);
+      final planJson = snap['plan_json'];
+      final addedJson = snap['added_json'];
+      if (planJson is! String || addedJson is! String) {
+        throw const FormatException('Strength plan snapshot is unreadable.');
+      }
+      final lookup = _strengthPlanLookup(planJson, addedJson, plannedSetId);
+      final identity = plannedSetId != null && plannedSetId.isNotEmpty;
+      if (identity && !lookup.setIds.contains(plannedSetId)) {
+        throw ArgumentError.value(plannedSetId, 'plannedSetId');
+      }
+      final expectedEx = identity ? lookup.setExercise[plannedSetId] : null;
+      if (identity &&
+          exerciseId != null &&
+          expectedEx != null &&
+          exerciseId != expectedEx) {
+        throw ArgumentError.value(exerciseId, 'exerciseId');
+      }
+      final expectedKey = identity ? lookup.setExerciseKey[plannedSetId] : null;
+      if (identity &&
+          expectedKey != null &&
+          expectedKey.isNotEmpty &&
+          exerciseKey != expectedKey) {
+        throw ArgumentError.value(exerciseKey, 'exerciseKey');
+      }
+      if (identity) {
+        final existing = await txn.query(
+          'strength_set',
+          columns: ['seq'],
+          where: 'session_id = ? AND planned_set_id = ?',
+          whereArgs: [sessionId, plannedSetId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) return;
+      }
+      OriginalLoadInput? load;
+      if (loadJson != null) {
+        load = OriginalLoadInput.decode(loadJson);
+      }
+      final resolvedKg = load == null
+          ? loadKg
+          : load.basis == null
+          ? loadKg
+          : resolveStoredLoadKg(input: load, loadKg: loadKg);
+      final planDefinition = identity ? lookup.setDefinition[plannedSetId] : null;
+      ExerciseDefinitionSnapshot? clientDefinition;
+      if (definitionJson != null) {
+        final decoded = jsonDecode(definitionJson);
+        if (decoded is! Map) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+        clientDefinition = ExerciseDefinitionSnapshot.fromJson(
+          Map<String, dynamic>.from(decoded),
+        );
+        if (clientDefinition.id != exerciseKey) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+      }
+      String? storedDefinitionJson;
+      if (identity && planDefinition != null) {
+        final planSnap = ExerciseDefinitionSnapshot.fromJson(planDefinition);
+        if (planSnap.id != exerciseKey) {
+          throw const FormatException(
+            'Exercise definition snapshot is unreadable.',
+          );
+        }
+        if (clientDefinition != null &&
+            !customExerciseSnapshotsEqual(clientDefinition, planSnap)) {
+          throw const FormatException(
+            'Recorded definition contradicts the plan snapshot.',
+          );
+        }
+        storedDefinitionJson = jsonEncode(planSnap.toJson());
+      } else if (clientDefinition != null) {
+        storedDefinitionJson = jsonEncode(clientDefinition.toJson());
+      }
+      final maxRows = await txn.rawQuery(
+        'SELECT MAX(seq) AS m FROM strength_set WHERE session_id = ?',
+        [sessionId],
+      );
+      final nextSeq = ((maxRows.first['m'] as num?)?.toInt() ?? -1) + 1;
+      final resolvedRest = restSec ?? (identity ? lookup.restSec : null);
+      final n = await txn.insert('strength_set', {
+        'session_id': sessionId,
+        'seq': nextSeq,
+        'exercise_key': exerciseKey,
+        'set_index': setIndex,
+        'reps': reps,
+        'hold_sec': holdSec,
+        'load_kg': resolvedKg,
+        'at_ts': atTs,
+        'rest_sec': resolvedRest,
+        'planned_set_id': identity ? plannedSetId : null,
+        'exercise_id': identity ? (exerciseId ?? expectedEx) : exerciseId,
+        'note': '',
+        'load_json': loadJson,
+        'definition_json': storedDefinitionJson,
+      });
+      if (n == 0) {
+        throw StateError('Diese Einheit läuft nicht mehr.');
+      }
+      await _writeStrengthSnap(txn, sessionId, {
+        'rest_until_ts': resolvedRest != null && resolvedRest > 0
+            ? atTs + resolvedRest
+            : null,
+      });
+    });
+  }
+
+  /// User-tapped lap marks for live distance activities. Distances stay null
+  /// when GPS was off — a lap without a distance is still a lap.
+  static Future<void> _createOpenBandLaps(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS openband_lap (
+        session_id TEXT NOT NULL,
+        lap_index INTEGER NOT NULL,
+        at_ts INTEGER NOT NULL,
+        elapsed_sec INTEGER NOT NULL,
+        paused_sec INTEGER NOT NULL,
+        distance_m REAL,
+        PRIMARY KEY (session_id, lap_index)
+      )
+    ''');
+  }
+
+  static Future<List<Map<String, dynamic>>> openBandTemplates() async {
+    final db = await instance;
+    return db.query(
+      'openband_workout_template',
+      where: 'archived = 0',
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  static Future<int> putOpenBandTemplate(Map<String, Object?> row) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'openband_workout_template',
+        columns: ['version'],
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+      final version = existing.isEmpty
+          ? 1
+          : (existing.first['version'] as int) + 1;
+      await txn.insert('openband_workout_template', {
+        ...row,
+        'version': version,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return version;
+    });
+  }
+
+  static Future<void> archiveOpenBandTemplate(String id) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      await txn.update(
+        'openband_workout_template',
+        {'archived': 1, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete(
+        'openband_pinned_template',
+        where: 'template_id = ?',
+        whereArgs: [id],
+      );
+    });
+  }
+
+  static Future<String?> openBandPinnedTemplateId() async {
+    final rows = await (await instance).query('openband_pinned_template');
+    if (rows.isEmpty) return null;
+    final id = rows.first['template_id'] as String?;
+    return id == null || id.isEmpty ? null : id;
+  }
+
+  static Future<void> putOpenBandPinnedTemplate(String? id) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      if (id == null || id.isEmpty) {
+        await txn.delete('openband_pinned_template');
+        return;
+      }
+      final active = await txn.query(
+        'openband_workout_template',
+        columns: ['id'],
+        where: 'id = ? AND archived = 0',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (active.isEmpty) {
+        throw StateError('Anheften fehlgeschlagen');
+      }
+      await txn.delete('openband_pinned_template');
+      await txn.insert('openband_pinned_template', {
+        'singleton': 1,
+        'template_id': id,
+      });
+    });
+  }
+
+  static Future<Map<String, dynamic>?> openBandMealDraft(
+    String dayId,
+    String meal,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_meal_draft',
+      where: 'day_id = ? AND meal = ?',
+      whereArgs: [dayId, meal],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> putOpenBandMealDraft(Map<String, Object?> row) async {
+    final db = await instance;
+    await db.insert(
+      'openband_meal_draft',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Compare-and-save one retained meal-draft slot inside a single
+  /// transaction. [expected] null means the day+meal slot must be absent.
+  /// A non-null [expected] must match draft_id/day/meal/updated_at and the
+  /// typed entries snapshot. Cross-slot draft_id collision is conflict.
+  /// Revision is max(clockNow, stored+1) inside the transaction.
+  static Future<bool> compareAndSaveOpenBandMealDraft({
+    required Map<String, Object?> row,
+    Map<String, Object?>? expected,
+  }) async {
+    final db = await instance;
+    try {
+      await db.transaction((txn) async {
+        final dayId = row['day_id'];
+        final meal = row['meal'];
+        final rows = await txn.query(
+          'openband_meal_draft',
+          where: 'day_id = ? AND meal = ?',
+          whereArgs: [dayId, meal],
+          limit: 1,
+        );
+        int? storedRev;
+        if (expected == null) {
+          if (rows.isNotEmpty) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+        } else {
+          if (rows.isEmpty) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          final stored = rows.first;
+          if (stored['draft_id'] != expected['draft_id'] ||
+              stored['day_id'] != expected['day_id'] ||
+              stored['meal'] != expected['meal'] ||
+              stored['updated_at'] != expected['updated_at']) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (!_jsonEquals(
+            _canonicalMealDraftEntries(stored['entries_json'] as String),
+            _canonicalMealDraftEntries(expected['entries_json'] as String),
+          )) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          storedRev = (stored['updated_at'] as num).toInt();
+        }
+        final idRows = await txn.query(
+          'openband_meal_draft',
+          where: 'draft_id = ?',
+          whereArgs: [row['draft_id']],
+          limit: 1,
+        );
+        if (idRows.isNotEmpty) {
+          final other = idRows.first;
+          if (other['day_id'] != dayId || other['meal'] != meal) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+        }
+        final nextRev = nextMealDraftRevision(
+          storedRev,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        final written = Map<String, Object?>.from(row);
+        written['updated_at'] = nextRev;
+        if (rows.isEmpty) {
+          await txn.insert(
+            'openband_meal_draft',
+            written,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        } else {
+          await txn.update(
+            'openband_meal_draft',
+            {
+              'draft_id': written['draft_id'],
+              'entries_json': written['entries_json'],
+              'updated_at': nextRev,
+            },
+            where: 'day_id = ? AND meal = ?',
+            whereArgs: [dayId, meal],
+          );
+        }
+      });
+      return true;
+    } on _OpenBandFoodCasConflict {
+      return false;
+    }
+  }
+
+  static List<Object?> _canonicalMealDraftEntries(String entriesJson) {
+    final raw = jsonDecode(entriesJson);
+    if (raw is! List) {
+      throw const FormatException('Meal draft entries must be a list.');
+    }
+    return [
+      for (final e in raw)
+        MealDraftEntry.fromJson(Map<String, dynamic>.from(e as Map)).toJson(),
+    ];
+  }
+
+  static Future<FoodEntry?> openBandFoodEntry(String id) async {
+    final db = await instance;
+    return _foodEntryById(db, id);
+  }
+
+  static Future<FoodEntry?> _foodEntryById(
+    DatabaseExecutor db,
+    String id,
+  ) async {
+    final rows = await db.query(
+      'food_entry',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return FoodEntry.fromRow(rows.first);
+  }
+
+  /// Full persisted comparison, including unknown source wire. [ledger]
+  /// includes created/updated stamps so a clock-tied edit still conflicts.
+  static bool foodEntrySnapshotsEqual(
+    FoodEntry a,
+    FoodEntry b, {
+    bool ledger = true,
+  }) =>
+      a.id == b.id &&
+      a.date == b.date &&
+      a.meal == b.meal &&
+      a.label == b.label &&
+      a.atTs == b.atTs &&
+      a.foodKey == b.foodKey &&
+      a.quantity == b.quantity &&
+      a.unit == b.unit &&
+      a.kcal == b.kcal &&
+      a.proteinG == b.proteinG &&
+      a.carbsG == b.carbsG &&
+      a.fatG == b.fatG &&
+      a.fibreG == b.fibreG &&
+      a.sugarG == b.sugarG &&
+      a.satFatG == b.satFatG &&
+      a.sodiumMg == b.sodiumMg &&
+      a.ironMg == b.ironMg &&
+      a.calciumMg == b.calciumMg &&
+      a.sourceCode == b.sourceCode &&
+      a.confirmed == b.confirmed &&
+      a.note == b.note &&
+      (!ledger ||
+          (a.createdAt == b.createdAt && a.updatedAt == b.updatedAt));
+
+  static Map<String, Object?> _foodWriteRow(
+    FoodEntry e,
+    int now, {
+    int? createdAt,
+    int? updatedAt,
+  }) {
+    final clean = e.sanitised;
+    return {
+      ...clean.toRow(now),
+      'created_at': createdAt ?? clean.createdAt ?? now,
+      'updated_at': updatedAt ?? now,
+    };
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  saveOpenBandFoodEntryIfUnchanged({
+    required FoodEntry expected,
+    required FoodEntry next,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, expected.id);
+      if (current == null ||
+          !foodEntrySnapshotsEqual(current, expected)) {
+        return (conflict: true, current: current);
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await txn.insert(
+        'food_entry',
+        _foodWriteRow(
+          next,
+          now,
+          createdAt: current.createdAt ?? now,
+          updatedAt: now,
+        ),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return (conflict: false, current: await _foodEntryById(txn, expected.id));
+    });
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  deleteOpenBandFoodEntryIfUnchanged(FoodEntry expected) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, expected.id);
+      if (current == null ||
+          !foodEntrySnapshotsEqual(current, expected)) {
+        return (conflict: true, current: current);
+      }
+      await txn.delete(
+        'food_entry',
+        where: 'id = ?',
+        whereArgs: [expected.id],
+      );
+      return (conflict: false, current: current);
+    });
+  }
+
+  static Future<({bool conflict, FoodEntry? current})>
+  restoreOpenBandFoodEntry(FoodEntry snapshot) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _foodEntryById(txn, snapshot.id);
+      if (current != null) {
+        if (foodEntrySnapshotsEqual(current, snapshot.sanitised)) {
+          return (conflict: false, current: current);
+        }
+        return (conflict: true, current: current);
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final clean = snapshot.sanitised;
+      await txn.insert(
+        'food_entry',
+        _foodWriteRow(
+          snapshot,
+          now,
+          createdAt: clean.createdAt ?? snapshot.createdAt ?? now,
+          updatedAt: clean.updatedAt ?? snapshot.updatedAt ?? now,
+        ),
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+      return (conflict: false, current: await _foodEntryById(txn, snapshot.id));
+    });
+  }
+
+  /// Commit a meal draft. New inserts require a present matching retained
+  /// draft. If that draft is already gone, the call succeeds only when every
+  /// corresponding saved row already matches the committed content, with no
+  /// writes — a replay after delete must not resurrect a row.
+  static Future<({bool conflict, FoodEntry? current})>
+  commitOpenBandMealDraft({
+    required String draftId,
+    required List<FoodEntry> entries,
+    List<Object?>? expectedEntries,
+    String? expectedDay,
+    String? expectedMeal,
+  }) async {
+    final db = await instance;
+    try {
+      await db.transaction((txn) async {
+        final draftRows = await txn.query(
+          'openband_meal_draft',
+          where: 'draft_id = ?',
+          whereArgs: [draftId],
+          limit: 1,
+        );
+        var allowInsert = false;
+        if (draftRows.isNotEmpty) {
+          final stored = draftRows.first;
+          if (expectedDay != null && stored['day_id'] != expectedDay) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (expectedMeal != null && stored['meal'] != expectedMeal) {
+            throw const _OpenBandFoodCasConflict(null);
+          }
+          if (expectedEntries != null) {
+            final raw = jsonDecode(stored['entries_json'] as String);
+            final expected = jsonDecode(jsonEncode(expectedEntries));
+            if (!_jsonEquals(raw, expected)) {
+              throw const _OpenBandFoodCasConflict(null);
+            }
+          }
+          allowInsert = true;
+        }
+        final now = DateTime.now().millisecondsSinceEpoch;
+        for (final entry in entries) {
+          final current = await _foodEntryById(txn, entry.id);
+          if (current == null) {
+            if (!allowInsert) {
+              throw const _OpenBandFoodCasConflict(null);
+            }
+            await txn.insert(
+              'food_entry',
+              _foodWriteRow(entry, now),
+              conflictAlgorithm: ConflictAlgorithm.abort,
+            );
+            continue;
+          }
+          if (foodEntrySnapshotsEqual(
+            current,
+            entry.sanitised,
+            ledger: false,
+          )) {
+            continue;
+          }
+          throw _OpenBandFoodCasConflict(current);
+        }
+        if (allowInsert) {
+          await txn.delete(
+            'openband_meal_draft',
+            where: 'draft_id = ?',
+            whereArgs: [draftId],
+          );
+        }
+      });
+      return (conflict: false, current: null);
+    } on _OpenBandFoodCasConflict catch (e) {
+      return (conflict: true, current: e.current);
+    }
+  }
+
+  static bool _jsonEquals(Object? a, Object? b) {
+    if (identical(a, b)) return true;
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final key in a.keys) {
+        if (!b.containsKey(key) || !_jsonEquals(a[key], b[key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_jsonEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    if (a is num && b is num) return a == b;
+    return a == b;
+  }
+
+  static Future<void> deleteOpenBandMealDraft(String draftId) async {
+    final db = await instance;
+    await db.delete(
+      'openband_meal_draft',
+      where: 'draft_id = ?',
+      whereArgs: [draftId],
+    );
+  }
+
+  static Future<Map<String, dynamic>?> openBandSessionDetail(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'openband_session_detail',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<void> putOpenBandSessionDetail(Map<String, Object?> row) async {
+    final db = await instance;
+    await db.insert(
+      'openband_session_detail',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<int> putOpenBandLap(Map<String, Object?> row) async {
+    final db = await instance;
+    return db.insert(
+      'openband_lap',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> openBandLaps(
+    String sessionId,
+  ) async {
+    final db = await instance;
+    return db.query(
+      'openband_lap',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'lap_index ASC',
+    );
+  }
+
   /// Upsert the user's sleep window for [dayId] (local date label). [source] is
   /// 'manual' or 'confirmed'. Replaces any prior override for that day.
   static Future<void> putSleepOverride({
@@ -1739,6 +3083,160 @@ class LocalDb {
     final db = await instance;
     final rows = await db.query('sleep_override', columns: ['day_id']);
     return {for (final r in rows) r['day_id'] as String};
+  }
+
+  static Future<void> putSleepGoalPeriod({
+    required String validFromDay,
+    required int? minutes,
+  }) async {
+    if (minutes != null && (minutes < 1 || minutes > 1440)) {
+      throw ArgumentError.value(
+        minutes,
+        'minutes',
+        'Duration must be 1–1440 minutes.',
+      );
+    }
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final existing = await db.query(
+      'sleep_goal_period',
+      columns: ['created_at'],
+      where: 'valid_from_day = ?',
+      whereArgs: [validFromDay],
+      limit: 1,
+    );
+    final createdAt = existing.isEmpty
+        ? now
+        : (existing.first['created_at'] as num).toInt();
+    await db.insert('sleep_goal_period', {
+      'valid_from_day': validFromDay,
+      'minutes': minutes,
+      'created_at': createdAt,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<Map<String, dynamic>?> sleepGoalPeriodAsOf(String day) async {
+    final db = await instance;
+    final rows = await db.query(
+      'sleep_goal_period',
+      where: 'valid_from_day <= ?',
+      whereArgs: [day],
+      orderBy: 'valid_from_day DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> sleepGoalPeriods() async {
+    final db = await instance;
+    return db.query('sleep_goal_period', orderBy: 'valid_from_day ASC');
+  }
+
+  /// Latest dated nutrition-target row with [valid_from_day] <= [day].
+  static Future<Map<String, dynamic>?> nutritionTargetPeriodAsOf(
+    String day,
+  ) async {
+    requireNutritionTargetDay(day);
+    final db = await instance;
+    final rows = await db.query(
+      kNutritionTargetPeriodTable,
+      where: 'valid_from_day <= ?',
+      whereArgs: [day],
+      orderBy: 'valid_from_day DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// The dated row for exactly [day], or null when that date has no row.
+  static Future<Map<String, dynamic>?> nutritionTargetPeriodOn(
+    String day,
+  ) async {
+    requireNutritionTargetDay(day);
+    final db = await instance;
+    final rows = await db.query(
+      kNutritionTargetPeriodTable,
+      where: 'valid_from_day = ?',
+      whereArgs: [day],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> nutritionTargetPeriods() async {
+    final db = await instance;
+    return db.query(
+      kNutritionTargetPeriodTable,
+      orderBy: 'valid_from_day ASC',
+    );
+  }
+
+  /// Insert or replace the dated row for [validFromDay] with CAS.
+  ///
+  /// [expectedRevision] null means the caller believes no row exists for that
+  /// date. A stored empty boundary has revision >= 1, so it conflicts with
+  /// null rather than looking like an absent row. On conflict the existing
+  /// row is returned unchanged.
+  static Future<({bool conflict, Map<String, dynamic>? row})>
+  putNutritionTargetPeriod({
+    required String validFromDay,
+    double? energyKcal,
+    double? proteinG,
+    double? carbsG,
+    double? fatG,
+    int? expectedRevision,
+  }) async {
+    requireNutritionTargetDay(validFromDay);
+    requireNutritionTargetNumbers(
+      energyKcal: energyKcal,
+      proteinG: proteinG,
+      carbohydrateG: carbsG,
+      fatG: fatG,
+    );
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        kNutritionTargetPeriodTable,
+        where: 'valid_from_day = ?',
+        whereArgs: [validFromDay],
+        limit: 1,
+      );
+      if (expectedRevision == null) {
+        if (existing.isNotEmpty) {
+          return (conflict: true, row: Map<String, dynamic>.from(existing.first));
+        }
+      } else {
+        if (existing.isEmpty) {
+          return (conflict: true, row: null);
+        }
+        final rev = (existing.first['revision'] as num).toInt();
+        if (rev != expectedRevision) {
+          return (conflict: true, row: Map<String, dynamic>.from(existing.first));
+        }
+      }
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final createdAt = existing.isEmpty
+          ? now
+          : (existing.first['created_at'] as num).toInt();
+      final revision = existing.isEmpty ? 1 : expectedRevision! + 1;
+      final row = <String, dynamic>{
+        'valid_from_day': validFromDay,
+        'energy_kcal': energyKcal,
+        'protein_g': proteinG,
+        'carbs_g': carbsG,
+        'fat_g': fatG,
+        'revision': revision,
+        'created_at': createdAt,
+        'updated_at': now,
+      };
+      await txn.insert(
+        kNutritionTargetPeriodTable,
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      return (conflict: false, row: row);
+    });
   }
 
   // ── OPENBAND SLEEP CORRECTION STATE ────────────────────────────────────────
@@ -1892,6 +3390,27 @@ class LocalDb {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Correction rows plus current job status for a bounded day_id set.
+  static Future<Map<String, Map<String, dynamic>>>
+      openBandSleepCorrectionsForDays(Iterable<String> dayIds) async {
+    final ids = _boundedDayIds(dayIds);
+    if (ids.isEmpty) return {};
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT c.*, j.status, j.error, j.requested_at, '
+      'j.result_algo_version, j.result_computed_at '
+      'FROM openband_sleep_correction c '
+      'LEFT JOIN openband_calculation_job j ON j.day_id = c.day_id '
+      'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+      'WHERE c.day_id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String: r,
+    };
+  }
+
   /// Remove the override and enqueue an automatic re-detection revision in one
   /// transaction. Repeating an already-current restore is idempotent.
   static Future<Map<String, dynamic>> restoreOpenBandAutomatic(
@@ -1951,6 +3470,17 @@ class LocalDb {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       return correction;
     });
+  }
+
+  static Future<List<Map<String, dynamic>>>
+      pendingOpenBandSleepCorrections() async {
+    final db = await instance;
+    return db.rawQuery(
+      'SELECT c.* FROM openband_sleep_correction c '
+      'JOIN openband_calculation_job j ON j.day_id = c.day_id '
+      'AND j.correction_id = c.correction_id AND j.revision = c.revision '
+      "WHERE j.status = 'pending' ORDER BY j.requested_at ASC",
+    );
   }
 
   static Future<bool> updateOpenBandCalculationJob({
@@ -2035,48 +3565,763 @@ class LocalDb {
         kind TEXT NOT NULL,
         value REAL NOT NULL,
         unit TEXT NOT NULL,
-        source TEXT NOT NULL
+        source TEXT NOT NULL,
+        imported_at INTEGER,
+        source_id TEXT,
+        source_key TEXT
       )
     ''');
+    await _addColumnIfMissing(
+      db,
+      'imported_measurement',
+      'imported_at',
+      'INTEGER',
+    );
+    await _addColumnIfMissing(db, 'imported_measurement', 'source_id', 'TEXT');
+    await _addColumnIfMissing(db, 'imported_measurement', 'source_key', 'TEXT');
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_imported_measurement_kind '
       'ON imported_measurement(kind, ts)',
     );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_imported_measurement_source '
+      'ON imported_measurement(kind, source_key, ts)',
+    );
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS imported_measurement_receipt (
+        kind TEXT PRIMARY KEY,
+        last_attempt_at INTEGER NOT NULL,
+        last_success_at INTEGER,
+        outcome TEXT NOT NULL,
+        stored_count INTEGER NOT NULL DEFAULT 0,
+        written_count INTEGER NOT NULL DEFAULT 0,
+        invalid_count INTEGER NOT NULL DEFAULT 0,
+        ignored_count INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS imported_measurement_source_setting (
+        kind TEXT NOT NULL,
+        source_key TEXT NOT NULL,
+        excluded INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (kind, source_key)
+      )
+    ''');
+  }
+
+  /// Serializes imported-measurement Health reads and writes process-wide.
+  /// [commitImportedMeasurements] must be called from inside this gate or from
+  /// a caller that already holds it — it is not itself a second queue.
+  static Future<T> runImportedMeasurementOp<T>(Future<T> Function() job) =>
+      _importedWriteGate.run(job);
+
+  /// Input to one atomic imported-measurement commit (rows + receipts).
+  /// [persistRows] false records an attempt without touching stored readings.
+  static Future<ImportedMeasurementCommitResult> commitImportedMeasurements(
+    ImportedMeasurementCommitInput input,
+  ) => _commitImportedMeasurements(input);
+
+  static final _SerialGate _importedWriteGate = _SerialGate();
+
+  static Future<ImportedMeasurementCommitResult> _commitImportedMeasurements(
+    ImportedMeasurementCommitInput input,
+  ) async {
+    final db = await instance;
+    final attemptedSec = input.attemptedAt.millisecondsSinceEpoch ~/ 1000;
+    final storedSec =
+        (input.storedAt ?? input.attemptedAt).millisecondsSinceEpoch ~/ 1000;
+    var inserted = 0;
+    var replaced = 0;
+    var unchanged = 0;
+    var skippedExcluded = 0;
+    await db.transaction((txn) async {
+      final excluded = <String>{};
+      if (input.persistRows && input.rows.isNotEmpty) {
+        final settings = await txn.query(
+          'imported_measurement_source_setting',
+          columns: ['kind', 'source_key'],
+          where: 'excluded = 1',
+        );
+        for (final s in settings) {
+          excluded.add('${s['kind']}|${s['source_key']}');
+        }
+      }
+
+      final acceptedByKind = <String, List<Map<String, Object?>>>{
+        for (final kind in input.kinds) kind: <Map<String, Object?>>[],
+      };
+      final skippedByKind = <String, int>{};
+      if (input.persistRows) {
+        for (final r in input.rows) {
+          final kind = '${r['kind'] ?? ''}';
+          final key = '${r['source_key'] ?? ''}';
+          if (excluded.contains('$kind|$key')) {
+            skippedExcluded++;
+            skippedByKind[kind] = (skippedByKind[kind] ?? 0) + 1;
+            continue;
+          }
+          acceptedByKind.putIfAbsent(kind, () => []).add(r);
+        }
+      }
+
+      for (final kind in input.kinds) {
+        var kindInserted = 0;
+        var kindReplaced = 0;
+        var kindUnchanged = 0;
+        final accepted = acceptedByKind[kind] ?? const [];
+        if (input.persistRows && accepted.isNotEmpty) {
+          final counts = await _upsertImportedMeasurementRows(
+            txn,
+            accepted,
+            importedAt: storedSec,
+          );
+          kindInserted = counts.inserted;
+          kindReplaced = counts.replaced;
+          kindUnchanged = counts.unchanged;
+        }
+        inserted += kindInserted;
+        replaced += kindReplaced;
+        unchanged += kindUnchanged;
+        final written = kindInserted + kindReplaced;
+        final stored = written + kindUnchanged;
+        final invalid = input.invalidByKind[kind] ?? 0;
+        final ignored =
+            (input.ignoredByKind[kind] ?? 0) + (skippedByKind[kind] ?? 0);
+        final outcome =
+            input.forcedOutcome ??
+            (invalid > 0
+                ? 'partial'
+                : stored > 0
+                ? 'stored'
+                : 'empty');
+        await _upsertImportedMeasurementReceipt(
+          txn,
+          kind: kind,
+          attemptedAt: attemptedSec,
+          outcome: outcome,
+          storedCount: stored,
+          writtenCount: written,
+          invalidCount: invalid,
+          ignoredCount: ignored,
+          successAt: written > 0 ? storedSec : null,
+        );
+      }
+    });
+    final written = inserted + replaced;
+    return ImportedMeasurementCommitResult(
+      storedCount: written + unchanged,
+      writtenCount: written,
+      skippedExcluded: skippedExcluded,
+    );
+  }
+
+  static Future<({int inserted, int replaced, int unchanged})>
+  _upsertImportedMeasurementRows(
+    DatabaseExecutor txn,
+    List<Map<String, Object?>> rows, {
+    required int importedAt,
+  }) async {
+    var inserted = 0;
+    var replaced = 0;
+    var unchanged = 0;
+    for (final chunk in _sqlVarChunks(rows)) {
+      final uuids = [for (final r in chunk) r['uuid']];
+      final existingRows = await txn.query(
+        'imported_measurement',
+        where: 'uuid IN (${List.filled(uuids.length, '?').join(',')})',
+        whereArgs: uuids,
+      );
+      final existing = {for (final e in existingRows) '${e['uuid']}': e};
+      final batch = txn.batch();
+      for (final r in chunk) {
+        final uuid = '${r['uuid']}';
+        final prev = existing[uuid];
+        if (prev != null && _importedMeasurementUnchanged(prev, r)) {
+          unchanged++;
+          continue;
+        }
+        final row = Map<String, Object?>.from(r);
+        row['imported_at'] = importedAt;
+        if (row['source'] == null) row['source'] = '';
+        batch.insert(
+          'imported_measurement',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+        if (prev == null) {
+          inserted++;
+        } else {
+          replaced++;
+        }
+      }
+      await batch.commit(noResult: true);
+    }
+    return (inserted: inserted, replaced: replaced, unchanged: unchanged);
+  }
+
+  static bool _importedMeasurementUnchanged(
+    Map<String, Object?> existing,
+    Map<String, Object?> incoming,
+  ) {
+    num? n(Object? v) => v is num ? v : null;
+    return n(existing['ts'])?.toInt() == n(incoming['ts'])?.toInt() &&
+        '${existing['kind']}' == '${incoming['kind']}' &&
+        n(existing['value'])?.toDouble() == n(incoming['value'])?.toDouble() &&
+        '${existing['unit']}' == '${incoming['unit']}' &&
+        '${existing['source'] ?? ''}' == '${incoming['source'] ?? ''}' &&
+        '${existing['source_id'] ?? ''}' == '${incoming['source_id'] ?? ''}' &&
+        '${existing['source_key'] ?? ''}' == '${incoming['source_key'] ?? ''}';
+  }
+
+  static Future<void> _upsertImportedMeasurementReceipt(
+    DatabaseExecutor txn, {
+    required String kind,
+    required int attemptedAt,
+    required String outcome,
+    required int storedCount,
+    required int writtenCount,
+    required int invalidCount,
+    required int ignoredCount,
+    int? successAt,
+  }) async {
+    final prev = await txn.query(
+      'imported_measurement_receipt',
+      where: 'kind = ?',
+      whereArgs: [kind],
+      limit: 1,
+    );
+    if (prev.isNotEmpty) {
+      final last = (prev.first['last_attempt_at'] as num?)?.toInt() ?? 0;
+      if (last > attemptedAt) return;
+    }
+    final lastSuccess =
+        successAt ??
+        (prev.isEmpty
+            ? null
+            : (prev.first['last_success_at'] as num?)?.toInt());
+    await txn.insert('imported_measurement_receipt', {
+      'kind': kind,
+      'last_attempt_at': attemptedAt,
+      'last_success_at': lastSuccess,
+      'outcome': outcome,
+      'stored_count': storedCount,
+      'written_count': writtenCount,
+      'invalid_count': invalidCount,
+      'ignored_count': ignoredCount,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Upsert imported readings. Idempotent on the source store's uuid.
+  /// Unchanged reread keeps [imported_at]; a changed record stamps replacement.
   static Future<int> putImportedMeasurements(
-    List<Map<String, Object?>> rows,
-  ) async {
+    List<Map<String, Object?>> rows, {
+    DateTime? now,
+  }) async {
     if (rows.isEmpty) return 0;
-    final db = await instance;
-    await db.transaction((txn) async {
-      final batch = txn.batch();
-      for (final r in rows) {
-        batch.insert(
-          'imported_measurement',
-          r,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-      await batch.commit(noResult: true);
-    });
-    return rows.length;
+    final attemptedAt = now ?? DateTime.now();
+    final kinds = <String>{
+      for (final r in rows)
+        if (r['kind'] is String) r['kind'] as String,
+    };
+    final result = await runImportedMeasurementOp(
+      () => _commitImportedMeasurements(
+        ImportedMeasurementCommitInput(
+          rows: rows,
+          kinds: kinds.toList(),
+          attemptedAt: attemptedAt,
+          persistRows: true,
+        ),
+      ),
+    );
+    return result.storedCount;
   }
 
-  /// Imported readings of one kind, newest first. The caller renders the
-  /// `source` with the value; a row without its source is not renderable.
+  /// Imported readings of one kind, newest first. [limit] null returns the
+  /// full retained set. A positive limit is a most-recent window, never the
+  /// oldest N.
   static Future<List<Map<String, dynamic>>> importedMeasurements(
     String kind, {
-    int limit = 200,
+    int? limit,
+    String? sourceKey,
   }) async {
     final db = await instance;
+    final where = StringBuffer('kind = ?');
+    final args = <Object?>[kind];
+    if (sourceKey != null) {
+      if (sourceKey.startsWith('legacy:')) {
+        where.write(
+          ' AND ((source_key IS NULL OR source_key = \'\') AND source = ? '
+          'OR source_key = ?)',
+        );
+        args.add(sourceKey.substring('legacy:'.length));
+        args.add(sourceKey);
+      } else {
+        where.write(' AND source_key = ?');
+        args.add(sourceKey);
+      }
+    }
     return db.query(
       'imported_measurement',
-      where: 'kind = ?',
-      whereArgs: [kind],
+      where: where.toString(),
+      whereArgs: args,
       orderBy: 'ts DESC',
       limit: limit,
+    );
+  }
+
+  /// Bounded glucose read: inventory aggregates, newest-[limit] history for
+  /// the selected source, and every row on that source's latest local day.
+  /// One transaction. Null [limit] is an explicit full-source history request.
+  static Future<ImportedGlucoseRead> importedMeasurementGlucoseRead({
+    required String kind,
+    String? sourceKey,
+    int? limit,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final settings = await txn.query(
+        'imported_measurement_source_setting',
+        where: 'kind = ?',
+        whereArgs: [kind],
+      );
+      final rec = await txn.query(
+        'imported_measurement_receipt',
+        where: 'kind = ?',
+        whereArgs: [kind],
+        limit: 1,
+      );
+      const identity = _importedIdentitySql;
+      final groups = await txn.rawQuery(
+        'SELECT $identity AS src_key, COUNT(*) AS n, '
+        'MAX(CASE WHEN $_importedFiniteImportedAtSql '
+        'THEN imported_at END) AS last_imported_at '
+        'FROM imported_measurement WHERE kind = ? '
+        'AND typeof(uuid) = \'text\' AND uuid != \'\' '
+        'AND typeof(ts) IN (\'integer\', \'real\') '
+        'GROUP BY src_key HAVING src_key IS NOT NULL',
+        [kind],
+      );
+      final badIdentity = await txn.rawQuery(
+        'SELECT COUNT(*) AS n FROM imported_measurement WHERE kind = ? '
+        'AND (($identity) IS NULL '
+        'OR typeof(uuid) != \'text\' OR uuid = \'\' '
+        'OR NOT ($_importedFiniteTsSql))',
+        [kind],
+      );
+      final identityUnreadable = (badIdentity.first['n'] as num?)?.toInt() ?? 0;
+      final badImportedAt = await txn.rawQuery(
+        'SELECT COUNT(*) AS n FROM imported_measurement WHERE kind = ? '
+        'AND imported_at IS NOT NULL AND NOT ($_importedFiniteImportedAtSql)',
+        [kind],
+      );
+      final importedAtUnreadable =
+          (badImportedAt.first['n'] as num?)?.toInt() ?? 0;
+
+      final excluded = <String>{};
+      for (final s in settings) {
+        final key = s['source_key'];
+        if (key is String &&
+            key.isNotEmpty &&
+            (s['excluded'] == 1 || s['excluded'] == '1')) {
+          excluded.add(key);
+        }
+      }
+
+      final keys = [
+        for (final g in groups)
+          if (g['src_key'] is String) g['src_key'] as String,
+      ];
+      for (final k in excluded) {
+        if (!keys.contains(k)) keys.add(k);
+      }
+      keys.sort();
+
+      var selected = sourceKey;
+      if (selected == null) {
+        final included = [
+          for (final k in keys)
+            if (!excluded.contains(k)) k,
+        ];
+        selected = included.isNotEmpty
+            ? included.first
+            : (keys.isEmpty ? null : keys.first);
+      }
+
+      final latestRows = <String, Map<String, dynamic>>{};
+      for (final key in keys) {
+        final row = await _importedNewestRow(txn, kind: kind, sourceKey: key);
+        if (row != null) latestRows[key] = row;
+      }
+
+      var historyRows = const <Map<String, dynamic>>[];
+      var historyTruncated = false;
+      var historyLookaheadUnread = const <Map<String, dynamic>>[];
+      if (selected != null) {
+        final window = await _importedNewestWindow(
+          txn,
+          kind: kind,
+          sourceKey: selected,
+          limit: limit,
+        );
+        historyRows = window.rows;
+        historyTruncated = window.truncated;
+        historyLookaheadUnread = window.lookaheadUnread;
+      }
+
+      var dayRows = const <Map<String, dynamic>>[];
+      if (selected != null && !excluded.contains(selected)) {
+        GlucoseReading? latest;
+        for (final row in historyRows) {
+          latest = glucoseReadingFromStored(row);
+          if (latest != null) break;
+        }
+        if (latest == null) {
+          final row = latestRows[selected];
+          latest = row == null ? null : glucoseReadingFromStored(row);
+        }
+        if (latest != null) {
+          final day = glucoseLocalDayWindow(latest.measuredAt);
+          if (day != null) {
+            dayRows = await _importedDayRows(
+              txn,
+              kind: kind,
+              sourceKey: selected,
+              startSec: day.start.millisecondsSinceEpoch ~/ 1000,
+              endSec: day.end.millisecondsSinceEpoch ~/ 1000,
+            );
+          }
+        }
+      }
+
+      return ImportedGlucoseRead(
+        settings: settings,
+        receipt: rec.isEmpty ? null : rec.first,
+        groups: [
+          for (final g in groups)
+            if (g['src_key'] is String)
+              (
+                key: g['src_key'] as String,
+                storedCount: (g['n'] as num?)?.toInt() ?? 0,
+                lastImportedAt: _importedFiniteEpochSec(g['last_imported_at']),
+              ),
+        ],
+        latestRows: latestRows,
+        historyRows: historyRows,
+        dayRows: dayRows,
+        identityUnreadable: identityUnreadable,
+        importedAtUnreadable: importedAtUnreadable,
+        selectedKey: selected,
+        historyTruncated: historyTruncated,
+        historyLookaheadUnread: historyLookaheadUnread,
+      );
+    });
+  }
+
+  static const _importedIdentitySql =
+      'CASE '
+      'WHEN typeof(source_key) = \'text\' AND source_key != \'\' THEN source_key '
+      'WHEN (source_key IS NULL OR source_key = \'\') AND typeof(source) = \'text\' '
+      'THEN \'legacy:\' || source '
+      'ELSE NULL END';
+
+  static const _importedFiniteTsSql =
+      'typeof(ts) IN (\'integer\', \'real\') AND ts = ts '
+      'AND ts >= -$kGlucoseEpochSecMax AND ts <= $kGlucoseEpochSecMax';
+
+  static const _importedFiniteImportedAtSql =
+      'typeof(imported_at) IN (\'integer\', \'real\') '
+      'AND imported_at = imported_at '
+      'AND imported_at >= -$kGlucoseEpochSecMax '
+      'AND imported_at <= $kGlucoseEpochSecMax';
+
+  static int? _importedFiniteEpochSec(Object? v) {
+    if (v is! num || !v.isFinite) return null;
+    final sec = v.toInt();
+    if (sec < -kGlucoseEpochSecMax || sec > kGlucoseEpochSecMax) return null;
+    return sec;
+  }
+
+  static void _appendImportedSourceMatch(
+    StringBuffer where,
+    List<Object?> args,
+    String sourceKey,
+  ) {
+    if (sourceKey.startsWith('legacy:')) {
+      where.write(
+        ' AND ('
+        '(typeof(source_key) = \'text\' AND source_key = ?) OR '
+        '((source_key IS NULL OR source_key = \'\') '
+        'AND typeof(source) = \'text\' AND source = ?)'
+        ')',
+      );
+      args.add(sourceKey);
+      args.add(sourceKey.substring('legacy:'.length));
+    } else {
+      where.write(' AND typeof(source_key) = \'text\' AND source_key = ?');
+      args.add(sourceKey);
+    }
+    where.write(
+      ' AND ($_importedIdentitySql) IS NOT NULL '
+      'AND typeof(uuid) = \'text\' AND uuid != \'\'',
+    );
+  }
+
+  static const _importedPage = 32;
+
+  static void _appendImportedNewestCursor(
+    StringBuffer where,
+    List<Object?> args,
+    ({num ts, String uuid})? cursor,
+  ) {
+    where.write(' AND $_importedFiniteTsSql');
+    if (cursor != null) {
+      where.write(' AND (ts < ? OR (ts = ? AND uuid < ?))');
+      args.addAll([cursor.ts, cursor.ts, cursor.uuid]);
+    }
+  }
+
+  static ({num ts, String uuid})? _importedCursorOf(Map<String, dynamic> row) {
+    final ts = row['ts'];
+    final uuid = row['uuid'];
+    if (ts is! num || !ts.isFinite || uuid is! String || uuid.isEmpty) {
+      return null;
+    }
+    return (ts: ts, uuid: uuid);
+  }
+
+  static Future<List<Map<String, dynamic>>> _importedNewestPage(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required ({num ts, String uuid})? cursor,
+    int? take,
+  }) {
+    final where = StringBuffer('kind = ?');
+    final args = <Object?>[kind];
+    _appendImportedSourceMatch(where, args, sourceKey);
+    _appendImportedNewestCursor(where, args, cursor);
+    return txn.query(
+      'imported_measurement',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'ts DESC, uuid DESC',
+      limit: take,
+    );
+  }
+
+  static Future<Map<String, dynamic>?> _importedNewestRow(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+  }) async {
+    ({num ts, String uuid})? cursor;
+    while (true) {
+      final rows = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: cursor,
+        take: _importedPage,
+      );
+      if (rows.isEmpty) return null;
+      for (final row in rows) {
+        if (glucoseReadingFromStored(row) != null) return row;
+      }
+      final next = _importedCursorOf(rows.last);
+      if (next == null ||
+          rows.length < _importedPage ||
+          (cursor != null &&
+              cursor.ts == next.ts &&
+              cursor.uuid == next.uuid)) {
+        return null;
+      }
+      cursor = next;
+    }
+  }
+
+  /// Newest [limit] readable rows, paging 32 at a time. Unreadable rows inside
+  /// the filled window stay in [rows]. Lookahead unread rows are returned
+  /// separately so truncation evidence is preserved without entering history.
+  static Future<
+    ({
+      List<Map<String, dynamic>> rows,
+      bool truncated,
+      List<Map<String, dynamic>> lookaheadUnread,
+    })
+  >
+  _importedNewestWindow(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required int? limit,
+  }) async {
+    if (limit == null) {
+      final rows = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: null,
+      );
+      return (
+        rows: rows,
+        truncated: false,
+        lookaheadUnread: const <Map<String, dynamic>>[],
+      );
+    }
+    final out = <Map<String, dynamic>>[];
+    var readable = 0;
+    ({num ts, String uuid})? cursor;
+    while (readable < limit) {
+      final remaining = limit - readable + 1;
+      final take = remaining > _importedPage ? remaining : _importedPage;
+      final chunk = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: cursor,
+        take: take,
+      );
+      if (chunk.isEmpty) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: const <Map<String, dynamic>>[],
+        );
+      }
+      for (final row in chunk) {
+        out.add(row);
+        if (glucoseReadingFromStored(row) != null) readable++;
+        if (readable >= limit) {
+          cursor = _importedCursorOf(row);
+          break;
+        }
+      }
+      if (readable >= limit) break;
+      final next = _importedCursorOf(chunk.last);
+      if (next == null ||
+          chunk.length < take ||
+          (cursor != null &&
+              cursor.ts == next.ts &&
+              cursor.uuid == next.uuid)) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: const <Map<String, dynamic>>[],
+        );
+      }
+      cursor = next;
+    }
+    if (cursor == null) {
+      return (
+        rows: out,
+        truncated: false,
+        lookaheadUnread: const <Map<String, dynamic>>[],
+      );
+    }
+    final lookaheadUnread = <Map<String, dynamic>>[];
+    var after = cursor;
+    while (true) {
+      final chunk = await _importedNewestPage(
+        txn,
+        kind: kind,
+        sourceKey: sourceKey,
+        cursor: after,
+        take: _importedPage,
+      );
+      if (chunk.isEmpty) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: lookaheadUnread,
+        );
+      }
+      for (final row in chunk) {
+        if (glucoseReadingFromStored(row) != null) {
+          return (
+            rows: out,
+            truncated: true,
+            lookaheadUnread: lookaheadUnread,
+          );
+        }
+        lookaheadUnread.add(row);
+      }
+      final next = _importedCursorOf(chunk.last);
+      if (next == null ||
+          chunk.length < _importedPage ||
+          (after.ts == next.ts && after.uuid == next.uuid)) {
+        return (
+          rows: out,
+          truncated: false,
+          lookaheadUnread: lookaheadUnread,
+        );
+      }
+      after = next;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _importedDayRows(
+    DatabaseExecutor txn, {
+    required String kind,
+    required String sourceKey,
+    required int startSec,
+    required int endSec,
+  }) async {
+    final where = StringBuffer(
+      'kind = ? AND $_importedFiniteTsSql '
+      'AND ts >= ? AND ts < ?',
+    );
+    final args = <Object?>[kind, startSec, endSec];
+    _appendImportedSourceMatch(where, args, sourceKey);
+    return txn.query(
+      'imported_measurement',
+      where: where.toString(),
+      whereArgs: args,
+      orderBy: 'ts DESC, uuid DESC',
+    );
+  }
+
+  static Future<Map<String, dynamic>?> importedMeasurementReceipt(
+    String kind,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'imported_measurement_receipt',
+      where: 'kind = ?',
+      whereArgs: [kind],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<Map<String, dynamic>>> importedMeasurementSourceSettings(
+    String kind,
+  ) async {
+    final db = await instance;
+    return db.query(
+      'imported_measurement_source_setting',
+      where: 'kind = ?',
+      whereArgs: [kind],
+    );
+  }
+
+  static Future<void> setImportedMeasurementSourceExcluded({
+    required String kind,
+    required String sourceKey,
+    required bool excluded,
+    DateTime? now,
+  }) async {
+    final db = await instance;
+    final at = (now ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000;
+    await db.insert(
+      'imported_measurement_source_setting',
+      {
+        'kind': kind,
+        'source_key': sourceKey,
+        'excluded': excluded ? 1 : 0,
+        'updated_at': at,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
@@ -3390,6 +5635,15 @@ class LocalDb {
       }
     }
 
+    // REPLAY SOURCE, encoded ahead of the write. The whole `raws` stream — the
+    // decoded seconds AND the slots the mapper passed on — is what a decoder
+    // revision needs back, and hex-per-row in `raw_records` priced that at
+    // ~24 MB/day. One DEFLATE blob per commit lands it at ~4-5 MB/day inside
+    // the same ACK-gating transaction below: the band never trims a byte this
+    // phone has not committed. Null when raws is empty or the encode itself
+    // failed — the blob is the audit copy, never a reason to fail the commit.
+    final rawBlob = _encodeRawBlob(raws);
+
     final db = await instance;
     // POWER-LOSS DURABILITY WINDOW. This is the ACK-gating commit: once it
     // returns, the caller writes the BLE batch-ACK and the band trims its flash.
@@ -3501,6 +5755,11 @@ class LocalDb {
             if (++ops >= chunkOps) await flushChunk();
           }
         }
+        var blobMinCtr = 0, blobMaxCtr = 0, blobMinTs = 0, blobMaxTs = 0;
+        // Records arrive in band emission order — share one beat clock so
+        // each second's first beat anchors to the measured junction instead
+        // of a fresh emit instant (~±300 ms -> ~40 ms PPG-measured jitter).
+        final beatClock = BeatClock();
         for (var i = 0; i < raws.length; i++) {
           final raw = raws[i];
           final recTs = _recTsFor(raw);
@@ -3527,11 +5786,31 @@ class LocalDb {
             sample,
             deviceFamily: deviceFamily,
             deviceId: deviceId,
+            beatClock: beatClock,
           );
           if (raw.counter > maxCounter) maxCounter = raw.counter;
           if (recTs > maxRecTs) maxRecTs = recTs;
+          if (i == 0 || raw.counter < blobMinCtr) blobMinCtr = raw.counter;
+          if (raw.counter > blobMaxCtr) blobMaxCtr = raw.counter;
+          if (i == 0 || recTs < blobMinTs) blobMinTs = recTs;
+          if (recTs > blobMaxTs) blobMaxTs = recTs;
           sampleSecs[i] = recTs;
           if (ops >= chunkOps) await flushChunk();
+        }
+        // The replay source commits INSIDE the same transaction as the rows it
+        // generated: an ACK must never trim a byte the phone does not hold.
+        if (rawBlob != null) {
+          await txn.insert('raw_blob', {
+            'device_id': deviceId,
+            'first_counter': blobMinCtr,
+            'last_counter': blobMaxCtr,
+            'first_ts': blobMinTs,
+            'last_ts': blobMaxTs,
+            'n': raws.length,
+            'codec': 1,
+            'payload': rawBlob,
+            'captured_at': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
         }
         // NEUTRAL ROWS. No flash counter to advance maxCounter from — both
         // current writers (ble_hrs, oura) hard-code counter: 0 and leave a
@@ -3775,6 +6054,11 @@ class LocalDb {
   // The serve seam reads the LATEST algo_version per day_id. A day stays
   // recomputable for ~48 h after its wake (finalized=0); then it LOCKS
   // (finalized=1) and is no longer recomputed even on a version bump.
+  //
+  // `source` is WHO produced THIS row ('band' / 'whoop_export' / 'cloud_v2' /
+  // NULL). It is per (day_id, algo_version) and is never inferred from
+  // metric_series_version — that stamp is date-only and can describe another
+  // payload. Existing rows stay NULL; never backfilled.
   static Future<void> _createDayResult(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS day_result (
@@ -3789,6 +6073,7 @@ class LocalDb {
         readiness REAL,
         skipped INTEGER NOT NULL DEFAULT 0,
         partial INTEGER NOT NULL DEFAULT 0,
+        source TEXT,
         PRIMARY KEY (day_id, algo_version)
       )
     ''');
@@ -3839,9 +6124,10 @@ class LocalDb {
   /// unit and a ceiling its values render as bare numbers and its entry has no
   /// bounds — so it gets a row.
   ///
-  /// Deleting a definition deliberately does NOT delete its history: those
-  /// readings were still real. They render unlabelled until the field is
-  /// defined again.
+  /// Hiding a definition does NOT delete its history and does NOT drop the
+  /// row: those readings were still real, and the definition is the only
+  /// record of what the number meant. Restore reactivates the same identity.
+  /// Recreating the same key is refused while a row or orphan metric exists.
   static Future<void> _createJournalFieldDef(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS journal_field_def (
@@ -3852,10 +6138,25 @@ class LocalDb {
         max_value REAL NOT NULL,
         step REAL NOT NULL,
         has_time INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0
       )
     ''');
+    await _ensureJournalFieldDefHidden(db);
   }
+
+  /// Schema 60: archive flag on custom journal definitions.
+  ///
+  /// Hide is not purge. The row stays so history keeps its label/unit/kind,
+  /// and the same key cannot be reused for a new meaning. Idempotent via
+  /// [_addColumnIfMissing], so onCreate, onUpgrade, and onOpen can all call it.
+  static Future<void> _ensureJournalFieldDefHidden(Database db) =>
+      _addColumnIfMissing(
+        db,
+        'journal_field_def',
+        'hidden',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
 
   /// lab_result — hand-entered blood work, and definitions for user-defined
   /// markers.
@@ -3888,6 +6189,8 @@ class LocalDb {
         value REAL NOT NULL,
         unit TEXT NOT NULL,
         note TEXT NOT NULL DEFAULT '',
+        report_low REAL,
+        report_high REAL,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (marker, taken_on)
       )
@@ -3947,6 +6250,13 @@ class LocalDb {
     await _addColumnIfMissing(db, 'breathing_session', 'post_rmssd', 'REAL');
   }
 
+  /// v57: the interval printed on that draw's report. Null is unknown — never
+  /// copied from the catalogue. One-sided bounds stay one-sided.
+  static Future<void> _ensureLabResultReportRange(Database db) async {
+    await _addColumnIfMissing(db, 'lab_result', 'report_low', 'REAL');
+    await _addColumnIfMissing(db, 'lab_result', 'report_high', 'REAL');
+  }
+
   /// strength_set / exercise_def — the sets a lift is made of.
   ///
   /// Nothing measures a bench press, so this is the one part of a workout the
@@ -3977,6 +6287,10 @@ class LocalDb {
         rest_sec INTEGER,
         at_ts INTEGER,
         note TEXT NOT NULL DEFAULT '',
+        planned_set_id TEXT,
+        exercise_id TEXT,
+        load_json TEXT,
+        definition_json TEXT,
         PRIMARY KEY (session_id, seq)
       )
     ''');
@@ -3992,9 +6306,154 @@ class LocalDb {
         equipment TEXT NOT NULL DEFAULT '',
         unilateral INTEGER NOT NULL DEFAULT 0,
         custom INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        source TEXT,
+        version INTEGER,
+        definition_json TEXT
       )
     ''');
+    await _ensureExerciseDefRegistry(db);
+    await _ensureStrengthSetLoadMetadata(db);
+  }
+
+  /// Additive registry columns. Never seed presets; never rewrite timestamps.
+  static Future<void> _ensureExerciseDefRegistry(Database db) async {
+    await _addColumnIfMissing(db, 'exercise_def', 'source', 'TEXT');
+    await _addColumnIfMissing(db, 'exercise_def', 'version', 'INTEGER');
+    await _addColumnIfMissing(db, 'exercise_def', 'definition_json', 'TEXT');
+  }
+
+  /// Additive original-load + definition snapshot on recorded sets.
+  static Future<void> _ensureStrengthSetLoadMetadata(Database db) async {
+    await _addColumnIfMissing(db, 'strength_set', 'load_json', 'TEXT');
+    await _addColumnIfMissing(db, 'strength_set', 'definition_json', 'TEXT');
+  }
+
+  static Future<List<Map<String, Object?>>> exerciseDefRows() async {
+    final db = await instance;
+    return db.query('exercise_def');
+  }
+
+  static Future<CustomExerciseWriteResult> createCustomExercise(
+    CustomExerciseDraft draft, {
+    int? nowSec,
+  }) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? newCustomExerciseId();
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    final createdAt = nowSec ?? DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final row = encodeCustomExerciseRow(
+      draft: draft,
+      id: id,
+      version: 1,
+      createdAt: createdAt,
+    );
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        return customExerciseCreateAgainstExisting(
+          existing: Map<String, Object?>.from(existing.first),
+          draft: draft,
+          id: id,
+        );
+      }
+      await txn.insert('exercise_def', row);
+      final stored = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      return CustomExerciseWriteResult.saved(
+        parseStoredExerciseDef(Map<String, Object?>.from(stored.first)),
+      );
+    });
+  }
+
+  static Future<CustomExerciseWriteResult> updateCustomExercise({
+    required ExerciseDefinitionSnapshot expected,
+    required CustomExerciseDraft draft,
+  }) async {
+    requireCustomExerciseDraft(draft);
+    final id = draft.id ?? expected.id;
+    if (id != expected.id) {
+      throw ArgumentError.value(draft.id, 'id');
+    }
+    if (exercisePresetById(id) != null) {
+      throw ArgumentError.value(id, 'id');
+    }
+    final expectedVersion = expected.version;
+    if (expectedVersion == null) {
+      throw ArgumentError.notNull('expected.version');
+    }
+    final db = await instance;
+    return db.transaction((txn) async {
+      final existing = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        return const CustomExerciseWriteResult.conflict();
+      }
+      final currentRow = Map<String, Object?>.from(existing.first);
+      ExerciseCatalogueEntry current;
+      try {
+        current = parseStoredExerciseDef(currentRow);
+      } on FormatException {
+        return const CustomExerciseWriteResult.conflict();
+      }
+      if (!isExplicitCustomExerciseRow(currentRow)) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final currentSnap = current.snapshot();
+      if (current.version != expectedVersion ||
+          !customExerciseSnapshotsEqual(currentSnap, expected)) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final createdAt = (currentRow['created_at'] as num?)?.toInt();
+      if (createdAt == null) {
+        throw const FormatException('Exercise definition is unreadable.');
+      }
+      final next = encodeCustomExerciseRow(
+        draft: draft,
+        id: id,
+        version: expectedVersion + 1,
+        createdAt: createdAt,
+        retained: current.retained,
+      );
+      next.remove('muscles_json');
+      next.remove('unilateral');
+      next.remove('key');
+      next.remove('created_at');
+      final n = await txn.update(
+        'exercise_def',
+        next,
+        where: 'key = ? AND version = ? AND source = ? AND custom = 1',
+        whereArgs: [id, expectedVersion, kCustomExerciseSource],
+      );
+      if (n != 1) {
+        return CustomExerciseWriteResult.conflict(current);
+      }
+      final stored = await txn.query(
+        'exercise_def',
+        where: 'key = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      return CustomExerciseWriteResult.saved(
+        parseStoredExerciseDef(Map<String, Object?>.from(stored.first)),
+      );
+    });
   }
 
   /// Append the sets of one strength session, in log order. Idempotent by
@@ -4007,14 +6466,75 @@ class LocalDb {
     if (sets.isEmpty) return;
     final db = await instance;
     await db.transaction((txn) async {
+      final existingBySeq = {
+        for (final r in await txn.query(
+          'strength_set',
+          where: 'session_id = ?',
+          whereArgs: [sessionId],
+        ))
+          (r['seq'] as num).toInt(): r,
+      };
       for (var i = 0; i < sets.length; i++) {
         await txn.insert('strength_set', {
-          ...sets[i],
+          ..._preparedStrengthSetRow(
+            _mergeOmittedStrengthMetadata(sets[i], existingBySeq[i]),
+          ),
           'session_id': sessionId,
           'seq': i,
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+  }
+
+  /// Omitted load/definition JSON keeps the stored origin. Explicit new JSON
+  /// replaces it. Preserved metadata is then checked against the write.
+  static Map<String, Object?> _mergeOmittedStrengthMetadata(
+    Map<String, Object?> incoming,
+    Map<String, Object?>? existing,
+  ) {
+    if (existing == null) return incoming;
+    final row = Map<String, Object?>.from(incoming);
+    if (row['load_json'] == null && existing['load_json'] != null) {
+      row['load_json'] = existing['load_json'];
+    }
+    if (row['definition_json'] == null && existing['definition_json'] != null) {
+      row['definition_json'] = existing['definition_json'];
+    }
+    return row;
+  }
+
+  /// Historic maps without metadata are unchanged. New load/definition JSON
+  /// is checked with the shared persist helpers; contradiction or malformed
+  /// input fails the whole transaction.
+  static Map<String, Object?> _preparedStrengthSetRow(Map<String, Object?> set) {
+    final row = Map<String, Object?>.from(set);
+    final loadJson = row['load_json'];
+    final definitionJson = row['definition_json'];
+    if (loadJson == null && definitionJson == null) return row;
+    if (loadJson != null) {
+      row['load_kg'] = resolveLoadKgFromStoredJson(
+        loadJson: loadJson,
+        loadKg: _strengthSetRowLoadKg(row['load_kg']),
+      );
+    }
+    if (definitionJson != null) {
+      final key = row['exercise_key'];
+      if (key is! String || key.isEmpty) {
+        throw const FormatException(
+          'Exercise definition snapshot is unreadable.',
+        );
+      }
+      requireStoredExerciseDefinitionJson(definitionJson, key);
+    }
+    return row;
+  }
+
+  static double? _strengthSetRowLoadKg(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! num || !raw.isFinite) {
+      throw const FormatException('Recorded load is unreadable.');
+    }
+    return raw.toDouble();
   }
 
   static Future<List<Map<String, Object?>>> strengthSets(
@@ -4026,6 +6546,35 @@ class LocalDb {
       where: 'session_id = ?',
       whereArgs: [sessionId],
       orderBy: 'seq ASC',
+    );
+  }
+
+  /// Completed [strength_set] rows from sessions that started before
+  /// [beforeStartTs], excluding [excludeSessionId]. Newest session first.
+  static Future<List<Map<String, Object?>>> completedStrengthSetsBefore({
+    required int beforeStartTs,
+    required String excludeSessionId,
+    required Iterable<String> exerciseKeys,
+  }) async {
+    final keys = exerciseKeys.toSet().toList();
+    if (keys.isEmpty) return const [];
+    final db = await instance;
+    final placeholders = List.filled(keys.length, '?').join(',');
+    return db.rawQuery(
+      '''
+      SELECT st.exercise_key, st.set_index, st.reps, st.load_kg, st.hold_sec,
+             st.rest_sec, st.at_ts, st.planned_set_id, st.exercise_id,
+             st.load_json, st.definition_json,
+             s.id AS prior_session_id, s.start_ts AS prior_start_ts
+      FROM strength_set st
+      INNER JOIN sessions s ON s.id = st.session_id
+      WHERE s.status = 'done'
+        AND s.start_ts < ?
+        AND s.id != ?
+        AND st.exercise_key IN ($placeholders)
+      ORDER BY s.start_ts DESC, s.id DESC, st.seq ASC
+      ''',
+      [beforeStartTs, excludeSessionId, ...keys],
     );
   }
 
@@ -4068,6 +6617,7 @@ class LocalDb {
     // DDL belongs next to the code that reads it, not two thousand lines away.
     await createNutritionTables(db);
     await createMedTables(db);
+    await createVo2Tables(db);
     // cycle_log — menstrual cycle markers; `kind` is 'start' (cycle start) etc.
     await db.execute('''
       CREATE TABLE IF NOT EXISTS cycle_log (
@@ -4088,6 +6638,7 @@ class LocalDb {
         strain REAL,
         max_hr INTEGER,
         duration_min INTEGER,
+        hr_covered_sec INTEGER,
         zone_min_json TEXT,
         steps INTEGER,
         cadence_spm INTEGER,
@@ -4281,6 +6832,9 @@ class LocalDb {
     // `ble/live_cadence.dart`). NULL means the session had no walking to have a
     // cadence for, which is most of them: it is an absence, never a 0.
     await _addColumnIfMissing(db, 'sessions', 'cadence_spm', 'INTEGER');
+    // Seconds billed from actual HR sample-to-sample intervals. NULL until a
+    // closed interval exists — unknown is not zero, and is not wall-clock.
+    await _addColumnIfMissing(db, 'sessions', 'hr_covered_sec', 'INTEGER');
     // Set only by `_reconcileOrphanedLiveWorkout` on a stale `status='live'`
     // row it finalizes without ever having seen the real finish: `end_ts` there
     // is reconcile-time, not a measurement. `_writeOneWorkout` skips any row
@@ -5402,6 +7956,121 @@ class LocalDb {
     );
   }
 
+  // raw_blob — the durable REPLAY source for the whole historical record
+  // stream, one gzip-compressed blob per committed sync batch. `raw_records`
+  // proved the need and priced the naive shape: ~86 400 rows/day of hex TEXT is
+  // ~24 MB/day and still loses nothing a decoder revision would want back.
+  // Here each record is stored as `[u16le length][raw frame bytes]` inside one
+  // DEFLATE stream per commit — self-describing, generation-agnostic (gen4
+  // R24 lands here exactly like gen5 v18), ~4-5 MB/day measured, and every
+  // field a future decoder interpretation could need survives, including the
+  // ones today's mapper deliberately drops (spo2 candidate byte, optical
+  // saturation flags). Inflate → slice → hex → RawRecord and the existing
+  // decode paths re-derive the day end to end.
+  //
+  // Identity is content-derived — (device_id, first_counter, last_counter,
+  // first_ts, n) — so a batch re-committed after a crash mid-sync re-produces
+  // the same key and the IGNORE dedups it exactly. A re-flood sliced
+  // differently can duplicate individual records inside another blob —
+  // bounded, rare, and cheaper than a per-record uniqueness index on the
+  // write-hot path. `captured_at` stays a plain column (commit wall time).
+  static Future<void> _createRawBlob(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS raw_blob (
+        device_id TEXT NOT NULL DEFAULT '',
+        first_counter INTEGER NOT NULL,
+        last_counter INTEGER NOT NULL,
+        first_ts INTEGER NOT NULL DEFAULT 0,
+        last_ts INTEGER NOT NULL DEFAULT 0,
+        n INTEGER NOT NULL,
+        codec INTEGER NOT NULL DEFAULT 1,
+        payload BLOB NOT NULL,
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (device_id, first_counter, last_counter, first_ts, n)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_raw_blob_ts ON raw_blob(device_id, first_ts)',
+    );
+  }
+
+  /// One compressed batch for [commitSyncBatch]: every record in [raws],
+  /// length-prefixed, in commit order. Returns null for an empty batch (and on
+  /// any encode failure — the blob is the audit copy, never the thing a commit
+  /// must die for). Built OUTSIDE the commit transaction: the bytes are
+  /// immutable the moment the caller hands them over, and DEFLATE work has no
+  /// business inside the ACK-gating write window.
+  static Uint8List? _encodeRawBlob(List<RawRecord> raws) {
+    if (raws.isEmpty) return null;
+    try {
+      final out = BytesBuilder(copy: false);
+      for (final r in raws) {
+        final bytes = proto.hexToBytes(r.hex);
+        if (bytes.length > 0xFFFF) return null; // length prefix is u16
+        out.add([bytes.length & 0xFF, (bytes.length >> 8) & 0xFF]);
+        out.add(bytes);
+      }
+      return Uint8List.fromList(gzip.encode(out.toBytes()));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Read back the raw records a [commitSyncBatch] persisted, in commit order.
+  /// The future re-decode path pages these by counter/ts range; a decoder that
+  /// only wants ONE batch filters on (first_counter, last_counter). Hex is
+  /// re-materialised per record so every existing `RawRecord`-shaped decode
+  /// entry point works unmodified.
+  static Future<List<RawRecord>> rawBlobRecords({
+    String deviceId = kPrimaryDeviceId,
+    int? afterCounter,
+    int limit = 50,
+  }) async {
+    final db = await instance;
+    final rows = await db.query(
+      'raw_blob',
+      where: afterCounter == null
+          ? 'device_id = ?'
+          : 'device_id = ? AND last_counter > ?',
+      whereArgs:
+          afterCounter == null ? [deviceId] : [deviceId, afterCounter],
+      orderBy: 'first_counter ASC',
+      limit: limit,
+    );
+    final out = <RawRecord>[];
+    for (final row in rows) {
+      final codec = (row['codec'] as num).toInt();
+      final payload = row['payload'];
+      if (codec != 1 || payload is! Uint8List) continue;
+      final raw = gzip.decode(payload);
+      var i = 0;
+      while (i + 2 <= raw.length) {
+        final len = raw[i] | (raw[i + 1] << 8);
+        if (len <= 0 || i + 2 + len > raw.length) break;
+        final frame = raw.sublist(i + 2, i + 2 + len);
+        // The counter rides inside the frame (u32 @[3:7] on header records —
+        // see RawRecord); shorter frames are the counter-less kind.
+        final counter = frame.length >= 7
+            ? frame[3] |
+                (frame[4] << 8) |
+                (frame[5] << 16) |
+                (frame[6] << 24)
+            : 0;
+        final hex = [
+          for (final b in frame) b.toRadixString(16).padLeft(2, '0'),
+        ].join();
+        out.add(RawRecord(
+          counter: counter,
+          packetType: frame[0],
+          hex: hex,
+          capturedAt: (row['captured_at'] as num).toInt(),
+        ));
+        i += 2 + len;
+      }
+    }
+    return out;
+  }
+
   /// Add the additive `rec_ts` column to an EXISTING raw_records table (upgrade
   /// path only). NOT NULL with a DEFAULT 0 so legacy rows are well-formed until
   /// the backfill rewrites them.
@@ -5673,6 +8342,7 @@ class LocalDb {
     // opposite default would let a forgotten argument write every row at
     // ('', 0), where REPLACE collapses the entire store to ONE row.
     bool preDeviceKey = false,
+    BeatClock? beatClock,
   }) {
     final decoded = _decodeOneHzSample(raw, preferred: sample);
     if (decoded == null) {
@@ -5691,6 +8361,7 @@ class LocalDb {
           deviceFamily: deviceFamily,
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
+          beatClock: beatClock,
         );
       }
       return 0;
@@ -5788,6 +8459,7 @@ class LocalDb {
           deviceFamily: deviceFamily,
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
+          beatClock: beatClock,
         );
   }
 
@@ -5818,6 +8490,12 @@ class LocalDb {
     String? deviceFamily,
     String deviceId = kPrimaryDeviceId,
     bool preDeviceKey = false,
+    // Cross-record beat clock: a caller walking records in time order shares
+    // one [BeatClock] so each record's first beat anchors to the measured
+    // junction (prev last beat + its interval — ~5x tighter absolute phase
+    // than the emit anchor, PPG-measured). Null = per-record emit anchor,
+    // exactly as before.
+    BeatClock? beatClock,
   }) {
     // SCOPED TO THE WRITING DEVICE (v47). Unscoped, this cleared every device's
     // beats for the second — so a second band writing one row deleted the
@@ -5831,7 +8509,9 @@ class LocalDb {
         [deviceId, recTs * 1000],
       );
     }
-    final beatTs = beatTimesMs(recTs, decoded.tsSubsec, decoded.rrIntervalsMs);
+    final beatTs = beatClock?.place(
+            recTs, decoded.tsSubsec, decoded.rrIntervalsMs) ??
+        beatTimesMs(recTs, decoded.tsSubsec, decoded.rrIntervalsMs);
     var ops = 1;
     for (var i = 0; i < decoded.rrIntervalsMs.length; i++) {
       final rr = decoded.rrIntervalsMs[i];
@@ -5964,6 +8644,9 @@ class LocalDb {
     await _ensureBeatTimeColumn(db);
     const pageSize = 1000;
     int afterCounter = -1;
+    // One clock across pages — the page boundary is a read chunk, not a
+    // record gap.
+    final beatClock = BeatClock();
     while (true) {
       final rows = await db.query(
         'raw_records',
@@ -5985,7 +8668,8 @@ class LocalDb {
         );
         // MID-LADDER: `device_id` / `ts_ms` do not exist yet (v47 rung). See
         // _queueDecodedOneHz's `preDeviceKey`.
-        _queueDecodedOneHz(batch, raw, null, preDeviceKey: true);
+        _queueDecodedOneHz(batch, raw, null,
+            preDeviceKey: true, beatClock: beatClock);
       }
       await batch.commit(noResult: true);
       afterCounter = (rows.last['counter'] as num?)?.toInt() ?? afterCounter;
@@ -6084,9 +8768,25 @@ class LocalDb {
         wrap_count INTEGER,
         free_records INTEGER,
         device_family TEXT,
+        read_page INTEGER,
+        raw_old_page INTEGER,
+        current_read_ts INTEGER,
+        trim_ts INTEGER,
         PRIMARY KEY (device_id, ts)
       )
     ''');
+  }
+
+  /// Additive: the band's READ cursor — where the next history drain resumes
+  /// from (read_page/current_read_ts), the oldest retained page and the trim
+  /// boundary. This is the fact that answers "is the never-drained backlog
+  /// reachable by normal sync": records older than current_read_ts are not.
+  /// Guarded for existing installs; fresh installs get them from the CREATE.
+  static Future<void> _ensureBandBacklogCursor(Database db) async {
+    await _addColumnIfMissing(db, 'band_backlog', 'read_page', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'raw_old_page', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'current_read_ts', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'trim_ts', 'INTEGER');
   }
 
   /// Record one connect's `pages_behind` reading. [ts] is epoch SECONDS.
@@ -6107,6 +8807,10 @@ class LocalDb {
     int? wrapCount,
     int? freeRecords,
     String? deviceFamily,
+    int? readPage,
+    int? rawOldPage,
+    int? currentReadTs,
+    int? trimTs,
   }) async {
     final db = await instance;
     await db.insert('band_backlog', {
@@ -6120,6 +8824,10 @@ class LocalDb {
       'free_records': freeRecords,
       // Unknown provenance stays NULL — never defaulted to gen4.
       'device_family': deviceFamily,
+      'read_page': readPage,
+      'raw_old_page': rawOldPage,
+      'current_read_ts': currentReadTs,
+      'trim_ts': trimTs,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -6995,10 +9703,11 @@ class LocalDb {
     final db = await instance;
     await db.transaction((txn) async {
       final batch = txn.batch();
+      final beatClock = BeatClock();
       for (var i = 0; i < raws.length; i++) {
         final raw = raws[i];
         final sample = samples[i];
-        _queueDecodedOneHz(batch, raw, sample);
+        _queueDecodedOneHz(batch, raw, sample, beatClock: beatClock);
       }
       await batch.commit(noResult: true);
     });
@@ -7054,11 +9763,18 @@ class LocalDb {
       }
     }
     if (metaPatch != null) meta.addAll(metaPatch);
+    // A first-write-with-ACK row is born already acked: `now` is sampled AFTER
+    // the caller captured `ackedAt`, so `created_at` would read up to ~250 ms
+    // LATER than the ack — a row that says it was acked before it existed.
+    // Clamp the new row's created_at down to the ack stamp; existing rows keep
+    // theirs (the insert is a REPLACE merge, not a re-birth).
+    final createdAt = (existing?['created_at'] as num?)?.toInt() ??
+        (ackedAt != null && ackedAt < now ? ackedAt : now);
     await db.insert('sync_ledger', {
       'chunk_id': chunkId,
       'kind': kind,
       'status': status,
-      'created_at': (existing?['created_at'] as num?)?.toInt() ?? now,
+      'created_at': createdAt,
       'updated_at': now,
       'acked_at': ackedAt ?? (existing?['acked_at'] as num?)?.toInt(),
       'last_error': lastError,
@@ -7268,7 +9984,8 @@ class LocalDb {
         'SELECT counter, rec_ts, hr, ax, ay, az, '
         'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
         'step_count, step_cadence, activity_class, skin_temp_c, '
-        'on_wrist, hr_valid, hr_alt, device_family, device_id '
+        'on_wrist, hr_valid, hr_alt, device_family, device_id, '
+        'signal_quality_logvar '
         'FROM decoded_onehz '
         'WHERE rec_ts >= ? AND rec_ts <= ? AND ${derivableSourceSql()} '
         'ORDER BY rec_ts ASC, counter ASC LIMIT ?',
@@ -7279,7 +9996,8 @@ class LocalDb {
       'SELECT counter, rec_ts, hr, ax, ay, az, '
       'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
       'step_count, step_cadence, activity_class, skin_temp_c, '
-      'on_wrist, hr_valid, hr_alt, device_family, device_id '
+      'on_wrist, hr_valid, hr_alt, device_family, device_id, '
+      'signal_quality_logvar '
       'FROM decoded_onehz '
       'WHERE rec_ts >= ? AND rec_ts <= ? AND ${derivableSourceSql()} '
       'AND (rec_ts > ? OR (rec_ts = ? AND counter > ?)) '
@@ -7518,9 +10236,12 @@ class LocalDb {
     double? readiness,
     Map<String, double?> series = const {},
     // WHO produced these scalars — 'band' for a day this app derived from 1 Hz
-    // records, a vendor tag for an importer. NULL is the default and means
-    // UNKNOWN; it is never filled in with a guess, because the whole point of
-    // the column is that a guessed provenance is worse than none. See
+    // records, a vendor tag for an importer ('whoop_export', 'cloud_v2').
+    // NULL is the default and means UNKNOWN; it is never filled in with a
+    // guess. Written onto THIS day_result row on every write (partial,
+    // skipped, and empty-series included). The metric_series_version stamp
+    // still only moves when a non-partial non-empty series is written; that
+    // stamp is date-only and must not be treated as this row's source. See
     // [_createMetricSeriesVersion].
     String? source,
     // WHICH BAND'S UNITS these scalars are in — the substrate's own
@@ -7539,6 +10260,7 @@ class LocalDb {
     // rather than renaming a shipped column.
     String? priorityHash,
     int? expectedSleepCorrectionRevision,
+    int? expectedNapRevision,
   }) async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -7557,6 +10279,14 @@ class LocalDb {
           throw StateError('Sleep correction changed while this day was calculated.');
         }
       }
+      if (expectedNapRevision != null) {
+        final rows = await txn.query('nap_recalc_job',
+            columns: ['revision'], where: 'day_id = ?', whereArgs: [dayId], limit: 1);
+        final current = rows.isEmpty ? 0 : (rows.single['revision'] as num).toInt();
+        if (current != expectedNapRevision) {
+          throw StateError('Nap revision changed while this day was calculated.');
+        }
+      }
       await txn.insert('day_result', {
         'day_id': dayId,
         'algo_version': algoVersion,
@@ -7569,6 +10299,7 @@ class LocalDb {
         'rhr': rhr,
         'rmssd': rmssd,
         'readiness': readiness,
+        'source': source,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
       // A `partial` row already doesn't count as "derived" for the raw-pruning
       // guard (see above) — extend the same caution to the rolling baselines:
@@ -7607,6 +10338,16 @@ class LocalDb {
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
+      // Day sources changed: bump the local fence and drop regenerable
+      // cross-day artifacts. Do not enqueue — the in-flight/durable pass
+      // still owns refresh and will republish under the new revision.
+      await bumpCrossDaySourceRevision(txn);
+      await txn.delete('baselines', where: 'key = ?', whereArgs: ['crossday']);
+      await txn.delete(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday_input'],
+      );
     });
   }
 
@@ -7657,6 +10398,41 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : _withDate(rows.first);
+  }
+
+  static List<String> _boundedDayIds(Iterable<String> dayIds) {
+    final ids = {...dayIds}.toList()..sort();
+    if (ids.length > 16) {
+      throw ArgumentError.value(
+        ids.length,
+        'dayIds',
+        'Expected at most 16 day ids.',
+      );
+    }
+    return ids;
+  }
+
+  /// Served `day_result` rows for a bounded day_id set.
+  ///
+  /// Each day is the highest version this build will read. Callers that need a
+  /// matching generation compare `algo_version` to the selected night; a newer
+  /// served neighbor is refused rather than falling back to an older row.
+  static Future<Map<String, Map<String, dynamic>>> servedDayResultsForDays(
+    Iterable<String> dayIds,
+  ) async {
+    final ids = _boundedDayIds(dayIds);
+    if (ids.isEmpty) return {};
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.* FROM day_result r '
+      '$_servedDayJoin '
+      'WHERE r.day_id IN (${List.filled(ids.length, '?').join(',')})',
+      ids,
+    );
+    return {
+      for (final r in rows)
+        if (r['day_id'] is String) r['day_id'] as String: _withDate(r),
+    };
   }
 
   /// The most recent day (highest day_id label), latest version, or null.
@@ -7995,6 +10771,8 @@ class LocalDb {
         await _createComputeState(db);
         await _createPrimitiveArtifacts(db);
         await _createLiveCoverage(db);
+        await _createOpenBandStrengthRuntime(db);
+        await _ensureStrengthSetIdentity(db);
       },
     );
 
@@ -8137,6 +10915,18 @@ class LocalDb {
         whereArgs: [startSec, endSec],
       );
       await copyRows(
+        'strength_set',
+        where:
+            'session_id IN (SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
+        whereArgs: [startSec, endSec],
+      );
+      await copyRows(
+        'openband_strength_session',
+        where:
+            'session_id IN (SELECT id FROM sessions WHERE start_ts >= ? AND start_ts < ?)',
+        whereArgs: [startSec, endSec],
+      );
+      await copyRows(
         'live_coverage',
         where: 'end_ts > ? AND start_ts < ?',
         whereArgs: [startSec, endSec],
@@ -8173,6 +10963,16 @@ class LocalDb {
     // `custom_magnesium` with no label, no unit and no idea what scale they
     // are on — the values survive the export and their meaning does not.
     await copyRows('journal_field_def');
+    // Plans are not day-scoped; definitions and revision history ride along
+    // so exported dose rows keep their identity. Per-day dose rows follow.
+    for (final dayId in sorted) {
+      await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
+    }
+    await copyRows('med_def');
+    await copyRows('med_plan_revision');
+    // Head measurement date selects the id. Every revision of that id is
+    // copied, including a deleted head, so a later restore still has the removal.
+    await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
     await out.close();
     return dest;
   }
@@ -8199,7 +10999,21 @@ class LocalDb {
       }
     }
 
+    var startsChanged = false;
     await db.transaction((txn) async {
+      final startsBefore = await _cycleStartDatesOn(txn);
+      var daySourcesChanged = false;
+      for (final chunk in _sqlVarChunks(sorted)) {
+        final ph = List.filled(chunk.length, '?').join(',');
+        final existing = await txn.rawQuery(
+          'SELECT 1 FROM day_result WHERE day_id IN ($ph) LIMIT 1',
+          chunk,
+        );
+        if (existing.isNotEmpty) {
+          daySourcesChanged = true;
+          break;
+        }
+      }
       for (final dayId in sorted) {
         final (startSec, endSec) = _localDayWindow(dayId);
         deleted += await txn.delete(
@@ -8241,6 +11055,7 @@ class LocalDb {
           'workout_route',
           'workout_split',
           'strength_set',
+          'openband_strength_session',
         ]) {
           deleted += await txn.rawDelete(
             'DELETE FROM $child WHERE session_id IN '
@@ -8248,11 +11063,13 @@ class LocalDb {
             [startSec, endSec],
           );
         }
-        deleted += await txn.delete(
+        final sessionDeleted = await txn.delete(
           'sessions',
           where: 'start_ts >= ? AND start_ts < ?',
           whereArgs: [startSec, endSec],
         );
+        deleted += sessionDeleted;
+        if (sessionDeleted > 0) daySourcesChanged = true;
         deleted += await txn.delete(
           'live_coverage',
           where: 'end_ts > ? AND start_ts < ?',
@@ -8274,7 +11091,18 @@ class LocalDb {
       await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
+      await deleteByIn(txn, 'nap_recalc_job', 'day_id', sorted);
+      final startsAfter = await _cycleStartDatesOn(txn);
+      startsChanged = !_sameStartList(startsBefore, startsAfter);
+      if (startsChanged || daySourcesChanged) {
+        await invalidateCycleContext(
+          txn,
+          daySourcesChanged: daySourcesChanged,
+        );
+        startsChanged = true;
+      }
     });
+    if (startsChanged) onCycleContextInvalidated?.call();
     return deleted;
   }
 
@@ -8509,6 +11337,801 @@ class LocalDb {
     }
   }
 
+  static void _storeVo2Counts(Map<String, int> counts, Vo2ImportCounts merged) {
+    if (merged.tableMissing) return;
+    counts[kManualVo2Table] = merged.inserted;
+    counts['${kManualVo2Table}_conflict'] = merged.conflictIds;
+    counts['${kManualVo2Table}_corrupt'] = merged.corruptIds;
+  }
+
+  static bool _vo2Known(Vo2ImportCounts counts) =>
+      counts.inserted > 0 || counts.conflictIds > 0 || counts.corruptIds > 0;
+
+  static bool _publishableImport(Map<String, int> counts, int pageCommitted) {
+    if (pageCommitted > 0) return true;
+    if (counts.containsKey(kManualVo2Table)) return true;
+    for (final entry in counts.entries) {
+      if (entry.value > 0) return true;
+    }
+    return false;
+  }
+
+  static const _preservingImportKeys = <String, List<String>>{
+    'openband_workout_template': ['id'],
+    'openband_pinned_template': ['singleton'],
+    'openband_meal_draft': ['draft_id'],
+    'openband_lap': ['session_id', 'lap_index'],
+    'alarm_schedule': ['weekday'],
+    'workout_suggestions': ['id'],
+    'live_coverage': ['id'],
+    'openband_session_detail': ['session_id'],
+    'sessions': ['id'],
+    'raw_records': ['counter'],
+    'raw_blob': [
+      'device_id',
+      'first_counter',
+      'last_counter',
+      'first_ts',
+      'n',
+    ],
+  };
+
+  static Future<List<Map<String, Object?>>> _sourceParentRows(
+    Database src,
+    String table,
+    String key,
+    Object? value,
+  ) async {
+    try {
+      return await src.query(
+        table,
+        where: '$key = ?',
+        whereArgs: [value],
+        limit: 1,
+      );
+    } on DatabaseException catch (e) {
+      if (e.isNoSuchTableError()) return const [];
+      rethrow;
+    }
+  }
+
+  static bool _sameImportValues(
+    Map<String, Object?> existing,
+    Map<String, Object?> incoming,
+  ) {
+    for (final entry in incoming.entries) {
+      if (existing[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
+  /// Import a newly-restorable durable table without replacing a row that this
+  /// install already owns. These tables are snapshots or user state, not
+  /// revision chains: a colliding key with different values is a conflict even
+  /// if one row carries a larger timestamp/version.
+  static Future<Map<String, int>?> _mergePreservingTable(
+    Database src,
+    Database dest,
+    String table,
+    List<String> keys,
+  ) async {
+    const pageSize = 2000;
+    // INTEGER PRIMARY KEY aliases rowid and zero is valid (raw_records counter
+    // can wrap to it), so the first keyset page must start below zero.
+    var lastRowid = -9223372036854775808;
+    var imported = 0;
+    var skipped = 0;
+    var conflicts = 0;
+    var unreadable = 0;
+    final destInfo = await dest.rawQuery('PRAGMA table_info($table)');
+    final destColumns = {for (final c in destInfo) c['name']?.toString() ?? ''}
+      ..remove('');
+    if (destColumns.isEmpty) return null;
+    Map<String, int> committedCounts() => {
+      table: imported,
+      '${table}_skipped': skipped,
+      '${table}_conflict': conflicts,
+      '${table}_unreadable': unreadable,
+    };
+    bool hasCommitted() =>
+        imported > 0 || skipped > 0 || conflicts > 0 || unreadable > 0;
+
+    while (true) {
+      late final List<Map<String, Object?>> page;
+      try {
+        page = await src.rawQuery(
+          'SELECT rowid AS _restore_rowid, * FROM $table '
+          'WHERE rowid > ? ORDER BY rowid LIMIT ?',
+          [lastRowid, pageSize],
+        );
+      } catch (e) {
+        if (e is DatabaseException &&
+            e.isNoSuchTableError() &&
+            !hasCommitted()) {
+          return null;
+        }
+        if (hasCommitted()) {
+          throw _PreservingImportInterrupted(committedCounts(), e);
+        }
+        rethrow;
+      }
+      if (page.isEmpty) break;
+      var pageImported = 0;
+      var pageSkipped = 0;
+      var pageConflicts = 0;
+      var pageUnreadable = 0;
+      try {
+        await dest.transaction((txn) async {
+          for (final sourceRow in page) {
+            final row = <String, Object?>{
+              for (final entry in sourceRow.entries)
+                if (destColumns.contains(entry.key)) entry.key: entry.value,
+            };
+            if (row.isEmpty || keys.any((key) => row[key] == null)) {
+              pageUnreadable++;
+              continue;
+            }
+            final where = keys.map((key) => '$key = ?').join(' AND ');
+            final args = [for (final key in keys) row[key]];
+            if (table == 'openband_pinned_template' && row['singleton'] != 1) {
+              pageUnreadable++;
+              continue;
+            }
+            if (table == 'openband_meal_draft') {
+              final localContext = await txn.query(
+                'openband_meal_draft',
+                where: 'day_id = ? AND meal = ?',
+                whereArgs: [row['day_id'], row['meal']],
+                limit: 1,
+              );
+              if (localContext.isNotEmpty &&
+                  localContext.single['draft_id'] != row['draft_id']) {
+                // The alternate UNIQUE(day_id, meal) key is saved user work;
+                // do not let a different source id turn it into a constraint
+                // failure or replacement.
+                pageConflicts++;
+                continue;
+              }
+            }
+            if (table == 'openband_pinned_template') {
+              final owner = await txn.query(
+                'openband_workout_template',
+                where: 'id = ?',
+                whereArgs: [row['template_id']],
+                limit: 1,
+              );
+              if (owner.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParents = await _sourceParentRows(
+                src,
+                'openband_workout_template',
+                'id',
+                row['template_id'],
+              );
+              if (sourceParents.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParent = <String, Object?>{
+                for (final entry in sourceParents.single.entries)
+                  if (owner.single.containsKey(entry.key))
+                    entry.key: entry.value,
+              };
+              if (!_sameImportValues(owner.single, sourceParent)) {
+                // The id exists locally, but names a different plan. Importing
+                // the pin would silently retarget it to local content.
+                pageConflicts++;
+                continue;
+              }
+            }
+            if (table == 'openband_lap' ||
+                table == 'openband_session_detail') {
+              final sourceParents = await _sourceParentRows(
+                src,
+                'sessions',
+                'id',
+                row['session_id'],
+              );
+              if (sourceParents.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final owner = await txn.query(
+                'sessions',
+                where: 'id = ?',
+                whereArgs: [row['session_id']],
+                limit: 1,
+              );
+              if (owner.isEmpty) {
+                pageUnreadable++;
+                continue;
+              }
+              final sourceParent = <String, Object?>{
+                for (final entry in sourceParents.single.entries)
+                  if (owner.single.containsKey(entry.key))
+                    entry.key: entry.value,
+              };
+              if (!_sameImportValues(owner.single, sourceParent)) {
+                pageConflicts++;
+                continue;
+              }
+            }
+            final existing = await txn.query(
+              table,
+              where: where,
+              whereArgs: args,
+              limit: 1,
+            );
+            if (existing.isNotEmpty) {
+              if (_sameImportValues(existing.single, row)) {
+                pageSkipped++;
+              } else {
+                pageConflicts++;
+              }
+              continue;
+            }
+            // Constraint, disk and I/O failures propagate. Calling all of them a
+            // malformed source row would turn an interrupted restore into a false
+            // successful receipt.
+            await txn.insert(table, row);
+            pageImported++;
+          }
+          if (table == 'sessions' && pageImported > 0) {
+            await invalidateCycleContext(txn, daySourcesChanged: true);
+          }
+        });
+      } catch (e) {
+        if (hasCommitted()) {
+          throw _PreservingImportInterrupted(committedCounts(), e);
+        }
+        rethrow;
+      }
+      // Publish counts only after the page transaction commits.
+      imported += pageImported;
+      skipped += pageSkipped;
+      conflicts += pageConflicts;
+      unreadable += pageUnreadable;
+      try {
+        if (table == 'sessions' && pageImported > 0) {
+          onCycleContextInvalidated?.call();
+        }
+        lastRowid = (page.last['_restore_rowid'] as num).toInt();
+        if (page.length < pageSize) break;
+        final beforeNext = debugBeforeNextImportPage;
+        if (beforeNext != null) await beforeNext(table);
+      } catch (e) {
+        // The page is committed. Cursor/callback failures must publish it just
+        // like a later source query or destination transaction failure.
+        throw _PreservingImportInterrupted(committedCounts(), e);
+      }
+    }
+    return {
+      table: imported,
+      '${table}_skipped': skipped,
+      '${table}_conflict': conflicts,
+      '${table}_unreadable': unreadable,
+    };
+  }
+
+  static Future<List<Map<String, Object?>>?> _restoreSourceRows(
+    Database src,
+    String table,
+  ) async {
+    try {
+      return await src.query(table);
+    } on DatabaseException catch (e) {
+      if (e.isNoSuchTableError()) return null;
+      rethrow;
+    }
+  }
+
+  static Future<List<Map<String, Object?>>?> _sleepRowsForDestination(
+    Database dest,
+    String table,
+    List<Map<String, Object?>>? rows,
+  ) async {
+    if (rows == null) return null;
+    final info = await dest.rawQuery('PRAGMA table_info($table)');
+    final columns = {for (final column in info) column['name'] as String};
+    return [
+      for (final row in rows)
+        {
+          for (final entry in row.entries)
+            if (columns.contains(entry.key)) entry.key: entry.value,
+        },
+    ];
+  }
+
+  static bool _validSleepBounds(Object? onset, Object? wake) =>
+      onset is int && wake is int && onset < wake;
+
+  static bool _validSleepDraft(Map<String, Object?>? draft) =>
+      draft != null &&
+      draft['draft_id'] is String &&
+      (draft['draft_id'] as String).isNotEmpty &&
+      _validSleepBounds(draft['onset_ms'], draft['wake_ms']);
+
+  static bool _sameSleepCorrection(
+    Map<String, Object?> a,
+    Map<String, Object?> b,
+  ) {
+    const fields = [
+      'correction_id',
+      'action',
+      'revision',
+      'onset_ms',
+      'wake_ms',
+      'recording_timezone',
+    ];
+    return fields.every((field) => a[field] == b[field]);
+  }
+
+  /// Merge sleep state as one per-day family. A revision is not an ancestry
+  /// proof: any differing local family wins, regardless of which number is
+  /// larger. A fresh imported correction always receives a pending local job.
+  static Future<Map<String, int>> _mergeSleepFamilies(
+    Database src,
+    Database dest,
+  ) async {
+    final sourceOverrides = await _sleepRowsForDestination(
+      dest,
+      'sleep_override',
+      await _restoreSourceRows(src, 'sleep_override'),
+    );
+    final sourceDrafts = await _sleepRowsForDestination(
+      dest,
+      'openband_sleep_draft',
+      await _restoreSourceRows(src, 'openband_sleep_draft'),
+    );
+    final sourceCorrections = await _sleepRowsForDestination(
+      dest,
+      'openband_sleep_correction',
+      await _restoreSourceRows(src, 'openband_sleep_correction'),
+    );
+    final sourceJobs = await _sleepRowsForDestination(
+      dest,
+      'openband_calculation_job',
+      await _restoreSourceRows(src, 'openband_calculation_job'),
+    );
+    if (sourceOverrides == null &&
+        sourceDrafts == null &&
+        sourceCorrections == null &&
+        sourceJobs == null) {
+      return const {};
+    }
+
+    bool validDay(Map<String, Object?> row) =>
+        row['day_id'] is String && (row['day_id'] as String).isNotEmpty;
+    Map<String, Map<String, Object?>> byDay(List<Map<String, Object?>>? rows) =>
+        {
+          for (final row in rows ?? const <Map<String, Object?>>[])
+            if (validDay(row)) row['day_id'] as String: row,
+        };
+    int invalidDays(List<Map<String, Object?>>? rows) =>
+        (rows ?? const <Map<String, Object?>>[])
+            .where((row) => !validDay(row))
+            .length;
+
+    final overrides = byDay(sourceOverrides);
+    final drafts = byDay(sourceDrafts);
+    final corrections = byDay(sourceCorrections);
+    final jobs = byDay(sourceJobs);
+    final days = <String>{
+      ...overrides.keys,
+      ...drafts.keys,
+      ...corrections.keys,
+      ...jobs.keys,
+    };
+    var imported = 0;
+    var skipped = 0;
+    var conflicts = 0;
+    var unreadable =
+        invalidDays(sourceOverrides) +
+        invalidDays(sourceCorrections) +
+        invalidDays(sourceJobs);
+    var pending = 0;
+    var correctionImported = 0;
+    var overrideImported = 0;
+    var draftImported = 0;
+    var draftSkipped = 0;
+    var draftConflicts = 0;
+    var draftUnreadable = invalidDays(sourceDrafts);
+
+    Map<String, int> currentCounts() => {
+      'openband_sleep_family': imported,
+      'openband_sleep_family_skipped': skipped,
+      'openband_sleep_family_conflict': conflicts,
+      'openband_sleep_family_unreadable': unreadable,
+      'openband_sleep_pending': pending,
+      'sleep_override': overrideImported,
+      'openband_sleep_correction': correctionImported,
+      'openband_calculation_job': correctionImported,
+      'openband_sleep_draft': draftImported,
+      'openband_sleep_draft_skipped': draftSkipped,
+      'openband_sleep_draft_conflict': draftConflicts,
+      'openband_sleep_draft_unreadable': draftUnreadable,
+    };
+    bool hasReported(Map<String, int> counts) =>
+        counts.values.any((value) => value > 0);
+    void restoreCounts(Map<String, int> counts) {
+      imported = counts['openband_sleep_family']!;
+      skipped = counts['openband_sleep_family_skipped']!;
+      conflicts = counts['openband_sleep_family_conflict']!;
+      unreadable = counts['openband_sleep_family_unreadable']!;
+      pending = counts['openband_sleep_pending']!;
+      overrideImported = counts['sleep_override']!;
+      correctionImported = counts['openband_sleep_correction']!;
+      draftImported = counts['openband_sleep_draft']!;
+      draftSkipped = counts['openband_sleep_draft_skipped']!;
+      draftConflicts = counts['openband_sleep_draft_conflict']!;
+      draftUnreadable = counts['openband_sleep_draft_unreadable']!;
+    }
+    Future<void> runFamily(
+      Future<void> Function(Transaction txn) operation,
+    ) async {
+      final before = currentCounts();
+      try {
+        await dest.transaction(operation);
+      } catch (e) {
+        restoreCounts(before);
+        if (hasReported(before)) throw _SleepImportInterrupted(before, e);
+        rethrow;
+      }
+    }
+
+    for (final day in days) {
+      final sourceCorrection = corrections[day];
+      final sourceOverride = overrides[day];
+      final sourceDraft = drafts[day];
+      final sourceJob = jobs[day];
+      if (sourceCorrection != null) {
+        final id = sourceCorrection['correction_id'];
+        final revision = sourceCorrection['revision'];
+        final action = sourceCorrection['action'];
+        final validCorrection =
+            id is String &&
+            id.isNotEmpty &&
+            revision is int &&
+            revision >= 1 &&
+            (action == 'override' || action == 'automatic');
+        final validJob =
+            sourceJob?['correction_id'] == id &&
+            sourceJob?['revision'] is int &&
+            sourceJob?['revision'] == revision;
+        final validDraft =
+            sourceDraft == null || _validSleepDraft(sourceDraft);
+        final validOverride = action == 'override'
+            ? sourceOverride != null &&
+                  sourceOverride['correction_id'] == id &&
+                  sourceOverride['revision'] is int &&
+                  sourceOverride['revision'] == revision &&
+                  _validSleepBounds(
+                    sourceCorrection['onset_ms'],
+                    sourceCorrection['wake_ms'],
+                  ) &&
+                  _validSleepBounds(
+                    sourceOverride['onset_ts'],
+                    sourceOverride['offset_ts'],
+                  ) &&
+                  (sourceOverride['onset_ts'] as num).toInt() ==
+                      (sourceCorrection['onset_ms'] as num).toInt() ~/ 1000 &&
+                  (sourceOverride['offset_ts'] as num).toInt() ==
+                      (sourceCorrection['wake_ms'] as num).toInt() ~/ 1000
+            : sourceOverride == null;
+        if (!validCorrection || !validJob || !validOverride) {
+          unreadable++;
+          continue;
+        }
+
+        await runFamily((txn) async {
+          final localCorrections = await txn.query(
+            'openband_sleep_correction',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localOverrides = await txn.query(
+            'sleep_override',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localDrafts = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localCorrections.isNotEmpty) {
+            final local = localCorrections.single;
+            final localJobs = await txn.query(
+              'openband_calculation_job',
+              where: 'day_id = ? AND correction_id = ? AND revision = ?',
+              whereArgs: [day, local['correction_id'], local['revision']],
+              limit: 1,
+            );
+            final localOverrideOk = action == 'override'
+                ? localOverrides.isNotEmpty &&
+                      localOverrides.single['correction_id'] == id &&
+                      localOverrides.single['revision'] == revision &&
+                      localOverrides.single['onset_ts'] ==
+                          sourceOverride!['onset_ts'] &&
+                      localOverrides.single['offset_ts'] ==
+                          sourceOverride['offset_ts']
+                : localOverrides.isEmpty;
+            if (!_sameSleepCorrection(local, sourceCorrection) ||
+                localJobs.isEmpty ||
+                !localOverrideOk) {
+              conflicts++;
+              if (sourceDraft != null) draftConflicts++;
+              return;
+            }
+            skipped++;
+            if (sourceDraft == null) return;
+            if (!validDraft) {
+              draftUnreadable++;
+              return;
+            }
+            if (localDrafts.isNotEmpty) {
+              if (_sameImportValues(localDrafts.single, sourceDraft)) {
+                draftSkipped++;
+              } else {
+                draftConflicts++;
+              }
+              return;
+            }
+            final duplicateDraft = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateDraft.isNotEmpty) {
+              draftConflicts++;
+            } else {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            }
+            return;
+          }
+          if (localOverrides.isNotEmpty || localDrafts.isNotEmpty) {
+            conflicts++;
+            return;
+          }
+          final duplicateId = await txn.query(
+            'openband_sleep_correction',
+            columns: ['day_id'],
+            where: 'correction_id = ?',
+            whereArgs: [id],
+            limit: 1,
+          );
+          if (duplicateId.isNotEmpty) {
+            conflicts++;
+            return;
+          }
+          if (sourceDraft != null && validDraft) {
+            final duplicateDraft = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateDraft.isNotEmpty) {
+              conflicts++;
+              draftConflicts++;
+              return;
+            }
+          }
+          if (action == 'override') {
+            await txn.insert('sleep_override', {
+              for (final entry in sourceOverride!.entries)
+                if (entry.key != 'day_id' || entry.value == day)
+                  entry.key: entry.value,
+            });
+            overrideImported++;
+          } else {
+            // Only this newly-owned automatic family may invalidate the cached
+            // candidate. A conflicting local override was returned above.
+            await txn.delete(
+              'sleep_session_candidates',
+              where: 'day_id = ?',
+              whereArgs: [day],
+            );
+          }
+          await txn.insert('openband_sleep_correction', sourceCorrection);
+          final now = DateTime.now().millisecondsSinceEpoch;
+          await txn.insert('openband_calculation_job', {
+            'day_id': day,
+            'correction_id': id,
+            'revision': revision,
+            'status': 'pending',
+            'requested_at': now,
+            'updated_at': now,
+          });
+          if (sourceDraft != null) {
+            if (validDraft) {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            } else {
+              draftUnreadable++;
+            }
+          }
+          imported++;
+          correctionImported++;
+          pending++;
+        });
+        continue;
+      }
+
+      // Backups predating correction receipts may contain a standalone
+      // sleep_override. It is safe only into an otherwise empty day family.
+      if (sourceOverride != null) {
+        final legacyCorrectionId = sourceOverride['correction_id'];
+        final legacyRevision = sourceOverride['revision'];
+        final genuineLegacy =
+            (legacyCorrectionId == null || legacyCorrectionId == '') &&
+            (legacyRevision == null ||
+                (legacyRevision is int && legacyRevision == 0));
+        if (!genuineLegacy ||
+            !_validSleepBounds(
+              sourceOverride['onset_ts'],
+              sourceOverride['offset_ts'],
+            )) {
+          // Provenance on an override promises a correction+job family. Never
+          // reinterpret a broken modern family as a safe old standalone row.
+          unreadable++;
+          if (sourceDraft != null) draftUnreadable++;
+          continue;
+        }
+        final validLegacyDraft =
+            sourceDraft == null || _validSleepDraft(sourceDraft);
+        await runFamily((txn) async {
+          final localCorrection = await txn.query(
+            'openband_sleep_correction',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localDraft = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          final localOverride = await txn.query(
+            'sleep_override',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localCorrection.isNotEmpty ||
+              (localDraft.isNotEmpty && localOverride.isEmpty)) {
+            conflicts++;
+            if (sourceDraft != null) draftConflicts++;
+            return;
+          }
+          if (localOverride.isNotEmpty) {
+            if (!_sameImportValues(localOverride.single, sourceOverride)) {
+              conflicts++;
+              if (sourceDraft != null) draftConflicts++;
+              return;
+            }
+            skipped++;
+          } else {
+            await txn.insert('sleep_override', sourceOverride);
+            imported++;
+            overrideImported++;
+          }
+          if (sourceDraft == null) return;
+          if (!validLegacyDraft) {
+            draftUnreadable++;
+            return;
+          }
+          if (localDraft.isNotEmpty) {
+            if (_sameImportValues(localDraft.single, sourceDraft)) {
+              draftSkipped++;
+            } else {
+              draftConflicts++;
+            }
+            return;
+          }
+          final duplicateDraft = await txn.query(
+            'openband_sleep_draft',
+            columns: ['day_id'],
+            where: 'draft_id = ?',
+            whereArgs: [sourceDraft['draft_id']],
+            limit: 1,
+          );
+          if (duplicateDraft.isNotEmpty) {
+            draftConflicts++;
+          } else {
+            await txn.insert('openband_sleep_draft', sourceDraft);
+            draftImported++;
+          }
+        });
+        continue;
+      }
+
+      if (sourceDraft != null) {
+        if (!_validSleepDraft(sourceDraft)) {
+          draftUnreadable++;
+          continue;
+        }
+        await runFamily((txn) async {
+          final localFamily = await txn.rawQuery(
+            'SELECT day_id FROM openband_sleep_correction WHERE day_id = ? '
+            'UNION ALL SELECT day_id FROM sleep_override WHERE day_id = ?',
+            [day, day],
+          );
+          final localDraft = await txn.query(
+            'openband_sleep_draft',
+            where: 'day_id = ?',
+            whereArgs: [day],
+            limit: 1,
+          );
+          if (localFamily.isNotEmpty) {
+            draftConflicts++;
+          } else if (localDraft.isNotEmpty) {
+            if (_sameImportValues(localDraft.single, sourceDraft)) {
+              draftSkipped++;
+            } else {
+              draftConflicts++;
+            }
+          } else {
+            final duplicateId = await txn.query(
+              'openband_sleep_draft',
+              columns: ['day_id'],
+              where: 'draft_id = ?',
+              whereArgs: [sourceDraft['draft_id']],
+              limit: 1,
+            );
+            if (duplicateId.isNotEmpty) {
+              draftConflicts++;
+            } else {
+              await txn.insert('openband_sleep_draft', sourceDraft);
+              draftImported++;
+            }
+          }
+        });
+        continue;
+      }
+
+      // A job without its correction cannot be acted upon safely.
+      if (sourceJob != null) unreadable++;
+    }
+    return currentCounts();
+  }
+
+  static void _storeRestoreTotals(Map<String, int> counts) {
+    const durable = [
+      'openband_sleep_family',
+      'openband_sleep_draft',
+      'openband_workout_template',
+      'openband_pinned_template',
+      'openband_meal_draft',
+      'openband_lap',
+      'alarm_schedule',
+      'workout_suggestions',
+      'live_coverage',
+      'openband_session_detail',
+      'sessions',
+      'raw_records',
+      'raw_blob',
+    ];
+    int total(String suffix) => durable.fold(
+      0,
+      (sum, table) => sum + (counts['$table$suffix'] ?? 0),
+    );
+    counts['_restore_imported'] = total('');
+    counts['_restore_skipped'] = total('_skipped');
+    counts['_restore_conflict'] = total('_conflict');
+    counts['_restore_unreadable'] = total('_unreadable');
+  }
+
   /// Merge every table [tables] names from the database file at [path] into
   /// this one.
   ///
@@ -8535,16 +12158,24 @@ class LocalDb {
       'journal_metric',
       'journal_field_def',
       'lab_result',
+      'manual_vo2',
       'lab_marker_def',
       'strength_set',
+      'openband_strength_session',
       'exercise_def',
       'food_entry',
       'food_def',
       'med_def',
       'med_dose',
+      'med_plan_revision',
       'cycle_log',
       'cycle_symptom',
       'breathing_session',
+      'openband_workout_template',
+      'openband_pinned_template',
+      'openband_meal_draft',
+      'alarm_schedule',
+      'workout_suggestions',
       // Vendor-computed, typed-in and imported scalars. In the hand-entered
       // block because a third of it IS hand-entered and nothing regenerates
       // any of it — a `reports` band trims its own history, and the app whose
@@ -8557,7 +12188,13 @@ class LocalDb {
       // skipped these would silently reinstate every nap the user had deleted
       // and lose every one they logged.
       'sleep_override',
+      'openband_sleep_draft',
+      'openband_sleep_correction',
+      'openband_calculation_job',
       'sleep_nap',
+      'nap_recalc_job',
+      'sleep_goal_period',
+      'nutrition_target_period',
       'samples',
       'events',
       'decoded_onehz',
@@ -8568,6 +12205,8 @@ class LocalDb {
       // Re-readable from the health store, but only for as long as that app is
       // installed and that permission is granted — cheaper to carry.
       'imported_measurement',
+      'imported_measurement_receipt',
+      'imported_measurement_source_setting',
       // Same reasoning, and more so: a route is thousands of points that the
       // source app may have deleted since. `workout_route` is already in this
       // list above and carries the imported routes too.
@@ -8579,12 +12218,20 @@ class LocalDb {
       // never lost. Keyed by `hex`, so two same-counter frames from different
       // boots both survive the merge.
       'raw_archive',
+      'raw_records',
+      // The compressed replay stream — same never-lose-a-frame reasoning as
+      // raw_archive, keyed by its content identity so a re-imported identical
+      // batch dedups instead of doubling.
+      'raw_blob',
       'band_events',
       'band_battery',
       'day_result',
       'metric_series',
       'metric_series_version',
       'sessions',
+      'openband_session_detail',
+      'openband_lap',
+      'live_coverage',
       'notifications',
       'baselines',
       // The devices this phone knows about — so a SECONDARY device's identity
@@ -8619,9 +12266,90 @@ class LocalDb {
     // null when day_result could not be read at all, so the caller can tell
     // "nothing imported" from "we don't know".
     Set<String>? importedDays;
+    void restoreDays(Set<String>? snapshot) {
+      final days = importedDays;
+      if (days == null || snapshot == null) return;
+      days
+        ..clear()
+        ..addAll(snapshot);
+    }
+
+    Map<String, int> committedSnapshot(int pageCommitted, String table) {
+      final snap = Map<String, int>.from(counts);
+      if (pageCommitted > 0 &&
+          table != kManualVo2Table &&
+          !snap.containsKey(table)) {
+        snap[table] = pageCommitted;
+      }
+      final days = importedDays;
+      if (days != null) snap['_days'] = days.length;
+      _storeRestoreTotals(snap);
+      return snap;
+    }
+
     try {
       for (final t in (only ?? tables)) {
+        var committedCopied = 0;
         try {
+          if (t == 'sleep_override') {
+            try {
+              counts.addAll(await _mergeSleepFamilies(src, db));
+            } on _SleepImportInterrupted catch (e) {
+              counts.addAll(e.counts);
+              if (!tolerant) {
+                throw PartialImportException(
+                  committedSnapshot(0, t),
+                  e.cause,
+                );
+              }
+            }
+            final afterSleep = debugAfterImportedTable;
+            if (afterSleep != null) await afterSleep(t);
+            continue;
+          }
+          if (t == 'openband_sleep_draft' ||
+              t == 'openband_sleep_correction' ||
+              t == 'openband_calculation_job') {
+            continue; // consumed atomically with sleep_override above
+          }
+          final preservingKeys = _preservingImportKeys[t];
+          if (preservingKeys != null) {
+            try {
+              final merged = await _mergePreservingTable(
+                src,
+                db,
+                t,
+                preservingKeys,
+              );
+              if (merged != null) counts.addAll(merged);
+            } on _PreservingImportInterrupted catch (e) {
+              counts.addAll(e.counts);
+              if (!tolerant) {
+                throw PartialImportException(
+                  committedSnapshot(0, t),
+                  e.cause,
+                );
+              }
+            }
+            final afterPreserved = debugAfterImportedTable;
+            if (afterPreserved != null) await afterPreserved(t);
+            continue;
+          }
+          if (t == kManualVo2Table) {
+            // Not INSERT OR REPLACE. One id's chain is preflighted and either
+            // left alone or appended. A divergent or broken chain writes nothing
+            // for that id; other tables in this loop still merge.
+            final merged = await Vo2Store.mergeImport(
+              src: src,
+              dest: db,
+              // ignore: invalid_use_of_visible_for_testing_member
+              readSource: debugVo2ImportRead,
+            );
+            if (!merged.tableMissing) _storeVo2Counts(counts, merged);
+            final afterVo2 = debugAfterImportedTable;
+            if (afterVo2 != null) await afterVo2(t);
+            continue;
+          }
           // PAGED SOURCE READ — never `SELECT *` a whole table.
           //
           // This used to be a single `src.query(t)`. sqflite serialises an entire
@@ -8672,24 +12400,51 @@ class LocalDb {
           }
           final cols = await destCols(t);
           if (cols.isEmpty) continue; // table absent in THIS build
-          // FINALIZED-DAY PROTECTION: a local day_result row with finalized=1 is
-          // LOCKED (this device's own fully-derived history — the long-term
-          // system of record). A foreign export merged with REPLACE must never
-          // clobber it on a (day_id, algo_version) collision; non-finalized rows
-          // keep the plain REPLACE behavior (the import may well be fresher).
-          var protectedKeys = const <String>{};
-          if (t == 'day_result') {
-            final fin = await db.query(
-              'day_result',
-              columns: ['day_id', 'algo_version'],
-              where: 'finalized = 1',
-            );
-            protectedKeys = {
-              for (final r in fin) '${r['day_id']}|${r['algo_version']}',
-            };
-          }
           var copied = 0;
+          var importedDaySources = false;
           var page = firstPage;
+          if (t == 'cycle_log') {
+            var startsChanged = false;
+            await db.transaction((txn) async {
+              final before = await _cycleStartDatesOn(txn);
+              var logPage = page;
+              var logLastRowid = 0;
+              while (logPage.isNotEmpty) {
+                for (final r in logPage) {
+                  final row = <String, Object?>{
+                    for (final e in r.entries)
+                      if (cols.contains(e.key)) e.key: e.value,
+                  };
+                  if (row.isEmpty) continue;
+                  await txn.insert(
+                    'cycle_log',
+                    row,
+                    conflictAlgorithm: ConflictAlgorithm.replace,
+                  );
+                  copied++;
+                }
+                logLastRowid = (logPage.last[rowidKey] as num).toInt();
+                if (logPage.length < pageSize) break;
+                logPage = await src.rawQuery(
+                  'SELECT rowid AS $rowidKey, * FROM cycle_log '
+                  'WHERE rowid > ? ORDER BY rowid ASC LIMIT ?',
+                  [logLastRowid, pageSize],
+                );
+              }
+              final after = await _cycleStartDatesOn(txn);
+              if (!_sameStartList(before, after)) {
+                final beforeInv = debugBeforeCycleLogImportInvalidate;
+                if (beforeInv != null) await beforeInv(txn);
+                await invalidateCycleContext(txn);
+                startsChanged = true;
+              }
+            });
+            if (startsChanged) onCycleContextInvalidated?.call();
+            counts[t] = copied;
+            final afterTable = debugAfterImportedTable;
+            if (afterTable != null) await afterTable(t);
+            continue;
+          }
           // ONE TRANSACTION PER PAGE, not per table. The whole-table transaction
           // this replaces could only ever commit if the entire table fit in
           // memory first, which is the bug. Per-page commits keep peak residency
@@ -8699,7 +12454,7 @@ class LocalDb {
           // orphan guard is still queued in the SAME transaction as the row it
           // guards — the invariant that matters is per-row, not per-table.
           while (page.isNotEmpty) {
-            await db.transaction((txn) async {
+            Future<void> writePage() => db.transaction((txn) async {
               // CHUNKED, for the same reason commitSyncBatch chunks: sqflite
               // serialises a whole batch's args into ONE platform message, and
               // the orphan guard below adds an op per decoded_onehz row on top.
@@ -8711,6 +12466,18 @@ class LocalDb {
                 await batch.commit(noResult: true);
                 batch = txn.batch();
                 ops = 0;
+              }
+
+              var protectedKeys = const <String>{};
+              if (t == 'day_result') {
+                final fin = await txn.query(
+                  'day_result',
+                  columns: ['day_id', 'algo_version'],
+                  where: 'finalized = 1',
+                );
+                protectedKeys = {
+                  for (final r in fin) '${r['day_id']}|${r['algo_version']}',
+                };
               }
 
               final rows = <Map<String, Object?>>[];
@@ -8744,6 +12511,16 @@ class LocalDb {
                 // present, and the SharedPreferences mirror re-establishes it
                 // if the database was rebuilt.
                 if (t == 'device' && row['id'] == kPrimaryDeviceId) continue;
+                // Derived cross-day output/cache is local: it is built from this
+                // install's cycle starts and day_result rows. Finalized local
+                // day_results are protected below, so a foreign cache would mix
+                // another device's compact days with this phone's locked rows.
+                // Importing `crossday` after cycle_log invalidation would also
+                // resurrect stale luteal output. Other baseline keys still merge.
+                if (t == 'baselines') {
+                  final key = row['key']?.toString();
+                  if (key == 'crossday' || key == 'crossday_input') continue;
+                }
                 if (t == 'day_result') {
                   if (protectedKeys.contains(
                     '${row['day_id']}|${row['algo_version']}',
@@ -8845,22 +12622,80 @@ class LocalDb {
                 if (++ops >= chunkOps) await flush();
               }
               await flush();
-            });
+              if ((t == 'day_result' || t == 'sessions') && rows.isNotEmpty) {
+                await invalidateCycleContext(txn, daySourcesChanged: true);
+                importedDaySources = true;
+              }
+            }, exclusive: t == 'day_result');
+            final gated =
+                t == 'imported_measurement' ||
+                t == 'imported_measurement_receipt' ||
+                t == 'imported_measurement_source_setting';
+            // Counters move inside the transaction, before it commits. Keep the
+            // pre-page values and publish them only after the commit returns.
+            final copiedAtPage = committedCopied;
+            final currentDays = importedDays;
+            final daysAtPage = currentDays == null
+                ? null
+                : Set<String>.of(currentDays);
+            try {
+              if (gated) {
+                await runImportedMeasurementOp(writePage);
+              } else {
+                await writePage();
+              }
+            } catch (e) {
+              copied = copiedAtPage;
+              restoreDays(daysAtPage);
+              rethrow;
+            }
+            committedCopied = copied;
+            if (!gated && importedDaySources) {
+              onCycleContextInvalidated?.call();
+              importedDaySources = false;
+            }
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
             lastRowid = (page.last[rowidKey] as num).toInt();
             if (page.length < pageSize) break;
+            final beforeNext = debugBeforeNextImportPage;
+            if (beforeNext != null) await beforeNext(t);
             page = await nextPage();
           }
           counts[t] = copied;
-        } catch (_) {
-          // One table's worth of loss, not the whole salvage. A user-initiated
-          // restore still rethrows: reporting a partial import as a success is
-          // the worst available outcome there, whereas a rebuild has no better
-          // file to fall back to.
-          if (!tolerant) rethrow;
-          counts[t] = 0;
+          committedCopied = copied;
+          final afterTable = debugAfterImportedTable;
+          if (afterTable != null) await afterTable(t);
+        } catch (e) {
+          if (e is PartialImportException) rethrow;
+          if (e is Vo2ImportInterrupted) {
+            // The source probe already found manual_vo2. A user receipt keeps
+            // that presence even when every count is still zero. Salvage omits
+            // an all-zero interruption so the card does not call it empty.
+            if (!tolerant || _vo2Known(e.counts)) {
+              _storeVo2Counts(counts, e.counts);
+            }
+            if (!tolerant) {
+              throw PartialImportException(
+                committedSnapshot(committedCopied, t),
+                e.cause,
+              );
+            }
+            continue;
+          }
+          if (!tolerant) {
+            if (_publishableImport(counts, committedCopied)) {
+              throw PartialImportException(
+                committedSnapshot(committedCopied, t),
+                e,
+              );
+            }
+            rethrow;
+          }
+          if (t == kManualVo2Table) continue;
+          if (counts.containsKey(t)) continue;
+          counts[t] = committedCopied;
         }
       }
     } finally {
@@ -8876,8 +12711,9 @@ class LocalDb {
     if ((counts['day_result'] ?? 0) > 0) {
       await putComputeFreshness(kReencodeCursorKey, jsonEncode({}));
     }
-    // Last, so it can never be mistaken for a table row count by anything that
-    // walks this map in order.
+    // Last, so these can never be mistaken for table row counts by anything
+    // walking the map. They summarize only the preserving restore paths above.
+    _storeRestoreTotals(counts);
     if (importedDays != null) counts['_days'] = importedDays.length;
     return counts;
   }
@@ -9037,12 +12873,14 @@ class LocalDb {
       'journal_metric',
       'journal_field_def',
       'lab_result',
+      'manual_vo2',
       'lab_marker_def',
       'breathing_session',
       'food_entry',
       'food_def',
       'med_def',
       'med_dose',
+      'med_plan_revision',
       'cycle_log',
       'notifications',
       'sync_cursor',
@@ -9060,6 +12898,8 @@ class LocalDb {
       'band_backlog',
       'external_hr',
       'imported_measurement',
+      'imported_measurement_receipt',
+      'imported_measurement_source_setting',
       'imported_workout',
       'observation',
       'device',
@@ -9104,6 +12944,66 @@ class LocalDb {
       'status',
       'updated_at',
       'meta_json',
+    ]);
+
+    final labCols = await hasTable('lab_result')
+        ? await cols('lab_result')
+        : <String>{};
+    expect('lab_result', labCols, [
+      'marker',
+      'taken_on',
+      'value',
+      'unit',
+      'note',
+      'updated_at',
+      'report_low',
+      'report_high',
+    ]);
+
+    final vo2Cols = await hasTable('manual_vo2')
+        ? await cols('manual_vo2')
+        : <String>{};
+    expect('manual_vo2', vo2Cols, [
+      'id',
+      'revision',
+      'measured_on',
+      'value_ml_kg_min',
+      'declared_method',
+      'created_at',
+      'updated_at',
+      'deleted',
+      'origin',
+      'unit',
+    ]);
+
+    final medRevCols = await hasTable('med_plan_revision')
+        ? await cols('med_plan_revision')
+        : <String>{};
+    expect('med_plan_revision', medRevCols, [
+      'id',
+      'med_key',
+      'effective_ts',
+      'effective_date',
+      'effective_min',
+      'label',
+      'schedule_json',
+      'active',
+      'origin',
+    ]);
+
+    final journalFieldDefCols = await hasTable('journal_field_def')
+        ? await cols('journal_field_def')
+        : <String>{};
+    expect('journal_field_def', journalFieldDefCols, [
+      'key',
+      'label',
+      'kind',
+      'unit',
+      'max_value',
+      'step',
+      'has_time',
+      'created_at',
+      'hidden',
     ]);
 
     final integrity = await db.rawQuery('PRAGMA integrity_check');
@@ -9347,6 +13247,17 @@ class LocalDb {
     );
     return [for (final r in rows.reversed) (r['value'] as num).toDouble()];
   }
+
+  /// The user's personal quiet-waking HRR level: the median of the trailing
+  /// measured `quiet_waking_hrr` days, or null when no day has measured one
+  /// yet. This is the level the day-level strain resolves to
+  /// (`median(history) ?? today's own` — see `deriveDayBundle`, edge#226) for
+  /// SESSION scorers, which have no per-day bootstrap of their own: a manual
+  /// or live session must not measure its quiet level off the session's own
+  /// minutes, or a hard workout would subtract its own effort away. Null ⇒
+  /// the scorer abstains rather than falling back to the population constant.
+  static Future<double?> personalQuietWakingHrr() async =>
+      ana.median(await trailingSeriesValues('quiet_waking_hrr', 28));
 
   static Future<Map<String, dynamic>?> baseline(String key) async {
     final db = await instance;
@@ -9781,50 +13692,250 @@ class LocalDb {
       where: 'state = ?',
       whereArgs: ['running'],
     );
+    await db.update(
+      'compute_jobs',
+      {'state': 'queued', 'updated_at': now, 'next_run_at': null},
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['failed', kCycleContextJobReason],
+    );
   }
 
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
+    DatabaseExecutor? executor,
   }) async {
+    if (executor != null) {
+      await _enqueueDeriveJobOn(executor, type: type, reason: reason);
+      return;
+    }
+    final db = await instance;
+    await db.transaction(
+      (txn) => _enqueueDeriveJobOn(txn, type: type, reason: reason),
+    );
+  }
+
+  /// One queue rule: coalesce queued same-type jobs; a RUNNING heavy job
+  /// does not swallow a successor (cycle invalidation must survive).
+  static Future<void> _enqueueDeriveJobOn(
+    DatabaseExecutor txn, {
+    required String type,
+    required String reason,
+  }) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final active = await txn.query(
+      'compute_jobs',
+      columns: ['id', 'type', 'state', 'reason'],
+      where: 'scope = ? AND state IN (?, ?)',
+      whereArgs: ['derive', 'queued', 'running'],
+    );
+    bool hasQueued(String t) => active.any(
+      (row) => row['type']?.toString() == t && row['state'] == 'queued',
+    );
+    bool hasRunning(String t) => active.any(
+      (row) => row['type']?.toString() == t && row['state'] == 'running',
+    );
+    if (type == 'derive_light') {
+      if (hasQueued('derive_light') ||
+          hasQueued('derive_heavy') ||
+          hasRunning('derive_light') ||
+          hasRunning('derive_heavy')) {
+        return;
+      }
+    } else if (type == 'derive_heavy') {
+      await txn.delete(
+        'compute_jobs',
+        where: 'scope = ? AND state = ? AND type = ?',
+        whereArgs: ['derive', 'queued', 'derive_light'],
+      );
+      Map<String, Object?>? queuedHeavy;
+      for (final row in active) {
+        if (row['type']?.toString() == 'derive_heavy' &&
+            row['state'] == 'queued') {
+          queuedHeavy = row;
+          break;
+        }
+      }
+      if (queuedHeavy != null) {
+        final existingReason = queuedHeavy['reason']?.toString();
+        final merged =
+            reason == kCycleContextJobReason ||
+                existingReason == kCycleContextJobReason
+            ? kCycleContextJobReason
+            : reason;
+        await txn.update(
+          'compute_jobs',
+          {
+            'reason': merged,
+            'priority': 200,
+            'updated_at': now,
+            'next_run_at': null,
+          },
+          where: 'id = ?',
+          whereArgs: [queuedHeavy['id']],
+        );
+        return;
+      }
+      // Running heavy: insert a queued successor. Do not return.
+    }
+    await txn.insert('compute_jobs', {
+      'id': 'derive_${type}_${const Uuid().v4()}',
+      'type': type,
+      'scope': 'derive',
+      'priority': type == 'derive_heavy' ? 200 : 100,
+      'state': 'queued',
+      'reason': reason,
+      'depends_on': null,
+      'input_from_ts': null,
+      'input_to_ts': null,
+      'algo_version': null,
+      'attempts': 0,
+      'next_run_at': null,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  /// Local-only fence for cross-day input/output publication. Stored in
+  /// `compute_freshness` (not merged from backups). Additive JSON, no schema
+  /// bump: orchestration eligibility, not analytics output.
+  static const String kCrossDaySourceRevKey = 'crossday_source_rev';
+
+  static Future<int> crossDaySourceRevision([DatabaseExecutor? ex]) async {
+    final db = ex ?? await instance;
+    final rows = await db.query(
+      'compute_freshness',
+      columns: ['payload_json'],
+      where: 'key = ?',
+      whereArgs: [kCrossDaySourceRevKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) return 0;
+    try {
+      final decoded = jsonDecode(rows.first['payload_json'] as String);
+      if (decoded is Map && decoded['v'] is int) return decoded['v'] as int;
+    } catch (_) {}
+    return 0;
+  }
+
+  static Future<int> bumpCrossDaySourceRevision(DatabaseExecutor txn) async {
+    final next = await crossDaySourceRevision(txn) + 1;
+    await txn.insert('compute_freshness', {
+      'key': kCrossDaySourceRevKey,
+      'payload_json': jsonEncode({'v': next}),
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return next;
+  }
+
+  /// Drop cross-day OUTPUT and enqueue a durable refresh in [txn].
+  /// When [daySourcesChanged], also drop `crossday_input` and bump the local
+  /// source revision. Cycle-start-only edits keep valid day input.
+  /// Signature for DATA: `LocalDb.invalidateCycleContext(DatabaseExecutor txn)`
+  static Future<void> invalidateCycleContext(
+    DatabaseExecutor txn, {
+    bool daySourcesChanged = false,
+  }) async {
+    await txn.delete('baselines', where: 'key = ?', whereArgs: ['crossday']);
+    if (daySourcesChanged) {
+      await txn.delete(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday_input'],
+      );
+      await bumpCrossDaySourceRevision(txn);
+    }
+    await _enqueueDeriveJobOn(
+      txn,
+      type: 'derive_heavy',
+      reason: kCycleContextJobReason,
+    );
+  }
+
+  static Future<bool> hasRunningCycleContextJob() async {
+    final db = await instance;
+    final rows = await db.query(
+      'compute_jobs',
+      columns: ['id'],
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['running', kCycleContextJobReason],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  static Future<void> requeueFailedCycleContextJobs() async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.transaction((txn) async {
-      final active = await txn.query(
-        'compute_jobs',
-        columns: ['id', 'type', 'state'],
-        where: 'scope = ? AND state IN (?, ?)',
-        whereArgs: ['derive', 'queued', 'running'],
-      );
-      bool hasType(String t) =>
-          active.any((row) => row['type']?.toString() == t);
-      if (type == 'derive_light') {
-        if (hasType('derive_light') || hasType('derive_heavy')) return;
-      } else if (type == 'derive_heavy') {
-        if (hasType('derive_heavy')) return;
-        await txn.delete(
-          'compute_jobs',
-          where: 'scope = ? AND state = ? AND type = ?',
-          whereArgs: ['derive', 'queued', 'derive_light'],
-        );
-      }
-      await txn.insert('compute_jobs', {
-        'id': 'derive_${type}_$now',
-        'type': type,
-        'scope': 'derive',
-        'priority': type == 'derive_heavy' ? 200 : 100,
-        'state': 'queued',
-        'reason': reason,
-        'depends_on': null,
-        'input_from_ts': null,
-        'input_to_ts': null,
-        'algo_version': null,
-        'attempts': 0,
-        'next_run_at': null,
-        'created_at': now,
-        'updated_at': now,
-      });
+    await db.update(
+      'compute_jobs',
+      {'state': 'queued', 'updated_at': now, 'next_run_at': null},
+      where: 'state = ? AND reason = ?',
+      whereArgs: ['failed', kCycleContextJobReason],
+    );
+  }
+
+  static Future<List<String>> cycleStartDates([
+    DatabaseExecutor? executor,
+  ]) async {
+    final db = executor ?? await instance;
+    return _cycleStartDatesOn(db);
+  }
+
+  static Future<List<String>> _cycleStartDatesOn(DatabaseExecutor db) async {
+    final rows = await db.query(
+      'cycle_log',
+      columns: ['date', 'kind'],
+      orderBy: 'date ASC',
+    );
+    return [
+      for (final r in rows)
+        if (r['kind'] == 'start' && r['date'] is String) r['date'] as String,
+    ];
+  }
+
+  /// Write the cross-day OUTPUT only if starts and source revision still match.
+  static Future<bool> commitCrossDayIfStartsUnchanged({
+    required String payloadJson,
+    required List<String> expectedStarts,
+    int expectedSourceRev = 0,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final current = await _cycleStartDatesOn(txn);
+      if (!_sameStartList(current, expectedStarts)) return false;
+      if (await crossDaySourceRevision(txn) != expectedSourceRev) return false;
+      await txn.insert('baselines', {
+        'key': 'crossday',
+        'payload_json': payloadJson,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
     });
+  }
+
+  static Future<bool> commitCrossDayInputIfRevUnchanged({
+    required String payloadJson,
+    required int expectedRev,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      if (await crossDaySourceRevision(txn) != expectedRev) return false;
+      await txn.insert('baselines', {
+        'key': 'crossday_input',
+        'payload_json': payloadJson,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
+    });
+  }
+
+  static bool _sameStartList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   static Future<Map<String, dynamic>?> takeNextComputeJob() async {
@@ -9875,14 +13986,18 @@ class LocalDb {
     await db.delete('compute_jobs', where: 'id = ?', whereArgs: [id]);
   }
 
-  static Future<void> failComputeJob(String id, String error) async {
+  static Future<void> failComputeJob(
+    String id,
+    String error, {
+    bool preserveReason = false,
+  }) async {
     final db = await instance;
     await db.update(
       'compute_jobs',
       {
         'state': 'failed',
-        'reason': error,
         'updated_at': DateTime.now().millisecondsSinceEpoch,
+        if (!preserveReason) 'reason': error,
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -9951,18 +14066,33 @@ class LocalDb {
   // ── journal I/O ─────────────────────────────────────────────────────────────
 
   /// Upsert one day's journal (tags JSON + note). Idempotent on date.
+  ///
+  /// Full-row replace of tags+note, but `updated_at` is monotonic so a
+  /// same-millisecond rewrite cannot rewind a pending dirty CAS.
   static Future<void> putJournal(
     String date,
     String tagsJson,
     String note,
   ) async {
     final db = await instance;
-    await db.insert('journal', {
-      'date': date,
-      'tags_json': tagsJson,
-      'note': note,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'journal',
+        columns: ['updated_at'],
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      final storedRev =
+          (rows.isEmpty ? 0 : (rows.first['updated_at'] as num?)?.toInt() ?? 0);
+      await txn.insert('journal', {
+        'date': date,
+        'tags_json': tagsJson,
+        'note': note,
+        'updated_at': _journalRevBump(now, storedRev),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
   /// Recent journal rows, newest first. [sinceDaysEpoch] (a YYYY-MM-DD label) is
@@ -9991,6 +14121,8 @@ class LocalDb {
   /// that does damage.
   ///
   /// Written in one transaction so a day is never half-updated.
+  /// Surviving keys keep a monotonic `updated_at` so a same-millisecond
+  /// rewrite (including A→B→A restore) cannot rewind a pending dirty CAS.
   static Future<void> putJournalMetrics(
     String date,
     Map<String, JournalMetricValue> fields,
@@ -9998,6 +14130,16 @@ class LocalDb {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
+      final existing = await txn.query(
+        'journal_metric',
+        columns: ['field', 'updated_at'],
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+      final revs = {
+        for (final r in existing)
+          r['field'] as String: (r['updated_at'] as num?)?.toInt() ?? 0,
+      };
       await txn.delete('journal_metric', where: 'date = ?', whereArgs: [date]);
       for (final e in fields.entries) {
         await txn.insert('journal_metric', {
@@ -10005,9 +14147,259 @@ class LocalDb {
           'field': e.key,
           'value': e.value.value,
           'at_min': e.value.atMinuteOfDay,
-          'updated_at': now,
+          'updated_at': _journalRevBump(now, revs[e.key] ?? 0),
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
+    });
+  }
+
+  /// Write one field's value for [date]. Other fields and dates stay put.
+  ///
+  /// Value-only: UPDATE `value`/`updated_at` by `(date, field)`, then INSERT
+  /// if no row. `at_min` is never written on the update path; a new row has
+  /// `at_min` null. `updated_at` is monotonic so same-millisecond A→B→A
+  /// cannot reuse a revision. No SQL `UPSERT` — `INSERT … ON CONFLICT DO
+  /// UPDATE` needs SQLite 3.24 and minSdk 26 ships 3.18. Not a
+  /// read-merge-write of the day. Callers that mean "this map is the whole
+  /// day" keep using [putJournalMetrics].
+  static Future<void> upsertJournalMetric(
+    String date,
+    String field,
+    double value,
+  ) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'journal_metric',
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        await txn.insert('journal_metric', {
+          'date': date,
+          'field': field,
+          'value': value,
+          'at_min': null,
+          'updated_at': now,
+        });
+        return;
+      }
+      final storedRev = (rows.first['updated_at'] as num?)?.toInt() ?? 0;
+      await txn.update(
+        'journal_metric',
+        {'value': value, 'updated_at': _journalRevBump(now, storedRev)},
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+    });
+  }
+
+  /// Exact-day journal row plus metric rows, in one transaction so a snapshot
+  /// cannot tear across the two tables.
+  static Future<({Map<String, Object?>? journal, List<Map<String, Object?>> metrics})>
+      readJournalDayRows(String date) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final journal = await txn.query(
+        'journal',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      final metrics = await txn.query(
+        'journal_metric',
+        where: 'date = ?',
+        whereArgs: [date],
+      );
+      return (
+        journal: journal.isEmpty ? null : Map<String, Object?>.from(journal.first),
+        metrics: [for (final r in metrics) Map<String, Object?>.from(r)],
+      );
+    });
+  }
+
+  static int _journalRevBump(int now, int stored) =>
+      now > stored ? now : stored + 1;
+
+  static bool _sameJournalTags(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    return a.toSet().containsAll(b);
+  }
+
+
+  static JournalMetricValue? _journalMetricOf(Map<String, Object?>? row) {
+    if (row == null) return null;
+    return JournalMetricValue(
+      (row['value'] as num).toDouble(),
+      atMinuteOfDay: (row['at_min'] as num?)?.toInt(),
+    );
+  }
+
+  /// Dirty-only compare-and-write for one day. One transaction: any mismatch
+  /// on a dirty key or the journal row throws [JournalConflict] and writes
+  /// nothing. Same-millisecond writers cannot sneak through — stored
+  /// value+time and revision are both compared, and the new revision is
+  /// monotonic on the existing `updated_at`.
+  static Future<void> patchJournalDay(JournalDayPatch patch) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final journalDirty = patch.tags != null || patch.note != null;
+    await db.transaction((txn) async {
+      final conflicts = <String>[];
+      for (final key in patch.metrics.keys) {
+        final rows = await txn.query(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [patch.day, key],
+          limit: 1,
+        );
+        final row = rows.isEmpty ? null : rows.first;
+        final stored = _journalMetricOf(row);
+        final storedRev = (row?['updated_at'] as num?)?.toInt() ?? 0;
+        final expectedRev = patch.expectedMetricUpdatedAt[key] ?? 0;
+        final expected = patch.expectedMetrics[key];
+        if (storedRev != expectedRev || stored != expected) {
+          conflicts.add(key);
+        }
+      }
+      Map<String, Object?>? journalRow;
+      List<String> storedTags = const [];
+      if (journalDirty) {
+        final rows = await txn.query(
+          'journal',
+          where: 'date = ?',
+          whereArgs: [patch.day],
+          limit: 1,
+        );
+        journalRow = rows.isEmpty ? null : rows.first;
+        // Decode before any write so a note-only patch cannot wipe
+        // unreadable tags by treating them as empty.
+        storedTags = decodeJournalTags(journalRow?['tags_json']);
+        final storedRev = (journalRow?['updated_at'] as num?)?.toInt() ?? 0;
+        final expectedRev = patch.expectedJournalUpdatedAt ?? 0;
+        if (storedRev != expectedRev) {
+          conflicts.add('journal');
+        } else {
+          if (patch.expectedNote != null &&
+              ((journalRow?['note'] as String?) ?? '') != patch.expectedNote) {
+            conflicts.add('journal');
+          }
+          if (patch.expectedTags != null &&
+              !_sameJournalTags(storedTags, patch.expectedTags!)) {
+            conflicts.add('journal');
+          }
+        }
+      }
+      if (conflicts.isNotEmpty) {
+        throw JournalConflict(patch.day, fields: conflicts);
+      }
+
+      for (final e in patch.metrics.entries) {
+        if (e.value == null) {
+          await txn.delete(
+            'journal_metric',
+            where: 'date = ? AND field = ?',
+            whereArgs: [patch.day, e.key],
+          );
+          continue;
+        }
+        final existing = await txn.query(
+          'journal_metric',
+          columns: ['updated_at'],
+          where: 'date = ? AND field = ?',
+          whereArgs: [patch.day, e.key],
+          limit: 1,
+        );
+        final storedRev =
+            (existing.isEmpty ? 0 : (existing.first['updated_at'] as num?)?.toInt() ?? 0);
+        final rev = _journalRevBump(now, storedRev);
+        if (existing.isEmpty) {
+          await txn.insert('journal_metric', {
+            'date': patch.day,
+            'field': e.key,
+            'value': e.value!.value,
+            'at_min': e.value!.atMinuteOfDay,
+            'updated_at': rev,
+          });
+        } else {
+          await txn.update(
+            'journal_metric',
+            {
+              'value': e.value!.value,
+              'at_min': e.value!.atMinuteOfDay,
+              'updated_at': rev,
+            },
+            where: 'date = ? AND field = ?',
+            whereArgs: [patch.day, e.key],
+          );
+        }
+      }
+
+      if (journalDirty) {
+        final storedRev = (journalRow?['updated_at'] as num?)?.toInt() ?? 0;
+        final rev = _journalRevBump(now, storedRev);
+        await txn.insert('journal', {
+          'date': patch.day,
+          'tags_json': jsonEncode(patch.tags ?? storedTags),
+          'note': patch.note ?? ((journalRow?['note'] as String?) ?? ''),
+          'updated_at': rev,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
+  /// Add [delta] to one field in a single transaction. A missing row counts
+  /// as 0. Result is clamped to `[0, max]`. A step down from a stored 0
+  /// deletes the row (absence), matching the editor stepper. Other fields
+  /// and `at_min` on this field stay put.
+  static Future<double?> applyJournalMetricDelta({
+    required String date,
+    required String field,
+    required double delta,
+    required double max,
+  }) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return db.transaction((txn) async {
+      final rows = await txn.query(
+        'journal_metric',
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        if (delta <= 0) return null;
+        final value = delta.clamp(0.0, max).toDouble();
+        await txn.insert('journal_metric', {
+          'date': date,
+          'field': field,
+          'value': value,
+          'at_min': null,
+          'updated_at': now,
+        });
+        return value;
+      }
+      final row = rows.first;
+      final current = (row['value'] as num).toDouble();
+      if (current == 0 && delta < 0) {
+        await txn.delete(
+          'journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, field],
+        );
+        return null;
+      }
+      final value = (current + delta).clamp(0.0, max).toDouble();
+      final storedRev = (row['updated_at'] as num?)?.toInt() ?? 0;
+      await txn.update(
+        'journal_metric',
+        {'value': value, 'updated_at': _journalRevBump(now, storedRev)},
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, field],
+      );
+      return value;
     });
   }
 
@@ -10065,84 +14457,235 @@ class LocalDb {
   }
 
   /// Custom field definitions, ordered by label.
-  static Future<List<JournalFieldSpec>> journalFieldDefs() async {
+  ///
+  /// Active (not hidden) by default so editors omit archived fields.
+  /// Pass [includeHidden] for history joins and restore lists. A corrupt
+  /// kind is reported rather than silently becoming a dose.
+  static Future<List<JournalFieldSpec>> journalFieldDefs({
+    bool includeHidden = false,
+  }) async {
     final db = await instance;
-    final rows = await db.query('journal_field_def', orderBy: 'label ASC');
-    return [
-      for (final r in rows)
-        JournalFieldSpec(
-          key: r['key'] as String,
-          label: r['label'] as String,
-          kind: JournalFieldKind.values.firstWhere(
-            (k) => k.name == r['kind'],
-            // A row written by a newer build with a kind this one has never
-            // heard of still renders as a dose rather than crashing the whole
-            // journal screen.
-            orElse: () => JournalFieldKind.dose,
-          ),
-          unit: r['unit'] as String,
-          max: (r['max_value'] as num).toDouble(),
-          step: (r['step'] as num).toDouble(),
-          hasTime: ((r['has_time'] as num?)?.toInt() ?? 0) == 1,
-          custom: true,
-        ),
-    ];
+    final rows = await db.query(
+      'journal_field_def',
+      where: includeHidden ? null : 'hidden = 0',
+      orderBy: 'label ASC',
+    );
+    return [for (final r in rows) parseStoredCustomJournalField(r)];
   }
 
   /// Create-only. A conflicting key THROWS instead of replacing: REPLACE
   /// would silently rewrite another definition's metadata (label, unit, kind)
   /// while its recorded history stayed — a field that means something else
-  /// wearing the old rows. The UI rejects duplicates before it gets here; the
-  /// throw is the race/programmatic-caller backstop.
-  static Future<void> putJournalFieldDef(JournalFieldSpec spec) async {
+  /// wearing the old rows. Hidden rows and orphan `journal_metric` keys are
+  /// the same hole; refuse them too. The throw is the race/programmatic-caller
+  /// backstop.
+  static Future<JournalFieldSpec> putJournalFieldDef(JournalFieldSpec spec) async {
+    final prepared = preparedCustomJournalField(spec);
     final db = await instance;
-    final exists = await db.query(
-      'journal_field_def',
-      where: 'key = ?',
-      whereArgs: [spec.key],
-      limit: 1,
-    );
-    if (exists.isNotEmpty) {
-      throw StateError('journal field already exists: ${spec.key}');
-    }
-    await db.insert('journal_field_def', {
-      'key': spec.key,
-      'label': spec.label,
-      'kind': spec.kind.name,
-      'unit': spec.unit,
-      'max_value': spec.max,
-      'step': spec.step,
-      'has_time': spec.hasTime ? 1 : 0,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
+    return db.transaction((txn) async {
+      final exists = await txn.query(
+        'journal_field_def',
+        where: 'key = ?',
+        whereArgs: [prepared.key],
+        limit: 1,
+      );
+      if (exists.isNotEmpty) {
+        throw StateError('journal field already exists: ${prepared.key}');
+      }
+      final orphan = await txn.query(
+        'journal_metric',
+        columns: ['field'],
+        where: 'field = ?',
+        whereArgs: [prepared.key],
+        limit: 1,
+      );
+      if (orphan.isNotEmpty) {
+        throw StateError(
+          'journal field key is already recorded: ${prepared.key}',
+        );
+      }
+      await txn.insert('journal_field_def', {
+        'key': prepared.key,
+        'label': prepared.label,
+        'kind': prepared.kind.name,
+        'unit': prepared.unit,
+        'max_value': prepared.max,
+        'step': prepared.step,
+        'has_time': prepared.hasTime ? 1 : 0,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+        'hidden': 0,
+      });
+      return prepared;
     });
+  }
+
+  /// Archive a custom definition. History and metadata stay. Missing keys
+  /// are a no-op, matching the previous hard-delete.
+  static Future<void> hideJournalFieldDef(String key) async {
+    if (kJournalFieldsByKey.containsKey(key) || key.isEmpty) {
+      throw ArgumentError.value(
+        key,
+        'key',
+        'Cannot hide a built-in journal field.',
+      );
+    }
+    final db = await instance;
+    await db.update(
+      'journal_field_def',
+      {'hidden': 1},
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+  }
+
+  /// Reactivate the same identity. Definition metadata is not rewritten.
+  static Future<void> restoreJournalFieldDef(String key) async {
+    final db = await instance;
+    final n = await db.update(
+      'journal_field_def',
+      {'hidden': 0},
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (n == 0) {
+      throw StateError('journal field not found: $key');
+    }
   }
 
   // ── nap edits ─────────────────────────────────────────────────────────────
 
   /// Log a nap the detector missed, or suppress one it invented.
-  static Future<void> putNapEdit({
+  /// Writes the ledger row and enqueues a new nap job revision in one
+  /// transaction so deleting the last edit still force-includes the day.
+  static Future<int> putNapEdit({
     required String dayId,
     required int startTs,
     required int endTs,
     required String source,
+    int? originStartTs,
+    int? originEndTs,
+  }) => commitNapLedger(
+        dayId: dayId,
+        puts: [
+          (
+            startTs: startTs,
+            endTs: endTs,
+            source: source,
+            originStartTs: originStartTs,
+            originEndTs: originEndTs,
+          ),
+        ],
+      );
+
+  static Future<int> deleteNapEdit(String dayId, int startTs) =>
+      commitNapLedger(dayId: dayId, deletes: [startTs]);
+
+  /// Atomic nap-ledger mutation + pending recalculation job.
+  static Future<int> commitNapLedger({
+    required String dayId,
+    List<
+      ({
+        int startTs,
+        int endTs,
+        String source,
+        int? originStartTs,
+        int? originEndTs,
+      })
+    >
+    puts = const [],
+    List<int> deletes = const [],
   }) async {
     final db = await instance;
-    await db.insert('sleep_nap', {
-      'day_id': dayId,
-      'start_ts': startTs,
-      'end_ts': endTs,
-      'source': source,
-      'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return db.transaction((txn) async {
+      for (final startTs in deletes) {
+        await txn.delete(
+          'sleep_nap',
+          where: 'day_id = ? AND start_ts = ?',
+          whereArgs: [dayId, startTs],
+        );
+      }
+      const sources = {'manual', 'rejected'};
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final row in puts) {
+        if (!sources.contains(row.source)) {
+          throw ArgumentError('Ungültige Quelle.');
+        }
+        await txn.insert('sleep_nap', {
+          'day_id': dayId,
+          'start_ts': row.startTs,
+          'end_ts': row.endTs,
+          'source': row.source,
+          'created_at': now ~/ 1000,
+          'origin_start_ts': row.originStartTs,
+          'origin_end_ts': row.originEndTs,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      final current = await txn.query(
+        'nap_recalc_job',
+        columns: ['revision'],
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+        limit: 1,
+      );
+      final revision = current.isEmpty
+          ? 1
+          : ((current.first['revision'] as num?)?.toInt() ?? 0) + 1;
+      await txn.insert('nap_recalc_job', {
+        'day_id': dayId,
+        'revision': revision,
+        'status': 'pending',
+        'requested_at': now,
+        'updated_at': now,
+        'error': null,
+        'result_algo_version': null,
+        'result_computed_at': null,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return revision;
+    });
   }
 
-  static Future<void> deleteNapEdit(String dayId, int startTs) async {
+  static Future<Map<String, dynamic>?> napRecalcJob(String dayId) async {
     final db = await instance;
-    await db.delete(
-      'sleep_nap',
-      where: 'day_id = ? AND start_ts = ?',
-      whereArgs: [dayId, startTs],
+    final rows = await db.query(
+      'nap_recalc_job',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+      limit: 1,
     );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<bool> updateNapRecalcJob({
+    required String dayId,
+    required int revision,
+    required String status,
+    String? error,
+    int? resultAlgoVersion,
+    int? resultComputedAt,
+    Set<String>? fromStatuses,
+  }) async {
+    final db = await instance;
+    final where = StringBuffer('day_id = ? AND revision = ?');
+    final args = <Object?>[dayId, revision];
+    if (fromStatuses != null && fromStatuses.isNotEmpty) {
+      where.write(
+        ' AND status IN (${List.filled(fromStatuses.length, '?').join(',')})',
+      );
+      args.addAll(fromStatuses);
+    }
+    final changed = await db.update(
+      'nap_recalc_job',
+      {
+        'status': status,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'error': error,
+        'result_algo_version': resultAlgoVersion,
+        'result_computed_at': resultComputedAt,
+      },
+      where: where.toString(),
+      whereArgs: args,
+    );
+    return changed == 1;
   }
 
   static Future<List<Map<String, dynamic>>> napEdits(String dayId) async {
@@ -10160,6 +14703,18 @@ class LocalDb {
   static Future<Set<String>> napEditDays() async {
     final db = await instance;
     final rows = await db.query('sleep_nap', columns: ['day_id']);
+    return {for (final r in rows) r['day_id'] as String};
+  }
+
+  /// Days with a pending nap job, including last-delete with an empty ledger.
+  /// Failed jobs stay explicit-retry only.
+  static Future<Set<String>> napRecalcPendingDays() async {
+    final db = await instance;
+    final rows = await db.query(
+      'nap_recalc_job',
+      columns: ['day_id'],
+      where: "status = 'pending'",
+    );
     return {for (final r in rows) r['day_id'] as String};
   }
 
@@ -10224,24 +14779,165 @@ class LocalDb {
 
   // ── lab results ───────────────────────────────────────────────────────────
 
+  static const Object _omitLabBound = Object();
+
   /// Upsert one result. Idempotent on (marker, date drawn), so re-entering a
   /// value corrects it instead of stacking a near-duplicate.
+  ///
+  /// [reportLow]/[reportHigh] default to omitted: an existing interval is left
+  /// alone. Pass null to record that the report had no bound.
   static Future<void> putLabResult({
     required String marker,
     required String takenOn,
     required double value,
     required String unit,
     String note = '',
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+    bool replaceExisting = true,
   }) async {
     final db = await instance;
-    await db.insert('lab_result', {
+    await db.transaction((txn) async {
+      if (!replaceExisting) {
+        final row = <String, Object?>{
+          'marker': marker,
+          'taken_on': takenOn,
+          'value': value,
+          'unit': unit,
+          'note': note,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        };
+        if (!identical(reportLow, _omitLabBound)) row['report_low'] = reportLow;
+        if (!identical(reportHigh, _omitLabBound)) {
+          row['report_high'] = reportHigh;
+        }
+        try {
+          await txn.insert(
+            'lab_result',
+            row,
+            conflictAlgorithm: ConflictAlgorithm.abort,
+          );
+        } on DatabaseException catch (e) {
+          if (e.isUniqueConstraintError()) {
+            throw StateError('lab_result occupied');
+          }
+          rethrow;
+        }
+        return;
+      }
+      await _putLabResultTxn(
+        txn,
+        marker: marker,
+        takenOn: takenOn,
+        value: value,
+        unit: unit,
+        note: note,
+        reportLow: reportLow,
+        reportHigh: reportHigh,
+      );
+    });
+  }
+
+  static Future<void> _putLabResultTxn(
+    Transaction txn, {
+    required String marker,
+    required String takenOn,
+    required double value,
+    required String unit,
+    required String note,
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+  }) async {
+    final existing = await txn.query(
+      'lab_result',
+      where: 'marker = ? AND taken_on = ?',
+      whereArgs: [marker, takenOn],
+    );
+    final row = <String, Object?>{
+      if (existing.isNotEmpty) ...existing.first,
       'marker': marker,
       'taken_on': takenOn,
       'value': value,
       'unit': unit,
       'note': note,
       'updated_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    };
+    if (!identical(reportLow, _omitLabBound)) row['report_low'] = reportLow;
+    if (!identical(reportHigh, _omitLabBound)) row['report_high'] = reportHigh;
+    await txn.insert(
+      'lab_result',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Move one draw to a new (marker, date). Fails if the destination exists
+  /// unless [replaceDestination] is true. Same-identity is a plain update.
+  static Future<void> relocateLabResult({
+    required String fromMarker,
+    required String fromTakenOn,
+    required String toMarker,
+    required String toTakenOn,
+    required double value,
+    required String unit,
+    String note = '',
+    Object? reportLow = _omitLabBound,
+    Object? reportHigh = _omitLabBound,
+    bool replaceDestination = false,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final same = fromMarker == toMarker && fromTakenOn == toTakenOn;
+      if (!same) {
+        final dest = await txn.query(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [toMarker, toTakenOn],
+        );
+        if (dest.isNotEmpty && !replaceDestination) {
+          throw StateError('lab_result destination occupied');
+        }
+        final source = await txn.query(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [fromMarker, fromTakenOn],
+        );
+        await txn.delete(
+          'lab_result',
+          where: 'marker = ? AND taken_on = ?',
+          whereArgs: [fromMarker, fromTakenOn],
+        );
+        if (source.isNotEmpty) {
+          await txn.insert(
+            'lab_result',
+            {
+              ...source.first,
+              'marker': toMarker,
+              'taken_on': toTakenOn,
+              'value': value,
+              'unit': unit,
+              'note': note,
+              'updated_at': DateTime.now().millisecondsSinceEpoch,
+              if (!identical(reportLow, _omitLabBound)) 'report_low': reportLow,
+              if (!identical(reportHigh, _omitLabBound))
+                'report_high': reportHigh,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+          return;
+        }
+      }
+      await _putLabResultTxn(
+        txn,
+        marker: toMarker,
+        takenOn: toTakenOn,
+        value: value,
+        unit: unit,
+        note: note,
+        reportLow: reportLow,
+        reportHigh: reportHigh,
+      );
+    });
   }
 
   static Future<void> deleteLabResult(String marker, String takenOn) async {
@@ -10270,21 +14966,48 @@ class LocalDb {
     return db.query('lab_marker_def', orderBy: 'label ASC');
   }
 
-  static Future<void> putLabMarkerDef(Map<String, dynamic> row) async {
+  static Future<void> putLabMarkerDef(
+    Map<String, dynamic> row, {
+    bool replaceExisting = true,
+  }) async {
     final db = await instance;
-    await db.insert('lab_marker_def', {
-      ...row,
-      'created_at': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.transaction((txn) async {
+      final key = row['key'];
+      final existing = await txn.query(
+        'lab_marker_def',
+        where: 'key = ?',
+        whereArgs: [key],
+      );
+      if (existing.isNotEmpty && !replaceExisting) {
+        throw StateError('lab_marker_def occupied');
+      }
+      if (existing.isEmpty) {
+        try {
+          await txn.insert('lab_marker_def', {
+            ...row,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          }, conflictAlgorithm: ConflictAlgorithm.abort);
+        } on DatabaseException catch (e) {
+          if (e.isUniqueConstraintError()) {
+            throw StateError('lab_marker_def occupied');
+          }
+          rethrow;
+        }
+        return;
+      }
+      await txn.insert('lab_marker_def', {
+        ...existing.first,
+        ...row,
+        'created_at': existing.first['created_at'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
   }
 
-  /// Forget a custom field's DEFINITION. Its recorded values are deliberately
-  /// left alone — they were real readings, and deleting a label should not
-  /// delete history.
-  static Future<void> deleteJournalFieldDef(String key) async {
-    final db = await instance;
-    await db.delete('journal_field_def', where: 'key = ?', whereArgs: [key]);
-  }
+  /// Archive a custom field's definition. Recorded values and the definition
+  /// row stay — hide is not purge. Same identity can be restored; the key
+  /// cannot be reused for a new unit or kind.
+  static Future<void> deleteJournalFieldDef(String key) =>
+      hideJournalFieldDef(key);
 
   /// Forget a custom marker's DEFINITION. Its results are left alone — those
   /// were real draws, and each row already carries its own unit, so they stay
@@ -10296,22 +15019,93 @@ class LocalDb {
 
   // ── cycle log I/O ─────────────────────────────────────────────────────────────
 
+  static void _assertWritableCycleDate(String date, {DateTime? now}) {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Expected a Gregorian YYYY-MM-DD.',
+      );
+    }
+    if (date.compareTo(todayLabel(now)) > 0) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Cycle writes cannot be after local today.',
+      );
+    }
+  }
+
+  static bool _cycleStartSetChanged({
+    required bool existed,
+    required String? oldKind,
+    required String newKind,
+  }) {
+    final wasStart = oldKind == 'start';
+    final isStart = newKind == 'start';
+    if (!existed) return isStart;
+    return wasStart != isStart;
+  }
+
   static Future<void> putCycleLog(
     String date,
     String kind, {
     String? note,
+    DateTime? now,
   }) async {
+    _assertWritableCycleDate(date, now: now);
     final db = await instance;
-    await db.insert('cycle_log', {
-      'date': date,
-      'kind': kind,
-      'note': note,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    var changedStarts = false;
+    await db.transaction((txn) async {
+      final existing = await txn.query(
+        'cycle_log',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      await txn.insert('cycle_log', {
+        'date': date,
+        'kind': kind,
+        'note': note,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final oldKind =
+          existing.isEmpty ? null : existing.first['kind']?.toString();
+      if (_cycleStartSetChanged(
+        existed: existing.isNotEmpty,
+        oldKind: oldKind,
+        newKind: kind,
+      )) {
+        changedStarts = true;
+        await invalidateCycleContext(txn);
+      }
+    });
+    if (changedStarts) onCycleContextInvalidated?.call();
   }
 
   static Future<void> deleteCycleLog(String date) async {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(
+        date,
+        'date',
+        'Expected a Gregorian YYYY-MM-DD.',
+      );
+    }
     final db = await instance;
-    await db.delete('cycle_log', where: 'date = ?', whereArgs: [date]);
+    var changedStarts = false;
+    await db.transaction((txn) async {
+      final existing = await txn.query(
+        'cycle_log',
+        where: 'date = ?',
+        whereArgs: [date],
+        limit: 1,
+      );
+      await txn.delete('cycle_log', where: 'date = ?', whereArgs: [date]);
+      if (existing.isNotEmpty && existing.first['kind'] == 'start') {
+        changedStarts = true;
+        await invalidateCycleContext(txn);
+      }
+    });
+    if (changedStarts) onCycleContextInvalidated?.call();
   }
 
   /// All cycle markers, oldest first.
@@ -10483,6 +15277,11 @@ class LocalDb {
     // and "best" on the strength screen (recentSetsFor reads strength_set with
     // no session-existence filter) and kept exporting under a dead session_id.
     await db.delete('strength_set', where: 'session_id = ?', whereArgs: [id]);
+    await db.delete(
+      'openband_strength_session',
+      where: 'session_id = ?',
+      whereArgs: [id],
+    );
   }
 
   // ── workout GPS routes (run/ride/walk) I/O ─────────────────────────────────

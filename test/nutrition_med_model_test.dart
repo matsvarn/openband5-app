@@ -2,9 +2,11 @@
 // database — every one of them is a pure function on purpose.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/med_store.dart';
 import 'package:openstrap_edge/data/nutrition_store.dart';
+import 'package:openstrap_edge/openband/medication_data.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 FoodEntry _entry({
   required String date,
@@ -215,114 +217,226 @@ void main() {
     }
   });
 
-  group('medication adherence states its window and forgives the future', () {
-    final def = MedDef(
-      key: 'custom_d',
-      label: 'Vitamin D',
-      schedule: const [
-        MedSchedule(8 * 60, [1, 2, 3, 4, 5, 6, 7]),
-        MedSchedule(21 * 60, [1, 2, 3, 4, 5, 6, 7]),
-      ],
-    );
+  group('medication day reads are revision-aware', () {
+    late Database db;
 
-    test('a slot still ahead of you today is in no denominator', () {
-      final now = DateTime(2026, 8, 15, 12);
-      final slots = slotsForDay([def], todayLabel(now), const {}, now: now);
-      expect(slots.map((s) => s.state), [
-        DoseState.missed, // 08:00 has passed untaken
-        DoseState.upcoming, // 21:00 has not
+    setUpAll(() {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    });
+
+    setUp(() async {
+      final path = p.join(
+        await databaseFactory.getDatabasesPath(),
+        'nutrition_med_model_${DateTime.now().microsecondsSinceEpoch}.db',
+      );
+      db = await databaseFactory.openDatabase(path);
+      await createMedTables(db, now: DateTime(2026, 8, 1, 8));
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    const daily = [
+      MedicationScheduleSlot(
+        minuteOfDay: 8 * 60,
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      MedicationScheduleSlot(
+        minuteOfDay: 21 * 60,
+        weekdays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+    ];
+
+    test('a missing answer is unknown, never skipped, and not a percentage', () async {
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: true,
+          key: 'custom_d',
+          name: 'Vitamin D',
+          schedule: daily,
+        ),
+        now: DateTime(2026, 8, 14, 7),
+      );
+      final day = await MedDb.readDay(
+        db,
+        '2026-08-15',
+        now: DateTime(2026, 8, 15, 12),
+      );
+      expect(day.entries.map((e) => e.status), [
+        MedicationSlotStatus.unknown,
+        MedicationSlotStatus.upcoming,
       ]);
-      final a = adherence(slots);
-      expect(a, (taken: 0, of: 1));
-    });
-
-    test('a taken dose counts, and an inactive medication does not', () {
-      final now = DateTime(2026, 8, 15, 22);
-      final date = todayLabel(now);
-      final slots = slotsForDay(
-        [
-          def,
-          MedDef(
-            key: 'custom_off',
-            label: 'Stopped',
-            active: false,
-            schedule: const [
-              MedSchedule(9 * 60, [1, 2, 3, 4, 5, 6, 7]),
-            ],
-          ),
-        ],
-        date,
-        {
-          'custom_d': {
-            8 * 60: {'taken_ts': 1, 'skipped': 0},
-          },
-        },
-        now: now,
+      expect(
+        day.entries.any((e) => e.status == MedicationSlotStatus.skipped),
+        isFalse,
       );
-      expect(slots, hasLength(2));
-      expect(adherence(slots), (taken: 1, of: 2));
     });
 
-    test('no slot exists before the medication did', () {
-      // Added today at 15:00. The 08:00 dose today, and every dose on every
-      // earlier day, was never an opportunity — resolving them as misses put a
-      // fabricated denominator ("0 of 7") on the Adherence card the moment a
-      // medication was saved.
-      final now = DateTime(2026, 8, 15, 23);
-      final added = MedDef(
-        key: 'custom_new',
-        label: 'Just added',
-        createdAt: DateTime(2026, 8, 15, 15).millisecondsSinceEpoch,
-        schedule: const [
-          MedSchedule(8 * 60, [1, 2, 3, 4, 5, 6, 7]),
-          MedSchedule(21 * 60, [1, 2, 3, 4, 5, 6, 7]),
-        ],
+    test('a taken dose is taken; an ended plan does not generate future slots', () async {
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: true,
+          key: 'custom_d',
+          name: 'Vitamin D',
+          schedule: daily,
+        ),
+        now: DateTime(2026, 8, 14, 7),
+      );
+      await MedDb.markDose(
+        db,
+        const MedicationEntryDraft(
+          key: 'custom_d',
+          date: '2026-08-15',
+          slotMin: 8 * 60,
+          answer: MedicationEntryAnswer.taken,
+        ),
+        now: DateTime(2026, 8, 15, 8, 10),
+      );
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: false,
+          key: 'custom_d',
+          name: 'Vitamin D',
+          schedule: daily,
+          active: false,
+        ),
+        now: DateTime(2026, 8, 15, 12),
+      );
+      final today = await MedDb.readDay(
+        db,
+        '2026-08-15',
+        now: DateTime(2026, 8, 15, 22),
       );
       expect(
-        slotsForDay([added], '2026-08-14', const {}, now: now),
-        isEmpty,
-        reason: 'the day before it existed',
+        today.entries.where((e) => e.status == MedicationSlotStatus.taken),
+        hasLength(1),
       );
-      final todaySlots = slotsForDay([added], '2026-08-15', const {}, now: now);
-      expect(todaySlots.map((s) => s.slotMin), [21 * 60]);
-      expect(adherence(todaySlots), (taken: 0, of: 1));
-    });
-
-    test('a dose already recorded against a pre-creation slot is still shown',
-        () {
-      // deleteDef keeps dose history and a re-added key picks it back up. A
-      // recorded dose is real data whatever the creation stamp says.
-      final now = DateTime(2026, 8, 15, 23);
-      final readded = MedDef(
-        key: 'custom_d',
-        label: 'Vitamin D',
-        createdAt: DateTime(2026, 8, 15, 15).millisecondsSinceEpoch,
-        schedule: const [
-          MedSchedule(8 * 60, [1, 2, 3, 4, 5, 6, 7]),
-        ],
-      );
-      final slots = slotsForDay([readded], '2026-08-15', {
-        'custom_d': {
-          8 * 60: {'taken_ts': 1, 'skipped': 0},
-        },
-      }, now: now);
-      expect(slots.single.state, DoseState.taken);
-    });
-
-    test('a schedule that skips a weekday emits no slot that day', () {
-      // 2026-08-15 is a Saturday (weekday 6).
-      final now = DateTime(2026, 8, 15, 23);
-      final weekdaysOnly = MedDef(
-        key: 'custom_w',
-        label: 'Weekdays',
-        schedule: const [
-          MedSchedule(8 * 60, [1, 2, 3, 4, 5]),
-        ],
+      final tomorrow = await MedDb.readDay(
+        db,
+        '2026-08-16',
+        now: DateTime(2026, 8, 15, 22),
       );
       expect(
-        slotsForDay([weekdaysOnly], todayLabel(now), const {}, now: now),
+        tomorrow.entries.where((e) => !e.orphan),
         isEmpty,
       );
+    });
+
+    test('no generated slot exists before the covering revision', () async {
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: true,
+          key: 'custom_new',
+          name: 'Just added',
+          schedule: daily,
+        ),
+        now: DateTime(2026, 8, 15, 15),
+      );
+      final yesterday = await MedDb.readDay(
+        db,
+        '2026-08-14',
+        now: DateTime(2026, 8, 15, 23),
+      );
+      expect(yesterday.entries, isEmpty);
+      final today = await MedDb.readDay(
+        db,
+        '2026-08-15',
+        now: DateTime(2026, 8, 15, 23),
+      );
+      expect(today.entries.map((e) => e.slotMin), [21 * 60]);
+      expect(today.entries.single.status, MedicationSlotStatus.unknown);
+    });
+
+    test('a retained log keeps frozen metadata, not the live name', () async {
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: true,
+          key: 'custom_d',
+          name: 'Vitamin D',
+          doseValue: 2000,
+          doseUnit: 'IU',
+          schedule: [
+            MedicationScheduleSlot(
+              minuteOfDay: 8 * 60,
+              weekdays: [1, 2, 3, 4, 5, 6, 7],
+            ),
+          ],
+        ),
+        now: DateTime(2026, 8, 14, 7),
+      );
+      await MedDb.markDose(
+        db,
+        const MedicationEntryDraft(
+          key: 'custom_d',
+          date: '2026-08-15',
+          slotMin: 8 * 60,
+          answer: MedicationEntryAnswer.taken,
+        ),
+        now: DateTime(2026, 8, 15, 8, 5),
+      );
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: false,
+          key: 'custom_d',
+          name: 'Vitamin D3',
+          doseValue: 4000,
+          doseUnit: 'IU',
+          schedule: [
+            MedicationScheduleSlot(
+              minuteOfDay: 8 * 60,
+              weekdays: [1, 2, 3, 4, 5, 6, 7],
+            ),
+          ],
+          active: false,
+        ),
+        now: DateTime(2026, 8, 15, 8, 0),
+      );
+      final day = await MedDb.readDay(
+        db,
+        '2026-08-15',
+        now: DateTime(2026, 8, 15, 23),
+      );
+      final taken = day.entries.singleWhere(
+        (e) => e.status == MedicationSlotStatus.taken,
+      );
+      expect(taken.orphan, isTrue);
+      expect(taken.snapshotLabel, 'Vitamin D');
+      expect(taken.snapshotDoseValue, 2000);
+      expect(taken.currentName, 'Vitamin D3');
+      expect(taken.takenAt, isNotNull);
+    });
+
+    test('a schedule that skips a weekday emits no slot that day', () async {
+      await MedDb.commitPlan(
+        db,
+        const MedicationPlanDraft(
+          create: true,
+          key: 'custom_w',
+          name: 'Weekdays',
+          schedule: [
+            MedicationScheduleSlot(
+              minuteOfDay: 8 * 60,
+              weekdays: [1, 2, 3, 4, 5],
+            ),
+          ],
+        ),
+        now: DateTime(2026, 8, 14, 7),
+      );
+      // 2026-08-15 is a Saturday.
+      final day = await MedDb.readDay(
+        db,
+        '2026-08-15',
+        now: DateTime(2026, 8, 15, 23),
+      );
+      expect(day.entries, isEmpty);
     });
   });
 }

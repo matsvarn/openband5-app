@@ -23,7 +23,10 @@ import '../../import/import_container.dart';
 import '../../import/journal_csv_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../../openband/alp_tokens.dart';
+import '../../openband/theme.dart';
 import '../ui2.dart';
+import 'pairing.dart' show OnboardingBypass;
 
 /// What an import actually achieved, including what it could NOT use.
 class ImportOutcome {
@@ -74,6 +77,27 @@ class ImportOutcome {
   /// Part of a mixed selection could not be read while the rest imported.
   final String? readError;
 
+  /// Accepted `manual_vo2` revision rows. Not days, and not entry ids.
+  final int vo2Revisions;
+
+  /// Entry ids left untouched because the local chain diverged.
+  final int vo2ConflictIds;
+
+  /// Entry ids left untouched because the source chain could not be read.
+  final int vo2CorruptIds;
+
+  /// True when at least one source file had a `manual_vo2` table. An old
+  /// backup that lacks the table is false, which is different from a present
+  /// table whose counts are zero.
+  final bool vo2TablePresent;
+
+  /// Durable backup rows handled by the preserve-local restore path.
+  final int restoredRows;
+  final int unchangedRows;
+  final int restoreConflicts;
+  final int unreadableRows;
+  final int pendingRecalculations;
+
   const ImportOutcome({
     required this.source,
     this.days = 0,
@@ -87,6 +111,15 @@ class ImportOutcome {
     this.error,
     this.rollupError,
     this.readError,
+    this.vo2Revisions = 0,
+    this.vo2ConflictIds = 0,
+    this.vo2CorruptIds = 0,
+    this.vo2TablePresent = false,
+    this.restoredRows = 0,
+    this.unchangedRows = 0,
+    this.restoreConflicts = 0,
+    this.unreadableRows = 0,
+    this.pendingRecalculations = 0,
   });
 
   bool get lostSomething =>
@@ -94,8 +127,15 @@ class ImportOutcome {
 
   /// Nothing at all landed. A zero under a green tick is a no-op that reads as
   /// a success, which is the one thing an import report must never do.
+  /// Accepted VO2 revisions count. A backup that only carried those still
+  /// brought history in.
   bool get nothingLanded =>
-      days == 0 && workouts == 0 && skippedDays == 0 && journalRows == 0;
+      days == 0 &&
+      workouts == 0 &&
+      skippedDays == 0 &&
+      journalRows == 0 &&
+      vo2Revisions == 0 &&
+      restoredRows == 0;
 }
 
 /// Raised when an encrypted backup was picked and the user closed the
@@ -145,17 +185,24 @@ class _PassphraseDialogState extends State<_PassphraseDialog> {
     final v = _a.text;
     if (widget.creating) {
       if (v.length < kMinPassphraseChars) {
-        setState(() => _error = l?.welcomePassphraseTooShort(kMinPassphraseChars) ??
-            'At least $kMinPassphraseChars characters.');
+        setState(
+          () => _error =
+              l?.welcomePassphraseTooShort(kMinPassphraseChars) ??
+              'At least $kMinPassphraseChars characters.',
+        );
         return;
       }
       if (v != _b.text) {
-        setState(() => _error = l?.welcomePassphraseMismatch ??
-            'The two do not match.');
+        setState(
+          () =>
+              _error = l?.welcomePassphraseMismatch ?? 'The two do not match.',
+        );
         return;
       }
     } else if (v.isEmpty) {
-      setState(() => _error = l?.welcomePassphraseEmpty ?? 'Enter the passphrase.');
+      setState(
+        () => _error = l?.welcomePassphraseEmpty ?? 'Enter the passphrase.',
+      );
       return;
     }
     Navigator.of(context).pop(v);
@@ -166,55 +213,68 @@ class _PassphraseDialogState extends State<_PassphraseDialog> {
     final creating = widget.creating;
     final l = AppLocalizations.of(c);
     return AlertDialog(
-      title: Text(creating
-          ? (l?.welcomeChoosePassphrase ?? 'Choose a passphrase')
-          : (l?.welcomePassphrase ?? 'Passphrase')),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(creating
-            // Both halves, in the same breath. The second half is not a
-            // warning bolted onto a feature — it IS the feature: nothing can
-            // open this file without the passphrase, including us, because
-            // there is no account and no server holding a key.
-            ? (l?.welcomePassphraseCreateNote ??
-                'The file is unreadable without it. And a forgotten passphrase '
-                    'means that backup is gone — there is no recovery, because '
-                    'there is no account and no server holding a key. That is the '
-                    'same thing that keeps it private.')
-            : (l?.welcomePassphraseOpenNote ??
-                'The one you chose when this backup was written.')),
-        const SizedBox(height: S.x4),
-        TextField(
-          controller: _a,
-          obscureText: true,
-          autofocus: true,
-          decoration: InputDecoration(
-              labelText: l?.welcomePassphrase ?? 'Passphrase'),
-          onSubmitted: creating ? null : (_) => _submit(),
-        ),
-        if (creating) ...[
-          const SizedBox(height: S.x3),
-          TextField(
-            controller: _b,
-            obscureText: true,
-            decoration: InputDecoration(
-                labelText: l?.welcomeRepeatIt ?? 'Repeat it'),
-            onSubmitted: (_) => _submit(),
+      title: Text(
+        creating
+            ? (l?.welcomeChoosePassphrase ?? 'Choose a passphrase')
+            : (l?.welcomePassphrase ?? 'Passphrase'),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            creating
+                // Both halves, in the same breath. The second half is not a
+                // warning bolted onto a feature — it IS the feature: nothing can
+                // open this file without the passphrase, including us, because
+                // there is no account and no server holding a key.
+                ? (l?.welcomePassphraseCreateNote ??
+                      'The file is unreadable without it. And a forgotten passphrase '
+                          'means that backup is gone — there is no recovery, because '
+                          'there is no account and no server holding a key. That is the '
+                          'same thing that keeps it private.')
+                : (l?.welcomePassphraseOpenNote ??
+                      'The one you chose when this backup was written.'),
           ),
+          const SizedBox(height: S.x4),
+          TextField(
+            controller: _a,
+            obscureText: true,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: l?.welcomePassphrase ?? 'Passphrase',
+            ),
+            onSubmitted: creating ? null : (_) => _submit(),
+          ),
+          if (creating) ...[
+            const SizedBox(height: S.x3),
+            TextField(
+              controller: _b,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: l?.welcomeRepeatIt ?? 'Repeat it',
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: S.x3),
+            Text(_error!, style: F.cap.copyWith(color: P.of(c).on(C.red))),
+          ],
         ],
-        if (_error != null) ...[
-          const SizedBox(height: S.x3),
-          Text(_error!, style: F.cap.copyWith(color: P.of(c).on(C.red))),
-        ],
-      ]),
+      ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.of(c).pop(),
-            child: Text(l?.actionCancel ?? 'Cancel')),
+          onPressed: () => Navigator.of(c).pop(),
+          child: Text(l?.actionCancel ?? 'Cancel'),
+        ),
         TextButton(
-            onPressed: _submit,
-            child: Text(creating
+          onPressed: _submit,
+          child: Text(
+            creating
                 ? (l?.welcomeEncrypt ?? 'Encrypt')
-                : (l?.welcomeUnlock ?? 'Unlock'))),
+                : (l?.welcomeUnlock ?? 'Unlock'),
+          ),
+        ),
       ],
     );
   }
@@ -235,12 +295,15 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     final app = context.read<AppState>();
     FilePickerResult? picked;
     try {
-      picked = await FilePicker.platform
-          .pickFiles(allowMultiple: true, withReadStream: false);
+      picked = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withReadStream: false,
+      );
     } catch (e) {
       if (mounted) {
-        setState(() =>
-            _outcome = ImportOutcome(source: 'File picker', error: '$e'));
+        setState(
+          () => _outcome = ImportOutcome(source: 'File picker', error: '$e'),
+        );
       }
       return;
     }
@@ -255,8 +318,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       _outcome = null;
     });
     try {
-      final outcome = await runImport(app, paths,
-          askPassphrase: () => askBackupPassphrase(context));
+      final outcome = await runImport(
+        app,
+        paths,
+        askPassphrase: () => askBackupPassphrase(context),
+      );
       if (!mounted) return;
       setState(() => _outcome = outcome);
       // Anything that landed counts as bringing history in — a workouts-only
@@ -267,8 +333,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       // Closing the prompt is a decision, not a failure. Say nothing.
     } catch (e) {
       if (mounted) {
-        setState(() =>
-            _outcome = ImportOutcome(source: 'Import', error: '$e'));
+        setState(() => _outcome = ImportOutcome(source: 'Import', error: '$e'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -277,11 +342,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext c) => WelcomeView(
-        busy: _busy,
-        outcome: _outcome,
-        onNew: () => context.read<AppState>().chooseNewUser(),
-        onImport: _import,
-      );
+    busy: _busy,
+    outcome: _outcome,
+    onNew: () => context.read<AppState>().chooseNewUser(),
+    onImport: _import,
+    onSkip: () => OnboardingBypass.mark(OnboardingBypass.kPairing),
+  );
 }
 
 /// Route [paths] to the importer that understands them and normalise the
@@ -291,7 +357,10 @@ Future<ImportOutcome> runImport(
   AppState app,
   List<String> paths, {
   Future<String?> Function()? askPassphrase,
+  @visibleForTesting
+  Future<JournalImportResult> Function(String path)? debugReadJournal,
 }) async {
+  final readJournal = debugReadJournal ?? importJournalCsvFile;
   // An encrypted backup is identified by its MAGIC, not its extension: it comes
   // back off iCloud Drive or a mail attachment with whatever name that round
   // trip gave it, and routing a ciphertext into the vendor-CSV importer would
@@ -301,6 +370,10 @@ Future<ImportOutcome> runImport(
   final sources = <String>[];
   var days = 0, workouts = 0, skipped = 0, late = 0, stranded = 0;
   var journalRows = 0;
+  var vo2Revisions = 0, vo2Conflicts = 0, vo2Corrupt = 0;
+  var restoredRows = 0, unchangedRows = 0, restoreConflicts = 0;
+  var unreadableRows = 0, pendingRecalculations = 0;
+  var vo2TablePresent = false;
   final corruptTables = <String>{};
   final rejected = <String>[];
   String? rollupError;
@@ -313,7 +386,8 @@ Future<ImportOutcome> runImport(
       continue;
     }
     if (askPassphrase == null) {
-      cryptoError = 'That file is an encrypted backup. Open it from '
+      cryptoError =
+          'That file is an encrypted backup. Open it from '
           'Settings → Your data, where the passphrase can be asked for.';
       continue;
     }
@@ -359,13 +433,34 @@ Future<ImportOutcome> runImport(
 
   if (decrypted.isNotEmpty) sources.add('Encrypted backup');
   if (plain.any(_isDbBackup)) sources.add('OpenStrap backup');
+  final backupFailures = <Object>[];
+  var backupsRead = 0;
   try {
     for (final p in db) {
-      days += await app.importEdgeBackup(p);
-      // The rows are in and the rollup rebuild threw. AppState's own note:
-      // reporting the row count alone claims a success the user does not have
-      // — which is exactly what this path did until now.
-      rollupError ??= app.importRollupError;
+      try {
+        final receipt = await app.importEdgeBackup(p);
+        backupsRead++;
+        days += receipt.days;
+        if (receipt.vo2TablePresent) {
+          vo2TablePresent = true;
+          vo2Revisions += receipt.insertedRevisions;
+          vo2Conflicts += receipt.conflictIds;
+          vo2Corrupt += receipt.corruptIds;
+        }
+        restoredRows += receipt.restoredRows;
+        unchangedRows += receipt.unchangedRows;
+        restoreConflicts += receipt.restoreConflicts;
+        unreadableRows += receipt.unreadableRows;
+        pendingRecalculations += receipt.pendingRecalculations;
+        // The rows are in and the rollup rebuild threw. The receipt is the
+        // backup result. A later file must not wipe an earlier failure.
+        rollupError ??= receipt.recalculationError;
+        if (receipt.readError != null) backupFailures.add(receipt.readError!);
+      } catch (e) {
+        // A later file that cannot be read must not discard a backup that
+        // already committed, and must not skip the files after it.
+        backupFailures.add(e);
+      }
     }
   } finally {
     // The decrypted copy is the whole health record in plaintext. It exists
@@ -377,15 +472,24 @@ Future<ImportOutcome> runImport(
       } catch (_) {}
     }
   }
+  var rawRead = 0;
   if (raw.isNotEmpty) {
     sources.add('Raw sensor export');
     for (final p in raw) {
-      days += await app.importNoopCsv(p);
-      final r = app.lastNoopImport;
-      if (r != null) {
-        late += r.lateRows;
-        stranded += r.strandedDates.length;
-        corruptTables.addAll(r.corruptTables);
+      try {
+        days += await app.importNoopCsv(p);
+        rawRead++;
+        final r = app.lastNoopImport;
+        if (r != null) {
+          late += r.lateRows;
+          stranded += r.strandedDates.length;
+          corruptTables.addAll(r.corruptTables);
+        }
+      } catch (e) {
+        // The call did not return a day count. Do not read [lastNoopImport]:
+        // that would re-count an earlier file, or rows this attempt did not
+        // finish proving.
+        backupFailures.add(e);
       }
     }
   }
@@ -395,6 +499,7 @@ Future<ImportOutcome> runImport(
   // file that is not one throws without touching the database and falls
   // through to the vendor importer below.
   final vendor = <String>[];
+  var journalRead = 0;
   for (final p in csv) {
     // Only a TEXT file can be a journal export, and `importJournalCsvFile`
     // reads it as a string. Vendor exports arrive here as ZIPs now that routing
@@ -402,13 +507,21 @@ Future<ImportOutcome> runImport(
     // comes back as `FileSystemException: Failed to decode data using encoding
     // 'utf-8'`, which no catch below was going to turn into advice. The vendor
     // path unwraps archives (and gzip) properly, so hand them straight over.
-    if (await sniffFile(p) != ImportContainer.text) {
+    final ImportContainer kind;
+    try {
+      kind = await sniffFile(p);
+    } catch (e) {
+      backupFailures.add(e);
+      continue;
+    }
+    if (kind != ImportContainer.text) {
       vendor.add(p);
       continue;
     }
     try {
-      final r = await importJournalCsvFile(p);
+      final r = await readJournal(p);
       journalRows += r.imported;
+      journalRead++;
       // This one writes straight to the journal store rather than through
       // AppState, so it has to raise the signal itself — every other importer
       // here does it from its AppState method.
@@ -421,18 +534,20 @@ Future<ImportOutcome> runImport(
       // Text, but not UTF-8 — a latin1/cp1252 CSV out of a spreadsheet. The
       // sniff above cannot see that, and the vendor importer decodes leniently.
       vendor.add(p);
+    } catch (e) {
+      backupFailures.add(e);
     }
   }
 
   String? readError;
+  var vendorRead = 0;
   if (vendor.isNotEmpty) {
     // The catch-all group: anything that is not a backup or a raw export is
     // handed to the vendor importer, so it is also where junk in a mixed
-    // selection lands. Throwing from here would report an OpenStrap backup
-    // that HAS just landed as a failed import, so it is caught and named
-    // instead — unless it is the only thing that was picked.
+    // selection lands.
     try {
       days += await app.importWhoopCsvs(vendor);
+      vendorRead++;
       sources.add('Vendor CSV export');
       final r = app.lastWhoopImport;
       if (r != null) {
@@ -440,9 +555,21 @@ Future<ImportOutcome> runImport(
         skipped += r.skippedExistingDays;
       }
     } catch (e) {
-      if (db.isEmpty && raw.isEmpty && journalRows == 0) rethrow;
-      readError = '$e';
+      backupFailures.add(e);
     }
+  }
+
+  // Every selected source failed: still an error, not an empty success.
+  // A backup that already returned its receipt is kept, and the later failure
+  // is named beside it.
+  final landed =
+      backupsRead > 0 || rawRead > 0 || journalRead > 0 || vendorRead > 0;
+  if (backupFailures.isNotEmpty && !landed && cryptoError == null) {
+    if (backupFailures.length == 1) throw backupFailures.first;
+    throw FileSystemException(backupFailures.map((e) => '$e').join('\n'));
+  }
+  if (backupFailures.isNotEmpty) {
+    readError = backupFailures.map((e) => '$e').join('\n');
   }
 
   return ImportOutcome(
@@ -456,6 +583,15 @@ Future<ImportOutcome> runImport(
     journalRows: journalRows,
     rejectedRows: rejected,
     rollupError: rollupError,
+    vo2Revisions: vo2Revisions,
+    vo2ConflictIds: vo2Conflicts,
+    vo2CorruptIds: vo2Corrupt,
+    vo2TablePresent: vo2TablePresent,
+    restoredRows: restoredRows,
+    unchangedRows: unchangedRows,
+    restoreConflicts: restoreConflicts,
+    unreadableRows: unreadableRows,
+    pendingRecalculations: pendingRecalculations,
     // A file that would not decrypt is reported the same way a file that would
     // not parse is: named, alongside whatever else did land.
     readError: readError ?? cryptoError,
@@ -495,7 +631,8 @@ Future<String> decryptToTemp(String path, String passphrase) async {
   final dest =
       '${tmp.path}/restore-${DateTime.now().millisecondsSinceEpoch}.db';
   await Isolate.run(
-      () => decryptBackupFile(File(path), File(dest), passphrase));
+    () => decryptBackupFile(File(path), File(dest), passphrase),
+  );
   return dest;
 }
 
@@ -517,6 +654,7 @@ class WelcomeView extends StatelessWidget {
   final ImportOutcome? outcome;
   final VoidCallback onNew;
   final VoidCallback onImport;
+  final VoidCallback? onSkip;
 
   const WelcomeView({
     super.key,
@@ -524,47 +662,96 @@ class WelcomeView extends StatelessWidget {
     required this.onImport,
     this.busy = false,
     this.outcome,
+    this.onSkip,
   });
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final p = OB.of(c);
     final l = AppLocalizations.of(c);
     final o = outcome;
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: p.canvas,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(S.x4, S.x8, S.x4, S.x8),
+          padding: const EdgeInsets.fromLTRB(16, 32, 16, 32),
           children: [
-            Icon(LucideIcons.activity, size: 40, color: p.on(C.green)),
-            const SizedBox(height: S.x5),
-            Text(l?.welcomeHeadline ?? 'Your band, decoded here',
-                style: F.display.copyWith(color: p.ink)),
-            const SizedBox(height: S.x3),
+            Icon(LucideIcons.activity, size: 40, color: p.action),
+            const SizedBox(height: 20),
+            Text(
+              l?.welcomeHeadline ?? 'Your band, decoded here',
+              style: p.text(30, weight: FontWeight.w800, display: true),
+            ),
+            const SizedBox(height: 12),
             Text(
               l?.welcomeSubhead ??
                   'Every number is computed on this phone from the raw signal.',
-              style: F.body.copyWith(color: p.ink2),
+              style: p.text(15, color: p.muted),
             ),
-            const SizedBox(height: S.x6),
-            Pill(l?.pillLocalNoCloud ?? 'Local · no cloud', C.green,
-                icon: LucideIcons.shieldCheck),
-            const SizedBox(height: S.x8),
-            BigButton(l?.welcomeSetUpMyBand ?? 'Set up my band',
-                icon: LucideIcons.bluetooth,
-                color: C.green,
-                onTap: busy ? null : onNew),
-            const SizedBox(height: S.x3),
-            BigButton(
-                busy
-                    ? (l?.welcomeImporting ?? 'Importing…')
-                    : (l?.welcomeBringMyHistoryFirst ?? 'Bring my history first'),
-                icon: LucideIcons.upload,
-                color: C.blue,
-                soft: true,
-                onTap: busy ? null : onImport),
-            const SizedBox(height: S.x3),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: p.recoveryTint,
+                      borderRadius: BorderRadius.circular(AlpRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.shieldCheck,
+                          size: 14,
+                          color: p.recoveryText,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            l?.pillLocalNoCloud ?? 'Local · no cloud',
+                            style: p.text(
+                              13,
+                              weight: FontWeight.w600,
+                              color: p.recoveryText,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            OBAction(
+              l?.welcomeSetUpMyBand ?? 'Band verbinden',
+              onPressed: busy ? null : onNew,
+            ),
+            const SizedBox(height: 12),
+            OBAction(
+              busy
+                  ? (l?.welcomeImporting ?? 'Importing…')
+                  : (l?.welcomeBringMyHistoryFirst ?? 'Daten importieren'),
+              secondary: true,
+              onPressed: busy ? null : onImport,
+            ),
+            if (onSkip != null) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
+                  onPressed: busy ? null : onSkip,
+                  child: Text(
+                    'Später verbinden',
+                    style: p.text(14, weight: FontWeight.w500, color: p.muted),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
             Text(
               // Was: "imported days are marked as imported — they are never
               // mixed into days this app measured itself". There is no source
@@ -578,16 +765,13 @@ class WelcomeView extends StatelessWidget {
                       'Imported days sit alongside days this app measured and feed '
                       'the same baselines — but a day the band already measured is '
                       'never overwritten.',
-              style: F.cap.copyWith(color: p.ink3),
+              style: p.text(13, color: p.muted),
             ),
             if (busy) ...[
-              const SizedBox(height: S.x6),
-              Center(child: CircularProgressIndicator(color: p.on(C.blue))),
+              const SizedBox(height: 24),
+              Center(child: CircularProgressIndicator(color: p.action)),
             ],
-            if (o != null) ...[
-              const SizedBox(height: S.x6),
-              ImportReport(o),
-            ],
+            if (o != null) ...[const SizedBox(height: 24), ImportReport(o)],
           ],
         ),
       ),
@@ -604,137 +788,407 @@ class ImportReport extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final p = OB.of(c);
     final l = AppLocalizations.of(c);
     if (o.error != null) {
-      return StatusCard(
-        l?.welcomeSourceCouldNotBeRead(o.source) ??
-            '${o.source} could not be read',
+      final source = _sourceLabel(l);
+      return OBNoticeCard(
+        l?.welcomeSourceCouldNotBeRead(source) ?? '$source could not be read',
         o.error!,
         fix: l?.actionTryAnotherFile ?? 'Try another file',
         icon: LucideIcons.triangleAlert,
       );
     }
+    final showLegacy =
+        o.days > 0 ||
+        o.journalRows > 0 ||
+        o.workouts > 0 ||
+        o.skippedDays > 0;
+    final vo2 = _vo2Cards(p, l);
+    final showRestore = o.restoredRows > 0 ||
+        o.unchangedRows > 0 ||
+        o.restoreConflicts > 0 ||
+        o.unreadableRows > 0 ||
+        o.pendingRecalculations > 0;
+    if (o.readError != null && !showLegacy && vo2.isEmpty && !showRestore) {
+      return _incompleteRead(l);
+    }
     // A zero is not a success. Same tick, same words, nothing in the database.
-    if (o.nothingLanded) {
-      return StatusCard(
+    // A present VO2 table still has something to say when nothing else landed:
+    // no new changes, or the ids that were not imported.
+    if (!showLegacy && vo2.isEmpty && !showRestore) {
+      return OBNoticeCard(
         l?.welcomeNothingWasImported ?? 'Nothing was imported',
         // Every row refused is its own answer to "why is it empty?", and it
         // has to survive the empty case or the validation is invisible.
         o.rejectedRows.isNotEmpty
             ? (l?.welcomeEveryRowRefused(_rejects(o)) ??
-                'Every row was refused: ${_rejects(o)}')
+                  'Every row was refused: ${_rejects(o)}')
             : o.readError ??
-                (l?.welcomeNothingUsableInFile ??
-                    'The file was read but there was nothing in it this app could '
-                        'use, or every day in it was one this band had already '
-                        'measured.'),
+                  (l?.welcomeNothingUsableInFile ??
+                      'The file was read but there was nothing in it this app could '
+                          'use, or every day in it was one this band had already '
+                          'measured.'),
         fix: l?.actionTryAnotherFile ?? 'Try another file',
         icon: LucideIcons.fileWarning,
       );
     }
-    final also = [
-      if (o.workouts > 0) l?.welcomeWorkoutsCount(o.workouts) ??
-          '${o.workouts} workout${o.workouts == 1 ? '' : 's'}',
-      if (o.skippedDays > 0) l?.welcomeDaysAlreadyMeasured(o.skippedDays) ??
-          '${o.skippedDays} day${o.skippedDays == 1 ? '' : 's'} already measured '
-              'here and left alone',
-    ];
-    // A journal CSV writes no days, so the old headline read "0 days imported"
-    // over a successful import of 300 notes.
-    final headline = o.days > 0
-        ? l?.welcomeDaysImported(o.days) ??
-            '${o.days} day${o.days == 1 ? '' : 's'} imported'
-        : l?.welcomeJournalDaysWritten(o.journalRows) ??
-            '${o.journalRows} journal '
-                'day${o.journalRows == 1 ? '' : 's'} written';
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Surface(
-        child: Row(children: [
-          Icon(LucideIcons.check, size: 20, color: p.on(C.green)),
-          const SizedBox(width: S.x3),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(headline, style: F.head.copyWith(color: p.ink)),
-              Text(o.source, style: F.over.copyWith(color: p.ink3)),
-              if (also.isNotEmpty)
-                Text(also.join(' · '), style: F.over.copyWith(color: p.ink3)),
-              if (o.days > 0 && o.journalRows > 0)
-                Text(l?.welcomeJournalDaysReplaced(o.journalRows) ??
-                        '${o.journalRows} journal '
-                        'day${o.journalRows == 1 ? '' : 's'} replaced',
-                    style: F.over.copyWith(color: p.ink3)),
-            ]),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showLegacy) _legacyCard(p, l),
+        if (showRestore) ...[
+          if (showLegacy) const SizedBox(height: 12),
+          _restoreCard(p, l, Localizations.localeOf(c).languageCode == 'de'),
+        ],
+        if (vo2.isNotEmpty) ...[
+          if (showLegacy || showRestore) const SizedBox(height: 12),
+          ...vo2,
+        ],
+        // REJECTED, never clamped. A row outside its declared range is not
+        // salvageable by trimming it — that would store a value the user never
+        // wrote — so it is refused by line number and the other 300 land.
+        if (o.rejectedRows.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          OBNoticeCard(
+            l?.welcomeRowsRefused(o.rejectedRows.length) ??
+                '${o.rejectedRows.length} '
+                    'row${o.rejectedRows.length == 1 ? ' was' : 's were'} refused',
+            l?.welcomeRejectedDetail(_rejects(o)) ??
+                '${_rejects(o)} Nothing was trimmed to fit — fix those lines and '
+                    'import again.',
+            icon: LucideIcons.fileWarning,
           ),
-        ]),
-      ),
-      // REJECTED, never clamped. A row outside its declared range is not
-      // salvageable by trimming it — that would store a value the user never
-      // wrote — so it is refused by line number and the other 300 land.
-      if (o.rejectedRows.isNotEmpty) ...[
-        const SizedBox(height: S.x3),
-        StatusCard(
-          l?.welcomeRowsRefused(o.rejectedRows.length) ??
-              '${o.rejectedRows.length} '
-                  'row${o.rejectedRows.length == 1 ? ' was' : 's were'} refused',
-          l?.welcomeRejectedDetail(_rejects(o)) ??
-              '${_rejects(o)} Nothing was trimmed to fit — fix those lines and '
-                  'import again.',
-          icon: LucideIcons.fileWarning,
-        ),
+        ],
+        if (o.readError != null) ...[
+          const SizedBox(height: 12),
+          _incompleteRead(l),
+        ],
+        if (o.rollupError != null) ...[
+          const SizedBox(height: 12),
+          OBNoticeCard(
+            l?.welcomeSummariesDidNotTitle ??
+                'The days landed, the summaries did not',
+            l?.welcomeSummariesDidNotBody('${o.rollupError}') ??
+                'Every imported row is in the database, but rebuilding the cross-day '
+                    'summaries over them threw (${o.rollupError}), so trends and '
+                    'insights still describe the data you had before. Re-analyze '
+                    'everything from Your data rebuilds them.',
+            icon: LucideIcons.triangleAlert,
+          ),
+        ],
+        if (o.lostSomething) ...[
+          const SizedBox(height: 12),
+          OBNoticeCard(
+            l?.welcomePartOfFileNotUsedTitle ??
+                'Part of that file could not be used',
+            [
+              if (o.strandedDays > 0)
+                l?.welcomeStrandedDays(o.strandedDays) ??
+                    '${o.strandedDays} day${o.strandedDays == 1 ? '' : 's'} arrived '
+                        'out of order and were only used as context for the day '
+                        'that followed.',
+              if (o.lateRows > 0)
+                l?.welcomeLateRows(o.lateRows) ??
+                    '${o.lateRows} row${o.lateRows == 1 ? '' : 's'} arrived after '
+                        'their day had already been scored and closed.',
+              if (o.corruptTables.isNotEmpty)
+                '${o.corruptTables.join(', ')} could not be read — SQLite '
+                    'reported the file itself as corrupted for those tables. '
+                    'Every other table imported normally.',
+            ].join(' '),
+            fix: o.corruptTables.isNotEmpty
+                ? (l?.actionTryAnotherFile ?? 'Try another file')
+                : (l?.welcomeExportAgainInDateOrder ??
+                      'Export again in date order'),
+            icon: LucideIcons.fileWarning,
+          ),
+        ],
       ],
-      if (o.readError != null) ...[
-        const SizedBox(height: S.x3),
-        StatusCard(
-          l?.welcomeOneFileCouldNotBeRead ??
-              'One of those files could not be read',
-          l?.welcomeRestImported('${o.readError}') ??
-              'The rest imported. ${o.readError}',
-          icon: LucideIcons.fileWarning,
-        ),
-      ],
-      if (o.rollupError != null) ...[
-        const SizedBox(height: S.x3),
-        StatusCard(
-          l?.welcomeSummariesDidNotTitle ??
-              'The days landed, the summaries did not',
-          l?.welcomeSummariesDidNotBody('${o.rollupError}') ??
-              'Every imported row is in the database, but rebuilding the cross-day '
-                  'summaries over them threw (${o.rollupError}), so trends and '
-                  'insights still describe the data you had before. Re-analyze '
-                  'everything from Your data rebuilds them.',
-          icon: LucideIcons.triangleAlert,
-        ),
-      ],
-      if (o.lostSomething) ...[
-        const SizedBox(height: S.x3),
-        StatusCard(
-          l?.welcomePartOfFileNotUsedTitle ??
-              'Part of that file could not be used',
-          [
-            if (o.strandedDays > 0)
-              l?.welcomeStrandedDays(o.strandedDays) ??
-                  '${o.strandedDays} day${o.strandedDays == 1 ? '' : 's'} arrived '
-                  'out of order and were only used as context for the day '
-                  'that followed.',
-            if (o.lateRows > 0)
-              l?.welcomeLateRows(o.lateRows) ??
-                  '${o.lateRows} row${o.lateRows == 1 ? '' : 's'} arrived after '
-                      'their day had already been scored and closed.',
-            if (o.corruptTables.isNotEmpty)
-              '${o.corruptTables.join(', ')} could not be read — SQLite '
-                  'reported the file itself as corrupted for those tables. '
-                  'Every other table imported normally.',
-          ].join(' '),
-          fix: o.corruptTables.isNotEmpty
-              ? (l?.actionTryAnotherFile ?? 'Try another file')
-              : (l?.welcomeExportAgainInDateOrder ??
-                  'Export again in date order'),
-          icon: LucideIcons.fileWarning,
-        ),
-      ],
-    ]);
+    );
   }
+
+  Widget _legacyCard(OB p, AppLocalizations? l) {
+    final workouts =
+        l?.welcomeWorkoutsCount(o.workouts) ??
+        '${o.workouts} workout${o.workouts == 1 ? '' : 's'}';
+    final skipped =
+        l?.welcomeDaysAlreadyMeasured(o.skippedDays) ??
+        '${o.skippedDays} day${o.skippedDays == 1 ? '' : 's'} already measured '
+            'here and left alone';
+    // A journal CSV writes no days, so the old headline read "0 days imported"
+    // over a successful import of 300 notes. A workouts-only file then fell
+    // through to that same headline and read "0 journal days written".
+    final String headline;
+    var workoutInHeadline = false;
+    var skippedInHeadline = false;
+    if (o.days > 0) {
+      headline =
+          l?.welcomeDaysImported(o.days) ??
+          '${o.days} day${o.days == 1 ? '' : 's'} imported';
+    } else if (o.journalRows > 0) {
+      headline =
+          l?.welcomeJournalDaysWritten(o.journalRows) ??
+          '${o.journalRows} journal '
+              'day${o.journalRows == 1 ? '' : 's'} written';
+    } else if (o.workouts > 0) {
+      headline = workouts;
+      workoutInHeadline = true;
+    } else {
+      headline = skipped;
+      skippedInHeadline = true;
+    }
+    final also = [
+      if (o.workouts > 0 && !workoutInHeadline) workouts,
+      if (o.skippedDays > 0 && !skippedInHeadline) skipped,
+    ];
+    return OBCard(
+      child: Row(
+        children: [
+          if (o.readError == null) ...[
+            Icon(LucideIcons.check, size: 20, color: p.recovery),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(headline, style: p.text(15, weight: FontWeight.w600)),
+                Text(_sourceLabel(l), style: p.text(12, color: p.muted)),
+                if (also.isNotEmpty)
+                  Text(also.join(' · '), style: p.text(12, color: p.muted)),
+                if (o.days > 0 && o.journalRows > 0)
+                  Text(
+                    l?.welcomeJournalDaysReplaced(o.journalRows) ??
+                        '${o.journalRows} journal '
+                            'day${o.journalRows == 1 ? '' : 's'} replaced',
+                    style: p.text(12, color: p.muted),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _restoreCard(OB p, AppLocalizations? l, bool de) {
+    final withheld = o.restoreConflicts > 0 || o.unreadableRows > 0;
+    final title = o.restoredRows > 0
+        ? withheld
+              ? (de ? 'Teilweise importiert' : 'Partially imported')
+              : (de ? 'Importiert' : 'Imported')
+        : withheld
+        ? (de ? 'Nicht übernommen' : 'Not imported')
+        : (de ? 'Unverändert' : 'Unchanged');
+    String count(int n, String one, String many) => n == 1 ? one : '$n $many';
+    final lines = <String>[
+      if (o.restoredRows > 0)
+        count(
+          o.restoredRows,
+          de ? '1 Eintrag gespeichert' : '1 entry saved',
+          de ? 'Einträge gespeichert' : 'entries saved',
+        ),
+      if (o.unchangedRows > 0)
+        count(
+          o.unchangedRows,
+          de ? '1 unverändert' : '1 unchanged',
+          de ? 'unverändert' : 'unchanged',
+        ),
+      if (o.restoreConflicts > 0)
+        count(
+          o.restoreConflicts,
+          de
+              ? '1 Konflikt · lokal beibehalten'
+              : '1 conflict · local version kept',
+          de
+              ? 'Konflikte · lokal beibehalten'
+              : 'conflicts · local versions kept',
+        ),
+      if (o.unreadableRows > 0)
+        count(
+          o.unreadableRows,
+          de ? '1 Eintrag nicht lesbar' : '1 entry unreadable',
+          de ? 'Einträge nicht lesbar' : 'entries unreadable',
+        ),
+      if (o.pendingRecalculations > 0)
+        count(
+          o.pendingRecalculations,
+          de
+              ? '1 Neuberechnung ausstehend'
+              : '1 recalculation pending',
+          de
+              ? 'Neuberechnungen ausstehend'
+              : 'recalculations pending',
+        ),
+    ];
+    return _primaryCard(
+      p,
+      l,
+      title: title,
+      body: [
+        for (final line in lines)
+          Text(line, style: _receiptLine(p, 15, 21)),
+      ],
+    );
+  }
+
+  List<Widget> _vo2Cards(OB p, AppLocalizations? l) {
+    if (!o.vo2TablePresent) return const [];
+    final accepted = o.vo2Revisions;
+    final conflict = o.vo2ConflictIds;
+    final corrupt = o.vo2CorruptIds;
+    final withheld = conflict > 0 || corrupt > 0;
+    final interrupted = o.readError != null;
+    final lines = _withheldLines(p, l, conflict, corrupt);
+    if (accepted == 0 && !withheld) {
+      // An interrupted read is not "VO₂max unchanged".
+      if (interrupted) return const [];
+      return [
+        _primaryCard(
+          p,
+          l,
+          title: l?.welcomeVo2Unchanged ?? 'VO₂max unchanged',
+          body: const [],
+        ),
+      ];
+    }
+    if (accepted == 0) {
+      return [
+        _primaryCard(
+          p,
+          l,
+          title: l?.welcomeVo2NotImportedTitle ?? 'Not imported',
+          body: lines,
+          bodyGap: 4,
+        ),
+      ];
+    }
+    return [
+      _primaryCard(
+        p,
+        l,
+        title: withheld || interrupted
+            ? (l?.welcomeVo2PartialTitle ?? 'Partially imported')
+            : (l?.welcomeVo2ImportedTitle ?? 'Imported'),
+        body: [
+          Text(
+            l?.welcomeVo2Accepted(accepted) ??
+                (accepted == 1
+                    ? '1 VO₂max change accepted'
+                    : '$accepted VO₂max changes accepted'),
+            style: _receiptLine(p, 15, 21),
+          ),
+        ],
+      ),
+      if (withheld) ...[
+        const SizedBox(height: 12),
+        OBCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l?.welcomeVo2NotImportedTitle ?? 'Not imported',
+                style: _receiptLine(p, 14, 20, weight: FontWeight.w600),
+              ),
+              for (var i = 0; i < lines.length; i++) ...[
+                SizedBox(height: i == 0 ? 8 : 4),
+                lines[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    ];
+  }
+
+  Widget _incompleteRead(AppLocalizations? l) {
+    return OBNoticeCard(
+      l?.welcomeImportIncomplete ?? 'Import incomplete',
+      o.readError!,
+      icon: LucideIcons.fileWarning,
+    );
+  }
+
+  String _sourceLabel(AppLocalizations? l) {
+    return o.source
+        .replaceAll(
+          'Encrypted backup',
+          l?.welcomeSourceEncrypted ?? 'Encrypted backup',
+        )
+        .replaceAll(
+          'OpenStrap backup',
+          l?.welcomeSourceOpenBand ?? 'OpenBand backup',
+        );
+  }
+
+  Widget _primaryCard(
+    OB p,
+    AppLocalizations? l, {
+    required String title,
+    required List<Widget> body,
+    double bodyGap = 0,
+  }) {
+    return OBCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: _receiptLine(p, 18, 24, weight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Text(_sourceLabel(l), style: _receiptLine(p, 13, 18, color: p.muted)),
+          if (body.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (var i = 0; i < body.length; i++) ...[
+              if (i > 0 && bodyGap > 0) SizedBox(height: bodyGap),
+              body[i],
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _withheldLines(
+    OB p,
+    AppLocalizations? l,
+    int conflict,
+    int corrupt,
+  ) {
+    final style = _receiptLine(p, 14, 20);
+    return [
+      if (conflict > 0)
+        Text(
+          l?.welcomeVo2Conflicts(conflict) ??
+              (conflict == 1
+                  ? '1 VO₂max conflict'
+                  : '$conflict VO₂max conflicts'),
+          style: style,
+        ),
+      if (corrupt > 0)
+        Text(
+          l?.welcomeVo2Unreadable(corrupt) ??
+              (corrupt == 1
+                  ? '1 VO₂max entry unreadable'
+                  : '$corrupt VO₂max entries unreadable'),
+          style: style,
+        ),
+    ];
+  }
+}
+
+TextStyle _receiptLine(
+  OB p,
+  double size,
+  double linePx, {
+  FontWeight weight = FontWeight.w400,
+  Color? color,
+}) {
+  return p
+      .text(size, weight: weight, color: color)
+      .copyWith(height: linePx / size);
 }
 
 /// The first few refusals, with a count for the rest. Six is where a

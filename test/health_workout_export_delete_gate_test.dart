@@ -85,28 +85,49 @@ void main() {
   });
 
   group('exportWorkout delete-then-write', () {
-    // The host VM is neither iOS nor macOS, so `HealthExporter.isApple` is
-    // false and these exercise the Health-Connect reading of `delete`.
+    // `delete == false` means "nothing to delete" on HealthKit but "failed"
+    // on Health Connect, so the store is pinned per test instead of
+    // depending on whether the test host happens to be a Mac.
     late _FakeHealthStore store;
 
-    tearDown(() => store.remove());
-
-    test('a failed delete does not write a duplicate on top of it', () async {
-      store = _FakeHealthStore(deleteResult: false)..install();
-
-      final ok = await HealthExporter().exportWorkout(_session());
-
-      expect(ok, isFalse, reason: 'the caller must retry this workout');
-      expect(store.calls, contains('delete'));
-      expect(
-        store.calls,
-        isNot(contains('writeWorkoutData')),
-        reason:
-            'the previously exported copy survived the delete, so writing '
-            'would leave two of this workout in the store — and the false '
-            'return drives a retry that would write a third',
-      );
+    tearDown(() {
+      store.remove();
+      HealthExporter.debugIsAppleOverride = null;
     });
+
+    test(
+      'Health Connect: a failed delete does not write a duplicate on top of it',
+      () async {
+        HealthExporter.debugIsAppleOverride = false;
+        store = _FakeHealthStore(deleteResult: false)..install();
+
+        final ok = await HealthExporter().exportWorkout(_session());
+
+        expect(ok, isFalse, reason: 'the caller must retry this workout');
+        expect(store.calls, contains('delete'));
+        expect(
+          store.calls,
+          isNot(contains('writeWorkoutData')),
+          reason:
+              'the previously exported copy survived the delete, so writing '
+              'would leave two of this workout in the store — and the false '
+              'return drives a retry that would write a third',
+        );
+      },
+    );
+
+    test(
+      'HealthKit: a false delete is the empty-range answer and still writes',
+      () async {
+        HealthExporter.debugIsAppleOverride = true;
+        store = _FakeHealthStore(deleteResult: false)..install();
+
+        final ok = await HealthExporter().exportWorkout(_session());
+
+        expect(ok, isTrue);
+        expect(store.calls, containsAllInOrder(['delete', 'writeWorkoutData']));
+      },
+    );
 
     test('a thrown delete does not write either', () async {
       store = _FakeHealthStore(deleteResult: true, deleteThrows: true)
@@ -127,8 +148,7 @@ void main() {
       expect(store.calls, containsAllInOrder(['delete', 'writeWorkoutData']));
     });
 
-    test(
-        'a reconciled orphan (end_ts_fabricated) is never written, even '
+    test('a reconciled orphan (end_ts_fabricated) is never written, even '
         'though it looks like any other finished row', () async {
       store = _FakeHealthStore(deleteResult: true)..install();
 
@@ -138,13 +158,21 @@ void main() {
       });
 
       expect(ok, isFalse);
-      expect(store.calls, isNot(contains('writeWorkoutData')),
-          reason: 'end_ts here is reconcile-time, not a measurement — this '
-              'must never reach Health, on the periodic export path either');
-      expect(store.calls, isNot(contains('delete')),
-          reason: 'a real, previously-exported workout could still be '
-              'sitting in this window — deleting it here, only to then '
-              'refuse to write the replacement, would erase it for nothing');
+      expect(
+        store.calls,
+        isNot(contains('writeWorkoutData')),
+        reason:
+            'end_ts here is reconcile-time, not a measurement — this '
+            'must never reach Health, on the periodic export path either',
+      );
+      expect(
+        store.calls,
+        isNot(contains('delete')),
+        reason:
+            'a real, previously-exported workout could still be '
+            'sitting in this window — deleting it here, only to then '
+            'refuse to write the replacement, would erase it for nothing',
+      );
     });
   });
 

@@ -35,7 +35,6 @@ import '../../data/off_lookup.dart';
 import '../../l10n/app_localizations.dart';
 import '../profile/profile.dart' show SetRow;
 import '../ui2.dart';
-import 'journal_compose.dart' show OsTextField;
 import 'scan_barcode.dart';
 
 class LogFoodSheet extends StatefulWidget {

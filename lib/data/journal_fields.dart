@@ -11,9 +11,11 @@
 // from the database, so a custom field behaves exactly like a built-in one
 // everywhere downstream.
 
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 /// What a field measures, which decides how it is entered and read back.
 enum JournalFieldKind {
@@ -27,6 +29,10 @@ enum JournalFieldKind {
 
   /// Minutes.
   duration,
+
+  /// Stored 1 (yes) or 0 (no). An ABSENT row is "open", never "no" — the
+  /// distinction B29 requires; a missing answer must not read as a denial.
+  yesNo,
 }
 
 /// One day's value for one field.
@@ -67,6 +73,7 @@ class JournalFieldSpec {
     required this.step,
     this.hasTime = false,
     this.custom = false,
+    this.hidden = false,
   });
 
   /// Stored `field` value. Lowercase and stable — renaming one orphans its
@@ -92,7 +99,12 @@ class JournalFieldSpec {
   /// User-invented rather than built in.
   final bool custom;
 
+  /// Archived from active entry. History and this definition stay;
+  /// archive is not purge. Built-ins are never hidden.
+  final bool hidden;
+
   bool get isRating => kind == JournalFieldKind.rating;
+  bool get isYesNo => kind == JournalFieldKind.yesNo;
 
   /// Human-readable value, without the unit.
   String format(double v) {
@@ -184,6 +196,30 @@ const kJournalFields = <JournalFieldSpec>[
     hasTime: true,
   ),
   JournalFieldSpec(
+    key: 'caffeine_late',
+    label: 'Caffeine after 14:00',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
+  ),
+  JournalFieldSpec(
+    key: 'alcohol_evening',
+    label: 'Alcohol in the evening',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
+  ),
+  JournalFieldSpec(
+    key: 'read_before_bed',
+    label: 'Read before bed',
+    kind: JournalFieldKind.yesNo,
+    unit: '',
+    max: 1,
+    step: 1,
+  ),
+  JournalFieldSpec(
     key: 'screens_min',
     label: 'Screens before bed',
     kind: JournalFieldKind.duration,
@@ -251,9 +287,13 @@ Map<String, double> weightTrendEwma(
   double? ewma;
   DateTime? prev;
   for (final day in days) {
-    final d = DateTime.tryParse(day);
+    final parsed = DateTime.tryParse(day);
     final v = byDay[day];
-    if (d == null || v == null || !v.isFinite) continue;
+    if (parsed == null || v == null || !v.isFinite) continue;
+    // Calendar Y/M/D as UTC midnight. tryParse of YYYY-MM-DD is local
+    // midnight; difference.inDays then drops a day across a 23h spring
+    // DST span. parsed.toUtc() keeps that 23h duration.
+    final d = DateTime.utc(parsed.year, parsed.month, parsed.day);
     if (ewma == null || prev == null) {
       ewma = v;
     } else {
@@ -277,9 +317,9 @@ final Map<String, JournalFieldSpec> kJournalFieldsByKey = {
 
 /// Resolve a stored field key to its spec, preferring built-ins.
 ///
-/// Returns null for a key with no definition at all — a field whose custom
-/// definition was deleted while its history remained. Callers must render
-/// those as raw values rather than inventing a unit for them.
+/// Returns null for a key with no definition at all — an orphan metric
+/// whose custom row was never stored. Hidden definitions are still
+/// definitions; pass them in [custom] so history keeps its label and unit.
 JournalFieldSpec? journalFieldSpec(
   String key, {
   List<JournalFieldSpec> custom = const [],
@@ -305,6 +345,205 @@ String customJournalFieldKey(String label) {
   return 'custom_$slug';
 }
 
+final _customJournalFieldKeyPattern = RegExp(r'^custom_[A-Za-z0-9_]+$');
+
+/// True for a user-invented storage key that cannot collide with a built-in.
+bool isCustomJournalFieldKey(String key) =>
+    _customJournalFieldKeyPattern.hasMatch(key) &&
+    !kJournalFieldsByKey.containsKey(key);
+
+/// A storage key independent of the display label.
+///
+/// [customJournalFieldKey] slugs the label, so punctuation collides and
+/// non-ASCII names can collapse toward `custom_`. New UI mints a UUID v4
+/// identity (32 hex chars, hyphens stripped) and keeps a Unicode label as
+/// display-only. The `custom_` prefix still reserves the namespace against
+/// future built-ins.
+String newCustomJournalFieldKey() =>
+    'custom_${const Uuid().v4().replaceAll('-', '')}';
+
+/// Named kind from storage. Unknown names are corrupt — never a silent dose.
+JournalFieldKind journalFieldKindNamed(String name) {
+  for (final k in JournalFieldKind.values) {
+    if (k.name == name) return k;
+  }
+  throw FormatException('Unknown journal field kind: $name');
+}
+
+/// Throws [ArgumentError] if [spec] cannot be stored as a new custom field.
+void validateCustomJournalField(JournalFieldSpec spec) {
+  final key = spec.key.trim();
+  if (!isCustomJournalFieldKey(key)) {
+    throw ArgumentError.value(
+      spec.key,
+      'key',
+      'Custom journal key must be a nonempty custom_ identity, not a built-in.',
+    );
+  }
+  if (spec.label.trim().isEmpty) {
+    throw ArgumentError.value(
+      spec.label,
+      'label',
+      'Custom journal label is required.',
+    );
+  }
+  if (!spec.max.isFinite ||
+      spec.max <= 0 ||
+      !spec.step.isFinite ||
+      spec.step <= 0) {
+    throw ArgumentError(
+      'Custom journal max and step must be finite and positive.',
+    );
+  }
+  if (spec.max < spec.step) {
+    throw ArgumentError('Custom journal max must be at least the step.');
+  }
+  switch (spec.kind) {
+    case JournalFieldKind.yesNo:
+      if (spec.max != 1 ||
+          spec.step != 1 ||
+          spec.unit.trim().isNotEmpty ||
+          spec.hasTime) {
+        throw ArgumentError(
+          'Yes/no fields must be 0/1 with no unit or time.',
+        );
+      }
+    case JournalFieldKind.rating:
+      if (spec.step != 1 ||
+          !_isWholeNumber(spec.max) ||
+          spec.unit.trim().isNotEmpty ||
+          spec.hasTime) {
+        throw ArgumentError(
+          'Rating fields use a whole-number scale with no unit or time.',
+        );
+      }
+    case JournalFieldKind.dose:
+      if (spec.unit.trim().isEmpty) {
+        throw ArgumentError('Dose fields need a unit.');
+      }
+    case JournalFieldKind.duration:
+      break;
+  }
+}
+
+bool _isWholeNumber(double v) => v == v.roundToDouble();
+
+/// Patch-boundary check for one dirty metric. Unknown keys are the
+/// caller's problem. Out-of-range numbers and fractional ratings are
+/// refused rather than rewritten into a different answer.
+void validateJournalPatchMetric(
+  JournalFieldSpec spec,
+  JournalMetricValue next,
+) {
+  if (!next.value.isFinite) {
+    throw ArgumentError.value(
+      next.value,
+      'value',
+      'Journal value must be finite.',
+    );
+  }
+  final at = next.atMinuteOfDay;
+  if (at != null && (at < 0 || at > 1439)) {
+    throw ArgumentError.value(at, 'atMinuteOfDay', 'Expected 0..1439.');
+  }
+  if (next.value < 0 || next.value > spec.max) {
+    throw ArgumentError.value(
+      next.value,
+      'value',
+      'Journal value must be within 0 and ${spec.max}.',
+    );
+  }
+  if (spec.isYesNo && next.value != 0 && next.value != 1) {
+    throw ArgumentError.value(
+      next.value,
+      'value',
+      'Yes/no must be 0 or 1.',
+    );
+  }
+  if (spec.isRating && !_isWholeNumber(next.value)) {
+    throw ArgumentError.value(
+      next.value,
+      'value',
+      'Rating values must be whole numbers.',
+    );
+  }
+}
+
+int _storedFlag(Object? value, String key, String column) {
+  if (value is num && value == value.roundToDouble()) {
+    final n = value.round();
+    if (n == 0 || n == 1) return n;
+  }
+  throw FormatException(
+    'Corrupt journal field definition: $key ($column)',
+  );
+}
+
+/// Read-boundary parse of a `journal_field_def` row.
+///
+/// Rejects unknown kinds, non-finite/non-positive/inverted max and step,
+/// fractional rating scales, and boolean columns that are not 0/1. Does
+/// **not** apply create-only key/label rules: wellness and the compose sheet
+/// slug labels (`custom_walk_after_lunch`), older writers stored untrimmed
+/// labels, and a missing name is still the stored definition.
+JournalFieldSpec parseStoredCustomJournalField(Map<String, Object?> row) {
+  final key = row['key'];
+  final label = row['label'];
+  final kindRaw = row['kind'];
+  final unit = row['unit'];
+  if (key is! String ||
+      label is! String ||
+      kindRaw is! String ||
+      unit is! String) {
+    throw FormatException('Corrupt journal field definition: $key');
+  }
+  final kind = journalFieldKindNamed(kindRaw);
+  final max = (row['max_value'] as num?)?.toDouble();
+  final step = (row['step'] as num?)?.toDouble();
+  if (max == null ||
+      step == null ||
+      !max.isFinite ||
+      !step.isFinite ||
+      max <= 0 ||
+      step <= 0 ||
+      max < step) {
+    throw FormatException('Corrupt journal field definition: $key');
+  }
+  if (kind == JournalFieldKind.rating &&
+      (!_isWholeNumber(max) || !_isWholeNumber(step))) {
+    throw FormatException('Corrupt journal field definition: $key');
+  }
+  return JournalFieldSpec(
+    key: key,
+    label: label,
+    kind: kind,
+    unit: unit,
+    max: max,
+    step: step,
+    hasTime: _storedFlag(row['has_time'], key, 'has_time') == 1,
+    custom: true,
+    hidden: _storedFlag(row['hidden'], key, 'hidden') == 1,
+  );
+}
+
+/// Create-boundary spec: trimmed, custom, active. Validates first.
+JournalFieldSpec preparedCustomJournalField(JournalFieldSpec spec) {
+  validateCustomJournalField(spec);
+  final ratingLike =
+      spec.kind == JournalFieldKind.rating || spec.kind == JournalFieldKind.yesNo;
+  return JournalFieldSpec(
+    key: spec.key.trim(),
+    label: spec.label.trim(),
+    kind: spec.kind,
+    unit: ratingLike ? '' : spec.unit.trim(),
+    max: spec.max,
+    step: spec.step,
+    hasTime: ratingLike ? false : spec.hasTime,
+    custom: true,
+    hidden: false,
+  );
+}
+
 /// Local minutes past midnight → "7:05 AM".
 String formatMinuteOfDay(int minuteOfDay) {
   final m = minuteOfDay % (24 * 60);
@@ -312,4 +551,114 @@ String formatMinuteOfDay(int minuteOfDay) {
   final mm = (m % 60).toString().padLeft(2, '0');
   final h = h24 % 12 == 0 ? 12 : h24 % 12;
   return '$h:$mm ${h24 < 12 ? 'AM' : 'PM'}';
+}
+
+/// True for a real calendar day in `YYYY-MM-DD`. `2026-02-30` is rejected.
+bool isJournalDayId(String day) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day)) return false;
+  final p = day.split('-');
+  final y = int.parse(p[0]), m = int.parse(p[1]), d = int.parse(p[2]);
+  final dt = DateTime(y, m, d);
+  return dt.year == y && dt.month == m && dt.day == d;
+}
+
+/// Decode stored `tags_json`. Missing/empty is no tags. Unreadable JSON is
+/// refused rather than treated as empty — a note-only patch must not wipe
+/// a corrupt saved list.
+List<String> decodeJournalTags(Object? json) {
+  if (json == null) return const [];
+  if (json is! String) {
+    throw const FormatException('Unreadable journal tags.');
+  }
+  if (json.isEmpty) return const [];
+  final decoded = jsonDecode(json);
+  if (decoded is! List) {
+    throw const FormatException('Unreadable journal tags.');
+  }
+  return [for (final e in decoded) e.toString()];
+}
+
+/// A patch could not be applied because a dirty field's stored value or
+/// revision no longer matches what the caller read. Nothing was written.
+class JournalConflict implements Exception {
+  const JournalConflict(this.day, {this.fields = const []});
+  final String day;
+  final List<String> fields;
+  @override
+  String toString() => 'JournalConflict($day)';
+}
+
+/// One local day's journal as stored: metrics, note/tags, and revisions.
+@immutable
+class JournalDaySnapshot {
+  const JournalDaySnapshot({
+    required this.day,
+    required this.metrics,
+    required this.metricUpdatedAt,
+    required this.tags,
+    required this.note,
+    required this.journalUpdatedAt,
+    required this.fields,
+  });
+
+  final String day;
+  final Map<String, JournalMetricValue> metrics;
+  final Map<String, int> metricUpdatedAt;
+  final List<String> tags;
+  final String note;
+
+  /// `0` when no `journal` row exists yet.
+  final int journalUpdatedAt;
+  final List<JournalFieldSpec> fields;
+}
+
+/// Dirty-only write. Omitted metrics/tags/note stay. `metrics[key] == null`
+/// clears that key. Compare expected value+revision for dirty keys only.
+@immutable
+class JournalDayPatch {
+  const JournalDayPatch({
+    required this.day,
+    this.metrics = const {},
+    this.expectedMetrics = const {},
+    this.expectedMetricUpdatedAt = const {},
+    this.tags,
+    this.note,
+    this.expectedJournalUpdatedAt,
+    this.expectedTags,
+    this.expectedNote,
+  });
+
+  /// Build a patch against [base], filling expected value/revision for every
+  /// dirty key (and the journal row when tags or note are sent).
+  factory JournalDayPatch.fromBase(
+    JournalDaySnapshot base, {
+    Map<String, JournalMetricValue?> metrics = const {},
+    List<String>? tags,
+    String? note,
+  }) {
+    final journalDirty = tags != null || note != null;
+    return JournalDayPatch(
+      day: base.day,
+      metrics: metrics,
+      expectedMetrics: {for (final k in metrics.keys) k: base.metrics[k]},
+      expectedMetricUpdatedAt: {
+        for (final k in metrics.keys) k: base.metricUpdatedAt[k] ?? 0,
+      },
+      tags: tags,
+      note: note,
+      expectedJournalUpdatedAt: journalDirty ? base.journalUpdatedAt : null,
+      expectedTags: tags != null ? base.tags : null,
+      expectedNote: note != null ? base.note : null,
+    );
+  }
+
+  final String day;
+  final Map<String, JournalMetricValue?> metrics;
+  final Map<String, JournalMetricValue?> expectedMetrics;
+  final Map<String, int> expectedMetricUpdatedAt;
+  final List<String>? tags;
+  final String? note;
+  final int? expectedJournalUpdatedAt;
+  final List<String>? expectedTags;
+  final String? expectedNote;
 }

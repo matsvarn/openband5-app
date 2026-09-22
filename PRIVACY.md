@@ -114,9 +114,15 @@ so to be specific about it:
   included in anonymous diagnostics, and it is not sent to your AI Coach
   provider — the coach is technically prevented from reading route data, not
   merely asked not to.
-- **No map tiles are fetched.** A route is drawn on your phone from your own
-  points, against no basemap. The App does not contact a tile provider, so
-  opening a route tells nobody which part of the world you are looking at.
+- **Map tiles are fetched only if you allow it.** By default a route is drawn
+  on your phone from your own points, against no basemap, and the App contacts
+  no tile provider — opening a route tells nobody which part of the world you
+  are looking at. If you switch on "map background" in the Share sheet, two
+  things request basemap tiles: the shared route image (tile.openstreetmap.org)
+  and the live run map (basemaps.cartocdn.com, OpenStreetMap data served by
+  CARTO). Those requests reveal to the tile server which map area is on your
+  screen, but never your recorded points, your route or your identity. The
+  switch is off until you turn it on and stays wherever you leave it.
 - **The one exception is you.** If you tap Share on a workout, the image you
   are shown includes a picture of your route, and whatever you send it to
   receives it. That is your choice, you see the image before it is sent, and it

@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/data/models.dart';
@@ -77,6 +78,15 @@ void main() {
     LocalDb.dbName = 'openstrap_manual_workout_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
+    // The personal quiet-HRR level session scoring resolves (edge#226). One
+    // measured prior day is the shape a real install has; without it strain
+    // abstains — the honest production answer, but not what these
+    // substrate-scoring tests pin.
+    await LocalDb.putMetricSeriesValue(
+      dayLabelOf(DateTime.now().subtract(const Duration(days: 1))),
+      'quiet_waking_hrr',
+      0.20,
+    );
   });
 
   tearDownAll(() async {
@@ -502,6 +512,50 @@ void main() {
       expect(row!['status'], 'live', reason: 'must not have been ended');
     });
   });
+
+  test(
+    'setWorkoutWindow keeps billed coverage on the same bounds and clears it on a retime',
+    () async {
+      final start = sessionStart - 53 * 86400;
+      await LocalDb.putSession({
+        'id': 'w-covered-edit',
+        'start_ts': start,
+        'end_ts': start + 1800,
+        'type': 'run',
+        'status': 'done',
+        'duration_min': 30,
+        'hr_covered_sec': 180,
+        'source': 'manual',
+        'created_at': start * 1000,
+      });
+      await LocalDb.setSessionType('w-covered-edit', 'cycling');
+      expect(
+        (await LocalDb.session('w-covered-edit'))?['hr_covered_sec'],
+        180,
+      );
+
+      await repo.setWorkoutWindow(
+        'w-covered-edit',
+        startTs: start,
+        endTs: start + 1800,
+      );
+      final same = await LocalDb.session('w-covered-edit');
+      expect(same?['hr_covered_sec'], 180);
+      expect(same?['type'], 'cycling');
+      expect((same?['duration_min'] as num?)?.toInt(), 30);
+
+      await repo.setWorkoutWindow(
+        'w-covered-edit',
+        startTs: start,
+        endTs: start + 2400,
+      );
+      final moved = await LocalDb.session('w-covered-edit');
+      expect(moved?['hr_covered_sec'], isNull);
+      expect((moved?['duration_min'] as num?)?.toInt(), 40);
+      expect((moved?['start_ts'] as num?)?.toInt(), start);
+      expect((moved?['end_ts'] as num?)?.toInt(), start + 2400);
+    },
+  );
 
   test(
     're-logging the identical window replaces rather than duplicates',

@@ -1,0 +1,70 @@
+{
+  "scope": "First release: reliable daily band data and sleep. Approved by Mats on 21 September 2026 after the Fable scope consultation.",
+  "archive": "archive/state_checklist-20260921.json",
+  "note": "The archived full-product checklist is preserved intact. Its unmarked state names are no longer release obligations. Parked features remain in source, storage and development access; parking is not implementation.",
+  "items": [
+    {
+      "id": "release-navigation",
+      "outcome": "One Übersicht root; retained band/sleep/metric/Profile/data destinations; parked entry points closed, including saved tabs, notifications and gestures. Existing active sessions remain finishable.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Navigation and parked-entry gates reviewed; 2206 OpenBand tests, 131 affected notification tests, analysis and manifest pass. Pro and mini release captures inspected, including missing/error and 2x lower content. See IMPLEMENTATION_VERIFICATION.md, 22 September 2026."
+    },
+    {
+      "id": "release-sleep-metrics",
+      "outcome": "Retained sleep, correction, naps, goals and stored metric flows remain reachable, truthful and visually consistent.",
+      "status": "verified",
+      "evidence": "Discovery014a769c and lead source review confirm retained routes to night signals, naps and sleep goal; durable correction retry and explicit goal removal remain intact. Existing per-unit Paper/native evidence in IMPLEMENTATION_VERIFICATION.md; current2206-test gate passes. No duplicate rebuild."
+    },
+    {
+      "id": "release-band",
+      "outcome": "Pairing, transfer, stored-through time, connection and failure/recovery remain clear and reachable.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Direct pairing/re-pair and truthful state-based resume accepted after Sol implementation, fresh Devin SWE-2 review and lead source/native review.2226 required tests,115-target analysis pass;12 goldens inspected;32 Pro/mini PNGs inspected,26 accepted. See IMPLEMENTATION_VERIFICATION.md,22September2026."
+    },
+    {
+      "id": "release-data",
+      "outcome": "Essential Profile/settings and export, backup, restore; private export migration and retained-source evidence checked.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Durable restore accepted in6284c1bd, including isolated device-copy roundtrip. Compact production Profile/Data and acknowledged backup scheduling accepted after fresh review:2225 required tests,115-target analysis,28 release-scope tests and17 inspected Pro/mini PNGs including the corrected large-text replacement. See IMPLEMENTATION_VERIFICATION.md,22September2026."
+    },
+    {
+      "id": "release-paper",
+      "outcome": "One Release page and one shared-block page first; old Alpin3 pages archived; representative light/dark and missing/error states match native.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Release/shared pages first:28 representative Release screens,32 shared boards. Pairing light/dark, concise permission variants, root header and large-text sync row registered and compared with native.59-block/28-screen manifest passes. Old archives and Designphase2 preserved."
+    },
+    {
+      "id": "release-device-evidence",
+      "outcome": "Reconcile the provided database with actual device capture, storage and recovery claims; report any proof limits without substituting simulator proof.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Read-only source inspection and isolated migration/export inventory complete. Gen5 capture/source retention and recorded retry are present; controlled phone-kill/disconnect chronology, zero loss and physiological validity are not established by this snapshot. Source hash unchanged; private artifacts remain in OpenBand5Lab. Durable restore separately accepted in6284c1bd under release-data."
+    },
+    {
+      "id": "release-acceptance",
+      "outcome": "Fresh review, required Flutter/manifest checks, targeted Pro and mini native review, all changed goldens inspected, versions/pins reconciled; local commits only.",
+      "status": "verified",
+      "owner": "lead",
+      "evidence": "Fresh independent reviews and lead diff/render acceptance complete.2226 required tests and115-target analysis pass; manifest and diff check pass. All12 changed/new goldens and32 Band native PNGs inspected. App/widget/watch0.9.31+67, schema67, algorithm90 and full pins/lock reconciled. Prior accepted navigation/sleep/data/device evidence reused; no repeated full-product matrix. Local commit only; device-proof and parked-suite limits remain explicit in IMPLEMENTATION_VERIFICATION.md."
+    }
+  ],
+  "parked": [
+    {
+      "areas": [
+        "Training and templates",
+        "Journal and nutrition/intake",
+        "Weight and manual VO2max",
+        "Cycle and medication",
+        "Labs and glucose",
+        "Coach",
+        "Widget expansion"
+      ],
+      "disposition": "parked-by-product-decision",
+      "reason": "User explicitly approved the smaller band/sleep first release. Preserve implemented code, data, migrations and tests behind development access; no further expansion in this release."
+    }
+  ]
+}

@@ -148,7 +148,20 @@ bool accelPlausible(double ax, double ay, double az) {
 /// A non-positive interval BREAKS THE CHAIN: the gap before that beat is
 /// unknown, so every EARLIER beat in the record becomes unplaceable and gets
 /// null rather than a position computed as if the missing gap were zero.
-List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs) {
+///
+/// [prevLastBeatMs] is the CONTINUITY anchor: the previous record's last
+/// placed beat. The emit anchor sits uniform-inside the trailing interval —
+/// measured ~±300 ms per-record phase jitter against the band's own PPG
+/// onsets (within-episode MAD 220 ms). Re-anchoring beat 0 to
+/// `prevLastBeatMs + rrMs[0]` — the measured junction — cuts that to MAD 42
+/// (PPG-onset residuals over ~7 k beats, analysis/2026-09-22-v26-ppg). It is
+/// applied as a whole-record shift, so intervals, nulls and ordering are
+/// untouched. The junction has to be PROVEN, or the emit anchor stands:
+/// beat 0 placed, its own interval plausible, and the chained instant inside
+/// this record's plausible span — a stale or fabricated predecessor fails
+/// that window and costs nothing.
+List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs,
+    {int? prevLastBeatMs}) {
   final out = List<int?>.filled(rrMs.length, null);
   if (tsSubsec == null || rrMs.isEmpty) return out;
   // THE TICK COUNT IS BOUNDED, for the same reason [kMaxPlausibleHr] is: this
@@ -177,8 +190,68 @@ List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs) {
     if (rr == null) break;
     back += rr.toInt();
   }
+  // Continuity anchor — see the doc above. A whole-record shift keeps every
+  // interval and every null exactly where the walk-back put them; only the
+  // record-level anchor error (uniform in the trailing interval) is removed.
+  final first = out[0];
+  if (prevLastBeatMs != null &&
+      first != null &&
+      plausibleRrOrNull(rrMs[0]) != null) {
+    final chained = prevLastBeatMs + rrMs[0];
+    if (chained >= recTs * 1000 - kMaxPlausibleRrMs &&
+        chained <= recTs * 1000 + kMaxPlausibleRrMs) {
+      final delta = chained - first;
+      for (var i = 0; i < out.length; i++) {
+        final v = out[i];
+        if (v != null) out[i] = v + delta;
+      }
+    }
+  }
   return out;
 }
+
+/// Cross-record state for [beatTimesMs]'s continuity anchor.
+///
+/// Records place independently when fed nothing — same as before. A caller
+/// that walks records in time order can hand each one the last beat the
+/// previous record placed via [place], which applies the chain rules here
+/// instead of in every caller:
+///   * chain only across ADJACENT record seconds — a rec_ts jump means an
+///     unseen record's beats stand between, and `rrMs[0]` measures from a
+///     beat we cannot name, so the junction is refused;
+///   * a record that carried intervals but placed NO beat breaks the chain —
+///     same reason;
+///   * a record with NO intervals carries the chain through — the next
+///     record's first interval is still measured from the same predecessor.
+class BeatClock {
+  int? _lastBeatMs;
+  int? _prevRecTs;
+
+  /// Place [rrMs]'s beats for the record at [recTs], chaining off the
+  /// previous record's last beat when that junction is provable.
+  List<int?> place(int recTs, int? tsSubsec, List<int> rrMs) {
+    final prev = (_prevRecTs != null && recTs == _prevRecTs! + 1)
+        ? _lastBeatMs
+        : null;
+    final out = beatTimesMs(recTs, tsSubsec, rrMs, prevLastBeatMs: prev);
+    _prevRecTs = recTs;
+    if (rrMs.isNotEmpty) {
+      _lastBeatMs = out.lastWhere((t) => t != null, orElse: () => null);
+    }
+    return out;
+  }
+}
+
+/// Forward-clamp for the reconstructed beat clock. [beatTimesMs] is exact
+/// WITHIN a record, but each record's anchor (its emit timestamp) sits up to
+/// ~1 RR after the last reported beat actually ended — so ~0.3 % of
+/// record-leading beats land just BEFORE the previous record's last beat. That
+/// is a scaffold artifact, not physiology, and consumers may assume
+/// non-decreasing times (`cardioStager` binary-searches them). The clamp fixes
+/// the ordering only; interval values are untouched. `acc` is the array being
+/// appended to — pass the same list every time so the clamp is per-append O(1).
+double clampBeatTsNonDecreasing(double ts, List<double> acc) =>
+    acc.isNotEmpty && ts < acc.last ? acc.last : ts;
 
 /// The decoded 1 Hz substrate — the only decoded form (ARCHITECTURE_V2).
 ///
@@ -257,6 +330,18 @@ class Substrate {
   /// Same absent-marker discipline as [stepCount] and [accelPresentAt].
   final List<int> hrValid;
 
+  /// Gen5's per-second optical-signal quality: log-variance of the PPG
+  /// residual the band computes at `inner[105:109]` — higher (closer to 0)
+  /// is WORSE. Parallel to [tsSec]. **`NaN` means absent**: every gen4 second
+  /// (R24 has no such field) and every gen5 record whose value was not finite.
+  ///
+  /// The field is carried raw, not interpreted here — what a "good" value is
+  /// was MEASURED against the band's own v26 morphology verdicts (18k labeled
+  /// seconds; `logvar < -4.6` reproduces the band's accept/reject at F1 0.87).
+  /// That calibrated threshold lives at the consumer (`_wearBlock`'s
+  /// `optical_trusted_pct`), not inside the array.
+  final List<double> signalQualityLogVar;
+
   /// WHICH STRAP MEASURED THIS SUBSTRATE — `'gen4'`, `'gen5'`, or null.
   ///
   /// Stamped at ingest into `decoded_onehz.device_family` and carried here so
@@ -318,6 +403,7 @@ class Substrate {
     required List<int> skinContact,
     List<int> stepCount = const [],
     List<int> hrValid = const [],
+    List<double> signalQualityLogVar = const [],
     String? deviceFamily,
     Set<String> deviceIds = const {},
   }) =>
@@ -337,6 +423,7 @@ class Substrate {
         skinContact: skinContact,
         stepCount: stepCount,
         hrValid: hrValid,
+        signalQualityLogVar: signalQualityLogVar,
       );
 
   const Substrate._({
@@ -353,6 +440,7 @@ class Substrate {
     required this.skinContact,
     this.stepCount = const [],
     this.hrValid = const [],
+    this.signalQualityLogVar = const [],
     this.deviceFamily,
     this.deviceIds = const {},
   });
@@ -473,8 +561,21 @@ class Substrate {
   List<int> _perSecSlice(List<int> src, int lo, int hi) =>
       src.length == tsSec.length ? src.sublist(lo, hi) : const [];
 
+  /// Double variant of [_perSecSlice] — same legacy-empty tolerance.
+  List<double> _perSecSliceD(List<double> src, int lo, int hi) =>
+      src.length == tsSec.length ? src.sublist(lo, hi) : const [];
+
   /// [stepCount] sliced to [lo, hi), tolerating the legacy empty list.
   List<int> _stepSlice(int lo, int hi) => _perSecSlice(stepCount, lo, hi);
+
+  /// The band's optical-quality log-variance for second [i], or `null` when
+  /// this record carried none — every gen4 second, plus any gen5 record whose
+  /// value was not finite on the wire. NaN in the array IS the absent marker.
+  double? signalQualityLogVarAt(int i) {
+    if (i < 0 || i >= signalQualityLogVar.length) return null;
+    final v = signalQualityLogVar[i];
+    return v.isNaN ? null : v;
+  }
 
   /// Slice to the half-open window [startSec, endSec) by record time. Returns a
   /// new Substrate with the 1 Hz arrays sliced and the sparse RR arrays filtered
@@ -500,6 +601,7 @@ class Substrate {
       skinContact: skinContact.sublist(lo, hi),
       stepCount: _stepSlice(lo, hi),
       hrValid: _perSecSlice(hrValid, lo, hi),
+      signalQualityLogVar: _perSecSliceD(signalQualityLogVar, lo, hi),
       deviceFamily: deviceFamily,
       deviceIds: deviceIds,
       rrTsMs: rr.$1,
@@ -529,6 +631,7 @@ class Substrate {
       skinContact: skinContact.sublist(lo, hi),
       stepCount: _stepSlice(lo, hi),
       hrValid: _perSecSlice(hrValid, lo, hi),
+      signalQualityLogVar: _perSecSliceD(signalQualityLogVar, lo, hi),
       deviceFamily: deviceFamily,
       deviceIds: deviceIds,
       rrTsMs: rr.$1,
@@ -595,6 +698,7 @@ class Substrate {
         'skin_contact': skinContact,
         'step_count': stepCount,
         'hr_valid': hrValid,
+        'signal_quality_logvar': signalQualityLogVar,
         // Null (unknown provenance) is a real answer — emit the key regardless.
         'device_family': deviceFamily,
         'device_ids': deviceIds.toList(),
@@ -652,6 +756,13 @@ class Substrate {
       hrValid: () {
         final l = ints(m, 'hr_valid');
         return l.length == n ? l : List<int>.filled(n, -1);
+      }(),
+      // Absent marker is NaN — same shape as `hr_valid`, different sentinel.
+      signalQualityLogVar: () {
+        final l = dbls('signal_quality_logvar');
+        return l.length == n
+            ? l
+            : (Float64List(n)..fillRange(0, n, double.nan));
       }(),
       deviceFamily: m['device_family'] as String?,
       deviceIds: ((m['device_ids'] as List?) ?? const [])
@@ -732,6 +843,9 @@ Substrate decodeSubstrate(List<String> hexes) {
   final rrTsMs = <double>[], rrMs = <double>[];
 
   final stepCount = List<int>.filled(n, -1);
+  final signalQualityLogVar = Float64List(n)
+    ..fillRange(0, n, double.nan);
+  final beatClock = BeatClock();
   for (var i = 0; i < n; i++) {
     final r = recs[i];
     tsSec[i] = r.ts;
@@ -746,16 +860,20 @@ Substrate decodeSubstrate(List<String> hexes) {
     skinTemp[i] = r.skinTempRaw;
     skinContact[i] = r.skinContact;
     stepCount[i] = r.stepCount ?? -1;
-    // RR beats: placed at their MEASURED instant (`beatTimesMs` — the record's
-    // own sub-second anchor, intervals walked backwards from it), falling back
-    // to the record second only when the record carries no sub-second.
+    final lv = r.signalQualityLogVar;
+    if (lv != null && lv.isFinite) signalQualityLogVar[i] = lv;
+    // RR beats: placed at their MEASURED instant (`beatTimesMs` — chained to
+    // the previous record's last beat when the junction proves out, else the
+    // record's own sub-second anchor), falling back to the record second only
+    // when the record carries no sub-second.
     final t = r.ts * 1000.0;
-    final beatTs = beatTimesMs(r.ts, r.tsSubsec, r.rrIntervalsMs);
+    final beatTs = beatClock.place(r.ts, r.tsSubsec, r.rrIntervalsMs);
     for (var b = 0; b < r.rrIntervalsMs.length; b++) {
       final rr = plausibleRrOrNull(r.rrIntervalsMs[b]);
       if (rr != null) {
         rrMs.add(rr);
-        rrTsMs.add(beatTs[b]?.toDouble() ?? t);
+        rrTsMs.add(
+            clampBeatTsNonDecreasing(beatTs[b]?.toDouble() ?? t, rrTsMs));
       }
     }
   }
@@ -796,6 +914,8 @@ Substrate decodeSubstrate(List<String> hexes) {
     // replay, which carries no device stamp either — so it would refuse at
     // `hrValidAt` regardless.
     hrValid: List<int>.filled(n, -1),
+    // NaN where the source record carried no field — gen4 entirely.
+    signalQualityLogVar: signalQualityLogVar,
   );
 }
 
@@ -886,6 +1006,7 @@ class _Rec {
   final int skinTempRaw;
   final int skinContact;
   final int? stepCount;
+  final double? signalQualityLogVar;
 
   _Rec.gen4(proto.R24 r)
       : ts = r.tsEpoch,
@@ -901,7 +1022,8 @@ class _Rec {
         skinTempRaw = r.skinTempRaw,
         // ignore: deprecated_member_use
         skinContact = r.skinContact,
-        stepCount = null;
+        stepCount = null,
+        signalQualityLogVar = null;
 
   _Rec.gen5(proto.Gen5HistorySample g)
       : ts = g.unix,
@@ -911,9 +1033,15 @@ class _Rec {
         tsSubsec = g.tsSubsec,
         spo2RedRaw = 0,
         spo2IrRaw = 0,
-        skinTempRaw = 0,
+        // Gen5 skin temp arrives decoded as °C; the array's convention is the
+        // same one the decoded-row path uses (`_skinTempFor`): centi-°C, so a
+        // raw-replay page lands on the same values the stored column carries.
+        // The -50.00 °C sentinel is ABSENT, not a reading — it lands on 0,
+        // which every consumer's `v > 0` gate already reads as "no reading".
+        skinTempRaw = g.skinTempAvailable ? (g.skinTempC * 100).round() : 0,
         skinContact = 0,
-        stepCount = g.stepMotionCounter;
+        stepCount = g.stepMotionCounter,
+        signalQualityLogVar = g.signalQualityLogVariance;
 }
 
 class _Beat {
@@ -1290,6 +1418,13 @@ int _nextLocalMidnight(int epochSec) {
   final d = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000, isUtc: false);
   return DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch ~/ 1000;
 }
+
+/// How many sorted 1 Hz record timestamps fall in [startSec, endSec). Record
+/// density IS the worn-coverage measure this stream has — off-wrist time
+/// produces no rows at all — so this is the count a windowed step source is
+/// reconciled against when a whole-day counter also exists.
+int countTsBetween(List<int> tsSec, int startSec, int endSec) =>
+    _lowerBound(tsSec, endSec) - _lowerBound(tsSec, startSec);
 
 /// First index i in sorted [xs] with xs[i] >= target (std lower_bound).
 int _lowerBound(List<int> xs, int target) {

@@ -171,4 +171,30 @@ void main() {
       expect(day.sleepOffsetSec, 0);
     },
   );
+
+  test(
+    'decoded pages carry signal_quality_logvar into the substrate; '
+    'absent and non-finite stay absent',
+    () {
+      const ts = 1789000000;
+      final sub = substrateFromDecodedPage([
+        {
+          'rec_ts': ts,
+          'hr': 62,
+          'signal_quality_logvar': -5.1,
+        },
+        {'rec_ts': ts + 1, 'hr': 62}, // column absent on this row
+        {
+          'rec_ts': ts + 2,
+          'hr': 62,
+          'signal_quality_logvar': double.nan,
+        },
+      ], const []);
+      expect(sub.signalQualityLogVarAt(0), -5.1);
+      expect(sub.signalQualityLogVarAt(1), isNull);
+      expect(sub.signalQualityLogVarAt(2), isNull);
+      // Positional: three seconds, three slots — the absent ones are NaN.
+      expect(sub.signalQualityLogVar.length, 3);
+    },
+  );
 }
