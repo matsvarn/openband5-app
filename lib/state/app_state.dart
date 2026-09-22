@@ -6076,17 +6076,27 @@ class AppState extends ChangeNotifier {
   double? _observedCeilingBpm;
   List<double> _rhr28 = const [];
 
+  /// The personal quiet-waking level sessions are scored against (edge#226) —
+  /// resolved on the same refresh as the resting-HR anchor, for the same
+  /// reason: a cross-day read, not a per-tap query.
+  double? _personalQuietHrr;
+
   Future<void> _refreshNightlyRhr() async {
     try {
       _observedCeilingBpm = (await LocalDb.observedHrCeiling())?.bpm;
       _rhr28 = await LocalDb.trailingSeriesValues('rhr', 28);
+      _personalQuietHrr = await LocalDb.personalQuietWakingHrr();
+      // Adopt anchors into a session that started before this read completed,
+      // but only to FILL A GAP — overwriting an anchor a running session was
+      // already scored against would move its number mid-workout.
+      final w = activeWorkout;
+      if (w != null && w.quietHrr == null) {
+        w.quietHrr = _personalQuietHrr;
+        notifyListeners();
+      }
       final vals = await LocalDb.trailingSeriesValues('rhr', 7);
       if (vals.isEmpty) return;
       _nightlyRhr = vals.last;
-      // Adopt it into a session that started before this read completed, but
-      // only to FILL A GAP — overwriting an anchor a running session was
-      // already scored against would move its number mid-workout.
-      final w = activeWorkout;
       if (w != null && w.restingHr == null) {
         w.restingHr = _liveRestingHr;
         notifyListeners();
@@ -6329,6 +6339,9 @@ class AppState extends ChangeNotifier {
         restingHrHistory: _rhr28,
       ),
       restingHr: _liveRestingHr,
+      // Same cross-day anchor pattern as restingHr — resolved on the refresh,
+      // back-filled if it lands after start. Null ⇒ strain abstains.
+      quietHrr: _personalQuietHrr,
     );
     // Never leak a previous periodic tick by overwriting the reference.
     _workoutTimer?.cancel();
@@ -6573,6 +6586,7 @@ class AppState extends ChangeNotifier {
         restingHrHistory: _rhr28,
       ),
       restingHr: _liveRestingHr,
+      quietHrr: _personalQuietHrr,
     );
     // Without this, `workoutStepsMeasured` (gated on _workoutRawBase
     // != null) stays null for the rest of this resumed session, and
@@ -7167,6 +7181,13 @@ class LiveWorkoutState {
   /// fraction of a second after it started.
   double? restingHr;
 
+  /// The user's personal quiet-waking HRR level strain subtracts its baseline
+  /// at (edge#226) — the trailing median of measured days, loaded with the
+  /// resting-HR refresh. Deliberately not measured off this session's own
+  /// minutes: the session's median IS the effort being scored, so a hard
+  /// workout would subtract itself away. Null ⇒ the scorer abstains.
+  double? quietHrr;
+
   /// Per-minute mean HR, the unit Banister TRIMP weights. Live HR arrives at
   /// 1 Hz, so it is folded into the current minute here rather than kept as
   /// thousands of raw samples.
@@ -7253,6 +7274,7 @@ class LiveWorkoutState {
     this.hrMax,
     this.zoneSet,
     this.restingHr,
+    this.quietHrr,
   }) : _hrPeak = RollingMaxHr(age: age),
        idleWatch = WorkoutIdleWatch(startedAt: startTime);
 
@@ -7317,6 +7339,7 @@ class LiveWorkoutState {
       profile: profile,
       restingHr: restingHr,
       hrMax: hrMax,
+      quietHrr: quietHrr,
     );
 
     // Calories re-score off the same series, through the same estimator the

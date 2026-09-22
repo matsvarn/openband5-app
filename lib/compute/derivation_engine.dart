@@ -1630,7 +1630,20 @@ import 'substrate.dart';
 // movement refusal note reports the real 14-day frozen-floor gate, not the
 // analytics enrollment minimum. Every bundle stamps build provenance
 // (algo/pins/schema). Pins unchanged.
-const int kAlgoVersion = 91;
+// 91 → 92: edge#226 + gen5 settle band. Strain's quiet-waking level is now
+// THIS USER'S measured trait — median of prior `quiet_waking_hrr` days,
+// bootstrapped by the day's own `dailyQuietWakingHrr` when history is empty,
+// abstaining when neither exists — across all five call sites (headline,
+// intraday curve, early read, manual/live sessions, the strain rescale —
+// `strain_rescale_v92`). Emits `quiet_waking_hrr`/`quiet_hrr_applied`
+// scalars. Gen5 raw-replay now carries skin temp (centi-°C, same convention
+// as the decoded path) instead of 0. Analytics repin below carries the
+// measured gen5 settle band (250 centi-°C, calibrated on seven real gen5
+// nights) — `nightlySkinTemp` stops refusing every gen5 night, so
+// skin_temp_adc/skin_temp_z/readiness's temp driver produce real output.
+// Protocol repin adds GET_DATA_RANGE read-cursor fields (diagnostics only —
+// band_backlog, not a metric).
+const int kAlgoVersion = 92;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1799,7 +1812,13 @@ const int kAlgoVersion = 91;
 // picking one single-device SHA over the other. Verified: `1cf8e61` (this
 // branch's own pin) IS an ancestor of `fe1464d` — the wearfit protocol
 // commit is already folded in, nothing is lost by moving to the tip.
-const String kAnalyticsPin = '1fa8144a5e3b728ce91eeed6ecbc15d482933b44';
+// REPIN @ 9b827a9 (v92): the measured gen5 skin-temp settle band (250
+// centi-°C, calibrated on the seven real gen5 nights of 2026-09-16…22 —
+// clean nights ≥0.94 settled, the one cold-segment night 0.855).
+// `nightlySkinTemp` stops refusing every gen5 night → skin_temp_adc /
+// skin_temp_z / readiness's temp driver produce real output. OUTPUT CHANGE —
+// part of the v92 bump.
+const String kAnalyticsPin = '9b827a960a6054be346a1e46e4086a1406a63241';
 // REPIN (this branch, superseded by the merge): polar pmd's own protocol
 // needs `feat/polar-pmd-protocol` (87ee803), but protocol's own `origin/main`
 // tip below is THAT SAME PR's merge commit — verified
@@ -1817,7 +1836,13 @@ const String kAnalyticsPin = '1fa8144a5e3b728ce91eeed6ecbc15d482933b44';
 // below is THAT SAME PR's merge commit — verified — so main's pin already
 // carries that wire format too. NO kAlgoVersion bump: ring11m declares no
 // signal either.
-const String kProtocolPin = 'fe1464db98b84ac4d3ce6175d54ada11356d6c62';
+// REPIN @ 0df79ff4 (v92): GET_DATA_RANGE now emits the band's read cursor —
+// `pages_behind` gains `read_page`/`raw_old_page`, the decoded map gains
+// `trim_ts`/`current_read_ts`. Diagnostics only (persisted to band_backlog):
+// it decodes bytes the reply already carried, changes no record decode, and
+// feeds no metric — but the pin moves with the bump because the constants are
+// asserted as a pair and the build stamps them together.
+const String kProtocolPin = '0df79ff49a358c3fbb20586ef67d4b30d9ef123e';
 
 // Fold idempotency, the minimum-nights warm-up, and legacy-payload handling
 // all live in SleepProfilePolicy (pure, unit-tested) — see
@@ -1965,6 +1990,11 @@ class _BaselineHistoryCache {
     // derive needs the PRIOR days' values of, which is exactly what this
     // snapshot is (see [maxBefore]).
     'hr_ceiling_bpm',
+    // The day's measured quiet-waking HRR level (`dailyQuietWakingHrr`). Its
+    // trailing median is the personal level strain subtracts its baseline at;
+    // strictly-before like every other series here so a day never prices
+    // itself (edge#226).
+    'quiet_waking_hrr',
   ];
 
   /// DATED baseline samples, ascending by date, one entry per day (metric_series
@@ -4307,6 +4337,7 @@ class DerivationEngine {
         stepSpans: stepSpans,
         dynFloorG: dynFloorG,
         dynHistoryDays: dynHistory.length,
+        quietHrrHistory: history.valuesBefore('quiet_waking_hrr', day.date),
         savedSessions: savedSessions,
         wristOffSpans: wristOffSpans,
         chargingSpans: chargingSpans,
@@ -4585,6 +4616,12 @@ class DerivationEngine {
         // previous version's daytime-RHR strain left behind, not keep it.
         'strain': sc('strain'),
         'trimp': sc('trimp'),
+        // edge#226 — the day's OWN measured quiet-waking level. This series is
+        // what `valuesBefore('quiet_waking_hrr', …)` pools into tomorrow's
+        // personal level and what `personalQuietWakingHrr()` medians for the
+        // session scorers; without it the personal level never accumulates and
+        // strain only ever runs on the day-median bootstrap.
+        'quiet_waking_hrr': sc('quiet_waking_hrr'),
         // `strain_effort`, `spo2` and `odi_per_hour` used to be listed here.
         // Nothing in the tree ever produced them (12 rows, 0 values per key on
         // a real install), so they were three permanently-null series with a
@@ -4913,6 +4950,10 @@ class DerivationEngine {
     // mismatch that left z permanently null. The raw mean is stored every day so
     // this series fills and z starts computing once ≥3 days exist.
     m['skin_temp_adc_history'] = history.valuesBefore('skin_temp_adc', date);
+    // The measured quiet-waking levels of prior days — the personal level
+    // strain subtracts its baseline at (median; today's own median is the
+    // bootstrap when this is empty). edge#226.
+    m['quiet_hrr_history'] = history.valuesBefore('quiet_waking_hrr', date);
     // TS-03/TS-04 — the observed ceiling this day's ZONES are banded on. A max,
     // not a window (see [maxBefore]), and strictly before today so a day is
     // never banded on a ceiling its own session set.
@@ -5931,6 +5972,10 @@ class DerivationEngine {
     int liveStepsUncoveredStrap = 0,
     int dynHistoryDays = 0,
     List<List<int>> stepSpans = const [],
+    /// Trailing measured `quiet_waking_hrr` levels strictly before this day —
+    /// the personal level strain subtracts its baseline at. See
+    /// [_DayBlocksInput.quietHrrHistory] and edge#226.
+    List<double> quietHrrHistory = const [],
     /// This day's `sessions` rows (`LocalDb.sessionsInRange`), for the
     /// zero-coverage credit below. Defaults to none — every existing caller
     /// keeps its old behaviour until it is threaded through.
@@ -5947,6 +5992,7 @@ class DerivationEngine {
       restingHr: restingHr,
       dynFloorG: dynFloorG,
       stepSpans: stepSpans,
+      quietHrrHistory: quietHrrHistory,
     );
     // ACTIVE ENERGY WORKOUT-GAP CREDIT. `wake['calories']` above is built
     // ENTIRELY from `daySub.hr` — the day's own continuous 1 Hz trace — and
@@ -6539,6 +6585,7 @@ class DerivationEngine {
     double? restingHr,
     double? dynFloorG,
     List<List<int>> stepSpans = const [],
+    List<double> quietHrrHistory = const [],
   }) {
     final activeMin = _activeMinutes(daySub, sleepOnsetSec, sleepOffsetSec);
     final wear = _wearBlock(
@@ -6579,6 +6626,10 @@ class DerivationEngine {
     final hrMax = estimatedMaxHr(profile.ageYears, daySub.deviceFamily);
     final rhrForTrimp = restingHr ?? profile.restingHrManual?.toDouble();
     double? strain;
+    // The day's measured quiet level and the level actually priced — carried
+    // out so the early-read bundle reports the same pair the pipeline emits.
+    double? quietWakingHrr;
+    double? quietHrrApplied;
     // Why each absent activity figure is absent, in the order the gates below
     // apply. Absence is never a bare nothing here: the day carries its own
     // reason PER FIGURE so every caller can say what is missing instead of
@@ -6662,12 +6713,25 @@ class DerivationEngine {
           // sets the quiet-waking baseline that gets subtracted. Passing the
           // observed length (not an assumed 24 h) is what stops a partial-wear
           // day from being charged a full day's overhead.
+          //
+          // THE LEVEL IS THE USER'S OWN (edge#226): the trailing median of
+          // measured `quiet_waking_hrr` days, bootstrapped by today's own
+          // measurement when no prior day exists — the SAME resolution
+          // `deriveDayBundle` applies, so the early read and the derived day
+          // publish one number. Both empty ⇒ null ⇒ strain abstains; the
+          // population constant is never substituted back (MOT-03).
+          final quietToday = ana.dailyQuietWakingHrr(
+            perMin,
+            restingHr: rhrForTrimp,
+            maxHr: hrMax,
+          );
+          final quietPersonal = ana.median(quietHrrHistory) ?? quietToday;
+          quietWakingHrr = quietToday;
+          quietHrrApplied = quietPersonal;
           final score = ana.strainScoreMetric(
             trimp.value,
             wakeMinutes: perMin.length.toDouble(),
-            // Reference level, not this user's — see onehz_pipeline's
-            // `strainMetric` for why, and edge#226 for the fix.
-            quietHrr: ana.quietWakingHrr,
+            quietHrr: quietPersonal,
             female: _workoutSex(sex) == 'female',
           );
           if (score.present) strain = score.value;
@@ -6754,6 +6818,11 @@ class DerivationEngine {
       'active_min': activeMin,
       'movement_min': movementMin,
       'strain': strain,
+      // The day's own measured level (null under the refusal gates) and the
+      // level strain was actually priced at — the trailing personal median or
+      // the day-median bootstrap. Both null ⇒ strain abstained.
+      'quiet_waking_hrr': quietWakingHrr,
+      'quiet_hrr_applied': quietHrrApplied,
       // Machine-readable reason `strain` is null (see `strainAbsent`). Null
       // when a strain WAS produced.
       'strain_absent': strain == null ? strainAbsent : null,
@@ -8065,6 +8134,7 @@ class DerivationEngine {
       dataNowSec: inp.dataNowSec,
       restingHr: inp.rhr,
       dynFloorG: inp.dynFloorG,
+      quietHrrHistory: inp.quietHrrHistory,
       liveStepsReal: inp.liveStepsReal,
       liveStepsFromStrap: inp.liveStepsFromStrap,
       liveStepsUncovered: inp.liveStepsUncovered,
@@ -8803,6 +8873,13 @@ class _DayBlocksInput {
   /// How many trailing days backed [dynFloorG] — only for the cold-start note.
   final int dynHistoryDays;
 
+  /// Trailing measured quiet-waking HRR levels strictly before this day
+  /// (`valuesBefore('quiet_waking_hrr', …)`). The early-read strain subtracts
+  /// its baseline at `median(history) ?? this day's own measured median` —
+  /// the same resolution the pure pipeline applies, so the two paths publish
+  /// the same number. Empty ⇒ the day bootstraps or abstains.
+  final List<double> quietHrrHistory;
+
   final List<Map<String, dynamic>> savedSessions;
 
   /// The user's nap edits for this day, replayed over the detector's output.
@@ -8850,6 +8927,7 @@ class _DayBlocksInput {
     this.stepSpans = const [],
     required this.dynFloorG,
     required this.dynHistoryDays,
+    this.quietHrrHistory = const [],
     required this.savedSessions,
     this.napEdits = const [],
     required this.wristOffSpans,

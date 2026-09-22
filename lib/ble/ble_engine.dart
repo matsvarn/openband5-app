@@ -5063,7 +5063,14 @@ class BleEngine {
     if (pb is Map) {
       _lastPagesBehind =
           Map<String, dynamic>.unmodifiable(pb.cast<String, dynamic>());
-      unawaited(_recordPagesBehind(_lastPagesBehind!));
+      // `trim_ts`/`current_read_ts` are TOP-LEVEL decoded fields, not inside
+      // `pages_behind` — the protocol emits them independently of the page
+      // gate so a zeroed cursor still records what it said.
+      unawaited(_recordPagesBehind(
+        _lastPagesBehind!,
+        trimTs: (f['trim_ts'] as num?)?.toInt(),
+        currentReadTs: (f['current_read_ts'] as num?)?.toInt(),
+      ));
     }
     if (d.kind == 'cmd_response' && f['hello'] is HelloInfo) {
       final h = f['hello'] as HelloInfo;
@@ -5419,7 +5426,11 @@ class BleEngine {
   ///
   /// The previous `wrap_count` now comes from the newest stored row, so the
   /// check survives on the table it writes to rather than on ledger JSON.
-  Future<void> _recordPagesBehind(Map<String, dynamic> pb) async {
+  Future<void> _recordPagesBehind(
+    Map<String, dynamic> pb, {
+    int? trimTs,
+    int? currentReadTs,
+  }) async {
     int? asInt(Object? v) => v is num ? v.toInt() : null;
     final used = asInt(pb['used']);
     final free = asInt(pb['free_records']);
@@ -5427,6 +5438,8 @@ class BleEngine {
     final written = asInt(pb['written']);
     final capacity = asInt(pb['capacity']);
     final trimPage = asInt(pb['trim_page']);
+    final readPage = asInt(pb['read_page']);
+    final rawOldPage = asInt(pb['raw_old_page']);
 
     int? prevWrap;
     try {
@@ -5437,8 +5450,17 @@ class BleEngine {
     final wrapped = (prevWrap != null && wrap != null && wrap > prevWrap)
         ? wrap - prevWrap
         : 0;
+    // `current_read_ts` is THE cursor fact: the next history drain resumes
+    // there, so anything older is unreachable by normal sync. Logged as an
+    // ISO instant because the reachability question is asked in dates.
+    final readIso = currentReadTs == null
+        ? 'none'
+        : DateTime.fromMillisecondsSinceEpoch(currentReadTs * 1000)
+            .toIso8601String();
     _log('[BACKLOG] used=$used free=$free wrap=$wrap (prev=$prevWrap, '
-        '+$wrapped) written=$written/$capacity trim_page=$trimPage');
+        '+$wrapped) written=$written/$capacity trim_page=$trimPage '
+        'read_page=$readPage raw_old_page=$rawOldPage '
+        'current_read=$readIso trim_ts=$trimTs');
 
     await _bestEffortLedgerWrite(
       () => LocalDb.putBandBacklog(
@@ -5451,6 +5473,10 @@ class BleEngine {
         freeRecords: free,
         // Unknown link ⇒ NULL, never a guessed gen4.
         deviceFamily: linkDeviceFamily,
+        readPage: readPage,
+        rawOldPage: rawOldPage,
+        currentReadTs: currentReadTs,
+        trimTs: trimTs,
       ),
     );
   }

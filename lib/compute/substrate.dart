@@ -911,7 +911,12 @@ class _Rec {
         tsSubsec = g.tsSubsec,
         spo2RedRaw = 0,
         spo2IrRaw = 0,
-        skinTempRaw = 0,
+        // Gen5 skin temp arrives decoded as °C; the array's convention is the
+        // same one the decoded-row path uses (`_skinTempFor`): centi-°C, so a
+        // raw-replay page lands on the same values the stored column carries.
+        // The -50.00 °C sentinel is ABSENT, not a reading — it lands on 0,
+        // which every consumer's `v > 0` gate already reads as "no reading".
+        skinTempRaw = g.skinTempAvailable ? (g.skinTempC * 100).round() : 0,
         skinContact = 0,
         stepCount = g.stepMotionCounter;
 }

@@ -16,6 +16,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -1309,6 +1310,7 @@ class LocalDb {
     await _createBandSignals(db);
     await _ensureBandBatteryMillivolts(db);
     await _ensureBandBatteryChargeUnits(db);
+    await _ensureBandBacklogCursor(db);
     await _createRawArchive(db);
     await _createDerived(db);
     await _createDayResult(db);
@@ -8746,9 +8748,25 @@ class LocalDb {
         wrap_count INTEGER,
         free_records INTEGER,
         device_family TEXT,
+        read_page INTEGER,
+        raw_old_page INTEGER,
+        current_read_ts INTEGER,
+        trim_ts INTEGER,
         PRIMARY KEY (device_id, ts)
       )
     ''');
+  }
+
+  /// Additive: the band's READ cursor — where the next history drain resumes
+  /// from (read_page/current_read_ts), the oldest retained page and the trim
+  /// boundary. This is the fact that answers "is the never-drained backlog
+  /// reachable by normal sync": records older than current_read_ts are not.
+  /// Guarded for existing installs; fresh installs get them from the CREATE.
+  static Future<void> _ensureBandBacklogCursor(Database db) async {
+    await _addColumnIfMissing(db, 'band_backlog', 'read_page', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'raw_old_page', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'current_read_ts', 'INTEGER');
+    await _addColumnIfMissing(db, 'band_backlog', 'trim_ts', 'INTEGER');
   }
 
   /// Record one connect's `pages_behind` reading. [ts] is epoch SECONDS.
@@ -8769,6 +8787,10 @@ class LocalDb {
     int? wrapCount,
     int? freeRecords,
     String? deviceFamily,
+    int? readPage,
+    int? rawOldPage,
+    int? currentReadTs,
+    int? trimTs,
   }) async {
     final db = await instance;
     await db.insert('band_backlog', {
@@ -8782,6 +8804,10 @@ class LocalDb {
       'free_records': freeRecords,
       // Unknown provenance stays NULL — never defaulted to gen4.
       'device_family': deviceFamily,
+      'read_page': readPage,
+      'raw_old_page': rawOldPage,
+      'current_read_ts': currentReadTs,
+      'trim_ts': trimTs,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -13198,6 +13224,17 @@ class LocalDb {
     );
     return [for (final r in rows.reversed) (r['value'] as num).toDouble()];
   }
+
+  /// The user's personal quiet-waking HRR level: the median of the trailing
+  /// measured `quiet_waking_hrr` days, or null when no day has measured one
+  /// yet. This is the level the day-level strain resolves to
+  /// (`median(history) ?? today's own` — see `deriveDayBundle`, edge#226) for
+  /// SESSION scorers, which have no per-day bootstrap of their own: a manual
+  /// or live session must not measure its quiet level off the session's own
+  /// minutes, or a hard workout would subtract its own effort away. Null ⇒
+  /// the scorer abstains rather than falling back to the population constant.
+  static Future<double?> personalQuietWakingHrr() async =>
+      ana.median(await trailingSeriesValues('quiet_waking_hrr', 28));
 
   static Future<Map<String, dynamic>?> baseline(String key) async {
     final db = await instance;

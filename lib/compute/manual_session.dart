@@ -248,11 +248,19 @@ List<double> zoneMinutesFor(
 /// ceiling is a property of the strap that measured the window as well as the
 /// athlete's age (`estimatedMaxHr`), and this scorer is device-agnostic. Null
 /// — no age, or an uncalibrated/unstamped strap — abstains.
+///
+/// [quietHrr] is the user's personal quiet-waking level, resolved by the
+/// caller (`LocalDb.personalQuietWakingHrr` — the trailing median of measured
+/// days). It is deliberately NOT measured off [perMinuteHr] here: a session's
+/// own median IS the effort being scored, so a hard workout would subtract
+/// itself away. Null abstains — the population constant is never substituted
+/// (MOT-03, edge#226).
 double? strainFromPerMinuteHr(
   List<double> perMinuteHr, {
   required Profile profile,
   required double? restingHr,
   required double? hrMax,
+  required double? quietHrr,
 }) {
   final sex = profile.sex?.toLowerCase();
   if (perMinuteHr.isEmpty || hrMax == null || restingHr == null || sex == null) {
@@ -271,9 +279,7 @@ double? strainFromPerMinuteHr(
   final score = ana.strainScoreMetric(
     trimp.value,
     wakeMinutes: perMinuteHr.length.toDouble(),
-    // Reference level, not this user's — see onehz_pipeline's
-    // `strainMetric` for why, and edge#226 for the fix.
-    quietHrr: ana.quietWakingHrr,
+    quietHrr: quietHrr,
     female: workoutSex(sex) == 'female',
   );
   return score.present ? score.value : null;
@@ -304,6 +310,7 @@ ManualSessionStats computeManualSessionStats({
   required Profile profile,
   required double? hrMax,
   double? restingHr,
+  double? quietHrr,
   ana.HeartRateZoneSet? zoneSet,
 }) {
   if (hrTs.isEmpty || hrTs.length != hrBpm.length) {
@@ -341,7 +348,10 @@ ManualSessionStats computeManualSessionStats({
   final sex = profile.sex?.toLowerCase();
 
   final strain = strainFromPerMinuteHr(perMin,
-      profile: profile, restingHr: restingHr, hrMax: hrMax);
+      profile: profile,
+      restingHr: restingHr,
+      hrMax: hrMax,
+      quietHrr: quietHrr);
 
   double? calories;
   if (profile.hasCalorieAnchors &&

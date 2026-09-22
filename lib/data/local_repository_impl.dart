@@ -2707,6 +2707,10 @@ class LocalRepositoryImpl extends LocalRepository {
       profile: profile,
       hrMax: _profileMaxHr(deviceFamily, startTs)?.toDouble(),
       restingHr: restingHr,
+      // The personal quiet-waking level the day pipeline resolves (edge#226) —
+      // null ⇒ the strain abstains rather than pricing the bout off the
+      // population constant it was never calibrated to.
+      quietHrr: await LocalDb.personalQuietWakingHrr(),
       // TS-04 — the persisted `zone_min` is binned with the SAME set the detail
       // screen's `zone_bands` recomputes. `hrMax` above stays the strain and
       // calorie anchor; the two are named separately because they can now be
@@ -2815,6 +2819,7 @@ class LocalRepositoryImpl extends LocalRepository {
         hrMax: _profileMaxHr(row['device_family'] as String?, startTs)?.toDouble(),
         restingHr:
             await _recentRestingHr() ?? profile.restingHrManual?.toDouble(),
+        quietHrr: await LocalDb.personalQuietWakingHrr(),
         zoneSet: _zoneSetFor(
             row['device_family'] as String?, await _zoneAnchors(), startTs),
       );

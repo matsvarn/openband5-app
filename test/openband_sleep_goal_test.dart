@@ -70,7 +70,7 @@ void main() {
       LocalDb.putBaseline('crossday', jsonEncode(artifact));
 
   test('kAlgoVersion is the contract pin', () {
-    expect(kAlgoVersion, 91);
+    expect(kAlgoVersion, 92);
   });
 
   test('field parser accepts 7h45 and rejects blank or 24h+ entries', () {
