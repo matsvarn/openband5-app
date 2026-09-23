@@ -13,7 +13,12 @@ import 'scale.dart';
 import 'journal_controls.dart';
 import 'calendar_line.dart';
 import 'night_signals.dart';
-import 'screens.dart' show obMetricComparisonStatus, obTemperatureNumber;
+import 'screens.dart'
+    show
+        obMetricComparisonStatus,
+        obTemperatureNumber,
+        obVerdictMark,
+        obVerdictText;
 import 'settings_controls.dart';
 import 'sleep_editor.dart';
 import 'theme.dart';
@@ -835,7 +840,8 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
         ? ''
         : _heroStatus(snap);
     final compared = !overlay && snap != null && _comparisonValid(snap);
-    final scale = _heroScale(snap, value);
+    final verdict = compared ? _verdict(snap) : null;
+    final scale = _heroScale(snap, value, mark: obVerdictMark(p, verdict));
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -887,8 +893,12 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
               style: p
                   .text(
                     13,
-                    weight: compared ? FontWeight.w700 : FontWeight.w500,
-                    color: compared ? p.ink : p.muted,
+                    weight: compared && verdict != MetricVerdict.normal
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: compared
+                        ? obVerdictText(p, verdict) ?? p.ink
+                        : p.muted,
                   )
                   .copyWith(height: 18 / 13),
             ),
@@ -901,7 +911,14 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
 
   /// The value on a scale spanning the observed nights. No range is
   /// assumed: with fewer than three stored nights there is no scale.
-  Widget? _heroScale(NightScalarDetail? snap, double? value) {
+  MetricVerdict? _verdict(NightScalarDetail snap) => metricVerdict(
+    widget.metricKey,
+    snap.value,
+    snap.baseline?.value,
+    snap.baseline?.spread,
+  );
+
+  Widget? _heroScale(NightScalarDetail? snap, double? value, {Color? mark}) {
     if (snap == null || value == null || _temperature) return null;
     final seen = [
       for (final n in snap.history)
@@ -926,6 +943,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       max: max,
       value: value,
       target: base,
+      mark: mark,
       labels: (
         n(min),
         base == null ? '${seen.length} Nächte' : 'Basis ${n(base)}',
@@ -1012,6 +1030,9 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
               nights: _nights,
               baseline: showBaseline ? snap.baseline!.value : null,
               color: color,
+              newest: loaded && _comparisonValid(snap)
+                  ? obVerdictMark(p, _verdict(snap))
+                  : null,
               visible: showChart,
             ),
           const SizedBox(height: 10),
@@ -1179,12 +1200,16 @@ class NightScalarChart extends StatelessWidget {
   final int nights;
   final double? baseline;
   final Color color;
+
+  /// Verdict colour for the newest night's bar; null keeps [color].
+  final Color? newest;
   final bool visible;
   const NightScalarChart({
     super.key,
     required this.bars,
     required this.nights,
     required this.color,
+    this.newest,
     this.baseline,
     this.visible = true,
   });
@@ -1205,6 +1230,7 @@ class NightScalarChart extends StatelessWidget {
         child: CustomPaint(
           key: const ValueKey('night-scalar-chart'),
           painter: NightScalarBarsPainter(
+            newest: newest,
             bars: bars,
             nights: nights,
             baseline: baseline,
@@ -1225,6 +1251,7 @@ class NightScalarBarsPainter extends CustomPainter {
   final int nights;
   final double? baseline;
   final Color color;
+  final Color? newest;
   final Color axisColor;
   final TextScaler textScaler;
 
@@ -1232,6 +1259,7 @@ class NightScalarBarsPainter extends CustomPainter {
     required this.bars,
     required this.nights,
     required this.color,
+    this.newest,
     required this.axisColor,
     required this.textScaler,
     this.baseline,
@@ -1324,6 +1352,7 @@ class NightScalarBarsPainter extends CustomPainter {
     final radius = Radius.circular(width / 2);
     final paint = Paint()..color = color;
     final count = math.min(bars.length, n);
+    final last = Paint()..color = newest ?? color;
     for (var i = 0; i < count; i++) {
       final value = bars[i].value;
       if (value == null) continue;
@@ -1334,7 +1363,7 @@ class NightScalarBarsPainter extends CustomPainter {
           Rect.fromLTRB(x, top, x + width, plotBottom),
           radius,
         ),
-        paint,
+        i == count - 1 ? last : paint,
       );
     }
   }
@@ -1345,6 +1374,7 @@ class NightScalarBarsPainter extends CustomPainter {
       old.nights != nights ||
       old.baseline != baseline ||
       old.color != color ||
+      old.newest != newest ||
       old.axisColor != axisColor ||
       old.textScaler != textScaler;
 }

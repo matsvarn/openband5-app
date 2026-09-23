@@ -26,6 +26,16 @@ const List<double> kNightScalarPaperRhr = [
 
 const double kNightScalarPaperHrvBaseline = 40;
 const double kNightScalarPaperRhrBaseline = 56;
+
+/// Paper normal ranges (baseline ± 1.253 × spread): HRV 36–44 ms, RHR 53–59.
+const double kNightScalarPaperHrvSpread = 4 / 1.253;
+const double kNightScalarPaperRhrSpread = 3 / 1.253;
+
+double? nightScalarPaperSpread(NightScalarMetric metric) => switch (metric) {
+  NightScalarMetric.hrv => kNightScalarPaperHrvSpread,
+  NightScalarMetric.rhr => kNightScalarPaperRhrSpread,
+  _ => null,
+};
 const double kNightScalarPaperRespRate = 16;
 
 /// Paper fixture nights ending 2026-09-15: 14 stored priors plus selected 16.
@@ -138,6 +148,7 @@ enum NightScalarGap {
 class StoredNightBaseline {
   const StoredNightBaseline({
     this.value,
+    this.spread,
     this.status,
     this.nValid,
     this.nightsSinceUpdate,
@@ -145,6 +156,9 @@ class StoredNightBaseline {
   });
 
   final double? value;
+
+  /// Robust spread of the baseline (analytics `BaselineState.spread`).
+  final double? spread;
   final String? status;
   final int? nValid;
   final int? nightsSinceUpdate;
@@ -152,6 +166,7 @@ class StoredNightBaseline {
 
   bool get isEmpty =>
       value == null &&
+      spread == null &&
       status == null &&
       nValid == null &&
       nightsSinceUpdate == null &&
@@ -161,6 +176,7 @@ class StoredNightBaseline {
   bool operator ==(Object other) =>
       other is StoredNightBaseline &&
       other.value == value &&
+      other.spread == spread &&
       other.status == status &&
       other.nValid == nValid &&
       other.nightsSinceUpdate == nightsSinceUpdate &&
@@ -168,7 +184,7 @@ class StoredNightBaseline {
 
   @override
   int get hashCode =>
-      Object.hash(value, status, nValid, nightsSinceUpdate, note);
+      Object.hash(value, spread, status, nValid, nightsSinceUpdate, note);
 }
 
 /// Genuine `respiration.rsa` envelope. Spectral [peakHz]/[power]/[source] and
@@ -668,6 +684,7 @@ DateTime? nightScalarEpochMs(Object? raw) {
 
 StoredNightBaseline? nightScalarBaseline({
   Object? value,
+  Object? spread,
   Object? status,
   Object? nValid,
   Object? nightsSinceUpdate,
@@ -675,6 +692,7 @@ StoredNightBaseline? nightScalarBaseline({
 }) {
   final parsed = StoredNightBaseline(
     value: nightScalarFinite(value),
+    spread: nightScalarFinite(spread),
     status: nightScalarStatus(status),
     nValid: nightScalarNonnegInt(nValid),
     nightsSinceUpdate: nightScalarNonnegInt(nightsSinceUpdate),
@@ -915,6 +933,7 @@ Map<String, Object?>? projectNightScalarPayload(
       'onset_ms': value is Map ? value['onset_ms'] : null,
       'offset_ms': value is Map ? value['offset_ms'] : null,
       'baseline_value': block is Map ? block['baseline'] : null,
+      'baseline_spread': block is Map ? block['spread'] : null,
       'baseline_status': block is Map ? block['status'] : null,
       'baseline_n_valid': block is Map ? block['n_valid'] : null,
       'baseline_nights_since_update':

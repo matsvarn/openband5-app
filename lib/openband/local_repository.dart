@@ -362,6 +362,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final stored = allowBaseline
           ? nightScalarBaseline(
               value: _numAt(payload, 'baselines.$baselineRoot.baseline'),
+              spread: _numAt(payload, 'baselines.$baselineRoot.spread'),
               status: _stringAt(payload, 'baselines.$baselineRoot.status'),
               nValid: _at(payload, 'baselines.$baselineRoot.n_valid'),
               nightsSinceUpdate: _at(
@@ -1763,6 +1764,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         baseline: valid
             ? nightScalarBaseline(
                 value: projected['baseline_value'],
+                spread: projected['baseline_spread'],
                 status: projected['baseline_status'],
                 nValid: projected['baseline_n_valid'],
                 nightsSinceUpdate: projected['baseline_nights_since_update'],

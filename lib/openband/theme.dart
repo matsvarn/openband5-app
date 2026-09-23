@@ -17,6 +17,10 @@ class OB {
   Color get well => _pick(AlpColor.well, AlpColor.darkWell);
   Color get inset => _pick(AlpColor.inset, AlpColor.darkInset);
   Color get led => _pick(AlpColor.led, AlpColor.darkLed);
+  Color get better => _pick(AlpColor.better, AlpColor.darkBetter);
+  Color get betterMark => _pick(AlpColor.betterMark, AlpColor.darkBetter);
+  Color get worse => _pick(AlpColor.worse, AlpColor.darkWorse);
+  Color get worseMark => _pick(AlpColor.worseMark, AlpColor.darkWorse);
   Color get signal => _pick(AlpColor.signal, AlpColor.darkSignal);
 
   /// Drop shadow only — for selected chips that sit on an inset track.

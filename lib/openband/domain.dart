@@ -1,6 +1,7 @@
 /// Typed boundary for the OpenBand daily flow. Only repositories decode maps.
 library;
 
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../data/journal_fields.dart';
 import '../data/nutrition_store.dart';
 import '../health/glucose_contract.dart';
@@ -54,6 +55,9 @@ class DayMetric {
   final MetricReadiness readiness;
   final String? reason;
   final double? baseline;
+
+  /// Spread of [baseline]; set only together with it.
+  final double? baselineSpread;
   /// Typed night-scalar overlay for nightly scalar cards. Null on other metrics.
   final NightScalarState? nightScalar;
   /// Skin-temperature quantity. Null on metrics that are not skin temperature.
@@ -63,16 +67,65 @@ class DayMetric {
     this.readiness = MetricReadiness.available,
     this.reason,
     this.baseline,
+    this.baselineSpread,
     this.nightScalar,
     this.unit,
   });
   const DayMetric.missing([this.reason])
     : value = null,
       baseline = null,
+      baselineSpread = null,
       readiness = MetricReadiness.missing,
       nightScalar = null,
       unit = null;
 }
+
+/// Where a value sits against the person's own normal range.
+enum MetricVerdict { normal, better, worse }
+
+/// Verdict for [value] against a stored [baseline] and its [spread], using
+/// the analytics' normal range (|robust z| <= 1). Null when anything is
+/// missing — no range, no verdict. HRV is better above the range, resting
+/// pulse below it; for breathing rate any departure is worse.
+MetricVerdict? metricVerdict(
+  MetricKey key,
+  double? value,
+  double? baseline,
+  double? spread,
+) {
+  if (value == null || baseline == null || spread == null || spread <= 0) {
+    return null;
+  }
+  // true: higher is better; false: lower is better; null: either way worse.
+  const direction = <MetricKey, bool?>{
+    MetricKey.hrv: true,
+    MetricKey.restingHr: false,
+    MetricKey.respiration: null,
+  };
+  if (!direction.containsKey(key)) return null;
+  final higherIsBetter = direction[key];
+  final d = ana.Baselines.deviation(
+    value,
+    ana.BaselineState(
+      baseline: baseline,
+      spread: spread,
+      nValid: 1,
+      nightsSinceUpdate: 0,
+      status: ana.BaselineStatus.trusted,
+    ),
+  );
+  if (d == null || d.inNormalRange) return MetricVerdict.normal;
+  if (higherIsBetter == null) return MetricVerdict.worse;
+  return (d.delta > 0) == higherIsBetter
+      ? MetricVerdict.better
+      : MetricVerdict.worse;
+}
+
+/// [metricVerdict] for a card metric; only a current, trusted comparison.
+MetricVerdict? dayMetricVerdict(MetricKey key, DayMetric m) =>
+    m.nightScalar != null && m.nightScalar != NightScalarState.current
+    ? null
+    : metricVerdict(key, m.value, m.baseline, m.baselineSpread);
 
 /// Compact nightly-scalar card. Comparison [DayMetric.baseline] is only a current
 /// complete scalar with stored status `trusted`. Typed detail keeps the rest.
@@ -147,6 +200,9 @@ DayMetric dayMetricFromNightScalar({
         readiness: MetricReadiness.available,
         reason: unknownUnit ? kNightScalarUnknownUnitLabel : null,
         baseline: unknownUnit ? null : cardBaseline,
+        baselineSpread: unknownUnit || cardBaseline == null
+            ? null
+            : nightScalarFinite(baseline?.spread),
         nightScalar: state,
         unit: unit,
       );

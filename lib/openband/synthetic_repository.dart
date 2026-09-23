@@ -2624,7 +2624,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             : null,
         baseline: baselineValue == null
             ? null
-            : StoredNightBaseline(value: baselineValue, status: 'trusted'),
+            : StoredNightBaseline(
+                value: baselineValue,
+                spread: nightScalarPaperSpread(key),
+                status: 'trusted',
+              ),
         windowStartMs: onFixtureDay ? _onset.millisecondsSinceEpoch : null,
         windowEndMs: onFixtureDay ? _wake.millisecondsSinceEpoch : null,
       );
@@ -2765,6 +2769,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
                 ? null
                 : StoredNightBaseline(
                     value: baselineValue,
+                    spread: nightScalarPaperSpread(metric),
                     status: 'trusted',
                   ),
             windowStartMs: _onset.millisecondsSinceEpoch,

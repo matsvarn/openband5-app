@@ -17,6 +17,10 @@ class OBScale extends StatelessWidget {
   final double min, max;
   final double? value, baseLow, baseHigh, target;
   final Color? fill;
+
+  /// Verdict colour of today's pointer: fills the knob (outlined in
+  /// [markEdge]) or the needle. Null keeps the neutral ink pointer.
+  final Color? mark, markEdge;
   final int ticks;
 
   /// Left, centre and right captions under the ticks. Centre may be null.
@@ -34,6 +38,8 @@ class OBScale extends StatelessWidget {
     this.baseHigh,
     this.target,
     this.fill,
+    this.mark,
+    this.markEdge,
     this.ticks = 10,
     this.labels,
     this.targetLabel,
@@ -66,6 +72,8 @@ class OBScale extends StatelessWidget {
             baseHigh: baseHigh,
             target: target,
             fill: fill,
+            mark: mark,
+            markEdge: markEdge,
             ticks: ticks,
             labels: labels,
             targetLabel: targetLabel,
@@ -82,7 +90,7 @@ class _ScalePainter extends CustomPainter {
   final OB p;
   final double min, max;
   final double? value, baseLow, baseHigh, target;
-  final Color? fill;
+  final Color? fill, mark, markEdge;
   final int ticks;
   final (String, String?, String)? labels;
   final String? targetLabel;
@@ -97,6 +105,8 @@ class _ScalePainter extends CustomPainter {
     required this.baseHigh,
     required this.target,
     required this.fill,
+    required this.mark,
+    required this.markEdge,
     required this.ticks,
     required this.labels,
     required this.targetLabel,
@@ -163,16 +173,16 @@ class _ScalePainter extends CustomPainter {
         const Radius.circular(2.5),
       );
       if (fill != null) {
-        canvas.drawRRect(knob, Paint()..color = p.card);
+        canvas.drawRRect(knob, Paint()..color = mark ?? p.card);
         canvas.drawRRect(
           knob,
           Paint()
-            ..color = p.ink
+            ..color = markEdge ?? mark ?? p.ink
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1.5,
         );
       } else {
-        canvas.drawRRect(knob, Paint()..color = p.ink);
+        canvas.drawRRect(knob, Paint()..color = mark ?? p.ink);
       }
     }
     final caption = labels;
@@ -231,6 +241,8 @@ class _ScalePainter extends CustomPainter {
       old.baseHigh != baseHigh ||
       old.target != target ||
       old.fill != fill ||
+      old.mark != mark ||
+      old.markEdge != markEdge ||
       old.min != min ||
       old.max != max ||
       old.labels != labels ||

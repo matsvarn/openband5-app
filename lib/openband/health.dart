@@ -75,10 +75,11 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                 children: [
                   OBMetricCard(
                     label: 'HRV',
+                    metricKey: MetricKey.hrv,
                     unit: 'ms',
                     metric: day.hrv,
                     icon: LucideIcons.activity,
-                    color: p.recovery,
+                    color: p.ink,
                     onTap: () => OpenBandMetricDetail.push(
                       context,
                       backText: widget.bandMetricsOnly ? 'Messwerte' : null,
@@ -88,12 +89,13 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       subtitle: 'Herzratenvariabilität',
                       unit: 'ms',
                       icon: LucideIcons.activity,
-                      color: (p) => p.recovery,
-                      tint: (p) => p.recoveryTint,
+                      color: (p) => p.ink,
+                      tint: (p) => p.line,
                     ),
                   ),
                   OBMetricCard(
                     label: 'Ruhepuls',
+                    metricKey: MetricKey.restingHr,
                     unit: '/min',
                     metric: day.restingHr,
                     icon: LucideIcons.heart,
@@ -119,6 +121,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   OBMetricCard(
                     key: const ValueKey('atemfrequenz'),
                     label: 'Atemfrequenz',
+                    metricKey: MetricKey.respiration,
                     unit: '/min',
                     metric: day.respiration,
                     icon: LucideIcons.wind,
@@ -187,8 +190,8 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   'Erholung',
                   'von 100',
                   LucideIcons.heartPulse,
-                  p.recovery,
-                  p.recoveryTint,
+                  p.ink,
+                  p.line,
                 ),
               ])
                 Padding(

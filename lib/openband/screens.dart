@@ -449,6 +449,9 @@ class _VitalTileState extends State<_VitalTile> {
     final corner = delta != null
         ? (delta == 0 ? '±0' : '${delta > 0 ? '+' : '−'}${delta.abs()}')
         : (m.value == null ? null : status);
+    final verdict = delta == null
+        ? null
+        : dayMetricVerdict(widget.metricKey, m);
     return Semantics(
       button: true,
       label:
@@ -483,10 +486,14 @@ class _VitalTileState extends State<_VitalTile> {
                           style: p
                               .text(
                                 11,
-                                weight: delta != null
+                                weight:
+                                    delta != null &&
+                                        verdict != MetricVerdict.normal
                                     ? FontWeight.w700
                                     : FontWeight.w500,
-                                color: delta != null ? p.ink : p.muted,
+                                color: delta == null
+                                    ? p.muted
+                                    : obVerdictText(p, verdict) ?? p.ink,
                               )
                               .copyWith(height: 14 / 11),
                         ),
@@ -516,6 +523,7 @@ class _VitalTileState extends State<_VitalTile> {
                             painter: _WeekBarsPainter(
                               p,
                               snap.hasError ? const [] : snap.data ?? const [],
+                              newest: obVerdictMark(p, verdict) ?? p.ink,
                             ),
                           ),
                         ),
@@ -537,7 +545,10 @@ class _VitalTileState extends State<_VitalTile> {
 class _WeekBarsPainter extends CustomPainter {
   final OB p;
   final List<MetricPoint> points;
-  _WeekBarsPainter(this.p, this.points);
+
+  /// Colour of the newest bar: ink, or its verdict colour.
+  final Color newest;
+  _WeekBarsPainter(this.p, this.points, {required this.newest});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -579,14 +590,14 @@ class _WeekBarsPainter extends CustomPainter {
           Rect.fromLTWH(x, bottom - h, bw, h),
           const Radius.circular(1.5),
         ),
-        Paint()..color = i == shown.length - 1 ? p.ink : p.gap,
+        Paint()..color = i == shown.length - 1 ? newest : p.gap,
       );
     }
   }
 
   @override
   bool shouldRepaint(_WeekBarsPainter old) =>
-      old.points != points || old.p.dark != p.dark;
+      old.points != points || old.newest != newest || old.p.dark != p.dark;
 }
 
 /// Heute's header (Paper G2): day title with its picker chevron, the date
@@ -764,6 +775,7 @@ class _RingTrioState extends State<_RingTrio> {
         final goal = snap.hasError
             ? null
             : snap.data?.targetMinutes?.toDouble();
+        final sleepGoal = _sleepGoalDelta(day.sleep.duration.value, goal);
         Widget trio(double progress) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -771,12 +783,12 @@ class _RingTrioState extends State<_RingTrio> {
               label: 'Erholung',
               value: obNumber(day.recovery.value),
               unit: day.recovery.value == null ? 'kein Wert' : 'von 100',
-              valueColor: day.recovery.value == null ? p.gap : p.recovery,
+              valueColor: day.recovery.value == null ? p.gap : p.ink,
               scale: OBScale(
                 min: 0,
                 max: 100,
                 value: _grow(day.recovery.value, progress),
-                fill: p.recovery,
+                fill: p.ink,
                 labels: ('0', '50', '100'),
               ),
               onTap: () => OpenBandMetricDetail.push(
@@ -788,8 +800,9 @@ class _RingTrioState extends State<_RingTrio> {
                 subtitle: 'aus der Nacht',
                 unit: 'von 100',
                 icon: LucideIcons.heartPulse,
-                color: (p) => p.recovery,
-                tint: (p) => p.recoveryTint,
+                // Colour means a verdict (G2); Erholung has no range yet.
+                color: (p) => p.ink,
+                tint: (p) => p.line,
               ),
             ),
             Container(height: 1, color: p.line),
@@ -797,6 +810,8 @@ class _RingTrioState extends State<_RingTrio> {
               label: 'Schlaf',
               value: obDuration(day.sleep.duration.value),
               unit: _sleepDelta(day.sleep.duration),
+              delta: sleepGoal.text,
+              deltaColor: obVerdictText(p, sleepGoal.verdict),
               valueColor: day.sleep.duration.value == null ? p.gap : p.ink,
               scale: OBScale(
                 min: 0,
@@ -805,6 +820,8 @@ class _RingTrioState extends State<_RingTrio> {
                 target: goal,
                 targetLabel: goal == null ? null : 'Ziel ${obDuration(goal)}',
                 fill: p.sleep,
+                mark: obVerdictMark(p, sleepGoal.verdict),
+                markEdge: obVerdictText(p, sleepGoal.verdict),
                 labels: ('0 h', '5 h', '10 h'),
               ),
               onTap: widget.onSleep,
@@ -856,12 +873,31 @@ class _RingTrioState extends State<_RingTrio> {
   static double? _grow(double? v, double t) => v == null ? null : v * t;
 }
 
+/// Sleep against the goal: green once met; short of it the gap is stated
+/// muted — a short night is not an alarm. Nothing without both values.
+({String? text, MetricVerdict? verdict}) _sleepGoalDelta(
+  double? minutes,
+  double? goal,
+) {
+  if (minutes == null || goal == null) return (text: null, verdict: null);
+  final d = (minutes - goal).round();
+  final size = d.abs() < 60 ? '${d.abs()} Min.' : obDuration(d.abs());
+  return (
+    text: d == 0 ? '±0' : '${d > 0 ? '+' : '−'}$size',
+    verdict: d >= 0 ? MetricVerdict.better : MetricVerdict.normal,
+  );
+}
+
 /// One Messleiste row (Paper G2): 108-pt reading column — spaced label over
 /// the value, a short note beside it — and the scale filling the rest.
 /// Stacks under the value at large text.
 class _Messleiste extends StatelessWidget {
   final String label, value;
   final String? unit;
+
+  /// Delta beside the label (Paper G2), coloured by verdict.
+  final String? delta;
+  final Color? deltaColor;
   final Color valueColor;
   final Widget scale;
   final VoidCallback onTap;
@@ -869,6 +905,8 @@ class _Messleiste extends StatelessWidget {
     required this.label,
     required this.value,
     required this.unit,
+    this.delta,
+    this.deltaColor,
     required this.valueColor,
     required this.scale,
     required this.onTap,
@@ -886,9 +924,30 @@ class _Messleiste extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: 2,
       children: [
-        Text(
-          '${label.toUpperCase()} ›',
-          style: p.label().copyWith(height: 12 / 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${label.toUpperCase()} ›',
+                maxLines: 1,
+                style: p.label().copyWith(height: 12 / 10),
+              ),
+            ),
+            if (delta != null)
+              Text(
+                delta!,
+                maxLines: 1,
+                style: p
+                    .text(
+                      11,
+                      weight: deltaColor == p.muted
+                          ? FontWeight.w500
+                          : FontWeight.w700,
+                      color: deltaColor ?? p.ink,
+                    )
+                    .copyWith(height: 14 / 11),
+              ),
+          ],
         ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -920,7 +979,8 @@ class _Messleiste extends StatelessWidget {
     );
     return Semantics(
       button: true,
-      label: '$label, $value ${unit ?? ''}',
+      label:
+          '$label, $value ${unit ?? ''}${delta == null ? '' : ', $delta zum Ziel'}',
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -945,6 +1005,22 @@ class _Messleiste extends StatelessWidget {
     );
   }
 }
+
+/// Verdict colours (G2 rule: colour marks only the delta text and today's
+/// marker). Inside the normal range the delta is muted; without a verdict
+/// the caller keeps its neutral style.
+Color? obVerdictText(OB p, MetricVerdict? v) => switch (v) {
+  MetricVerdict.better => p.better,
+  MetricVerdict.worse => p.worse,
+  MetricVerdict.normal => p.muted,
+  null => null,
+};
+
+Color? obVerdictMark(OB p, MetricVerdict? v) => switch (v) {
+  MetricVerdict.better => p.betterMark,
+  MetricVerdict.worse => p.worseMark,
+  _ => null,
+};
 
 /// "DI 15.09" under the day title.
 String _dateLine(String day) {
@@ -1370,6 +1446,9 @@ class OBMetricCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final int digits;
+
+  /// Metric for the verdict colour of the comparison; null keeps it ink.
+  final MetricKey? metricKey;
   final VoidCallback? onTap;
   const OBMetricCard({
     super.key,
@@ -1379,6 +1458,7 @@ class OBMetricCard extends StatelessWidget {
     required this.icon,
     required this.color,
     this.digits = 0,
+    this.metricKey,
     this.onTap,
   }) : assert(digits >= 0);
   @override
@@ -1451,7 +1531,15 @@ class OBMetricCard extends StatelessWidget {
                         .text(
                           labelSize,
                           weight: compared ? FontWeight.w700 : FontWeight.w500,
-                          color: compared ? p.ink : p.muted,
+                          color: compared
+                              ? (metricKey == null
+                                        ? null
+                                        : obVerdictText(
+                                            p,
+                                            dayMetricVerdict(metricKey!, metric),
+                                          )) ??
+                                    p.ink
+                              : p.muted,
                         )
                         .copyWith(height: 18 / 13, letterSpacing: 0),
                   ),
@@ -2031,6 +2119,7 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                           _NightTile(
                             label: 'HRV',
                             unit: 'ms',
+                            metricKey: MetricKey.hrv,
                             metric: day.hrv,
                             onTap: () => OpenBandMetricDetail.push(
                               context,
@@ -2048,6 +2137,7 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                           _NightTile(
                             label: 'Puls',
                             unit: '/min',
+                            metricKey: MetricKey.restingHr,
                             metric: day.restingHr,
                             onTap: () => OpenBandMetricDetail.push(
                               context,
@@ -2608,11 +2698,13 @@ class _StageRows extends StatelessWidget {
 /// to a trusted baseline. Non-current states show their reason instead.
 class _NightTile extends StatelessWidget {
   final String label, unit;
+  final MetricKey metricKey;
   final DayMetric metric;
   final VoidCallback onTap;
   const _NightTile({
     required this.label,
     required this.unit,
+    required this.metricKey,
     required this.metric,
     required this.onTap,
   });
@@ -2627,11 +2719,20 @@ class _NightTile extends StatelessWidget {
         (m.nightScalar == null || m.nightScalar == NightScalarState.current);
     final delta = comparable ? (m.value! - m.baseline!).round() : null;
     final status = _compactMetricStatus(m, digits: 0);
+    final deltaText = delta == null
+        ? null
+        : delta == 0
+        ? '±0'
+        : '${delta > 0 ? '+' : '−'}${delta.abs()}';
     final foot = m.value == null
         ? (status ?? '')
-        : delta == null
+        : deltaText == null
         ? (status == null ? unit : '$unit · $status')
-        : '$unit · ${delta == 0 ? '±0' : '${delta > 0 ? '+' : '−'}${delta.abs()}'}';
+        : '$unit · $deltaText';
+    final footStyle = p.text(12, color: p.muted).copyWith(height: 16 / 12);
+    final deltaColor = deltaText == null
+        ? null
+        : obVerdictText(p, dayMetricVerdict(metricKey, m));
     return Semantics(
       button: true,
       label: '$label, ${obNumber(m.value)} $foot',
@@ -2661,9 +2762,22 @@ class _NightTile extends StatelessWidget {
                       )
                       .copyWith(height: 30 / 24),
                 ),
-                Text(
-                  foot,
-                  style: p.text(12, color: p.muted).copyWith(height: 16 / 12),
+                Text.rich(
+                  deltaText == null || m.value == null
+                      ? TextSpan(text: foot)
+                      : TextSpan(
+                          children: [
+                            TextSpan(text: '$unit · '),
+                            TextSpan(
+                              text: deltaText,
+                              style: deltaColor == null ||
+                                      deltaColor == p.muted
+                                  ? null
+                                  : TextStyle(color: deltaColor),
+                            ),
+                          ],
+                        ),
+                  style: footStyle,
                 ),
               ],
             ),

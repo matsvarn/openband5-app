@@ -192,6 +192,24 @@ abstract final class AlpColor {
 
   /// G2 Gerät dunkel: Signal-Orange.
   static const Color darkSignal = Color(0xFFFF6A2E);
+
+  /// Verdict: outside your normal range on the good side. Delta text.
+  static const Color better = Color(0xFF1E7D34);
+
+  /// Verdict: today's marker (knob, newest bar) on the good side.
+  static const Color betterMark = Color(0xFF2FB344);
+
+  /// Verdict: outside your normal range on the bad side. Delta text.
+  static const Color worse = Color(0xFFA15C00);
+
+  /// Verdict: today's marker on the bad side.
+  static const Color worseMark = Color(0xFFE39A2D);
+
+  /// Dark: verdict good side, text and marker.
+  static const Color darkBetter = Color(0xFF3DDC5A);
+
+  /// Dark: verdict bad side, text and marker.
+  static const Color darkWorse = Color(0xFFF0A43A);
 }
 
 abstract final class AlpText {
