@@ -168,7 +168,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-chart.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('fixture dark golden', (tester) async {
     await mount(
@@ -184,7 +184,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-chart-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('fixture 375 2x golden does not overflow', (tester) async {
     await mount(
@@ -202,7 +202,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-chart-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty omits fabricated axes and shows an honest dash', (
     tester,

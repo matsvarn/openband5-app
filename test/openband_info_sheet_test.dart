@@ -478,7 +478,7 @@ void main() {
       scale: 2,
       sheetTitle: 'Ernährungs-\nziele',
     );
-  });
+  }, tags: const ['golden']);
 
   Future<void> pumpChips(
     WidgetTester tester, {
@@ -604,5 +604,5 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/info-sheet-chips.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

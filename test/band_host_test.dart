@@ -133,4 +133,29 @@ void main() {
     expect(await LocalDb.getCursorInt('rec_ts_hw'), isNull,
         reason: 'the primary\'s bare cursor key must be untouched');
   });
+
+  test('onWrite fires synchronously per write, indexed in write order',
+      () async {
+    // The reply seam the link harnesses script against: it must fire INSIDE
+    // write() — a harness that has to poll link.writes for new entries races
+    // the adapter (the Oura CI flake) and can starve a reply entirely.
+    final link = ReplayBandLink();
+    final calls = <(int, int)>[];
+    link.onWrite = (index, value) {
+      calls.add((index, value.first));
+      link.feed('uuid-n', <int>[index], atSec: index);
+    };
+
+    final pending = link.write('uuid-w', const [10]);
+    expect(calls, [(0, 10)], reason: 'fires before write() even resolves');
+    await pending;
+    await link.write('uuid-w', const [20]);
+    expect(calls, [(0, 10), (1, 20)]);
+    expect(
+      (await link.notify('uuid-n').take(2).toList())
+          .map((e) => (e.$1, e.$2.single)),
+      [(0, 0), (1, 1)],
+    );
+    await link.close();
+  });
 }

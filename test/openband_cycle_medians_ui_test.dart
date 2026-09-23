@@ -322,7 +322,7 @@ void main() {
     await expectGolden(tester, 'cycle-medians.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-medians-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('RHR gap keeps HRV selection and omits a null marker', (
     tester,
@@ -364,7 +364,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await expectGolden(tester, 'cycle-medians-gap.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unavailable metric hides plot and coverage', (tester) async {
     repo.seedCycleMedianFixture(includeHrv: false);
@@ -376,7 +376,7 @@ void main() {
     expect(find.text('3 Zyklen'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectGolden(tester, 'cycle-medians-one-metric.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('thin nights keep dash caption and omit plots', (tester) async {
     repo.clearCycleNightSources();
@@ -389,7 +389,7 @@ void main() {
     await expectGolden(tester, 'cycle-medians-empty.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-medians-empty-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial notice keeps charts', (tester) async {
     repo.seedCycleStart(
@@ -410,7 +410,7 @@ void main() {
     await tester.pumpAndSettle();
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-medians-partial-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('all-long periods are not assigned', (tester) async {
     repo.clearCycleLogs();
@@ -427,7 +427,7 @@ void main() {
     expect(find.byKey(const ValueKey('cycle-medians-rhr-plot')), findsNothing);
     expect(find.text('Zu wenige Nächte'), findsNothing);
     await expectGolden(tester, 'cycle-medians-long.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read exception keeps window and retries', (tester) async {
     repo.failCycleMediansRead = true;
@@ -444,7 +444,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('54'), findsOneWidget);
     expect(find.text('Daten nicht geladen'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unavailable states keep their actions', (tester) async {
     repo.clearCycleLogs();
@@ -487,7 +487,7 @@ void main() {
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('cycle-medians')), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('settings return rereads and withholds prior state', (
     tester,
@@ -534,7 +534,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.lastPage, 0);
     expect(find.text('54'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('end date picker cancel and confirm are independent of day', (
     tester,
@@ -567,7 +567,7 @@ void main() {
     expect(repo.lastAnchor, '2026-09-15');
     expect(find.text('host-day 2026-09-15'), findsOneWidget);
     expect(find.text('54'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('future selected day clamps the anchor only', (tester) async {
     await mount(tester, day: '2026-09-20');
@@ -710,7 +710,7 @@ void main() {
     );
     expect(last, findsOneWidget);
     expect(find.text('Schließen'), findsWidgets);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('info keeps per-source bounds when RHR and HRV windows differ', (
     tester,
@@ -882,7 +882,7 @@ void main() {
     await expectGolden(tester, 'cycle-medians-large-dark.png');
     await tester.scrollUntilVisible(find.text('Synthetische Daten'), 200);
     await expectGolden(tester, 'cycle-medians-large-dark-bottom.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('semantics walk every slot including gaps', (tester) async {
     final handle = tester.ensureSemantics();
@@ -928,7 +928,7 @@ void main() {
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Nacht nicht lesbar'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history remove receipt survives return and restores edits', (
     tester,
@@ -1072,7 +1072,7 @@ void main() {
       snap.starts.where((s) => s.date == original.date).single.note,
       original.note,
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('restore write failure keeps retry identity', (tester) async {
     const original = CycleStart(

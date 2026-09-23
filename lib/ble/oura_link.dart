@@ -531,17 +531,17 @@ class OuraLink {
     // `host.run` does not resolve until the session ends, but this loop has
     // to react to each write WHILE the session is still open — so track
     // completion alongside it rather than awaiting it here.
+    // Replies come out of the link's own write hook — request→reply order is
+    // exact and nothing depends on how much event-loop time this method buys.
+    link.onWrite = (writeIndex, value) {
+      for (final f in reply(writeIndex, value)) {
+        link.feed(kOuraNotifyChar, f, atSec: _now());
+      }
+    };
     var finished = false;
     final done = host.run(link).whenComplete(() => finished = true);
-    var served = 0;
     for (var spin = 0; spin < 800 && !finished; spin++) {
       await Future<void>.delayed(Duration.zero);
-      while (served < link.writes.length) {
-        for (final f in reply(served, link.writes[served].$2)) {
-          link.feed(kOuraNotifyChar, f, atSec: _now());
-        }
-        served++;
-      }
     }
     await link.close();
     await done.timeout(const Duration(seconds: 2), onTimeout: () {});

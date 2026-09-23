@@ -71,8 +71,44 @@ jobs:
       # --concurrency=1: the suite uses sqflite_common_ffi against real database
       # files, and parallel workers race on them.
       #
+      # The ~600 committed golden PNGs were rendered by the macOS Skia engine.
+      # The behavioral lane accepts the image comparison but runs every test
+      # body, including assertions after a screenshot. Pixel equality remains
+      # strict in the local golden lane described below.
+      # For a shorter local edit loop, --exclude-tags golden still skips those
+      # complete tests; this hosted lane keeps their behavioral assertions.
+      #
       # The golden capture (whoop_hist.jsonl) is a real band recording kept
       # beside the repo rather than committed to it, so the two derivation-replay
       # tests SKIP here and run locally.
-      - name: Test
-        run: flutter test --concurrency=1 --reporter=expanded
+      - name: Test (behavioral)
+        env:
+          OPENBAND_TEST_LANE: behavior
+        run: flutter test --no-pub --concurrency=1 --reporter=expanded
+
+  # Visual lane — manual dispatch only. The committed masters were rendered
+  # on macOS 27; variable-font text rasterization goes through the host's
+  # font stack, so every golden lands sub-1% off on the older hosted runners
+  # (measured: 544 diffs, 0.03–0.58%, on macos-latest). Until GitHub ships a
+  # matching runner, the golden lane runs locally on the baking platform:
+  #   flutter test --no-pub --concurrency=1 --tags golden
+  # The job stays defined so it can run once a runner matches the masters.
+  goldens:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.6
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test (golden)
+        run: flutter test --no-pub --concurrency=1 --tags golden --reporter=expanded

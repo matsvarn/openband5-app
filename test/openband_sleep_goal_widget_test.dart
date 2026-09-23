@@ -150,7 +150,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-unset.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('production omits the synthetic footer', (tester) async {
     await mountGoal(tester, synthetic: false);
@@ -178,7 +178,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('target plus stored weekend estimate stays unclamped', (
     tester,
@@ -212,7 +212,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-estimate.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'editor starts blank and save stays disabled until a valid choice',
@@ -272,7 +272,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-editor.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('filled editor renders in dark', (tester) async {
     await mountEditor(tester, targetMinutes: 465, brightness: Brightness.dark);
@@ -295,7 +295,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-editor-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('filled editor at 375 and 2x wraps without overflow', (
     tester,
@@ -315,7 +315,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-editor-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('edit prefills the selected-day target and leaves unset blank', (
     tester,
@@ -526,7 +526,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('OpenBandSleep reaches Schlafziel for the selected wake day', (
     tester,

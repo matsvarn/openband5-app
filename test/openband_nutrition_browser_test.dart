@@ -427,7 +427,7 @@ void main() {
     );
     expect(find.text('Zwischendurch'), findsOneWidget);
     await _capture(tester, find.byKey(const ValueKey('capture')), 'picker-2x');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('light picker screenshot', (tester) async {
     await _pump(
@@ -444,7 +444,7 @@ void main() {
       ),
     );
     await _capture(tester, find.byKey(const ValueKey('capture')), 'picker');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('food rows large screenshot', (tester) async {
     await _pump(
@@ -484,7 +484,7 @@ void main() {
     expect(find.text('Hähnchenbrust'), findsOneWidget);
     expect(find.text('297 kcal'), findsOneWidget);
     await _capture(tester, find.byKey(const ValueKey('capture')), 'food-large');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('footer light dark and large screenshots', (tester) async {
     Future<void> shot(Brightness brightness, double scale, String name) async {
@@ -521,7 +521,7 @@ void main() {
     await shot(Brightness.light, 1, 'footer');
     await shot(Brightness.dark, 1, 'footer-dark');
     await shot(Brightness.light, 2, 'footer-large');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('week screenshot', (tester) async {
     await _pump(
@@ -553,7 +553,7 @@ void main() {
     expect(find.text('Erfasste Energie'), findsOneWidget);
     expect(find.text('Keine Einträge'), findsOneWidget);
     await _capture(tester, find.byKey(const ValueKey('capture')), 'week');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('library screenshot', (tester) async {
     await _pump(
@@ -574,7 +574,7 @@ void main() {
     );
     expect(find.text('Zuletzt verwendet'), findsOneWidget);
     await _capture(tester, find.byKey(const ValueKey('capture')), 'library');
-  });
+  }, tags: const ['golden']);
 }
 
 Future<void> _pump(

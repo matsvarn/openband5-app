@@ -301,7 +301,7 @@ void main() {
     await expectGolden(tester, 'cycle-main.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-main-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('equal estimate bounds collapse to one date', (tester) async {
     repo.seedCycleComparisonFixture();
@@ -324,7 +324,7 @@ void main() {
     await expectGolden(tester, 'cycle-empty.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-empty-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('first start on selected day opens edit', (tester) async {
     repo.clearCycleLogs();
@@ -337,7 +337,7 @@ void main() {
     expect(find.text('Beginn bearbeiten'), findsOneWidget);
     expect(find.text('Nächster Beginn · geschätzt'), findsNothing);
     await expectGolden(tester, 'cycle-first-start.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing estimate with a long gap shows the reason', (
     tester,
@@ -354,7 +354,7 @@ void main() {
     expect(find.text('Schätzung offen'), findsOneWidget);
     expect(find.text('Abstand über 60 Tage'), findsOneWidget);
     await expectGolden(tester, 'cycle-estimate-open.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('disabled estimate is omitted', (tester) async {
     repo.cycleSettings = const CycleSettings(
@@ -391,7 +391,7 @@ void main() {
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
     expect(find.text('Tag 23'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('settings and setup goldens', (tester) async {
     await mount(tester, settingsOnly: true);
@@ -409,7 +409,7 @@ void main() {
     );
     await mount(tester, settingsOnly: true);
     await expectGolden(tester, 'cycle-setup.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('start and observation goldens', (tester) async {
     await mount(tester);
@@ -444,7 +444,7 @@ void main() {
     await tester.tap(find.text('Beobachtung festhalten'));
     await tester.pumpAndSettle();
     await expectGolden(tester, 'cycle-observation-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history is as-of selected day and tappable', (tester) async {
     repo.seedCycleObservation(
@@ -471,7 +471,7 @@ void main() {
     await tester.tap(find.text('24. August'));
     await tester.pumpAndSettle();
     expect(find.text('Beginn'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history hides later rows when an earlier day is selected', (
     tester,
@@ -512,7 +512,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.startSaves, 2);
     expect(find.text('Tag 1'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('context refresh retry does not write again', (tester) async {
     repo.failCycleContextRefresh = true;
@@ -550,7 +550,7 @@ void main() {
     expect(repo.startSaves, 1);
     expect(repo.cycleReads, greaterThan(reads));
     expect(find.text('Tag 1'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read retry after save does not write again', (tester) async {
     await mount(tester);
@@ -891,7 +891,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-keyboard.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial unreadable starts show unknown hero', (tester) async {
     repo.seedUnreadableCycleStart({'date': '2026-05-01', 'kind': 1});
@@ -904,7 +904,7 @@ void main() {
     await expectGolden(tester, 'cycle-partial.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-partial-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('info body matches Paper', (tester) async {
     await mount(tester);
@@ -1790,7 +1790,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.observationSaves, 1);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('tap outside shared note at 2x ends focus and reaches Save', (
     tester,

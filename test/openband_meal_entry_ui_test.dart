@@ -271,7 +271,7 @@ void main() {
     expect(find.text('Natrium'), findsOneWidget);
     expect(find.text('Eisen'), findsOneWidget);
     expect(find.text('Calcium'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('detail dark uses card token', (tester) async {
     await mount(tester, brightness: Brightness.dark);
@@ -289,7 +289,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-detail-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unknown source is not called manual; photo stays unmeasured', (
     tester,
@@ -474,7 +474,7 @@ void main() {
     expect(saved.atTs, isNull);
     expect(saved.sourceCode, 'manual');
     expect(find.text('Haferflocken mit Hafermilch'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('quantity scale is explicit and unit change does not scale', (
     tester,
@@ -620,7 +620,7 @@ void main() {
       isNull,
     );
     expect((await repo.readFoodEntry('oats')).current!.updatedAt, updatedAt);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('retry button follows save validation', (tester) async {
     const zone = 'Europe/Berlin';
@@ -735,7 +735,7 @@ void main() {
     expect(find.text('Eintrag'), findsOneWidget);
     expect(find.text('390'), findsOneWidget);
     expect(find.text('Haferflocken mit Milch'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('busy write ignores a second save tap', (tester) async {
     await mount(tester);
@@ -864,7 +864,7 @@ void main() {
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
     expect(find.text('Haferflocken mit Milch'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read error dark and 2x stacked wells stay on screen', (
     tester,
@@ -947,7 +947,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-nutrients-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'scrolled editor opens nutrients at top; entry identity resets scroll',
@@ -1070,7 +1070,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-nutrients-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('detail back reports changed after a successful save', (
     tester,
@@ -1184,7 +1184,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-quantity-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unconfirmed photo confirms only via Werte bestätigen', (
     tester,
@@ -1234,7 +1234,7 @@ void main() {
     expect(saved.sourceCode, 'photo');
     expect(find.text('380'), findsOneWidget);
     expect(find.text('Foto · unbestätigt'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unconfirmed photo dark keeps Werte bestätigen', (tester) async {
     repo.seedFoodEntry(
@@ -1253,7 +1253,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-photo-nutrients-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('stale delayed read is discarded after id and repo change', (
     tester,
@@ -1487,7 +1487,7 @@ void main() {
     expect(find.text('Übernehmen').hitTestable(), findsOneWidget);
     expect(tester.getRect(find.text('Übernehmen')).top, applyTop);
     expect(find.text('Nährwerte anpassen').hitTestable(), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'public route 2x quantity sheet stays in the safe area above the keyboard',
@@ -1678,7 +1678,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-time-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('time sheet cancel keeps unknown; clear and apply stage only', (
     tester,

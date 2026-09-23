@@ -248,7 +248,15 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     weekendEstimate = WeekendSleepEstimate(
       asOfDay: _day,
       algoVersion: kAlgoVersion,
-      builtAtEpoch: DateTime(2026, 9, 15, 7, 42).millisecondsSinceEpoch ~/ 1000,
+      builtAtEpoch: recordedDateTime(
+            _timezone,
+            2026,
+            9,
+            15,
+            7,
+            42,
+          ).millisecondsSinceEpoch ~/
+          1000,
       osdHours: 8.2,
       confidence: 0.6,
     );
@@ -779,7 +787,14 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   bool failGlucoseExclusionWrite = false;
   HealthMeasurementImportStatus? glucoseImportFailureStatus;
 
-  static final medicationFixtureNow = DateTime(2026, 9, 15, 9, 41);
+  static final medicationFixtureNow = recordedDateTime(
+    'Europe/Berlin',
+    2026,
+    9,
+    15,
+    9,
+    41,
+  );
   static const medicationFixtureDay = '2026-09-15';
   static const medicationFixturePlanAKey = 'synthetic-med-a';
   static const medicationFixturePlanBKey = 'synthetic-med-b';
@@ -800,14 +815,26 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     '2026-07-31',
     '2026-08-24',
   ];
-  static final cycleFixtureNow = DateTime(2026, 9, 15, 12);
+  static final cycleFixtureNow = recordedDateTime(
+    'Europe/Berlin',
+    2026,
+    9,
+    15,
+    12,
+  );
   static const cycleMedianFixtureStarts = [
     '2026-06-29',
     '2026-07-31',
     '2026-08-24',
   ];
   static const cycleMedianFixtureAnchor = '2026-09-15';
-  static final cycleMedianFixtureNow = DateTime(2026, 9, 15, 12);
+  static final cycleMedianFixtureNow = recordedDateTime(
+    'Europe/Berlin',
+    2026,
+    9,
+    15,
+    12,
+  );
   static const cycleComparisonFixtureStarts = [
     '2026-05-28',
     '2026-06-29',
@@ -815,7 +842,13 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     '2026-08-24',
   ];
   static const cycleComparisonFixtureAnchor = '2026-09-15';
-  static final cycleComparisonFixtureNow = DateTime(2026, 9, 15, 12);
+  static final cycleComparisonFixtureNow = recordedDateTime(
+    'Europe/Berlin',
+    2026,
+    9,
+    15,
+    12,
+  );
   static const cycleComparisonFixtureSameDayRhr = [50.0, 52.0, 54.0];
   static const cycleComparisonFixtureSameDayHrv = [45.0, 47.0, 49.0];
   static const cycleComparisonFixtureCurrentRhrAdd = 2.0;
@@ -860,8 +893,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   }
 
   void _seedFixtureGlucose() {
-    final imported = DateTime(2026, 9, 15, 9, 40);
-    final query = DateTime(2026, 9, 15, 9, 41);
+    final imported = recordedDateTime(_timezone, 2026, 9, 15, 9, 40);
+    final query = recordedDateTime(_timezone, 2026, 9, 15, 9, 41);
     const source = GlucoseSourceIdentity(
       key: glucoseFixtureSourceKey,
       sourceName: _glucoseFixtureSourceName,
@@ -870,7 +903,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     for (var i = 0; i < _glucoseFixtureValues.length; i++) {
       final v = _glucoseFixtureValues[i];
       if (v == null) continue;
-      final at = DateTime(2026, 9, 15, 7, i * 5);
+      final at = recordedDateTime(_timezone, 2026, 9, 15, 7, i * 5);
       _glucoseReadings.add(
         GlucoseReading(
           uuid: 'glucose-fixture-${at.hour.toString().padLeft(2, '0')}'
@@ -3100,7 +3133,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<GlucoseImportResult> importGlucose({DateTime? now}) async {
-    final attemptedAt = now ?? DateTime(2026, 9, 15, 9, 41);
+    final attemptedAt =
+        now ?? recordedDateTime(_timezone, 2026, 9, 15, 9, 41);
     late final HealthMeasurementImportOutcome outcome;
     if (failGlucoseImport) {
       final status = glucoseImportFailureStatus ??
@@ -3900,22 +3934,28 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     for (final n in raw as List) (n as num).toDouble(),
   ];
 
-  static DateTime _at(String day, String hm) {
+  /// Civil time in the fixture's declared zone — not host-local. The fixtures
+  /// carry absolute `+02:00` instants and a `recordingTimezone` label; building
+  /// these on the host zone shifts every window by the host's offset and the
+  /// suite only agrees with itself where the host happens to be Berlin.
+  DateTime _at(String day, String hm) {
     final p = day.split('-').map(int.parse).toList();
     final t = hm.split(':').map(int.parse).toList();
-    return DateTime(p[0], p[1], p[2], t[0], t[1]);
+    return recordedDateTime(_timezone, p[0], p[1], p[2], t[0], t[1]);
   }
 
   static String _previousDay(String day) => _shift(day, -1);
 
   static String _shift(String day, int days) {
     final p = day.split('-').map(int.parse).toList();
-    return dayLabelOf(DateTime(p[0], p[1], p[2]).add(Duration(days: days)));
+    // Civil day arithmetic — `DateTime(...).add(Duration(days:))` steps exactly
+    // 24 h and lands on the SAME civil day after a fall-back transition.
+    return dayLabelOf(DateTime(p[0], p[1], p[2] + days));
   }
 
   void _seedFixtureMedication() {
     const prior = '2026-09-14';
-    final knownAt = DateTime(2026, 9, 14, 7);
+    final knownAt = recordedDateTime(_timezone, 2026, 9, 14, 7);
     _putSynthPlan(
       MedicationPlanDraft(
         create: true,
@@ -3947,12 +3987,15 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         medKey: medicationFixturePlanAKey,
         date: prior,
         slotMin: 8 * 60,
-        takenTsSeconds: DateTime(2026, 9, 14, 8, 4).millisecondsSinceEpoch ~/ 1000,
+        takenTsSeconds:
+            recordedDateTime(_timezone, 2026, 9, 14, 8, 4).millisecondsSinceEpoch ~/
+            1000,
         doseValue: 1,
         doseUnit: 'Tablette',
         label: 'Präparat A',
         kind: MedicationKind.medication,
-        takenUtcOffsetMinutes: DateTime(2026, 9, 14, 8, 4).timeZoneOffset.inMinutes,
+        takenUtcOffsetMinutes:
+            recordedDateTime(_timezone, 2026, 9, 14, 8, 4).timeZoneOffset.inMinutes,
       ),
     );
     _medDoses.add(

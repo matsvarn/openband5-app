@@ -999,7 +999,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await capture('weight-375-2x-entries');
-    });
+    }, tags: const ['golden']);
   });
 
   testWidgets('dark theme keeps the Paper card and canvas roles', (

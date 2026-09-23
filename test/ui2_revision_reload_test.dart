@@ -19,6 +19,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/dart_source.dart';
+
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
@@ -399,16 +401,39 @@ void main() {
 
   test('every AppState importer raises the signal', () {
     final src = File('lib/state/app_state.dart').readAsStringSync();
+    // The check is "the call is in this function's body", so find the body by
+    // brace depth on the stripped source — the fixed 2600-character window
+    // this replaces both cut long bodies short and could match a
+    // bumpInsights() belonging to the NEXT function.
+    final code = stripCommentsAndStrings(src);
     for (final m in const [
       'Future<int> importNoopCsv(',
       'Future<int> importWhoopCsvs(',
       'Future<BackupImportReceipt> importEdgeBackup(',
     ]) {
-      final at = src.indexOf(m);
+      final at = code.indexOf(m);
       expect(at, greaterThan(0), reason: '$m has moved or been renamed');
-      final body = src.substring(at, at + 2600);
+      // The body opens after the parameter list — and the list itself can
+      // contain `{` for named parameters, so match parens first.
+      var parens = 0;
+      var i = code.indexOf('(', at);
+      for (; i < code.length; i++) {
+        if (code[i] == '(') parens++;
+        if (code[i] == ')' && --parens == 0) break;
+      }
+      final open = code.indexOf('{', i);
+      var depth = 0;
+      var end = -1;
+      for (i = open; i < code.length; i++) {
+        if (code[i] == '{') depth++;
+        if (code[i] == '}' && --depth == 0) {
+          end = i;
+          break;
+        }
+      }
+      expect(end, greaterThan(open), reason: '$m has no body to check');
       expect(
-        body,
+        code.substring(at, end),
         contains('bumpInsights()'),
         reason: '$m writes durable rows and no screen is told',
       );

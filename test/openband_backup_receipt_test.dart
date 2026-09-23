@@ -1886,7 +1886,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/backup_receipt_partial_light.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('durable restore receipt is concise and truthful', (tester) async {
       await mount(
@@ -1929,7 +1929,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/backup_receipt_partial_dark.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('partial at 375 and text scale 2 has no overflow', (tester) async {
       await mount(tester, _partial, scale: 2);
@@ -1950,7 +1950,7 @@ void main() {
           'openband_goldens/backup_receipt_partial_dark_2x.png',
         ),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('English partial, success, noop, conflict, and corrupt copy', (
       tester,

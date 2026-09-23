@@ -232,7 +232,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/templates-error.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'create opens the existing editor and list shows the saved plan',
@@ -342,7 +342,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ganzkörper A+'), findsOneWidget);
     expect((await repo.readTemplates()).length, 2);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('write failures stay retryable and keep the list', (
     tester,
@@ -481,7 +481,7 @@ void main() {
     expect(find.text('Duplizieren'), findsOneWidget);
     expect(find.text('Anheften'), findsOneWidget);
     expect(find.text('Archivieren'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('hub shows the pin when valid, otherwise the newest plan', (
     tester,

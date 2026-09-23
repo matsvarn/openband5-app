@@ -21,6 +21,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../openband/theme.dart';
+import '../theme.dart';
 
 /// Onboarding steps the user deliberately walked past.
 ///
@@ -256,7 +257,7 @@ class PairingView extends StatelessWidget {
                           height: 120,
                           decoration: BoxDecoration(
                             color: p.well,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: R.rLg,
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -284,7 +285,7 @@ class PairingView extends StatelessWidget {
                               height: 36,
                               decoration: BoxDecoration(
                                 color: p.sleepTint,
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: R.rMd,
                               ),
                               child: busy
                                   ? Padding(
@@ -562,7 +563,7 @@ class _PairDeviceIcon extends StatelessWidget {
       height: 64,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: R.rXl,
       ),
       child: Icon(icon, size: 28, color: p.ink),
     );
@@ -584,7 +585,7 @@ class _PairLink extends StatelessWidget {
             height: 3,
             decoration: BoxDecoration(
               color: i < activeBars ? p.action : p.line,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: R.rPill,
             ),
           ),
           if (i < 2) const SizedBox(width: 4),

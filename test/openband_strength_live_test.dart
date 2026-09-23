@@ -1371,7 +1371,7 @@ void main() {
         matchesGoldenFile('openband_goldens/custom-load-live-${state.$1}.png'),
       );
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets('mixed-unit active value and unit stay legible in Paper states', (
     tester,
@@ -1450,7 +1450,7 @@ void main() {
         ),
       );
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets('paper live light is a clean snapshot at 375@2x', (tester) async {
     now = DateTime(2026, 9, 15, 18, 32, 14);
@@ -1476,7 +1476,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-live-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('paper menu captures the overlay', (tester) async {
     now = DateTime(2026, 9, 15, 18, 32, 14);
@@ -1490,7 +1490,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-menu.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('paper skipped is a fresh session', (tester) async {
     now = DateTime(2026, 9, 15, 18, 32, 14);
@@ -1508,7 +1508,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-skipped.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   Future<void> settleLiveTransition(WidgetTester tester) =>
       tester.pumpAndSettle(
@@ -1568,7 +1568,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-add.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'paper add then Bankdrücken set 3 fail-retry writes that plannedSetId',
@@ -1632,7 +1632,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-error.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('paper dark is an independent dark mount', (tester) async {
     now = DateTime(2026, 9, 15, 18, 32, 14);
@@ -1649,7 +1649,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/strength-live-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375-wide TextScaler 2 keeps rest and keyboard row visible', (
     tester,
@@ -1692,7 +1692,7 @@ void main() {
     expect(active.hitTestable(), findsOneWidget);
     expect(find.text('+30 s').hitTestable(), findsOneWidget);
     expect(find.text('Weiter').hitTestable(), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('large text skipped row keeps Satz, Zuletzt and status', (
     tester,

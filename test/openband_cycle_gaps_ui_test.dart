@@ -304,7 +304,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle_gaps-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('selected actual gap via tap, drag, and semantics', (
     tester,
@@ -360,7 +360,7 @@ void main() {
     } finally {
       handle.dispose();
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets('picker older partial groups from the end', (tester) async {
     _seedPaperGaps(repo, earlier: true);
@@ -419,7 +419,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle_gaps-earlier-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('25-gap partition is newest 12, preceding 12, first 1', (
     tester,
@@ -536,7 +536,7 @@ void main() {
     hold.complete();
     await tester.pumpAndSettle();
     expect(find.text('12 Abstände'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('on/off toggle and committed refresh failure preserve retry', (
     tester,
@@ -621,7 +621,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle_gaps-settings-refresh-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('insufficient, duplicate, unreadable, long gap, error retry', (
     tester,
@@ -708,7 +708,7 @@ void main() {
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
     expect(find.text('12 Abstände'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('observation-only partial does not warn', (tester) async {
     repo.seedUnreadableCycleObservation({
@@ -805,7 +805,7 @@ void main() {
     await tester.tap(find.text('Schließen'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('journal-info-body')), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x and 320w scroll without overflow', (tester) async {
     await mount(tester, scale: 2, width: 375, height: 812);
@@ -859,7 +859,7 @@ void main() {
     expect(find.text('12 Abstände'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Synthetische Daten'), 200);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark remaining states', (tester) async {
     await mount(tester, brightness: Brightness.dark);
@@ -946,5 +946,5 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle_gaps-selected-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

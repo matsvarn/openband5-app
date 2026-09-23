@@ -178,6 +178,28 @@ void main() {
     expect(dates, 1);
   });
 
+  // The first variable-font paragraph an isolate rasterizes can land one
+  // logical pixel off the checked-in master; the state only settles across
+  // a testWidgets boundary, so this throwaway case warms the isolate before
+  // the captures below. Without it the goldens depend on sibling tests
+  // having run first (full file) or not (golden-only lane).
+  testWidgets('375 2x warm font rasterization', (tester) async {
+    await mount(
+      tester,
+      width: 375,
+      height: 667,
+      scale: 2,
+      subtitle: 'Heute',
+      onBack: () {},
+      onInfo: () {},
+      onDate: () {},
+    );
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.tap(find.byTooltip('Information'));
+    await tester.tap(find.text('Medikamente'));
+    expect(find.text('Medikamente'), findsOneWidget);
+  }, tags: const ['golden']);
+
   testWidgets('375 2x light golden', (tester) async {
     await mount(
       tester,
@@ -191,7 +213,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/header-large-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x dark golden', (tester) async {
     await mount(
@@ -207,5 +229,5 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/header-large-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

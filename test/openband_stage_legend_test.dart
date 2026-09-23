@@ -278,7 +278,7 @@ void main() {
       find.byKey(const ValueKey('legend-capture')),
       matchesGoldenFile('openband_goldens/stage-legend-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark legend keeps the same values', (tester) async {
     await mountLegend(tester, brightness: Brightness.dark);
@@ -292,7 +292,7 @@ void main() {
       find.byKey(const ValueKey('legend-capture')),
       matchesGoldenFile('openband_goldens/stage-legend-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x uses two readable columns', (tester) async {
     await mountLegend(tester, width: 375, height: 420, scale: 2);
@@ -312,7 +312,7 @@ void main() {
       find.byKey(const ValueKey('legend-capture')),
       matchesGoldenFile('openband_goldens/stage-legend-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('320 2x falls back without clipping', (tester) async {
     await mountLegend(tester, width: 320, height: 640, scale: 2);
@@ -326,7 +326,7 @@ void main() {
       find.byKey(const ValueKey('legend-capture')),
       matchesGoldenFile('openband_goldens/stage-legend-320-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing stage minutes stay dashes', (tester) async {
     await mountLegend(tester, night: const SleepNight(duration: DayMetric(1)));
@@ -342,7 +342,7 @@ void main() {
       find.byKey(const ValueKey('legend-capture')),
       matchesGoldenFile('openband_goldens/stage-legend-missing.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('all accepted widths and scales keep complete text readable', (
     tester,

@@ -1038,5 +1038,5 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('vo2-history')));
     await tester.pumpAndSettle();
     await capture('vo2_history');
-  });
+  }, tags: const ['golden']);
 }

@@ -85,7 +85,7 @@ void main() {
         find.byKey(const ValueKey('gestures-capture')),
         matchesGoldenFile('openband_goldens/gestures-${brightness.name}.png'),
       );
-    });
+    }, tags: const ['golden']);
   }
 
   testWidgets('selecting water persists the action shown as selected', (
@@ -107,7 +107,7 @@ void main() {
       find.byKey(const ValueKey('gestures-capture')),
       matchesGoldenFile('openband_goldens/gestures-saved.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unavailable phone actions explain the missing choices', (
     tester,
@@ -121,7 +121,7 @@ void main() {
       find.byKey(const ValueKey('gestures-capture')),
       matchesGoldenFile('openband_goldens/gestures-unavailable.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('all choices remain reachable on a small phone with large text', (
     tester,

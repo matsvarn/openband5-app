@@ -217,17 +217,15 @@ class LefunLink {
       buildArchive: _buildArchiveRow,
     );
     _host = host;
+    link.onWrite = (writeIndex, value) {
+      for (final f in reply(writeIndex, value)) {
+        link.feed(kLefunNotifyChar, f, atSec: 0);
+      }
+    };
     var finished = false;
     final done = host.run(link).whenComplete(() => finished = true);
-    var served = 0;
     for (var spin = 0; spin < 800 && !finished; spin++) {
       await Future<void>.delayed(Duration.zero);
-      while (served < link.writes.length) {
-        for (final f in reply(served, link.writes[served].$2)) {
-          link.feed(kLefunNotifyChar, f, atSec: 0);
-        }
-        served++;
-      }
     }
     await link.close();
     await done.timeout(const Duration(seconds: 2), onTimeout: () {});

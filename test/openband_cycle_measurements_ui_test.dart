@@ -264,7 +264,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('picker lists dated periods newest first and reloads', (
     tester,
@@ -298,7 +298,7 @@ void main() {
     expect(repo.lastStart, '2026-06-01');
     expect(find.text('1.–28. Juni'), findsOneWidget);
     expect(find.text('24. Aug.–15. Sept.'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty nights keep dash coverage and omit plots', (tester) async {
     repo.clearCycleNightSources();
@@ -324,7 +324,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unreadable rows show partial notice above cards', (
     tester,
@@ -343,7 +343,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read exception is retryable and not empty', (tester) async {
     repo.failCycleMeasurementsRead = true;
@@ -361,7 +361,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('54'), findsOneWidget);
     expect(find.text('Daten nicht geladen'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unavailable states keep their actions', (tester) async {
     repo.clearCycleLogs();
@@ -403,7 +403,7 @@ void main() {
         ?.color;
     expect(color, AlpColor.danger);
     expect(find.text('Zum Zyklus'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('settings return withholds prior unavailable state', (
     tester,
@@ -493,7 +493,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-gap.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('single finite point has no empty-metric plot', (tester) async {
     repo.clearCycleNightSources();
@@ -515,7 +515,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-single.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('clipped window labels actual cycle days', (tester) async {
     repo.clearCycleLogs();
@@ -536,7 +536,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-truncated.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('info body matches Paper', (tester) async {
     await mount(tester);
@@ -581,7 +581,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-measurements-info.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x canonical fixture fits and selects independently', (
     tester,
@@ -649,7 +649,7 @@ void main() {
     );
     expect(find.textContaining('Ruhepuls ·'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x three-digit value wraps date without overflow', (
     tester,
@@ -928,7 +928,7 @@ void main() {
         'openband_goldens/cycle-measurements-isolated-first.png',
       ),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('legacy headline ignores nonfinite last sample', (tester) async {
     await tester.pumpWidget(
