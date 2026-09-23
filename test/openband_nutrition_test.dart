@@ -174,7 +174,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/nutrition-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('food search stages a serving-sized portion', (tester) async {
     tester.view.devicePixelRatio = 1;

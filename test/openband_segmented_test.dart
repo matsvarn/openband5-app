@@ -182,7 +182,7 @@ void main() {
     } finally {
       semantics.dispose();
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark 393 well uses card and inverse selected text', (
     tester,
@@ -204,7 +204,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/segmented-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 nutrition stays horizontal at 343; weight does not flip', (
     tester,
@@ -247,7 +247,7 @@ void main() {
     } finally {
       semantics.dispose();
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 dark 2x stacked goldens', (tester) async {
     await mount(
@@ -266,7 +266,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/segmented-large-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('320 at 2x is 288 content, stacked, long labels unsplit', (
     tester,

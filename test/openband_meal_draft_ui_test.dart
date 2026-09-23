@@ -1323,5 +1323,5 @@ void main() {
     );
     await repo.saveMealDraft(many);
     await captureDraft(tester, 'meal-draft-2x', shown: many, scale: 2);
-  });
+  }, tags: const ['golden']);
 }

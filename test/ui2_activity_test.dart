@@ -1697,7 +1697,7 @@ void main() {
 
             await expectLater(find.byType(MaterialApp),
                 matchesGoldenFile('goldens/activity_${name}_${theme}_$tag.png'));
-          });
+          }, tags: const ['golden']);
         });
       }
     }

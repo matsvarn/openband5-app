@@ -280,7 +280,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-unset.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('grams fixture, toggle retains bits, percent energy recasts', (
       tester,
@@ -351,7 +351,7 @@ void main() {
       expect(find.text('131,25'), findsOneWidget);
       expect(find.text('252'), findsOneWidget);
       expect(find.text('63'), findsOneWidget);
-    });
+    }, tags: const ['golden']);
 
     testWidgets('invalid 0, NaN, sum 95 and missing refuse save', (
       tester,
@@ -494,7 +494,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
       await tester.pump();
       expect(find.byType(OpenBandNutritionGoalsEditor), findsOneWidget);
-    });
+    }, tags: const ['golden']);
 
     testWidgets('comma parse saves 22.5 not 225', (tester) async {
       await repo.saveNutritionTargets(
@@ -697,7 +697,7 @@ void main() {
 
       await mount(tester, editor(), width: 375, height: 667);
       expect(tester.takeException(), isNull);
-    });
+    }, tags: const ['golden']);
 
     testWidgets('dark grams editor', (tester) async {
       await repo.seedNutritionGoals();
@@ -721,7 +721,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-editor-2x-dark.png'),
       );
-    });
+    }, tags: const ['golden']);
   });
 
   group('overview history clear legacy', () {
@@ -750,7 +750,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-history.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('overview dark and 2x do not overflow the macro row', (
       tester,
@@ -771,7 +771,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-overview-2x.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('no-goal overview is empty not a default', (tester) async {
       await mount(tester, overview());
@@ -782,7 +782,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-empty.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('clear writes empty boundary and keeps earlier row', (
       tester,
@@ -843,7 +843,7 @@ void main() {
         (await repo.readNutritionTargets('2026-09-15')).values.energyKcal,
         1700,
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('stale-revision clear conflict dark', (tester) async {
       await repo.seedNutritionGoals();
@@ -865,7 +865,7 @@ void main() {
           'openband_goldens/nutrition-goal-clear-conflict-dark.png',
         ),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('clear write-fail keeps target and reopens confirm', (
       tester,
@@ -899,7 +899,7 @@ void main() {
         (await repo.readNutritionTargets('2026-09-15')).values.hasAny,
         isFalse,
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('clear write-fail dark', (tester) async {
       await repo.seedNutritionGoals();
@@ -917,7 +917,7 @@ void main() {
           'openband_goldens/nutrition-goal-clear-error-dark.png',
         ),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('clear then read-fail uses read recovery not another clear', (
       tester,
@@ -956,7 +956,7 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-legacy.png'),
       );
-    });
+    }, tags: const ['golden']);
 
     testWidgets('failed read is retry not no-goal', (tester) async {
       repo.failNutritionTargetRead = true;
@@ -972,7 +972,7 @@ void main() {
       await tester.tap(find.text('Erneut'));
       await tester.pumpAndSettle();
       expect(find.text('Ändern'), findsOneWidget);
-    });
+    }, tags: const ['golden']);
 
     testWidgets('history empty boundary is visible', (tester) async {
       await repo.saveNutritionTargets(

@@ -1118,5 +1118,5 @@ void main() {
         expect(find.text('Haferflocken mit Milch'), findsNothing);
       },
     );
-  });
+  }, tags: const ['golden']);
 }

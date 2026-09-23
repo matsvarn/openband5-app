@@ -391,7 +391,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/units-large-imperial.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('production omits the synthetic footer', (tester) async {
     await pumpView(tester, synthetic: false);

@@ -217,7 +217,7 @@ void main() {
       ),
       isTrue,
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('new field does not attach old slug history', (tester) async {
     await repo.createJournalField(

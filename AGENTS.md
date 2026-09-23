@@ -234,7 +234,20 @@ visual bugs — check whether removed wrapper widgets were load-bearing.
 ## 5. How to review this repo
 
 **CI does run on PRs.** `.github/workflows/test.yml` runs `flutter analyze` +
-`flutter test` on every pull request and on push to `main`.
+`flutter test` on every pull request and on push to `main`. Two lanes:
+
+- `test` (Ubuntu): `flutter test --no-pub --concurrency=1 --exclude-tags golden`
+  — every non-golden assertion, including inside files that also carry goldens.
+- `goldens` (macOS): `flutter test --no-pub --concurrency=1 --tags golden` —
+  the ~600 `test/openband_goldens/` PNGs were rendered by the macOS Skia engine
+  and the comparator is exact-match, so pixel tests only run on macOS. Tests
+  that call `matchesGoldenFile` carry `tags: const ['golden']`; the tag is on
+  the test, never the file — tag new golden tests the same way.
+
+`test/flutter_test_config.dart` pins the process timezone to Europe/Berlin for
+every file (libc `setenv`/`tzset`); the fixtures and goldens model a Berlin
+phone. `OPENBAND_TEST_TZ=<zone>` overrides it, `OPENBAND_TEST_TZ=host` disables
+the pin — use that to verify a fixture is host-timezone-independent.
 `.github/workflows/build.yml` (the APK/IPA release) is the one gated to
 `push: tags: ['v*']` — it doesn't touch PRs. `test/` is large and not flat
 (it has `adapters/`, `support/`, and other subdirectories alongside the

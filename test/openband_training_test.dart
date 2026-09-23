@@ -157,7 +157,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/training-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   test('template save bumps the version and refuses an empty plan', () async {
     final first = (await repo.readTemplates()).firstWhere(
@@ -217,7 +217,7 @@ void main() {
       await repo.readSessionDetail('synthetic-2026-09-13-weight_training'),
       isNull,
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('live strength: confirming a set records it, rest timer runs', (
     tester,
@@ -269,7 +269,7 @@ void main() {
     final load = await repo.readMuscleLoad('2026-09-15', 7);
     expect(load.setsByMuscle['Brust'], 4);
     expect(load.setsByMuscle['Beine'], 3);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('live run keeps pause and active time apart', (tester) async {
     final run = ValueNotifier(
@@ -315,7 +315,7 @@ void main() {
     expect(find.text('—'), findsNWidgets(3));
     expect(find.text('Weiter'), findsOneWidget);
     expect(find.text('Beenden'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('live run shows the route map when a tracker is bound', (
     tester,
@@ -525,7 +525,7 @@ void main() {
     expect(saved?.exercises.single.sets.first.reps, 6);
     expect(saved?.exercises.single.sets.first.loadKg, isNull);
     expect((await repo.readTemplates()).length, 3);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty window shows an empty state, not zero minutes', (
     tester,
@@ -542,7 +542,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/training-empty.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('hub read failure is not an empty success', (tester) async {
     repo.failTemplateRead = true;

@@ -641,7 +641,7 @@ void main() {
       find.byType(OpenBandExercisePicker),
       matchesGoldenFile('openband_goldens/exercise-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: filter, filtered, detail, empty, error, partial', (
     tester,
@@ -762,7 +762,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/exercise-unknown.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: add sheet and parent editor', (tester) async {
     final repo = _CatRepo();
@@ -807,7 +807,7 @@ void main() {
       find.byType(OpenBandTemplateEditor),
       matchesGoldenFile('openband_goldens/exercise-parent.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: mixed legacy blank duration light/dark', (tester) async {
     Finder hinted(String hint) => find.byWidgetPredicate(
@@ -884,7 +884,7 @@ void main() {
       find.byType(OpenBandTemplateEditor),
       matchesGoldenFile('openband_goldens/exercise-legacy-error-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('header plus and empty search open the editor', (tester) async {
     await pumpPicker(tester);

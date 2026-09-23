@@ -371,7 +371,7 @@ void main() {
       },
     );
     await capture('time-picker-large', scale: 2);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('en 12h time-picker goldens', (tester) async {
     Future<void> capture(String name, Brightness brightness) async {
@@ -391,7 +391,7 @@ void main() {
 
     await capture('time-picker-en-12h-light', Brightness.light);
     await capture('time-picker-en-12h-dark', Brightness.dark);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('stock inputOnly geometry at 393x852 1x', (tester) async {
     await openPicker(tester);

@@ -121,7 +121,7 @@ void main() {
         find.byType(Scaffold),
         matchesGoldenFile('openband_goldens/night-${variant.$1}.png'),
       );
-    });
+    }, tags: const ['golden']);
   }
   testWidgets(
     'selection visits the actual stored refusal and recovers with the next reading',
@@ -153,6 +153,7 @@ void main() {
       expect(find.text('23:40'), findsOneWidget);
       semantics.dispose();
     },
+    tags: const ['golden'],
   );
   testWidgets(
     'compact screen at double text scale keeps metric controls usable',

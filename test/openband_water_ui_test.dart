@@ -526,7 +526,7 @@ void main() {
       find.byKey(const ValueKey('water-card')),
       matchesGoldenFile('openband_goldens/water-read-error.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('canonical amount sheet goldens', (tester) async {
     await seedWater(1250);
@@ -546,7 +546,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/water-sheet-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('callback throw still refreshes; retry is read only', (
     tester,
@@ -778,7 +778,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/water-sheet-2x-ime.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   Future<void> pumpRevision(
     WidgetTester tester, {

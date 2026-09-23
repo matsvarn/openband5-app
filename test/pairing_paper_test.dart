@@ -92,7 +92,7 @@ void main() {
     );
     expect(tester.getSize(find.byTooltip('Zurück')).height, 44);
     expect(tester.getSize(find.byTooltip('Information')).height, 44);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('mini at 2x scrolls without squeezing actions', (tester) async {
     var pairs = 0;

@@ -191,7 +191,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/header-large-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x dark golden', (tester) async {
     await mount(
@@ -207,5 +207,5 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/header-large-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

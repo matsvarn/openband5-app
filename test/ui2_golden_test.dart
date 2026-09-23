@@ -151,7 +151,7 @@ void main() {
               find.byKey(_shot),
               matchesGoldenFile('goldens/${name}_${theme}_$tag.png'),
             );
-          });
+          }, tags: const ['golden']);
         });
       }, skip: _noGoldens);
     }

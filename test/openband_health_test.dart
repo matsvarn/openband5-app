@@ -138,7 +138,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/health-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('30 nights shows the observed count, never a filled gap', (
     tester,
@@ -152,7 +152,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/health-30.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing night shows no values and no status', (tester) async {
     repo.scenario = SyntheticScenario.missing;
@@ -163,7 +163,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/health-missing.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('health hub at 2x reaches Laborwerte without overflow', (
     tester,
@@ -208,7 +208,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/health-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'historical partial qualifies the trend while the selected night is complete',
@@ -280,5 +280,6 @@ void main() {
         matchesGoldenFile('openband_goldens/trend-historical-partial.png'),
       );
     },
+    tags: const ['golden'],
   );
 }
