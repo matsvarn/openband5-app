@@ -176,7 +176,7 @@ class OpenBandOverview extends StatelessWidget {
                 ),
                 _OverviewSection(
                   title: 'Dein Tag',
-                  top: 10,
+                  top: 24,
                   trailing: controller.band.latestStoredAt == null
                       ? null
                       : 'bis ${obTime(controller.band.latestStoredAt)}',
