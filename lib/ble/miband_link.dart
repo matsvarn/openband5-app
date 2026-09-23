@@ -340,18 +340,16 @@ class MiBand234Link {
       ),
     );
     _host = host;
+    link.onWrite = (writeIndex, value) {
+      for (final f in reply(writeIndex, value)) {
+        link.feed(kHuami234AuthChar, f, atSec: _now());
+      }
+    };
     var finished = false;
     final done = host.run(link).whenComplete(() => finished = true);
-    var served = 0;
     final deadline = Stopwatch()..start();
     while (deadline.elapsed < window && !finished) {
       await Future<void>.delayed(Duration.zero);
-      while (served < link.writes.length) {
-        for (final f in reply(served, link.writes[served].$2)) {
-          link.feed(kHuami234AuthChar, f, atSec: _now());
-        }
-        served++;
-      }
     }
     await link.close();
     await done.timeout(const Duration(seconds: 2), onTimeout: () {});
