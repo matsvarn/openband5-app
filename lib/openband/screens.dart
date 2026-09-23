@@ -421,17 +421,33 @@ class _VitalTile extends StatefulWidget {
 }
 
 class _VitalTileState extends State<_VitalTile> {
-  late String _day = widget.controller.selectedDay;
-  late Future<List<MetricPoint>> _history = _read();
+  late String _day;
+  // Not a lazy `late` initializer: it must capture the result the history was
+  // read for now, not whenever it is first compared.
+  OpenBandDay? _loadedFor;
+  late Future<List<MetricPoint>> _history;
+
+  @override
+  void initState() {
+    super.initState();
+    _day = widget.controller.selectedDay;
+    _loadedFor = widget.controller.day;
+    _history = _read();
+  }
 
   Future<List<MetricPoint>> _read() => widget.controller.repository
       .readMetricHistory(widget.metricKey, widget.controller.selectedDay, 7);
 
+  // Re-read with every new day result, not only a new day: after a sync or a
+  // re-derivation (an algorithm bump re-derives old nights last) the history
+  // changes under the same selected day, and a once-read list kept the gaps.
   @override
   void didUpdateWidget(_VitalTile old) {
     super.didUpdateWidget(old);
-    if (widget.controller.selectedDay != _day) {
-      _day = widget.controller.selectedDay;
+    final c = widget.controller;
+    if (c.selectedDay != _day || !identical(c.day, _loadedFor)) {
+      _day = c.selectedDay;
+      _loadedFor = c.day;
       _history = _read();
     }
   }
