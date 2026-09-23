@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """Export the G2 Paper frames as PNG references for tool/g2_diff.py.
 
-Read-only against Paper Desktop: it lists artboards and takes screenshots
-through Paper's local MCP relay (~/.paper/bin/paper mcp). Paper Desktop must be
+Read-only against Paper Desktop: it lists artboards and exports them as PNG
+through Paper's local MCP relay (~/.paper/bin/paper mcp). Paper writes each
+export to ~/Downloads; the script moves it into the repository at once.
+(get_screenshot is not used: it returns JPEG and caps frames at 2000 px.) Paper Desktop must be
 running with "OpenBand 5 · Designphase 3" available.
 
   python3 tool/paper_refs.py            # export every G2 frame, light and dark
   python3 tool/paper_refs.py --only 02  # frames whose number is 02
 """
 import argparse
-import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -112,6 +114,7 @@ def main():
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     manifest.update({'file': FILE_ID, 'scale': SCALE})
     frames = manifest.setdefault('frames', {})
+    failed = 0
     try:
         for mode, page_id in PAGES.items():
             page = _page(relay, page_id)
@@ -122,12 +125,17 @@ def main():
                     continue  # legend boards, not screens
                 if only and name.split('-')[0] not in only:
                     continue
-                shot = relay.tool('get_screenshot', {'fileId': FILE_ID, 'nodeId': board['id'], 'scale': SCALE})
-                image = next((c for c in shot['content'] if c.get('type') == 'image'), None)
-                if image is None:
-                    raise SystemExit(f'No image for {board["name"]}')
-                path = OUT / mode / f'{name}.png'
-                path.write_bytes(base64.b64decode(image['data']))
+                result = relay.tool('export', {
+                    'fileId': FILE_ID, 'pageId': page_id,
+                    'nodes': {board['id']: [{'format': 'png', 'scale': f'{SCALE}x'}]},
+                })
+                exported = [e['filePath'] for t in (_text(result),) for e in json.loads(
+                    t[t.index('{\n  "exports"'):])['exports']]
+                if len(exported) != 1 or not exported[0].endswith('.png'):
+                    print(f'{mode:5} {name}: Paper exported {exported}; kept the previous file')
+                    failed += 1
+                    continue
+                shutil.move(exported[0], OUT / mode / f'{name}.png')
                 frames[f'{mode}/{name}'] = {'page': page['pageName'], 'node': board['id'], 'name': board['name']}
                 print(f'{mode:5} {name}')
     finally:
@@ -135,6 +143,8 @@ def main():
     manifest['exported'] = time.strftime('%Y-%m-%d')
     manifest['frames'] = dict(sorted(frames.items()))
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')
+    if failed:
+        raise SystemExit(f'{failed} frame(s) not exported')
 
 
 if __name__ == '__main__':

@@ -5,191 +5,137 @@
     "dark/01-heute": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5E0O-0",
-      "name": "G2 · 01 · Heute",
-      "width": 393,
-      "height": 988
+      "name": "G2 · 01 · Heute"
     },
     "dark/02-schlaf": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EP2-0",
-      "name": "G2 · 02 · Schlaf",
-      "width": 393,
-      "height": 1314
+      "name": "G2 · 02 · Schlaf"
     },
     "dark/03-hrv-detail": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EIS-0",
-      "name": "G2 · 03 · HRV-Detail",
-      "width": 393,
-      "height": 936
+      "name": "G2 · 03 · HRV-Detail"
     },
     "dark/04-nachtverlauf": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EZF-0",
-      "name": "G2 · 04 · Nachtverlauf",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 04 · Nachtverlauf"
     },
     "dark/05-messwerte": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5ELP-0",
-      "name": "G2 · 05 · Messwerte",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 05 · Messwerte"
     },
     "dark/06-profil": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5F85-0",
-      "name": "G2 · 06 · Profil",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 06 · Profil"
     },
     "dark/07-schlafziel": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5F4I-0",
-      "name": "G2 · 07 · Schlafziel",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 07 · Schlafziel"
     },
     "dark/08-daten-sicherung": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5FAK-0",
-      "name": "G2 · 08 · Daten & Sicherung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 08 · Daten & Sicherung"
     },
     "dark/09-band-verbinden": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5FCD-0",
-      "name": "G2 · 09 · Band verbinden",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 09 · Band verbinden"
     },
     "dark/10-erste-ubertragung": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5FE4-0",
-      "name": "G2 · 10 · Erste Übertragung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 10 · Erste Übertragung"
     },
     "dark/11-dein-datenstand-sheet": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EC1-0",
-      "name": "G2 · 11 · Dein Datenstand (Sheet)",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 11 · Dein Datenstand (Sheet)"
     },
     "dark/12-datum-wahlen": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5E7U-0",
-      "name": "G2 · 12 · Datum wählen",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 12 · Datum wählen"
     },
     "dark/13-erholung": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EDE-0",
-      "name": "G2 · 13 · Erholung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 13 · Erholung"
     },
     "dark/14-belastung": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5EG4-0",
-      "name": "G2 · 14 · Belastung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 14 · Belastung"
     },
     "dark/15-nickerchen": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5F18-0",
-      "name": "G2 · 15 · Nickerchen",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 15 · Nickerchen"
     },
     "dark/16-heute-nacht": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5F2U-0",
-      "name": "G2 · 16 · Heute Nacht",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 16 · Heute Nacht"
     },
     "dark/17-schlafzeiten-andern": {
       "page": "G2 · Gerät · Dunkel",
       "node": "5F68-0",
-      "name": "G2 · 17 · Schlafzeiten ändern",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 17 · Schlafzeiten ändern"
     },
     "light/01-heute": {
       "page": "G2 · Gerät · Screens",
       "node": "5CGI-0",
-      "name": "G2 · 01 · Heute",
-      "width": 393,
-      "height": null
+      "name": "G2 · 01 · Heute"
     },
     "light/02-schlaf": {
       "page": "G2 · Gerät · Screens",
       "node": "5COQ-0",
-      "name": "G2 · 02 · Schlaf",
-      "width": 393,
-      "height": null
+      "name": "G2 · 02 · Schlaf"
     },
     "light/03-hrv-detail": {
       "page": "G2 · Gerät · Screens",
       "node": "5CXF-0",
-      "name": "G2 · 03 · HRV-Detail",
-      "width": 393,
-      "height": null
+      "name": "G2 · 03 · HRV-Detail"
     },
     "light/04-nachtverlauf": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0C-0",
-      "name": "G2 · 04 · Nachtverlauf",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 04 · Nachtverlauf"
     },
     "light/05-messwerte": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0D-0",
-      "name": "G2 · 05 · Messwerte",
-      "width": 393,
-      "height": null
+      "name": "G2 · 05 · Messwerte"
     },
     "light/06-profil": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0E-0",
-      "name": "G2 · 06 · Profil",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 06 · Profil"
     },
     "light/07-schlafziel": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0F-0",
-      "name": "G2 · 07 · Schlafziel",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 07 · Schlafziel"
     },
     "light/08-daten-sicherung": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0G-0",
-      "name": "G2 · 08 · Daten & Sicherung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 08 · Daten & Sicherung"
     },
     "light/09-band-verbinden": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0H-0",
-      "name": "G2 · 09 · Band verbinden",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 09 · Band verbinden"
     },
     "light/10-erste-ubertragung": {
       "page": "G2 · Gerät · Screens",
       "node": "5D0I-0",
-      "name": "G2 · 10 · Erste Übertragung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 10 · Erste Übertragung"
     },
     "light/11-dein-datenstand-sheet": {
       "page": "G2 · Gerät · Screens",
@@ -201,44 +147,32 @@
     "light/12-datum-wahlen": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJU-0",
-      "name": "G2 · 12 · Datum wählen",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 12 · Datum wählen"
     },
     "light/13-erholung": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJV-0",
-      "name": "G2 · 13 · Erholung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 13 · Erholung"
     },
     "light/14-belastung": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJW-0",
-      "name": "G2 · 14 · Belastung",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 14 · Belastung"
     },
     "light/15-nickerchen": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJX-0",
-      "name": "G2 · 15 · Nickerchen",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 15 · Nickerchen"
     },
     "light/16-heute-nacht": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJY-0",
-      "name": "G2 · 16 · Heute Nacht",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 16 · Heute Nacht"
     },
     "light/17-schlafzeiten-andern": {
       "page": "G2 · Gerät · Screens",
       "node": "5DJZ-0",
-      "name": "G2 · 17 · Schlafzeiten ändern",
-      "width": 393,
-      "height": 852
+      "name": "G2 · 17 · Schlafzeiten ändern"
     },
     "light/legende-g2": {
       "page": "G2 · Gerät · Screens",

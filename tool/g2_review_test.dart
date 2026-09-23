@@ -20,7 +20,8 @@ import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
-const _scale = 2.0;
+/// Every G2 frame is 393 pt wide; a reference's pixel width gives its scale.
+const _frameWidth = 393.0;
 const _statusBar = 54.0;
 
 Map _json(String name) =>
@@ -63,11 +64,11 @@ void main() {
       if (!ref.existsSync()) continue;
       testWidgets('$mode/$slug', (tester) async {
         final refImage = (await tester.runAsync(() => _decode(ref)))!;
-        final height = refImage.height / _scale;
-        tester.view.devicePixelRatio = _scale;
+        final scale = refImage.width / _frameWidth;
+        tester.view.devicePixelRatio = scale;
         tester.view.physicalSize = Size(
           refImage.width.toDouble(),
-          height * _scale,
+          refImage.height.toDouble(),
         );
         addTearDown(tester.view.reset);
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -129,9 +130,14 @@ void main() {
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('capture')),
         );
-        final app = await boundary.toImage(pixelRatio: _scale);
+        final app = await boundary.toImage(pixelRatio: scale);
         final score = (await tester.runAsync(
-          () => _writeReport(refImage, app, 'build/g2-review/$mode/$slug.png'),
+          () => _writeReport(
+            refImage,
+            app,
+            scale,
+            'build/g2-review/$mode/$slug.png',
+          ),
         ))!;
         // ignore: avoid_print
         print('G2SCORE $mode/$slug ${(score * 100).toStringAsFixed(2)}%');
@@ -151,12 +157,17 @@ Future<Uint8List> _rgba(ui.Image image) async => (await image.toByteData(
 
 /// Writes [Paper | app | onion | diff] and returns the differing-pixel share
 /// below the status bar (a pixel differs when any channel moves by > 24).
-Future<double> _writeReport(ui.Image ref, ui.Image app, String path) async {
+Future<double> _writeReport(
+  ui.Image ref,
+  ui.Image app,
+  double scale,
+  String path,
+) async {
   final w = ref.width, h = ref.height;
   final a = await _rgba(ref);
   final b = await _rgba(app);
   final diff = Uint8List(w * h * 4);
-  final top = (_statusBar * _scale).round();
+  final top = (_statusBar * scale).round();
   var differing = 0;
   for (var y = 0; y < h; y++) {
     for (var x = 0; x < w; x++) {
