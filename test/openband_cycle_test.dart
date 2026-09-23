@@ -444,7 +444,7 @@ void main() {
     await tester.tap(find.text('Beobachtung festhalten'));
     await tester.pumpAndSettle();
     await expectGolden(tester, 'cycle-observation-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history is as-of selected day and tappable', (tester) async {
     repo.seedCycleObservation(
@@ -471,7 +471,7 @@ void main() {
     await tester.tap(find.text('24. August'));
     await tester.pumpAndSettle();
     expect(find.text('Beginn'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history hides later rows when an earlier day is selected', (
     tester,
