@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../compute/nap_edits.dart';
 import '../data/day_label.dart';
@@ -26,6 +27,15 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
 
   OpenBandController get controller => widget.controller;
   String get day => controller.selectedDay;
+
+  void _stepDay(int offset) {
+    final selected = DateTime.parse(day);
+    controller.selectDay(
+      dayLabelOf(
+        DateTime(selected.year, selected.month, selected.day + offset),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -138,8 +148,28 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
           naps?.job?.state == CorrectionState.calculating ||
           controller.napCalculating;
       final open = failed || pending;
+      final selected = DateTime.parse(day);
+      final today = day == todayLabel(controller.now());
+      final dateLabel =
+          '${DateFormat('EEE', 'de_DE').format(selected).replaceAll('.', '')} '
+          '${DateFormat('dd.MM', 'de_DE').format(selected)}';
       return Scaffold(
         backgroundColor: p.canvas,
+        bottomNavigationBar: naps == null || _error != null
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: OBAction(
+                    'Nickerchen ergänzen',
+                    secondary: true,
+                    ink: true,
+                    icon: LucideIcons.plus,
+                    onPressed: () => _openEditor(),
+                  ),
+                ),
+              ),
         body: SafeArea(
           child: ListView(
             key: PageStorageKey('openband.naps.$day'),
@@ -148,11 +178,20 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
               OBPageHeader(
                 title: 'Nickerchen',
                 backText: 'Schlaf',
-                subtitle: obDate(day),
-                onDate: () => chooseOpenBandDay(context, controller),
+                subtitle: '',
+                bottom: 2,
                 onInfo: () => _napInfo(context, naps),
                 infoLabel: 'Quelle und Zeitzone',
               ),
+              Center(
+                child: OBDayPill(
+                  label: dateLabel,
+                  onTap: () => chooseOpenBandDay(context, controller),
+                  onPrevious: () => _stepDay(-1),
+                  onNext: today ? null : () => _stepDay(1),
+                ),
+              ),
+              const SizedBox(height: 24),
               if (_error != null)
                 OBAction('Daten erneut laden', onPressed: _load)
               else if (_loading && naps == null)
@@ -163,12 +202,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Tagsüber geschlafen',
-                        style: p
-                            .text(13, color: p.muted)
-                            .copyWith(height: 16 / 13),
-                      ),
+                      Text('TAGSÜBER GESCHLAFEN', style: p.label(size: 11)),
                       const SizedBox(height: 8),
                       _total(p, naps),
                       if (!naps.judged) ...[
@@ -183,16 +217,6 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                         const SizedBox(height: 8),
                         Text(
                           'Keine Nickerchen erkannt',
-                          style: p
-                              .text(13, color: p.muted)
-                              .copyWith(height: 16 / 13),
-                        ),
-                      ] else if (!open && naps.sessions.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          naps.sessions.length == 1
-                              ? '1 Nickerchen'
-                              : '${naps.sessions.length} Nickerchen',
                           style: p
                               .text(13, color: p.muted)
                               .copyWith(height: 16 / 13),
@@ -265,7 +289,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                 if (naps.sessions.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   OBCard(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -278,14 +302,18 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                OBAction(
-                  'Nickerchen ergänzen',
-                  secondary: true,
-                  ink: true,
-                  icon: LucideIcons.plus,
-                  onPressed: () => _openEditor(),
-                ),
+                if (naps.sessions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Erkannt stammt aus der Aufzeichnung. Manuell kennzeichnet eigene Einträge.',
+                      style: p
+                          .text(12, color: p.muted)
+                          .copyWith(height: 18 / 12),
+                    ),
+                  ),
+                ],
                 if (naps.rejected.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   OBCard(
@@ -438,7 +466,7 @@ class _NapRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 72),
+        constraints: const BoxConstraints(minHeight: 52),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final trailing = 72.0 * scale.clamp(1, 2.5);

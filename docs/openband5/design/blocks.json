@@ -51,7 +51,9 @@
     "5DJT-0": "G2 · 11 · Dein Datenstand · Hell (lib/openband/screens.dart)",
     "5EC1-0": "G2 · 11 · Dein Datenstand · Dunkel (lib/openband/screens.dart)",
     "5DJU-0": "G2 · 12 · Datum wählen · Hell (lib/openband/day_picker.dart)",
-    "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)"
+    "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)",
+    "5DJX-0": "G2 · 15 · Nickerchen · Hell (lib/openband/naps.dart)",
+    "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)"
   },
   "blocks": [
     {
@@ -689,9 +691,11 @@
       "file": "naps.dart",
       "usedIn": [
         "3KI7-0",
-        "3KJW-0"
+        "3KJW-0",
+        "5DJX-0",
+        "5F18-0"
       ],
-      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —."
+      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —. G2 Nickerchen keeps the dated day pill and add action anchored above the safe area while the list scrolls."
     },
     {
       "name": "OBTimeField.well",

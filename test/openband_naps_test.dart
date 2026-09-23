@@ -108,9 +108,33 @@ void main() {
     expect(find.text('Erkannt'), findsOneWidget);
     expect(find.text('32'), findsWidgets);
     expect(find.text('32 Min.'), findsOneWidget);
-    expect(find.text('1 Nickerchen'), findsOneWidget);
+    expect(
+      find.textContaining('Erkannt stammt aus der Aufzeichnung'),
+      findsOneWidget,
+    );
     expect(find.text('Synthetische Daten'), findsOneWidget);
     expect(find.text('Selbst eingetragen'), findsNothing);
+  });
+
+  testWidgets('day pill steps through dated naps', (tester) async {
+    await mount(tester);
+    expect(find.text('Di 15.09'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Vorheriger Tag'));
+    await tester.pumpAndSettle();
+    expect(controller.selectedDay, '2026-09-14');
+    expect(find.text('Mo 14.09'), findsOneWidget);
+  });
+
+  testWidgets('large-text add action stays anchored while content scrolls', (
+    tester,
+  ) async {
+    await mount(tester, width: 375, scale: 2);
+    final action = find.text('Nickerchen ergänzen');
+    final top = tester.getRect(action).top;
+    await tester.drag(find.byType(ListView), const Offset(0, -260));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(action).top, closeTo(top, 1));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('add, edit, remove and restore a nap', (tester) async {
@@ -239,7 +263,6 @@ void main() {
     expect(find.text('Keine Nickerchen erkannt'), findsOneWidget);
     expect(find.text('0'), findsWidgets);
     expect(find.text('Noch nicht bestimmbar'), findsNothing);
-    expect(find.text('1 Nickerchen'), findsNothing);
 
     repo.seedNaps(const NapDay(day: '2026-09-15'));
     await controller.refresh();
@@ -247,7 +270,6 @@ void main() {
     expect(find.text('Noch nicht bestimmbar'), findsOneWidget);
     expect(find.text('—'), findsWidgets);
     expect(find.text('Keine Nickerchen erkannt'), findsNothing);
-    expect(find.text('1 Nickerchen'), findsNothing);
   });
 
   testWidgets('list and editor wrap at 375 and 2x text without overflow', (
@@ -301,7 +323,7 @@ void main() {
     final icon = tester.getRect(
       find.byKey(ValueKey('nap-icon-${early.millisecondsSinceEpoch ~/ 1000}')),
     );
-    expect(icon.left, closeTo(card.left + 14, 1.5));
+    expect(icon.left, closeTo(card.left + 10, 1.5));
     expect(icon.width, 36);
     final d32 = tester.getRect(find.text('32 Min.'));
     final d18 = tester.getRect(find.text('18 Min.'));
