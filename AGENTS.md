@@ -238,9 +238,12 @@ visual bugs — check whether removed wrapper widgets were load-bearing.
 
 - `test` (Ubuntu): `flutter test --no-pub --concurrency=1 --exclude-tags golden`
   — every non-golden assertion, including inside files that also carry goldens.
-- `goldens` (macOS): `flutter test --no-pub --concurrency=1 --tags golden` —
-  the ~600 `test/openband_goldens/` PNGs were rendered by the macOS Skia engine
-  and the comparator is exact-match, so pixel tests only run on macOS. Tests
+- `goldens` (local macOS 27, manual CI dispatch): `flutter test --no-pub
+  --concurrency=1 --tags golden` — the ~600 `test/openband_goldens/` PNGs were
+  rendered on this machine's font stack and the comparator is exact-match.
+  Hosted `macos-latest` runners rasterize text sub-1% differently (544 diffs
+  measured), so the golden lane runs locally on the baking platform until a
+  matching runner exists; the CI job is gated to `workflow_dispatch`. Tests
   that call `matchesGoldenFile` carry `tags: const ['golden']`; the tag is on
   the test, never the file — tag new golden tests the same way.
 
