@@ -565,16 +565,16 @@ void main() {
 
     final values = [find.text('07:42'), find.text('—'), find.text('4,2 GB')];
     final labels = [
-      find.text('Datenstand'),
-      find.text('Gespeichert'),
-      find.text('Archiv'),
+      find.text('Daten bis'),
+      find.text('Letzter Bandwert'),
+      find.text('Rohdaten-Archiv'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
       expect(labels[i], findsOneWidget);
       final value = tester.getRect(values[i]);
       final label = tester.getRect(labels[i]);
-      expect(value.left, lessThan(label.left));
+      expect(value.top, lessThan(label.top));
       if (i > 0) {
         expect(value.top, greaterThan(tester.getRect(values[i - 1]).top));
       }
@@ -630,7 +630,7 @@ void main() {
 
       expect(find.text('Bandstatus nicht verfügbar'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
-      expect(find.text('64'), findsOneWidget);
+      expect(find.text('64 %'), findsOneWidget);
       expect(find.text('07:42'), findsOneWidget);
     },
   );

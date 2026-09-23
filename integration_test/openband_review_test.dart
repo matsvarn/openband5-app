@@ -20496,6 +20496,14 @@ void main() {
         Future<void> openReleaseProfile() async {
           await tester.tap(find.byTooltip('Profil'));
           await tester.pumpAndSettle();
+          if (find.text('Daten & Sicherung').evaluate().isEmpty) {
+            await tester.scrollUntilVisible(
+              find.byKey(const ValueKey('profile-data')),
+              250,
+              scrollable: verticalScrollable().last,
+            );
+            await tester.pumpAndSettle();
+          }
           expect(find.text('Daten & Sicherung'), findsOneWidget);
           expect(find.text('Community'), findsNothing);
         }
