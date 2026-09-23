@@ -243,7 +243,7 @@ void main() {
 
   testWidgets('main light and dark goldens', (tester) async {
     await mount(tester);
-    expect(find.text('Medikamente'), findsOneWidget);
+    expect(find.text('MEDIKAMENTE'), findsOneWidget);
     expect(find.text('Präparat A'), findsOneWidget);
     expect(find.text('Präparat B'), findsOneWidget);
     expect(find.textContaining('Offen'), findsOneWidget);
@@ -356,7 +356,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('Verlauf'));
     await tester.pumpAndSettle();
-    expect(find.text('Verlauf'), findsOneWidget);
+    expect(find.text('VERLAUF'), findsOneWidget);
     expect(find.text('Präparat A'), findsWidgets);
     expect(find.textContaining('Genommen'), findsWidgets);
     expect(find.textContaining('Kein Eintrag'), findsWidgets);
@@ -433,7 +433,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('Präparat A'));
     await tester.pumpAndSettle();
-    expect(find.text('Einnahme'), findsOneWidget);
+    expect(find.text('EINNAHME'), findsOneWidget);
     expect(find.text('Genommen'), findsOneWidget);
     expect(find.text('Ausgelassen'), findsOneWidget);
     expect(find.text('Eintrag entfernen'), findsNothing);
@@ -500,7 +500,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
     expect(find.text('Notiz'), findsOneWidget);
-    expect(find.text('Einnahme'), findsOneWidget);
+    expect(find.text('EINNAHME'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-save-error-light.png'),
@@ -538,7 +538,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('Medikament hinzufügen'));
     await tester.pumpAndSettle();
-    expect(find.text('Medikament hinzufügen'), findsWidgets);
+    expect(find.text('MEDIKAMENT HINZUFÜGEN'), findsWidgets);
     await tester.enterText(find.byKey(const ValueKey('medication-name')), 'Zink');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
@@ -552,7 +552,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Zink'));
     await tester.pumpAndSettle();
-    expect(find.text('Plan bearbeiten'), findsOneWidget);
+    expect(find.text('PLAN BEARBEITEN'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('medication-name')), 'Zink plus');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
@@ -632,7 +632,7 @@ void main() {
       ],
     );
     await mount(tester, width: 375, scale: 2, height: 1600);
-    expect(find.text('Medikamente'), findsOneWidget);
+    expect(find.text('MEDIKAMENTE'), findsOneWidget);
     expect(
       find.text('Sehr langes Kombinationspräparat mit Mineralstoffen'),
       findsOneWidget,
@@ -652,7 +652,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('medication-name')));
     tester.view.viewInsets = const FakeViewPadding(bottom: 308);
     await tester.pumpAndSettle();
-    expect(find.text('Medikament hinzufügen'), findsWidgets);
+    expect(find.text('MEDIKAMENT HINZUFÜGEN'), findsWidgets);
     expect(find.byKey(const ValueKey('medication-name')), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -682,7 +682,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Präparat A'));
     await tester.pumpAndSettle();
-    expect(find.text('Plan bearbeiten'), findsOneWidget);
+    expect(find.text('PLAN BEARBEITEN'), findsOneWidget);
     expect(find.text('Tablette'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
@@ -738,7 +738,7 @@ void main() {
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('medication-time')), findsNothing);
-    expect(find.text('Plan bearbeiten'), findsOneWidget);
+    expect(find.text('PLAN BEARBEITEN'), findsOneWidget);
     expect(find.text('Täglich'), findsOneWidget);
     expect(find.textContaining('Mo, Di'), findsNothing);
     expect(repo.planSaves, 0);
@@ -757,7 +757,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('medication-time')), findsNothing);
-    expect(find.text('Plan bearbeiten'), findsOneWidget);
+    expect(find.text('PLAN BEARBEITEN'), findsOneWidget);
     expect(find.text('Täglich'), findsNothing);
     expect(find.text('Mo, Di, Mi, Do, Fr, Sa'), findsOneWidget);
     expect(repo.planSaves, 0);
@@ -912,7 +912,7 @@ void main() {
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect(find.text('Menge ungültig'), findsOneWidget);
-    expect(find.text('Medikament hinzufügen'), findsWidgets);
+    expect(find.text('MEDIKAMENT HINZUFÜGEN'), findsWidgets);
     expect(repo.planSaves, 0);
     final field = tester.widget<TextField>(
       find.byKey(const ValueKey('medication-dose')),

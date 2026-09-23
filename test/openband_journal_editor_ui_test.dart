@@ -113,7 +113,7 @@ void main() {
 
   testWidgets('empty values, missing booleans, all built-ins', (tester) async {
     await mount(tester);
-    expect(find.text('Tagesjournal'), findsOneWidget);
+    expect(find.text('TAGESJOURNAL'), findsOneWidget);
     expect(find.text('15. September'), findsOneWidget);
     for (final label in [
       'Stimmung',
@@ -556,7 +556,7 @@ void main() {
     repo.seedJournalEditor(filled: true);
     await mount(tester, scale: 2, width: 320, height: 900);
     expect(tester.takeException(), isNull);
-    expect(find.text('Tagesjournal'), findsOneWidget);
+    expect(find.text('TAGESJOURNAL'), findsOneWidget);
     expect(find.text('Ausgeblendet'), findsNothing);
     expectStackedGroupFullWidth(tester, 'Schlafqualität');
     expectStackedGroupFullWidth(tester, 'Energie');

@@ -99,7 +99,7 @@ void main() {
     final header = tester.getRect(find.byType(OBPageHeader));
     final back = tester.getRect(find.byTooltip('Zurück'));
     final info = tester.getRect(find.byTooltip('Information'));
-    final title = tester.getRect(find.text('Medikamente'));
+    final title = tester.getRect(find.text('MEDIKAMENTE'));
     expect(header.width, 361);
     expect(back.size, const Size(44, 44));
     expect(info.size, const Size(44, 44));
@@ -108,14 +108,14 @@ void main() {
     expect(title.right, lessThan(info.left));
     expect(title.top, greaterThanOrEqualTo(back.top - 0.5));
     expect(title.bottom, lessThanOrEqualTo(back.bottom + 0.5));
-    expect(title.height, 24);
+    expect(title.height, 16);
     expect(
       tester.getRect(find.text('Heute')).top,
       closeTo(title.bottom + 2, 0.5),
     );
     await tester.tap(find.byTooltip('Zurück'));
     await tester.tap(find.byTooltip('Information'));
-    await tester.tap(find.text('Medikamente'));
+    await tester.tap(find.text('MEDIKAMENTE'));
     expect(backs, 1);
     expect(infos, 1);
     expect(dates, 1);
@@ -130,6 +130,7 @@ void main() {
       width: 375,
       height: 667,
       scale: 2,
+      title: 'Ernährungsziele',
       subtitle: 'Heute',
       onBack: () => backs++,
       onInfo: () => infos++,
@@ -138,7 +139,7 @@ void main() {
     final header = tester.getRect(find.byType(OBPageHeader));
     final back = tester.getRect(find.byTooltip('Zurück'));
     final info = tester.getRect(find.byTooltip('Information'));
-    final title = tester.getRect(find.text('Medikamente'));
+    final title = tester.getRect(find.text('ERNÄHRUNGSZIELE'));
     final subtitle = tester.getRect(find.text('Heute'));
     expect(header.width, 343);
     expect(back.size, const Size(44, 44));
@@ -146,7 +147,7 @@ void main() {
     expect(back.top, closeTo(info.top, 0.5));
     expect(info.right, closeTo(header.right, 0.5));
     expect(title.top, closeTo(back.bottom + 8, 0.5));
-    expect(title.height, 48);
+    expect(title.height, 32);
     final lane = tester.getRect(
       find.descendant(
         of: find.byType(OBPageHeader),
@@ -159,7 +160,10 @@ void main() {
     expect(lane.right, closeTo(header.right, 0.5));
     expect(lane.width, closeTo(header.width, 0.5));
     final paragraph = tester.renderObject<RenderParagraph>(
-      find.text('Medikamente'),
+      find.descendant(
+        of: find.text('ERNÄHRUNGSZIELE'),
+        matching: find.byType(RichText),
+      ),
     );
     expect(paragraph.constraints.maxWidth, closeTo(header.width, 0.5));
     expect(title.left, greaterThanOrEqualTo(header.left - 0.5));
@@ -172,7 +176,7 @@ void main() {
     expect(subtitle.top, closeTo(title.bottom + 2, 0.5));
     await tester.tap(find.byTooltip('Zurück'));
     await tester.tap(find.byTooltip('Information'));
-    await tester.tap(find.text('Medikamente'));
+    await tester.tap(find.text('ERNÄHRUNGSZIELE'));
     expect(backs, 1);
     expect(infos, 1);
     expect(dates, 1);

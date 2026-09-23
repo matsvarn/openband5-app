@@ -1869,7 +1869,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byType(OpenBandGlucose), findsOneWidget);
-      expect(find.text('Glukose'), findsOneWidget);
+      expect(find.text('GLUKOSE'), findsOneWidget);
     },
   );
 }

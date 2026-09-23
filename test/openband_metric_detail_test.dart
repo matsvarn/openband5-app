@@ -144,7 +144,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
-    expect(find.text('Atmung'), findsWidgets);
+    expect(find.text('ATMUNG'), findsWidgets);
     expect(find.text('Tag für Tag'), findsNothing);
     expect(find.text('Herzratenvariabilität'), findsNothing);
     await tester.scrollUntilVisible(find.text('Nachtverlauf'), 100);

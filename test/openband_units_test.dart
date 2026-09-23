@@ -237,7 +237,7 @@ void main() {
 
   testWidgets('Paper units frames', (tester) async {
     await pumpView(tester);
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     expect(find.text('Metrisch'), findsOneWidget);
     expect(find.text('Imperial'), findsOneWidget);
     expect(find.text('Beispiel'), findsOneWidget);
@@ -407,7 +407,7 @@ void main() {
       selected: UnitSystem.imperial,
       onSelect: (_) {},
     );
-    expect(find.text('Units'), findsOneWidget);
+    expect(find.text('UNITS'), findsOneWidget);
     expect(find.text('Metric'), findsOneWidget);
     expect(find.text('Imperial'), findsOneWidget);
     expect(find.text('Metrisch'), findsNothing);
@@ -567,7 +567,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pump();
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     expect(find.text('Erneut'), findsNothing);
     expect(
       tester.widget<PopScope<Object?>>(find.byType(PopScope<Object?>)).canPop,
@@ -575,10 +575,10 @@ void main() {
     );
     await tester.binding.handlePopRoute();
     await tester.pump();
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     pending.complete(false);
     await tester.pumpAndSettle();
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
     expect(find.text('Erneut'), findsOneWidget);
     expect(units.system, UnitSystem.metric);
@@ -610,11 +610,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pump();
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     pending.complete(true);
     await tester.pumpAndSettle();
     expect(units.system, UnitSystem.imperial);
-    expect(find.text('Einheiten'), findsOneWidget);
+    expect(find.text('EINHEITEN'), findsOneWidget);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.text('Einheiten'), findsNothing);

@@ -28,16 +28,18 @@ class OBStageStrip extends StatelessWidget {
   final double height;
   const OBStageStrip({super.key, required this.night, this.height = 28});
 
+  /// The stored segments read aloud, for any drawing of the night.
+  static String describe(SleepNight night) => night.segments
+      .map(
+        (s) => '${obTime(s.start)} bis ${obTime(s.end)}: ${stageName(s.stage)}',
+      )
+      .join('. ');
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
     return Semantics(
-      label: night.segments
-          .map(
-            (s) =>
-                '${obTime(s.start)} bis ${obTime(s.end)}: ${stageName(s.stage)}',
-          )
-          .join('. '),
+      label: describe(night),
       child: Container(
         height: height + 16,
         padding: const EdgeInsets.all(8),

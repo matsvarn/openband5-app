@@ -216,7 +216,7 @@ void main() {
 
   testWidgets('Paper appearance frames', (tester) async {
     await pumpView(tester);
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     expect(find.text('System'), findsOneWidget);
     expect(find.text('Hell'), findsOneWidget);
     expect(find.text('Dunkel'), findsOneWidget);
@@ -292,7 +292,7 @@ void main() {
       selected: AppThemeChoice.light,
       onSelect: (_) {},
     );
-    expect(find.text('Appearance'), findsOneWidget);
+    expect(find.text('APPEARANCE'), findsOneWidget);
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Dark'), findsOneWidget);
     expect(find.text('Hell'), findsNothing);
@@ -463,7 +463,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pump();
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     expect(find.text('Erneut'), findsNothing);
     expect(
       tester.widget<PopScope<Object?>>(find.byType(PopScope<Object?>)).canPop,
@@ -471,10 +471,10 @@ void main() {
     );
     await tester.binding.handlePopRoute();
     await tester.pump();
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     pending.complete(false);
     await tester.pumpAndSettle();
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
     expect(find.text('Erneut'), findsOneWidget);
     expect(theme.choice, AppThemeChoice.system);
@@ -507,11 +507,11 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pump();
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     pending.complete(true);
     await tester.pumpAndSettle();
     expect(theme.choice, AppThemeChoice.dark);
-    expect(find.text('Darstellung'), findsOneWidget);
+    expect(find.text('DARSTELLUNG'), findsOneWidget);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.text('Darstellung'), findsNothing);

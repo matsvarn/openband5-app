@@ -529,7 +529,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pump();
     await reviewPumpPageTransitions(tester);
-    expect(find.text('Ruhepuls'), findsOneWidget);
+    expect(find.text('RUHEPULS'), findsOneWidget);
     await reviewTapHeaderBack(tester);
     expect(find.text('Ruhepuls'), findsNothing);
     expect(find.text('open'), findsOneWidget);

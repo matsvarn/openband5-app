@@ -222,7 +222,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.dragFrom(const Offset(1, 350), const Offset(360, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Schlafzeiten ändern'), findsNothing);
+    expect(find.text('SCHLAFZEITEN ÄNDERN'), findsNothing);
     expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
     await pressSleepEditor(tester);
     await tester.pumpAndSettle();
@@ -282,7 +282,7 @@ void main() {
       expect(controller.day!.sleep.duration.value, 438);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(find.text('Schlaf aktualisiert'), findsWidgets);
+      expect(find.text('SCHLAF AKTUALISIERT'), findsWidgets);
       expect(controller.day!.sleep.duration.value, 428);
       expect(controller.day!.sleep.awakeMinutes, 21);
       await tester.ensureVisible(find.text('Zur Übersicht'));
@@ -341,7 +341,7 @@ void main() {
       await edit(tester);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(find.text('Auswertung offen'), findsWidgets);
+      expect(find.text('AUSWERTUNG OFFEN'), findsWidgets);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/calculation-failure.png'),
@@ -391,12 +391,16 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
       await tester.pumpAndSettle();
-      expect(find.text('Effizienz'), findsOneWidget);
-      expect(find.text('Im Bett'), findsOneWidget);
-      expect(find.text('Schlafdauer'), findsOneWidget);
+      expect(find.byKey(const ValueKey('sleep-stage-rows')), findsOneWidget);
+      expect(find.textContaining('Im Bett'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-partial.png'),
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('SCHLAFDAUER'),
+        200,
+        scrollable: find.byType(Scrollable).last,
       );
       await tester.scrollUntilVisible(
         find.text('Zeiten korrigieren'),
@@ -465,7 +469,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.bySemanticsLabel(RegExp(r'^Belastung, ')));
     await tester.pumpAndSettle();
-    expect(find.text('Belastung'), findsWidgets);
+    expect(find.text('BELASTUNG'), findsWidgets);
     expect(find.text('Tag für Tag'), findsOneWidget);
     expect(find.textContaining('von 30 Tagen'), findsOneWidget);
     expect(find.text('Verlauf in der Nacht'), findsNothing);
@@ -491,13 +495,9 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(OBStageLegend), findsOneWidget);
+      expect(find.byKey(const ValueKey('sleep-stage-rows')), findsOneWidget);
       expect(find.text('Leicht'), findsOneWidget);
       expect(find.text('4h07'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('sleep-stage-swatch-Im Bett')),
-        findsNothing,
-      );
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-large.png'),
@@ -666,8 +666,14 @@ void main() {
       );
       await tester.tap(find.text('Nacht ansehen'));
       await tester.pumpAndSettle();
-      // Hero and the Schlafdauer trend both show the corrected night.
-      expect(find.text('7h08'), findsNWidgets(2));
+      // Back at the kept scroll position; the hero above shows the
+      // corrected night.
+      await tester.scrollUntilVisible(
+        find.text('7h08'),
+        -250,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('7h08'), findsOneWidget);
       // The restore action lives in the info sheet now.
       await tester.scrollUntilVisible(
         find.byTooltip('Schlafwerte und Methode'),

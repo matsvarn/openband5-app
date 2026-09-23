@@ -218,7 +218,7 @@ void main() {
     'editor starts blank and save stays disabled until a valid choice',
     (tester) async {
       await mountEditor(tester, synthetic: false);
-      expect(find.text('Schlafziel bearbeiten'), findsOneWidget);
+      expect(find.text('SCHLAFZIEL BEARBEITEN'), findsOneWidget);
       expect(
         tester
             .widget<TextField>(find.byKey(const ValueKey('sleep-goal-hours')))

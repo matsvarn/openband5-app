@@ -76,7 +76,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Erste Übertragung'), findsOneWidget);
+      expect(find.text('ERSTE ÜBERTRAGUNG'), findsOneWidget);
       expect(find.text('Schritt 2 von 3'), findsOneWidget);
       expect(find.text('Verbindung'), findsOneWidget);
       expect(find.text('Auf dem iPhone'), findsOneWidget);
@@ -587,7 +587,7 @@ void main() {
         locale: const Locale('en'),
       ),
     );
-    expect(find.text('First transfer'), findsOneWidget);
+    expect(find.text('FIRST TRANSFER'), findsOneWidget);
     await tester.tap(find.text('Continue to profile'));
     await tester.pump();
     expect(done, isTrue);

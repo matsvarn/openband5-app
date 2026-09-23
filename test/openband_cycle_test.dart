@@ -465,12 +465,12 @@ void main() {
     await expectGolden(tester, 'cycle-history.png');
     await tester.tap(find.text('Krämpfe'));
     await tester.pumpAndSettle();
-    expect(find.text('Beobachtung'), findsOneWidget);
+    expect(find.text('BEOBACHTUNG'), findsOneWidget);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24. August'));
     await tester.pumpAndSettle();
-    expect(find.text('Beginn'), findsOneWidget);
+    expect(find.text('BEGINN'), findsOneWidget);
   });
 
   testWidgets('history hides later rows when an earlier day is selected', (
@@ -745,7 +745,7 @@ void main() {
       expect(find.text('Beginn'), findsOneWidget);
       await tester.tap(find.text('Übelkeit'));
       await tester.pumpAndSettle();
-      expect(find.text('Beobachtung'), findsOneWidget);
+      expect(find.text('BEOBACHTUNG'), findsOneWidget);
       await tester.tap(find.byTooltip('Zurück'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Beginn'));
@@ -852,7 +852,7 @@ void main() {
     expect(find.text('Tag 23'), findsOneWidget);
     await expectGolden(tester, 'cycle-2x.png');
     await mount(tester, width: 320, height: 568);
-    expect(find.text('Zyklus'), findsWidgets);
+    expect(find.text('ZYKLUS'), findsWidgets);
     expect(find.text('Tag 23').hitTestable(), findsOneWidget);
     expect(find.byTooltip('Zurück').hitTestable(), findsOneWidget);
     await tester.pumpAndSettle();

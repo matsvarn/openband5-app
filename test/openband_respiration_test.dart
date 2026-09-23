@@ -192,7 +192,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('atemfrequenz')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
-    expect(detailText('Atmung'), findsOneWidget);
+    expect(detailText('ATMUNG'), findsOneWidget);
     expect(detailText('16,0'), findsOneWidget);
     expect(detailText('HRV'), findsNothing);
     expect(detailText('Ruhepuls'), findsNothing);
@@ -256,7 +256,7 @@ void main() {
   ) async {
     seedPaper();
     await mountDetail(tester);
-    expect(detailText('Atmung'), findsOneWidget);
+    expect(detailText('ATMUNG'), findsOneWidget);
     expect(detailText('16,0'), findsOneWidget);
     expect(detailText('DI., 15. SEPT.'), findsOneWidget);
     expect(detailText('Basis noch offen'), findsOneWidget);
@@ -392,7 +392,7 @@ void main() {
     await mountDetail(tester);
     expect(detailText('Auswertung läuft'), findsOneWidget);
     expect(detailText('16,0'), findsNothing);
-    expect(find.text('Schlafzeiten ändern'), findsNothing);
+    expect(find.text('SCHLAFZEITEN ÄNDERN'), findsNothing);
 
     repo.seedNightScalarDetail(
       key: MetricKey.respiration,

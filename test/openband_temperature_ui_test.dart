@@ -233,7 +233,7 @@ void main() {
     );
     await tester.tap(card);
     await tester.pumpAndSettle();
-    expect(detailText('Hauttemperatur'), findsOneWidget);
+    expect(detailText('HAUTTEMPERATUR'), findsOneWidget);
     expect(detailText('+0,4'), findsOneWidget);
     expect(find.byType(OpenBandNightSignals), findsNothing);
     await tester.tap(find.text('Quelle'));

@@ -292,7 +292,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bearbeiten'));
     await tester.pumpAndSettle();
-    expect(find.text('Vorlage bearbeiten'), findsOneWidget);
+    expect(find.text('VORLAGE BEARBEITEN'), findsOneWidget);
     await tester.enterText(find.byType(TextField).first, 'Ganzkörper A+');
     await tester.tap(find.text('Vorlage speichern'));
     await tester.pumpAndSettle();

@@ -86,7 +86,7 @@ class SetRow extends StatelessWidget {
             if (glyph != null)
               glyph!(tint)
             else
-              Icon(icon, size: 18, color: tint),
+              Icon(icon, size: 20, color: tint),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -121,12 +121,21 @@ class SetRow extends StatelessWidget {
             // "2026-08-16 04:12" is arbitrary-length, and at 3.1× it pushed
             // itself and the chevron off the right of every settings screen.
             if (value.isNotEmpty && !bigText(c)) ...[
-              const SizedBox(width: 8),
-              Text(value, style: p.text(13, color: p.muted)),
+              const SizedBox(width: 12),
+              Text(
+                value,
+                style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
+              ),
             ],
+            // Paper G2: a light "›", not an icon.
             if (chevron && !danger) ...[
-              const SizedBox(width: 8),
-              Icon(LucideIcons.chevronRight, size: 17, color: p.gap),
+              const SizedBox(width: 12),
+              ExcludeSemantics(
+                child: Text(
+                  '›',
+                  style: p.text(16, color: p.gap).copyWith(height: 20 / 16),
+                ),
+              ),
             ],
           ],
         ),

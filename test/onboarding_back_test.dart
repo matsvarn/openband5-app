@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/openband/theme.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,7 +90,7 @@ void main() {
     expect(find.byType(PairingScreen), findsOneWidget);
     expect(find.byType(DevicePickerScreen), findsNothing);
 
-    await tester.tap(find.byIcon(LucideIcons.chevronLeft));
+    await tester.tap(find.byType(OBChevron).first);
     await tester.pumpAndSettle();
     expect(find.byType(WelcomeScreen), findsOneWidget);
     expect(find.byType(PairingScreen), findsNothing);
@@ -113,7 +113,12 @@ void main() {
         }
         expect(find.byType(PairingScreen), findsNothing);
         expect(find.byType(FirstSyncScreen), findsOneWidget);
-        expect(find.byIcon(LucideIcons.chevronLeft), findsNothing);
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is OBChevron && w.direction == AxisDirection.left,
+          ),
+          findsNothing,
+        );
         expect(app.isPaired, isTrue);
         expect(app.pairAttempts, failFirst ? 2 : 1);
         await tester.tap(find.text('Continue to profile'));

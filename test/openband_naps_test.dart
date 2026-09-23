@@ -117,7 +117,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('Nickerchen ergänzen'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen ergänzen'), findsWidgets);
+    expect(find.text('NICKERCHEN ERGÄNZEN'), findsWidgets);
     expect(find.text('Selbst eingetragen'), findsNothing);
     await tester.enterText(find.byKey(const ValueKey('nap-start')), '16:00');
     await tester.enterText(find.byKey(const ValueKey('nap-end')), '16:40');
@@ -130,7 +130,7 @@ void main() {
 
     await tester.tap(find.text('16:00–16:40'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen bearbeiten'), findsOneWidget);
+    expect(find.text('NICKERCHEN BEARBEITEN'), findsOneWidget);
     expect(find.text('40 Minuten'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('nap-start')), '16:10');
     await tester.enterText(find.byKey(const ValueKey('nap-end')), '16:50');
@@ -177,7 +177,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen ergänzen'), findsWidgets);
+    expect(find.text('NICKERCHEN ERGÄNZEN'), findsWidgets);
     expect(find.text('Erneut speichern'), findsOneWidget);
     expect(find.text('Dein Eintrag bleibt erhalten'), findsNothing);
   });

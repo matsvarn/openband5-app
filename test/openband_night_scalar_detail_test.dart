@@ -197,7 +197,7 @@ void main() {
   ) async {
     _seedTrusted(repo, key: MetricKey.restingHr);
     await mount(tester, key: MetricKey.restingHr);
-    expect(find.text('Ruhepuls'), findsWidgets);
+    expect(find.text('RUHEPULS'), findsWidgets);
     expect(find.text('54'), findsOneWidget);
     expect(find.text('−2 unter Basis'), findsOneWidget);
     expect(find.text('56 /min'), findsOneWidget);
@@ -387,7 +387,7 @@ void main() {
     await tester.tap(find.text('Schlaf ansehen'));
     await tester.pumpAndSettle();
     expect(find.byType(SleepEditor), findsOneWidget);
-    expect(find.text('Schlafzeiten ändern'), findsOneWidget);
+    expect(find.text('SCHLAFZEITEN ÄNDERN'), findsOneWidget);
     expect(find.byType(OpenBandNightSignals), findsNothing);
     expect(tester.takeException(), isNull);
   });

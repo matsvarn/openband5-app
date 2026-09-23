@@ -297,7 +297,7 @@ void main() {
 
   testWidgets('main light and dark goldens', (tester) async {
     await mount(tester);
-    expect(find.text('Glukose'), findsOneWidget);
+    expect(find.text('GLUKOSE'), findsOneWidget);
     expect(find.text('5,2'), findsWidgets);
     expect(find.text('mmol/L'), findsWidgets);
     expect(find.text('Sensor-App · Apple Health'), findsOneWidget);
@@ -320,7 +320,7 @@ void main() {
     await mount(tester, height: 1400);
     await tester.tap(find.byKey(const ValueKey('glucose-quelle')));
     await tester.pumpAndSettle();
-    expect(find.text('Quelle'), findsWidgets);
+    expect(find.text('QUELLE'), findsWidgets);
     expect(find.text('Verwenden'), findsOneWidget);
     expect(find.text('Jetzt lesen'), findsOneWidget);
     expect(find.text('15. Sep., 08:00'), findsOneWidget);
@@ -368,7 +368,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('glucose-messungen')));
     await tester.pumpAndSettle();
-    expect(find.text('Messungen'), findsWidgets);
+    expect(find.text('MESSUNGEN'), findsWidgets);
     expect(find.text('08:00'), findsWidgets);
     expect(find.text('5,2 mmol/L'), findsWidgets);
     expect(find.text('07:00'), findsWidgets);
@@ -533,7 +533,7 @@ void main() {
 
   testWidgets('375 2x source and main goldens', (tester) async {
     await mount(tester, width: 375, scale: 2, height: 1600);
-    expect(find.text('Glukose'), findsOneWidget);
+    expect(find.text('GLUKOSE'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -541,7 +541,7 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('glucose-quelle')));
     await tester.pumpAndSettle();
-    expect(find.text('Quelle'), findsWidgets);
+    expect(find.text('QUELLE'), findsWidgets);
     expect(find.text('Glukose'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
@@ -1128,7 +1128,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('glucose-quelle')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('Quelle'), findsWidgets);
+    expect(find.text('QUELLE'), findsWidgets);
     expect(find.textContaining(_longSource.sourceName), findsWidgets);
   });
 

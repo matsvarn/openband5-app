@@ -297,7 +297,7 @@ void main() {
 
   testWidgets('fixture latest values, counts, and axes', (tester) async {
     await mount(tester);
-    expect(find.text('Zyklustage'), findsWidgets);
+    expect(find.text('ZYKLUSTAGE'), findsWidgets);
     expect(find.textContaining('16. Sept. 2025'), findsOneWidget);
     expect(find.textContaining('15. Sept. 2026'), findsOneWidget);
     expect(find.text('Ruhepuls'), findsOneWidget);
@@ -483,7 +483,7 @@ void main() {
     await expectGolden(tester, 'cycle-medians-unreadable.png');
     await tester.tap(find.text('Zum Verlauf'));
     await tester.pumpAndSettle();
-    expect(find.text('Verlauf'), findsWidgets);
+    expect(find.text('VERLAUF'), findsWidgets);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('cycle-medians')), findsOneWidget);
@@ -547,7 +547,7 @@ void main() {
     expect(find.text('host-day 2026-09-15'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('cycle-medians-window')));
     await tester.pumpAndSettle();
-    expect(find.text('Enddatum'), findsOneWidget);
+    expect(find.text('ENDDATUM'), findsOneWidget);
     expect(find.text('Datum'), findsNothing);
     await expectGolden(tester, 'cycle-medians-date.png');
     await tester.tap(find.byTooltip('Zurück'));

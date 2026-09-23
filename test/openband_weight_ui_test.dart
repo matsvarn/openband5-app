@@ -530,7 +530,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(DatePickerDialog), findsNothing);
       expect(find.byType(OBCalendar), findsOneWidget);
-      expect(find.text('Datum'), findsOneWidget);
+      expect(find.text('DATUM'), findsOneWidget);
       expect(find.text('Synthetische Daten'), findsNothing);
       final calendar = tester.widget<OBCalendar>(find.byType(OBCalendar));
       expect(calendar.allowFuture, isFalse);

@@ -904,7 +904,7 @@ void main() {
     await pumpEditor(tester, repo: _Repo());
     await tester.tap(find.byKey(const ValueKey('custom-exercise-primary')));
     await tester.pumpAndSettle();
-    expect(find.text('Muskelgruppen'), findsWidgets);
+    expect(find.text('MUSKELGRUPPEN'), findsWidgets);
     expect(
       tester
           .widget<Text>(find.byKey(const ValueKey('custom-muscle-role')))
@@ -1325,7 +1325,7 @@ void main() {
     expect(find.byTooltip('Kopieren'), findsOneWidget);
     await tester.tap(find.byTooltip('Kopieren'));
     await tester.pumpAndSettle();
-    expect(find.text('Eigene Übung'), findsWidgets);
+    expect(find.text('EIGENE ÜBUNG'), findsWidgets);
     expect(find.text('Bankdrücken · Kopie'), findsOneWidget);
     expect(
       tester

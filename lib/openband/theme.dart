@@ -214,6 +214,9 @@ class OBPageHeader extends StatelessWidget {
   final bool showBack;
   final String infoLabel;
   final IconData infoIcon;
+
+  /// Space under the header; Paper puts a day pill 4 pt below it.
+  final double bottom;
   const OBPageHeader({
     super.key,
     required this.title,
@@ -226,42 +229,39 @@ class OBPageHeader extends StatelessWidget {
     this.onDate,
     this.infoLabel = 'Information',
     this.infoIcon = LucideIcons.info,
+    this.bottom = 12,
   });
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    Widget circle(IconData icon, String tooltip, VoidCallback onPressed) =>
-        Container(
-          width: 44,
-          height: 44,
-          decoration: p.raisedDecoration(radius: 22),
-          child: Material(
-            type: MaterialType.transparency,
-            shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: IconButton(
-              tooltip: tooltip,
-              onPressed: onPressed,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-              icon: Icon(icon, size: 20, color: p.ink),
-            ),
-          ),
-        );
+    // Paper G2: 36 pt raised keys (44 pt hit area) either side of a spaced
+    // caps title.
+    Widget key(String tooltip, VoidCallback onTap, Widget child) => OBKey(
+      tooltip: tooltip,
+      height: 36,
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: SizedBox.square(dimension: 36, child: Center(child: child)),
+    );
     final headingStyle = p
-        .text(18, weight: FontWeight.w700)
-        .copyWith(height: 24 / 18);
+        .text(12, weight: FontWeight.w500)
+        .copyWith(height: 16 / 12, letterSpacing: .16 * 12);
     final heading = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, textAlign: TextAlign.center, style: headingStyle),
+        Text(
+          title.toUpperCase(),
+          semanticsLabel: title,
+          textAlign: TextAlign.center,
+          style: headingStyle,
+        ),
         if (subtitle.isNotEmpty) ...[
           const SizedBox(height: 2),
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: p.text(12, color: p.muted).copyWith(height: 16 / 12),
+            style: p.text(11, color: p.muted).copyWith(height: 14 / 11),
           ),
         ],
       ],
@@ -274,27 +274,35 @@ class OBPageHeader extends StatelessWidget {
             child: child,
           );
     final backAction = onBack ?? () => Navigator.maybePop(context);
+    final chevron = OBChevron(
+      direction: AxisDirection.left,
+      size: 18,
+      color: p.ink,
+    );
     final back = !showBack
         ? const SizedBox(width: 44, height: 44)
         : backText == null
-        ? circle(LucideIcons.chevronLeft, backLabel, backAction)
+        ? key(backLabel, backAction, chevron)
         : Semantics(
             button: true,
             label: backLabel,
             excludeSemantics: true,
             child: OBKey(
               tooltip: backLabel,
+              height: 36,
               onTap: backAction,
-              padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
+              padding: const EdgeInsets.fromLTRB(8, 0, 12, 0),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                spacing: 4,
                 children: [
-                  Icon(LucideIcons.chevronLeft, size: 18, color: p.ink),
-                  const SizedBox(width: 2),
+                  chevron,
                   Text(
                     backText!,
                     maxLines: 1,
-                    style: p.text(14, weight: FontWeight.w700),
+                    style: p
+                        .text(14, weight: FontWeight.w700)
+                        .copyWith(height: 18 / 14),
                   ),
                 ],
               ),
@@ -302,11 +310,22 @@ class OBPageHeader extends StatelessWidget {
           );
     final info = onInfo == null
         ? const SizedBox(width: 44, height: 44)
-        : circle(infoIcon, infoLabel, onInfo!);
+        : key(
+            infoLabel,
+            onInfo!,
+            infoIcon == LucideIcons.info
+                ? Text(
+                    'i',
+                    style: p
+                        .text(15, weight: FontWeight.w700)
+                        .copyWith(height: 18 / 15),
+                  )
+                : Icon(infoIcon, size: 18, color: p.ink),
+          );
     final scaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 12),
+      padding: EdgeInsets.only(bottom: bottom),
       child: LayoutBuilder(
         builder: (context, constraints) {
           const control = 44.0;
@@ -314,7 +333,7 @@ class OBPageHeader extends StatelessWidget {
           final centerLane = (constraints.maxWidth - control * 2 - laneGap * 2)
               .clamp(0.0, double.infinity);
           var longest = 0.0;
-          for (final word in title.split(RegExp(r'\s+'))) {
+          for (final word in title.toUpperCase().split(RegExp(r'\s+'))) {
             if (word.isEmpty) continue;
             final painter = TextPainter(
               text: TextSpan(text: word, style: headingStyle),
@@ -330,19 +349,19 @@ class OBPageHeader extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  height: 44,
+                  height: 52,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [back, info],
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 SizedBox(width: double.infinity, child: titled(heading)),
               ],
             );
           }
           return ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 50),
+            constraints: const BoxConstraints(minHeight: 52),
             child: Row(
               children: [
                 back,
@@ -464,6 +483,85 @@ class OBLed extends StatelessWidget {
 }
 
 /// A raised round or pill key. Every tappable surface in the language.
+/// Day stepper under a page header (Paper G2): previous, the day, next.
+/// A null [onNext] greys the arrow out (today has no next day). The visual
+/// pill is 40 pt; every target keeps a 44 pt hit area.
+class OBDayPill extends StatelessWidget {
+  final String label;
+  final VoidCallback? onPrevious, onNext, onTap;
+  const OBDayPill({
+    super.key,
+    required this.label,
+    this.onPrevious,
+    this.onNext,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    Widget arrow(AxisDirection direction, VoidCallback? onPressed, String tip) =>
+        Semantics(
+          button: true,
+          enabled: onPressed != null,
+          label: tip,
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: onPressed,
+            customBorder: const CircleBorder(),
+            child: SizedBox(
+              width: 40,
+              height: 44,
+              child: Center(
+                child: OBChevron(
+                  direction: direction,
+                  color: onPressed == null ? p.gap : p.ink,
+                ),
+              ),
+            ),
+          ),
+        );
+    return SizedBox(
+      height: 44,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            top: 2,
+            bottom: 2,
+            child: DecoratedBox(decoration: p.raisedDecoration(radius: 20)),
+          ),
+          Material(
+            type: MaterialType.transparency,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                arrow(AxisDirection.left, onPrevious, 'Vorheriger Tag'),
+                InkWell(
+                  onTap: onTap,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 44),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        style: p
+                            .text(13, weight: FontWeight.w700)
+                            .copyWith(height: 16 / 13),
+                      ),
+                    ),
+                  ),
+                ),
+                arrow(AxisDirection.right, onNext, 'Nächster Tag'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class OBKey extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap;

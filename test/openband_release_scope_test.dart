@@ -328,7 +328,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Messwerte'), findsOneWidget);
+    expect(find.text('MESSWERTE'), findsOneWidget);
     expect(find.text('HRV'), findsOneWidget);
     expect(find.text('Ruhepuls'), findsOneWidget);
     expect(find.text('Atemfrequenz'), findsOneWidget);
@@ -397,7 +397,7 @@ void main() {
     expect(steps.top, greaterThanOrEqualTo(messwerte.bottom + 12));
     await tester.tap(find.byKey(const ValueKey('alle-messwerte')));
     await tester.pumpAndSettle();
-    expect(find.text('Messwerte'), findsOneWidget);
+    expect(find.text('MESSWERTE'), findsOneWidget);
     expect(find.text('7 Nächte'), findsNothing);
     expect(find.byTooltip('Zurück'), findsOneWidget);
   });
@@ -517,7 +517,7 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
-    expect(find.text('Profil'), findsOneWidget);
+    expect(find.text('PROFIL'), findsOneWidget);
     expect(find.text('Daten & Sicherung'), findsOneWidget);
     expect(find.text('Einstellungen'), findsOneWidget);
     expect(find.text('Sprache'), findsOneWidget);

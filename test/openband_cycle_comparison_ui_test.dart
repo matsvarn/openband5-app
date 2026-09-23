@@ -268,7 +268,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    expect(find.text('Vergleich'), findsWidgets);
+    expect(find.text('VERGLEICH'), findsWidgets);
     expect(find.textContaining('16. Sept. 2025'), findsOneWidget);
     expect(find.textContaining('15. Sept. 2026'), findsWidgets);
     expect(find.text('Ruhepuls'), findsOneWidget);
@@ -542,7 +542,7 @@ void main() {
     expect(find.text('host-day 2026-09-15'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('cycle-comparison-window')));
     await tester.pumpAndSettle();
-    expect(find.text('Enddatum'), findsOneWidget);
+    expect(find.text('ENDDATUM'), findsOneWidget);
     expect(find.text('Datum'), findsNothing);
     await expectGolden(tester, 'cycle-comparison-date.png');
     await tester.tap(find.byTooltip('Zurück'));
