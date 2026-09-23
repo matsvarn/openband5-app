@@ -289,6 +289,15 @@ void main() {
           await tester.tap(find.text('+ 15 Min.'));
           await settle();
         }
+        if (!real && slug == '17-schlafzeiten-andern') {
+          await tester.enterText(
+            find.byKey(const ValueKey('sleep-onset')),
+            '22:40',
+          );
+          await settle();
+          FocusManager.instance.primaryFocus?.unfocus();
+          await settle();
+        }
         debugDefaultTargetPlatformOverride = null;
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('capture')),

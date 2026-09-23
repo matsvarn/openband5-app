@@ -923,6 +923,7 @@ void main() {
     tester,
   ) async {
     if (kOpenBandReviewFlow != 'all' &&
+        kOpenBandReviewFlow != 'correction' &&
         kOpenBandReviewFlow != 'journal' &&
         kOpenBandReviewFlow != 'journal-hub' &&
         kOpenBandReviewFlow != 'nutrition-entry' &&
@@ -950,7 +951,7 @@ void main() {
         kOpenBandReviewFlow != 'release') {
       throw StateError(
         'Unknown OPENBAND_REVIEW_FLOW: $kOpenBandReviewFlow '
-        '(expected all, journal, journal-hub, nutrition-entry, nutrition-parent, sleep-plan, exercise-picker, custom-exercise, exercise-copy, custom-load, glucose, medications, cycle, cycle-measurements, cycle-observations, cycle-gaps, cycle-medians, cycle-comparison, night-scalar, night-cards, sleep-legend, respiration, temperature, weight, vo2, or release)',
+        '(expected all, correction, journal, journal-hub, nutrition-entry, nutrition-parent, sleep-plan, exercise-picker, custom-exercise, exercise-copy, custom-load, glucose, medications, cycle, cycle-measurements, cycle-observations, cycle-gaps, cycle-medians, cycle-comparison, night-scalar, night-cards, sleep-legend, respiration, temperature, weight, vo2, or release)',
       );
     }
     await initializeDateFormatting('de_DE');
@@ -20423,24 +20424,19 @@ void main() {
           final scrollable = verticalScrollable().last;
           tester.state<ScrollableState>(scrollable).position.jumpTo(0);
           await tester.pump();
-          await tester.scrollUntilVisible(
-            row,
-            200,
-            scrollable: scrollable,
-          );
+          await tester.scrollUntilVisible(row, 200, scrollable: scrollable);
           await tester.ensureVisible(row);
           await tester.pumpAndSettle();
           await tester.tap(row);
           await tester.pumpAndSettle();
-          expect(find.text('Messwerte'), findsOneWidget);
+          expect(find.text('MESSWERTE'), findsOneWidget);
           expect(find.text('7 Nächte'), findsNothing);
           expect(find.text('Laborwerte'), findsNothing);
           expect(find.text('Glukose'), findsNothing);
-          expect(find.text('Atemfrequenz'), findsOneWidget);
-          expect(find.text('Hauttemperatur'), findsOneWidget);
+          expect(find.byKey(const ValueKey('atemfrequenz')), findsOneWidget);
+          expect(find.byKey(const ValueKey('hauttemperatur')), findsOneWidget);
           final back = tester.getRect(find.byTooltip('Zurück').last);
-          final inset =
-              tester.view.padding.top / tester.view.devicePixelRatio;
+          final inset = tester.view.padding.top / tester.view.devicePixelRatio;
           expect(
             back.top,
             greaterThanOrEqualTo(inset),
@@ -20459,7 +20455,7 @@ void main() {
         expect(find.text('Dein Journal'), findsNothing);
         await capture('release-happy-light');
         await tester.scrollUntilVisible(
-          find.text('Schritte'),
+          find.text('SCHRITTE'),
           300,
           scrollable: verticalScrollable().last,
         );
@@ -20469,7 +20465,7 @@ void main() {
         await mount(release: true, brightness: Brightness.dark);
         await capture('release-happy-dark');
         await tester.scrollUntilVisible(
-          find.text('Schritte'),
+          find.text('SCHRITTE'),
           300,
           scrollable: verticalScrollable().last,
         );
@@ -20491,7 +20487,7 @@ void main() {
         expect(find.text('Training'), findsNothing);
         await capture('release-large');
         await tester.scrollUntilVisible(
-          find.text('Schritte'),
+          find.text('SCHRITTE'),
           300,
           scrollable: verticalScrollable().last,
         );
@@ -20834,10 +20830,35 @@ void main() {
         );
         await tester.pumpAndSettle();
         await capture('correction-keyboard$variant');
-        await tester.ensureVisible(find.text('Änderung ansehen'));
-        await tester.tap(find.text('Änderung ansehen'));
+        FocusManager.instance.primaryFocus?.unfocus();
         await tester.pumpAndSettle();
-        expect(find.text('7h29'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextField>(find.byKey(const ValueKey('sleep-onset')))
+              .controller
+              ?.text,
+          '23:25',
+        );
+      }
+
+      if (kOpenBandReviewFlow == 'correction') {
+        await mount();
+        await edit();
+        await capture('correction-edit');
+        await mount(brightness: Brightness.dark);
+        await edit(variant: '-dark');
+        await capture('correction-edit-dark');
+        await mount(scale: 2);
+        await edit(variant: '-large');
+        await tester.ensureVisible(find.byKey(const ValueKey('sleep-wake')));
+        await tester.enterText(
+          find.byKey(const ValueKey('sleep-wake')),
+          '06:54',
+        );
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        await capture('correction-large-edit');
+        return;
       }
 
       for (final scenario in [
@@ -20873,7 +20894,7 @@ void main() {
       await tester.tap(find.byTooltip('Abbrechen'));
       await tester.pumpAndSettle();
       await edit(captureEntry: true);
-      await capture('correction-preview');
+      await capture('correction-edit');
       await press('Schlafzeiten speichern');
       expect(find.text('Schlaf aktualisiert'), findsWidgets);
       await capture('correction-complete');
@@ -20915,7 +20936,7 @@ void main() {
       final calculation = Completer<void>();
       pending.calculationBarrier = calculation.future;
       await edit(variant: '-dark', captureEntry: true);
-      await capture('correction-preview-dark');
+      await capture('correction-edit-dark');
       await press('Schlafzeiten speichern');
       expect(find.text('Zeiten gespeichert'), findsWidgets);
       await capture('correction-pending-dark');
@@ -20982,7 +21003,6 @@ void main() {
             ?.text,
         '23:25',
       );
-      await press('Änderung ansehen');
       await press('Änderung verwerfen');
       expect(await cancelled.readDraft('2026-09-15'), isNull);
       expect((await cancelled.readDay('2026-09-15')).sleep.duration.value, 438);
@@ -21005,8 +21025,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('sleep-wake')), '06:54');
       await tester.pumpAndSettle();
       await capture('correction-large-wake-keyboard');
-      await press('Änderung ansehen');
-      await capture('correction-large-preview');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await capture('correction-large-edit');
       await press('Schlafzeiten speichern');
       await capture('correction-large-complete');
       await press('Zur Übersicht');

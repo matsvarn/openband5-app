@@ -381,9 +381,7 @@ void main() {
     expect(find.text('Wiederherstellen fehlgeschlagen.'), findsNothing);
   });
 
-  testWidgets('shared sleep time fields wrap at 2x instead of clipping', (
-    tester,
-  ) async {
+  testWidgets('sleep edit time cards remain usable at 2x', (tester) async {
     await mount(
       tester,
       width: 375,
@@ -396,13 +394,10 @@ void main() {
     final onset = tester.getSize(find.byKey(const ValueKey('sleep-onset')));
     expect(onset.width, greaterThan(88));
     expect(onset.height, lessThan(200));
-    final dates = find.widgetWithText(TextButton, '14. September');
-    expect(dates, findsWidgets);
-    for (var i = 0; i < dates.evaluate().length; i++) {
-      final size = tester.getSize(dates.at(i));
-      expect(size.width, greaterThanOrEqualTo(44));
-      expect(size.height, greaterThanOrEqualTo(44));
-    }
+    await tester.tap(find.text('BEGINN · MO'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('nap list golden light', (tester) async {

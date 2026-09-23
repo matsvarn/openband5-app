@@ -264,20 +264,39 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Änderung ansehen'));
-    await tester.tap(find.text('Änderung ansehen'));
+    FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
   }
+
+  testWidgets('five-minute controls update the persisted draft', (
+    tester,
+  ) async {
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
+    await tester.pumpAndSettle();
+    await pressSleepEditor(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('− 5').first);
+    await tester.pumpAndSettle();
+    expect((await repo.readDraft('2026-09-15'))?.onset.minute, 5);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('sleep-onset')))
+          .controller
+          ?.text,
+      '23:05',
+    );
+  });
 
   testWidgets(
     'confirmed correction updates sleep and overview, preserving selected day',
     (tester) async {
       await mount(tester);
       await edit(tester);
-      expect(find.text('7h29'), findsOneWidget);
+      expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
       await expectLater(
         find.byKey(const ValueKey('capture')),
-        matchesGoldenFile('openband_goldens/correction-preview.png'),
+        matchesGoldenFile('openband_goldens/correction-edit.png'),
       );
       expect(controller.day!.sleep.duration.value, 438);
       await tester.tap(find.text('Schlafzeiten speichern'));
@@ -294,13 +313,13 @@ void main() {
     },
   );
 
-  testWidgets('correction preview renders in dark mode', (tester) async {
+  testWidgets('correction edit renders in dark mode', (tester) async {
     await mount(tester, brightness: Brightness.dark);
     await edit(tester);
-    expect(find.text('7h29'), findsOneWidget);
+    expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
     await expectLater(
       find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/correction-preview-dark.png'),
+      matchesGoldenFile('openband_goldens/correction-edit-dark.png'),
     );
     expect(controller.day!.sleep.duration.value, 438);
     expect(tester.takeException(), isNull);
@@ -314,10 +333,7 @@ void main() {
       await edit(tester);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Speichern fehlgeschlagen.'),
-        findsOneWidget,
-      );
+      expect(find.text('Speichern fehlgeschlagen.'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/save-failure.png'),
@@ -513,10 +529,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('Änderung ansehen'));
-      await tester.tap(find.text('Änderung ansehen'));
-      await tester.pumpAndSettle();
-      expect(find.text('7h29'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-onset')))
+            .controller
+            ?.text,
+        '23:25',
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -576,21 +595,16 @@ void main() {
   );
 
   testWidgets(
-    'back retains a draft and preview discard leaves the saved night intact',
+    'back retains a draft and discard leaves the saved night intact',
     (tester) async {
       await mount(tester);
       await edit(tester);
-      await tester.tap(find.text('Weiter bearbeiten'));
-      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Zurück').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Entwurf behalten'));
       await tester.pumpAndSettle();
       expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
       await pressSleepEditor(tester);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Änderung ansehen'));
-      await tester.tap(find.text('Änderung ansehen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Änderung verwerfen'));
       await tester.pumpAndSettle();
