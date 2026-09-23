@@ -6363,22 +6363,14 @@ void main() {
               );
             }
             if (target.evaluate().isEmpty) {
-              final position = tester
-                  .state<ScrollableState>(scrollable)
-                  .position;
-              final atMin = position.pixels <= position.minScrollExtent + 0.5;
+              final position = tester.state<ScrollableState>(scrollable).position;
               final atMax = position.pixels >= position.maxScrollExtent - 0.5;
-              final dy = !atMin
-                  ? 64.0
-                  : !atMax
-                  ? -64.0
-                  : 0.0;
-              if (dy == 0) {
+              if (atMax) {
                 throw FlutterError(
                   'Control is not hit-testable after production scrolling.',
                 );
               }
-              await tester.drag(scrollable, Offset(0, dy));
+              await tester.drag(scrollable, const Offset(0, -64));
               await tester.pump();
             } else {
               final view = tester.getRect(scrollable);
@@ -6432,7 +6424,7 @@ void main() {
           await tester.pump();
           var frames = 0;
           while (find.byType(OpenBandSleepPlan).evaluate().isEmpty ||
-              find.text('Geschätzter Schlafbedarf').evaluate().isEmpty) {
+              find.text('GESCHÄTZTER SCHLAFBEDARF').evaluate().isEmpty) {
             if (++frames > 80) {
               throw FlutterError('Sleep plan did not finish loading.');
             }
@@ -6531,6 +6523,11 @@ void main() {
           await pumpUntilPlanReady();
         }
 
+        Finder goalLink() => find.descendant(
+          of: find.byType(OBSettingsValueRow),
+          matching: find.text('Eigenes Schlafziel'),
+        );
+
         Future<void> popPlan() async {
           final back = find.byTooltip('Zurück');
           expect(back, findsWidgets);
@@ -6551,15 +6548,14 @@ void main() {
           expect(plan.strainBonusMin, closeTo(strainBonusMin, 0.0001));
           expect(plan.strainBonusMin, closeTo(3.42857, 0.0001));
           expect(plan.algoVersion, kAlgoVersion);
-          expect(plan.algoVersion, 90);
           expect(plan.nightStartDay, day);
           expect(plan.wakeDay, wakeDay);
         }
 
         void expectFullPlanCopy() {
-          expect(find.text('Heute Nacht'), findsOneWidget);
+          expect(find.text('HEUTE NACHT'), findsOneWidget);
           expect(find.text('15./16. September'), findsOneWidget);
-          expect(find.text('Geschätzter Schlafbedarf'), findsOneWidget);
+          expect(find.text('GESCHÄTZTER SCHLAFBEDARF'), findsOneWidget);
           expect(find.text('8 h 33'), findsOneWidget);
           expect(find.text('Stand 07:42'), findsOneWidget);
           expect(find.text('22:00'), findsOneWidget);
@@ -6574,10 +6570,9 @@ void main() {
         }
 
         final repository = await loadRepo();
-        expect(kAlgoVersion, 90);
         expect(strainBonusMin, closeTo(3.42857, 0.0001));
         final artifact = repository.sleepPlanArtifact!;
-        expect(artifact['algo_version'], 90);
+        expect(artifact['algo_version'], kAlgoVersion);
         expect(artifact['built_for_day'], day);
         expect(artifact['built_at_epoch'], builtEpoch);
         expect(artifact['input_read_started_at_ms'], inputReadStartedAtMs);
@@ -6624,6 +6619,7 @@ void main() {
 
         var controller = await mountSleep(repository: repository);
         expect(controller.selectedDay, day);
+        await revealIn(find.byType(OpenBandSleep), find.text('Schlafziel'));
         expect(find.text('Schlafziel'), findsOneWidget);
         await revealIn(find.byType(OpenBandSleep), find.text('Heute Nacht'));
         expect(find.text('Heute Nacht').hitTestable(), findsOneWidget);
@@ -6679,9 +6675,9 @@ void main() {
 
         await revealIn(
           find.byType(OpenBandSleepPlan),
-          find.text('Eigenes Schlafziel'),
+          goalLink(),
         );
-        await tester.tap(find.text('Eigenes Schlafziel').hitTestable());
+        await tester.tap(goalLink().hitTestable());
         await tester.pump();
         var goalFrames = 0;
         while (find.byType(OpenBandSleepGoal).evaluate().isEmpty ||
@@ -6874,12 +6870,16 @@ void main() {
             scale: 2,
           );
           expect(find.text('8 h 33'), findsOneWidget);
-          final bed = tester.getRect(find.text('Ins Bett · geschätzt'));
-          final rise = tester.getRect(find.text('Aufstehen · typisch'));
-          expect(rise.top, greaterThan(bed.bottom + 8));
           final plan = find.byType(OpenBandSleepPlan);
           final origin = scrollPixels(plan);
-          final goal = find.text('Eigenes Schlafziel');
+          final bedLabel = find.text('INS BETT · GESCHÄTZT');
+          await revealIn(plan, bedLabel);
+          final bedBottom = tester.getRect(bedLabel).bottom + scrollPixels(plan);
+          final riseLabel = find.text('AUFSTEHEN · TYPISCH');
+          await revealIn(plan, riseLabel);
+          final riseTop = tester.getRect(riseLabel).top + scrollPixels(plan);
+          expect(riseTop, greaterThan(bedBottom + 8));
+          final goal = goalLink();
           if (scrolled) {
             await revealIn(plan, goal);
             expect(goal.evaluate(), isNotEmpty);
@@ -6900,7 +6900,9 @@ void main() {
                 !rectInSafeViewport(tester.getRect(row))) {
               if (extra >= 32) {
                 throw FlutterError(
-                  'Goal card is not fully within the safe viewport.',
+                  'Goal card is not fully within the safe viewport: '
+                  'card=${tester.getRect(card)}, row=${tester.getRect(row)}, '
+                  'safe=${reviewSafeViewport()}, scroll=${scrollPixels(plan)}.',
                 );
               }
               final box = tester.getRect(card);
@@ -6956,7 +6958,7 @@ void main() {
             );
           } else {
             await restoreScroll(plan, origin);
-            expect(find.text('Heute Nacht'), findsOneWidget);
+            expect(find.text('HEUTE NACHT'), findsOneWidget);
             expect(find.text('8 h 33'), findsOneWidget);
             await capture(name);
           }

@@ -791,7 +791,7 @@
       "widget": "OpenBandSleepPlan",
       "file": "sleep_plan.dart",
       "usedIn": [],
-      "notes": "Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Unknowns, partial contributions and stale data remain explicit. No prior-night attainment."
+      "notes": "G2 Messleiste starts at 0–10 h and extends for larger stored values or goals, with a raised case and three input rows. Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Goal comes from the dated goal snapshot. Unknowns, partial contributions and stale data stay as dashes with a reason. No prior-night attainment."
     },
     {
       "name": "OBSleepSchedule",
@@ -799,7 +799,7 @@
       "widget": "_TimesRow",
       "file": "sleep_plan.dart",
       "usedIn": [],
-      "notes": "Stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
+      "notes": "G2 raised twin time wells for stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
     },
     {
       "name": "OBAdaptiveValues",
