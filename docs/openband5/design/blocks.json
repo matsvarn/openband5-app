@@ -91,7 +91,7 @@
         "567A-0",
         "3P8X-0"
       ],
-      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, including the measured width of a text back button, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
       "variantPaperNodes": {
         "large": "4EEM-0",
         "largeDark": "4EEZ-0",
@@ -505,7 +505,7 @@
       "file": "calendar.dart",
       "replaces": "existing calendar in day_picker.dart",
       "usedIn": [],
-      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap. Weight uses min(selected day, today), no availability dots, and a year-1 previous-month guard."
+      "notes": "Shared Monday-first44-point calendar. The G2 day picker uses single-letter weekdays and round month wells; other callers retain their headers. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Adjacent-month cells remain empty. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap."
     },
     {
       "name": "OBDayPreview",
@@ -513,7 +513,7 @@
       "widget": "_DayPicker",
       "file": "day_picker.dart",
       "usedIn": [],
-      "notes": "Selected day summary: sleep / recovery / strain in metric colours. paperNode is the screen; block lives inline. Selected-day summary is inline in _DayPicker; no OBDayPreview class."
+      "notes": "The G2 day picker keeps its selected-night preview inline in _DayPicker: civil date, preceding-to-selected night label, and stored duration or an explicit dash. The inset preview and fixed confirmation preserve cancel-without-selection. No OBDayPreview class."
     },
     {
       "name": "OBSyncState",

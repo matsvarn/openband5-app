@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:intl/intl.dart';
 import '../data/day_label.dart';
 import 'calendar.dart';
 import 'controller.dart';
@@ -54,7 +54,7 @@ class _DayPickerState extends State<_DayPicker> {
             ),
             const SizedBox(height: 12),
             const Text(
-              'Ein gefüllter Punkt zeigt einen gespeicherten Schlafwert. Die Nacht gehört zum Tag des Aufwachens. Deine Auswahl gilt erst nach „Tag ansehen“. Fehlende Werte bleiben offen.',
+              'Ein gefüllter Punkt zeigt einen gespeicherten Schlafwert. Die Nacht gehört zum Tag des Aufwachens. Deine Auswahl gilt erst nach Bestätigung. Fehlende Werte bleiben offen.',
             ),
             const SizedBox(height: 12),
             OBAction(
@@ -72,106 +72,146 @@ class _DayPickerState extends State<_DayPicker> {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final now = widget.controller.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selectedDay = dayLabelOf(selected);
+    final previous = DateTime(selected.year, selected.month, selected.day - 1);
     return Scaffold(
+      backgroundColor: p.canvas,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        bottom: false,
+        child: Column(
           children: [
-            OBPageHeader(
-              title: 'Datum wählen',
-              backText: 'Abbrechen',
-              subtitle: widget.controller.day?.synthetic == true
-                  ? 'Synthetische Daten'
-                  : 'Gespeicherte Nächte',
-              backLabel: 'Abbrechen',
-              onInfo: _info,
-              infoLabel: 'Gespeicherte Schlafwerte',
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OBPageHeader(
+                title: 'Datum wählen',
+                backText: 'Abbrechen',
+                subtitle: 'Gespeicherte Nächte',
+                backLabel: 'Abbrechen',
+                onInfo: _info,
+                infoLabel: 'Gespeicherte Schlafwerte',
+              ),
             ),
-            OBCard(
-              padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                 children: [
-                  Row(
-                    children: [
-                      Icon(LucideIcons.moon, size: 16, color: p.sleep),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Schlaf',
-                        style: p.text(13, weight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  FutureBuilder<Set<String>>(
-                    future: days,
-                    builder: (c, snapshot) => Column(
+                  OBCard(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        OBCalendar(
-                          month: month,
-                          selected: selected,
-                          now: now,
-                          allowFuture: false,
-                          showAvailability: true,
-                          nights: snapshot.data ?? const {},
-                          onSelect: _select,
-                          onPrevMonth: () => setState(
-                            () => month = DateTime(month.year, month.month - 1),
-                          ),
-                          onNextMonth: () => setState(
-                            () => month = DateTime(month.year, month.month + 1),
+                        FutureBuilder<Set<String>>(
+                          future: days,
+                          builder: (c, snapshot) => Column(
+                            children: [
+                              OBCalendar(
+                                month: month,
+                                selected: selected,
+                                now: now,
+                                allowFuture: false,
+                                showAvailability: true,
+                                instrumentHeader: true,
+                                nights: snapshot.data ?? const {},
+                                onSelect: _select,
+                                onPrevMonth: () => setState(
+                                  () => month = DateTime(
+                                    month.year,
+                                    month.month - 1,
+                                  ),
+                                ),
+                                onNextMonth: () => setState(
+                                  () => month = DateTime(
+                                    month.year,
+                                    month.month + 1,
+                                  ),
+                                ),
+                              ),
+                              if (snapshot.hasError)
+                                TextButton(
+                                  onPressed: () => setState(
+                                    () => days = widget.controller.repository
+                                        .sleepDays(),
+                                  ),
+                                  child: const Text('Datenpunkte erneut laden'),
+                                ),
+                            ],
                           ),
                         ),
-                        if (snapshot.hasError)
-                          TextButton(
-                            onPressed: () => setState(
-                              () => days = widget.controller.repository
-                                  .sleepDays(),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 8,
+                          children: [
+                            _AvailabilityLegend(
+                              filled: true,
+                              label: 'Schlafwert vorhanden',
                             ),
-                            child: const Text('Datenpunkte erneut laden'),
-                          ),
+                            _AvailabilityLegend(
+                              filled: false,
+                              label: 'kein Schlafwert',
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Gefüllter Punkt: Schlafwert vorhanden.',
-                    style: p.text(12, color: p.muted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<OpenBandDay>(
-              future: preview,
-              builder: (c, snapshot) {
-                final ready = snapshot.connectionState == ConnectionState.done;
-                final night = ready ? snapshot.data?.sleep : null;
-                return Semantics(
-                  liveRegion: true,
-                  child: OBCard(
-                    child: Row(
-                      children: [
-                        Icon(LucideIcons.moon, color: p.sleep, size: 20),
-                        const SizedBox(width: 12),
-                        Expanded(
+                  const SizedBox(height: 12),
+                  FutureBuilder<OpenBandDay>(
+                    future: preview,
+                    builder: (c, snapshot) {
+                      final ready =
+                          snapshot.connectionState == ConnectionState.done;
+                      final night = ready ? snapshot.data?.sleep : null;
+                      return Semantics(
+                        liveRegion: true,
+                        child: OBCard.inset(
+                          padding: const EdgeInsets.all(16),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Nacht zum ${obDate(dayLabelOf(selected))}',
-                                style: p.text(14, weight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                !ready
-                                    ? 'Wird geladen …'
-                                    : snapshot.hasError
-                                    ? 'Schlafwert konnte nicht geladen werden.'
-                                    : night?.duration.value == null
-                                    ? 'Kein gespeicherter Schlafwert'
-                                    : 'Schlafdauer · ${obDuration(night!.duration.value)}',
-                                style: p.text(12, color: p.muted),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          DateFormat(
+                                            'EEEE, d. MMMM',
+                                            'de_DE',
+                                          ).format(selected),
+                                          style: p.text(
+                                            15,
+                                            weight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          !ready
+                                              ? 'Wird geladen …'
+                                              : snapshot.hasError
+                                              ? 'Schlafwert konnte nicht geladen werden.'
+                                              : night?.duration.value == null
+                                              ? 'Kein gespeicherter Schlafwert'
+                                              : 'Schlaf · Nacht ${DateFormat('E', 'de_DE').format(previous)} → ${DateFormat('E', 'de_DE').format(selected)}',
+                                          style: p.text(12, color: p.muted),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    night?.duration.value == null
+                                        ? '—'
+                                        : obDuration(night!.duration.value),
+                                    style: p.text(
+                                      22,
+                                      weight: FontWeight.w700,
+                                      display: true,
+                                    ),
+                                  ),
+                                ],
                               ),
                               if (snapshot.hasError)
                                 TextButton(
@@ -181,25 +221,66 @@ class _DayPickerState extends State<_DayPicker> {
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
+                  if (widget.controller.day?.synthetic == true) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Synthetische Daten',
+                      textAlign: TextAlign.center,
+                      style: p.text(12, color: p.muted),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            OBAction(
-              '${obDate(dayLabelOf(selected))} ansehen',
-              onPressed: () => Navigator.pop(context, dayLabelOf(selected)),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => _select(DateTime(now.year, now.month, now.day)),
-              child: const Text('Zu heute'),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                MediaQuery.paddingOf(context).bottom,
+              ),
+              child: OBAction(
+                selectedDay == dayLabelOf(today)
+                    ? 'Zu heute'
+                    : '${obDate(selectedDay)} ansehen',
+                secondary: selectedDay == dayLabelOf(today),
+                onPressed: () => Navigator.pop(context, selectedDay),
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AvailabilityLegend extends StatelessWidget {
+  final bool filled;
+  final String label;
+
+  const _AvailabilityLegend({required this.filled, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: filled ? p.ink : Colors.transparent,
+            border: filled ? null : Border.all(color: p.muted),
+          ),
+        ),
+        const SizedBox(width: 7),
+        Text(label, style: p.text(11, color: p.muted)),
+      ],
     );
   }
 }

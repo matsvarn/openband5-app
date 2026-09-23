@@ -334,8 +334,25 @@ class OBPageHeader extends StatelessWidget {
         builder: (context, constraints) {
           const control = 44.0;
           const laneGap = 12.0;
-          final centerLane = (constraints.maxWidth - control * 2 - laneGap * 2)
-              .clamp(0.0, double.infinity);
+          var backWidth = control;
+          if (showBack && backText != null) {
+            final painter = TextPainter(
+              text: TextSpan(
+                text: backText,
+                style: p.text(14, weight: FontWeight.w700),
+              ),
+              textDirection: direction,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            backWidth = 8 + 18 + 4 + painter.width + 12;
+            painter.dispose();
+          }
+          final centerLane =
+              (constraints.maxWidth - backWidth - control - laneGap * 2).clamp(
+                0.0,
+                double.infinity,
+              );
           var longest = 0.0;
           for (final word in title.toUpperCase().split(RegExp(r'\s+'))) {
             if (word.isEmpty) continue;

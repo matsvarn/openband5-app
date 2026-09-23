@@ -20493,6 +20493,32 @@ void main() {
         );
         await capture('release-large-bottom');
 
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          await mount(release: true, brightness: brightness);
+          await tester.tap(find.text('64 %'));
+          await tester.pumpAndSettle();
+          await capture('release-data-status-$suffix');
+          await tester.tap(find.text('Schließen'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(obDayTitle(
+            '2026-09-15', DateTime(2026, 9, 18, 9, 41),
+          )));
+          await tester.pumpAndSettle();
+          await capture('release-day-picker-$suffix');
+        }
+        await mount(release: true, scale: 2);
+        await tester.tap(find.text(obDayTitle(
+          '2026-09-15', DateTime(2026, 9, 18, 9, 41),
+        )));
+        await tester.pumpAndSettle();
+        await capture('release-day-picker-large');
+        await tester.scrollUntilVisible(
+          find.text('Synthetische Daten'), 200,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-day-picker-large-bottom');
+
         Future<void> openReleaseProfile() async {
           await tester.tap(find.byTooltip('Profil'));
           await tester.pumpAndSettle();
