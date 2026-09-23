@@ -71,7 +71,7 @@ xcrun devicectl device capture screenshot \
   --timeout 25
 ```
 
-This command captures the **foreground app**, not a specified bundle. Run it only while OpenBand is visibly foreground during an agreed review session. Keep physical captures under `~/Library/Application Support/OpenBand5Lab/ui-review`, not in fixtures or committed golden files. Direct capture was exercised on the connected iPhone; this capability alone does not prove the app's current screen or Bluetooth behavior.
+This command captures the **foreground app**, not a specified bundle. Run it only while OpenBand is visibly foreground during an agreed review session. Keep physical captures under `~/Library/Application Support/OpenBand5Lab/ui-review-phone`, not in fixtures or committed golden files. The 23 September G2 session captured six real app screens there; see [the dated verification](IMPLEMENTATION_VERIFICATION.md). A screenshot alone does not prove Bluetooth recovery or physiological accuracy.
 
 The Device Hub automation timeout remains a limitation for direct Mac-driven exploratory phone interaction. Do not install another Xcode, change the Flutter version or add a third-party mobile automation stack until the native test/inspection path has a concrete unmet requirement.
 

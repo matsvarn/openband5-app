@@ -1,4 +1,18 @@
-# First-flow implementation evidence
+# OpenBand 5 implementation evidence
+
+## 23 September 2026 · G2 release on the physical iPhone
+
+The G2 `openband5/g2-design` source through `0bfa61a0` built as the signed release app `dev.matsvarn.openband5` version `0.9.31+67`. `codesign --verify --deep --strict` passed. `devicectl` installed it over the existing app, launched it, and reported the same bundle and version afterward. Schema remains 67 and `kAlgoVersion` is 97. Protocol and analytics pins match `pubspec.lock`; the pin check could not verify whether either remote main had advanced.
+
+The current Paper direction is G2 · Gerät, Alternative A with Messleisten, in light and dark. `docs/openband5/design/tokens.json` defines the instrument surfaces, scales and Helvetica Neue; `blocks.json` validates at 59 blocks and 38 registered screens. `tool/g2_review.py` renders eleven matched frames in each mode. It also rendered 22 real-data frames from the pre-install database into `OpenBand5Lab/ui-review-real/20260923-152345/`. Those private renders showed no obvious overflow in the inspected Heute, Schlaf and Heute Nacht screens. Paper examples use different dates and values, so the rendered app is not pixel-identical to them.
+
+Focused checks passed before installation: 21 Nickerchen widget tests, 27 flow tests, 23 Schlafziel and Heute Nacht tests, targeted Flutter analysis, the design manifest check, and the native simulator flows for Nickerchen and Heute Nacht. The full test suite was not rerun for this G2 checkpoint.
+
+Before installation, `tool/pull_device_db.sh` copied the database with its WAL and SHM files to `OpenBand5Lab/device-20260923-152318-pre-g2-final-install/`. SQLite integrity checks passed for both the pulled files and a consistent backup made from them. The post-launch pull is `OpenBand5Lab/device-20260923-152702-post-g2-final-install/`; its integrity check also passed. Schema stayed at 67. Every pre-install key in `decoded_onehz`, `raw_blob` and `day_result` remains present after installation. The exact counts are in the private review record. This establishes retention across this update, not sustained sync or zero-loss recovery.
+
+With the owner navigating the unlocked phone, direct physical captures showed Profil, Datum wählen, Heute, Schlaf, Nickerchen and Heute Nacht in dark appearance. The Nickerchen empty state and the Heute Nacht estimate rendered without visible overflow. The screenshots and `review.json` are private under `OpenBand5Lab/ui-review-phone/20260923-g2-final/`; no personal image or database is committed. Physical light mode, VoiceOver, controlled disconnect and relaunch, and physiological evaluation remain open. The phone session sent no firmware command.
+
+## Earlier first-flow evidence · 17 September 2026
 
 17 September 2026. This records the local working tree, including the pre-existing onboarding, profile and signing fixes. Nothing was pushed, published or released. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for scope and [IMPLEMENTATION_COVERAGE.json](IMPLEMENTATION_COVERAGE.json) for all design assignments.
 
