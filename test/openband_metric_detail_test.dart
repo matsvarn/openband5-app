@@ -12,6 +12,13 @@ import 'package:openstrap_edge/openband/metric_detail.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
+/// The hero, not the night list: the selected value also appears as the
+/// list's first row.
+Finder _hero(String text) => find.descendant(
+  of: find.byKey(const ValueKey('night-scalar-hero')),
+  matching: find.text(text),
+);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -103,9 +110,14 @@ void main() {
 
   testWidgets('hrv detail routes to the night-scalar screen', (tester) async {
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Nacht für Nacht'), findsOneWidget);
-    expect(find.textContaining('von 30 Nächten'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
+    expect(find.byKey(const ValueKey('night-scalar-nights')), findsOneWidget);
+    expect(find.textContaining('/30'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Nachtverlauf'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -158,7 +170,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('von 7 Nächten'), findsOneWidget);
+    expect(find.textContaining('/7'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -185,7 +197,7 @@ void main() {
     repo.scenario = SyntheticScenario.missing;
     await mount(tester);
     expect(find.text('—'), findsWidgets);
-    expect(find.text('Noch kein Nachtwert'), findsOneWidget);
+    expect(_hero('Noch kein Nachtwert'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -193,6 +205,11 @@ void main() {
     tester,
   ) async {
     await mount(tester);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Nachtverlauf'), findsOneWidget);
     await tester.pumpWidget(
       MaterialApp(

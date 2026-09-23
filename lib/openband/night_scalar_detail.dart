@@ -9,7 +9,6 @@ import '../data/day_label.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'health.dart' show OBSegmented;
-import 'scale.dart';
 import 'journal_controls.dart';
 import 'calendar_line.dart';
 import 'night_signals.dart';
@@ -404,7 +403,11 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     final selected = widget.controller.selectedDay;
     if (_temperature) return obDayTitle(selected);
     final today = dayLabelOf(widget.controller.now());
-    return selected == today ? 'Nacht auf heute' : obDayTitle(selected);
+    final d = DateTime.parse(selected);
+    final line =
+        '${DateFormat('EEE', 'de_DE').format(d).replaceAll('.', '')} '
+        '${DateFormat('dd.MM', 'de_DE').format(d)}';
+    return selected == today ? 'Letzte Nacht · $line' : 'Nacht · $line';
   }
 
   String _windowValue(NightScalarDetail? snap) {
@@ -804,10 +807,13 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                       onRetry: () => unawaited(_load()),
                     )
                   else ...[
-                    _hero(p, color, snap),
+                    KeyedSubtree(
+                      key: const ValueKey('night-scalar-hero'),
+                      child: _hero(p, color, snap),
+                    ),
                     if (!_temperature ||
                         snap?.hasComparableQuantity == true) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 20),
                       OBSegmented(
                         labels: const ['7 Nächte', '30 Nächte', '90 Nächte'],
                         selected: _nightOptions.indexOf(_nights),
@@ -818,6 +824,15 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                       ),
                       const SizedBox(height: 12),
                       _chartCard(p, color, snap),
+                    ],
+                    if (!_temperature && snap != null && !_loading) ...[
+                      const SizedBox(height: 10),
+                      _stats(p, snap),
+                      const SizedBox(height: 24),
+                      KeyedSubtree(
+                        key: const ValueKey('night-scalar-nights'),
+                        child: _nightsList(p, snap),
+                      ),
                     ],
                     const SizedBox(height: 12),
                     _rows(p, snap),
@@ -834,38 +849,53 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
   Widget _hero(OB p, Color color, NightScalarDetail? snap) {
     final overlay = _calcOverlay;
     final value = overlay ? null : snap?.value;
-    final status = overlay
+    var status = overlay
         ? kNightScalarPendingLabel
         : snap == null
         ? ''
         : _heroStatus(snap);
     final compared = !overlay && snap != null && _comparisonValid(snap);
     final verdict = compared ? _verdict(snap) : null;
-    final scale = _heroScale(snap, value, mark: obVerdictMark(p, verdict));
-    return OBCard(
+    if (compared && !_temperature) {
+      // Paper G2: "+8 über deiner Basis (40 ms)", "wie deine Basis (40 ms)".
+      status = status == 'wie Basis'
+          ? 'wie deine Basis'
+          : status.replaceFirst('Basis', 'deiner Basis');
+      status += ' (${_metricNumber(snap.baseline!.value)} ${widget.unit})';
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 6,
         children: [
-          Text(_nightLabel().toUpperCase(), style: p.label()),
-          const SizedBox(height: 6),
+          Text(
+            _nightLabel().toUpperCase(),
+            style: p.label(size: 11).copyWith(height: 14 / 11),
+          ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
+            spacing: 8,
             children: [
-              Text(
-                _temperature
-                    ? obTemperatureNumber(value, snap?.unit)
-                    : _metricNumber(value),
-                style: p
-                    .text(
-                      56,
-                      weight: FontWeight.w700,
-                      display: true,
-                      color: value == null ? p.gap : p.ink,
-                    )
-                    .copyWith(height: 58 / 56),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _temperature
+                        ? obTemperatureNumber(value, snap?.unit)
+                        : _metricNumber(value),
+                    style: p
+                        .text(
+                          76,
+                          weight: FontWeight.w700,
+                          color: value == null ? p.gap : p.ink,
+                        )
+                        .copyWith(height: 78 / 76, letterSpacing: -.04 * 76),
+                  ),
+                ),
               ),
-              const SizedBox(width: 4),
               Visibility(
                 visible: value != null,
                 maintainSize: true,
@@ -880,37 +910,30 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                         }
                       : widget.unit,
                   style: p
-                      .text(14, weight: FontWeight.w500, color: p.muted)
-                      .copyWith(height: 18 / 14),
+                      .text(18, weight: FontWeight.w500, color: p.muted)
+                      .copyWith(height: 22 / 18),
                 ),
               ),
             ],
           ),
-          if (status.isNotEmpty) ...[
-            const SizedBox(height: 6),
+          if (status.isNotEmpty)
             Text(
               status,
               style: p
                   .text(
-                    13,
-                    weight: compared && verdict != MetricVerdict.normal
-                        ? FontWeight.w700
-                        : FontWeight.w500,
+                    14,
+                    weight: FontWeight.w500,
                     color: compared
                         ? obVerdictText(p, verdict) ?? p.ink
                         : p.muted,
                   )
-                  .copyWith(height: 18 / 13),
+                  .copyWith(height: 18 / 14),
             ),
-          ],
-          if (scale != null) ...[const SizedBox(height: 10), scale],
         ],
       ),
     );
   }
 
-  /// The value on a scale spanning the observed nights. No range is
-  /// assumed: with fewer than three stored nights there is no scale.
   MetricVerdict? _verdict(NightScalarDetail snap) => metricVerdict(
     widget.metricKey,
     snap.value,
@@ -918,41 +941,309 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
     snap.baseline?.spread,
   );
 
-  Widget? _heroScale(NightScalarDetail? snap, double? value, {Color? mark}) {
-    if (snap == null || value == null || _temperature) return null;
-    final seen = [
-      for (final n in snap.history)
-        if (n.value != null) n.value!,
-    ];
-    if (seen.length < 3) return null;
+  /// Normal range around a shown baseline: baseline ± 1.253 × spread.
+  (double, double)? _band(NightScalarDetail snap) {
+    final base = snap.baseline?.value, spread = snap.baseline?.spread;
+    if (base == null || spread == null || spread <= 0) return null;
+    return (base - 1.253 * spread, base + 1.253 * spread);
+  }
+
+  bool _showBaseline(NightScalarDetail? snap) {
+    if (snap == null || _loading || snap.withheld) return false;
     final tone = _baselineTone(snap.baseline);
-    final base =
-        !snap.withheld &&
-            (tone == _BaselineTone.trusted ||
-                tone == _BaselineTone.provisional ||
-                tone == _BaselineTone.stale)
-        ? snap.baseline?.value
-        : null;
-    final all = [...seen, value, ?base];
-    final lo = all.reduce(math.min), hi = all.reduce(math.max);
-    final pad = math.max((hi - lo) * .15, 1.0);
-    final min = (lo - pad).floorToDouble(), max = (hi + pad).ceilToDouble();
-    String n(double v) => obNumber(v, digits: widget.digits);
-    return OBScale(
-      min: min,
-      max: max,
-      value: value,
-      target: base,
-      mark: mark,
-      labels: (
-        n(min),
-        base == null ? '${seen.length} Nächte' : 'Basis ${n(base)}',
-        n(max),
+    return snap.baseline?.value != null &&
+        (tone == _BaselineTone.trusted ||
+            tone == _BaselineTone.provisional ||
+            tone == _BaselineTone.stale);
+  }
+
+  Widget _chartCard(OB p, Color color, NightScalarDetail? snap) {
+    if (_temperature) return _temperatureChartCard(p, color, snap);
+    final loaded = snap != null && !_loading;
+    final showChart = loaded && snap.history.any((b) => b.value != null);
+    final showBaseline = _showBaseline(snap);
+    final band = showBaseline ? _band(snap!) : null;
+    final tone = _baselineTone(snap?.baseline);
+    final days = openBandDaysEnding(widget.controller.selectedDay, _nights);
+    final caption = p
+        .text(10, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 12 / 10);
+    String short(String d) =>
+        DateFormat('dd.MM', 'de_DE').format(DateTime.parse(d));
+    final today = dayLabelOf(widget.controller.now());
+    final qualifier = switch (tone) {
+      _BaselineTone.provisional => ' · vorläufig',
+      _BaselineTone.stale => ' · veraltet',
+      _ => '',
+    };
+    final basis = !showBaseline
+        ? null
+        : band == null
+        ? 'Basis ${_metricNumber(snap!.baseline!.value)} ${widget.unit}$qualifier'
+        : 'Basis ${_metricNumber(band.$1)}–${_metricNumber(band.$2)} ${widget.unit}$qualifier';
+    return OBCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 10,
+        children: [
+          Semantics(
+            label: showChart
+                ? 'Nacht für Nacht, ${snap.counts.compared} von ${snap.nights} Nächten'
+                : null,
+            child: CustomPaint(
+              size: const Size.fromHeight(120),
+              painter: NightRangeBarsPainter(
+                p: p,
+                values: [
+                  for (final n
+                      in snap?.history ?? const <NightScalarHistoryNight>[])
+                    n.value,
+                ],
+                nights: _nights,
+                baseline: showBaseline ? snap!.baseline!.value : null,
+                band: band,
+                newest: loaded && _comparisonValid(snap)
+                    ? obVerdictMark(p, _verdict(snap)) ?? p.ink
+                    : p.ink,
+                visible: showChart,
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Text(short(days.first), style: caption),
+              Expanded(
+                child: Text(
+                  basis ?? '',
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: caption,
+                ),
+              ),
+              Text(
+                days.last == today ? 'Heute' : short(days.last),
+                style: caption,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _chartCard(OB p, Color color, NightScalarDetail? snap) {
+  /// Average, spread of values and the counted nights (Paper G2 tiles).
+  Widget _stats(OB p, NightScalarDetail snap) {
+    final values = [
+      for (final n in snap.history)
+        if (n.value != null) n.value!,
+    ];
+    final mean = values.isEmpty
+        ? null
+        : values.reduce((a, b) => a + b) / values.length;
+    final lo = values.isEmpty ? null : values.reduce(math.min);
+    final hi = values.isEmpty ? null : values.reduce(math.max);
+    final partial = snap.history.any((n) => n.partial && n.value != null);
+    Widget tile(String label, String value, [Key? key, String? note]) =>
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: p.raisedDecoration(radius: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 4,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: p
+                      .text(10, weight: FontWeight.w500, color: p.muted)
+                      .copyWith(height: 12 / 10, letterSpacing: .12 * 10),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    key: key,
+                    style: p
+                        .text(20, weight: FontWeight.w700)
+                        .copyWith(height: 24 / 20),
+                  ),
+                ),
+                if (note != null)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      note,
+                      maxLines: 1,
+                      style: p
+                          .text(10, color: p.muted)
+                          .copyWith(height: 12 / 10),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+    return Row(
+      spacing: 10,
+      children: [
+        tile('Ø ${snap.nights} N.', _metricNumber(mean)),
+        tile(
+          'SPANNE',
+          lo == null ? '—' : '${_metricNumber(lo)}–${_metricNumber(hi)}',
+        ),
+        // Partly recorded nights count, and say so.
+        tile(
+          'NÄCHTE',
+          '${snap.counts.compared}/${snap.nights}',
+          const ValueKey('night-scalar-count'),
+          partial ? 'teils unvollständig' : null,
+        ),
+      ],
+    );
+  }
+
+  static String _gapLabel(NightScalarGap? gap) => switch (gap) {
+    NightScalarGap.skipped => 'Nacht nicht ausgewertet',
+    NightScalarGap.version || NightScalarGap.unversioned => 'Ältere Berechnung',
+    NightScalarGap.unreadable => 'Nicht lesbar',
+    NightScalarGap.withheld => 'Auswertung offen',
+    NightScalarGap.unit => 'Andere Einheit',
+    NightScalarGap.missing || null => 'Kein Nachtwert',
+  };
+
+  /// The latest four nights (Paper G2), newest first: date, distance to the baseline in its
+  /// verdict colour, value. A night without a value says why.
+  Widget _nightsList(OB p, NightScalarDetail snap) {
+    // Deltas and their colour need a trusted baseline, as in the hero and on
+    // the cards; a provisional one is shown only as the labelled band.
+    final trusted =
+        _showBaseline(snap) &&
+        _baselineTone(snap.baseline) == _BaselineTone.trusted;
+    final base = trusted ? snap.baseline!.value : null;
+    final spread = trusted ? snap.baseline?.spread : null;
+    final nights = snap.history.reversed.take(4).toList();
+    if (nights.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: 10,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'NÄCHTE',
+            style: p.label(size: 11).copyWith(height: 14 / 11),
+          ),
+        ),
+        OBCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
+              for (final (i, n) in nights.indexed)
+                Container(
+                  constraints: BoxConstraints(
+                    minHeight: n.value == null ? 58 : 50,
+                  ),
+                  decoration: i == nights.length - 1
+                      ? null
+                      : BoxDecoration(
+                          border: Border(bottom: BorderSide(color: p.line)),
+                        ),
+                  child: _nightRow(p, n, base, spread),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: Text(
+            'Nächte ohne verwertbaren Wert bleiben leer. Sie werden nicht '
+            'geschätzt und zählen nicht zur Basis.',
+            style: p.text(12, color: p.muted).copyWith(height: 18 / 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _nightRow(
+    OB p,
+    NightScalarHistoryNight n,
+    double? base,
+    double? spread,
+  ) {
+    final d = DateTime.parse(n.day);
+    final date =
+        '${DateFormat('EEE', 'de_DE').format(d).replaceAll('.', '')} '
+        '${DateFormat('dd.MM', 'de_DE').format(d)}';
+    final value = n.value;
+    final delta = value == null || base == null ? null : (value - base).round();
+    final verdict = value == null
+        ? null
+        : metricVerdict(widget.metricKey, value, base, spread);
+    final strong =
+        verdict == MetricVerdict.better || verdict == MetricVerdict.worse;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            spacing: 3,
+            children: [
+              Text(
+                date,
+                style: p
+                    .text(15, weight: FontWeight.w500)
+                    .copyWith(height: 18 / 15),
+              ),
+              if (value == null)
+                Text(
+                  _gapLabel(n.gap),
+                  style: p.text(12, color: p.muted).copyWith(height: 16 / 12),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(
+          width: 56,
+          child: delta == null
+              ? null
+              : Text(
+                  delta == 0 ? '±0' : '${delta > 0 ? '+' : '−'}${delta.abs()}',
+                  textAlign: TextAlign.right,
+                  style: p
+                      .text(
+                        13,
+                        weight: strong ? FontWeight.w700 : FontWeight.w400,
+                        color: obVerdictText(p, verdict) ?? p.muted,
+                      )
+                      .copyWith(height: 16 / 13),
+                ),
+        ),
+        SizedBox(
+          width: 56,
+          child: Text(
+            value == null ? '—' : _metricNumber(value),
+            textAlign: TextAlign.right,
+            style: p
+                .text(
+                  17,
+                  weight: FontWeight.w700,
+                  color: value == null ? p.gap : p.ink,
+                )
+                .copyWith(height: 22 / 17),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _temperatureChartCard(OB p, Color color, NightScalarDetail? snap) {
     final loaded = snap != null && !_loading;
     final partialBars = loaded
         ? snap.history
@@ -1377,4 +1668,102 @@ class NightScalarBarsPainter extends CustomPainter {
       old.newest != newest ||
       old.axisColor != axisColor ||
       old.textScaler != textScaler;
+}
+
+/// Paper G2 night bars: the value window around the baseline (not zero-
+/// based), the normal range as a band, the baseline dashed, past nights
+/// grey, the newest night in [newest]; a night without a value after the
+/// first observed one is a hollow stub.
+class NightRangeBarsPainter extends CustomPainter {
+  final OB p;
+  final List<double?> values;
+  final int nights;
+  final double? baseline;
+  final (double, double)? band;
+  final Color newest;
+  final bool visible;
+  NightRangeBarsPainter({
+    required this.p,
+    required this.values,
+    required this.nights,
+    required this.baseline,
+    required this.band,
+    required this.newest,
+    required this.visible,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!visible) return;
+    final seen = [for (final v in values) ?v];
+    if (seen.isEmpty) return;
+    final all = [...seen, ?baseline, ?band?.$1, ?band?.$2];
+    final lo = all.reduce(math.min), hi = all.reduce(math.max);
+    final pad = math.max((hi - lo) * .45, 1.0);
+    final dMin = lo - pad, dMax = hi + pad;
+    double y(double v) => size.height * (1 - (v - dMin) / (dMax - dMin));
+    if (band case (final a, final b)) {
+      canvas.drawRect(
+        Rect.fromLTRB(0, y(b), size.width, y(a)),
+        Paint()..color = p.well,
+      );
+    }
+    if (baseline != null) {
+      final yy = y(baseline!);
+      final dash = Paint()
+        ..color = p.muted
+        ..strokeWidth = 1;
+      for (var x = 0.0; x < size.width; x += 6) {
+        canvas.drawLine(
+          Offset(x, yy),
+          Offset(math.min(x + 3, size.width), yy),
+          dash,
+        );
+      }
+    }
+    final n = math.max(nights, values.length);
+    // Paper: 7.8 pt bars on a 10.8 pt pitch across 321 pt (30 nights).
+    final pitch = size.width / (n - 1 + 7.8 / 10.8);
+    final w = math.min(pitch * 7.8 / 10.8, 16.0);
+    final first = values.indexWhere((v) => v != null);
+    final last = values.lastIndexWhere((v) => v != null);
+    final stub = Paint()
+      ..color = p.gap
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    for (final (i, v) in values.indexed) {
+      final x = i * pitch;
+      if (v == null) {
+        if (i < first) continue;
+        final r = RRect.fromRectAndRadius(
+          Rect.fromLTWH(x + .5, size.height - 12, w - 1, 11.5),
+          const Radius.circular(1.5),
+        );
+        final path = Path()..addRRect(r);
+        for (final m in path.computeMetrics()) {
+          for (var d = 0.0; d < m.length; d += 4) {
+            canvas.drawPath(m.extractPath(d, d + 2), stub);
+          }
+        }
+        continue;
+      }
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(x, y(v).clamp(0, size.height - 2), x + w, size.height),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = i == last ? newest : p.gap,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(NightRangeBarsPainter old) =>
+      old.values != values ||
+      old.nights != nights ||
+      old.baseline != baseline ||
+      old.band != band ||
+      old.newest != newest ||
+      old.visible != visible ||
+      old.p.dark != p.dark;
 }

@@ -138,10 +138,22 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Remounts keep the list's stored offset; start at the hero.
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).last)
+        .position
+        .jumpTo(0);
+    await tester.pump();
   }
 
   Finder detailText(String text) => find.descendant(
     of: find.byKey(const ValueKey('night-scalar-detail')),
+    matching: find.text(text),
+  );
+
+  // The hero, not the stats or the night list below it.
+  Finder heroText(String text) => find.descendant(
+    of: find.byKey(const ValueKey('night-scalar-hero')),
     matching: find.text(text),
   );
 
@@ -193,11 +205,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
     expect(detailText('ATMUNG'), findsOneWidget);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     expect(detailText('HRV'), findsNothing);
     expect(detailText('Ruhepuls'), findsNothing);
     expect(detailText('RMSSD'), findsNothing);
     expect(find.text('Herzratenvariabilität'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsOneWidget);
@@ -214,7 +231,12 @@ void main() {
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsNothing);
-    expect(detailText('16,0'), findsOneWidget);
+    tester
+        .state<ScrollableState>(find.byType(Scrollable).last)
+        .position
+        .jumpTo(0);
+    await tester.pump();
+    expect(heroText('16,0'), findsOneWidget);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsNothing);
@@ -245,9 +267,9 @@ void main() {
     expect(cardText('+0,4 über Basis'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('atemfrequenz')));
     await tester.pumpAndSettle();
-    expect(detailText('16,5'), findsOneWidget);
-    expect(detailText('+0,4 über Basis'), findsOneWidget);
-    expect(detailText('Basis 16,1\u00A0/min'), findsOneWidget);
+    expect(heroText('16,5'), findsOneWidget);
+    expect(find.textContaining('+0,4 über deiner Basis'), findsOneWidget);
+    expect(find.textContaining('Basis 16,1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -257,19 +279,26 @@ void main() {
     seedPaper();
     await mountDetail(tester);
     expect(detailText('ATMUNG'), findsOneWidget);
-    expect(detailText('16,0'), findsOneWidget);
-    expect(detailText('DI., 15. SEPT.'), findsOneWidget);
-    expect(detailText('Basis noch offen'), findsOneWidget);
-    expect(detailText('15 von 30 Nächten'), findsOneWidget);
-    expect(detailText('Nachtverlauf'), findsOneWidget);
-    final chart = tester.widget<NightScalarChart>(
-      find.byType(NightScalarChart),
+    expect(heroText('16,0'), findsOneWidget);
+    expect(find.textContaining('DI 15.09'), findsOneWidget);
+    expect(heroText('Basis noch offen'), findsOneWidget);
+    expect(detailText('15/30'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
     );
-    expect(chart.bars, hasLength(30));
-    expect(chart.bars.take(15).every((bar) => bar.value == null), isTrue);
-    expect(chart.bars.skip(15).every((bar) => bar.value != null), isTrue);
+    expect(detailText('Nachtverlauf'), findsOneWidget);
+    final chart = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((w) => w.painter)
+        .whereType<NightRangeBarsPainter>()
+        .single;
+    expect(chart.values, hasLength(30));
+    expect(chart.values.take(15).every((v) => v == null), isTrue);
+    expect(chart.values.skip(15).every((v) => v != null), isTrue);
     expect(find.textContaining('23:10'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(find.textContaining('über deiner Basis'), findsNothing);
     expect(find.textContaining('Normalbereich'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
@@ -277,7 +306,7 @@ void main() {
       matchesGoldenFile('openband_goldens/resp-main.png'),
     );
     await mountDetail(tester, brightness: Brightness.dark);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-dark.png'),
@@ -291,12 +320,12 @@ void main() {
     await mountDetail(tester);
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('von 7 Nächten'), findsOneWidget);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(find.textContaining('/7'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     await tester.tap(find.text('90 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.text('15 von 90 Nächten'), findsOneWidget);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(find.text('15/90'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -310,9 +339,9 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mountDetail(tester);
-    expect(detailText('Noch kein Nachtwert'), findsOneWidget);
-    expect(detailText('0 von 30 Nächten'), findsOneWidget);
-    expect(detailText('16,0'), findsNothing);
+    expect(heroText('Noch kein Nachtwert'), findsOneWidget);
+    expect(detailText('0/30'), findsOneWidget);
+    expect(heroText('16,0'), findsNothing);
     expect(detailText('HRV'), findsNothing);
     expect(detailText('Ruhepuls'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -321,7 +350,7 @@ void main() {
       matchesGoldenFile('openband_goldens/resp-missing.png'),
     );
     await mountDetail(tester, brightness: Brightness.dark);
-    expect(detailText('0 von 30 Nächten'), findsOneWidget);
+    expect(detailText('0/30'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-missing-dark.png'),
@@ -361,17 +390,17 @@ void main() {
       matching: matching,
     );
     await mountDetail(tester);
-    expect(detailText('Unvollständige Nacht'), findsOneWidget);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(heroText('Unvollständige Nacht'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     expect(find.textContaining('teils unvollständig'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(find.textContaining('über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-partial.png'),
     );
     await mountDetail(tester, brightness: Brightness.dark);
-    expect(detailText('Unvollständige Nacht'), findsOneWidget);
+    expect(heroText('Unvollständige Nacht'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-partial-dark.png'),
@@ -390,8 +419,8 @@ void main() {
       },
     );
     await mountDetail(tester);
-    expect(detailText('Auswertung läuft'), findsOneWidget);
-    expect(detailText('16,0'), findsNothing);
+    expect(heroText('Auswertung läuft'), findsOneWidget);
+    expect(heroText('16,0'), findsNothing);
     expect(find.text('SCHLAFZEITEN ÄNDERN'), findsNothing);
 
     repo.seedNightScalarDetail(
@@ -422,8 +451,8 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mountDetail(tester);
-    expect(detailText('Auswertung fehlgeschlagen'), findsOneWidget);
-    expect(detailText('16,0'), findsNothing);
+    expect(heroText('Auswertung fehlgeschlagen'), findsOneWidget);
+    expect(heroText('16,0'), findsNothing);
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Zuletzt gespeichert'), findsOneWidget);
@@ -444,7 +473,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Erneut'), findsOneWidget);
-    expect(detailText('16,0'), findsNothing);
+    expect(heroText('16,0'), findsNothing);
     expect(detailText('HRV'), findsNothing);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -459,7 +488,7 @@ void main() {
     repo.failNightScalarRead = false;
     await tester.tap(find.text('Erneut'));
     await tester.pumpAndSettle();
-    expect(detailText('16,0'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -497,7 +526,7 @@ void main() {
       ),
     );
     await mountDetail(tester);
-    expect(detailText('16,0'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Stufe HIGH'), findsOneWidget);
@@ -516,13 +545,18 @@ void main() {
     seedPaper();
     for (final size in const [Size(375, 812), Size(320, 812)]) {
       await mountDetail(tester, size: size);
-      expect(detailText('16,0'), findsOneWidget);
-      expect(detailText('15 von 30 Nächten'), findsOneWidget);
+      expect(heroText('16,0'), findsOneWidget);
+      expect(detailText('15/30'), findsOneWidget);
       expect(tester.takeException(), isNull);
     }
     await mountDetail(tester, scale: 2, size: const Size(375, 812));
-    expect(detailText('16,0'), findsOneWidget);
-    expect(find.textContaining('von 30'), findsOneWidget);
+    expect(heroText('16,0'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('night-scalar-count')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.textContaining('/30'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
