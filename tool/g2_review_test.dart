@@ -13,12 +13,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/openband/controller.dart';
+import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/health.dart';
+import 'package:openstrap_edge/openband/local_repository.dart';
+import 'package:openstrap_edge/openband/metric_detail.dart';
 import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Every G2 frame is 393 pt wide; a reference's pixel width gives its scale.
 const _frameWidth = 393.0;
@@ -33,13 +43,56 @@ Map _json(String name) =>
 final Map<String, Widget Function(OpenBandController)?> _frames = {
   '01-heute': null,
   '02-schlaf': (c) => OpenBandSleep(controller: c),
+  '03-hrv-detail': (c) => OpenBandMetricDetail(
+    controller: c,
+    metricKey: MetricKey.hrv,
+    label: 'HRV',
+    subtitle: 'Herzratenvariabilität',
+    unit: 'ms',
+    icon: LucideIcons.activity,
+    color: (p) => p.ink,
+    tint: (p) => p.line,
+    backText: 'Heute',
+  ),
+  '05-messwerte': (c) => OpenBandHealth(controller: c, bandMetricsOnly: true),
+  '13-erholung': (c) => OpenBandMetricDetail(
+    controller: c,
+    metricKey: MetricKey.recovery,
+    label: 'Erholung',
+    subtitle: 'aus der Nacht',
+    unit: 'von 100',
+    icon: LucideIcons.heartPulse,
+    color: (p) => p.ink,
+    tint: (p) => p.line,
+    backText: 'Heute',
+  ),
 };
+
+/// Real-data mode (`g2_review.py --real`): the frames render from a COPY of
+/// a pulled phone database. Private data — renders go to G2_OUT (outside Git)
+/// and nothing is compared with Paper.
+const _realHeight = 1700.0;
+
+/// Lets real (FFI) database reads complete between frames; `pumpAndSettle`
+/// alone never advances real I/O inside the test's fake async zone.
+Future<void> _settleReal(WidgetTester tester) async {
+  for (var i = 0; i < 60; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final env = Platform.environment;
   final only = (env['G2_FRAMES'] ?? '').split(',').where((s) => s.isNotEmpty);
   final modes = (env['G2_MODES'] ?? 'light,dark').split(',');
+  final realDocs = env['G2_REAL_DOCS'];
+  final real = realDocs != null;
+  String? realDay;
+  DateTime? realStored;
 
   setUpAll(() async {
     await initializeDateFormatting('de_DE');
@@ -51,43 +104,112 @@ void main() {
       helvetica.addFont(Future.value(ByteData.sublistView(bytes)));
     }
     await helvetica.load();
+    // Some chart captions still name the bundled Inter families.
+    for (final (family, path) in [
+      ('Inter', 'assets/fonts/Inter/Inter.ttf'),
+      ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
+    ]) {
+      await (FontLoader(family)..addFont(
+            Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+          ))
+          .load();
+    }
     await (FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(
           rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
         ))
         .load();
+    if (real) {
+      // Work on a throwaway copy: opening runs schema repair, and the pulled
+      // copy in OpenBand5Lab must stay exactly as it came off the phone.
+      final tmp = Directory.systemTemp.createTempSync('g2-real-');
+      for (final name in [
+        'openstrap.db',
+        'openstrap.db-wal',
+        'openstrap.db-shm',
+      ]) {
+        final f = File('$realDocs/$name');
+        if (f.existsSync()) f.copySync('${tmp.path}/$name');
+      }
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      await databaseFactory.setDatabasesPath(tmp.path);
+      LocalDb.dbName = 'openstrap.db';
+      final db = await LocalDb.instance;
+      realDay =
+          env['G2_REAL_DAY'] ??
+          (await db.rawQuery(
+                'SELECT MAX(day_id) AS d FROM day_result',
+              )).first['d']
+              as String?;
+      final hi = (await db.rawQuery(
+        'SELECT MAX(rec_ts) AS t FROM decoded_onehz',
+      )).first['t'];
+      if (hi is num) {
+        realStored = DateTime.fromMillisecondsSinceEpoch(hi.toInt() * 1000);
+      }
+    }
   });
 
   for (final MapEntry(key: slug, value: build) in _frames.entries) {
     if (only.isNotEmpty && !only.contains(slug.substring(0, 2))) continue;
     for (final mode in modes) {
       final ref = File('docs/openband5/design/paper-g2/$mode/$slug.png');
-      if (!ref.existsSync()) continue;
+      if (!real && !ref.existsSync()) continue;
       testWidgets('$mode/$slug', (tester) async {
-        final refImage = (await tester.runAsync(() => _decode(ref)))!;
-        final scale = refImage.width / _frameWidth;
+        final refImage = real
+            ? null
+            : (await tester.runAsync(() => _decode(ref)))!;
+        final scale = real ? 2.0 : refImage!.width / _frameWidth;
         tester.view.devicePixelRatio = scale;
-        tester.view.physicalSize = Size(
-          refImage.width.toDouble(),
-          refImage.height.toDouble(),
-        );
+        tester.view.physicalSize = real
+            ? const Size(_frameWidth * 2, _realHeight * 2)
+            : Size(refImage!.width.toDouble(), refImage.height.toDouble());
         addTearDown(tester.view.reset);
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
 
-        final repo = SyntheticOpenBandRepository.fromMaps(
-          _json('day-summary.json'),
-          _json('sleep-detail.json'),
-          activity: _json('additional-flows.json'),
-        );
-        final controller = OpenBandController(
-          repository: repo,
-          initialDay: '2026-09-15',
-          band: repo.band,
-          now: () => DateTime(2026, 9, 15, 9, 41),
-        );
+        final OpenBandController controller;
+        AppState? app;
+        if (real) {
+          final day = realDay;
+          if (day == null) throw StateError('No day_result in $realDocs');
+          // This harness runs under `flutter test`; it lives in tool/ only so
+          // the regular suite does not pick it up.
+          // ignore: invalid_use_of_visible_for_testing_member
+          app = AppState.forTesting();
+          app.repo = LocalRepositoryImpl(getProfileMap: () => app!.user);
+          final today = day == todayLabel(DateTime.now());
+          controller = OpenBandController(
+            repository: LocalOpenBandRepository(app),
+            initialDay: day,
+            band: BandSnapshot(
+              connection: BandConnection.connected,
+              latestStoredAt: realStored,
+            ),
+            now: today
+                ? DateTime.now
+                : () => DateTime.parse(day).add(const Duration(hours: 12)),
+          );
+          await tester.runAsync(controller.refresh);
+        } else {
+          final repo = SyntheticOpenBandRepository.fromMaps(
+            _json('day-summary.json'),
+            _json('sleep-detail.json'),
+            activity: _json('additional-flows.json'),
+          );
+          controller = OpenBandController(
+            repository: repo,
+            initialDay: '2026-09-15',
+            band: repo.band,
+            now: () => DateTime(2026, 9, 15, 9, 41),
+          );
+          // Paper's state has a 7h45 sleep goal set.
+          await repo.saveSleepGoal('2026-09-01', 7 * 60 + 45);
+          await controller.refresh();
+        }
         addTearDown(controller.dispose);
-        // Paper's state has a 7h45 sleep goal set.
-        await repo.saveSleepGoal('2026-09-01', 7 * 60 + 45);
-        await controller.refresh();
+        if (app != null) addTearDown(app.dispose);
+        Future<void> settle() =>
+            real ? _settleReal(tester) : tester.pumpAndSettle();
         await tester.pumpWidget(
           RepaintBoundary(
             key: const ValueKey('capture'),
@@ -119,22 +241,34 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await settle();
         if (build != null) {
           Navigator.of(
             tester.element(find.byType(OpenBandOverview)),
           ).push(MaterialPageRoute<void>(builder: (_) => build(controller)));
-          await tester.pumpAndSettle();
+          await settle();
         }
         debugDefaultTargetPlatformOverride = null;
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('capture')),
         );
-        final app = await boundary.toImage(pixelRatio: scale);
+        final image = await boundary.toImage(pixelRatio: scale);
+        if (real) {
+          final out = env['G2_OUT'] ?? 'build/g2-review-real';
+          await tester.runAsync(() async {
+            final png = await image.toByteData(format: ui.ImageByteFormat.png);
+            File('$out/$mode/$slug.png')
+              ..parent.createSync(recursive: true)
+              ..writeAsBytesSync(png!.buffer.asUint8List());
+          });
+          // ignore: avoid_print
+          print('G2SCORE real $mode/$slug (day $realDay)');
+          return;
+        }
         final score = (await tester.runAsync(
           () => _writeReport(
-            refImage,
-            app,
+            refImage!,
+            image,
             scale,
             'build/g2-review/$mode/$slug.png',
           ),

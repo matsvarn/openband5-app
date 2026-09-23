@@ -4,6 +4,13 @@
   python3 tool/g2_review.py              # every frame the harness knows
   python3 tool/g2_review.py 01 02        # only frames 01 and 02
   python3 tool/g2_review.py 02 --dark    # dark only (--light for light only)
+  python3 tool/g2_review.py --real       # render from the newest pulled phone DB
+
+--real renders the same frames from a COPY of a database pulled with
+tool/pull_device_db.sh (newest by default, or --real PATH to its Documents
+folder), for the latest stored day unless --day is given. Real data is
+private: the PNGs go to OpenBand5Lab/ui-review-real/<stamp>/, never to the
+repository, and nothing is compared with Paper.
 
 Renders with Helvetica Neue extracted from macOS (never committed; cached in
 ~/Library/Caches/openband5-g2-fonts) and writes, per frame and mode,
@@ -13,6 +20,8 @@ References come from tool/paper_refs.py.
 """
 import argparse
 import os
+import re
+import time
 import struct
 import subprocess
 from pathlib import Path
@@ -22,6 +31,18 @@ FLUTTER = Path.home() / '.local/share/flutter/3.41.6/bin/flutter'
 TTC = Path('/System/Library/Fonts/HelveticaNeue.ttc')
 FONTS = Path.home() / 'Library/Caches/openband5-g2-fonts'
 FACES = {'HelveticaNeue', 'HelveticaNeue-Medium', 'HelveticaNeue-Bold'}
+LAB = Path.home() / 'Library/Application Support/OpenBand5Lab'
+
+
+def newest_pull():
+    # Only pull_device_db.sh folders (device-YYYYMMDD-HHMMSS-label); install
+    # evidence folders use other names and may hold partial copies.
+    pulls = [d / 'Documents' for d in LAB.glob('device-*')
+             if re.fullmatch(r'device-\d{8}-\d{6}-.+', d.name) and (d / 'Documents/openstrap.db').exists()
+             and 'PARTIAL' not in d.name]
+    if not pulls:
+        raise SystemExit('No pulled database in OpenBand5Lab; run tool/pull_device_db.sh first.')
+    return max(pulls, key=lambda d: d.parent.name[len('device-'):len('device-') + 15])
 
 
 def _postscript_name(data, tables):
@@ -68,10 +89,23 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--light', action='store_true')
     mode.add_argument('--dark', action='store_true')
+    parser.add_argument('--real', nargs='?', const='newest', metavar='DOCUMENTS',
+                        help='Render from a pulled phone DB (newest pull, or this Documents folder).')
+    parser.add_argument('--day', help='With --real: the day to render (YYYY-MM-DD).')
     args = parser.parse_args()
     extract_fonts()
     env = dict(os.environ, G2_FONTS=str(FONTS), G2_FRAMES=','.join(args.frames),
                G2_MODES='light' if args.light else 'dark' if args.dark else 'light,dark')
+    out = ROOT / 'build/g2-review'
+    if args.real:
+        docs = newest_pull() if args.real == 'newest' else Path(args.real).expanduser()
+        if not (docs / 'openstrap.db').exists():
+            raise SystemExit(f'No openstrap.db in {docs}')
+        out = LAB / 'ui-review-real' / time.strftime('%Y%m%d-%H%M%S')
+        env.update(G2_REAL_DOCS=str(docs), G2_OUT=str(out))
+        if args.day:
+            env['G2_REAL_DAY'] = args.day
+        print(f'real data: {docs}')
     result = subprocess.run(
         [str(FLUTTER), 'test', '--no-pub', 'tool/g2_review_test.dart'],
         cwd=ROOT, env=env, text=True, capture_output=True,
@@ -82,7 +116,7 @@ def main():
     if result.returncode != 0 or not scores:
         print(result.stdout[-4000:], result.stderr[-2000:])
         raise SystemExit(result.returncode or 1)
-    print(f'-> {ROOT / "build/g2-review"}')
+    print(f'-> {out}')
 
 
 if __name__ == '__main__':
