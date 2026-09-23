@@ -117,10 +117,10 @@
     {
       "name": "OBIconButton",
       "paperNode": "3ER1-0",
-      "widget": "_CircleButton",
-      "file": "screens.dart",
+      "widget": "OBKey",
+      "file": "theme.dart",
       "usedIn": [],
-      "notes": "Overview uses _CircleButton; OBPageHeader owns the canonical 44-point card-circle detail controls."
+      "notes": "Overview and OBPageHeader use OBKey for the raised header controls."
     },
     {
       "name": "OBRingTrio",

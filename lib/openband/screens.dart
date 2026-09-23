@@ -21,7 +21,7 @@ import 'sleep_goal.dart';
 import 'sleep_plan.dart';
 import 'theme.dart';
 
-class OpenBandOverview extends StatelessWidget {
+class OpenBandOverview extends StatefulWidget {
   final OpenBandController controller;
   final VoidCallback? onProfile, onJournal, onNutrition, onTraining, onSync;
 
@@ -38,17 +38,36 @@ class OpenBandOverview extends StatelessWidget {
     this.onSync,
     this.reduced = false,
   });
+
+  @override
+  State<OpenBandOverview> createState() => _OpenBandOverviewState();
+}
+
+class _OpenBandOverviewState extends State<OpenBandOverview> {
+  OpenBandController get controller => widget.controller;
+  bool get reduced => widget.reduced;
+  VoidCallback? get onProfile => widget.onProfile;
+  VoidCallback? get onJournal => widget.onJournal;
+  VoidCallback? get onNutrition => widget.onNutrition;
+  VoidCallback? get onTraining => widget.onTraining;
+  VoidCallback? get onSync => widget.onSync;
+  int _goalRevision = 0;
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
     builder: (context, _) {
       final p = OB.of(context);
       final day = controller.day;
-      void sleep() => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => OpenBandSleep(controller: controller),
-        ),
-      );
+      void sleep() async {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => OpenBandSleep(controller: controller),
+          ),
+        );
+        if (mounted) setState(() => _goalRevision++);
+      }
+
       return ColoredBox(
         color: p.canvas,
         child: RefreshIndicator(
@@ -105,6 +124,7 @@ class OpenBandOverview extends StatelessWidget {
                 OBCard(
                   padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
                   child: _RingTrio(
+                    key: ValueKey(_goalRevision),
                     day: day,
                     controller: controller,
                     onSleep: sleep,
@@ -754,6 +774,7 @@ class _RingTrio extends StatefulWidget {
   final OpenBandController controller;
   final VoidCallback onSleep;
   const _RingTrio({
+    super.key,
     required this.day,
     required this.controller,
     required this.onSleep,
@@ -765,6 +786,7 @@ class _RingTrio extends StatefulWidget {
 
 class _RingTrioState extends State<_RingTrio> {
   late String _goalDay = widget.day.day;
+  late OpenBandDay _goalFor = widget.day;
   late Future<SleepGoalSnapshot> _goal = _readGoal();
 
   Future<SleepGoalSnapshot> _readGoal() =>
@@ -773,8 +795,9 @@ class _RingTrioState extends State<_RingTrio> {
   @override
   void didUpdateWidget(_RingTrio old) {
     super.didUpdateWidget(old);
-    if (widget.day.day != _goalDay) {
+    if (widget.day.day != _goalDay || !identical(widget.day, _goalFor)) {
       _goalDay = widget.day.day;
+      _goalFor = widget.day;
       _goal = _readGoal();
     }
   }
@@ -2261,16 +2284,22 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                               value: goal?.targetMinutes == null
                                   ? ''
                                   : obDuration(goal!.targetMinutes),
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => OpenBandSleepGoal(
-                                    repository: controller.repository,
-                                    day: selected,
-                                    synthetic:
-                                        controller.day?.synthetic == true,
-                                  ),
-                                ),
-                              ),
+                              onTap: () => Navigator.of(context)
+                                  .push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => OpenBandSleepGoal(
+                                        repository: controller.repository,
+                                        day: selected,
+                                        synthetic:
+                                            controller.day?.synthetic == true,
+                                      ),
+                                    ),
+                                  )
+                                  // The goal feeds the hero and the bars.
+                                  .then((_) {
+                                    if (!mounted) return;
+                                    setState(() => _reads = null);
+                                  }),
                             ),
                           ),
                         ],

@@ -22,6 +22,11 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/openband/metric_detail.dart';
+import 'package:openstrap_edge/openband/naps.dart';
+import 'package:openstrap_edge/openband/night_signals.dart';
+import 'package:openstrap_edge/openband/sleep_editor.dart';
+import 'package:openstrap_edge/openband/sleep_goal.dart';
+import 'package:openstrap_edge/openband/sleep_plan.dart';
 import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -66,6 +71,21 @@ final Map<String, Widget Function(OpenBandController)?> _frames = {
     tint: (p) => p.line,
     backText: 'Heute',
   ),
+  '04-nachtverlauf': (c) =>
+      OpenBandNightSignals(repository: c.repository, day: c.selectedDay),
+  '07-schlafziel': (c) => OpenBandSleepGoal(
+    repository: c.repository,
+    day: c.selectedDay,
+    synthetic: c.day?.synthetic == true,
+  ),
+  '15-nickerchen': (c) => OpenBandNaps(controller: c),
+  '16-heute-nacht': (c) => OpenBandSleepPlan(
+    repository: c.repository,
+    day: c.selectedDay,
+    now: c.now,
+    synthetic: c.day?.synthetic == true,
+  ),
+  '17-schlafzeiten-andern': (c) => SleepEditor(controller: c),
   '14-belastung': (c) => OpenBandMetricDetail(
     controller: c,
     metricKey: MetricKey.strain,
@@ -214,8 +234,13 @@ void main() {
             band: repo.band,
             now: () => DateTime(2026, 9, 15, 9, 41),
           );
-          // Paper's state has a 7h45 sleep goal set.
-          await repo.saveSleepGoal('2026-09-01', 7 * 60 + 45);
+          // The Schlafziel frame shows an unsaved 7h45 draft and no
+          // weekend estimate; the other frames show the stored 7h45 goal.
+          if (slug == '07-schlafziel') repo.weekendEstimate = null;
+          await repo.saveSleepGoal(
+            '2026-09-01',
+            7 * 60 + (slug == '07-schlafziel' ? 30 : 45),
+          );
           await controller.refresh();
         }
         addTearDown(controller.dispose);
@@ -258,6 +283,10 @@ void main() {
           Navigator.of(
             tester.element(find.byType(OpenBandOverview)),
           ).push(MaterialPageRoute<void>(builder: (_) => build(controller)));
+          await settle();
+        }
+        if (!real && slug == '07-schlafziel') {
+          await tester.tap(find.text('+ 15 Min.'));
           await settle();
         }
         debugDefaultTargetPlatformOverride = null;
