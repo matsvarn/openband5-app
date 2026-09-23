@@ -760,9 +760,12 @@ NightScalarJob nightScalarNapJobFromRow(Map<String, Object?> row) {
 }
 
 /// Complete only with matching identity and a receipt that covers this stored
-/// result (`storedComputedAt >= receipt`, same stored algo). Status `complete`
-/// alone is unknown, not a queued pending job. An older stored algo stays
-/// readable when the receipt names that algo.
+/// result (`storedComputedAt >= receipt`). Status `complete` alone is unknown,
+/// not a queued pending job. An older stored algo stays readable when the
+/// receipt names that algo. A NEWER stored algo computed after the receipt
+/// also covers it: an algorithm bump re-derives the day from the saved
+/// correction (the override window proof still has to hold), and without this
+/// every corrected night turned into a gap after each bump.
 NightScalarState? nightScalarReceiptState(
   NightScalarJob? job, {
   int? storedAlgo,
@@ -784,7 +787,7 @@ NightScalarState? nightScalarReceiptState(
   }
   final storedAt = nightScalarEpochMs(storedComputedAt);
   if (storedAt == null) return NightScalarState.unknown;
-  if (job.resultAlgo != storedAlgo) return NightScalarState.unknown;
+  if (storedAlgo < job.resultAlgo!) return NightScalarState.unknown;
   if (storedAt.isBefore(receiptAt)) return NightScalarState.outdated;
   return null;
 }
