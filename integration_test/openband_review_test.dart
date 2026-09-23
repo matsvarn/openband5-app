@@ -20559,7 +20559,7 @@ void main() {
         await tester.ensureVisible(cadence);
         await tester.tap(cadence);
         await tester.pumpAndSettle();
-        expect(find.text('Täglich'), findsOneWidget);
+        expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
 
         const restoreReceipt = ImportOutcome(
           source: 'OpenStrap backup',

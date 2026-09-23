@@ -661,7 +661,7 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
-    expect(find.text('Wöchentlich'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
     expect(find.text('Von eurem Telefon'), findsNothing);
     expect(find.byKey(const ValueKey('data-action-receipt')), findsOneWidget);
     for (final key in const [
@@ -679,6 +679,29 @@ void main() {
     }
     expect(hits, 7);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('automatic backup switch requests the opposite saved state', (
+    tester,
+  ) async {
+    final requests = <bool>[];
+    for (final cadence in [BackupCadence.off, BackupCadence.weekly]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          supportedLocales: const [Locale('de')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: openBandTheme(Brightness.light),
+          home: DataScreenView(
+            cadence: cadence,
+            onAutomatic: requests.add,
+          ),
+        ),
+      );
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+    }
+    expect(requests, [true, false]);
   });
 
   test(
