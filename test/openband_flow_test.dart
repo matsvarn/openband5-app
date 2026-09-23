@@ -9,6 +9,7 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/daily_activity.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/screens.dart';
+import 'package:openstrap_edge/openband/scale.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
@@ -396,6 +397,32 @@ void main() {
     expect(controller.selectedDay, '2026-09-14');
     expect(controller.day!.recovery.value, isNull);
     expect(controller.day!.sleep.duration.value, 422);
+  });
+  testWidgets('band status separates stored frontier from receipt time', (
+    tester,
+  ) async {
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-15',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 15, 9, 41),
+    );
+    await mount(tester);
+    await tester.tap(find.text('64 %'));
+    await tester.pumpAndSettle();
+    expect(find.text('letzter Wert vor 1 h 59'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(OBScale),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('64 % · gemessen 07:42'), findsOneWidget);
+    expect(find.text('15.09 · 07:42'), findsOneWidget);
+    expect(find.text('Auf dem iPhone gespeichert'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
   });
   testWidgets(
     'accessible values and tap targets include unobserved intervals',

@@ -1944,6 +1944,78 @@ class _BatteryGlyph extends CustomPainter {
       old.percent != percent || old.p.dark != p.dark;
 }
 
+class _BandFrontierCard extends StatelessWidget {
+  final BandSnapshot band;
+  final DateTime now;
+
+  const _BandFrontierCard({required this.band, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final stored = band.latestStoredAt;
+    final midnight = DateTime(now.year, now.month, now.day);
+    final elapsed = now.difference(midnight).inMinutes;
+    final sameDay = stored != null && dayLabelOf(stored) == todayLabel(now);
+    final shown = sameDay && !stored.isAfter(now) && elapsed > 0;
+    final value = shown ? stored.difference(midnight).inMinutes : 0;
+    final age = shown ? now.difference(stored).inMinutes : 0;
+    final ageText = age >= 60
+        ? '${age ~/ 60} h ${(age % 60).toString().padLeft(2, '0')}'
+        : '$age Min.';
+    final large = MediaQuery.textScalerOf(context).scale(12) > 18;
+    final label = Text('AUF DEM IPHONE', style: p.label(size: 11));
+    final ageLabel = Text(
+      age == 0 ? 'gerade gespeichert' : 'letzter Wert vor $ageText',
+      style: p.text(12, color: p.muted),
+    );
+    return OBCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (large)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                label,
+                if (shown) ...[const SizedBox(height: 4), ageLabel],
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(child: label),
+                if (shown) ageLabel,
+              ],
+            ),
+          const SizedBox(height: 10),
+          if (shown)
+            OBScale(
+              min: 0,
+              max: elapsed.toDouble(),
+              value: value.toDouble(),
+              fill: p.ink,
+              mark: p.card,
+              markEdge: p.ink,
+              ticks: 3,
+              labels: ('00:00', 'bis ${obTime(stored)}', 'jetzt ${obTime(now)}'),
+              semanticsLabel:
+                  'Gespeicherte Banddaten bis ${obTime(stored)}, jetzt ${obTime(now)}',
+            )
+          else
+            Text(
+              stored == null
+                  ? '— · Noch keine bestätigten Banddaten'
+                  : 'bis ${DateFormat('dd.MM').format(stored)} · ${obTime(stored)}',
+              style: p.text(18, weight: FontWeight.w700),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 Future<void> showBandStatus(
   BuildContext context,
   OpenBandController controller,
@@ -1952,16 +2024,31 @@ Future<void> showBandStatus(
   context: context,
   isScrollControlled: true,
   useSafeArea: true,
+  backgroundColor: OB.of(context).canvas,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+  ),
   builder: (c) {
     final p = OB.of(c);
     final b = controller.band;
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 18),
+                decoration: BoxDecoration(
+                  color: p.muted.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
             Text('BAND · WHOOP 5.0', style: p.label(size: 11)),
             const SizedBox(height: 2),
             Text(
@@ -1969,53 +2056,59 @@ Future<void> showBandStatus(
               style: p.text(24, weight: FontWeight.w700, display: true),
             ),
             const SizedBox(height: 14),
+            _BandFrontierCard(band: b, now: controller.now()),
+            const SizedBox(height: 14),
             OBCard(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Column(
                 children: [
-                  _Fact('Verbindung heute', switch (b.connection) {
-                    BandConnection.connected => 'Verbunden',
-                    BandConnection.connecting => 'Verbindung wird aufgebaut',
-                    BandConnection.disconnected => 'Nicht verbunden',
-                  }),
+                  _Fact(
+                    'Verbindung heute',
+                    switch (b.connection) {
+                      BandConnection.connected => 'Verbunden',
+                      BandConnection.connecting => 'Verbindung wird aufgebaut',
+                      BandConnection.disconnected => 'Nicht verbunden',
+                    },
+                    led: b.connection == BandConnection.connected,
+                  ),
                   _Fact(
                     'Akku',
                     b.batteryPercent == null
-                        ? 'Unbekannt'
-                        : '${b.batteryPercent} %',
-                  ),
-                  _Fact(
-                    'Akku beobachtet',
-                    b.batteryObservedAt == null
-                        ? 'Zeitpunkt unbekannt'
-                        : '${obDate(b.batteryObservedAt!.toIso8601String().substring(0, 10))} · ${obTime(b.batteryObservedAt)}',
+                        ? '—'
+                        : '${b.batteryPercent} %${b.batteryObservedAt == null ? '' : ' · gemessen ${obTime(b.batteryObservedAt)}'}',
                   ),
                   _Fact(
                     'Gespeicherte Banddaten bis',
                     b.latestStoredAt == null
-                        ? 'Noch keine bestätigten Daten'
-                        : '${obDate(b.latestStoredAt!.toIso8601String().substring(0, 10))} · ${obTime(b.latestStoredAt)}',
+                        ? '—'
+                        : '${DateFormat('dd.MM').format(b.latestStoredAt!)} · ${obTime(b.latestStoredAt)}',
                   ),
                   _Fact(
                     'Auf dem iPhone gespeichert',
-                    b.receivedAt == null
-                        ? 'Zeitpunkt unbekannt'
-                        : obTime(b.receivedAt),
+                    obTime(b.receivedAt),
                   ),
                   _Fact(
-                    'Nacht am ${obDate(controller.selectedDay)}',
+                    'Nacht am ${DateFormat('dd.MM').format(DateTime.parse(controller.selectedDay))}',
                     controller.day == null
-                        ? 'Wird geladen'
+                        ? '—'
+                        : controller.day!.sleep.duration.value != null &&
+                              controller.day!.sleep.unobservedMinutes == 0
+                        ? 'Lückenlos'
                         : _nightLabel(controller.day!.sleep),
                   ),
                   _Fact(
                     'Auswertung',
                     controller.calculating
                         ? 'Wird berechnet'
-                        : controller.day?.sleep.duration.reason ??
-                              _nightLabel(
-                                controller.day?.sleep ?? const SleepNight(),
-                              ),
+                        : controller.day?.calculatedAt == null
+                        ? '—'
+                        : controller.day!.sleep.duration.readiness ==
+                                  MetricReadiness.partial ||
+                              controller.day!.sleep.duration.readiness ==
+                                  MetricReadiness.unreliable
+                        ? 'Teilweise'
+                        : 'Fertig',
+                    last: true,
                   ),
                 ],
               ),
@@ -3130,25 +3223,45 @@ class _ActionRow extends StatelessWidget {
 
 class _Fact extends StatelessWidget {
   final String label, value;
-  const _Fact(this.label, this.value);
+  final bool led, last;
+  const _Fact(this.label, this.value, {this.led = false, this.last = false});
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final labelText = Text(label, style: p.text(14, color: p.muted));
+    final valueText = Text(value, style: p.text(14, weight: FontWeight.w700));
+    final valueRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (led) ...[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: p.led, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+        ],
+        if (large) Flexible(child: valueText) else valueText,
+      ],
+    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 11),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: p.line)),
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        spacing: 20,
-        runSpacing: 4,
-        children: [
-          Text(label, style: p.text(14, color: p.muted)),
-          Text(value, style: p.text(14, weight: FontWeight.w700)),
-        ],
-      ),
+      decoration: last
+          ? null
+          : BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
+      child: large
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [labelText, const SizedBox(height: 4), valueRow],
+            )
+          : Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 20,
+              runSpacing: 4,
+              children: [labelText, valueRow],
+            ),
     );
   }
 }

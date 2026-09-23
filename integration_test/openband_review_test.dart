@@ -20765,6 +20765,56 @@ void main() {
         );
         await capture('release-sync-receiving-large-bottom');
 
+        Future<OpenBandController> mountFreshStatus({
+          Brightness brightness = Brightness.light,
+          double scale = 1,
+        }) async {
+          final repository = await loadGalleryRepository();
+          final controller = OpenBandController(
+            repository: repository,
+            initialDay: '2026-09-15',
+            band: repository.band,
+            now: () => DateTime(2026, 9, 15, 9, 41),
+          );
+          await controller.refresh();
+          await mountBandView(
+            Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: OBAction(
+                    'Datenstand öffnen',
+                    onPressed: () => showBandStatus(context, controller, () {}),
+                  ),
+                ),
+              ),
+            ),
+            brightness: brightness,
+            scale: scale,
+          );
+          await tester.tap(find.text('Datenstand öffnen'));
+          await tester.pumpAndSettle();
+          return controller;
+        }
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          final controller = await mountFreshStatus(brightness: brightness);
+          await capture('release-data-status-fresh-$suffix');
+          await tester.tap(find.text('Schließen'));
+          await tester.pumpAndSettle();
+          controller.dispose();
+        }
+        final largeStatus = await mountFreshStatus(scale: 2);
+        await capture('release-data-status-fresh-large');
+        await tester.scrollUntilVisible(
+          find.text('Auswertung'), 200,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-data-status-fresh-large-bottom');
+        await tester.ensureVisible(find.text('Schließen'));
+        await tester.tap(find.text('Schließen'));
+        await tester.pumpAndSettle();
+        largeStatus.dispose();
+
         final sensorQuery = TextEditingController();
         var scanCalls = 0;
         BleBlocker? scanBlocker = BleBlocker.permissionDenied;

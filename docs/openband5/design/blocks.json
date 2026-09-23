@@ -43,7 +43,15 @@
     "569H-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Hell (lib/ui2/onboarding/welcome.dart)",
     "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)",
     "3IBJ-0": "Einrichtung · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
-    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)"
+    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)",
+    "5D0H-0": "G2 · 09 · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
+    "5FCD-0": "G2 · 09 · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)",
+    "5D0I-0": "G2 · 10 · Erste Übertragung · Hell (lib/ui2/onboarding/first_sync.dart)",
+    "5FE4-0": "G2 · 10 · Erste Übertragung · Dunkel (lib/ui2/onboarding/first_sync.dart)",
+    "5DJT-0": "G2 · 11 · Dein Datenstand · Hell (lib/openband/screens.dart)",
+    "5EC1-0": "G2 · 11 · Dein Datenstand · Dunkel (lib/openband/screens.dart)",
+    "5DJU-0": "G2 · 12 · Datum wählen · Hell (lib/openband/day_picker.dart)",
+    "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)"
   },
   "blocks": [
     {
