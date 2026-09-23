@@ -66,6 +66,18 @@ final Map<String, Widget Function(OpenBandController)?> _frames = {
     tint: (p) => p.line,
     backText: 'Heute',
   ),
+  '14-belastung': (c) => OpenBandMetricDetail(
+    controller: c,
+    metricKey: MetricKey.strain,
+    label: 'Belastung',
+    subtitle: 'heute bis jetzt',
+    unit: 'von 21',
+    icon: LucideIcons.flame,
+    digits: 1,
+    color: (p) => p.strain,
+    tint: (p) => p.strainTint,
+    backText: 'Heute',
+  ),
 };
 
 /// Real-data mode (`g2_review.py --real`): the frames render from a COPY of

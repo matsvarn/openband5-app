@@ -456,7 +456,7 @@ class _VitalTileState extends State<_VitalTile> {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final m = widget.metric;
-    final status = _compactMetricStatus(m, digits: 0);
+    final status = obCompactMetricStatus(m, digits: 0);
     final comparable =
         m.value != null &&
         m.baseline != null &&
@@ -1436,7 +1436,7 @@ String obTemperatureNumber(double? value, NightScalarUnit? unit) {
   return value > 0 ? '+$number' : '−$number';
 }
 
-String? _compactMetricStatus(DayMetric metric, {required int digits}) {
+String? obCompactMetricStatus(DayMetric metric, {required int digits}) {
   if (metric.unit == NightScalarUnit.unknown) {
     return metric.reason ?? kNightScalarUnknownUnitLabel;
   }
@@ -1498,7 +1498,7 @@ class OBMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final scaler = MediaQuery.textScalerOf(context);
-    final status = _compactMetricStatus(metric, digits: digits);
+    final status = obCompactMetricStatus(metric, digits: digits);
     final temperature = metric.unit != null;
     final displayUnit = switch (metric.unit) {
       NightScalarUnit.sd => 'SD',
@@ -2102,7 +2102,7 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                   ),
                   Center(
                     child: OBDayPill(
-                      label: _nightPillLabel(selected),
+                      label: obNightPillLabel(selected),
                       onTap: () => chooseOpenBandDay(context, controller),
                       onPrevious: () =>
                           controller.selectDay(_shiftDay(selected, -1)),
@@ -2346,7 +2346,7 @@ String _shiftDay(String day, int days) {
 }
 
 /// "Mo → Di 22.09": the night into the selected day.
-String _nightPillLabel(String day) {
+String obNightPillLabel(String day) {
   String weekday(DateTime d) =>
       DateFormat('EEE', 'de_DE').format(d).replaceAll('.', '');
   final d = DateTime.parse(day);
@@ -2751,7 +2751,7 @@ class _NightTile extends StatelessWidget {
         m.baseline != null &&
         (m.nightScalar == null || m.nightScalar == NightScalarState.current);
     final delta = comparable ? (m.value! - m.baseline!).round() : null;
-    final status = _compactMetricStatus(m, digits: 0);
+    final status = obCompactMetricStatus(m, digits: 0);
     final deltaText = delta == null
         ? null
         : delta == 0

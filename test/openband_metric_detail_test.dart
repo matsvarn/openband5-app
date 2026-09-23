@@ -157,7 +157,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
     expect(find.text('ATMUNG'), findsWidgets);
-    expect(find.text('Tag für Tag'), findsNothing);
+    expect(find.text('TAG FÜR TAG'), findsNothing);
     expect(find.text('Herzratenvariabilität'), findsNothing);
     await tester.scrollUntilVisible(find.text('Nachtverlauf'), 100);
     expect(find.text('Nachtverlauf'), findsOneWidget);
@@ -179,7 +179,7 @@ void main() {
   ) async {
     await mount(tester, strain: true);
     expect(find.text('1,6'), findsOneWidget);
-    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.text('TAG FÜR TAG'), findsOneWidget);
     expect(find.textContaining('von 30 Tagen'), findsOneWidget);
     expect(find.text('Verlauf in der Nacht'), findsNothing);
     expect(find.text('So entsteht die Basis'), findsNothing);
@@ -240,7 +240,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.text('TAG FÜR TAG'), findsOneWidget);
     expect(find.text('Nachtverlauf'), findsNothing);
     expect(find.text('1,6'), findsOneWidget);
     expect(tester.takeException(), isNull);

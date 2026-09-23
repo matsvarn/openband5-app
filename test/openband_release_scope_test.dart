@@ -329,10 +329,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('MESSWERTE'), findsOneWidget);
-    expect(find.text('HRV'), findsOneWidget);
-    expect(find.text('Ruhepuls'), findsOneWidget);
-    expect(find.text('Atemfrequenz'), findsOneWidget);
-    expect(find.text('Hauttemperatur'), findsOneWidget);
+    expect(find.text('HRV ›'), findsOneWidget);
+    expect(find.text('RUHEPULS ›'), findsOneWidget);
+    expect(find.text('ATEMFREQUENZ ›'), findsOneWidget);
+    expect(find.text('HAUTTEMPERATUR ›'), findsOneWidget);
     expect(find.text('7 Nächte'), findsNothing);
     expect(find.text('Laborwerte'), findsNothing);
     expect(find.text('Glukose'), findsNothing);

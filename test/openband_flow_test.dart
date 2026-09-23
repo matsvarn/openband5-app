@@ -470,7 +470,7 @@ void main() {
     await tester.tap(find.bySemanticsLabel(RegExp(r'^Belastung, ')));
     await tester.pumpAndSettle();
     expect(find.text('BELASTUNG'), findsWidgets);
-    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.text('TAG FÜR TAG'), findsOneWidget);
     expect(find.textContaining('von 30 Tagen'), findsOneWidget);
     expect(find.text('Verlauf in der Nacht'), findsNothing);
     expect(find.text('So entsteht die Basis'), findsNothing);

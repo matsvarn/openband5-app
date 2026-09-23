@@ -9,7 +9,9 @@ import 'domain.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 import 'glucose.dart';
 import 'labs.dart';
+import 'alp_tokens.dart';
 import 'metric_detail.dart';
+import 'scale.dart';
 import 'screens.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
@@ -45,12 +47,17 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
         color: p.canvas,
         child: ListView(
           key: const PageStorageKey('openband.health'),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            widget.bandMetricsOnly ? 0 : 4,
+            16,
+            24,
+          ),
           children: [
             if (widget.bandMetricsOnly)
-              const OBPageHeader(
+              OBPageHeader(
                 title: 'Messwerte',
-                subtitle: '',
+                subtitle: obNightPillLabel(c.selectedDay),
                 backText: 'Heute',
               )
             else
@@ -61,7 +68,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                   style: p.text(30, weight: FontWeight.w800, display: true),
                 ),
               ),
-            const SizedBox(height: 12),
+            SizedBox(height: widget.bandMetricsOnly ? 6 : 12),
             if (!widget.bandMetricsOnly) ...[
               OBSegmented(
                 labels: const ['7 Nächte', '30 Nächte'],
@@ -70,7 +77,22 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
               ),
               const SizedBox(height: 12),
             ],
-            if (day != null) ...[
+            if (day != null && widget.bandMetricsOnly) ...[
+              const _MesswertLegend(),
+              const SizedBox(height: 14),
+              for (final spec in _messwerte(p, day)) ...[
+                _MesswertCard(
+                  key: spec.key == MetricKey.respiration
+                      ? const ValueKey('atemfrequenz')
+                      : spec.key == MetricKey.skinTemperature
+                      ? const ValueKey('hauttemperatur')
+                      : null,
+                  spec: spec,
+                  onTap: () => spec.open(context, c),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ] else if (day != null) ...[
               OBAdaptiveValues(
                 children: [
                   OBMetricCard(
@@ -1584,4 +1606,354 @@ class _TrendPainter extends CustomPainter {
       old.textDirection != textDirection ||
       old.bars != bars ||
       old.restColor != restColor;
+}
+
+/// One Messwerte row (Paper G2): which metric, its window on the scale and
+/// the detail it opens.
+typedef _Messwert = ({
+  MetricKey key,
+  String label,
+  String unit,
+  DayMetric metric,
+  int digits,
+  double lo,
+  double hi,
+  double step,
+  void Function(BuildContext, OpenBandController) open,
+});
+
+List<_Messwert> _messwerte(OB p, OpenBandDay day) {
+  void Function(BuildContext, OpenBandController) detail(
+    MetricKey key,
+    String label,
+    String subtitle,
+    String unit,
+    IconData icon, {
+    int digits = 0,
+  }) =>
+      (context, c) => OpenBandMetricDetail.push(
+        context,
+        backText: 'Messwerte',
+        controller: c,
+        metricKey: key,
+        label: label,
+        subtitle: subtitle,
+        unit: unit,
+        icon: icon,
+        color: (p) => p.ink,
+        tint: (p) => p.line,
+        digits: digits,
+      );
+  return [
+    (
+      key: MetricKey.hrv,
+      label: 'HRV',
+      unit: 'ms',
+      metric: day.hrv,
+      digits: 0,
+      lo: 20,
+      hi: 70,
+      step: 10,
+      open: detail(
+        MetricKey.hrv,
+        'HRV',
+        'Herzratenvariabilität',
+        'ms',
+        LucideIcons.activity,
+      ),
+    ),
+    (
+      key: MetricKey.restingHr,
+      label: 'Ruhepuls',
+      unit: '/min',
+      metric: day.restingHr,
+      digits: 0,
+      lo: 40,
+      hi: 70,
+      step: 10,
+      open: detail(
+        MetricKey.restingHr,
+        'Ruhepuls',
+        'in der Nacht',
+        '/min',
+        LucideIcons.heart,
+      ),
+    ),
+    (
+      key: MetricKey.respiration,
+      label: 'Atemfrequenz',
+      unit: '/min',
+      metric: day.respiration,
+      digits: 1,
+      lo: 10,
+      hi: 22,
+      step: 2,
+      open: detail(
+        MetricKey.respiration,
+        'Atmung',
+        'Atemfrequenz',
+        '/min',
+        LucideIcons.wind,
+        digits: 1,
+      ),
+    ),
+    (
+      key: MetricKey.skinTemperature,
+      label: 'Hauttemperatur',
+      unit: 'SD',
+      metric: day.skinTemperature,
+      digits: 1,
+      lo: -3,
+      hi: 3,
+      step: 1,
+      open: detail(
+        MetricKey.skinTemperature,
+        'Hauttemperatur',
+        '',
+        '',
+        LucideIcons.thermometer,
+        digits: 1,
+      ),
+    ),
+  ];
+}
+
+class _MesswertLegend extends StatelessWidget {
+  const _MesswertLegend();
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final style = p.text(12, color: p.muted).copyWith(height: 16 / 12);
+    return Padding(
+      padding: const EdgeInsets.only(left: 8),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 4,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 6,
+            children: [
+              Container(
+                width: 18,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: p.gap,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+              Text('deine Basis (30 Nächte)', style: style),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 6,
+            children: [
+              Container(
+                width: 4,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: p.ink,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Text('letzte Nacht', style: style),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A night value on its scale (Paper G2 Messwerte): value and comparison
+/// on top, the needle over the normal range below. Colour only for a
+/// verdict against a trusted range; a missing value is an inset card with
+/// the reason and no scale.
+class _MesswertCard extends StatelessWidget {
+  final _Messwert spec;
+  final VoidCallback onTap;
+  const _MesswertCard({super.key, required this.spec, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final m = spec.metric;
+    final skin = spec.key == MetricKey.skinTemperature;
+    final sd = !skin || m.unit == NightScalarUnit.sd;
+    final value = sd ? m.value : null;
+    final verdict = skin ? null : dayMetricVerdict(spec.key, m);
+    final spread = m.baselineSpread;
+    // Skin temperature is already a z against its baseline: the analytics'
+    // normal range is ±1 SD.
+    final band = skin
+        ? (-1.0, 1.0)
+        : m.baseline == null || spread == null
+        ? null
+        : (m.baseline! - 1.253 * spread, m.baseline! + 1.253 * spread);
+    String n(double v) => obNumber(v, digits: spec.digits);
+    // Scale ends in whole units read as "10", not "10,0".
+    String end(double v) =>
+        obNumber(v, digits: v == v.roundToDouble() ? 0 : spec.digits);
+    String comparison() {
+      if (value == null) {
+        return obCompactMetricStatus(m, digits: spec.digits) ??
+            'Kein Nachtwert';
+      }
+      if (skin) return 'relativ zu deiner Basis';
+      if (verdict == null) {
+        return obCompactMetricStatus(m, digits: spec.digits) ??
+            'Basis noch offen';
+      }
+      final d = value - m.baseline!;
+      final shown = n(d.abs());
+      if (verdict == MetricVerdict.normal) {
+        return n(d.abs()) == n(0)
+            ? 'wie üblich'
+            : '${d > 0 ? '+' : '−'}$shown · im Bereich';
+      }
+      return '${d > 0 ? '+' : '−'}$shown ${d > 0 ? 'über' : 'unter'} Basis';
+    }
+
+    final strong =
+        verdict == MetricVerdict.better || verdict == MetricVerdict.worse;
+    // The window grows to hold the value and the range, in whole steps.
+    double lo = spec.lo, hi = spec.hi;
+    for (final v in [?value, ?band?.$1, ?band?.$2]) {
+      while (v < lo) {
+        lo -= spec.step;
+      }
+      while (v > hi) {
+        hi += spec.step;
+      }
+    }
+    final unitSuffix = spec.unit == 'ms' ? ' ms' : '';
+    final label = p.label().copyWith(height: 12 / 10);
+    final header = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 2,
+            children: [
+              Text('${spec.label.toUpperCase()} ›', style: label),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                spacing: 4,
+                children: [
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value == null
+                            ? '—'
+                            : skin
+                            ? obTemperatureNumber(value, m.unit)
+                            : n(value),
+                        style: p
+                            .text(
+                              32,
+                              weight: FontWeight.w700,
+                              color: value == null ? p.gap : p.ink,
+                            )
+                            .copyWith(
+                              height: 34 / 32,
+                              letterSpacing: -.02 * 32,
+                            ),
+                      ),
+                    ),
+                  ),
+                  if (value != null)
+                    Text(
+                      spec.unit,
+                      style: p
+                          .text(13, color: p.muted)
+                          .copyWith(height: 16 / 13),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Text(
+              comparison(),
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              style: p
+                  .text(
+                    13,
+                    weight: strong ? FontWeight.w700 : FontWeight.w400,
+                    color: obVerdictText(p, verdict) ?? p.muted,
+                  )
+                  .copyWith(height: 16 / 13),
+            ),
+          ),
+        ),
+      ],
+    );
+    return Semantics(
+      button: true,
+      label:
+          '${spec.label}, ${value == null ? 'kein Wert' : n(value)} ${spec.unit}, ${comparison()}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: value == null
+            ? Container(
+                padding: const EdgeInsets.all(16),
+                decoration: p.insetDecoration(radius: AlpRadius.card),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 10,
+                  children: [
+                    header,
+                    Text(
+                      m.reason ??
+                          'Für diese Nacht liegt kein Wert vor. Es wird '
+                              'keiner geschätzt.',
+                      style: p
+                          .text(12, color: p.muted)
+                          .copyWith(height: 17 / 12),
+                    ),
+                  ],
+                ),
+              )
+            : OBCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 10,
+                  children: [
+                    header,
+                    OBScale(
+                      min: lo,
+                      max: hi,
+                      value: value,
+                      baseLow: band?.$1,
+                      baseHigh: band?.$2,
+                      captionGap: 8,
+                      mark: obVerdictMark(p, verdict),
+                      labels: (
+                        '${end(lo)}$unitSuffix',
+                        band == null
+                            ? null
+                            : skin
+                            ? 'Bereich ±1 SD'
+                            : 'Basis ${n(band.$1)}–${n(band.$2)}',
+                        '${end(hi)}$unitSuffix',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
 }

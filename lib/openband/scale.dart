@@ -29,6 +29,10 @@ class OBScale extends StatelessWidget {
   /// Bold ink caption under the [target] mark, e.g. "Ziel 7h45".
   final String? targetLabel;
   final String? semanticsLabel;
+
+  /// Space between the track's box and the captions; Paper's Heute rows use
+  /// 3, the detail heroes 10.
+  final double captionGap;
   const OBScale({
     super.key,
     required this.min,
@@ -44,12 +48,13 @@ class OBScale extends StatelessWidget {
     this.labels,
     this.targetLabel,
     this.semanticsLabel,
+    this.captionGap = defaultCaptionGap,
   }) : assert(max > min);
 
   static const double trackHeight = 34;
 
   /// Paper: captions sit 3 pt under the track on a 12 pt line.
-  static const double captionGap = 3;
+  static const double defaultCaptionGap = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +83,7 @@ class OBScale extends StatelessWidget {
             labels: labels,
             targetLabel: targetLabel,
             captionScale: scale,
+            captionGap: captionGap,
             direction: Directionality.of(context),
           ),
         ),
@@ -94,7 +100,7 @@ class _ScalePainter extends CustomPainter {
   final int ticks;
   final (String, String?, String)? labels;
   final String? targetLabel;
-  final double captionScale;
+  final double captionScale, captionGap;
   final TextDirection direction;
   _ScalePainter({
     required this.p,
@@ -111,6 +117,7 @@ class _ScalePainter extends CustomPainter {
     required this.labels,
     required this.targetLabel,
     required this.captionScale,
+    required this.captionGap,
     required this.direction,
   });
 
@@ -145,6 +152,27 @@ class _ScalePainter extends CustomPainter {
         Paint()..color = fill!,
       );
       canvas.restore();
+    }
+    // With a fill the band sits under it; a dashed outline keeps the range
+    // readable where the fill covers it (Paper G2 Erholung).
+    if (fill != null && baseLow != null && baseHigh != null) {
+      final x0 = _x(baseLow!, w), x1 = _x(baseHigh!, w);
+      final outline = Path()
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(x0, top - 4, x1, top + h + 4),
+            const Radius.circular(4),
+          ),
+        );
+      final dash = Paint()
+        ..color = p.ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1;
+      for (final m in outline.computeMetrics()) {
+        for (var d = 0.0; d < m.length; d += 4) {
+          canvas.drawPath(m.extractPath(d, d + 2), dash);
+        }
+      }
     }
     final tick = Paint()..color = p.muted;
     for (var i = 0; i <= ticks; i++) {
@@ -200,7 +228,7 @@ class _ScalePainter extends CustomPainter {
           maxLines: 1,
           ellipsis: '…',
         )..layout(maxWidth: math.max(0, maxWidth));
-    const y = OBScale.trackHeight + OBScale.captionGap;
+    final y = OBScale.trackHeight + captionGap;
     final w = size.width;
     final left = lay(c.$1, w / 3);
     final right = lay(c.$3, w / 3);
@@ -248,5 +276,6 @@ class _ScalePainter extends CustomPainter {
       old.labels != labels ||
       old.targetLabel != targetLabel ||
       old.captionScale != captionScale ||
+      old.captionGap != captionGap ||
       old.p.dark != p.dark;
 }
