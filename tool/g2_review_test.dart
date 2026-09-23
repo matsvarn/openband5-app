@@ -84,6 +84,8 @@ void main() {
           now: () => DateTime(2026, 9, 15, 9, 41),
         );
         addTearDown(controller.dispose);
+        // Paper's state has a 7h45 sleep goal set.
+        await repo.saveSleepGoal('2026-09-01', 7 * 60 + 45);
         await controller.refresh();
         await tester.pumpWidget(
           RepaintBoundary(
@@ -98,7 +100,8 @@ void main() {
               ).copyWith(platform: TargetPlatform.iOS),
               builder: (context, child) => MediaQuery(
                 data: MediaQuery.of(context).copyWith(
-                  padding: const EdgeInsets.only(top: 59, bottom: 34),
+                  // Paper's mock status bar is 62 pt; the device inset is 59.
+                  padding: const EdgeInsets.only(top: 62, bottom: 34),
                   disableAnimations: true,
                 ),
                 child: child!,

@@ -42,11 +42,14 @@ class OBScale extends StatelessWidget {
 
   static const double trackHeight = 34;
 
+  /// Paper: captions sit 3 pt under the track on a 12 pt line.
+  static const double captionGap = 3;
+
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final scale = math.min(MediaQuery.textScalerOf(context).scale(1), 1.4);
-    final captionHeight = labels == null ? 0.0 : 14 * scale;
+    final captionHeight = labels == null ? 0.0 : captionGap + 12 * scale;
     return Semantics(
       label: semanticsLabel,
       excludeSemantics: true,
@@ -187,7 +190,7 @@ class _ScalePainter extends CustomPainter {
           maxLines: 1,
           ellipsis: '…',
         )..layout(maxWidth: math.max(0, maxWidth));
-    const y = OBScale.trackHeight - 1;
+    const y = OBScale.trackHeight + OBScale.captionGap;
     final w = size.width;
     final left = lay(c.$1, w / 3);
     final right = lay(c.$3, w / 3);

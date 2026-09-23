@@ -478,26 +478,30 @@ class _VitalTileState extends State<_VitalTile> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 12,
                 children: [
-                  Row(
+                  // A status too wide to share the line wraps under the
+                  // label instead of cutting the unit off.
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    runSpacing: 2,
                     children: [
-                      Expanded(
-                        child: Text(
-                          widget.label,
-                          maxLines: 1,
-                          style: p.label().copyWith(height: 12 / 10),
-                        ),
+                      Text(
+                        widget.label,
+                        maxLines: 1,
+                        style: p.label().copyWith(height: 12 / 10),
                       ),
                       if (corner != null)
                         Text(
                           corner,
                           maxLines: 1,
-                          style: p.text(
-                            11,
-                            weight: delta != null
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                            color: delta != null ? p.ink : p.muted,
-                          ),
+                          style: p
+                              .text(
+                                11,
+                                weight: delta != null
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: delta != null ? p.ink : p.muted,
+                              )
+                              .copyWith(height: 14 / 11),
                         ),
                     ],
                   ),
@@ -513,7 +517,7 @@ class _VitalTileState extends State<_VitalTile> {
                                 weight: FontWeight.w700,
                                 color: m.value == null ? p.gap : p.ink,
                               )
-                              .copyWith(height: 30 / 28, letterSpacing: -.56),
+                              .copyWith(height: 1, letterSpacing: -.56),
                         ),
                       ),
                       FutureBuilder<List<MetricPoint>>(
@@ -562,14 +566,17 @@ class _WeekBarsPainter extends CustomPainter {
     final lo = values.reduce(math.min), hi = values.reduce(math.max);
     final span = hi - lo;
     const n = 7;
-    final bw = size.width * 8 / 80, pitch = size.width * 12 / 80;
+    // Paper's 80×24 grid scaled uniformly into the box, centred vertically.
+    final u = size.width / 80;
+    final bw = 8 * u, pitch = 12 * u;
+    final bottom = (size.height + 24 * u) / 2;
     final offset = (n - shown.length) * pitch;
     for (final (i, e) in shown.indexed) {
       final x = offset + i * pitch;
       if (e.value == null) {
         canvas.drawRRect(
           RRect.fromRectAndRadius(
-            Rect.fromLTWH(x + .5, size.height - 4.5, bw - 1, 4),
+            Rect.fromLTWH(x + .5, bottom - 4.5, bw - 1, 4),
             const Radius.circular(1),
           ),
           Paint()
@@ -578,11 +585,11 @@ class _WeekBarsPainter extends CustomPainter {
         );
         continue;
       }
-      final f = span <= 0 ? .6 : .45 + .55 * (e.value! - lo) / span;
-      final h = size.height * f;
+      final f = span <= 0 ? .6 : .45 + .425 * (e.value! - lo) / span;
+      final h = 24 * u * f;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, size.height - h, bw, h),
+          Rect.fromLTWH(x, bottom - h, bw, h),
           const Radius.circular(1.5),
         ),
         Paint()..color = i == shown.length - 1 ? p.ink : p.gap,
@@ -615,7 +622,7 @@ class _OverviewHeader extends StatelessWidget {
     final large = MediaQuery.textScalerOf(context).scale(14) > 20;
     final dateStyle = p
         .text(11, weight: FontWeight.w500, color: p.muted)
-        .copyWith(letterSpacing: 0.08 * 11, height: 14 / 11);
+        .copyWith(letterSpacing: 0.12 * 11, height: 14 / 11);
     final title = Semantics(
       button: true,
       child: InkWell(
@@ -651,6 +658,7 @@ class _OverviewHeader extends StatelessWidget {
                     ? '${_dateLine(controller.selectedDay)} · SYNTHETISCHE DATEN'
                     : _dateLine(controller.selectedDay),
                 maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: dateStyle,
               ),
             ],
@@ -688,7 +696,6 @@ class _OverviewHeader extends StatelessWidget {
           Expanded(
             child: Align(alignment: Alignment.centerLeft, child: title),
           ),
-          const SizedBox(width: 10),
           for (final (i, k) in keys.indexed) ...[
             if (i > 0) const SizedBox(width: 10),
             k,
@@ -1024,7 +1031,7 @@ class _DataStrip extends StatelessWidget {
                     ),
                   ),
                   if (coverage != null) ...[
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         coverage,
@@ -1063,7 +1070,10 @@ class _MesswerteRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 52),
           child: Row(
             children: [
-              Icon(LucideIcons.activity, size: 20, color: p.ink),
+              CustomPaint(
+                size: const Size.square(20),
+                painter: _PulsePainter(p.ink),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -1084,6 +1094,32 @@ class _MesswerteRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Paper's pulse glyph: M3 12h4l2-5 4 10 2-5h6 on a 24 grid, stroke 1.8.
+class _PulsePainter extends CustomPainter {
+  final Color color;
+  const _PulsePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width / 24;
+    final points = [(3, 12), (7, 12), (9, 7), (13, 17), (15, 12), (21, 12)];
+    canvas.drawPath(
+      Path()..addPolygon([
+        for (final (x, y) in points) Offset(x * s, y * s),
+      ], false),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8 * s
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PulsePainter old) => old.color != color;
 }
 
 class OBStageLegend extends StatelessWidget {

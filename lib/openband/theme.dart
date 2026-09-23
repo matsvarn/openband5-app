@@ -943,7 +943,7 @@ class _ChevronPainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5 * size.width / 14
+      ..strokeWidth = 2.5 * size.width / 24
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     final s = size.width / 24;
