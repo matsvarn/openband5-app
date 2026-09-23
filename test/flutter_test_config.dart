@@ -12,6 +12,8 @@
 // `OPENBAND_TEST_TZ=<zone>` pins a different zone; `OPENBAND_TEST_TZ=host`
 // disables the pin, which is how fixture timezone independence stays
 // verifiable. POSIX only — Windows keeps the host zone.
+// `OPENBAND_TEST_LANE=behavior` runs every test body while accepting image
+// comparisons on hosts that cannot reproduce the committed golden pixels.
 //
 // Same mechanism as test/day_window_dst_test.dart: libc setenv("TZ")+tzset()
 // genuinely re-homes the local calendar for this process.
@@ -19,8 +21,10 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 typedef _SetenvNative = Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32);
 typedef _SetenvDart = int Function(Pointer<Utf8>, Pointer<Utf8>, int);
@@ -48,6 +52,17 @@ void _setProcessTz(String? tz) {
 
 const _pinnedZone = 'Europe/Berlin';
 
+// Ubuntu still executes the whole test body, including assertions after a
+// screenshot. Pixel equality is checked by the strict local golden lane.
+class _BehavioralGoldenComparator extends GoldenFileComparator {
+  @override
+  Future<bool> compare(Uint8List imageBytes, Uri golden) async => true;
+
+  @override
+  Future<void> update(Uri golden, Uint8List imageBytes) =>
+      throw UnsupportedError('The behavioral lane cannot update goldens.');
+}
+
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   if (!Platform.isWindows) {
     final requested = Platform.environment['OPENBAND_TEST_TZ'];
@@ -56,6 +71,9 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
         requested == null || requested.isEmpty ? _pinnedZone : requested,
       );
     }
+  }
+  if (Platform.environment['OPENBAND_TEST_LANE'] == 'behavior') {
+    goldenFileComparator = _BehavioralGoldenComparator();
   }
   await testMain();
 }
