@@ -180,7 +180,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-hub-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'yes/no answers persist as 1/0; absence stays open; clear works',
@@ -214,6 +214,7 @@ void main() {
         matchesGoldenFile('openband_goldens/journal-hub-answered.png'),
       );
     },
+    tags: const ['golden'],
   );
 
   testWidgets('insufficient / unavailable / nonmeaningful / partial / error', (
@@ -277,7 +278,7 @@ void main() {
     await tester.pump();
     await settleProducer(tester);
     expect(find.text('+12 Min.'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial label is shared across insufficient and nonmeaningful', (
     tester,
@@ -436,7 +437,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-hub-save-error-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('info sheet uses methodology, 2x and 320 do not clip controls', (
     tester,
@@ -549,7 +550,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-hub-320.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   bool moodSelected(WidgetTester tester) =>
       tester
@@ -687,7 +688,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-hub-conflict-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('committed write with reload failure retries read only', (
     tester,
@@ -740,7 +741,7 @@ void main() {
       matchesGoldenFile('openband_goldens/journal-hub-read-error-dark.png'),
     );
     repo.failJournalRead = false;
-  });
+  }, tags: const ['golden']);
 
   testWidgets('header editor action invokes captured-day onEdit', (
     tester,
@@ -942,5 +943,6 @@ void main() {
       );
       await pinScrollAndDismiss(capture: true);
     },
+    tags: const ['golden'],
   );
 }

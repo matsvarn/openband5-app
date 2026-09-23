@@ -501,7 +501,7 @@ void main() {
       greaterThanOrEqualTo(44),
     );
     expect(find.text('bis 02:10'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('Paper first-sync frames', (tester) async {
     await pumpPaper(tester);
@@ -546,5 +546,5 @@ void main() {
     expect(find.text('Auswertung heute'), findsOneWidget);
     expect(tester.getSize(find.byTooltip('Information')).height, 44);
     expect(find.byTooltip('Zurück'), findsNothing);
-  });
+  }, tags: const ['golden']);
 }

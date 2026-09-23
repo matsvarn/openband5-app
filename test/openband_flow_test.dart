@@ -312,6 +312,7 @@ void main() {
       expect(controller.selectedDay, '2026-09-15');
       expect(tester.takeException(), isNull);
     },
+    tags: const ['golden'],
   );
 
   testWidgets('correction edit renders in dark mode', (tester) async {
@@ -324,7 +325,7 @@ void main() {
     );
     expect(controller.day!.sleep.duration.value, 438);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'save failure retains draft and original result, retry commits once',
@@ -349,6 +350,7 @@ void main() {
       expect(controller.day!.correction!.id, draft!.id);
       expect(controller.day!.correction!.revision, 1);
     },
+    tags: const ['golden'],
   );
   testWidgets(
     'failed calculation retains saved correction and supports retry',
@@ -371,33 +373,36 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.day!.sleep.duration.value, 428);
     },
+    tags: const ['golden'],
   );
-  testWidgets('calendar selection is committed only after confirmation', (
-    tester,
-  ) async {
-    await mount(tester);
-    await tester.tap(find.text(obDayTitle('2026-09-15')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14'));
-    await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-15');
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/date-selection.png'),
-    );
-    await tester.tap(find.byTooltip('Abbrechen'));
-    await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-15');
-    await tester.tap(find.text(obDayTitle('2026-09-15')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14. September ansehen'));
-    await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-14');
-    expect(controller.day!.recovery.value, isNull);
-    expect(controller.day!.sleep.duration.value, 422);
-  });
+  testWidgets(
+    'calendar selection is committed only after confirmation',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-15');
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/date-selection.png'),
+      );
+      await tester.tap(find.byTooltip('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-15');
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14. September ansehen'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-14');
+      expect(controller.day!.recovery.value, isNull);
+      expect(controller.day!.sleep.duration.value, 422);
+    },
+    tags: const ['golden'],
+  );
   testWidgets('band status separates stored frontier from receipt time', (
     tester,
   ) async {
@@ -457,6 +462,7 @@ void main() {
       );
       semantics.dispose();
     },
+    tags: const ['golden'],
   );
 
   for (final scenario in [
@@ -486,6 +492,7 @@ void main() {
         );
         expect(tester.takeException(), isNull);
       },
+      tags: const ['golden'],
     );
   }
   test('stepsByHour splits a boundary-crossing interval by duration', () {
@@ -565,6 +572,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     },
+    tags: const ['golden'],
   );
   testWidgets('time keyboard Next focuses wake time and Done dismisses it', (
     tester,
@@ -731,5 +739,6 @@ void main() {
       expect(controller.day!.sleep.duration.value, 438);
       expect(controller.day!.correction, isNull);
     },
+    tags: const ['golden'],
   );
 }

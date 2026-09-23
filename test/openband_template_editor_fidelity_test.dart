@@ -1014,7 +1014,7 @@ void main() {
         ),
       );
     }
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     '2x mixed duration error stays below field; minus stays centered',

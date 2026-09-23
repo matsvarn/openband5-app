@@ -191,7 +191,7 @@ void main() {
     expect(find.text('/min'), findsOneWidget);
     expect(find.text('−2 unter Basis'), findsOneWidget);
     expect(find.text('—'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('equality uses wie Basis in the metric color row', (
     tester,
@@ -230,7 +230,7 @@ void main() {
     expect(find.text('48'), findsOneWidget);
     expect(find.text('54'), findsOneWidget);
     expect(find.textContaining('Basis'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing shows Kein Nachtwert and emdash without a unit', (
     tester,
@@ -250,7 +250,7 @@ void main() {
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('ms'), findsNothing);
     expect(find.text('/min'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial keeps the value and a muted Unvollständig row', (
     tester,
@@ -269,7 +269,7 @@ void main() {
     expect(find.text('Unvollständig'), findsNWidgets(2));
     expect(find.text('48'), findsOneWidget);
     expect(find.textContaining('Basis'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('pending withholds the value', (tester) async {
     await expectPairGolden(
@@ -287,7 +287,7 @@ void main() {
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('48'), findsNothing);
     expect(find.text('ms'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('failed withholds the value', (tester) async {
     await expectPairGolden(
@@ -304,7 +304,7 @@ void main() {
     expect(find.text(kNightScalarFailedLabel), findsNWidgets(2));
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('ms'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('older keeps the value without a comparison', (tester) async {
     await expectPairGolden(
@@ -321,7 +321,7 @@ void main() {
     expect(find.text('Ältere Berechnung'), findsNWidgets(2));
     expect(find.text('48'), findsOneWidget);
     expect(find.textContaining('Basis'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unreadable withholds the value', (tester) async {
     await expectPairGolden(
@@ -338,7 +338,7 @@ void main() {
     expect(find.text('Nicht lesbar'), findsNWidgets(2));
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('ms'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unknown and outdated share Auswertung offen without a value', (
     tester,
@@ -358,7 +358,7 @@ void main() {
     expect(find.text('—'), findsNWidgets(2));
     expect(find.text('ms'), findsNothing);
     expect(find.text('/min'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 at 2x uses full-width cards without shrinking text', (
     tester,
@@ -384,7 +384,7 @@ void main() {
     expect(find.text('−2 unter Basis'), findsOneWidget);
     expect(tester.takeException(), isNull);
     expect(tester.getSize(find.byType(OBMetricCard).first).width, 343);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('narrow 320 stacks value and unit when they cannot share a row', (
     tester,
@@ -402,7 +402,7 @@ void main() {
     expect(find.text('48'), findsOneWidget);
     expect(find.text('Ruhepuls'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('non-night DayMetric keeps a concise value and trusted delta', (
     tester,

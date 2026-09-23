@@ -262,7 +262,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-plan-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing artifact is emdash, not a loading or error state', (
     tester,
@@ -284,7 +284,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-plan-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goal row reads the wake-day goal and refreshes after return', (
     tester,
@@ -330,7 +330,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-plan-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('storage error retries and restores the fixture', (tester) async {
     repo.failSleepPlanRead = true;
@@ -354,7 +354,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('8 h 33'), findsOneWidget);
     expect(find.text('Laden fehlgeschlagen'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('2x stacks times and scrolls instead of shrinking', (
     tester,
@@ -381,7 +381,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-plan-2x-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375x812 2x viewport scrolls to Eigenes Schlafziel', (
     tester,
@@ -446,7 +446,7 @@ void main() {
     await tester.tap(find.byTooltip('Schließen'));
     await tester.pumpAndSettle();
     expect(find.text('8 h 33'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('null strain or nap is partial; true zero is not absence', (
     tester,

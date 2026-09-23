@@ -103,36 +103,38 @@ void main() {
   String shown(WidgetTester tester) =>
       tester.widget<Text>(find.byKey(const ValueKey('sleep-goal-value'))).data!;
 
-  testWidgets('unset goal shows emdash, no handle, and nothing to save', (
-    tester,
-  ) async {
-    repo.weekendEstimate = null;
-    await mountGoal(tester);
-    expect(find.text('SCHLAFZIEL'), findsOneWidget);
-    expect(find.text('EIGENES ZIEL'), findsOneWidget);
-    expect(shown(tester), '—');
-    expect(
-      find.text('Tippe auf die Skala, um ein Ziel festzulegen.'),
-      findsOneWidget,
-    );
-    expect(action(tester, '– 15 Min.').onPressed, isNull);
-    expect(action(tester, '+ 15 Min.').onPressed, isNull);
-    expect(action(tester, 'Speichern').onPressed, isNull);
-    expect(
-      find.text('Noch kein Wert – zu wenige Wochenend-Nächte.'),
-      findsOneWidget,
-    );
-    expect(find.text('Ziel entfernen'), findsNothing);
-    expect(find.text('Synthetische Daten'), findsOneWidget);
-    expect(
-      tester.getSemantics(find.byKey(const ValueKey('sleep-goal-scale'))),
-      isSemantics(label: 'Schlafziel', value: '', isSlider: true),
-    );
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/sleep-goal-unset.png'),
-    );
-  });
+  testWidgets(
+    'unset goal shows emdash, no handle, and nothing to save',
+    (tester) async {
+      repo.weekendEstimate = null;
+      await mountGoal(tester);
+      expect(find.text('SCHLAFZIEL'), findsOneWidget);
+      expect(find.text('EIGENES ZIEL'), findsOneWidget);
+      expect(shown(tester), '—');
+      expect(
+        find.text('Tippe auf die Skala, um ein Ziel festzulegen.'),
+        findsOneWidget,
+      );
+      expect(action(tester, '– 15 Min.').onPressed, isNull);
+      expect(action(tester, '+ 15 Min.').onPressed, isNull);
+      expect(action(tester, 'Speichern').onPressed, isNull);
+      expect(
+        find.text('Noch kein Wert – zu wenige Wochenend-Nächte.'),
+        findsOneWidget,
+      );
+      expect(find.text('Ziel entfernen'), findsNothing);
+      expect(find.text('Synthetische Daten'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('sleep-goal-scale'))),
+        isSemantics(label: 'Schlafziel', value: '', isSlider: true),
+      );
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/sleep-goal-unset.png'),
+      );
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('production omits the synthetic footer', (tester) async {
     await mountGoal(tester, synthetic: false);
@@ -171,7 +173,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('target plus stored weekend estimate stays unclamped', (
     tester,
@@ -205,7 +207,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-estimate.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('steps and scale taps change only the draft until saved', (
     tester,
@@ -385,7 +387,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-goal-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('OpenBandSleep reaches Schlafziel for the selected wake day', (
     tester,

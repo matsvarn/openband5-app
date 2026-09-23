@@ -345,13 +345,22 @@ class ReplayBandLink implements BandLink {
   /// real link's missing-characteristic case.
   final Map<String, List<int>> readValues = {};
 
+  /// Invoked synchronously after each write is recorded, before [write]
+  /// resolves — where a scripted band answers. [writeIndex] is the write's
+  /// position in [writes]. Feeding a reply from here keeps request→reply
+  /// order exact; polling [writes] on a bounded `Duration.zero` spin is what
+  /// starved the second request batch under CI load.
+  void Function(int writeIndex, List<int> value)? onWrite;
+
   @override
   Future<List<int>?> read(String characteristicUuid) async =>
       readValues[characteristicUuid];
 
   @override
   Future<bool> write(String characteristicUuid, List<int> value) async {
+    final index = writes.length;
     writes.add((characteristicUuid, value));
+    onWrite?.call(index, value);
     if (writeDelay > Duration.zero) await Future<void>.delayed(writeDelay);
     return writeSucceeds;
   }

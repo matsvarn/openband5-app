@@ -261,7 +261,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty plans is not a missing slot', (tester) async {
     repo.transformPlans = (_) => const [];
@@ -279,7 +279,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('active plans with no day rows is no slot', (tester) async {
     repo.transformDay = (day) => MedicationDay(day: day.day, entries: const []);
@@ -290,7 +290,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-noslot-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read error is not empty and retries', (tester) async {
     repo.failMedicationRead = true;
@@ -306,7 +306,7 @@ void main() {
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
     expect(find.text('Präparat A'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial corrupt reads keep visible rows', (tester) async {
     repo.transformDay = (day) => MedicationDay(
@@ -321,7 +321,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-partial-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('DST unavailable stays on its own line', (tester) async {
     repo.transformDay = (day) => MedicationDay(
@@ -348,7 +348,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-dst-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('history groups original snapshots and pages older days', (
     tester,
@@ -384,7 +384,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-history-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unknown original metadata is not replaced by current plan', (
     tester,
@@ -445,7 +445,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-unanswered-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('explicit taken, skipped, and clear persist actual status', (
     tester,
@@ -480,7 +480,7 @@ void main() {
     await tester.tap(find.text('Eintrag entfernen'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Offen'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('save error keeps draft and blocks double submit', (tester) async {
     repo.failMedicationWrite = true;
@@ -509,7 +509,7 @@ void main() {
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Genommen'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('reminder aftermath retries only refresh', (tester) async {
     repo.failMedicationReminders = true;
@@ -532,7 +532,7 @@ void main() {
     expect(repo.entrySaves, saves);
     expect(repo.reminderRefreshes, greaterThan(0));
     expect(find.text('Gespeichert · Erinnerungen nicht aktualisiert'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('create edit end restart keep identity', (tester) async {
     await mount(tester);
@@ -643,7 +643,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('keyboard inset keeps the editor usable', (tester) async {
     await mount(tester);
@@ -659,7 +659,7 @@ void main() {
       matchesGoldenFile('openband_goldens/medication-keyboard.png'),
     );
     tester.view.resetViewInsets();
-  });
+  }, tags: const ['golden']);
 
   testWidgets('record large stacks the taken clock', (tester) async {
     await mount(tester, width: 375, scale: 2, height: 1800);
@@ -674,7 +674,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-record-large.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('editor large stacks quantity and unit', (tester) async {
     await mount(tester, width: 375, scale: 2, height: 1800);
@@ -689,7 +689,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-editor-large.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('time editor keeps weekday rows', (tester) async {
     await mount(tester);
@@ -720,7 +720,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-time-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('time editor back discards unconfirmed weekday draft', (
     tester,
@@ -822,7 +822,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/medication-legacy-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('0.125 dose is not rounded by an unrelated edit', (tester) async {
     await mount(tester);

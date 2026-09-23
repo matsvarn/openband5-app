@@ -428,7 +428,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-list-light.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('nap list golden dark', (tester) async {
     await mount(tester, brightness: Brightness.dark);
@@ -436,7 +436,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-list-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('nap editor golden', (tester) async {
     await mount(tester);
@@ -446,7 +446,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-editor.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('nap edit golden', (tester) async {
     await mount(tester);
@@ -456,7 +456,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-edit.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('nap recalc failure golden', (tester) async {
     repo.scenario = SyntheticScenario.calculationFailure;
@@ -473,7 +473,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-error.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('nap list golden at 375 2x', (tester) async {
     await mount(tester, width: 375, scale: 2);
@@ -482,5 +482,5 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/naps-large-text.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

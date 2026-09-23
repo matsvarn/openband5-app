@@ -602,5 +602,5 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/temperature-error-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

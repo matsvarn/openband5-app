@@ -311,7 +311,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('7 and 90 ranges keep the stored 16 and actual counts', (
     tester,
@@ -355,7 +355,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-missing-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing compact card stays a dash', (tester) async {
     repo.seedNightScalarDetail(
@@ -405,7 +405,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/resp-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('pending withholds 16; failed is not a successful calculation', (
     tester,
@@ -490,7 +490,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(heroText('16,0'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('info says Atemfrequenz and only stored RSA fields', (
     tester,

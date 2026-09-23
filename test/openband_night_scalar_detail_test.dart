@@ -224,7 +224,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('rhr complete shows value, comparison and baseline', (
     tester,
@@ -240,7 +240,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/rhr.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('rhr footer keeps value and unit on one line at 375 and 393', (
     tester,
@@ -331,7 +331,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-seven-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'selected-missing withholds the hero and keeps 14 earlier nights',
@@ -348,6 +348,7 @@ void main() {
         matchesGoldenFile('openband_goldens/hrv-missing.png'),
       );
     },
+    tags: const ['golden'],
   );
 
   testWidgets('full-missing shows zero history and no invented bars', (
@@ -374,7 +375,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-full-missing-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial night is labeled, not compared away', (tester) async {
     repo.scenario = SyntheticScenario.partial;
@@ -406,7 +407,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-pending.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('failed withholds and info shows last stored plus sleep action', (
     tester,
@@ -426,7 +427,6 @@ void main() {
     await tester.tap(find.text('Schlaf ansehen'));
     await tester.pumpAndSettle();
     expect(find.byType(SleepEditor), findsOneWidget);
-    expect(find.text('SCHLAFZEITEN ÄNDERN'), findsOneWidget);
     expect(find.byType(OpenBandNightSignals), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -539,7 +539,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-provisional.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('stale baseline shows the scalar without a delta', (
     tester,
@@ -561,7 +561,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-stale.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unknown receipt is Auswertung offen and locks night signals', (
     tester,
@@ -1035,7 +1035,7 @@ void main() {
     expect(find.textContaining('Basis 40'), findsOneWidget);
     expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'independent 7 then 30 then 7 responses cannot paint stale data',
@@ -1178,7 +1178,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-large-lower.png'),
     );
-  });
+  }, tags: const ['golden']);
 }
 
 int get _onsetStamp => DateTime(2026, 9, 14, 23, 10).millisecondsSinceEpoch;

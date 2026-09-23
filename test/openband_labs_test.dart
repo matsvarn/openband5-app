@@ -486,7 +486,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-editor-keyboard.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark list, detail, editor', (tester) async {
     await mountLabs(tester, brightness: Brightness.dark);
@@ -506,7 +506,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-editor-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('save failure keeps the draft', (tester) async {
     await mountLabs(tester);
@@ -538,7 +538,7 @@ void main() {
           .value,
       53,
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty labs', (tester) async {
     for (final r in List.of((await repo.readLabs()).results)) {
@@ -556,7 +556,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-empty.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('Paper list has no row dividers; hero date sits in the card', (
     tester,
@@ -618,7 +618,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-bounds-missing.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('custom marker editor', (tester) async {
     await mountLabs(tester);
@@ -643,7 +643,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-custom-marker.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark custom marker editor', (tester) async {
     await mountLabs(tester, brightness: Brightness.dark);
@@ -662,7 +662,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-custom-marker-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('custom marker preflight read failure keeps the draft', (
     tester,
@@ -783,7 +783,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-editor-large.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('busy save does not double-write', (tester) async {
     await mountLabs(tester);

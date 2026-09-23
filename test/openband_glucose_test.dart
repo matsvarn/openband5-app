@@ -312,7 +312,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('source and history goldens, info copy, toggle and back', (
     tester,
@@ -408,7 +408,7 @@ void main() {
       ),
       findsOneWidget,
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('source and history dark goldens', (tester) async {
     await mount(tester, brightness: Brightness.dark, height: 1400);
@@ -426,7 +426,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-history-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty goldens', (tester) async {
     repo.clearGlucoseReadings();
@@ -443,7 +443,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('failed-read goldens retain the hero', (tester) async {
     repo.failGlucoseImport = true;
@@ -472,7 +472,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-error-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial goldens', (tester) async {
     final partial = _GlucoseRepo()
@@ -506,7 +506,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('excluded goldens keep time, source and history', (tester) async {
     await repo.setGlucoseSourceIncluded(
@@ -529,7 +529,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-excluded-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x source and main goldens', (tester) async {
     await mount(tester, width: 375, scale: 2, height: 1600);
@@ -548,7 +548,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/glucose-source-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('store-read error is retryable and never empty', (tester) async {
     repo.failGlucoseReads = true;
@@ -569,7 +569,7 @@ void main() {
     await tester.tap(find.text('Erneut'));
     await tester.pumpAndSettle();
     expect(find.text('5,2'), findsWidgets);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('failed read keeps retained rows', (tester) async {
     repo.failGlucoseImport = true;
@@ -1130,7 +1130,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('QUELLE'), findsWidgets);
     expect(find.textContaining(_longSource.sourceName), findsWidgets);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x tiny finite value stays nonzero across hero and history', (
     tester,

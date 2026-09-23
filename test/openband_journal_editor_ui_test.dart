@@ -156,7 +156,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-editor-empty.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('existing values, tags and note, dirty patch keeps siblings', (
     tester,
@@ -214,7 +214,7 @@ void main() {
     expect(snap.metrics['caffeine_mg']!.atMinuteOfDay, 630);
     expect(snap.note, 'Später Spaziergang.');
     expect(snap.tags, ['Spaziergang']);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('value blank clears; time stays until edited', (tester) async {
     repo.seedJournalEditor(filled: true);
@@ -504,7 +504,7 @@ void main() {
     await tester.tap(find.text('Weiter bearbeiten'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandJournalEditor), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('load error retries; save busy does not double-write', (
     tester,
@@ -540,7 +540,7 @@ void main() {
     gate.complete();
     await tester.pumpAndSettle();
     expect((await repo.readJournalDay('2026-09-15')).metrics['mood']!.value, 1);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark editor', (tester) async {
     repo.seedJournalEditor(filled: true, withCustom: true);
@@ -550,7 +550,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-editor-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('2x text still has 44pt targets', (tester) async {
     repo.seedJournalEditor(filled: true);
@@ -600,7 +600,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-editor-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('tags store English identities; unknown custom text kept', (
     tester,
@@ -694,7 +694,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/journal-tags.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark tags sheet', (tester) async {
     repo.seedJournalEditor(filled: true);
@@ -707,7 +707,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/journal-tags-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('tags wrap at 320 and 2x; long labels wrap; apply reachable', (
     tester,
@@ -856,7 +856,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-tags-large.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('dark 2x tags row stacks', (tester) async {
     await seedTags(['Spaziergang', 'Yoga']);
@@ -868,7 +868,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/journal-tags-large-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('320 2x long tags wrap inside the card', (tester) async {
     const tags = [
@@ -1326,7 +1326,7 @@ void main() {
       find.byKey(const ValueKey('journal-value-sheet')),
       matchesGoldenFile('openband_goldens/journal-value-sheet-3q5h.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('hasTime value fields stack at 2x without clipping', (
     tester,
@@ -1357,7 +1357,7 @@ void main() {
       find.byKey(const ValueKey('journal-value-sheet')),
       matchesGoldenFile('openband_goldens/journal-value-sheet-3q5h-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets(
     'public value sheet keeps header and apply inside 375 2x keyboard',

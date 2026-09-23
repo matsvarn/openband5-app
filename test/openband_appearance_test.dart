@@ -283,7 +283,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/appearance-large.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('English labels and selected semantics', (tester) async {
     await pumpView(

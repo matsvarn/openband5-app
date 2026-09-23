@@ -22,6 +22,25 @@ DateTime recordedTime(DateTime instant, String? zone) {
       : tz.TZDateTime.from(instant, location);
 }
 
+/// The instant of a civil time in [zone] — e.g. the zone a fixture declares
+/// (`"timezone": "Europe/Berlin"`). Anchoring fixture times this way keeps
+/// them identical on every host; a bare `DateTime(y, m, d, h, min)` is
+/// host-local and moves with the runner's zone. An unknown or absent zone
+/// falls back to host-local construction.
+DateTime recordedDateTime(
+  String? zone,
+  int year, [
+  int month = 1,
+  int day = 1,
+  int hour = 0,
+  int minute = 0,
+]) {
+  final location = _location(zone);
+  return location == null
+      ? DateTime(year, month, day, hour, minute)
+      : tz.TZDateTime(location, year, month, day, hour, minute);
+}
+
 /// Refuses nonexistent spring-forward times. For an ambiguous autumn time,
 /// retains the previous endpoint's offset only if that offset identifies it.
 DateTime? parseRecordedTime(

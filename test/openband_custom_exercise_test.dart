@@ -667,7 +667,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: filled light/dark', (tester) async {
     await pumpEditor(tester, repo: _Repo());
@@ -696,7 +696,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: error light/dark', (tester) async {
     await pumpEditor(tester, repo: _Repo(failCreate: true));
@@ -721,7 +721,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-error-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: count light/dark and 375-2x', (tester) async {
     await pumpEditor(tester, repo: _Repo());
@@ -750,7 +750,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: saved library light/dark', (tester) async {
     final repo = _Repo();
@@ -786,7 +786,7 @@ void main() {
       find.byType(OpenBandExercisePicker),
       matchesGoldenFile('openband_goldens/custom-exercise-library-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: hidden created notice light/dark/2x', (tester) async {
     Future<void> hideCreated({
@@ -834,7 +834,7 @@ void main() {
       find.byType(OpenBandExercisePicker),
       matchesGoldenFile('openband_goldens/custom-exercise-hidden-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   test(
     'count parser rejects fraction, sign and non-digits without stripping',
@@ -1202,7 +1202,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/custom-exercise-time-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   ExerciseCatalogueEntry completeCopySource({
     String id = 'custom-curl',
@@ -1636,7 +1636,7 @@ void main() {
       find.byType(OpenBandExerciseDefinitionEditor),
       matchesGoldenFile('openband_goldens/exercise-copy-375-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('goldens: copy library query Curl unselected', (tester) async {
     final library = _Repo(
@@ -1688,5 +1688,5 @@ void main() {
       find.byType(OpenBandExercisePicker),
       matchesGoldenFile('openband_goldens/exercise-copy-library-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

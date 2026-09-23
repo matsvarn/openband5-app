@@ -65,6 +65,12 @@ Widget _frame(Widget child, Brightness b, double scale) => MediaQuery(
 /// harness's block glyphs. A golden nobody can read is a golden nobody
 /// reviews, and an unreviewed golden gets `--update-goldens`-ed over the top
 /// of the bug it was supposed to catch.
+///
+/// The gallery mixes design systems: ui2 cases resolve `.SF Pro Text`→Manrope
+/// while the `alpin()` OpenBand cases set `AlpFont` (Inter / Inter Tight) and
+/// Lucide icons. Without those faces the overflow sweep measures the harness's
+/// fallback blocks and reports overflows the real fonts don't have (the
+/// `day_energy_floor`/`meal_row` 3.0x failures on Linux CI).
 Future<void> _loadType() async {
   final files = Directory('assets/fonts/Manrope')
       .listSync()
@@ -83,6 +89,22 @@ Future<void> _loadType() async {
     }
     await loader.load();
   }
+  await (FontLoader('Inter')
+        ..addFont(Future.value(ByteData.sublistView(
+          File('assets/fonts/Inter/Inter.ttf').readAsBytesSync(),
+        ))))
+      .load();
+  await (FontLoader('Inter Tight')
+        ..addFont(Future.value(ByteData.sublistView(
+          File('assets/fonts/InterTight/InterTight[wght].ttf')
+              .readAsBytesSync(),
+        ))))
+      .load();
+  await (FontLoader('packages/lucide_icons_flutter/Lucide')
+        ..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        ))
+      .load();
 }
 
 /// The golden PNGs are NOT in the repo. They are machine-specific — two Flutter
@@ -129,7 +151,7 @@ void main() {
               find.byKey(_shot),
               matchesGoldenFile('goldens/${name}_${theme}_$tag.png'),
             );
-          });
+          }, tags: const ['golden']);
         });
       }, skip: _noGoldens);
     }

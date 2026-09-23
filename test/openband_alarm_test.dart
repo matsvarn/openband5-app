@@ -901,7 +901,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-off-pending.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden off-pending dark', (tester) async {
     await mount(
@@ -919,7 +919,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-off-pending-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden off-pending offline', (tester) async {
     await mount(
@@ -941,7 +941,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-off-offline.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden off-pending retry error', (tester) async {
     await mount(
@@ -961,7 +961,7 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/alarm-off-retry-error.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden ready stored seconds', (tester) async {
     await mount(
@@ -986,7 +986,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-ready.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden ready stored seconds dark', (tester) async {
     await mount(
@@ -1006,7 +1006,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-ready-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden all slots inactive', (tester) async {
     await mount(
@@ -1023,7 +1023,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-slots-inactive.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('golden all slots inactive dark', (tester) async {
     await mount(
@@ -1041,7 +1041,7 @@ void main() {
       find.byKey(const ValueKey('alarm-capture')),
       matchesGoldenFile('openband_goldens/alarm-slots-inactive-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('mini 375 2x Paper states do not overflow', (tester) async {
     for (final state in [

@@ -271,7 +271,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/macro-375.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unrounded actual drives the fill, not the painted label', (
     tester,
@@ -323,7 +323,7 @@ void main() {
     await mount(tester, meals, targets: const NutritionTargetValues());
     expect(find.text('Kein Ziel'), findsOneWidget);
     expect(find.byKey(const ValueKey('macro-energy-track')), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('macro-specific target hides only that track', (tester) async {
     final meals = await repo.readMeals('2026-09-15');
@@ -368,7 +368,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/macro-missing.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('actual zero is 0, distinct from null', (tester) async {
     final zero = mealsOf(const [
@@ -560,7 +560,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/macro-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('2x stacks full Kohlenhydrate rows', (tester) async {
     final meals = await repo.readMeals('2026-09-15');
@@ -601,7 +601,7 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/macro-2x.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('320 and long values wrap without clipping or shrinking', (
     tester,
@@ -697,7 +697,7 @@ void main() {
     expect(protein.left, greaterThanOrEqualTo(card.left + 13.5));
     final overflows = tester.binding.takeException();
     expect(overflows, isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x and decimal targets stay unclipped', (tester) async {
     final meals = await repo.readMeals('2026-09-15');
@@ -790,7 +790,7 @@ void main() {
     expect(protein.left, greaterThanOrEqualTo(card.left + 13.5));
     expect(find.byType(FittedBox), findsNothing);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('legacy null targets stay unset, unavailable is distinct', (
     tester,
@@ -852,5 +852,5 @@ void main() {
     expect(find.byKey(const ValueKey('macro-protein-track')), findsNothing);
     expect(find.byKey(const ValueKey('macro-fat-fill')), findsNothing);
     expect(find.byKey(const ValueKey('macro-protein-fill')), findsNothing);
-  });
+  }, tags: const ['golden']);
 }

@@ -214,21 +214,19 @@ class ColmiLink {
       nowSeconds: now,
     );
     _host = host;
+    link.onWrite = (writeIndex, value) {
+      for (final f in reply(writeIndex, value)) {
+        link.feed(kColmiNotifyChar, f, atSec: now());
+      }
+    };
     var finished = false;
     final done = host.run(link).whenComplete(() => finished = true);
-    var served = 0;
     // Each of the (up to) 29 commands genuinely waits out `quietTimeout` of
     // REAL wall-clock time before its collection ends, so — unlike Oura's
-    // handful of writes — this spin has to actually let that much real time
+    // handful of writes — this wait has to actually let that much real time
     // pass rather than just yield microtasks.
     for (var spin = 0; spin < 4000 && !finished; spin++) {
       await Future<void>.delayed(const Duration(milliseconds: 5));
-      while (served < link.writes.length) {
-        for (final f in reply(served, link.writes[served].$2)) {
-          link.feed(kColmiNotifyChar, f, atSec: now());
-        }
-        served++;
-      }
     }
     await link.close();
     await done.timeout(const Duration(seconds: 5), onTimeout: () {});

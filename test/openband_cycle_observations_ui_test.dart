@@ -270,7 +270,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-observations-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('picker lists 7-day groups and week 5 is separate', (
     tester,
@@ -303,7 +303,7 @@ void main() {
     expect(find.text('1 von 1'), findsOneWidget);
     expect(find.text('Krämpfe'), findsNothing);
     expect(find.text('Keine Einträge für diese Zyklustage'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('empty week is selectable and is not no-symptoms', (
     tester,
@@ -332,7 +332,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-observations-empty-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unknown tag stays visible and long labels wrap', (tester) async {
     repo.seedCycleObservation(
@@ -381,7 +381,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-observations-partial-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read exception is retryable', (tester) async {
     repo.failCycleRead = true;
@@ -401,7 +401,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('8 Tage mit Beobachtungen'), findsOneWidget);
     expect(find.text('Daten nicht geladen'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('insufficient, disabled settings return, and unreadable', (
     tester,
@@ -468,7 +468,7 @@ void main() {
       capture(),
       matchesGoldenFile('openband_goldens/cycle-observations-unreadable.png'),
     );
-  });
+  }, tags: const ['golden']);
 
   testWidgets('stale loads do not paint old counts', (tester) async {
     final first = Completer<void>();
@@ -670,7 +670,7 @@ void main() {
     await tester.tap(find.text('Schließen'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('journal-info-body')), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('375 2x and 320w scroll without overflow', (tester) async {
     await mount(tester, scale: 2, width: 375, height: 812);
@@ -714,7 +714,7 @@ void main() {
     expect(find.text('8 Tage mit Beobachtungen'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Synthetische Daten'), 200);
     expect(tester.takeException(), isNull);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('count rows are not buttons', (tester) async {
     final handle = tester.ensureSemantics();

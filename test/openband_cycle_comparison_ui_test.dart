@@ -290,7 +290,7 @@ void main() {
     await expectGolden(tester, 'cycle-comparison.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-comparison-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('missing latest omits the reference block', (tester) async {
     repo.clearCycleNightSources();
@@ -303,7 +303,7 @@ void main() {
     await expectGolden(tester, 'cycle-comparison-empty.png');
     await mount(tester, brightness: Brightness.dark);
     await expectGolden(tester, 'cycle-comparison-empty-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unavailable stored metric is not presented as no readings', (
     tester,
@@ -366,7 +366,7 @@ void main() {
     expect(find.text('—'), findsNWidgets(4));
     expect(find.text('Gegenüber dem Mittelwert'), findsNWidgets(2));
     await expectGolden(tester, 'cycle-comparison-thin.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('no starts keep latest and prior-21', (tester) async {
     repo.clearCycleLogs();
@@ -382,7 +382,7 @@ void main() {
     expect(find.text('Nacht · Tag 22'), findsNothing);
     expect(find.text('Nacht'), findsNWidgets(2));
     await expectGolden(tester, 'cycle-comparison-no-start.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unreadable starts keep latest and prior-21', (tester) async {
     repo.clearCycleLogs();
@@ -393,7 +393,7 @@ void main() {
     expect(find.text('Beginn nicht lesbar'), findsNWidgets(2));
     expect(find.text('Nacht · Tag 23'), findsNothing);
     await expectGolden(tester, 'cycle-comparison-unreadable.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('long period keeps latest and prior-21', (tester) async {
     repo.clearCycleLogs();
@@ -407,7 +407,7 @@ void main() {
     expect(find.text('Nacht'), findsNWidgets(2));
     expect(find.textContaining('Nacht · Tag'), findsNothing);
     await expectGolden(tester, 'cycle-comparison-long.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('one missing metric keeps the other', (tester) async {
     repo.seedCycleComparisonFixture(includeHrv: false);
@@ -418,7 +418,7 @@ void main() {
     expect(find.text('51'), findsNothing);
     expect(find.text('Gegenüber dem Mittelwert'), findsOneWidget);
     await expectGolden(tester, 'cycle-comparison-one-metric.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('partial notice keeps cards', (tester) async {
     repo.seedCycleNightSource(_night('2026-08-29', unreadable: true));
@@ -450,7 +450,7 @@ void main() {
       findsOneWidget,
     );
     await expectGolden(tester, 'cycle-comparison-partial-info-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('unreadable-only night is not presented as no readings', (
     tester,
@@ -483,7 +483,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ruhepuls · Quellen'), findsNothing);
     await expectGolden(tester, 'cycle-comparison-unavailable-info-dark.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('read exception keeps window and retries', (tester) async {
     repo.failCycleComparisonRead = true;
@@ -500,7 +500,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('56'), findsOneWidget);
     expect(find.text('Daten nicht geladen'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('disabled opens settings and rereads on return', (tester) async {
     repo.cycleSettings = const CycleSettings(
@@ -529,7 +529,7 @@ void main() {
     hold.complete();
     await tester.pumpAndSettle();
     expect(find.text('56'), findsOneWidget);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('end date picker cancel and confirm keep the root day', (
     tester,
@@ -586,7 +586,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('15. Sept. 2026'), findsNothing);
-  });
+  }, tags: const ['golden']);
 
   testWidgets('earlier empty years are missing nights not missing starts', (
     tester,
@@ -694,7 +694,7 @@ void main() {
     expect(find.text('Ruhepuls · Quellen'), findsOneWidget);
     expect(find.text('HRV · Quellen'), findsOneWidget);
     await expectGolden(tester, 'cycle-comparison-info.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('source actions close method then open metric sheet', (
     tester,
@@ -753,7 +753,7 @@ void main() {
       findsOneWidget,
     );
     await expectGolden(tester, 'cycle-comparison-hrv-sources.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('long-period latest omits Tag in source', (tester) async {
     repo.clearCycleLogs();
@@ -992,7 +992,7 @@ void main() {
       scrollable: list.first,
     );
     await expectGolden(tester, 'cycle-comparison-large-bottom.png');
-  });
+  }, tags: const ['golden']);
 
   testWidgets('year-1 end does not crash the window', (tester) async {
     await mount(tester, day: '0001-01-15');

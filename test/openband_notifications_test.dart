@@ -1747,5 +1747,5 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('openband_goldens/notifications-choice-dark.png'),
     );
-  });
+  }, tags: const ['golden']);
 }

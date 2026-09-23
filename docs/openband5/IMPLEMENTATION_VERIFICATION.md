@@ -1,5 +1,15 @@
 # OpenBand 5 implementation evidence
 
+## 24 September 2026 · G2 and test-lane integration
+
+The G2 design branch was integrated with the test-lane branch in an isolated worktree. The merge kept the G2 navigation and screen contracts, marked golden-bearing tests for the macOS visual lane, and resolved four golden images whose only inspected change was the displayed algorithm revision from 96 to 97. The design manifest validates at 59 blocks and 38 screens. Protocol and analytics package pins still match `pubspec.lock`; the pin check could not establish whether the remote package branches had advanced.
+
+Local verification passed: `flutter analyze --no-pub`; the complete behavioral lane with 5,850 passed, 22 skipped and 0 failed; the complete strict macOS golden lane with 316 passed, 408 skipped and 0 failed; and an audit of golden-bearing widget tests with no untagged cases. The behavioral run found three stale G2 test expectations, which were corrected and passed in the complete rerun. The native iPhone 15 Pro simulator completed the release flow (53 screenshots), Nickerchen (12) and Heute Nacht (23), including light and dark states. Sampled captures showed no visible clipping. PR #3's exact test-lane head separately passed hosted Ubuntu CI with 6,146 passed, 430 skipped and 0 failed. That hosted result does not by itself verify the integrated G2 head.
+
+The integrated source built as a signed physical iPhone release, `dev.matsvarn.openband5` version `0.9.31+67`; `codesign --verify --deep --strict` passed. It was installed in place and launched on the paired iPhone. Direct portrait captures of Heute and pushed Schlaf showed the real 5h47 sleep value, the LED-style night strip and an empty Erholung state labelled `— kein Wert`, without visible clipping. Personal screenshots remain under `OpenBand5Lab/ui-review-phone/20260924-g2-integrated/`, outside Git.
+
+WAL-aware database pulls before and after installation both passed SQLite integrity checks and retained schema 67. All pre-install primary keys remained present: `decoded_onehz` 681,446 → 682,532, `raw_blob` 2,803 → 2,826, and `day_result` 75 → 75. This proves retention and short post-launch storage for this update. It does not establish sustained Bluetooth sync, controlled interruption recovery, battery impact, physiological validity or full pixel parity with Paper. No firmware command was sent.
+
 ## 23 September 2026 · G2 release on the physical iPhone
 
 The G2 `openband5/g2-design` source through `0bfa61a0` built as the signed release app `dev.matsvarn.openband5` version `0.9.31+67`. `codesign --verify --deep --strict` passed. `devicectl` installed it over the existing app, launched it, and reported the same bundle and version afterward. Schema remains 67 and `kAlgoVersion` is 97. Protocol and analytics pins match `pubspec.lock`; the pin check could not verify whether either remote main had advanced.
