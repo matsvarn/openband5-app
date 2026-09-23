@@ -219,8 +219,8 @@ class PairingView extends StatelessWidget {
     final stateDetail = phase == PairPhase.idle
         ? _s(
             c,
-            'Band nah ans iPhone halten.',
-            'Hold the band close to the phone.',
+            'Noch nicht verbunden. Band nah ans iPhone halten.',
+            'Not connected yet. Hold the band close to the phone.',
           )
         : blocked == null
         ? _body(c, phase, blocker)
@@ -249,14 +249,36 @@ class PairingView extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                 children: [
+                  if (onSkip != null) ...[
+                    Row(
+                      children: [
+                        for (var i = 0; i < 3; i++) ...[
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: i == 0
+                                    ? p.ink
+                                    : p.muted.withValues(alpha: .24),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                          if (i < 2) const SizedBox(width: 6),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                  ],
                   OBCard(
                     child: Column(
                       children: [
                         Container(
-                          height: 120,
+                          height: 126,
                           decoration: BoxDecoration(
                             color: p.well,
                             borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: p.line),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -265,8 +287,9 @@ class PairingView extends StatelessWidget {
                               const SizedBox(width: 16),
                               _PairLink(
                                 activeBars: switch (phase) {
-                                  PairPhase.paired => 3,
-                                  PairPhase.idle || PairPhase.scanning => 2,
+                                  PairPhase.paired => 4,
+                                  PairPhase.scanning => 2,
+                                  PairPhase.idle => 1,
                                   _ => 0,
                                 },
                               ),
@@ -275,35 +298,31 @@ class PairingView extends StatelessWidget {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: p.sleepTint,
-                                borderRadius: BorderRadius.circular(12),
+                            if (busy)
+                              SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  color: p.ink,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            else
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(top: 6),
+                                decoration: BoxDecoration(
+                                  color: phase == PairPhase.paired
+                                      ? p.led
+                                      : p.muted,
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                              child: busy
-                                  ? Padding(
-                                      padding: const EdgeInsets.all(9),
-                                      child: CircularProgressIndicator(
-                                        color: p.sleep,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      blocked == null
-                                          ? phase == PairPhase.paired
-                                                ? LucideIcons.circleCheck
-                                                : LucideIcons.bluetooth
-                                          : LucideIcons.bluetoothOff,
-                                      size: 18,
-                                      color: p.sleep,
-                                    ),
-                            ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
@@ -558,13 +577,21 @@ class _PairDeviceIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     return Container(
-      width: 64,
-      height: 64,
+      width: 76,
+      height: 76,
       decoration: BoxDecoration(
         color: p.card,
-        borderRadius: BorderRadius.circular(20),
+        shape: BoxShape.circle,
+        border: Border.all(color: p.line),
+        boxShadow: [
+          BoxShadow(
+            color: p.ink.withValues(alpha: .08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Icon(icon, size: 28, color: p.ink),
+      child: Icon(icon, size: 26, color: p.ink),
     );
   }
 }
@@ -578,16 +605,16 @@ class _PairLink extends StatelessWidget {
     final p = OB.of(context);
     return Row(
       children: [
-        for (var i = 0; i < 3; i++) ...[
+        for (var i = 0; i < 4; i++) ...[
           Container(
-            width: 10,
-            height: 3,
+            width: 6,
+            height: 6,
             decoration: BoxDecoration(
               color: i < activeBars ? p.action : p.line,
-              borderRadius: BorderRadius.circular(2),
+              shape: BoxShape.circle,
             ),
           ),
-          if (i < 2) const SizedBox(width: 4),
+          if (i < 3) const SizedBox(width: 10),
         ],
       ],
     );
@@ -614,17 +641,16 @@ class _PairStep extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 20,
-            child: Text(
-              number,
-              style: p.text(
-                15,
-                weight: FontWeight.w700,
-                display: true,
-                color: p.muted,
-              ),
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: p.well,
+              shape: BoxShape.circle,
+              border: Border.all(color: p.line),
             ),
+            child: Text(number, style: p.text(13, weight: FontWeight.w700)),
           ),
           const SizedBox(width: 12),
           Expanded(

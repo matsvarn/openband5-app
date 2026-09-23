@@ -587,7 +587,7 @@
         "3IBJ-0",
         "56BD-0"
       ],
-      "notes": "Canonical setup hero:120-point illustration well,64-point device slots,36-point state icon and concise phase-specific status. Typed permission/recovery states preserve their actual cause.",
+      "notes": "G2 setup hero:126-point inset illustration well,76-point raised device circles, four link dots, concise phase-specific status and three-step progress strip. Typed permission/recovery states preserve their actual cause.",
       "variantPaperNodes": {
         "permission": "56FJ-0",
         "permissionDark": "56G9-0"
@@ -767,7 +767,7 @@
         "read-error",
         "dark"
       ],
-      "notes": "Three independent source facts: connection, stored frontier and current-local-day evaluation. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
+      "notes": "Three independent source facts: connection, receiving state or stored frontier, and current-local-day evaluation. Receiving adds a raised stored-frontier card; no oldest timestamp or total transfer range is available, so no positioned progress is drawn. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
     },
     {
       "name": "OBConfirmSheet",

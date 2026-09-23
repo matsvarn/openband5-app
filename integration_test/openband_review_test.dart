@@ -20701,6 +20701,44 @@ void main() {
         await tester.pumpAndSettle();
         expect(doneCalls, 3);
 
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          final suffix = brightness == Brightness.light ? 'light' : 'dark';
+          await mountBandView(
+            FirstSyncView(
+              synthetic: true,
+              now: DateTime(2026, 9, 15, 9, 41),
+              onDone: () {},
+              band: BandSnapshot(
+                connection: BandConnection.connected,
+                transfer: TransferState.receiving,
+                latestStoredAt: DateTime(2026, 9, 15, 6, 54),
+              ),
+            ),
+            brightness: brightness,
+          );
+          expect(find.text('bis 06:54'), findsOneWidget);
+          await capture('release-sync-receiving-$suffix');
+        }
+        await mountBandView(
+          FirstSyncView(
+            synthetic: true,
+            now: DateTime(2026, 9, 15, 9, 41),
+            onDone: () {},
+            band: BandSnapshot(
+              connection: BandConnection.connected,
+              transfer: TransferState.receiving,
+              latestStoredAt: DateTime(2026, 9, 15, 6, 54),
+            ),
+          ),
+          scale: 2,
+        );
+        await capture('release-sync-receiving-large');
+        await tester.scrollUntilVisible(
+          find.textContaining('Erst gespeichert'), 200,
+          scrollable: verticalScrollable().last,
+        );
+        await capture('release-sync-receiving-large-bottom');
+
         final sensorQuery = TextEditingController();
         var scanCalls = 0;
         BleBlocker? scanBlocker = BleBlocker.permissionDenied;
