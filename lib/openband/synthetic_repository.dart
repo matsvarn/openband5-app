@@ -3723,7 +3723,12 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     return OpenBandDay(
       day: _day,
       sleep: sleep,
-      recovery: DayMetric((recovery['score'] as num).toDouble()),
+      // Paper: Erholung Basis 58–70 · Ø 64, trusted.
+      recovery: DayMetric(
+        (recovery['score'] as num).toDouble(),
+        baseline: 64,
+        baselineSpread: 6 / 1.253,
+      ),
       strain: DayMetric((_summary['day_strain'] as num).toDouble()),
       hrv: DayMetric((recovery['hrv_ms'] as num).toDouble()),
       restingHr: DayMetric((recovery['rhr_bpm'] as num).toDouble()),

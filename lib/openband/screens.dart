@@ -776,6 +776,13 @@ class _RingTrioState extends State<_RingTrio> {
             ? null
             : snap.data?.targetMinutes?.toDouble();
         final sleepGoal = _sleepGoalDelta(day.sleep.duration.value, goal);
+        final recoveryVerdict = dayMetricVerdict(
+          MetricKey.recovery,
+          day.recovery,
+        );
+        final recoveryDelta = recoveryVerdict == null
+            ? null
+            : _signed((day.recovery.value! - day.recovery.baseline!).round());
         Widget trio(double progress) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -783,12 +790,17 @@ class _RingTrioState extends State<_RingTrio> {
               label: 'Erholung',
               value: obNumber(day.recovery.value),
               unit: day.recovery.value == null ? 'kein Wert' : 'von 100',
+              delta: recoveryDelta,
+              deltaColor: obVerdictText(p, recoveryVerdict),
+              deltaSpoken: 'zur Basis',
               valueColor: day.recovery.value == null ? p.gap : p.ink,
               scale: OBScale(
                 min: 0,
                 max: 100,
                 value: _grow(day.recovery.value, progress),
                 fill: p.ink,
+                mark: obVerdictMark(p, recoveryVerdict),
+                markEdge: obVerdictText(p, recoveryVerdict),
                 labels: ('0', '50', '100'),
               ),
               onTap: () => OpenBandMetricDetail.push(
@@ -812,6 +824,7 @@ class _RingTrioState extends State<_RingTrio> {
               unit: _sleepDelta(day.sleep.duration),
               delta: sleepGoal.text,
               deltaColor: obVerdictText(p, sleepGoal.verdict),
+              deltaSpoken: 'zum Ziel',
               valueColor: day.sleep.duration.value == null ? p.gap : p.ink,
               scale: OBScale(
                 min: 0,
@@ -873,6 +886,8 @@ class _RingTrioState extends State<_RingTrio> {
   static double? _grow(double? v, double t) => v == null ? null : v * t;
 }
 
+String _signed(int d) => d == 0 ? '±0' : '${d > 0 ? '+' : '−'}${d.abs()}';
+
 /// Sleep against the goal: green once met; short of it the gap is stated
 /// muted — a short night is not an alarm. Nothing without both values.
 ({String? text, MetricVerdict? verdict}) _sleepGoalDelta(
@@ -895,8 +910,9 @@ class _Messleiste extends StatelessWidget {
   final String label, value;
   final String? unit;
 
-  /// Delta beside the label (Paper G2), coloured by verdict.
-  final String? delta;
+  /// Delta beside the label (Paper G2), coloured by verdict; [deltaSpoken]
+  /// names what it is measured against for VoiceOver.
+  final String? delta, deltaSpoken;
   final Color? deltaColor;
   final Color valueColor;
   final Widget scale;
@@ -906,6 +922,7 @@ class _Messleiste extends StatelessWidget {
     required this.value,
     required this.unit,
     this.delta,
+    this.deltaSpoken,
     this.deltaColor,
     required this.valueColor,
     required this.scale,
@@ -980,7 +997,7 @@ class _Messleiste extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          '$label, $value ${unit ?? ''}${delta == null ? '' : ', $delta zum Ziel'}',
+          '$label, $value ${unit ?? ''}${delta == null ? '' : ', $delta ${deltaSpoken ?? ''}'}',
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),

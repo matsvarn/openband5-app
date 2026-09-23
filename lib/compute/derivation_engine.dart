@@ -1672,7 +1672,13 @@ import 'substrate.dart';
 // values are untouched; the timestamp axis tightens, which can move which
 // beats a window boundary counts as inside — an input-semantics change to
 // rrTsMs, same class as v93's beat-clock fix.
-const int kAlgoVersion = 96;
+// 97 — Erholung baseline. `baselines.recovery` is the same Winsorized-EWMA
+// block as hrv/resting_hr/resp, folded over the headline readiness of prior
+// days (`readiness_history`, strictly before the day — a re-derive folds the
+// same history) with 0–100 bounds, spread floor 3, half-lives 14/21. Additive
+// key; every other output unchanged. The app compares Erholung against it
+// once it is trusted (14 valid days).
+const int kAlgoVersion = 97;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -4979,6 +4985,8 @@ class DerivationEngine {
     // mismatch that left z permanently null. The raw mean is stored every day so
     // this series fills and z starts computing once ≥3 days exist.
     m['skin_temp_adc_history'] = history.valuesBefore('skin_temp_adc', date);
+    // Headline readiness of prior days — the Erholung baseline's history.
+    m['readiness_history'] = history.valuesBefore('readiness', date);
     // The measured quiet-waking levels of prior days — the personal level
     // strain subtracts its baseline at (median; today's own median is the
     // bootstrap when this is empty). edge#226.

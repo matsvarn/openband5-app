@@ -333,7 +333,11 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                               ? FontWeight.w700
                               : FontWeight.w500,
                           color: metric.baseline != null && metric.value != null
-                              ? p.ink
+                              ? obVerdictText(
+                                      p,
+                                      dayMetricVerdict(widget.metricKey, metric),
+                                    ) ??
+                                    p.ink
                               : p.muted,
                         ),
                       ),
@@ -343,6 +347,14 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                         value: metric.value,
                         target: metric.baseline,
                         fill: strain ? p.strain : color,
+                        mark: obVerdictMark(
+                          p,
+                          dayMetricVerdict(widget.metricKey, metric),
+                        ),
+                        markEdge: obVerdictText(
+                          p,
+                          dayMetricVerdict(widget.metricKey, metric),
+                        ),
                         labels: (
                           '0',
                           metric.baseline == null
@@ -401,6 +413,10 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
                             color,
                             tint,
                             p.gap,
+                            newest: obVerdictMark(
+                              p,
+                              dayMetricVerdict(widget.metricKey, metric),
+                            ),
                           ),
                         ),
                       ),
@@ -534,13 +550,17 @@ class _NightBarsPainter extends CustomPainter {
   final List<MetricPoint>? points;
   final double? baseline;
   final Color color, tint, gap;
+
+  /// Verdict colour for the newest night's bar; null keeps [color].
+  final Color? newest;
   _NightBarsPainter(
     this.points,
     this.baseline,
     this.color,
     this.tint,
-    this.gap,
-  );
+    this.gap, {
+    this.newest,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -590,7 +610,7 @@ class _NightBarsPainter extends CustomPainter {
           Rect.fromLTRB(cx - 4, top, cx + 4, size.height),
           const Radius.circular(3),
         ),
-        Paint()..color = color,
+        Paint()..color = i == last ? newest ?? color : color,
       );
     }
   }
@@ -601,5 +621,6 @@ class _NightBarsPainter extends CustomPainter {
       old.baseline != baseline ||
       old.color != color ||
       old.tint != tint ||
-      old.gap != gap;
+      old.gap != gap ||
+      old.newest != newest;
 }

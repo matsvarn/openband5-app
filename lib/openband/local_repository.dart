@@ -386,6 +386,18 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
 
+    // Erholung compares only against a trusted stored baseline (algo 97+);
+    // older rows simply have none.
+    final storedRecovery = nightScalarBaseline(
+      value: _numAt(payload, 'baselines.recovery.baseline'),
+      spread: _numAt(payload, 'baselines.recovery.spread'),
+      status: _stringAt(payload, 'baselines.recovery.status'),
+    );
+    final recoveryBaseline =
+        nightScalarStatus(storedRecovery?.status) == kNightScalarTrustedBaseline
+        ? storedRecovery
+        : null;
+
     // Legacy day readers stay outside the snapshot. Cards already have SQL
     // rmssd/rhr from the selected row; getDayHrv/getDayHeart envelopes are
     // a different source and are not consulted for those scalars.
@@ -463,6 +475,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
       ),
       recovery: _metric(
         heart['recovery'],
+        baseline: recoveryBaseline?.value,
+        baselineSpread: recoveryBaseline?.spread,
         reason:
             _stringAt(payload, 'clinical.readiness_composite.note') ??
             _nestedReason(heart, 'recovery'),
@@ -2899,6 +2913,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Object? raw, {
     String? reason,
     double? baseline,
+    double? baselineSpread,
     required bool processing,
     bool partial = false,
   }) {
@@ -2907,6 +2922,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return DayMetric(
         value,
         baseline: baseline,
+        baselineSpread: baseline == null ? null : baselineSpread,
         readiness: partial
             ? MetricReadiness.partial
             : MetricReadiness.available,

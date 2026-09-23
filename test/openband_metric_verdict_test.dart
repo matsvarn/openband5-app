@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/night_scalar_data.dart';
 
 void main() {
   // Normal range = baseline ± 1.253 × spread; spread 4/1.253 gives 36–44.
@@ -27,6 +26,12 @@ void main() {
     );
   });
 
+  test('Erholung is better above its range', () {
+    expect(metricVerdict(MetricKey.recovery, 74, 64, 6 / 1.253), MetricVerdict.better);
+    expect(metricVerdict(MetricKey.recovery, 38, 64, 6 / 1.253), MetricVerdict.worse);
+    expect(metricVerdict(MetricKey.recovery, 66, 64, 6 / 1.253), MetricVerdict.normal);
+  });
+
   test('breathing rate has no good side', () {
     expect(
       metricVerdict(MetricKey.respiration, 48, 40, spread),
@@ -42,7 +47,7 @@ void main() {
     expect(metricVerdict(MetricKey.hrv, 48, 40, null), isNull);
     expect(metricVerdict(MetricKey.hrv, 48, null, spread), isNull);
     expect(metricVerdict(MetricKey.hrv, null, 40, spread), isNull);
-    expect(metricVerdict(MetricKey.recovery, 80, 60, spread), isNull);
+    expect(metricVerdict(MetricKey.strain, 15, 10, spread), isNull);
   });
 
   test('card verdict needs a current trusted comparison', () {

@@ -85,8 +85,8 @@ enum MetricVerdict { normal, better, worse }
 
 /// Verdict for [value] against a stored [baseline] and its [spread], using
 /// the analytics' normal range (|robust z| <= 1). Null when anything is
-/// missing — no range, no verdict. HRV is better above the range, resting
-/// pulse below it; for breathing rate any departure is worse.
+/// missing — no range, no verdict. HRV and Erholung are better above the
+/// range, resting pulse below it; for breathing rate any departure is worse.
 MetricVerdict? metricVerdict(
   MetricKey key,
   double? value,
@@ -99,6 +99,7 @@ MetricVerdict? metricVerdict(
   // true: higher is better; false: lower is better; null: either way worse.
   const direction = <MetricKey, bool?>{
     MetricKey.hrv: true,
+    MetricKey.recovery: true,
     MetricKey.restingHr: false,
     MetricKey.respiration: null,
   };
