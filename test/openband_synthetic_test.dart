@@ -237,4 +237,32 @@ void main() {
       );
     },
   );
+
+  // Fixture wall-clock times are anchored to the fixture's declared zone, not
+  // the host's — `TZDateTime` carries Berlin civil fields and the elapsed
+  // window length is the same on every host. Europe/Berlin 2026 springs
+  // forward 2026-03-29 (02:00→03:00) and falls back 2026-10-25 (03:00→02:00),
+  // so the 23:10→06:54 fixture night is one hour shorter/longer on those dates.
+  group('fixture times stay in the declared zone across DST', () {
+    SyntheticOpenBandRepository repoOn(String day) =>
+        SyntheticOpenBandRepository.fromMaps(
+          {..._load('day-summary.json'), 'day': day},
+          _load('sleep-detail.json'),
+        );
+
+    for (final (day, minutes) in [
+      ('2026-09-15', 464), // ordinary night
+      ('2026-03-29', 404), // spring forward
+      ('2026-10-25', 524), // fall back
+    ]) {
+      test('$day night spans $minutes elapsed minutes', () async {
+        final sleep = (await repoOn(day).readDay(day)).sleep;
+        expect(sleep.wake!.difference(sleep.onset!).inMinutes, minutes);
+        expect(sleep.onset!.hour, 23);
+        expect(sleep.onset!.minute, 10);
+        expect(sleep.wake!.hour, 6);
+        expect(sleep.wake!.minute, 54);
+      });
+    }
+  });
 }
