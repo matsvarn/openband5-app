@@ -21,6 +21,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../openband/theme.dart';
+import '../theme.dart' show R;
 
 /// Onboarding steps the user deliberately walked past.
 ///
@@ -260,7 +261,7 @@ class PairingView extends StatelessWidget {
                                 color: i == 0
                                     ? p.ink
                                     : p.muted.withValues(alpha: .24),
-                                borderRadius: BorderRadius.circular(4),
+                                borderRadius: R.rPill,
                               ),
                             ),
                           ),
@@ -277,7 +278,7 @@ class PairingView extends StatelessWidget {
                           height: 126,
                           decoration: BoxDecoration(
                             color: p.well,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: R.rLg,
                             border: Border.all(color: p.line),
                           ),
                           child: Row(

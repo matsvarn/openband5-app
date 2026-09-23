@@ -583,22 +583,29 @@ class DataScreenView extends StatelessWidget {
                   OBCard(
                     child: Column(
                       children: [
-                        InkWell(
+                        Pressable(
                           key: const ValueKey('data-backup-cadence'),
                           onTap: onAutomatic == null
                               ? onCadence
-                              : () => onAutomatic!(cadence == BackupCadence.off),
+                              : () =>
+                                    onAutomatic!(cadence == BackupCadence.off),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        de ? 'Automatisch sichern' : 'Automatic backup',
-                                        style: p.text(15, weight: FontWeight.w600),
+                                        de
+                                            ? 'Automatisch sichern'
+                                            : 'Automatic backup',
+                                        style: p.text(
+                                          15,
+                                          weight: FontWeight.w600,
+                                        ),
                                       ),
                                       Text(
                                         de
@@ -611,8 +618,11 @@ class DataScreenView extends StatelessWidget {
                                 ),
                                 Switch.adaptive(
                                   value: cadence != BackupCadence.off,
-                                  onChanged: onAutomatic ??
-                                      (onCadence == null ? null : (_) => onCadence!()),
+                                  onChanged:
+                                      onAutomatic ??
+                                      (onCadence == null
+                                          ? null
+                                          : (_) => onCadence!()),
                                 ),
                               ],
                             ),
@@ -622,13 +632,17 @@ class DataScreenView extends StatelessWidget {
                         _paperRow(
                           p,
                           de ? 'Letzte Sicherung' : 'Last backup',
-                          value: lastBackupAt == null ? '—' : _stamp(lastBackupAt!),
+                          value: lastBackupAt == null
+                              ? '—'
+                              : _stamp(lastBackupAt!),
                           key: const ValueKey('data-last-backup'),
                         ),
                         Divider(color: p.line, height: 1),
                         _paperRow(
                           p,
-                          de ? 'Sicherung jetzt erstellen' : 'Create backup now',
+                          de
+                              ? 'Sicherung jetzt erstellen'
+                              : 'Create backup now',
                           key: const ValueKey('data-backup-now'),
                           onTap: onBackupNow,
                         ),
@@ -642,7 +656,8 @@ class DataScreenView extends StatelessWidget {
                         _paperRow(
                           p,
                           de ? 'Datenbank exportieren' : 'Export database',
-                          sub: '.db · ${de ? 'unverschlüsselt' : 'unencrypted'}',
+                          sub:
+                              '.db · ${de ? 'unverschlüsselt' : 'unencrypted'}',
                           key: const ValueKey('data-export-database'),
                           onTap: onExportDatabase,
                         ),
@@ -751,7 +766,7 @@ class DataScreenView extends StatelessWidget {
     String? value,
     Key? key,
     VoidCallback? onTap,
-  }) => InkWell(
+  }) => Pressable(
     key: key,
     onTap: onTap,
     child: ConstrainedBox(
@@ -765,13 +780,14 @@ class DataScreenView extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: p.text(15, weight: FontWeight.w600)),
-                  if (sub != null)
-                    Text(sub, style: p.text(12, color: p.muted)),
+                  if (sub != null) Text(sub, style: p.text(12, color: p.muted)),
                 ],
               ),
             ),
             if (value != null)
-              Flexible(child: Text(value, style: p.text(14, color: p.muted))),
+              Flexible(
+                child: Text(value, style: p.text(14, color: p.muted)),
+              ),
             if (onTap != null) ...[
               const SizedBox(width: 10),
               Text('›', style: p.text(17, color: p.gap)),
@@ -788,7 +804,7 @@ class DataScreenView extends StatelessWidget {
     String title, {
     Key? key,
     VoidCallback? onTap,
-  }) => InkWell(
+  }) => Pressable(
     key: key,
     onTap: onTap,
     child: OBCard(

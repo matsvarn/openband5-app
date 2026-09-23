@@ -215,7 +215,11 @@ const _notComponents = {
   // profile routes
   'ProfileHome', 'ProfileHomeView', 'MoreSettings', 'MoreSettingsView',
   'NotificationSettings', 'NotificationSettingsView', 'EditProfile',
-  'EditProfileView', 'DataScreen', 'AlarmScreen', 'AlarmScreenView',
+  'EditProfileView', 'DataScreen',
+  // A full Scaffold view with backup and import actions. The release-scope
+  // widget test pumps it at phone width with bounded callbacks.
+  'DataScreenView',
+  'AlarmScreen', 'AlarmScreenView',
   'MyDevices', 'MyDevicesView', 'DeviceDetail', 'DeviceDetailView', 'RePair',
   // The strap-buzz relay picker: a Scaffold route over a live
   // NotificationRelay, whose list is whatever the OS notification stream has

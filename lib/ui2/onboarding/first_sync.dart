@@ -16,6 +16,7 @@ import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
+import '../theme.dart' show R;
 
 enum SetupStatusIcon { open, active, done }
 
@@ -312,7 +313,7 @@ class FirstSyncView extends StatelessWidget {
                               color: i < 2
                                   ? p.ink
                                   : p.muted.withValues(alpha: .24),
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: R.rPill,
                             ),
                           ),
                         ),
@@ -625,10 +626,7 @@ class _StatusRow extends StatelessWidget {
       SetupStatusIcon.active => Container(
         width: 10,
         height: 10,
-        decoration: BoxDecoration(
-          color: p.ink,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
       ),
       SetupStatusIcon.open => Container(
         width: 10,
