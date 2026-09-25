@@ -961,8 +961,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "0df79ff49a358c3fbb20586ef67d4b30d9ef123e"
-      resolved-ref: "0df79ff49a358c3fbb20586ef67d4b30d9ef123e"
+      ref: "2c1bf3c51579b3212f3046af0f1be8d8ba4a0040"
+      resolved-ref: "2c1bf3c51579b3212f3046af0f1be8d8ba4a0040"
       url: "https://github.com/matsvarn/openband5-protocol.git"
     source: git
     version: "1.0.0"

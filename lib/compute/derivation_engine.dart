@@ -1877,7 +1877,11 @@ const String kAnalyticsPin = '2503ca127f78847def0db6f363f000431789d254';
 // it decodes bytes the reply already carried, changes no record decode, and
 // feeds no metric — but the pin moves with the bump because the constants are
 // asserted as a pair and the build stamps them together.
-const String kProtocolPin = '0df79ff49a358c3fbb20586ef67d4b30d9ef123e';
+// REPIN @ 2c1bf3c5 (protocol #1 merge): gen5 GET_DATA_RANGE decodes only on
+// outer status 1, so a failed reply's stale body no longer reaches
+// band_backlog as a current range/cursor. NO kAlgoVersion bump: the only
+// lib/ change is that command-reply gate — no record decode, no metric input.
+const String kProtocolPin = '2c1bf3c51579b3212f3046af0f1be8d8ba4a0040';
 
 // Fold idempotency, the minimum-nights warm-up, and legacy-payload handling
 // all live in SleepProfilePolicy (pure, unit-tested) — see
