@@ -17,6 +17,7 @@ class OBCalendar extends StatelessWidget {
   final DateTime? lastDate;
   final bool allowFuture;
   final bool showAvailability;
+  final bool instrumentHeader;
   final Set<String> nights;
   final ValueChanged<DateTime> onSelect;
   final VoidCallback? onPrevMonth;
@@ -31,6 +32,7 @@ class OBCalendar extends StatelessWidget {
     this.lastDate,
     this.allowFuture = false,
     this.showAvailability = false,
+    this.instrumentHeader = false,
     this.nights = const {},
     this.onPrevMonth,
     this.onNextMonth,
@@ -84,14 +86,18 @@ class OBCalendar extends StatelessWidget {
                 tooltip: 'Vorheriger Monat',
                 onPressed: onPrevMonth,
                 padding: EdgeInsets.zero,
-                icon: Icon(LucideIcons.chevronLeft, size: 18, color: p.ink),
+                icon: instrumentHeader
+                    ? _monthKey(p, LucideIcons.chevronLeft, enabled: true)
+                    : Icon(LucideIcons.chevronLeft, size: 18, color: p.ink),
               ),
             ),
             Expanded(
               child: Text(
                 DateFormat('MMMM yyyy', 'de_DE').format(month),
                 textAlign: TextAlign.center,
-                style: p.text(17, weight: FontWeight.w600).copyWith(height: 20 / 17),
+                style: p
+                    .text(17, weight: FontWeight.w600)
+                    .copyWith(height: 20 / 17),
               ),
             ),
             SizedBox(
@@ -101,11 +107,17 @@ class OBCalendar extends StatelessWidget {
                 tooltip: 'Nächster Monat',
                 onPressed: _canGoNext ? onNextMonth : null,
                 padding: EdgeInsets.zero,
-                icon: Icon(
-                  LucideIcons.chevronRight,
-                  size: 18,
-                  color: _canGoNext ? p.ink : p.muted,
-                ),
+                icon: instrumentHeader
+                    ? _monthKey(
+                        p,
+                        LucideIcons.chevronRight,
+                        enabled: _canGoNext,
+                      )
+                    : Icon(
+                        LucideIcons.chevronRight,
+                        size: 18,
+                        color: _canGoNext ? p.ink : p.muted,
+                      ),
               ),
             ),
           ],
@@ -113,7 +125,10 @@ class OBCalendar extends StatelessWidget {
         const SizedBox(height: 8),
         Row(
           children: [
-            for (final label in _weekdays)
+            for (final label
+                in instrumentHeader
+                    ? const ['M', 'D', 'M', 'D', 'F', 'S', 'S']
+                    : _weekdays)
               Expanded(
                 child: Text(
                   label,
@@ -148,6 +163,13 @@ class OBCalendar extends StatelessWidget {
       ],
     );
   }
+
+  Widget _monthKey(OB p, IconData icon, {required bool enabled}) => Container(
+    width: 32,
+    height: 32,
+    decoration: BoxDecoration(color: p.well, shape: BoxShape.circle),
+    child: Icon(icon, size: 16, color: enabled ? p.ink : p.muted),
+  );
 
   Widget _cell(
     BuildContext context,

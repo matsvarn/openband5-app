@@ -20,7 +20,7 @@ extension on NightSignalKind {
   int get digits => this == NightSignalKind.respiration ? 1 : 0;
   Color color(OB p) => switch (this) {
     NightSignalKind.pulse => p.pulse,
-    NightSignalKind.hrv => p.recovery,
+    NightSignalKind.hrv => p.ink,
     NightSignalKind.respiration => p.sleep,
   };
 }
@@ -147,10 +147,7 @@ class _OpenBandNightSignalsState extends State<OpenBandNightSignals> {
                       : 'Gespeicherte Werte aus den Tagesauswertungen dieser Nacht.',
                   style: p.text(14),
                 ),
-                Text(
-                  'Lücken bleiben offen.',
-                  style: p.text(14),
-                ),
+                Text('Lücken bleiben offen.', style: p.text(14)),
                 Text(
                   night.recordingTimezone == null
                       ? 'Zeiten in der Zeitzone dieses Telefons.'

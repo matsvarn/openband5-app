@@ -465,12 +465,12 @@ void main() {
     await expectGolden(tester, 'cycle-history.png');
     await tester.tap(find.text('Krämpfe'));
     await tester.pumpAndSettle();
-    expect(find.text('Beobachtung'), findsOneWidget);
+    expect(find.text('BEOBACHTUNG'), findsOneWidget);
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24. August'));
     await tester.pumpAndSettle();
-    expect(find.text('Beginn'), findsOneWidget);
+    expect(find.text('BEGINN'), findsOneWidget);
   }, tags: const ['golden']);
 
   testWidgets('history hides later rows when an earlier day is selected', (
@@ -735,17 +735,17 @@ void main() {
       );
       await mount(tester);
       await tester.drag(
-      find.byKey(const ValueKey('cycle-overview')),
-      const Offset(0, -300),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Verlauf'));
+        find.byKey(const ValueKey('cycle-overview')),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Verlauf'));
       await tester.pumpAndSettle();
       expect(find.text('Übelkeit'), findsOneWidget);
       expect(find.text('Beginn'), findsOneWidget);
       await tester.tap(find.text('Übelkeit'));
       await tester.pumpAndSettle();
-      expect(find.text('Beobachtung'), findsOneWidget);
+      expect(find.text('BEOBACHTUNG'), findsOneWidget);
       await tester.tap(find.byTooltip('Zurück'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Beginn'));
@@ -845,53 +845,55 @@ void main() {
     expect(repo.settingsSaves, 1);
   });
 
-  testWidgets('2x and narrow widths keep save reachable with keyboard', (
-    tester,
-  ) async {
-    await mount(tester, scale: 2, width: 375, height: 812);
-    expect(find.text('Tag 23'), findsOneWidget);
-    await expectGolden(tester, 'cycle-2x.png');
-    await mount(tester, width: 320, height: 568);
-    expect(find.text('Zyklus'), findsWidgets);
-    expect(find.text('Tag 23').hitTestable(), findsOneWidget);
-    expect(find.byTooltip('Zurück').hitTestable(), findsOneWidget);
-    await tester.pumpAndSettle();
-    await expectGolden(tester, 'cycle-320.png');
-    await tester.scrollUntilVisible(
-      find.text('Einstellungen'),
-      80,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const ValueKey('cycle-overview')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Einstellungen').hitTestable(), findsOneWidget);
-    await expectGolden(tester, 'cycle-320-bottom.png');
-    await mount(tester, width: 375, height: 812);
-    await tester.tap(find.text('Beginn eintragen'));
-    await tester.pumpAndSettle();
-    tester.view.viewInsets = const FakeViewPadding(bottom: 336);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Speichern'),
-      100,
-      scrollable: find
-          .descendant(
-            of: find.byKey(const ValueKey('cycle-start')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    expect(find.text('Speichern').hitTestable(), findsOneWidget);
-    await expectLater(
-      capture(),
-      matchesGoldenFile('openband_goldens/cycle-keyboard.png'),
-    );
-  }, tags: const ['golden']);
+  testWidgets(
+    '2x and narrow widths keep save reachable with keyboard',
+    (tester) async {
+      await mount(tester, scale: 2, width: 375, height: 812);
+      expect(find.text('Tag 23'), findsOneWidget);
+      await expectGolden(tester, 'cycle-2x.png');
+      await mount(tester, width: 320, height: 568);
+      expect(find.text('ZYKLUS'), findsWidgets);
+      expect(find.text('Tag 23').hitTestable(), findsOneWidget);
+      expect(find.byTooltip('Zurück').hitTestable(), findsOneWidget);
+      await tester.pumpAndSettle();
+      await expectGolden(tester, 'cycle-320.png');
+      await tester.scrollUntilVisible(
+        find.text('Einstellungen'),
+        80,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('cycle-overview')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Einstellungen').hitTestable(), findsOneWidget);
+      await expectGolden(tester, 'cycle-320-bottom.png');
+      await mount(tester, width: 375, height: 812);
+      await tester.tap(find.text('Beginn eintragen'));
+      await tester.pumpAndSettle();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 336);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Speichern'),
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('cycle-start')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(find.text('Speichern').hitTestable(), findsOneWidget);
+      await expectLater(
+        capture(),
+        matchesGoldenFile('openband_goldens/cycle-keyboard.png'),
+      );
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('partial unreadable starts show unknown hero', (tester) async {
     repo.seedUnreadableCycleStart({'date': '2026-05-01', 'kind': 1});
@@ -1737,60 +1739,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('2x observation at 320 with keyboard can scroll and save', (
-    tester,
-  ) async {
-    await mount(tester, width: 320, height: 568, scale: 2);
-    await tester.scrollUntilVisible(
-      find.text('Beobachtung festhalten').hitTestable(),
-      180,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Beobachtung festhalten'));
-    await tester.pumpAndSettle();
-    final scroll = find
-        .descendant(
-          of: find.byKey(const ValueKey('cycle-observation')),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    await tester.scrollUntilVisible(
-      find.text('Stimmungstief').hitTestable(),
-      180,
-      scrollable: scroll,
-    );
-    expect(find.text('Stimmungstief'), findsOneWidget);
-    expect(find.text('Niedergeschlagenheit'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Übelkeit').hitTestable(),
-      180,
-      scrollable: scroll,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Übelkeit'));
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('cycle-note')).hitTestable(),
-      180,
-      scrollable: scroll,
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const ValueKey('cycle-note')), 'Notiz');
-    tester.view.viewInsets = const FakeViewPadding(bottom: 220);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Speichern').hitTestable(),
-      180,
-      scrollable: scroll,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Speichern').hitTestable(), findsOneWidget);
-    await expectGolden(tester, 'cycle-observation-320-2x-keyboard.png');
-    await tester.tap(find.text('Speichern'));
-    await tester.pumpAndSettle();
-    expect(repo.observationSaves, 1);
-    expect(tester.takeException(), isNull);
-  }, tags: const ['golden']);
+  testWidgets(
+    '2x observation at 320 with keyboard can scroll and save',
+    (tester) async {
+      await mount(tester, width: 320, height: 568, scale: 2);
+      await tester.scrollUntilVisible(
+        find.text('Beobachtung festhalten').hitTestable(),
+        180,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beobachtung festhalten'));
+      await tester.pumpAndSettle();
+      final scroll = find
+          .descendant(
+            of: find.byKey(const ValueKey('cycle-observation')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('Stimmungstief').hitTestable(),
+        180,
+        scrollable: scroll,
+      );
+      expect(find.text('Stimmungstief'), findsOneWidget);
+      expect(find.text('Niedergeschlagenheit'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Übelkeit').hitTestable(),
+        180,
+        scrollable: scroll,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Übelkeit'));
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('cycle-note')).hitTestable(),
+        180,
+        scrollable: scroll,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('cycle-note')), 'Notiz');
+      tester.view.viewInsets = const FakeViewPadding(bottom: 220);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Speichern').hitTestable(),
+        180,
+        scrollable: scroll,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Speichern').hitTestable(), findsOneWidget);
+      await expectGolden(tester, 'cycle-observation-320-2x-keyboard.png');
+      await tester.tap(find.text('Speichern'));
+      await tester.pumpAndSettle();
+      expect(repo.observationSaves, 1);
+      expect(tester.takeException(), isNull);
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('tap outside shared note at 2x ends focus and reaches Save', (
     tester,

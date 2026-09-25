@@ -7,7 +7,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/day_label.dart';
@@ -17,6 +16,7 @@ import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
+import '../theme.dart' show R;
 
 enum SetupStatusIcon { open, active, done }
 
@@ -289,7 +289,11 @@ class FirstSyncView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: OBPageHeader(
                 title: _s(context, 'Erste Übertragung', 'First transfer'),
-                subtitle: _s(context, 'Schritt 2 von 3', 'Step 2 of 3'),
+                subtitle: _s(
+                  context,
+                  'Einrichtung · Schritt 2 von 3',
+                  'Setup · Step 2 of 3',
+                ),
                 onBack: onBack,
                 showBack: onBack != null || Navigator.canPop(context),
                 onInfo: () => _info(context),
@@ -299,11 +303,46 @@ class FirstSyncView extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 children: [
+                  Row(
+                    children: [
+                      for (var i = 0; i < 3; i++) ...[
+                        Expanded(
+                          child: Container(
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: i < 2
+                                  ? p.ink
+                                  : p.muted.withValues(alpha: .24),
+                              borderRadius: R.rPill,
+                            ),
+                          ),
+                        ),
+                        if (i < 2) const SizedBox(width: 6),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  if (band?.transfer == TransferState.receiving) ...[
+                    _ReceivingCard(band: band!, now: now),
+                    const SizedBox(height: 12),
+                  ],
                   OBSetupStatusCard(
                     band: band,
                     evaluation: evaluation,
                     now: now,
                   ),
+                  if (band?.transfer == TransferState.receiving) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      _s(
+                        context,
+                        'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen.',
+                        'Stored before confirmation: the band only deletes values safely saved on the iPhone.',
+                      ),
+                      textAlign: TextAlign.center,
+                      style: p.text(13, color: p.muted),
+                    ),
+                  ],
                   if (band?.transfer == TransferState.interrupted ||
                       resumeBusy ||
                       resumeFailed) ...[
@@ -389,6 +428,53 @@ class FirstSyncView extends StatelessWidget {
   }
 }
 
+class _ReceivingCard extends StatelessWidget {
+  final BandSnapshot band;
+  final DateTime now;
+
+  const _ReceivingCard({required this.band, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final hasStoredValue = band.latestStoredAt != null;
+    return OBCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _s(context, 'AUF DEM IPHONE', 'ON THE IPHONE'),
+            style: p
+                .text(12, weight: FontWeight.w700, color: p.muted)
+                .copyWith(letterSpacing: 2),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _frontier(context, band.latestStoredAt, now),
+            style: p.text(40, weight: FontWeight.w700, display: true),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            hasStoredValue
+                ? _s(
+                    context,
+                    'Band sendet gespeicherte Werte. App währenddessen offen lassen.',
+                    'The band is sending stored values. Keep the app open.',
+                  )
+                : _s(
+                    context,
+                    'Noch kein Wert auf dem iPhone gespeichert. App während der Übertragung offen lassen.',
+                    'No value saved on the iPhone yet. Keep the app open during transfer.',
+                  ),
+            style: p.text(14, color: p.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class OBSetupStatusCard extends StatelessWidget {
   final BandSnapshot? band;
   final SetupEvaluation? evaluation;
@@ -415,8 +501,12 @@ class OBSetupStatusCard extends StatelessWidget {
             icon: connection.$1,
           ),
           _StatusRow(
-            label: _s(context, 'Auf dem iPhone', 'On iPhone'),
-            value: stored.$2,
+            label: band?.transfer == TransferState.receiving
+                ? _s(context, 'Übertragung', 'Transfer')
+                : _s(context, 'Auf dem iPhone', 'On iPhone'),
+            value: band?.transfer == TransferState.receiving
+                ? _s(context, 'läuft', 'In progress')
+                : stored.$2,
             icon: stored.$1,
           ),
           _StatusRow(
@@ -522,25 +612,28 @@ class _StatusRow extends StatelessWidget {
     final p = OB.of(context);
     final open = icon == SetupStatusIcon.open;
     final mark = switch (icon) {
-      SetupStatusIcon.done => Icon(
-        LucideIcons.circleCheck,
-        size: 20,
-        color: p.recovery,
-      ),
-      SetupStatusIcon.active => Container(
-        width: 20,
-        height: 20,
+      SetupStatusIcon.done => Container(
+        width: 10,
+        height: 10,
         decoration: BoxDecoration(
+          color: p.led,
           shape: BoxShape.circle,
-          border: Border.all(color: p.action, width: 2),
+          boxShadow: [
+            BoxShadow(color: p.led.withValues(alpha: .2), blurRadius: 6),
+          ],
         ),
       ),
+      SetupStatusIcon.active => Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+      ),
       SetupStatusIcon.open => Container(
-        width: 20,
-        height: 20,
+        width: 10,
+        height: 10,
         decoration: BoxDecoration(
+          color: p.muted.withValues(alpha: .28),
           shape: BoxShape.circle,
-          border: Border.all(color: p.line, width: 2),
         ),
       ),
     };

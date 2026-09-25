@@ -410,28 +410,30 @@ void main() {
     }
   });
 
-  testWidgets('production Sleep uses the shared legend', (tester) async {
+  // Paper G2 Schlaf lists the stage totals as rows with their share of
+  // sleep; wake has no share. The shared legend stays on the overview.
+  Finder rowText(String text) => find.descendant(
+    of: find.byKey(const ValueKey('sleep-stage-rows')),
+    matching: find.text(text),
+  );
+
+  testWidgets('production Sleep lists stages with their share of sleep', (
+    tester,
+  ) async {
     await mountSleep(tester);
     expect(find.byKey(const ValueKey('openband-sleep')), findsOneWidget);
-    expect(find.byKey(const ValueKey('sleep-stage-legend')), findsOneWidget);
-    expect(find.byType(OBStageLegend), findsOneWidget);
-    final sleepCards = find.descendant(
-      of: find.byKey(const ValueKey('openband-sleep')),
-      matching: find.byType(OBCard),
-    );
-    final heroDuration = find.descendant(
-      of: sleepCards.first,
-      matching: find.text('7h18'),
-    );
-    expect(heroDuration, findsOneWidget);
-    expect(legendOrder(tester), _order);
-    expect(legendText('1h08'), findsOneWidget);
-    expect(legendText('4h07'), findsOneWidget);
-    expect(firstRowCount(tester), 5);
-    expect(
-      find.byKey(const ValueKey('sleep-stage-swatch-Im Bett')),
-      findsNothing,
-    );
+    expect(find.text('7h18'), findsOneWidget);
+    for (final (name, value, share) in [
+      ('Tief', '1h08', '16 %'),
+      ('Leicht', '4h07', '56 %'),
+      ('REM', '2h03', '28 %'),
+      ('Wach', '26 Min.', '—'),
+    ]) {
+      expect(rowText(name), findsOneWidget);
+      expect(rowText(value), findsOneWidget);
+      expect(rowText(share), findsOneWidget);
+    }
+    expect(rowText('Im Bett'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -444,15 +446,15 @@ void main() {
       find.text('Für diese Nacht liegt noch kein Schlafwert vor.'),
       findsOneWidget,
     );
-    expect(find.byType(OBStageLegend), findsNothing);
-    expect(find.byKey(const ValueKey('sleep-stage-legend')), findsNothing);
+    expect(find.byKey(const ValueKey('sleep-stage-rows')), findsNothing);
   });
 
   testWidgets('partial night keeps real stage minutes', (tester) async {
     await mountSleep(tester, scenario: SyntheticScenario.partial);
-    expect(find.byType(OBStageLegend), findsOneWidget);
-    expect(legendOrder(tester), _order);
-    expect(legendText('—'), findsNothing);
+    expect(find.byKey(const ValueKey('sleep-stage-rows')), findsOneWidget);
+    expect(rowText('3h43'), findsOneWidget);
+    // Only wake shows a dash; every sleep stage keeps its stored minutes.
+    expect(rowText('—'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

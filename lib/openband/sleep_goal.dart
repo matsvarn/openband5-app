@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import 'alp_tokens.dart';
 import 'domain.dart';
 import 'theme.dart';
 
@@ -20,33 +18,54 @@ class OpenBandSleepGoal extends StatefulWidget {
 }
 
 class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
-  late Future<SleepGoalSnapshot> _data = widget.repository.readSleepGoal(
-    widget.day,
-  );
+  late Future<SleepGoalSnapshot> _data = _read();
+  int? _draft;
   String? _error;
+  Future<void> Function()? _retry;
   bool _busy = false;
+
+  Future<SleepGoalSnapshot> _read() =>
+      widget.repository.readSleepGoal(widget.day).then((s) {
+        _draft = s.targetMinutes;
+        return s;
+      });
 
   void _reload() {
     setState(() {
       _busy = false;
       _error = null;
-      _data = widget.repository.readSleepGoal(widget.day);
+      _retry = null;
+      _data = _read();
     });
   }
 
-  Future<void> _edit(SleepGoalSnapshot snapshot) async {
-    if (_busy) return;
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => OpenBandSleepGoalEditor(
-          repository: widget.repository,
-          day: widget.day,
-          targetMinutes: snapshot.targetMinutes,
-          synthetic: widget.synthetic,
-        ),
-      ),
-    );
-    if (saved == true && mounted) _reload();
+  void _set(int minutes) => setState(
+    () => _draft = minutes.clamp(kSleepGoalMinMinutes, kSleepGoalMaxMinutes),
+  );
+
+  Future<void> _run(Future<void> Function() write) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+      _retry = null;
+    });
+    try {
+      await write();
+      if (mounted) _reload();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Speichern fehlgeschlagen';
+          _retry = () => _run(write);
+        });
+      }
+    }
+  }
+
+  Future<void> _save() {
+    final minutes = _draft!;
+    return _run(() => widget.repository.saveSleepGoal(widget.day, minutes));
   }
 
   Future<void> _confirmRemove() async {
@@ -74,30 +93,7 @@ class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
       setState(() => _busy = false);
       return;
     }
-    await _runRemove();
-  }
-
-  Future<void> _retryRemove() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    await _runRemove();
-  }
-
-  Future<void> _runRemove() async {
-    try {
-      await widget.repository.clearSleepGoal(widget.day);
-      if (mounted) _reload();
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = 'Speichern fehlgeschlagen';
-        });
-      }
-    }
+    await _run(() => widget.repository.clearSleepGoal(widget.day));
   }
 
   @override
@@ -110,144 +106,89 @@ class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
           future: _data,
           builder: (context, snapshot) {
             final goal = snapshot.data;
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            final changed =
+                goal != null && _draft != null && _draft != goal.targetMinutes;
+            return Column(
               children: [
-                OBPageHeader(
-                  title: 'Schlafziel',
-                  subtitle: 'Ab ${obDate(widget.day)}',
-                  infoLabel: 'Schlafziel',
-                  onInfo: () => _goalInfo(context, widget.day),
-                ),
-                if (snapshot.hasError)
-                  OBAction('Erneut laden', ink: true, onPressed: _reload)
-                else if (goal == null)
-                  const Center(child: CircularProgressIndicator.adaptive())
-                else ...[
-                  if (_error != null) ...[
-                    Text(
-                      _error!,
-                      style: p
-                          .text(14, color: p.danger)
-                          .copyWith(height: 18 / 14),
-                    ),
-                    const SizedBox(height: 12),
-                    OBAction(
-                      'Erneut versuchen',
-                      ink: true,
-                      onPressed: _busy ? null : _retryRemove,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  OBCard(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 16,
-                      children: [
-                        Text(
-                          'Eigenes Ziel',
-                          style: p
-                              .text(17, weight: FontWeight.w600)
-                              .copyWith(height: 22 / 17),
-                        ),
-                        Text(
-                          _goalDuration(goal.targetMinutes?.toDouble()),
-                          style: p
-                              .text(48, weight: FontWeight.w700, display: true)
-                              .copyWith(height: 54 / 48, letterSpacing: 0),
-                        ),
-                        OBAction(
-                          goal.targetMinutes == null
-                              ? 'Ziel festlegen'
-                              : 'Ändern',
-                          ink: true,
-                          onPressed: _busy ? null : () => _edit(goal),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 76),
-                    child: Semantics(
-                      button: true,
-                      label: 'Wochenend-Schätzung',
-                      value: _estimateLabel(goal.weekendEstimate),
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () =>
-                            _estimateInfo(context, goal.weekendEstimate),
-                        child: ExcludeSemantics(
-                          child: OBCard(
-                            padding: const EdgeInsets.all(20),
-                            child: Row(
-                              spacing: 12,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    spacing: 4,
-                                    children: [
-                                      Text(
-                                        'Wochenend-Schätzung',
-                                        style: p
-                                            .text(17, weight: FontWeight.w600)
-                                            .copyWith(height: 22 / 17),
-                                      ),
-                                      Text(
-                                        _estimateLabel(goal.weekendEstimate),
-                                        style: p
-                                            .text(13, color: p.muted)
-                                            .copyWith(height: 16 / 13),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  LucideIcons.info,
-                                  size: 20,
-                                  color: p.muted,
-                                ),
-                              ],
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    children: [
+                      OBPageHeader(
+                        title: 'Schlafziel',
+                        backText: 'Schlaf',
+                        subtitle: 'Ab ${obDate(widget.day)}',
+                        infoLabel: 'Schlafziel',
+                        onInfo: () => _goalInfo(context, widget.day),
+                        bottom: 15,
+                      ),
+                      if (snapshot.hasError)
+                        OBAction('Erneut laden', ink: true, onPressed: _reload)
+                      else if (goal == null)
+                        const Center(
+                          child: CircularProgressIndicator.adaptive(),
+                        )
+                      else ...[
+                        if (_error != null) ...[
+                          Text(
+                            _error!,
+                            style: p
+                                .text(14, color: p.danger)
+                                .copyWith(height: 18 / 14),
+                          ),
+                          const SizedBox(height: 12),
+                          OBAction(
+                            'Erneut versuchen',
+                            ink: true,
+                            onPressed: _busy || _retry == null ? null : _retry,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        _goalCard(p),
+                        const SizedBox(height: 10),
+                        _estimateCard(p, goal.weekendEstimate),
+                        if (goal.targetMinutes != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: TextButton(
+                              onPressed: _busy ? null : _confirmRemove,
+                              style: TextButton.styleFrom(
+                                foregroundColor: p.muted,
+                                minimumSize: const Size.fromHeight(48),
+                                textStyle: p
+                                    .text(14, weight: FontWeight.w500)
+                                    .copyWith(height: 18 / 14),
+                              ),
+                              child: const Text('Ziel entfernen'),
                             ),
                           ),
-                        ),
+                        if (widget.synthetic)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              'Synthetische Daten',
+                              textAlign: TextAlign.center,
+                              style: p
+                                  .text(12, color: p.muted)
+                                  .copyWith(height: 18 / 12),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (goal != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 6),
+                    child: SizedBox(
+                      height: 54,
+                      child: OBAction(
+                        'Speichern',
+                        ink: true,
+                        onPressed: _busy || !changed ? null : _save,
                       ),
                     ),
                   ),
-                  if (goal.targetMinutes != null) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: TextButton(
-                        onPressed: _busy ? null : _confirmRemove,
-                        style: TextButton.styleFrom(
-                          foregroundColor: p.muted,
-                          minimumSize: const Size.fromHeight(48),
-                          textStyle: p
-                              .text(14, color: p.muted)
-                              .copyWith(height: 18 / 14),
-                        ),
-                        child: const Text('Ziel entfernen'),
-                      ),
-                    ),
-                  ],
-                  if (widget.synthetic) ...[
-                    const SizedBox(height: 12),
-                    Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Text(
-                        'Synthetische Daten',
-                        style: p
-                            .text(12, color: p.muted)
-                            .copyWith(height: 18 / 12),
-                      ),
-                    ),
-                  ],
-                ],
               ],
             );
           },
@@ -255,174 +196,259 @@ class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
       ),
     );
   }
-}
 
-class OpenBandSleepGoalEditor extends StatefulWidget {
-  final OpenBandRepository repository;
-  final String day;
-  final int? targetMinutes;
-  final bool synthetic;
-  const OpenBandSleepGoalEditor({
-    super.key,
-    required this.repository,
-    required this.day,
-    this.targetMinutes,
-    this.synthetic = false,
-  });
-  @override
-  State<OpenBandSleepGoalEditor> createState() =>
-      _OpenBandSleepGoalEditorState();
-}
-
-class _OpenBandSleepGoalEditorState extends State<OpenBandSleepGoalEditor> {
-  late final hours = TextEditingController(
-    text: widget.targetMinutes == null ? '' : '${widget.targetMinutes! ~/ 60}',
-  );
-  late final minutes = TextEditingController(
-    text: widget.targetMinutes == null ? '' : '${widget.targetMinutes! % 60}',
-  );
-  bool busy = false;
-  String? error;
-
-  int? get _minutes => sleepGoalMinutesFromFields(hours.text, minutes.text);
-
-  @override
-  void dispose() {
-    hours.dispose();
-    minutes.dispose();
-    super.dispose();
+  Widget _goalCard(OB p) {
+    final draft = _draft;
+    Widget step(String label, int delta) => Expanded(
+      child: OBAction(
+        label,
+        secondary: true,
+        onPressed: _busy || draft == null ? null : () => _set(draft + delta),
+      ),
+    );
+    return OBCard(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: 18,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 6,
+            children: [
+              Text(
+                'EIGENES ZIEL',
+                style: p.label(size: 10).copyWith(height: 12 / 10),
+              ),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  obDuration(draft),
+                  key: const ValueKey('sleep-goal-value'),
+                  style: p
+                      .text(
+                        64,
+                        weight: FontWeight.w700,
+                        color: draft == null ? p.gap : p.ink,
+                      )
+                      .copyWith(height: 66 / 64, letterSpacing: -.04 * 64),
+                ),
+              ),
+            ],
+          ),
+          if (draft == null)
+            Text(
+              'Tippe auf die Skala, um ein Ziel festzulegen.',
+              style: p.text(12, color: p.muted).copyWith(height: 16 / 12),
+            ),
+          _GoalScale(minutes: draft, onChanged: _busy ? null : _set),
+          Row(
+            spacing: 10,
+            children: [step('– 15 Min.', -15), step('+ 15 Min.', 15)],
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> _save() async {
-    final value = _minutes;
-    if (busy || value == null) return;
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      await widget.repository.saveSleepGoal(widget.day, value);
-      if (mounted) Navigator.pop(context, true);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          busy = false;
-          error = 'Speichern fehlgeschlagen';
-        });
-      }
-    }
-  }
+  Widget _estimateCard(OB p, WeekendSleepEstimate? estimate) => Semantics(
+    button: true,
+    label: 'Wochenend-Schätzung',
+    value: _estimateLabel(estimate),
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _estimateInfo(context, estimate),
+      child: ExcludeSemantics(
+        child: OBCard.inset(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            spacing: 12,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 2,
+                  children: [
+                    Text(
+                      'Wochenend-Schätzung',
+                      style: p
+                          .text(15, weight: FontWeight.w700)
+                          .copyWith(height: 20 / 15),
+                    ),
+                    Text(
+                      estimate == null
+                          ? 'Noch kein Wert – zu wenige Wochenend-Nächte.'
+                          : 'Stand ${obDate(estimate.asOfDay)}',
+                      style: p
+                          .text(12, color: p.muted)
+                          .copyWith(height: 16 / 12),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                estimate == null ? '—' : obDuration(estimate.osdHours * 60),
+                style: p
+                    .text(
+                      22,
+                      weight: FontWeight.w700,
+                      color: estimate == null ? p.gap : p.ink,
+                    )
+                    .copyWith(height: 26 / 22),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 5–10 h goal scale in 15-minute steps. Goals outside the scale keep their
+/// value; only the handle stops at the end.
+class _GoalScale extends StatelessWidget {
+  static const int low = 300, high = 600, stepMinutes = 15;
+  final int? minutes;
+  final ValueChanged<int>? onChanged;
+  const _GoalScale({required this.minutes, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    InputDecoration deco() => InputDecoration(
-      isDense: true,
-      filled: true,
-      fillColor: p.well,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(AlpRadius.well),
-        borderSide: BorderSide.none,
-      ),
-      contentPadding: const EdgeInsets.all(14),
-    );
-    final fieldStyle = p
-        .text(28, weight: FontWeight.w600, display: true)
-        .copyWith(height: 34 / 28, letterSpacing: 0);
-    final labelStyle = p.text(13, color: p.muted).copyWith(height: 16 / 13);
-    return Scaffold(
-      backgroundColor: p.canvas,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            OBPageHeader(
-              title: 'Schlafziel bearbeiten',
-              subtitle: 'Ab ${obDate(widget.day)}',
-            ),
-            if (error != null) ...[
-              Text(
-                error!,
-                style: p.text(14, color: p.danger).copyWith(height: 18 / 14),
-              ),
-              const SizedBox(height: 12),
-            ],
-            OBCard(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                spacing: 12,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 6,
-                      children: [
-                        Text('Stunden', style: labelStyle),
-                        TextField(
-                          key: const ValueKey('sleep-goal-hours'),
-                          controller: hours,
-                          keyboardType: TextInputType.number,
-                          enabled: !busy,
-                          style: fieldStyle,
-                          decoration: deco(),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ],
+    final labelStyle = p
+        .text(10, weight: FontWeight.w500, color: p.muted)
+        .copyWith(height: 12 / 10);
+    return LayoutBuilder(
+      builder: (context, box) {
+        void pick(double dx) {
+          final t = (dx / box.maxWidth).clamp(0.0, 1.0);
+          final steps = ((high - low) / stepMinutes * t).round();
+          onChanged?.call(low + steps * stepMinutes);
+        }
+
+        final value = minutes;
+        int bound(int m) => m.clamp(kSleepGoalMinMinutes, kSleepGoalMaxMinutes);
+        final up = value == null ? low : bound(value + stepMinutes);
+        final down = value == null ? null : bound(value - stepMinutes);
+        final change = onChanged;
+        return Semantics(
+          container: true,
+          slider: true,
+          label: 'Schlafziel',
+          value: value == null ? '' : obDuration(value),
+          increasedValue: value == null ? '' : obDuration(up),
+          decreasedValue: down == null ? '' : obDuration(down),
+          onIncrease: change == null ? null : () => change(up),
+          onDecrease: change == null || down == null
+              ? null
+              : () => change(down),
+          child: ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              spacing: 4,
+              children: [
+                GestureDetector(
+                  key: const ValueKey('sleep-goal-scale'),
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (d) => pick(d.localPosition.dx),
+                  onHorizontalDragUpdate: (d) => pick(d.localPosition.dx),
+                  child: CustomPaint(
+                    size: const Size.fromHeight(40),
+                    painter: _GoalScalePainter(
+                      t: value == null
+                          ? null
+                          : ((value - low) / (high - low)).clamp(0.0, 1.0),
+                      p: p,
                     ),
                   ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 6,
-                      children: [
-                        Text('Minuten', style: labelStyle),
-                        TextField(
-                          key: const ValueKey('sleep-goal-minutes'),
-                          controller: minutes,
-                          keyboardType: TextInputType.number,
-                          enabled: !busy,
-                          style: fieldStyle,
-                          decoration: deco(),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            OBAction(
-              'Speichern',
-              ink: true,
-              onPressed: busy || _minutes == null ? null : _save,
-            ),
-            if (widget.synthetic) ...[
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.all(4),
-                child: Text(
-                  'Synthetische Daten',
-                  style: p.text(12, color: p.muted).copyWith(height: 18 / 12),
                 ),
-              ),
-            ],
-          ],
-        ),
-      ),
+                Row(
+                  children: [
+                    for (final (i, label) in const [
+                      '5 h',
+                      '6',
+                      '7',
+                      '8',
+                      '9',
+                      '10 h',
+                    ].indexed)
+                      Expanded(
+                        flex: i == 0 || i == 5 ? 1 : 2,
+                        child: Text(
+                          label,
+                          textAlign: i == 0
+                              ? TextAlign.left
+                              : i == 5
+                              ? TextAlign.right
+                              : TextAlign.center,
+                          softWrap: false,
+                          overflow: TextOverflow.visible,
+                          style: labelStyle,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
-String _goalDuration(num? minutes) {
-  if (minutes == null) return '—';
-  final m = minutes.round();
-  return '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}';
+class _GoalScalePainter extends CustomPainter {
+  final double? t;
+  final OB p;
+  _GoalScalePainter({required this.t, required this.p});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final track = RRect.fromLTRBR(0, 14, w, 26, const Radius.circular(6));
+    canvas.drawRRect(track, Paint()..color = p.line);
+    final tick = Paint()
+      ..strokeWidth = 1.5
+      ..color = p.muted;
+    for (var h = 0; h <= 5; h++) {
+      final x = (w * h / 5).clamp(.75, w - .75);
+      canvas.drawLine(Offset(x, 32), Offset(x, h.isEven ? 40 : 36), tick);
+    }
+    final at = t;
+    if (at == null) return;
+    final x = (w * at).clamp(12.0, w - 12);
+    canvas.save();
+    canvas.clipRRect(track);
+    canvas.drawRect(Rect.fromLTRB(0, 14, x, 26), Paint()..color = p.ink);
+    canvas.restore();
+    final handle = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(x, 20), width: 24, height: 36),
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(handle, Paint()..color = p.card);
+    canvas.drawRRect(
+      handle,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5
+        ..color = p.ink,
+    );
+    final grip = Paint()
+      ..strokeWidth = 1.2
+      ..color = p.gap;
+    for (final dx in const [-4.0, 0.0, 4.0]) {
+      canvas.drawLine(Offset(x + dx, 12), Offset(x + dx, 28), grip);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GoalScalePainter old) => old.t != t || old.p != p;
 }
 
 String _estimateLabel(WeekendSleepEstimate? estimate) {
   if (estimate == null) return '—';
-  return '${_goalDuration(estimate.osdHours * 60)} · Stand ${obDate(estimate.asOfDay)}';
+  return '${obDuration(estimate.osdHours * 60)} · Stand ${obDate(estimate.asOfDay)}';
 }
 
 Future<void> _goalInfo(

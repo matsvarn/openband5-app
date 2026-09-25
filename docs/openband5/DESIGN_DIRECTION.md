@@ -1,6 +1,6 @@
 # Designrichtung · OpenBand 5
 
-Stand: 17. September 2026 · Designphase 2 · **Design zur Prüfung, keine Implementierungsfreigabe**.
+Historischer Stand: 17. September 2026 · Designphase 2 · **Design zur Prüfung, keine Implementierungsfreigabe**. Die aktuelle reduzierte App folgt [G2 · Gerät](design/README.md) in Designphase 3; die unten beschriebenen vier Tabs und Farben sind keine Vorgabe für G2.
 
 ## Gestaltungsregel für alle Bereiche
 

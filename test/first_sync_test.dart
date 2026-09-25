@@ -76,10 +76,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Erste Übertragung'), findsOneWidget);
-      expect(find.text('Schritt 2 von 3'), findsOneWidget);
+      expect(find.text('ERSTE ÜBERTRAGUNG'), findsOneWidget);
+      expect(find.text('Einrichtung · Schritt 2 von 3'), findsOneWidget);
       expect(find.text('Verbindung'), findsOneWidget);
-      expect(find.text('Auf dem iPhone'), findsOneWidget);
+      expect(find.text('AUF DEM IPHONE'), findsOneWidget);
+      expect(find.text('Übertragung'), findsOneWidget);
+      expect(find.text('läuft'), findsOneWidget);
       expect(find.text('Auswertung heute'), findsOneWidget);
       expect(find.text('Verbunden'), findsOneWidget);
       expect(find.text('bis 06:54'), findsOneWidget);
@@ -93,6 +95,31 @@ void main() {
       await _unmount(tester);
     },
   );
+
+  testWidgets('receiving without a stored frontier shows an empty value', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: const BandSnapshot(
+            connection: BandConnection.connected,
+            transfer: TransferState.receiving,
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.text(
+        'Noch kein Wert auf dem iPhone gespeichert. App während der Übertragung offen lassen.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('—'), findsWidgets);
+    expect(find.text('läuft'), findsOneWidget);
+  });
 
   testWidgets('interrupted keeps the stored frontier and offers resume', (
     tester,
@@ -139,7 +166,9 @@ void main() {
       ),
     );
     final state = tester.getRect(find.text('Unterbrochen'));
-    final action = tester.getRect(find.widgetWithText(TextButton, 'Fortsetzen'));
+    final action = tester.getRect(
+      find.widgetWithText(TextButton, 'Fortsetzen'),
+    );
     expect(action.top, greaterThanOrEqualTo(state.bottom));
     expect(action.height, greaterThanOrEqualTo(44));
     expect(tester.takeException(), isNull);
@@ -587,7 +616,7 @@ void main() {
         locale: const Locale('en'),
       ),
     );
-    expect(find.text('First transfer'), findsOneWidget);
+    expect(find.text('FIRST TRANSFER'), findsOneWidget);
     await tester.tap(find.text('Continue to profile'));
     await tester.pump();
     expect(done, isTrue);

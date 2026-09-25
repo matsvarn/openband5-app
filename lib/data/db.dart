@@ -23,7 +23,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
-import '../compute/substrate.dart' show BeatClock, beatTimesMs;
+import '../compute/substrate.dart'
+    show BeatClock, beatTimesMs, kBoundaryCollisionMinStepTicks;
 // The ONE thing this layer takes from compute/: the running build's algo
 // version, which every day_result read applies as a CEILING (see [dayResult]).
 // `show` keeps the rest of the engine out of this namespace.
@@ -507,7 +508,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 67;
+  static const int schemaVersion = 68;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -1284,6 +1285,13 @@ class LocalDb {
         if (oldV < 67) {
           // User-entered VO2max revisions. Additive; nothing is backfilled.
           await createVo2Tables(db);
+        }
+        if (oldV < 68) {
+          // NO SCHEMA CHANGE — a data recovery, like the oldV<44 rung: seconds
+          // a boundary collision REPLACEd away before `_queueBoundaryMove`,
+          // re-read from `raw_blob`. Bounded (one indexed pass, only candidate
+          // blobs inflated) and before the next derive, which has to see them.
+          await repairBoundaryCollisions(db);
         }
       },
       onOpen: (db) async {
@@ -8039,36 +8047,140 @@ class LocalDb {
     );
     final out = <RawRecord>[];
     for (final row in rows) {
-      final codec = (row['codec'] as num).toInt();
-      final payload = row['payload'];
-      if (codec != 1 || payload is! Uint8List) continue;
-      final raw = gzip.decode(payload);
-      var i = 0;
-      while (i + 2 <= raw.length) {
-        final len = raw[i] | (raw[i + 1] << 8);
-        if (len <= 0 || i + 2 + len > raw.length) break;
-        final frame = raw.sublist(i + 2, i + 2 + len);
-        // The counter rides inside the frame (u32 @[3:7] on header records —
-        // see RawRecord); shorter frames are the counter-less kind.
-        final counter = frame.length >= 7
-            ? frame[3] |
-                (frame[4] << 8) |
-                (frame[5] << 16) |
-                (frame[6] << 24)
-            : 0;
-        final hex = [
-          for (final b in frame) b.toRadixString(16).padLeft(2, '0'),
-        ].join();
-        out.add(RawRecord(
-          counter: counter,
-          packetType: frame[0],
-          hex: hex,
-          capturedAt: (row['captured_at'] as num).toInt(),
-        ));
-        i += 2 + len;
-      }
+      out.addAll(_rawBlobRowRecords(row));
     }
     return out;
+  }
+
+  /// One `raw_blob` row's records, in commit order. Empty for an unknown codec.
+  static List<RawRecord> _rawBlobRowRecords(Map<String, Object?> row) {
+    final codec = (row['codec'] as num).toInt();
+    final payload = row['payload'];
+    if (codec != 1 || payload is! Uint8List) return const [];
+    final out = <RawRecord>[];
+    final raw = gzip.decode(payload);
+    var i = 0;
+    while (i + 2 <= raw.length) {
+      final len = raw[i] | (raw[i + 1] << 8);
+      if (len <= 0 || i + 2 + len > raw.length) break;
+      final frame = raw.sublist(i + 2, i + 2 + len);
+      // The counter rides inside the frame (u32 @[3:7] on header records —
+      // see RawRecord); shorter frames are the counter-less kind.
+      final counter = frame.length >= 7
+          ? frame[3] | (frame[4] << 8) | (frame[5] << 16) | (frame[6] << 24)
+          : 0;
+      final hex = [
+        for (final b in frame) b.toRadixString(16).padLeft(2, '0'),
+      ].join();
+      out.add(RawRecord(
+        counter: counter,
+        packetType: frame[0],
+        hex: hex,
+        capturedAt: (row['captured_at'] as num).toInt(),
+      ));
+      i += 2 + len;
+    }
+    return out;
+  }
+
+  /// Puts back records a boundary collision REPLACEd away before
+  /// [_queueBoundaryMove] existed (schema 68 rung). Returns records restored.
+  ///
+  /// A lost record leaves one shape: record n at second x, nothing at x-1, and
+  /// record n-2 at x-2 — two records apart across two seconds. A real 1 Hz
+  /// drift hole is one record apart, so it never matches. For each match, the
+  /// missing record and record n are re-read from `raw_blob` and written back
+  /// in band order through [_queueDecodedOneHz], i.e. through the SAME rule the
+  /// live commit now applies: n-1 lands at x (evicting n), n moves it into
+  /// x-1 and takes x back. A candidate whose bytes are gone, or that the rule
+  /// does not claim, is left exactly as it is — an honest hole.
+  ///
+  /// Bounded for the upgrade path: one scan of `decoded_onehz` with two
+  /// primary-key lookups per row (0.9 s over 821k rows on a Mac), and only
+  /// the blobs that hold a candidate are inflated. Idempotent — a restored
+  /// second no longer matches.
+  static Future<int> repairBoundaryCollisions(Database db) async {
+    final hasBlob = await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'raw_blob'",
+    );
+    if (hasBlob.isEmpty) return 0;
+    await _addColumnIfMissing(db, 'decoded_onehz', 'ts_subsec', 'INTEGER');
+    await _ensureBeatTimeColumn(db);
+    final candidates = await db.rawQuery(
+      'SELECT c.device_id AS d, c.rec_ts AS x, c.counter AS n, '
+      'c.device_family AS fam FROM decoded_onehz c '
+      'JOIN decoded_onehz a ON a.device_id = c.device_id '
+      'AND a.ts_ms = c.ts_ms - 2000 AND a.counter = c.counter - 2 '
+      'WHERE c.counter > 1 AND c.ts_subsec IS NOT NULL '
+      'AND NOT EXISTS (SELECT 1 FROM decoded_onehz h '
+      'WHERE h.device_id = c.device_id AND h.ts_ms = c.ts_ms - 1000)',
+    );
+    var restored = 0;
+    for (final c in candidates) {
+      final deviceId = c['d'] as String;
+      final x = (c['x'] as num).toInt();
+      final n = (c['n'] as num).toInt();
+      final blobs = await db.query(
+        'raw_blob',
+        where: 'device_id = ? AND first_counter <= ? AND last_counter >= ?',
+        whereArgs: [deviceId, n, n - 1],
+      );
+      // Several blobs can hold these counters (a band reboot restarts them),
+      // so the frame is chosen by its own second, not by being found first.
+      // An unreadable blob is skipped: this runs inside onUpgrade, where a
+      // throw quarantines the whole database.
+      RawRecord? lost, next;
+      for (final row in blobs) {
+        final List<RawRecord> recs;
+        try {
+          recs = _rawBlobRowRecords(row);
+        } catch (_) {
+          continue;
+        }
+        for (final r in recs) {
+          if (r.counter != n - 1 && r.counter != n) continue;
+          if (_decodeOneHzSample(r)?.tsEpoch != x) continue;
+          if (r.counter == n - 1) lost ??= r;
+          if (r.counter == n) next ??= r;
+        }
+      }
+      if (lost == null || next == null) continue;
+      final batch = db.batch();
+      final beatClock = BeatClock();
+      for (final r in [lost, next]) {
+        _queueDecodedOneHz(
+          batch,
+          r,
+          null,
+          deviceFamily: c['fam'] as String?,
+          deviceId: deviceId,
+          beatClock: beatClock,
+        );
+      }
+      // All or nothing per candidate: the first write evicts record n from
+      // x until the second puts it back, so a half-applied batch must not
+      // survive a failure. Only ever called from the schema 68 rung, i.e.
+      // inside onUpgrade's transaction, which the savepoint nests in.
+      await db.execute('SAVEPOINT boundary_repair');
+      try {
+        await batch.commit(noResult: true);
+        await db.execute('RELEASE boundary_repair');
+      } catch (_) {
+        await db.execute('ROLLBACK TO boundary_repair');
+        await db.execute('RELEASE boundary_repair');
+        continue;
+      }
+      final back = await db.query(
+        'decoded_onehz',
+        columns: ['counter'],
+        where: 'device_id = ? AND ts_ms = ?',
+        whereArgs: [deviceId, (x - 1) * 1000],
+      );
+      if (back.isNotEmpty && (back.first['counter'] as num).toInt() == n - 1) {
+        restored++;
+      }
+    }
+    return restored;
   }
 
   /// Add the additive `rec_ts` column to an EXISTING raw_records table (upgrade
@@ -8368,6 +8480,25 @@ class LocalDb {
     }
     final recTs = _recTsFrom(raw, decoded);
     final ambient = decoded.ambientRaw == 0 ? null : decoded.ambientRaw;
+    // This record was already moved back a second by its successor
+    // ([_queueBoundaryMove]): it is stored, so a re-delivery leaves it — and
+    // the successor now holding its old second — exactly as they are.
+    final alreadyMoved = preDeviceKey || raw.counter <= 0
+        ? null
+        : (
+            'SELECT 1 FROM decoded_onehz g WHERE g.device_id = ? '
+                'AND g.ts_ms = ? AND g.counter = ? AND g.ts_subsec >= 32768',
+            <Object?>[deviceId, (recTs - 1) * 1000, raw.counter],
+          );
+    final moveOps = preDeviceKey
+        ? 0
+        : _queueBoundaryMove(
+            batch,
+            deviceId: deviceId,
+            recTs: recTs,
+            counter: raw.counter,
+            tsSubsec: decoded.tsSubsec,
+          );
     // TIME-KEYED, NEWEST-WINS (noop/WHOOP-4 model: dedupe records by their
     // embedded timestamp, not by the volatile counter). decoded_onehz is keyed
     // by rec_ts and decoded_rr by (rec_ts, beat_index). We use REPLACE, not
@@ -8375,7 +8506,7 @@ class LocalDb {
     // stale one. Because rec_ts is the key, the strap's per-reboot counter reset
     // can no longer make one second's record evict another's (the pre-fix
     // counter-PK eviction that silently, unrecoverably deleted 1 Hz rows).
-    batch.insert('decoded_onehz', {
+    _replaceUnless(batch, 'decoded_onehz', {
       // v47: WHICH DEVICE, in front of the key. '' is the primary band and
       // nothing else may ever use it — see _createDecodedStore for why an
       // unstable BLE remoteId must never reach this column.
@@ -8450,8 +8581,9 @@ class LocalDb {
       // column. Naming a column that does not exist yet throws inside
       // onUpgrade's single transaction and quarantines the whole database.
       'device_family': ?deviceFamily,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
-    return 1 /* the decoded_onehz insert */ +
+    }, alreadyMoved);
+    return moveOps +
+        1 /* the decoded_onehz insert */ +
         _queueRrBeats(
           batch,
           recTs,
@@ -8460,6 +8592,7 @@ class LocalDb {
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
           beatClock: beatClock,
+          unless: alreadyMoved,
         );
   }
 
@@ -8475,6 +8608,95 @@ class LocalDb {
   static int _recTsFrom(RawRecord raw, Sample decoded) {
     final rawRecTs = raw.recTs;
     return (rawRecTs != null && rawRecTs > 0) ? rawRecTs : decoded.tsEpoch;
+  }
+
+  /// REPLACE [row] into [table] — or, with [unless], only while that query
+  /// finds nothing, decided inside the same batch statement.
+  static void _replaceUnless(
+    Batch batch,
+    String table,
+    Map<String, Object?> row,
+    (String, List<Object?>)? unless,
+  ) {
+    if (unless == null) {
+      batch.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+      return;
+    }
+    final cols = row.keys.toList();
+    batch.rawInsert(
+      'INSERT OR REPLACE INTO $table (${cols.join(', ')}) '
+      'SELECT ${List.filled(cols.length, '?').join(', ')} '
+      'WHERE NOT EXISTS (${unless.$1})',
+      [...row.values, ...unless.$2],
+    );
+  }
+
+  /// Queued BEFORE a record's own REPLACE at [recTs]: keeps a 1 Hz pair that
+  /// the second boundary split from evicting one another (see
+  /// [isBoundaryCollision] for the measurement).
+  ///
+  /// When the row already at [recTs] is this record's direct predecessor
+  /// (counter - 1), at most ~0.1 s past the boundary, ~1 s earlier on the band
+  /// clock, and the second before it holds nothing, that row and its beats
+  /// move back one second instead of being replaced. Nothing is invented: the
+  /// moved row is the band's own record, placed in a second no record held,
+  /// and it keeps its band time — `ts_subsec` gains 32768 so that
+  /// `rec_ts + ts_subsec/32768` is still the instant the band stamped, and
+  /// `beat_ts_ms` (written from that instant) does not move. A predecessor
+  /// that fails any condition is REPLACEd exactly as before.
+  ///
+  /// Pure SQL on the caller's batch, so every write path gets the same rule
+  /// inside its own transaction — the live commit (before the ACK), the
+  /// single-record fallback, [insertRecordsBatch] and the collision repair —
+  /// whether the predecessor committed in this batch or an earlier one. A
+  /// moved record that is re-delivered later is left where it is by the
+  /// `alreadyMoved` guard in [_queueDecodedOneHz].
+  static int _queueBoundaryMove(
+    Batch batch, {
+    required String deviceId,
+    required int recTs,
+    required int counter,
+    required int? tsSubsec,
+  }) {
+    if (counter <= 1 || tsSubsec == null || tsSubsec < 0 || tsSubsec >= 32768) {
+      return 0;
+    }
+    final t = recTs * 1000;
+    final before = t - 1000;
+    // The predecessor row. `ts_subsec <= tsSubsec - min step` is
+    // [isBoundaryCollision] in SQL, and excludes an already-moved row.
+    batch.rawUpdate(
+      'UPDATE decoded_onehz SET ts_ms = ts_ms - 1000, rec_ts = rec_ts - 1, '
+      'ts_subsec = ts_subsec + 32768 '
+      'WHERE device_id = ? AND ts_ms = ? AND counter = ? '
+      'AND ts_subsec >= 0 AND ts_subsec <= ? '
+      'AND NOT EXISTS (SELECT 1 FROM decoded_onehz h '
+      'WHERE h.device_id = ? AND h.ts_ms = ?) '
+      'AND NOT EXISTS (SELECT 1 FROM decoded_rr r '
+      'WHERE r.device_id = ? AND r.ts_ms = ?)',
+      [
+        deviceId, t, counter - 1,
+        tsSubsec - kBoundaryCollisionMinStepTicks,
+        deviceId, before,
+        deviceId, before,
+      ],
+    );
+    // Its beats follow it, only if it actually moved: the second it left is
+    // empty and the moved row sits in the second before. `beat_ts_ms` stays;
+    // `rr_ts_ms` is the row's whole second by definition, so it moves. The
+    // second before was checked empty above; OR IGNORE only keeps an
+    // impossible conflict from failing the commit that gates the ACK.
+    batch.rawUpdate(
+      'UPDATE OR IGNORE decoded_rr SET ts_ms = ts_ms - 1000, '
+      'rec_ts = rec_ts - 1, rr_ts_ms = rr_ts_ms - 1000 '
+      'WHERE device_id = ? AND ts_ms = ? '
+      'AND NOT EXISTS (SELECT 1 FROM decoded_onehz o '
+      'WHERE o.device_id = ? AND o.ts_ms = ?) '
+      'AND EXISTS (SELECT 1 FROM decoded_onehz m WHERE m.device_id = ? '
+      'AND m.ts_ms = ? AND m.counter = ? AND m.ts_subsec >= 32768)',
+      [deviceId, t, deviceId, t, deviceId, before, counter - 1],
+    );
+    return 2;
   }
 
 
@@ -8496,6 +8718,9 @@ class LocalDb {
     // than the emit anchor, PPG-measured). Null = per-record emit anchor,
     // exactly as before.
     BeatClock? beatClock,
+    // Skip every write while this query finds a row — see
+    // [_queueDecodedOneHz]'s `alreadyMoved`.
+    (String, List<Object?>)? unless,
   }) {
     // SCOPED TO THE WRITING DEVICE (v47). Unscoped, this cleared every device's
     // beats for the second — so a second band writing one row deleted the
@@ -8505,8 +8730,9 @@ class LocalDb {
       batch.rawDelete('DELETE FROM decoded_rr WHERE rec_ts = ?', [recTs]);
     } else {
       batch.rawDelete(
-        'DELETE FROM decoded_rr WHERE device_id = ? AND ts_ms = ?',
-        [deviceId, recTs * 1000],
+        'DELETE FROM decoded_rr WHERE device_id = ? AND ts_ms = ?'
+        '${unless == null ? '' : ' AND NOT EXISTS (${unless.$1})'}',
+        [deviceId, recTs * 1000, ...?unless?.$2],
       );
     }
     final beatTs = beatClock?.place(
@@ -8516,7 +8742,7 @@ class LocalDb {
     for (var i = 0; i < decoded.rrIntervalsMs.length; i++) {
       final rr = decoded.rrIntervalsMs[i];
       if (rr <= 0) continue;
-      batch.insert('decoded_rr', {
+      _replaceUnless(batch, 'decoded_rr', {
         // Same key prefix as the parent row — see _createDecodedStore. Omitted
         // on the mid-ladder replay for the reason _queueDecodedOneHz gives.
         'device_id': ?(preDeviceKey ? null : deviceId),
@@ -8543,7 +8769,7 @@ class LocalDb {
         // mid-ladder backfill, same trap.
         'beat_ts_ms': ?beatTs[i],
         'device_family': ?deviceFamily,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }, unless);
       ops++;
     }
     return ops;

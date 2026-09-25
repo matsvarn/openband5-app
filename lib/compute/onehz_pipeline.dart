@@ -48,6 +48,18 @@ const MetricCfg _skinTempAdcCfg = MetricCfg(
   halfLifeS: 21.0,
 );
 
+/// Erholung (headline readiness, 0–100) on the same EWMA engine and
+/// half-lives as HRV. The spread floor of 3 points keeps a run of near-
+/// identical days from shrinking the normal range to a sliver, so a
+/// 2-point wobble is never called a departure.
+const MetricCfg _readinessCfg = MetricCfg(
+  minVal: 0.0,
+  maxVal: 100.0,
+  floorSpread: 3.0,
+  halfLifeB: 14.0,
+  halfLifeS: 21.0,
+);
+
 /// MACHINE-READABLE "a required input was missing" note — the same
 /// `key:field=value` grammar as `need_baseline:have=H,need=N` (models/metric.dart
 /// parses that one) and analytics' `unknown_device_family:id=…`. One grammar,
@@ -174,6 +186,10 @@ class DayBundleInput {
   /// matches today's raw mean (the old z-vs-z series was a unit mismatch bug).
   final List<double> skinTempAdcHistory;
 
+  /// Trailing headline readiness (0–100) of prior days — the history for the
+  /// Erholung EWMA baseline. Strictly before this day, like every baseline.
+  final List<double> readinessHistory;
+
   /// Trailing measured quiet-waking HRR levels (`quiet_waking_hrr` series),
   /// strictly before this day. The personal level strain subtracts its
   /// baseline at is `median(history) ?? today's own measured median` — the
@@ -238,6 +254,7 @@ class DayBundleInput {
     this.respHistory = const [],
     this.rmssdHistory = const [],
     this.skinTempAdcHistory = const [],
+    this.readinessHistory = const [],
     this.quietHrrHistory = const [],
     this.observedHrCeilingBpm,
     this.dayConfidence = 0,
@@ -269,6 +286,7 @@ class DayBundleInput {
     'resp_history': respHistory,
     'rmssd_history': rmssdHistory,
     'skin_temp_adc_history': skinTempAdcHistory,
+    'readiness_history': readinessHistory,
     'quiet_hrr_history': quietHrrHistory,
     'observed_hr_ceiling_bpm': observedHrCeilingBpm,
     'day_confidence': dayConfidence,
@@ -318,6 +336,7 @@ class DayBundleInput {
       respHistory: dbls('resp_history'),
       rmssdHistory: dbls('rmssd_history'),
       skinTempAdcHistory: dbls('skin_temp_adc_history'),
+      readinessHistory: dbls('readiness_history'),
       quietHrrHistory: dbls('quiet_hrr_history'),
       observedHrCeilingBpm: (m['observed_hr_ceiling_bpm'] as num?)?.toDouble(),
       dayConfidence: (m['day_confidence'] as num?)?.toDouble() ?? 0,
@@ -1318,6 +1337,13 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       d.skinTempAdcHistory,
       skinTempAdc,
       _skinTempAdcCfg,
+    ),
+    // Erholung against its own trailing days (strictly before today, so a
+    // re-derive of the same day folds the same history).
+    'recovery': baselineBlock(
+      d.readinessHistory,
+      readinessScalar,
+      _readinessCfg,
     ),
   };
 

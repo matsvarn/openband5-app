@@ -19,6 +19,7 @@ import '../../openband/alp_tokens.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/release_scope.dart';
+import '../../openband/scale.dart';
 import '../../openband/theme.dart';
 import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
@@ -74,7 +75,7 @@ class SetRow extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
-    final tint = danger ? p.danger : p.muted;
+    final tint = danger ? p.danger : p.ink;
     return Pressable(
       onTap: onTap,
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
@@ -85,7 +86,7 @@ class SetRow extends StatelessWidget {
             if (glyph != null)
               glyph!(tint)
             else
-              Icon(icon, size: 18, color: tint),
+              Icon(icon, size: 20, color: tint),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -120,12 +121,21 @@ class SetRow extends StatelessWidget {
             // "2026-08-16 04:12" is arbitrary-length, and at 3.1× it pushed
             // itself and the chevron off the right of every settings screen.
             if (value.isNotEmpty && !bigText(c)) ...[
-              const SizedBox(width: 8),
-              Text(value, style: p.text(13, color: p.muted)),
+              const SizedBox(width: 12),
+              Text(
+                value,
+                style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
+              ),
             ],
+            // Paper G2: a light "›", not an icon.
             if (chevron && !danger) ...[
-              const SizedBox(width: 8),
-              Icon(LucideIcons.chevronRight, size: 17, color: p.gap),
+              const SizedBox(width: 12),
+              ExcludeSemantics(
+                child: Text(
+                  '›',
+                  style: p.text(16, color: p.gap).copyWith(height: 20 / 16),
+                ),
+              ),
             ],
           ],
         ),
@@ -150,13 +160,10 @@ Widget settingsGroup(
         if (title.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(
-              title,
-              style: p.text(13, weight: FontWeight.w600, color: p.muted),
-            ),
+            child: Text(title.toUpperCase(), style: p.label(size: 11)),
           ),
         OBCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             children: [
               for (var i = 0; i < rows.length; i++) ...[
@@ -398,6 +405,7 @@ class ProfileHomeView extends StatelessWidget {
                     ? 'Profil'
                     : (l?.profileTitle ?? 'Profile'),
                 subtitle: '',
+                backText: releaseReduced ? 'Heute' : null,
               ),
             ),
             Expanded(
@@ -407,7 +415,16 @@ class ProfileHomeView extends StatelessWidget {
                   _identityCard(c, p, s),
                   if (s != null) _bandCard(c, p, s),
                   if (releaseReduced)
-                    _reducedRoutes(c)
+                    ...[
+                      _reducedRoutes(c),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          'OpenBand 5 · ohne Abo',
+                          style: p.text(12, color: p.muted),
+                        ),
+                      ),
+                    ]
                   else ...[
                     settingsGroup(c, l?.profileQuickAccessGroup ?? 'Quick access', [
                       SetRow(
@@ -693,6 +710,17 @@ class ProfileHomeView extends StatelessWidget {
     final statusUnavailable = s.bandReadFailed;
     var archive = s.storageBytes == null ? '—' : formatBytes(s.storageBytes!);
     if (releaseReduced && de) archive = archive.replaceFirst('.', ',');
+    if (releaseReduced) {
+      return _reducedBandCard(
+        c,
+        p,
+        b,
+        archive,
+        connected: connected,
+        statusUnavailable: statusUnavailable,
+        de: de,
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Pressable(
@@ -711,14 +739,11 @@ class ProfileHomeView extends StatelessWidget {
                     width: releaseReduced ? 40 : 36,
                     height: releaseReduced ? 40 : 36,
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: releaseReduced ? p.recoveryTint : p.sleepTint,
-                      borderRadius: BorderRadius.circular(AlpRadius.card / 2),
-                    ),
+                    decoration: p.insetDecoration(radius: AlpRadius.card / 2),
                     child: Icon(
                       LucideIcons.bluetooth,
                       size: releaseReduced ? 20 : 18,
-                      color: releaseReduced ? p.recovery : p.sleep,
+                      color: p.ink,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -733,21 +758,30 @@ class ProfileHomeView extends StatelessWidget {
                             weight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          statusUnavailable
-                              ? (de
-                                    ? 'Bandstatus nicht verfügbar'
-                                    : 'Band status unavailable')
-                              : connected
-                              ? (de ? 'Verbunden' : 'Connected')
-                              : (de ? 'Getrennt' : 'Disconnected'),
-                          style: p.text(
-                            13,
-                            weight: FontWeight.w500,
-                            color: !statusUnavailable && connected
-                                ? p.recoveryText
-                                : p.muted,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            OBLed(on: !statusUnavailable && connected, size: 7),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                statusUnavailable
+                                    ? (de
+                                          ? 'Bandstatus nicht verfügbar'
+                                          : 'Band status unavailable')
+                                    : connected
+                                    ? (de ? 'Verbunden' : 'Connected')
+                                    : (de ? 'Getrennt' : 'Disconnected'),
+                                style: p.text(
+                                  13,
+                                  weight: FontWeight.w600,
+                                  color: !statusUnavailable && connected
+                                      ? p.ink
+                                      : p.muted,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -783,24 +817,16 @@ class ProfileHomeView extends StatelessWidget {
                 ],
               ),
               if (b.batteryPercent != null) ...[
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: R.rSm,
-                  child: SizedBox(
-                    height: releaseReduced ? 6 : 4,
-                    child: Stack(
-                      children: [
-                        Container(color: p.well),
-                        FractionallySizedBox(
-                          widthFactor: (b.batteryPercent! / 100).clamp(
-                            0.0,
-                            1.0,
-                          ),
-                          child: Container(color: p.recovery),
-                        ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 8),
+                OBScale(
+                  min: 0,
+                  max: 100,
+                  value: b.batteryPercent!.toDouble(),
+                  fill: p.ink,
+                  labels: ('0 %', de ? 'Akku' : 'Battery', '100 %'),
+                  semanticsLabel: de
+                      ? 'Akku ${b.batteryPercent} Prozent'
+                      : 'Battery ${b.batteryPercent} percent',
                 ),
               ],
               SizedBox(height: releaseReduced ? 12 : 14),
@@ -860,6 +886,134 @@ class ProfileHomeView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _reducedBandCard(
+    BuildContext c,
+    OB p,
+    BandSnapshot b,
+    String archive, {
+    required bool connected,
+    required bool statusUnavailable,
+    required bool de,
+  }) {
+    final battery = b.batteryPercent;
+    final status = statusUnavailable
+        ? (de ? 'Bandstatus nicht verfügbar' : 'Band status unavailable')
+        : connected
+        ? (de ? 'Verbunden' : 'Connected')
+        : (de ? 'Getrennt' : 'Disconnected');
+    final large = bigText(c);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Pressable(
+        key: const ValueKey('profile-band'),
+        onTap: onDevices,
+        semanticLabel: '${bandName ?? 'Band'}. $status',
+        child: OBCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('BAND ›', style: p.label(size: 10)),
+                        const SizedBox(height: 4),
+                        Text(
+                          bandName ?? 'Band',
+                          style: p.text(17, weight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: p.insetDecoration(radius: 20),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OBLed(on: !statusUnavailable && connected, size: 7),
+                        const SizedBox(width: 8),
+                        Text(status, style: p.text(12, weight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              if (large)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _batteryValue(p, battery),
+                    const SizedBox(height: 12),
+                    _batteryScale(p, battery, de),
+                  ],
+                )
+              else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 82, child: _batteryValue(p, battery)),
+                    const SizedBox(width: 14),
+                    Expanded(child: _batteryScale(p, battery, de)),
+                  ],
+                ),
+              const SizedBox(height: 16),
+              Divider(color: p.line, height: 1, thickness: 1),
+              const SizedBox(height: 14),
+              if (large)
+                Column(
+                  children: [
+                    _bandFactLarge(p, de ? 'Daten bis' : 'Data as of', obTime(b.latestStoredAt), stackLabel: true),
+                    const SizedBox(height: 8),
+                    _bandFactLarge(p, de ? 'Letzter Bandwert' : 'Last band value', obTime(b.receivedAt), stackLabel: true),
+                    const SizedBox(height: 8),
+                    _bandFactLarge(p, de ? 'Rohdaten-Archiv' : 'Raw archive', archive, stackLabel: true),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    _bandFact(p, de ? 'Daten bis' : 'Data as of', obTime(b.latestStoredAt)),
+                    _bandFact(p, de ? 'Letzter Bandwert' : 'Last band value', obTime(b.receivedAt)),
+                    _bandFact(p, de ? 'Rohdaten-Archiv' : 'Raw archive', archive),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _batteryValue(OB p, int? battery) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('AKKU', style: p.label(size: 10)),
+      const SizedBox(height: 2),
+      Text(
+        battery == null ? '—' : '$battery %',
+        style: p.text(27, weight: FontWeight.w700, display: true),
+      ),
+    ],
+  );
+
+  Widget _batteryScale(OB p, int? battery, bool de) => OBScale(
+    min: 0,
+    max: 100,
+    value: battery?.toDouble(),
+    fill: p.ink,
+    labels: ('0', '', '100 %'),
+    semanticsLabel: battery == null
+        ? (de ? 'Akku ohne Wert' : 'Battery unavailable')
+        : (de ? 'Akku $battery Prozent' : 'Battery $battery percent'),
+  );
 
   Widget _bandFactLarge(
     OB p,

@@ -20,6 +20,20 @@ python3 tool/ui_review.py capture --small
 flutter test --no-pub test/openband_flow_test.dart
 ```
 
+### Paper diff for the G2 screens
+
+`tool/g2_review.py` renders the reduced release with the synthetic fixture, in Helvetica Neue like iOS, and compares it with the G2 frames exported from Paper ("OpenBand 5 · Designphase 3", pages *G2 · Gerät · Screens* and *G2 · Gerät · Dunkel*). A run takes a few seconds.
+
+```sh
+python3 tool/paper_refs.py        # refresh docs/openband5/design/paper-g2/ from Paper Desktop (read-only)
+python3 tool/g2_review.py         # all known frames, light and dark
+python3 tool/g2_review.py 02 --dark
+```
+
+Each frame writes `build/g2-review/<mode>/<frame>.png` as four panels: Paper, app, a 50 % onion overlay and a red diff. The printed score is the share of pixels below the status bar that differ; use it to see whether an edit moved closer, and read the sheet for what to change. Helvetica Neue is split out of the macOS system collection into `~/Library/Caches/openband5-g2-fonts` and is never committed. Paper frames use their own fixture dates and times (for example DI 22.09), so text-only differences in dates remain. Frames are added to the map in `tool/g2_review_test.dart` as their screens are matched.
+
+`python3 tool/g2_review.py --real` renders the same frames from a copy of the newest database pulled with `tool/pull_device_db.sh` (or `--real PATH` to a pulled `Documents` folder, `--day YYYY-MM-DD` for another day). It uses the production local repository on a temporary copy, so the pulled file is never written. The PNGs are personal data and go to `OpenBand5Lab/ui-review-real/<timestamp>/`, never into the repository; nothing is compared with Paper. Use it before an install to catch what the synthetic fixture cannot: corrected nights, days on mixed algorithm versions, provisional baselines, missing values. Helvetica Neue has no "→"; iOS draws it from a fallback font, the test renderer shows a box.
+
 The runner creates/reuses an iPhone 15 Pro (393×852) or iPhone 13 mini (375×812) on the already installed iOS 26.5 runtime. The gallery supports state, light/dark and text-size changes; its default text scaling follows the OS. The workspace also includes **OpenBand 5: synthetic UI (hot reload)** for editor-driven hot reload and Flutter Inspector.
 
 `capture` uses Flutter's SDK `integration_test` package and real iOS rendering. At each checkpoint a temporary loopback-only helper asks `simctl` for the whole display, so the native keyboard and status bar are included. The helper accepts only screenshot names, runs only for this review, and closes afterward. A direct `flutter drive` invocation without the runner falls back to app-surface captures and labels that limitation in `frames.json`. The default `release` flow covers the reduced product, including representative light/dark, missing/error and larger-text states. Use `--flow all` for the archived full-product journey, or a named flow for an affected feature. Each capture waits for the requested Flutter frame to rasterize before the native display checkpoint. The test entry point hides the gallery controls so captures have the product's actual viewport. No AppState, real database, Bluetooth, analytics evaluation or personal data is initialized.
@@ -57,7 +71,7 @@ xcrun devicectl device capture screenshot \
   --timeout 25
 ```
 
-This command captures the **foreground app**, not a specified bundle. Run it only while OpenBand is visibly foreground during an agreed review session. Keep physical captures under `~/Library/Application Support/OpenBand5Lab/ui-review`, not in fixtures or committed golden files. Direct capture was exercised on the connected iPhone; this capability alone does not prove the app's current screen or Bluetooth behavior.
+This command captures the **foreground app**, not a specified bundle. Run it only while OpenBand is visibly foreground during an agreed review session. Keep physical captures under `~/Library/Application Support/OpenBand5Lab/ui-review-phone`, not in fixtures or committed golden files. The 23 September G2 session captured six real app screens there; see [the dated verification](IMPLEMENTATION_VERIFICATION.md). A screenshot alone does not prove Bluetooth recovery or physiological accuracy.
 
 The Device Hub automation timeout remains a limitation for direct Mac-driven exploratory phone interaction. Do not install another Xcode, change the Flutter version or add a third-party mobile automation stack until the native test/inspection path has a concrete unmet requirement.
 

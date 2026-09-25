@@ -235,8 +235,11 @@ class _DataScreenState extends State<DataScreen> {
   }
 
   Future<_Note> _setCadence(AppState app) async {
+    return _setCadenceTo(app, _nextCadence(app.backupCadence));
+  }
+
+  Future<_Note> _setCadenceTo(AppState app, BackupCadence next) async {
     final de = Localizations.localeOf(context).languageCode == 'de';
-    final next = _nextCadence(app.backupCadence);
     final outcome = await app.setBackupCadence(next);
     if (outcome == null) {
       return (
@@ -281,7 +284,14 @@ class _DataScreenState extends State<DataScreen> {
         onExportDatabase: _busy ? null : () => _run(_exportDb),
         onExportEncrypted: _busy ? null : () => _run(_exportEncrypted),
         onExportCsv: _busy ? null : () => _run(_exportCsv),
-        onCadence: _busy ? null : () => _run(() => _setCadence(app)),
+        onAutomatic: _busy
+            ? null
+            : (enabled) => _run(
+                () => _setCadenceTo(
+                  app,
+                  enabled ? BackupCadence.daily : BackupCadence.off,
+                ),
+              ),
         onBackupNow: _busy ? null : () => _run(() => _backupNow(app)),
         onImport: _busy ? null : () => _run(() => _import(app)),
         onReanalyze: _busy || app.reanalyzing
@@ -518,6 +528,7 @@ class DataScreenView extends StatelessWidget {
       onBackupNow,
       onImport,
       onReanalyze;
+  final ValueChanged<bool>? onAutomatic;
 
   const DataScreenView({
     super.key,
@@ -535,6 +546,7 @@ class DataScreenView extends StatelessWidget {
     this.onExportEncrypted,
     this.onExportCsv,
     this.onCadence,
+    this.onAutomatic,
     this.onBackupNow,
     this.onImport,
     this.onReanalyze,
@@ -545,11 +557,6 @@ class DataScreenView extends StatelessWidget {
     final p = OB.of(c);
     final l = AppLocalizations.of(c);
     final de = Localizations.localeOf(c).languageCode == 'de';
-    final automatic = switch (cadence) {
-      BackupCadence.off => de ? 'Aus' : 'Off',
-      BackupCadence.daily => de ? 'Täglich' : 'Daily',
-      BackupCadence.weekly => de ? 'Wöchentlich' : 'Weekly',
-    };
     return Scaffold(
       key: const ValueKey('data-screen'),
       backgroundColor: p.canvas,
@@ -561,6 +568,7 @@ class DataScreenView extends StatelessWidget {
               child: OBPageHeader(
                 title: de ? 'Daten & Sicherung' : 'Data & backup',
                 subtitle: '',
+                backText: de ? 'Profil' : 'Profile',
               ),
             ),
             Expanded(
@@ -571,83 +579,135 @@ class DataScreenView extends StatelessWidget {
                     rebuilt!,
                     const SizedBox(height: 12),
                   ],
-                  settingsGroup(c, de ? 'Export' : 'Export', [
-                    SetRow(
-                      LucideIcons.database,
-                      C.blue,
-                      de ? 'Datenbank exportieren' : 'Export database',
-                      key: const ValueKey('data-export-database'),
-                      sub: '.db · ${de ? 'unverschlüsselt' : 'unencrypted'}',
-                      minHeight: 60,
-                      onTap: onExportDatabase,
+                  _sectionLabel(p, de ? 'Sicherung' : 'Backup'),
+                  OBCard(
+                    child: Column(
+                      children: [
+                        Pressable(
+                          key: const ValueKey('data-backup-cadence'),
+                          onTap: onAutomatic == null
+                              ? onCadence
+                              : () =>
+                                    onAutomatic!(cadence == BackupCadence.off),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        de
+                                            ? 'Automatisch sichern'
+                                            : 'Automatic backup',
+                                        style: p.text(
+                                          15,
+                                          weight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      Text(
+                                        de
+                                            ? 'Unverschlüsselt · $kBackupsKept lokale Kopien'
+                                            : 'Unencrypted · $kBackupsKept local copies',
+                                        style: p.text(12, color: p.muted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Switch.adaptive(
+                                  value: cadence != BackupCadence.off,
+                                  onChanged:
+                                      onAutomatic ??
+                                      (onCadence == null
+                                          ? null
+                                          : (_) => onCadence!()),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Divider(color: p.line, height: 1),
+                        _paperRow(
+                          p,
+                          de ? 'Letzte Sicherung' : 'Last backup',
+                          value: lastBackupAt == null
+                              ? '—'
+                              : _stamp(lastBackupAt!),
+                          key: const ValueKey('data-last-backup'),
+                        ),
+                        Divider(color: p.line, height: 1),
+                        _paperRow(
+                          p,
+                          de
+                              ? 'Sicherung jetzt erstellen'
+                              : 'Create backup now',
+                          key: const ValueKey('data-backup-now'),
+                          onTap: onBackupNow,
+                        ),
+                      ],
                     ),
-                    SetRow(
-                      LucideIcons.lock,
-                      C.purple,
-                      de ? 'Verschlüsselt exportieren' : 'Export encrypted',
-                      key: const ValueKey('data-export-encrypted'),
-                      sub: de ? 'Mit Passwort' : 'With password',
-                      minHeight: 60,
-                      onTap: onExportEncrypted,
+                  ),
+                  _sectionLabel(p, 'Export'),
+                  OBCard(
+                    child: Column(
+                      children: [
+                        _paperRow(
+                          p,
+                          de ? 'Datenbank exportieren' : 'Export database',
+                          sub:
+                              '.db · ${de ? 'unverschlüsselt' : 'unencrypted'}',
+                          key: const ValueKey('data-export-database'),
+                          onTap: onExportDatabase,
+                        ),
+                        Divider(color: p.line, height: 1),
+                        _paperRow(
+                          p,
+                          de ? 'Verschlüsselt exportieren' : 'Export encrypted',
+                          sub: de ? 'Mit Passwort' : 'With password',
+                          key: const ValueKey('data-export-encrypted'),
+                          onTap: onExportEncrypted,
+                        ),
+                        Divider(color: p.line, height: 1),
+                        _paperRow(
+                          p,
+                          de ? 'CSV exportieren' : 'Export CSV',
+                          sub: de
+                              ? 'Messwerte · keine vollständige Sicherung'
+                              : 'Measurements · not a complete backup',
+                          key: const ValueKey('data-export-csv'),
+                          onTap: onExportCsv,
+                        ),
+                      ],
                     ),
-                    SetRow(
-                      LucideIcons.fileText,
-                      C.green,
-                      de ? 'CSV exportieren' : 'Export CSV',
-                      key: const ValueKey('data-export-csv'),
-                      sub: de
-                          ? 'Messwerte · keine vollständige Sicherung'
-                          : 'Measurements · not a complete backup',
-                      minHeight: 60,
-                      onTap: onExportCsv,
-                    ),
-                  ], top: 14),
-                  settingsGroup(c, de ? 'Sicherung' : 'Backup', [
-                    SetRow(
-                      LucideIcons.calendarClock,
-                      C.purple,
-                      de ? 'Automatisch' : 'Automatic',
-                      key: const ValueKey('data-backup-cadence'),
-                      sub: de
-                          ? 'Unverschlüsselt · $kBackupsKept lokale Kopien'
-                          : 'Unencrypted · $kBackupsKept local copies',
-                      value: automatic,
-                      minHeight: 60,
-                      onTap: onCadence,
-                    ),
-                    SetRow(
-                      LucideIcons.clock,
-                      C.n500,
-                      de ? 'Letzte Sicherung' : 'Last backup',
-                      key: const ValueKey('data-last-backup'),
-                      value: lastBackupAt == null ? '—' : _stamp(lastBackupAt!),
-                      chevron: false,
-                    ),
-                    SetRow(
-                      LucideIcons.hardDriveDownload,
-                      C.teal,
-                      de ? 'Sicherung erstellen' : 'Create backup',
-                      key: const ValueKey('data-backup-now'),
-                      onTap: onBackupNow,
-                    ),
-                  ]),
-                  settingsGroup(c, '', [
-                    SetRow(
-                      LucideIcons.upload,
-                      C.orange,
-                      de ? 'Datei importieren' : 'Import file',
-                      key: const ValueKey('data-import-file'),
-                      onTap: onImport,
-                    ),
-                    SetRow(
-                      LucideIcons.refreshCcw,
-                      C.blue,
-                      de ? 'Neu berechnen' : 'Recalculate',
-                      key: const ValueKey('data-reanalyze'),
-                      value: reanalyzeProgress ?? '',
-                      onTap: reanalyzing ? null : onReanalyze,
-                    ),
-                  ], top: 12),
+                  ),
+                  _sectionLabel(p, de ? 'Werkzeuge' : 'Tools'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _toolCard(
+                          p,
+                          LucideIcons.upload,
+                          de ? 'Datei importieren' : 'Import file',
+                          key: const ValueKey('data-import-file'),
+                          onTap: onImport,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _toolCard(
+                          p,
+                          LucideIcons.refreshCcw,
+                          de ? 'Neu berechnen' : 'Recalculate',
+                          key: const ValueKey('data-reanalyze'),
+                          onTap: reanalyzing ? null : onReanalyze,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (reanalyzeProgress != null)
+                    Text(reanalyzeProgress!, style: p.text(12, color: p.muted)),
                   if (busy) ...[
                     const SizedBox(height: 20),
                     Center(child: CircularProgressIndicator(color: p.action)),
@@ -693,6 +753,75 @@ class DataScreenView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _sectionLabel(OB p, String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 18, 0, 8),
+    child: Text(label.toUpperCase(), style: p.label(size: 11)),
+  );
+
+  Widget _paperRow(
+    OB p,
+    String title, {
+    String? sub,
+    String? value,
+    Key? key,
+    VoidCallback? onTap,
+  }) => Pressable(
+    key: key,
+    onTap: onTap,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 50),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: p.text(15, weight: FontWeight.w600)),
+                  if (sub != null) Text(sub, style: p.text(12, color: p.muted)),
+                ],
+              ),
+            ),
+            if (value != null)
+              Flexible(
+                child: Text(value, style: p.text(14, color: p.muted)),
+              ),
+            if (onTap != null) ...[
+              const SizedBox(width: 10),
+              Text('›', style: p.text(17, color: p.gap)),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _toolCard(
+    OB p,
+    IconData icon,
+    String title, {
+    Key? key,
+    VoidCallback? onTap,
+  }) => Pressable(
+    key: key,
+    onTap: onTap,
+    child: OBCard(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: p.ink),
+            const SizedBox(height: 12),
+            Text(title, style: p.text(15, weight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 String _exportCreated(BuildContext c) =>

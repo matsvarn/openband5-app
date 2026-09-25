@@ -203,7 +203,7 @@ void main() {
     // Winsorized-EWMA personal baselines for rhr/hrv/resp, each carrying the
     // BaselineState fields + a cold-start status (calibrating on a single night).
     final baselines = (bundle['baselines'] as Map).cast<String, dynamic>();
-    for (final k in const ['resting_hr', 'hrv', 'resp']) {
+    for (final k in const ['resting_hr', 'hrv', 'resp', 'recovery']) {
       final b = (baselines[k] as Map).cast<String, dynamic>();
       expect(b.containsKey('baseline'), isTrue, reason: '$k baseline');
       expect(b.containsKey('spread'), isTrue, reason: '$k spread');

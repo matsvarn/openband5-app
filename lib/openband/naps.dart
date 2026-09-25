@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../compute/nap_edits.dart';
 import '../data/day_label.dart';
@@ -26,6 +27,15 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
 
   OpenBandController get controller => widget.controller;
   String get day => controller.selectedDay;
+
+  void _stepDay(int offset) {
+    final selected = DateTime.parse(day);
+    controller.selectDay(
+      dayLabelOf(
+        DateTime(selected.year, selected.month, selected.day + offset),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -138,8 +148,28 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
           naps?.job?.state == CorrectionState.calculating ||
           controller.napCalculating;
       final open = failed || pending;
+      final selected = DateTime.parse(day);
+      final today = day == todayLabel(controller.now());
+      final dateLabel =
+          '${DateFormat('EEE', 'de_DE').format(selected).replaceAll('.', '')} '
+          '${DateFormat('dd.MM', 'de_DE').format(selected)}';
       return Scaffold(
         backgroundColor: p.canvas,
+        bottomNavigationBar: naps == null || _error != null
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: OBAction(
+                    'Nickerchen ergänzen',
+                    secondary: true,
+                    ink: true,
+                    icon: LucideIcons.plus,
+                    onPressed: () => _openEditor(),
+                  ),
+                ),
+              ),
         body: SafeArea(
           child: ListView(
             key: PageStorageKey('openband.naps.$day'),
@@ -147,11 +177,21 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
             children: [
               OBPageHeader(
                 title: 'Nickerchen',
-                subtitle: obDate(day),
-                onDate: () => chooseOpenBandDay(context, controller),
+                backText: 'Schlaf',
+                subtitle: '',
+                bottom: 2,
                 onInfo: () => _napInfo(context, naps),
                 infoLabel: 'Quelle und Zeitzone',
               ),
+              Center(
+                child: OBDayPill(
+                  label: dateLabel,
+                  onTap: () => chooseOpenBandDay(context, controller),
+                  onPrevious: () => _stepDay(-1),
+                  onNext: today ? null : () => _stepDay(1),
+                ),
+              ),
+              const SizedBox(height: 24),
               if (_error != null)
                 OBAction('Daten erneut laden', onPressed: _load)
               else if (_loading && naps == null)
@@ -162,12 +202,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Tagsüber geschlafen',
-                        style: p
-                            .text(13, color: p.muted)
-                            .copyWith(height: 16 / 13),
-                      ),
+                      Text('TAGSÜBER GESCHLAFEN', style: p.label(size: 11)),
                       const SizedBox(height: 8),
                       _total(p, naps),
                       if (!naps.judged) ...[
@@ -186,16 +221,10 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                               .text(13, color: p.muted)
                               .copyWith(height: 16 / 13),
                         ),
-                      ] else if (!open && naps.sessions.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          naps.sessions.length == 1
-                              ? '1 Nickerchen'
-                              : '${naps.sessions.length} Nickerchen',
-                          style: p
-                              .text(13, color: p.muted)
-                              .copyWith(height: 16 / 13),
-                        ),
+                      ],
+                      if (naps.sessions.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        _NapTimeline(day: day, sessions: naps.sessions),
                       ],
                       if (naps.recordingTimezone == null) ...[
                         const SizedBox(height: 8),
@@ -260,7 +289,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                 if (naps.sessions.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   OBCard(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -273,14 +302,18 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 12),
-                OBAction(
-                  'Nickerchen ergänzen',
-                  secondary: true,
-                  ink: true,
-                  icon: LucideIcons.plus,
-                  onPressed: () => _openEditor(),
-                ),
+                if (naps.sessions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      'Erkannt stammt aus der Aufzeichnung. Manuell kennzeichnet eigene Einträge.',
+                      style: p
+                          .text(12, color: p.muted)
+                          .copyWith(height: 18 / 12),
+                    ),
+                  ),
+                ],
                 if (naps.rejected.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   OBCard(
@@ -336,6 +369,87 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
   }
 }
 
+/// The waking day 06:00–22:00 as a ticked track with each stored nap drawn
+/// at its real clock position.
+class _NapTimeline extends StatelessWidget {
+  final String day;
+  final List<NapSession> sessions;
+  const _NapTimeline({required this.day, required this.sessions});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final d = DateTime.parse(day);
+    final from = DateTime(d.year, d.month, d.day, 6);
+    final to = DateTime(d.year, d.month, d.day, 22);
+    final caption = p.text(10, weight: FontWeight.w500, color: p.muted);
+    return ExcludeSemantics(
+      child: Column(
+        children: [
+          SizedBox(
+            height: 34,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _NapTimelinePainter(p, from, to, sessions),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('06:00', style: caption),
+              Text('14:00', style: caption),
+              Text('22:00', style: caption),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NapTimelinePainter extends CustomPainter {
+  final OB p;
+  final DateTime from, to;
+  final List<NapSession> sessions;
+  _NapTimelinePainter(this.p, this.from, this.to, this.sessions);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final span = to.difference(from).inSeconds.toDouble();
+    double x(DateTime t) =>
+        (t.difference(from).inSeconds / span).clamp(0.0, 1.0) * size.width;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 8, size.width, 14),
+        const Radius.circular(4),
+      ),
+      Paint()..color = p.line,
+    );
+    for (final s in sessions) {
+      final x0 = x(s.start), x1 = x(s.end);
+      if (x1 <= x0) continue;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(x0, 8, x1 < x0 + 3 ? x0 + 3 : x1, 22),
+          const Radius.circular(2),
+        ),
+        Paint()..color = p.ink,
+      );
+    }
+    final tick = Paint()..color = p.muted;
+    for (var i = 0; i <= 4; i++) {
+      final tx = (size.width - 1) * i / 4 + .5;
+      final major = i % 2 == 0;
+      tick.strokeWidth = major ? 1.4 : 1;
+      canvas.drawLine(Offset(tx, 26), Offset(tx, major ? 34 : 30), tick);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_NapTimelinePainter old) =>
+      old.sessions != sessions || old.p.dark != p.dark;
+}
+
 class _NapRow extends StatelessWidget {
   final NapSession session;
   final VoidCallback onTap;
@@ -352,7 +466,7 @@ class _NapRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 72),
+        constraints: const BoxConstraints(minHeight: 52),
         child: LayoutBuilder(
           builder: (context, constraints) {
             final trailing = 72.0 * scale.clamp(1, 2.5);
@@ -727,6 +841,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                       title: editing
                           ? 'Nickerchen bearbeiten'
                           : 'Nickerchen ergänzen',
+                      backText: 'Nickerchen',
                       subtitle: obDate(day),
                     ),
                     Text(
@@ -751,6 +866,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                     title: editing
                         ? 'Nickerchen bearbeiten'
                         : 'Nickerchen ergänzen',
+                    backText: 'Nickerchen',
                     subtitle: obDate(day),
                     onInfo: () => _napInfo(
                       context,

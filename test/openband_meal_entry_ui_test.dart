@@ -233,7 +233,7 @@ void main() {
     tester,
   ) async {
     await mount(tester, day: '2026-09-14');
-    expect(find.text('Eintrag'), findsOneWidget);
+    expect(find.text('EINTRAG'), findsOneWidget);
     expect(find.text('15. September'), findsOneWidget);
     expect(find.text('14. September'), findsNothing);
     expect(find.text('Frühstück'), findsOneWidget);
@@ -275,7 +275,7 @@ void main() {
 
   testWidgets('detail dark uses card token', (tester) async {
     await mount(tester, brightness: Brightness.dark);
-    expect(find.text('Eintrag'), findsOneWidget);
+    expect(find.text('EINTRAG'), findsOneWidget);
     final box = tester.widget<Container>(
       find
           .descendant(
@@ -284,7 +284,7 @@ void main() {
           )
           .first,
     );
-    expect((box.decoration as BoxDecoration).color, OB(true).card);
+    expect((box.decoration as OBBezel).color, OB(true).card);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-detail-dark.png'),
@@ -432,7 +432,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.byIcon(LucideIcons.pencil));
     await tester.pumpAndSettle();
-    expect(find.text('Eintrag bearbeiten'), findsOneWidget);
+    expect(find.text('EINTRAG BEARBEITEN'), findsOneWidget);
     expect(find.text('80 g'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -443,7 +443,13 @@ void main() {
     expect(find.text('Energie'), findsOneWidget);
     expect(find.text('Ballaststoffe'), findsOneWidget);
     expect(find.byTooltip('Zurück'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byTooltip('Zurück'),
+        matching: find.byType(OBChevron),
+      ),
+      findsOneWidget,
+    );
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-nutrients.png'),
@@ -586,7 +592,13 @@ void main() {
     expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
     expect(find.text('Erneut versuchen'), findsOneWidget);
     expect(find.byTooltip('Zurück'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.chevronLeft), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byTooltip('Zurück'),
+        matching: find.byType(OBChevron),
+      ),
+      findsOneWidget,
+    );
     expect(
       tester
           .widget<TextField>(find.byKey(const ValueKey('food-entry-name')))
@@ -601,7 +613,7 @@ void main() {
     repo.failFoodWrite = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
-    expect(find.text('Eintrag bearbeiten'), findsNothing);
+    expect(find.text('EINTRAG BEARBEITEN'), findsNothing);
     expect(find.text('Haferflocken mit Hafermilch'), findsOneWidget);
     final first = (await repo.readFoodEntry('oats')).current!;
     expect(first.label, 'Haferflocken mit Hafermilch');
@@ -732,7 +744,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('ob-confirm-yes')));
     await tester.pumpAndSettle();
-    expect(find.text('Eintrag'), findsOneWidget);
+    expect(find.text('EINTRAG'), findsOneWidget);
     expect(find.text('390'), findsOneWidget);
     expect(find.text('Haferflocken mit Milch'), findsOneWidget);
   }, tags: const ['golden']);
@@ -837,7 +849,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Entfernen'));
     await tester.pumpAndSettle();
-    expect(find.text('Eintrag'), findsOneWidget);
+    expect(find.text('EINTRAG'), findsOneWidget);
     expect(find.text('Eintrag wurde geändert'), findsOneWidget);
     expect((await repo.readFoodEntry('oats')).current!.kcal, 410);
   });
@@ -903,13 +915,13 @@ void main() {
     expect(find.byIcon(LucideIcons.pencil).hitTestable(), findsOneWidget);
     await tester.tap(find.byIcon(LucideIcons.pencil));
     await tester.pumpAndSettle();
-    expect(find.text('Eintrag bearbeiten'), findsOneWidget);
+    expect(find.text('EINTRAG BEARBEITEN'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-editor-2x.png'),
     );
     await tester.scrollUntilVisible(
-      find.text('Nährwerte'),
+      find.text('Nährwerte').hitTestable(),
       80,
       scrollable: find.byType(Scrollable).first,
     );
@@ -998,7 +1010,7 @@ void main() {
       await tester.tap(find.byIcon(LucideIcons.pencil));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('Nährwerte'),
+        find.text('Nährwerte').hitTestable(),
         80,
         scrollable: find.byType(Scrollable).first,
       );
@@ -1011,7 +1023,7 @@ void main() {
       );
       await tester.tap(find.byTooltip('Zurück'));
       await tester.pumpAndSettle();
-      expect(find.text('Eintrag bearbeiten'), findsOneWidget);
+      expect(find.text('EINTRAG BEARBEITEN'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('food-entry-name')).hitTestable(),
         findsOneWidget,

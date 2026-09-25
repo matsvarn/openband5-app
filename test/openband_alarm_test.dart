@@ -1080,7 +1080,7 @@ void main() {
         onToggleDay: (_, _) async {},
         onSetDayTime: (_, _, _) async {},
       );
-      expect(find.text('Alarm'), findsOneWidget);
+      expect(find.text('ALARM'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

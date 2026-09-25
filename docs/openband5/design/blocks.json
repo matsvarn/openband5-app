@@ -43,7 +43,17 @@
     "569H-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Hell (lib/ui2/onboarding/welcome.dart)",
     "56A9-0": "Datenimport · dauerhafte Einträge teilweise übernommen · Dunkel (lib/ui2/onboarding/welcome.dart)",
     "3IBJ-0": "Einrichtung · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
-    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)"
+    "56BD-0": "Einrichtung · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)",
+    "5D0H-0": "G2 · 09 · Band verbinden · Hell (lib/ui2/onboarding/pairing.dart)",
+    "5FCD-0": "G2 · 09 · Band verbinden · Dunkel (lib/ui2/onboarding/pairing.dart)",
+    "5D0I-0": "G2 · 10 · Erste Übertragung · Hell (lib/ui2/onboarding/first_sync.dart)",
+    "5FE4-0": "G2 · 10 · Erste Übertragung · Dunkel (lib/ui2/onboarding/first_sync.dart)",
+    "5DJT-0": "G2 · 11 · Dein Datenstand · Hell (lib/openband/screens.dart)",
+    "5EC1-0": "G2 · 11 · Dein Datenstand · Dunkel (lib/openband/screens.dart)",
+    "5DJU-0": "G2 · 12 · Datum wählen · Hell (lib/openband/day_picker.dart)",
+    "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)",
+    "5DJX-0": "G2 · 15 · Nickerchen · Hell (lib/openband/naps.dart)",
+    "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)"
   },
   "blocks": [
     {
@@ -91,7 +101,7 @@
         "567A-0",
         "3P8X-0"
       ],
-      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
+      "notes": "Canonical 64-point header,44-point card circles,18/24 title and12/16 subtitle. When the longest title word cannot fit between controls at the current text scale, including the measured width of a text back button, controls keep their44-point row and the full-width heading follows8 points below. Exercise detail reuses the optional trailing action for Lucide copy, with the Kopieren accessibility label; copied definitions return to the same library unselected. Root setup omits Back when there is no previous route; its44-point leading slot preserves alignment.",
       "variantPaperNodes": {
         "large": "4EEM-0",
         "largeDark": "4EEZ-0",
@@ -117,10 +127,10 @@
     {
       "name": "OBIconButton",
       "paperNode": "3ER1-0",
-      "widget": "_CircleButton",
-      "file": "screens.dart",
+      "widget": "OBKey",
+      "file": "theme.dart",
       "usedIn": [],
-      "notes": "Overview uses _CircleButton; OBPageHeader owns the canonical 44-point card-circle detail controls."
+      "notes": "Overview and OBPageHeader use OBKey for the raised header controls."
     },
     {
       "name": "OBRingTrio",
@@ -505,7 +515,7 @@
       "file": "calendar.dart",
       "replaces": "existing calendar in day_picker.dart",
       "usedIn": [],
-      "notes": "Shared Monday-first44-point calendar. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Paper header, fonts and cell insets reconciled to shared native44-point controls; adjacent-month cells remain empty. Export calendar-native-parity-jsx.json. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap. Weight uses min(selected day, today), no availability dots, and a year-1 previous-month guard."
+      "notes": "Shared Monday-first44-point calendar. The G2 day picker uses single-letter weekdays and round month wells; other callers retain their headers. Sleep selection retains night dots and disables future days; goal dates enable future days and omit metric dots. Canonical future variant3WKQ-0. Adjacent-month cells remain empty. Optional lastDate caps civil-day selection and forward month navigation independently of the real today marker; allowFuture=false also retains the today cap."
     },
     {
       "name": "OBDayPreview",
@@ -513,7 +523,7 @@
       "widget": "_DayPicker",
       "file": "day_picker.dart",
       "usedIn": [],
-      "notes": "Selected day summary: sleep / recovery / strain in metric colours. paperNode is the screen; block lives inline. Selected-day summary is inline in _DayPicker; no OBDayPreview class."
+      "notes": "The G2 day picker keeps its selected-night preview inline in _DayPicker: civil date, preceding-to-selected night label, and stored duration or an explicit dash. The inset preview and fixed confirmation preserve cancel-without-selection. No OBDayPreview class."
     },
     {
       "name": "OBSyncState",
@@ -587,7 +597,7 @@
         "3IBJ-0",
         "56BD-0"
       ],
-      "notes": "Canonical setup hero:120-point illustration well,64-point device slots,36-point state icon and concise phase-specific status. Typed permission/recovery states preserve their actual cause.",
+      "notes": "G2 setup hero:126-point inset illustration well,76-point raised device circles, four link dots, concise phase-specific status and three-step progress strip. Typed permission/recovery states preserve their actual cause.",
       "variantPaperNodes": {
         "permission": "56FJ-0",
         "permissionDark": "56G9-0"
@@ -681,9 +691,11 @@
       "file": "naps.dart",
       "usedIn": [
         "3KI7-0",
-        "3KJW-0"
+        "3KJW-0",
+        "5DJX-0",
+        "5F18-0"
       ],
-      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —."
+      "notes": "Fixed icon and duration lanes; stacks duration under time at large text. Missing stored duration remains —. G2 Nickerchen keeps the dated day pill and add action anchored above the safe area while the list scrolls."
     },
     {
       "name": "OBTimeField.well",
@@ -767,7 +779,7 @@
         "read-error",
         "dark"
       ],
-      "notes": "Three independent source facts: connection, stored frontier and current-local-day evaluation. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
+      "notes": "Three independent source facts: connection, receiving state or stored frontier, and current-local-day evaluation. Receiving adds a raised stored-frontier card; no oldest timestamp or total transfer range is available, so no positioned progress is drawn. Shared48 minimum rows,20 icon lane,12 gap,15 labels/values. Current job failure/pending remains separate from successful recalculation. Native acceptance is recorded separately."
     },
     {
       "name": "OBConfirmSheet",
@@ -783,7 +795,7 @@
       "widget": "OpenBandSleepPlan",
       "file": "sleep_plan.dart",
       "usedIn": [],
-      "notes": "Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Unknowns, partial contributions and stale data remain explicit. No prior-night attainment."
+      "notes": "G2 Messleiste starts at 0–10 h and extends for larger stored values or goals, with a raised case and three input rows. Stored coming-night forecast only; current civil day and algorithm envelope, exact input-read provenance, served-row and pending-job freshness. Goal comes from the dated goal snapshot. Unknowns, partial contributions and stale data stay as dashes with a reason. No prior-night attainment."
     },
     {
       "name": "OBSleepSchedule",
@@ -791,7 +803,7 @@
       "widget": "_TimesRow",
       "file": "sleep_plan.dart",
       "usedIn": [],
-      "notes": "Stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
+      "notes": "G2 raised twin time wells for stored bedtime estimate and typical wake time; no alarm mutation or cycle-alignment claim. Missing times stay absent. Large text stacks the same two values."
     },
     {
       "name": "OBAdaptiveValues",

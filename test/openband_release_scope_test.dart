@@ -328,11 +328,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Messwerte'), findsOneWidget);
-    expect(find.text('HRV'), findsOneWidget);
-    expect(find.text('Ruhepuls'), findsOneWidget);
-    expect(find.text('Atemfrequenz'), findsOneWidget);
-    expect(find.text('Hauttemperatur'), findsOneWidget);
+    expect(find.text('MESSWERTE'), findsOneWidget);
+    expect(find.text('HRV ›'), findsOneWidget);
+    expect(find.text('RUHEPULS ›'), findsOneWidget);
+    expect(find.text('ATEMFREQUENZ ›'), findsOneWidget);
+    expect(find.text('HAUTTEMPERATUR ›'), findsOneWidget);
     expect(find.text('7 Nächte'), findsNothing);
     expect(find.text('Laborwerte'), findsNothing);
     expect(find.text('Glukose'), findsNothing);
@@ -376,25 +376,28 @@ void main() {
     expect(find.text('Training'), findsNothing);
     expect(find.text('Wasser'), findsNothing);
     expect(find.text('Energie'), findsNothing);
-    expect(find.text('Alle Messwerte'), findsOneWidget);
-    expect(find.text('Deine Nacht'), findsOneWidget);
+    expect(find.text('DEINE NACHT'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Schritte'),
+      find.text('Alle Messwerte'),
       200,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.text('Schritte'), findsOneWidget);
+    expect(find.text('Alle Messwerte'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('SCHRITTE'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('SCHRITTE'), findsOneWidget);
     expect(find.text('Wasser'), findsNothing);
-    expect(find.text('0'), findsWidgets);
-    expect(find.text('24'), findsOneWidget);
     final messwerte = tester.getRect(
       find.byKey(const ValueKey('alle-messwerte')),
     );
-    final steps = tester.getRect(find.text('Schritte'));
+    final steps = tester.getRect(find.text('SCHRITTE'));
     expect(steps.top, greaterThanOrEqualTo(messwerte.bottom + 12));
     await tester.tap(find.byKey(const ValueKey('alle-messwerte')));
     await tester.pumpAndSettle();
-    expect(find.text('Messwerte'), findsOneWidget);
+    expect(find.text('MESSWERTE'), findsOneWidget);
     expect(find.text('7 Nächte'), findsNothing);
     expect(find.byTooltip('Zurück'), findsOneWidget);
   });
@@ -514,7 +517,7 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
-    expect(find.text('Profil'), findsOneWidget);
+    expect(find.text('PROFIL'), findsOneWidget);
     expect(find.text('Daten & Sicherung'), findsOneWidget);
     expect(find.text('Einstellungen'), findsOneWidget);
     expect(find.text('Sprache'), findsOneWidget);
@@ -562,16 +565,16 @@ void main() {
 
     final values = [find.text('07:42'), find.text('—'), find.text('4,2 GB')];
     final labels = [
-      find.text('Datenstand'),
-      find.text('Gespeichert'),
-      find.text('Archiv'),
+      find.text('Daten bis'),
+      find.text('Letzter Bandwert'),
+      find.text('Rohdaten-Archiv'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
       expect(labels[i], findsOneWidget);
       final value = tester.getRect(values[i]);
       final label = tester.getRect(labels[i]);
-      expect(value.left, lessThan(label.left));
+      expect(value.top, lessThan(label.top));
       if (i > 0) {
         expect(value.top, greaterThan(tester.getRect(values[i - 1]).top));
       }
@@ -627,7 +630,7 @@ void main() {
 
       expect(find.text('Bandstatus nicht verfügbar'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
-      expect(find.text('64'), findsOneWidget);
+      expect(find.text('64 %'), findsOneWidget);
       expect(find.text('07:42'), findsOneWidget);
     },
   );
@@ -658,7 +661,7 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
-    expect(find.text('Wöchentlich'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
     expect(find.text('Von eurem Telefon'), findsNothing);
     expect(find.byKey(const ValueKey('data-action-receipt')), findsOneWidget);
     for (final key in const [
@@ -676,6 +679,29 @@ void main() {
     }
     expect(hits, 7);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('automatic backup switch requests the opposite saved state', (
+    tester,
+  ) async {
+    final requests = <bool>[];
+    for (final cadence in [BackupCadence.off, BackupCadence.weekly]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          supportedLocales: const [Locale('de')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          theme: openBandTheme(Brightness.light),
+          home: DataScreenView(
+            cadence: cadence,
+            onAutomatic: requests.add,
+          ),
+        ),
+      );
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+    }
+    expect(requests, [true, false]);
   });
 
   test(

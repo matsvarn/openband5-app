@@ -481,6 +481,46 @@ void main() {
     expect(snap.history.last.gap, NightScalarGap.withheld);
   });
 
+  // An algorithm bump re-derives a corrected night from the saved correction;
+  // the receipt still names the version it was first computed with. The newer
+  // row (computed after the receipt, window matching) must stay a value, or
+  // every corrected night turns into a gap after each bump.
+  test('a newer re-derive after a correction keeps the night', () async {
+    const old = kAlgoVersion - 7;
+    await putCoveredNight('2026-09-15', rmssd: 58, computedAt: 2000);
+    await putSleepJob(
+      '2026-09-15',
+      status: 'complete',
+      resultAlgo: old,
+      resultAt: 900,
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.state, NightScalarState.current);
+    expect(snap.value, 58);
+    expect(snap.history.last.value, 58);
+  });
+
+  test('a newer row computed before the correction is outdated', () async {
+    const old = kAlgoVersion - 7;
+    await putCoveredNight('2026-09-15', rmssd: 58, computedAt: 800);
+    await putSleepJob(
+      '2026-09-15',
+      status: 'complete',
+      resultAlgo: old,
+      resultAt: 900,
+    );
+    final snap = await repository.readNightScalarDetail(
+      MetricKey.hrv,
+      '2026-09-15',
+      7,
+    );
+    expect(snap.value, isNull);
+  });
+
   test('complete sleep receipt covering an older stored row stays readable',
       () async {
     const old = kAlgoVersion - 4;

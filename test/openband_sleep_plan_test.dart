@@ -12,6 +12,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/screens.dart';
+import 'package:openstrap_edge/openband/scale.dart';
 import 'package:openstrap_edge/openband/sleep_plan.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -240,9 +241,9 @@ void main() {
     expect(_bedtimeMin, closeTo(1319.548872, 0.0001));
     expect(_wakeMin, closeTo(420, 0.0001));
     await mount(tester);
-    expect(find.text('Heute Nacht'), findsOneWidget);
+    expect(find.text('HEUTE NACHT'), findsOneWidget);
     expect(find.text('15./16. September'), findsOneWidget);
-    expect(find.text('Geschätzter Schlafbedarf'), findsOneWidget);
+    expect(find.text('GESCHÄTZTER SCHLAFBEDARF'), findsOneWidget);
     expect(find.text('8 h 33'), findsOneWidget);
     expect(find.text('Stand 07:42'), findsOneWidget);
     expect(find.text('22:00'), findsOneWidget);
@@ -284,6 +285,30 @@ void main() {
       matchesGoldenFile('openband_goldens/sleep-plan-empty-dark.png'),
     );
   }, tags: const ['golden']);
+
+  testWidgets('goal row reads the wake-day goal and refreshes after return', (
+    tester,
+  ) async {
+    await repo.saveSleepGoal('2026-09-16', 465);
+    await mount(tester);
+    expect(find.text('7h45'), findsOneWidget);
+    await tester.tap(find.text('Eigenes Schlafziel').last);
+    await tester.pumpAndSettle();
+    await repo.saveSleepGoal('2026-09-16', 480);
+    await tester.tap(find.byTooltip('Zurück').last);
+    await tester.pumpAndSettle();
+    expect(find.text('8h00'), findsOneWidget);
+    expect(find.text('7h45'), findsNothing);
+  });
+
+  testWidgets('scale includes a goal beyond ten hours', (tester) async {
+    await repo.saveSleepGoal('2026-09-16', 720);
+    await mount(tester);
+    final scale = tester.widget<OBScale>(find.byType(OBScale));
+    expect(scale.max, 12);
+    expect(scale.target, 12);
+    expect(find.text('12h00'), findsOneWidget);
+  });
 
   testWidgets('need without times keeps the hero and names the missing clocks', (
     tester,
@@ -337,8 +362,8 @@ void main() {
     await mount(tester, width: 375, height: 1200, scale: 2);
     expect(find.text('8 h 33'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    final bed = tester.getRect(find.text('Ins Bett · geschätzt'));
-    final rise = tester.getRect(find.text('Aufstehen · typisch'));
+    final bed = tester.getRect(find.text('INS BETT · GESCHÄTZT'));
+    final rise = tester.getRect(find.text('AUFSTEHEN · TYPISCH'));
     expect(rise.top, greaterThan(bed.bottom + 8));
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -364,13 +389,12 @@ void main() {
     await mount(tester, width: 375, height: 812, scale: 2);
     expect(tester.takeException(), isNull);
     await tester.scrollUntilVisible(
-      find.text('Eigenes Schlafziel'),
+      find.text('Eigenes Schlafziel').last,
       80,
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
-    expect(find.text('Eigenes Schlafziel'), findsOneWidget);
-    final goal = tester.getRect(find.text('Eigenes Schlafziel'));
+    final goal = tester.getRect(find.text('Eigenes Schlafziel').last);
     expect(goal.top, lessThan(812));
     expect(goal.bottom, greaterThan(0));
     expect(tester.takeException(), isNull);
@@ -527,7 +551,7 @@ void main() {
     await mount(tester, day: '2026-09-14');
     expect(repo.days, ['2026-09-14']);
     expect(find.text('Heute Nacht'), findsNothing);
-    expect(find.text('Nacht'), findsOneWidget);
+    expect(find.text('NACHT'), findsOneWidget);
     expect(find.text('14./15. September'), findsOneWidget);
     expect(find.text('8 h 33'), findsNothing);
     expect(find.text('Stand 07:42'), findsNothing);
@@ -540,14 +564,14 @@ void main() {
   ) async {
     clock = DateTime(2026, 9, 15, 23, 59, 50);
     await mount(tester);
-    expect(find.text('Heute Nacht'), findsOneWidget);
+    expect(find.text('HEUTE NACHT'), findsOneWidget);
     expect(find.text('8 h 33'), findsOneWidget);
     clock = DateTime(2026, 9, 16, 0, 0, 10);
     await tester.pump(const Duration(seconds: 15));
     await tester.pumpAndSettle();
     expect(find.text('8 h 33'), findsNothing);
     expect(find.text('Heute Nacht'), findsNothing);
-    expect(find.text('Nacht'), findsOneWidget);
+    expect(find.text('NACHT'), findsOneWidget);
     expect(find.text('Keine gespeicherte Schätzung'), findsOneWidget);
     expect(find.text('Noch keine Schätzung'), findsNothing);
   });
@@ -573,11 +597,13 @@ void main() {
     expect(find.text('Schlafziel'), findsOneWidget);
     await tester.tap(find.text('Heute Nacht'));
     await tester.pumpAndSettle();
-    expect(repo.days, [_day]);
+    // Schlaf reads tonight's plan for its bedtime row, the plan screen once
+    // more; every read is for the selected day.
+    expect(repo.days.toSet(), {_day});
     expect(clocksAreCaptured(repo.clocks), isTrue);
     expect(find.text('8 h 33'), findsOneWidget);
     expect(controller.selectedDay, _day);
-    await tester.tap(find.text('Eigenes Schlafziel'));
+    await tester.tap(find.text('Eigenes Schlafziel').last);
     await tester.pumpAndSettle();
     expect(find.text('Ab 16. September'), findsOneWidget);
     expect(controller.selectedDay, _day);
@@ -651,7 +677,7 @@ void main() {
     await pumpParent(58);
     final belowInset = tester.getRect(find.byTooltip('Zurück'));
     expect(belowInset.top, greaterThanOrEqualTo(58));
-    expect(find.text('Schlaf'), findsOneWidget);
+    expect(find.text('SCHLAF'), findsOneWidget);
 
     await pumpParent(0);
     final consumed = tester.getRect(find.byTooltip('Zurück'));

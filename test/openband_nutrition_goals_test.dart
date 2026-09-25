@@ -654,7 +654,7 @@ void main() {
       await repo.seedNutritionGoals();
       await mount(tester, editor(), scale: 2);
       expect(tester.takeException(), isNull);
-      expect(find.text('Ernährungs-\nziele'), findsOneWidget);
+      expect(find.text('ERNÄHRUNGS-\nZIELE'), findsOneWidget);
       expect(find.byIcon(LucideIcons.chevronRight), findsWidgets);
       expect(find.text('Ernährungsziele'), findsNothing);
       final energy = tester.widget<TextField>(
@@ -682,8 +682,8 @@ void main() {
 
       await mount(tester, editor(), width: 320, height: 568);
       expect(tester.takeException(), isNull);
-      expect(find.text('Ernährungsziele'), findsOneWidget);
-      expect(find.text('Ernährungs-\nziele'), findsNothing);
+      expect(find.text('ERNÄHRUNGSZIELE'), findsOneWidget);
+      expect(find.text('ERNÄHRUNGS-\nZIELE'), findsNothing);
       final narrowEnergy = tester.widget<TextField>(
         find.byKey(const ValueKey('nutrition-goal-energy')),
       );
@@ -707,7 +707,7 @@ void main() {
         matchesGoldenFile('openband_goldens/nutrition-goal-editor-dark.png'),
       );
       await mount(tester, editor(), brightness: Brightness.dark, scale: 2);
-      expect(find.text('Ernährungs-\nziele'), findsOneWidget);
+      expect(find.text('ERNÄHRUNGS-\nZIELE'), findsOneWidget);
       expect(
         tester
             .widget<TextField>(

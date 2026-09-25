@@ -253,7 +253,15 @@ dependencies:
       # cursor — `pages_behind` gains `read_page`/`raw_old_page`, the reply
       # gains `trim_ts`/`current_read_ts` — persisted to `band_backlog` for
       # the backlog-reachability decision. No record decode changes.
-      ref: 0df79ff49a358c3fbb20586ef67d4b30d9ef123e
+      #
+      # REPIN @ 2c1bf3c5 (protocol #1 merge, main): gen5 GET_DATA_RANGE
+      # decodes only on outer status 1. A failed reply can keep a plausible
+      # body from an earlier read, and the one consumer in ble_engine adopts
+      # range/pages_behind/cursor fields without checking status, so a stale
+      # cursor could reach `band_backlog`. Gen4 unchanged. Only lib/ diff is
+      # that gate — no record decode or analytics output moves, so no
+      # kAlgoVersion bump.
+      ref: 2c1bf3c51579b3212f3046af0f1be8d8ba4a0040
   openstrap_analytics:
     git:
       url: https://github.com/matsvarn/openband5-analytics.git

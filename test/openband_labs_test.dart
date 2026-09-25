@@ -452,9 +452,9 @@ void main() {
 
   testWidgets('list, detail, editor, keyboard', (tester) async {
     await mountLabs(tester);
-    expect(find.text('Laborwerte'), findsOneWidget);
+    expect(find.text('LABORWERTE'), findsOneWidget);
     expect(
-      tester.getRect(find.text('Laborwerte')).top,
+      tester.getRect(find.text('LABORWERTE')).top,
       greaterThanOrEqualTo(59),
     );
     expect(find.text('Vitamin B12'), findsOneWidget);
@@ -474,7 +474,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
     await tester.pumpAndSettle();
-    expect(find.text('Wert bearbeiten'), findsOneWidget);
+    expect(find.text('WERT BEARBEITEN'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/labs-editor.png'),
@@ -566,7 +566,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('lab-ferritin')));
     await tester.pumpAndSettle();
-    expect(find.text('Ferritin'), findsWidgets);
+    expect(find.text('FERRITIN'), findsWidgets);
     expect(find.text('15. September 2026'), findsOneWidget);
     expect(find.text('Befundbereich'), findsWidgets);
     expect(find.byType(Divider), findsNothing);
@@ -839,7 +839,7 @@ void main() {
     expect(find.text('Wert überschreiben?'), findsOneWidget);
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
-    expect(find.text('Wert hinzufügen'), findsOneWidget);
+    expect(find.text('WERT HINZUFÜGEN'), findsOneWidget);
     expect(
       (await repo.readLabs()).results
           .firstWhere(

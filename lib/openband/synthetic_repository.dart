@@ -2657,7 +2657,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
             : null,
         baseline: baselineValue == null
             ? null
-            : StoredNightBaseline(value: baselineValue),
+            : StoredNightBaseline(
+                value: baselineValue,
+                spread: nightScalarPaperSpread(key),
+                status: 'trusted',
+              ),
         windowStartMs: onFixtureDay ? _onset.millisecondsSinceEpoch : null,
         windowEndMs: onFixtureDay ? _wake.millisecondsSinceEpoch : null,
       );
@@ -2784,11 +2788,23 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       if (metric != NightScalarMetric.skinTemperature &&
           !(scenario == SyntheticScenario.missing && day.day == _day)) {
         if (day.day == _day) {
+          final baselineValue = switch (metric) {
+            NightScalarMetric.hrv => kNightScalarPaperHrvBaseline,
+            NightScalarMetric.rhr => kNightScalarPaperRhrBaseline,
+            _ => null,
+          };
           selected = NightScalarRow(
             day: day.day,
             algoVersion: kAlgoVersion,
             partial: scenario == SyntheticScenario.partial,
             computedAtMs: _baseBand.latestStoredAt?.millisecondsSinceEpoch,
+            baseline: baselineValue == null
+                ? null
+                : StoredNightBaseline(
+                    value: baselineValue,
+                    spread: nightScalarPaperSpread(metric),
+                    status: 'trusted',
+                  ),
             windowStartMs: _onset.millisecondsSinceEpoch,
             windowEndMs: _wake.millisecondsSinceEpoch,
           );
@@ -3741,7 +3757,12 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     return OpenBandDay(
       day: _day,
       sleep: sleep,
-      recovery: DayMetric((recovery['score'] as num).toDouble()),
+      // Paper: Erholung Basis 58–70 · Ø 64, trusted.
+      recovery: DayMetric(
+        (recovery['score'] as num).toDouble(),
+        baseline: 64,
+        baselineSpread: 6 / 1.253,
+      ),
       strain: DayMetric((_summary['day_strain'] as num).toDouble()),
       hrv: DayMetric((recovery['hrv_ms'] as num).toDouble()),
       restingHr: DayMetric((recovery['rhr_bpm'] as num).toDouble()),
@@ -3844,7 +3865,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       }
     }
     final sleep = rem + light + deep;
-    final partial = unobserved > 0;
+    final partial = significantSleepGap(unobserved) != null;
     return SleepNight(
       onset: onset,
       wake: wake,

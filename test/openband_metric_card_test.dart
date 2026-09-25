@@ -468,7 +468,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(OBMetricCard).first);
+    await tester.tap(find.text('HRV · MS'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('night-scalar-detail')), findsOneWidget);
     expect(find.text('HRV'), findsWidgets);
@@ -529,7 +529,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pump();
     await reviewPumpPageTransitions(tester);
-    expect(find.text('Ruhepuls'), findsOneWidget);
+    expect(find.text('RUHEPULS'), findsOneWidget);
     await reviewTapHeaderBack(tester);
     expect(find.text('Ruhepuls'), findsNothing);
     expect(find.text('open'), findsOneWidget);

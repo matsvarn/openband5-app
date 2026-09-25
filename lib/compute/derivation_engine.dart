@@ -1672,7 +1672,25 @@ import 'substrate.dart';
 // values are untouched; the timestamp axis tightens, which can move which
 // beats a window boundary counts as inside — an input-semantics change to
 // rrTsMs, same class as v93's beat-clock fix.
-const int kAlgoVersion = 96;
+// 97 — Erholung baseline. `baselines.recovery` is the same Winsorized-EWMA
+// block as hrv/resting_hr/resp, folded over the headline readiness of prior
+// days (`readiness_history`, strictly before the day — a re-derive folds the
+// same history) with 0–100 bounds, spread floor 3, half-lives 14/21. Additive
+// key; every other output unchanged. The app compares Erholung against it
+// once it is trusted (14 valid days).
+// 98 — boundary collisions stop destroying seconds. The band stamps its 1 Hz
+// records ~1.000 s apart but its sub-second phase drifts; a +10 ms step across
+// a second boundary (… (x-2).990, x.000, x.990 …) truncated two consecutive
+// records onto second x, and the REPLACE key dropped the first one — row and
+// beats — leaving x-1 empty (9 records in 277,036 on the owner's band).
+// `_queueBoundaryMove` now moves that predecessor into the empty second, band
+// time preserved; `decodeSubstrate` applies the same rule and dedupes
+// re-flooded records, so a raw replay lands on the stored rows; the schema 68
+// rung restores the lost records still held in `raw_blob`. Input change for the
+// few affected days (a restored second and its beats on the 1 Hz grid), hence
+// the bump. Beat instants (`beat_ts_ms`) do not move, and the beat chain is
+// still not joined across the pair — both keep the band's own second.
+const int kAlgoVersion = 98;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1871,7 +1889,11 @@ const String kAnalyticsPin = '2503ca127f78847def0db6f363f000431789d254';
 // it decodes bytes the reply already carried, changes no record decode, and
 // feeds no metric — but the pin moves with the bump because the constants are
 // asserted as a pair and the build stamps them together.
-const String kProtocolPin = '0df79ff49a358c3fbb20586ef67d4b30d9ef123e';
+// REPIN @ 2c1bf3c5 (protocol #1 merge): gen5 GET_DATA_RANGE decodes only on
+// outer status 1, so a failed reply's stale body no longer reaches
+// band_backlog as a current range/cursor. NO kAlgoVersion bump: the only
+// lib/ change is that command-reply gate — no record decode, no metric input.
+const String kProtocolPin = '2c1bf3c51579b3212f3046af0f1be8d8ba4a0040';
 
 // Fold idempotency, the minimum-nights warm-up, and legacy-payload handling
 // all live in SleepProfilePolicy (pure, unit-tested) — see
@@ -4979,6 +5001,8 @@ class DerivationEngine {
     // mismatch that left z permanently null. The raw mean is stored every day so
     // this series fills and z starts computing once ≥3 days exist.
     m['skin_temp_adc_history'] = history.valuesBefore('skin_temp_adc', date);
+    // Headline readiness of prior days — the Erholung baseline's history.
+    m['readiness_history'] = history.valuesBefore('readiness', date);
     // The measured quiet-waking levels of prior days — the personal level
     // strain subtracts its baseline at (median; today's own median is the
     // bootstrap when this is empty). edge#226.

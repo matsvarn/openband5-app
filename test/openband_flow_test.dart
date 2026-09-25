@@ -9,6 +9,7 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/daily_activity.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/screens.dart';
+import 'package:openstrap_edge/openband/scale.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
@@ -222,7 +223,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.dragFrom(const Offset(1, 350), const Offset(360, 0));
     await tester.pumpAndSettle();
-    expect(find.text('Schlafzeiten ändern'), findsNothing);
+    expect(find.text('SCHLAFZEITEN ÄNDERN'), findsNothing);
     expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
     await pressSleepEditor(tester);
     await tester.pumpAndSettle();
@@ -264,25 +265,44 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Änderung ansehen'));
-    await tester.tap(find.text('Änderung ansehen'));
+    FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
   }
+
+  testWidgets('five-minute controls update the persisted draft', (
+    tester,
+  ) async {
+    await mount(tester);
+    await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
+    await tester.pumpAndSettle();
+    await pressSleepEditor(tester);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('− 5').first);
+    await tester.pumpAndSettle();
+    expect((await repo.readDraft('2026-09-15'))?.onset.minute, 5);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('sleep-onset')))
+          .controller
+          ?.text,
+      '23:05',
+    );
+  });
 
   testWidgets(
     'confirmed correction updates sleep and overview, preserving selected day',
     (tester) async {
       await mount(tester);
       await edit(tester);
-      expect(find.text('7h29'), findsOneWidget);
+      expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
       await expectLater(
         find.byKey(const ValueKey('capture')),
-        matchesGoldenFile('openband_goldens/correction-preview.png'),
+        matchesGoldenFile('openband_goldens/correction-edit.png'),
       );
       expect(controller.day!.sleep.duration.value, 438);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(find.text('Schlaf aktualisiert'), findsWidgets);
+      expect(find.text('SCHLAF AKTUALISIERT'), findsWidgets);
       expect(controller.day!.sleep.duration.value, 428);
       expect(controller.day!.sleep.awakeMinutes, 21);
       await tester.ensureVisible(find.text('Zur Übersicht'));
@@ -295,13 +315,13 @@ void main() {
     tags: const ['golden'],
   );
 
-  testWidgets('correction preview renders in dark mode', (tester) async {
+  testWidgets('correction edit renders in dark mode', (tester) async {
     await mount(tester, brightness: Brightness.dark);
     await edit(tester);
-    expect(find.text('7h29'), findsOneWidget);
+    expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
     await expectLater(
       find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/correction-preview-dark.png'),
+      matchesGoldenFile('openband_goldens/correction-edit-dark.png'),
     );
     expect(controller.day!.sleep.duration.value, 438);
     expect(tester.takeException(), isNull);
@@ -315,10 +335,7 @@ void main() {
       await edit(tester);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(
-        find.text('Speichern fehlgeschlagen.'),
-        findsOneWidget,
-      );
+      expect(find.text('Speichern fehlgeschlagen.'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/save-failure.png'),
@@ -343,7 +360,7 @@ void main() {
       await edit(tester);
       await tester.tap(find.text('Schlafzeiten speichern'));
       await tester.pumpAndSettle();
-      expect(find.text('Auswertung offen'), findsWidgets);
+      expect(find.text('AUSWERTUNG OFFEN'), findsWidgets);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/calculation-failure.png'),
@@ -358,32 +375,60 @@ void main() {
     },
     tags: const ['golden'],
   );
-  testWidgets('calendar selection is committed only after confirmation', (
+  testWidgets(
+    'calendar selection is committed only after confirmation',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-15');
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/date-selection.png'),
+      );
+      await tester.tap(find.byTooltip('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-15');
+      await tester.tap(find.text(obDayTitle('2026-09-15')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('14. September ansehen'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedDay, '2026-09-14');
+      expect(controller.day!.recovery.value, isNull);
+      expect(controller.day!.sleep.duration.value, 422);
+    },
+    tags: const ['golden'],
+  );
+  testWidgets('band status separates stored frontier from receipt time', (
     tester,
   ) async {
-    await mount(tester);
-    await tester.tap(find.text(obDayTitle('2026-09-15')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14'));
-    await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-15');
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/date-selection.png'),
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-15',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 15, 9, 41),
     );
-    await tester.tap(find.byTooltip('Abbrechen'));
+    await mount(tester);
+    await tester.tap(find.text('64 %'));
     await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-15');
-    await tester.tap(find.text(obDayTitle('2026-09-15')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('14. September ansehen'));
-    await tester.pumpAndSettle();
-    expect(controller.selectedDay, '2026-09-14');
-    expect(controller.day!.recovery.value, isNull);
-    expect(controller.day!.sleep.duration.value, 422);
-  }, tags: const ['golden']);
+    expect(find.text('letzter Wert vor 1 h 59'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.byType(OBScale),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('64 % · gemessen 07:42'), findsOneWidget);
+    expect(find.text('15.09 · 07:42'), findsOneWidget);
+    expect(find.text('Auf dem iPhone gespeichert'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+  });
   testWidgets(
     'accessible values and tap targets include unobserved intervals',
     (tester) async {
@@ -394,12 +439,16 @@ void main() {
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
       await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
       await tester.pumpAndSettle();
-      expect(find.text('Effizienz'), findsOneWidget);
-      expect(find.text('Im Bett'), findsOneWidget);
-      expect(find.text('Schlafdauer'), findsOneWidget);
+      expect(find.byKey(const ValueKey('sleep-stage-rows')), findsOneWidget);
+      expect(find.textContaining('Im Bett'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-partial.png'),
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('SCHLAFDAUER'),
+        200,
+        scrollable: find.byType(Scrollable).last,
       );
       await tester.scrollUntilVisible(
         find.text('Zeiten korrigieren'),
@@ -470,8 +519,8 @@ void main() {
     await mount(tester);
     await tester.tap(find.bySemanticsLabel(RegExp(r'^Belastung, ')));
     await tester.pumpAndSettle();
-    expect(find.text('Belastung'), findsWidgets);
-    expect(find.text('Tag für Tag'), findsOneWidget);
+    expect(find.text('BELASTUNG'), findsWidgets);
+    expect(find.text('TAG FÜR TAG'), findsOneWidget);
     expect(find.textContaining('von 30 Tagen'), findsOneWidget);
     expect(find.text('Verlauf in der Nacht'), findsNothing);
     expect(find.text('So entsteht die Basis'), findsNothing);
@@ -496,13 +545,9 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(OBStageLegend), findsOneWidget);
+      expect(find.byKey(const ValueKey('sleep-stage-rows')), findsOneWidget);
       expect(find.text('Leicht'), findsOneWidget);
       expect(find.text('4h07'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('sleep-stage-swatch-Im Bett')),
-        findsNothing,
-      );
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/sleep-large.png'),
@@ -518,10 +563,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('Änderung ansehen'));
-      await tester.tap(find.text('Änderung ansehen'));
-      await tester.pumpAndSettle();
-      expect(find.text('7h29'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('sleep-onset')))
+            .controller
+            ?.text,
+        '23:25',
+      );
       expect(tester.takeException(), isNull);
     },
     tags: const ['golden'],
@@ -582,21 +630,16 @@ void main() {
   );
 
   testWidgets(
-    'back retains a draft and preview discard leaves the saved night intact',
+    'back retains a draft and discard leaves the saved night intact',
     (tester) async {
       await mount(tester);
       await edit(tester);
-      await tester.tap(find.text('Weiter bearbeiten'));
-      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Zurück').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Entwurf behalten'));
       await tester.pumpAndSettle();
       expect((await repo.readDraft('2026-09-15'))?.onset.minute, 25);
       await pressSleepEditor(tester);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Änderung ansehen'));
-      await tester.tap(find.text('Änderung ansehen'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Änderung verwerfen'));
       await tester.pumpAndSettle();
@@ -672,8 +715,14 @@ void main() {
       );
       await tester.tap(find.text('Nacht ansehen'));
       await tester.pumpAndSettle();
-      // Hero and the Schlafdauer trend both show the corrected night.
-      expect(find.text('7h08'), findsNWidgets(2));
+      // Back at the kept scroll position; the hero above shows the
+      // corrected night.
+      await tester.scrollUntilVisible(
+        find.text('7h08'),
+        -250,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('7h08'), findsOneWidget);
       // The restore action lives in the info sheet now.
       await tester.scrollUntilVisible(
         find.byTooltip('Schlafwerte und Methode'),

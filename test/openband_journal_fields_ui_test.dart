@@ -91,7 +91,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    expect(find.text('Eigene Felder'), findsOneWidget);
+    expect(find.text('EIGENE FELDER'), findsOneWidget);
     expect(find.text('Keine eigenen Felder.'), findsOneWidget);
 
     await tester.tap(find.text('Feld hinzufügen'));

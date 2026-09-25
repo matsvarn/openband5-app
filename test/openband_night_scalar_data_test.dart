@@ -1011,7 +1011,7 @@ void main() {
 
     final complete = await repo().readDay('2026-09-15');
     expect(complete.hrv.value, 48);
-    expect(complete.hrv.baseline, isNull);
+    expect(complete.hrv.baseline, 40);
     expect(complete.hrv.nightScalar, NightScalarState.current);
     expect(complete.restingHr.value, 54);
     expect(complete.respiration.value, 16);

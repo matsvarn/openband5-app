@@ -43,7 +43,7 @@ void main() {
     await tester.pumpWidget(_wrap(
         const MoreSettingsView(version: '0.9.26 (57)', devMode: false)));
     expect(find.text('Component gallery'), findsNothing);
-    expect(find.text('Developer'), findsNothing);
+    expect(find.text('DEVELOPER'), findsNothing);
     // …and the row that reveals it says nothing about what it does.
     expect(find.text('Version'), findsOneWidget);
   });
@@ -56,7 +56,7 @@ void main() {
       devMode: true,
       onGallery: () => opened = true,
     )));
-    expect(find.text('Developer'), findsOneWidget);
+    expect(find.text('DEVELOPER'), findsOneWidget);
     await tester.tap(find.text('Component gallery'));
     expect(opened, isTrue);
   });

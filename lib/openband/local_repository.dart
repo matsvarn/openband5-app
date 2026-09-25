@@ -362,6 +362,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final stored = allowBaseline
           ? nightScalarBaseline(
               value: _numAt(payload, 'baselines.$baselineRoot.baseline'),
+              spread: _numAt(payload, 'baselines.$baselineRoot.spread'),
               status: _stringAt(payload, 'baselines.$baselineRoot.status'),
               nValid: _at(payload, 'baselines.$baselineRoot.n_valid'),
               nightsSinceUpdate: _at(
@@ -384,6 +385,18 @@ class LocalOpenBandRepository implements OpenBandRepository {
         unit: unit,
       );
     }
+
+    // Erholung compares only against a trusted stored baseline (algo 97+);
+    // older rows simply have none.
+    final storedRecovery = nightScalarBaseline(
+      value: _numAt(payload, 'baselines.recovery.baseline'),
+      spread: _numAt(payload, 'baselines.recovery.spread'),
+      status: _stringAt(payload, 'baselines.recovery.status'),
+    );
+    final recoveryBaseline =
+        nightScalarStatus(storedRecovery?.status) == kNightScalarTrustedBaseline
+        ? storedRecovery
+        : null;
 
     // Legacy day readers stay outside the snapshot. Cards already have SQL
     // rmssd/rhr from the selected row; getDayHrv/getDayHeart envelopes are
@@ -425,11 +438,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
     final onset = _epochSeconds(sleepMap['onset_ts']);
     final wake = _epochSeconds(sleepMap['wake_ts']);
-    final unobserved = _unobservedMinutes(payload);
+    final gap = significantSleepGap(_unobservedMinutes(payload));
     final duration = _metric(
       sleepMap['duration_min'],
       reason: sleepMap['note']?.toString(),
-      partial: unobserved != null && unobserved > 0,
+      partial: gap != null,
       processing: app.deriving || app.derivePending,
     );
     String? recordingTimezone;
@@ -455,13 +468,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
         remMinutes: _double(sleepMap['rem_min']),
         lightMinutes: _double(sleepMap['light_min']),
         deepMinutes: _double(sleepMap['deep_min']),
-        unobservedMinutes: unobserved,
+        unobservedMinutes: gap,
         segments: _segments(payload),
         source: source == null || source.isEmpty ? 'unknown' : source,
         history: history,
       ),
       recovery: _metric(
         heart['recovery'],
+        baseline: recoveryBaseline?.value,
+        baselineSpread: recoveryBaseline?.spread,
         reason:
             _stringAt(payload, 'clinical.readiness_composite.note') ??
             _nestedReason(heart, 'recovery'),
@@ -1763,6 +1778,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         baseline: valid
             ? nightScalarBaseline(
                 value: projected['baseline_value'],
+                spread: projected['baseline_spread'],
                 status: projected['baseline_status'],
                 nValid: projected['baseline_n_valid'],
                 nightsSinceUpdate: projected['baseline_nights_since_update'],
@@ -2897,6 +2913,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Object? raw, {
     String? reason,
     double? baseline,
+    double? baselineSpread,
     required bool processing,
     bool partial = false,
   }) {
@@ -2905,6 +2922,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return DayMetric(
         value,
         baseline: baseline,
+        baselineSpread: baseline == null ? null : baselineSpread,
         readiness: partial
             ? MetricReadiness.partial
             : MetricReadiness.available,

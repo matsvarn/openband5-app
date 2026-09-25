@@ -108,16 +108,40 @@ void main() {
     expect(find.text('Erkannt'), findsOneWidget);
     expect(find.text('32'), findsWidgets);
     expect(find.text('32 Min.'), findsOneWidget);
-    expect(find.text('1 Nickerchen'), findsOneWidget);
+    expect(
+      find.textContaining('Erkannt stammt aus der Aufzeichnung'),
+      findsOneWidget,
+    );
     expect(find.text('Synthetische Daten'), findsOneWidget);
     expect(find.text('Selbst eingetragen'), findsNothing);
+  });
+
+  testWidgets('day pill steps through dated naps', (tester) async {
+    await mount(tester);
+    expect(find.text('Di 15.09'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Vorheriger Tag'));
+    await tester.pumpAndSettle();
+    expect(controller.selectedDay, '2026-09-14');
+    expect(find.text('Mo 14.09'), findsOneWidget);
+  });
+
+  testWidgets('large-text add action stays anchored while content scrolls', (
+    tester,
+  ) async {
+    await mount(tester, width: 375, scale: 2);
+    final action = find.text('Nickerchen ergänzen');
+    final top = tester.getRect(action).top;
+    await tester.drag(find.byType(ListView), const Offset(0, -260));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(action).top, closeTo(top, 1));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('add, edit, remove and restore a nap', (tester) async {
     await mount(tester);
     await tester.tap(find.text('Nickerchen ergänzen'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen ergänzen'), findsWidgets);
+    expect(find.text('NICKERCHEN ERGÄNZEN'), findsWidgets);
     expect(find.text('Selbst eingetragen'), findsNothing);
     await tester.enterText(find.byKey(const ValueKey('nap-start')), '16:00');
     await tester.enterText(find.byKey(const ValueKey('nap-end')), '16:40');
@@ -130,7 +154,7 @@ void main() {
 
     await tester.tap(find.text('16:00–16:40'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen bearbeiten'), findsOneWidget);
+    expect(find.text('NICKERCHEN BEARBEITEN'), findsOneWidget);
     expect(find.text('40 Minuten'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('nap-start')), '16:10');
     await tester.enterText(find.byKey(const ValueKey('nap-end')), '16:50');
@@ -177,7 +201,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(find.text('Nickerchen ergänzen'), findsWidgets);
+    expect(find.text('NICKERCHEN ERGÄNZEN'), findsWidgets);
     expect(find.text('Erneut speichern'), findsOneWidget);
     expect(find.text('Dein Eintrag bleibt erhalten'), findsNothing);
   });
@@ -239,7 +263,6 @@ void main() {
     expect(find.text('Keine Nickerchen erkannt'), findsOneWidget);
     expect(find.text('0'), findsWidgets);
     expect(find.text('Noch nicht bestimmbar'), findsNothing);
-    expect(find.text('1 Nickerchen'), findsNothing);
 
     repo.seedNaps(const NapDay(day: '2026-09-15'));
     await controller.refresh();
@@ -247,7 +270,6 @@ void main() {
     expect(find.text('Noch nicht bestimmbar'), findsOneWidget);
     expect(find.text('—'), findsWidgets);
     expect(find.text('Keine Nickerchen erkannt'), findsNothing);
-    expect(find.text('1 Nickerchen'), findsNothing);
   });
 
   testWidgets('list and editor wrap at 375 and 2x text without overflow', (
@@ -301,7 +323,7 @@ void main() {
     final icon = tester.getRect(
       find.byKey(ValueKey('nap-icon-${early.millisecondsSinceEpoch ~/ 1000}')),
     );
-    expect(icon.left, closeTo(card.left + 14, 1.5));
+    expect(icon.left, closeTo(card.left + 10, 1.5));
     expect(icon.width, 36);
     final d32 = tester.getRect(find.text('32 Min.'));
     final d18 = tester.getRect(find.text('18 Min.'));
@@ -324,10 +346,20 @@ void main() {
     tester,
   ) async {
     await mount(tester, width: 375, scale: 2);
-    await tester.ensureVisible(find.text('14:10–14:42'));
+    await tester.scrollUntilVisible(
+      find.text('14:10–14:42'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('14:10–14:42'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Nickerchen entfernen'));
+    await tester.scrollUntilVisible(
+      find.text('Nickerchen entfernen'),
+      200,
+      scrollable: find
+          .ancestor(of: find.text('Beginn'), matching: find.byType(Scrollable))
+          .first,
+    );
     await tester.tap(find.text('Nickerchen entfernen'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Entfernen').last);
@@ -371,9 +403,7 @@ void main() {
     expect(find.text('Wiederherstellen fehlgeschlagen.'), findsNothing);
   });
 
-  testWidgets('shared sleep time fields wrap at 2x instead of clipping', (
-    tester,
-  ) async {
+  testWidgets('sleep edit time cards remain usable at 2x', (tester) async {
     await mount(
       tester,
       width: 375,
@@ -386,13 +416,10 @@ void main() {
     final onset = tester.getSize(find.byKey(const ValueKey('sleep-onset')));
     expect(onset.width, greaterThan(88));
     expect(onset.height, lessThan(200));
-    final dates = find.widgetWithText(TextButton, '14. September');
-    expect(dates, findsWidgets);
-    for (var i = 0; i < dates.evaluate().length; i++) {
-      final size = tester.getSize(dates.at(i));
-      expect(size.width, greaterThanOrEqualTo(44));
-      expect(size.height, greaterThanOrEqualTo(44));
-    }
+    await tester.tap(find.text('BEGINN · MO'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('nap list golden light', (tester) async {

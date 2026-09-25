@@ -614,10 +614,6 @@ void main() {
       find.widgetWithText(FilledButton, 'Erneut'),
     );
     expect(retry.style!.foregroundColor!.resolve(const {}), OB(false).ink);
-    expect(
-      retry.style!.foregroundColor!.resolve(const {}),
-      isNot(OB(false).action),
-    );
     final switchWidget = tester.widget<CupertinoSwitch>(
       find.descendant(
         of: find.byKey(const ValueKey('notif-health')),

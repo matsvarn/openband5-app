@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../data/day_label.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
+import 'scale.dart';
 import 'settings_controls.dart';
 import 'sleep_goal.dart';
 import 'theme.dart';
@@ -31,6 +33,8 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
     with WidgetsBindingObserver {
   int _token = 0;
   SleepPlanSnapshot? _snap;
+  int? _goalMinutes;
+  bool _goalReadFailed = false;
   Object? _error;
   bool _loading = true;
   Timer? _deadline;
@@ -89,7 +93,10 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
     setState(() {
       _loading = true;
       _error = null;
+      _goalMinutes = null;
+      _goalReadFailed = false;
     });
+    unawaited(_loadGoal(token));
     try {
       final snap = await repo.readSleepPlan(day, now: now);
       if (!mounted || token != _token) return;
@@ -105,6 +112,19 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
         _loading = false;
         _snap = null;
       });
+    }
+  }
+
+  Future<void> _loadGoal(int token) async {
+    try {
+      final goal = await widget.repository.readSleepGoal(
+        sleepPlanWakeDay(widget.day),
+      );
+      if (!mounted || token != _token) return;
+      setState(() => _goalMinutes = goal.targetMinutes);
+    } catch (_) {
+      if (!mounted || token != _token) return;
+      setState(() => _goalReadFailed = true);
     }
   }
 
@@ -168,15 +188,19 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
   }
 
   void _openGoal() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => OpenBandSleepGoal(
-          repository: widget.repository,
-          day: sleepPlanWakeDay(widget.day),
-          synthetic: widget.synthetic,
-        ),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => OpenBandSleepGoal(
+              repository: widget.repository,
+              day: sleepPlanWakeDay(widget.day),
+              synthetic: widget.synthetic,
+            ),
+          ),
+        )
+        .then((_) {
+          if (mounted) unawaited(_load());
+        });
   }
 
   void _openInfo() {
@@ -195,19 +219,30 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
     final p = OB.of(context);
     final stacked = MediaQuery.textScalerOf(context).scale(15) > 20;
     final plan = _visiblePlan;
-    final need = plan == null
-        ? '—'
-        : sleepPlanNeedLabel(plan.needSeconds);
+    final need = plan == null ? '—' : sleepPlanNeedLabel(plan.needSeconds);
     final bedtime = plan == null
         ? '—'
         : sleepPlanClockLabel(plan.bedtimeMinuteOfDay);
-    final wake = plan == null
-        ? '—'
-        : sleepPlanClockLabel(plan.wakeMinuteOfDay);
+    final wake = plan == null ? '—' : sleepPlanClockLabel(plan.wakeMinuteOfDay);
     final timesMissing =
         plan != null &&
         (plan.bedtimeMinuteOfDay == null || plan.wakeMinuteOfDay == null);
     final notes = _heroNotes(plan);
+    final scaleMax = math
+        .max(
+          10.0,
+          math.max(
+            plan?.needSeconds == null ? 0 : plan!.needSeconds / 3600,
+            (_goalMinutes ?? 0) / 60,
+          ),
+        )
+        .ceilToDouble();
+    final heroScale = math.min(MediaQuery.textScalerOf(context).scale(1), 1.4);
+    final goal = _goalReadFailed
+        ? 'Nicht verfügbar'
+        : _goalMinutes == null
+        ? '—'
+        : obDuration(_goalMinutes!);
     final waiting = _loading && _snap == null && _error == null;
     return Scaffold(
       backgroundColor: p.canvas,
@@ -217,6 +252,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
           children: [
             OBPageHeader(
               title: _tonight ? 'Heute Nacht' : 'Nacht',
+              backText: 'Schlaf',
               subtitle: sleepPlanNightRangeLabel(widget.day),
               infoLabel: 'Zur Schätzung',
               onInfo: _openInfo,
@@ -229,29 +265,71 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 12,
                   children: [
                     Text(
-                      'Geschätzter Schlafbedarf',
-                      style: p
-                          .text(15, weight: FontWeight.w600, color: p.muted)
-                          .copyWith(height: 20 / 15),
+                      'GESCHÄTZTER SCHLAFBEDARF',
+                      style: p.label(size: 11).copyWith(height: 16 / 11),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       need,
+                      textScaler: TextScaler.linear(heroScale),
                       style: p
-                          .text(48, weight: FontWeight.w700, display: true)
-                          .copyWith(
-                            height: 54 / 48,
-                            letterSpacing: -0.02 * 48,
-                          ),
+                          .text(64, weight: FontWeight.w700, display: true)
+                          .copyWith(height: 70 / 64, letterSpacing: -0.02 * 64),
+                    ),
+                    const SizedBox(height: 14),
+                    OBScale(
+                      min: 0,
+                      max: scaleMax,
+                      value: plan?.needSeconds == null
+                          ? null
+                          : plan!.needSeconds / 3600,
+                      target: _goalMinutes == null ? null : _goalMinutes! / 60,
+                      fill: p.ink,
+                      mark: p.card,
+                      markEdge: p.ink,
+                      ticks: 2,
+                      labels: ('0 h', null, '${scaleMax.toInt()} h'),
+                      semanticsLabel: plan == null
+                          ? 'Schlafbedarf nicht verfügbar'
+                          : 'Geschätzter Schlafbedarf $need auf einer Skala von 0 bis ${scaleMax.toInt()} Stunden',
+                    ),
+                    const SizedBox(height: 16),
+                    Divider(height: 1, color: p.line),
+                    _PlanFact(
+                      label: 'Eigenes Schlafziel',
+                      value: goal,
+                      known: _goalMinutes != null,
+                      ink: p.ink,
+                    ),
+                    Divider(height: 1, color: p.line),
+                    _PlanFact(
+                      label: 'Belastung heute',
+                      value: plan?.strainBonusMin == null
+                          ? '—'
+                          : '${_strainMinutes(plan!.strainBonusMin!)}.',
+                      known: plan?.strainBonusMin != null,
+                      ink: p.muted,
+                    ),
+                    Divider(height: 1, color: p.line),
+                    _PlanFact(
+                      label: 'Nickerchen',
+                      value: plan?.napCreditMin == null
+                          ? '—'
+                          : '${_napCreditMinutes(plan!.napCreditMin!)}.',
+                      known: plan?.napCreditMin != null,
+                      ink: p.muted,
                     ),
                     for (final note in notes)
-                      Text(
-                        note,
-                        style: p
-                            .text(12, color: p.muted)
-                            .copyWith(height: 16 / 12),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          note,
+                          style: p
+                              .text(12, color: p.muted)
+                              .copyWith(height: 16 / 12),
+                        ),
                       ),
                     if (_error != null)
                       OBAction(
@@ -263,32 +341,23 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                 ),
               ),
               const SizedBox(height: 12),
-              OBCard(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  spacing: 16,
-                  children: [
-                    Text(
-                      'Abendplanung',
-                      style: p
-                          .text(15, weight: FontWeight.w600)
-                          .copyWith(height: 20 / 15),
-                    ),
-                    _TimesRow(
-                      stacked: stacked,
-                      bedtime: bedtime,
-                      wake: wake,
-                    ),
-                    if (timesMissing)
-                      Text(
-                        'Zeitplanung unvollständig',
-                        style: p
-                            .text(13, color: p.muted)
-                            .copyWith(height: 18 / 13),
-                      ),
-                  ],
+              Text('ABENDPLANUNG', style: p.label(size: 11)),
+              const SizedBox(height: 8),
+              _TimesRow(stacked: stacked, bedtime: bedtime, wake: wake),
+              if (timesMissing)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Zeitplanung unvollständig',
+                    style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
+                  ),
                 ),
+              const SizedBox(height: 12),
+              Text(
+                plan == null
+                    ? 'Die Abendplanung bleibt leer, bis eine Schätzung vorliegt.'
+                    : 'Belastung und Nickerchen können die Schätzung bis zum Abend ändern.',
+                style: p.text(13, color: p.muted).copyWith(height: 19 / 13),
               ),
               const SizedBox(height: 12),
               OBCard(
@@ -309,6 +378,55 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
   }
 }
 
+class _PlanFact extends StatelessWidget {
+  final String label, value;
+  final bool known;
+  final Color ink;
+  const _PlanFact({
+    required this.label,
+    required this.value,
+    required this.known,
+    required this.ink,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final name = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 11,
+          height: 11,
+          decoration: BoxDecoration(
+            color: known ? ink : null,
+            border: known ? null : Border.all(color: p.muted),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Flexible(child: Text(label, style: p.text(14))),
+      ],
+    );
+    final reading = Text(value, style: p.text(14, weight: FontWeight.w700));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: large
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [name, const SizedBox(height: 4), reading],
+            )
+          : Row(
+              children: [
+                Expanded(child: name),
+                reading,
+              ],
+            ),
+    );
+  }
+}
+
 class _TimesRow extends StatelessWidget {
   final bool stacked;
   final String bedtime;
@@ -322,28 +440,28 @@ class _TimesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    Widget column(String label, String value) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: 6,
-      children: [
-        Text(
-          label,
-          style: p.text(13, color: p.muted).copyWith(height: 18 / 13),
-        ),
-        Text(
-          value,
-          style: p
-              .text(30, weight: FontWeight.w700, display: true)
-              .copyWith(height: 36 / 30, letterSpacing: 0),
-        ),
-      ],
+    Widget column(String label, String value) => OBCard(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 6,
+        children: [
+          Text(label.toUpperCase(), style: p.label(size: 10)),
+          Text(
+            value,
+            style: p
+                .text(30, weight: FontWeight.w700, display: true)
+                .copyWith(height: 36 / 30, letterSpacing: 0),
+          ),
+        ],
+      ),
     );
     final bed = column('Ins Bett · geschätzt', bedtime);
     final rise = column('Aufstehen · typisch', wake);
     if (stacked) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 24,
+        spacing: 12,
         children: [bed, rise],
       );
     }
@@ -405,10 +523,7 @@ String _napCreditMinutes(double minutes) {
   return '$value Min';
 }
 
-String sleepPlanInfoBody({
-  ComingNightSleepPlan? plan,
-  bool withheld = false,
-}) {
+String sleepPlanInfoBody({ComingNightSleepPlan? plan, bool withheld = false}) {
   final parts = <String>[
     'Aus gespeicherten Nächten, Belastung und Nickerchen. Kein gemessener persönlicher Schlafbedarf.',
     'Die Abendplanung nutzt typische Aufwachzeiten und Schlafeffizienz. Sie stellt keinen Wecker.',

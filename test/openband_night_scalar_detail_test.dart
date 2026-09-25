@@ -18,6 +18,28 @@ import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
+/// The hero, not the night list: the selected value also appears as the
+/// list's first row.
+Finder _hero(String text) => find.descendant(
+  of: find.byKey(const ValueKey('night-scalar-hero')),
+  matching: find.text(text),
+);
+
+/// The night list below the stats.
+Finder _nights(String text) => find.descendant(
+  of: find.byKey(const ValueKey('night-scalar-nights')),
+  matching: find.text(text),
+);
+
+/// Back to the hero after scrolling down to the rows.
+Future<void> _toTop(WidgetTester tester) async {
+  tester
+      .state<ScrollableState>(find.byType(Scrollable).last)
+      .position
+      .jumpTo(0);
+  await tester.pump();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -171,12 +193,24 @@ void main() {
     _seedTrusted(repo);
     await mount(tester);
     expect(find.text('HRV'), findsWidgets);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Nacht auf heute'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsOneWidget);
-    expect(find.text('15 von 30 Nächten'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
+    expect(find.textContaining('LETZTE NACHT'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsOneWidget);
+    expect(find.text('15/30'), findsOneWidget);
+    // Trusted baseline: the list states the night's distance to it.
+    expect(_nights('+8'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Nachtverlauf'), findsOneWidget);
     expect(find.textContaining('23:10'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Persönliche Basis'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Persönliche Basis'), findsOneWidget);
     expect(find.text('40 ms'), findsOneWidget);
     expect(find.text('Herzratenvariabilität'), findsNothing);
@@ -192,17 +226,15 @@ void main() {
     );
   }, tags: const ['golden']);
 
-  testWidgets('rhr complete uses heart icon', (tester) async {
+  testWidgets('rhr complete shows value, comparison and baseline', (
+    tester,
+  ) async {
     _seedTrusted(repo, key: MetricKey.restingHr);
     await mount(tester, key: MetricKey.restingHr);
-    expect(find.text('Ruhepuls'), findsWidgets);
-    expect(find.text('54'), findsOneWidget);
-    expect(find.text('−2 unter Basis'), findsOneWidget);
-    expect(find.text('56 /min'), findsOneWidget);
-    expect(
-      tester.widget<Icon>(find.byIcon(LucideIcons.heart).first).icon,
-      LucideIcons.heart,
-    );
+    expect(find.text('RUHEPULS'), findsWidgets);
+    expect(_hero('54'), findsOneWidget);
+    expect(find.textContaining('−2 unter deiner Basis'), findsOneWidget);
+    expect(find.textContaining('(56 /min)'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -218,7 +250,7 @@ void main() {
       await mount(tester, key: MetricKey.restingHr, size: Size(width, 852));
       final basis = find.textContaining('Basis 56');
       expect(basis, findsOneWidget);
-      expect(tester.getSize(basis).height, 16);
+      expect(tester.getSize(basis).height, 12);
       expect(tester.takeException(), isNull);
     }
   });
@@ -237,7 +269,7 @@ void main() {
     await tester.scrollUntilVisible(find.textContaining('Basis 56'), 300);
     final basis = find.textContaining('Basis 56');
     expect(basis, findsOneWidget);
-    expect(tester.getSize(basis).height, 32);
+    expect(tester.getSize(basis).height, 24);
     expect(find.textContaining('/min'), findsWidgets);
   });
 
@@ -250,9 +282,9 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Basis noch offen'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(_hero('48'), findsOneWidget);
+    expect(_hero('Basis noch offen'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -267,9 +299,9 @@ void main() {
         currentAlgo: kAlgoVersion,
       );
       await mount(tester);
-      expect(find.text('48'), findsOneWidget);
-      expect(find.text('Basis noch offen'), findsOneWidget);
-      expect(find.text('+8 über Basis'), findsNothing);
+      expect(_hero('48'), findsOneWidget);
+      expect(_hero('Basis noch offen'), findsOneWidget);
+      expect(find.textContaining('+8 über deiner Basis'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -279,9 +311,9 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.text('7 von 7 Nächten'), findsOneWidget);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsOneWidget);
+    expect(find.text('7/7'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -289,11 +321,11 @@ void main() {
     );
     await tester.tap(find.text('90 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.text('15 von 90 Nächten'), findsOneWidget);
+    expect(find.text('15/90'), findsOneWidget);
     await mount(tester, brightness: Brightness.dark);
     await tester.tap(find.text('7 Nächte'));
     await tester.pumpAndSettle();
-    expect(find.text('7 von 7 Nächten'), findsOneWidget);
+    expect(find.text('7/7'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -306,10 +338,10 @@ void main() {
     (tester) async {
       repo.scenario = SyntheticScenario.missing;
       await mount(tester);
-      expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-      expect(find.text('14 von 30 Nächten'), findsOneWidget);
-      expect(find.text('0 von 30 Nächten'), findsNothing);
-      expect(find.text('+8 über Basis'), findsNothing);
+      expect(_hero('Noch kein Nachtwert'), findsOneWidget);
+      expect(find.text('14/30'), findsOneWidget);
+      expect(find.text('0/30'), findsNothing);
+      expect(find.textContaining('+8 über deiner Basis'), findsNothing);
       expect(tester.takeException(), isNull);
       await expectLater(
         find.byKey(const ValueKey('capture')),
@@ -328,17 +360,17 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-    expect(find.text('0 von 30 Nächten'), findsOneWidget);
-    expect(find.text('14 von 30 Nächten'), findsNothing);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('Noch kein Nachtwert'), findsOneWidget);
+    expect(find.text('0/30'), findsOneWidget);
+    expect(find.text('14/30'), findsNothing);
+    expect(_hero('48'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-full-missing.png'),
     );
     await mount(tester, brightness: Brightness.dark);
-    expect(find.text('0 von 30 Nächten'), findsOneWidget);
+    expect(find.text('0/30'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-full-missing-dark.png'),
@@ -348,9 +380,9 @@ void main() {
   testWidgets('partial night is labeled, not compared away', (tester) async {
     repo.scenario = SyntheticScenario.partial;
     await mount(tester);
-    expect(find.text('Unvollständige Nacht'), findsOneWidget);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(_hero('Unvollständige Nacht'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -359,9 +391,14 @@ void main() {
   ) async {
     repo.scenario = SyntheticScenario.processing;
     await mount(tester);
-    expect(find.text('Auswertung läuft'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
-    expect(find.textContaining('von 30 Nächten'), findsOneWidget);
+    expect(_hero('Auswertung läuft'), findsOneWidget);
+    expect(_hero('48'), findsNothing);
+    expect(find.textContaining('/30'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Nachtverlauf'), findsOneWidget);
     expect(find.text('—'), findsWidgets);
     expect(find.byIcon(LucideIcons.chevronRight), findsOneWidget);
@@ -377,8 +414,8 @@ void main() {
   ) async {
     repo.scenario = SyntheticScenario.calculationFailure;
     await mount(tester);
-    expect(find.text('Auswertung fehlgeschlagen'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('Auswertung fehlgeschlagen'), findsOneWidget);
+    expect(_hero('48'), findsNothing);
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
     expect(find.text('Auswertung'), findsOneWidget);
@@ -390,7 +427,6 @@ void main() {
     await tester.tap(find.text('Schlaf ansehen'));
     await tester.pumpAndSettle();
     expect(find.byType(SleepEditor), findsOneWidget);
-    expect(find.text('Schlafzeiten ändern'), findsOneWidget);
     expect(find.byType(OpenBandNightSignals), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -405,11 +441,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Erneut'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('48'), findsNothing);
     repo.failNightScalarRead = false;
     await tester.tap(find.text('Erneut'));
     await tester.pumpAndSettle();
-    expect(find.text('48'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -422,9 +458,9 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Ältere Berechnung'), findsOneWidget);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(_hero('Ältere Berechnung'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -443,9 +479,14 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Basis noch offen'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(_hero('48'), findsOneWidget);
+    expect(_hero('Basis noch offen'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Persönliche Basis'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Persönliche Basis'));
     await tester.pumpAndSettle();
     expect(find.text('Persönliche Basis'), findsWidgets);
@@ -464,9 +505,9 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Basis noch offen'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(_hero('48'), findsOneWidget);
+    expect(_hero('Basis noch offen'), findsOneWidget);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -485,11 +526,14 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
-    expect(find.text('Vorläufige Basis'), findsOneWidget);
+    // Provisional: no delta in the list either, only the values.
+    expect(_nights('48'), findsOneWidget);
+    expect(_nights('+8'), findsNothing);
+    expect(_hero('48'), findsOneWidget);
+    expect(_hero('Vorläufige Basis'), findsOneWidget);
     expect(find.textContaining('vorläufig'), findsWidgets);
-    expect(find.text('+8 über Basis'), findsNothing);
-    expect(tester.getSize(find.textContaining('Basis 40')).height, 16);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
+    expect(tester.getSize(find.textContaining('Basis 40')).height, 12);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -508,10 +552,10 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Basis veraltet'), findsOneWidget);
+    expect(_hero('Basis veraltet'), findsOneWidget);
     expect(find.textContaining('veraltet'), findsWidgets);
-    expect(find.text('+8 über Basis'), findsNothing);
-    expect(tester.getSize(find.textContaining('Basis 40')).height, 16);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
+    expect(tester.getSize(find.textContaining('Basis 40')).height, 12);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -534,8 +578,13 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Auswertung offen'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('Auswertung offen'), findsOneWidget);
+    expect(_hero('48'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsNothing);
@@ -560,8 +609,8 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Auswertung offen'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('Auswertung offen'), findsOneWidget);
+    expect(_hero('48'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -577,9 +626,9 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Nachtwert nicht lesbar'), findsOneWidget);
-    expect(find.text('Noch kein Nachtwert'), findsNothing);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('Nachtwert nicht lesbar'), findsOneWidget);
+    expect(_hero('Noch kein Nachtwert'), findsNothing);
+    expect(_hero('48'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -615,6 +664,11 @@ void main() {
     expect(find.textContaining('trusted'), findsNothing);
     await tester.tap(find.text('Schließen'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsOneWidget);
@@ -672,6 +726,11 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
+    await tester.scrollUntilVisible(
+      find.text('23:10–06:54'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('23:10–06:54'), findsOneWidget);
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
@@ -703,6 +762,11 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
+    await tester.scrollUntilVisible(
+      find.text('Persönliche Basis'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Persönliche Basis'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Vorherige Basis 40 ms'), findsOneWidget);
@@ -717,6 +781,11 @@ void main() {
   testWidgets('withheld night row does not open night signals', (tester) async {
     repo.scenario = SyntheticScenario.processing;
     await mount(tester);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsNothing);
@@ -729,7 +798,12 @@ void main() {
     (tester) async {
       _seedTrusted(repo);
       await mount(tester);
-      expect(find.text('48'), findsOneWidget);
+      expect(_hero('48'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Persönliche Basis'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byIcon(LucideIcons.chevronRight), findsNWidgets(2));
 
       final hold = Completer<void>();
@@ -749,17 +823,39 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(find.text('Auswertung läuft'), findsOneWidget);
-      expect(find.text('48'), findsNothing);
+      await _toTop(tester);
+      expect(_hero('Auswertung läuft'), findsOneWidget);
+      expect(_hero('48'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Persönliche Basis'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byIcon(LucideIcons.chevronRight), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Nachtverlauf'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Nachtverlauf'));
       await tester.pump();
       expect(find.byType(OpenBandNightSignals), findsNothing);
 
       hold.complete();
       await tester.pumpAndSettle();
-      expect(find.text('48'), findsOneWidget);
+      await _toTop(tester);
+      expect(_hero('48'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Persönliche Basis'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byIcon(LucideIcons.chevronRight), findsNWidgets(2));
+      await tester.scrollUntilVisible(
+        find.text('Nachtverlauf'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Nachtverlauf'));
       await tester.pumpAndSettle();
       expect(find.byType(OpenBandNightSignals), findsOneWidget);
@@ -772,13 +868,23 @@ void main() {
     (tester) async {
       _seedTrusted(repo);
       await mount(tester);
-      expect(find.text('48'), findsOneWidget);
+      expect(_hero('48'), findsOneWidget);
       repo.delayReads = true;
       unawaited(controller.refresh());
       await tester.pump();
       await tester.pump();
-      expect(find.text('48'), findsNothing);
+      expect(_hero('48'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.text('Persönliche Basis'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byIcon(LucideIcons.chevronRight), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Nachtverlauf'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Nachtverlauf'));
       await tester.pump();
       expect(find.byType(OpenBandNightSignals), findsNothing);
@@ -786,8 +892,19 @@ void main() {
 
       repo.completeRead(0);
       await tester.pumpAndSettle();
-      expect(find.text('48'), findsOneWidget);
+      await _toTop(tester);
+      expect(_hero('48'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Persönliche Basis'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       expect(find.byIcon(LucideIcons.chevronRight), findsNWidgets(2));
+      await tester.scrollUntilVisible(
+        find.text('Nachtverlauf'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Nachtverlauf'));
       await tester.pumpAndSettle();
       expect(find.byType(OpenBandNightSignals), findsOneWidget);
@@ -800,8 +917,18 @@ void main() {
   ) async {
     repo.scenario = SyntheticScenario.missing;
     await mount(tester);
-    expect(find.text('Noch kein Nachtwert'), findsOneWidget);
+    expect(_hero('Noch kein Nachtwert'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Persönliche Basis'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.byIcon(LucideIcons.chevronRight), findsNWidgets(2));
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsOneWidget);
@@ -822,6 +949,11 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsNothing);
@@ -836,7 +968,7 @@ void main() {
       currentAlgo: kAlgoVersion,
     );
     await mount(tester);
-    expect(find.text('Unvollständige Nacht'), findsOneWidget);
+    expect(_hero('Unvollständige Nacht'), findsOneWidget);
     await tester.tap(find.byTooltip('Information'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Unvollständige Nacht.'), findsOneWidget);
@@ -849,7 +981,7 @@ void main() {
   ) async {
     _seedPartialHistory(repo);
     await mount(tester);
-    expect(find.textContaining('von 30 · teils unvollständig'), findsOneWidget);
+    expect(find.text('teils unvollständig'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -857,23 +989,24 @@ void main() {
     tester,
   ) async {
     Future<void> expectCanonicalSelectedPartial() async {
-      expect(find.text('Unvollständige Nacht'), findsOneWidget);
-      expect(find.text('48'), findsOneWidget);
-      expect(find.text('15 von 30 · teils unvollständig'), findsOneWidget);
+      expect(_hero('Unvollständige Nacht'), findsOneWidget);
+      expect(_hero('48'), findsOneWidget);
+      expect(find.text('15/30'), findsOneWidget);
+      expect(find.text('teils unvollständig'), findsOneWidget);
       expect(find.textContaining('Basis 40'), findsOneWidget);
-      expect(find.text('Basis noch offen'), findsNothing);
-      expect(find.text('+8 über Basis'), findsNothing);
+      expect(_hero('Basis noch offen'), findsNothing);
+      expect(find.textContaining('+8 über deiner Basis'), findsNothing);
       expect(tester.takeException(), isNull);
     }
 
     Future<void> expectOneLine() async {
-      final title = tester.getRect(find.text('Nacht für Nacht'));
-      final count = tester.getRect(find.textContaining('teils unvollständig'));
-      expect(title.height, 18);
-      expect(count.height, 18);
-      expect(count.top, closeTo(title.top, 0.5));
-      expect(title.width, lessThan(150));
-      expect(count.left, closeTo(title.right + 8, 1));
+      final note = tester.getRect(find.text('teils unvollständig'));
+      final count = tester.getRect(
+        find.byKey(const ValueKey('night-scalar-count')),
+      );
+      expect(note.height, lessThanOrEqualTo(12)); // one line, fitted
+      expect(count.height, 24);
+      expect(note.top, greaterThanOrEqualTo(count.bottom - 0.5));
       expect(tester.takeException(), isNull);
     }
 
@@ -897,10 +1030,10 @@ void main() {
 
     _seedSelectedPartial(repo);
     await mount(tester, scale: 2, size: const Size(375, 812));
-    expect(find.text('Unvollständige Nacht'), findsOneWidget);
+    expect(_hero('Unvollständige Nacht'), findsOneWidget);
     expect(find.textContaining('teils unvollständig'), findsOneWidget);
     expect(find.textContaining('Basis 40'), findsOneWidget);
-    expect(find.text('+8 über Basis'), findsNothing);
+    expect(find.textContaining('+8 über deiner Basis'), findsNothing);
     expect(tester.takeException(), isNull);
   }, tags: const ['golden']);
 
@@ -918,16 +1051,16 @@ void main() {
       await tester.tap(find.text('7 Nächte'));
       await tester.pump();
       expect(repo.pendingReads, hasLength(3));
-      expect(find.textContaining('von 30 Nächten'), findsNothing);
+      expect(find.textContaining('/30'), findsNothing);
 
       repo.completeRead(2);
       await tester.pumpAndSettle();
-      expect(find.text('7 von 7 Nächten'), findsOneWidget);
+      expect(find.text('7/7'), findsOneWidget);
       repo.completeRead(1);
       repo.completeRead(0);
       await tester.pumpAndSettle();
-      expect(find.text('7 von 7 Nächten'), findsOneWidget);
-      expect(find.text('15 von 30 Nächten'), findsNothing);
+      expect(find.text('7/7'), findsOneWidget);
+      expect(find.text('15/30'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -937,17 +1070,17 @@ void main() {
     (tester) async {
       _seedTrusted(repo);
       await mount(tester);
-      expect(find.text('48'), findsOneWidget);
+      expect(_hero('48'), findsOneWidget);
       repo.delayReads = true;
       unawaited(controller.refresh());
       await tester.pump();
       await tester.pump();
-      expect(find.text('48'), findsNothing);
-      expect(find.textContaining('von 30 Nächten'), findsNothing);
+      expect(_hero('48'), findsNothing);
+      expect(find.textContaining('/30'), findsNothing);
       expect(repo.pendingReads, hasLength(1));
       repo.completeRead(0);
       await tester.pumpAndSettle();
-      expect(find.text('48'), findsOneWidget);
+      expect(_hero('48'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -958,17 +1091,17 @@ void main() {
     controller.updateBand(const BandSnapshot(batteryPercent: 41));
     await tester.pump();
     expect(repo.reads, before);
-    expect(find.text('48'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
   });
 
   testWidgets('selectDay does not keep the previous hero', (tester) async {
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
     await tester.runAsync(() => controller.selectDay('2026-09-13'));
     await tester.pump();
     await tester.pump();
     expect(controller.selectedDay, '2026-09-13');
-    expect(find.text('48'), findsNothing);
+    expect(_hero('48'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -977,7 +1110,7 @@ void main() {
   ) async {
     _seedTrusted(repo);
     await mount(tester);
-    expect(find.text('48'), findsOneWidget);
+    expect(_hero('48'), findsOneWidget);
 
     final previous = controller;
     final nextRepo = _GateRepo();
@@ -1007,13 +1140,13 @@ void main() {
     addTearDown(previous.dispose);
     await mount(tester, settle: false);
     await tester.pump();
-    expect(find.text('48'), findsNothing);
-    expect(find.text('32'), findsNothing);
+    expect(_hero('48'), findsNothing);
+    expect(_hero('32'), findsNothing);
     expect(nextRepo.pendingReads, isNotEmpty);
     nextRepo.completeRead(0);
     await tester.pumpAndSettle();
-    expect(find.text('32'), findsOneWidget);
-    expect(find.text('48'), findsNothing);
+    expect(_hero('32'), findsOneWidget);
+    expect(_hero('48'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -1023,13 +1156,23 @@ void main() {
     _seedTrusted(repo);
     await mount(tester, scale: 2, size: const Size(375, 812));
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('von 30 Nächten'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('night-scalar-count')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.textContaining('/30'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/hrv-large.png'),
     );
     await tester.drag(find.byType(ListView), const Offset(0, -520));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Nachtverlauf'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Nachtverlauf'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),

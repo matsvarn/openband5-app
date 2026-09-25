@@ -4,118 +4,212 @@
 import 'dart:ui';
 
 abstract final class AlpColor {
-  /// Alpin: Schnee. Seitenhintergrund.
-  static const Color canvas = Color(0xFFFFFFFF);
-  /// Alpin: Schneeschatten. Vertiefte Innenfläche für Datenbilder.
-  static const Color well = Color(0xFFF3F6FA);
-  /// Alpin: Trennlinie.
-  static const Color line = Color(0xFFE3E8F0);
-  /// Alpin: Granit. Haupttext.
-  static const Color ink = Color(0xFF131B2E);
-  /// Alpin: Schiefer. Sekundärtext.
-  static const Color muted = Color(0xFF5C6880);
-  /// Alpin: Aktion.
-  static const Color action = Color(0xFF2B5FE0);
-  /// Alpin: Gletscher. Schlaf-Bogen und Werte.
-  static const Color sleep = Color(0xFF3B6FE8);
-  /// Alpin: Gletscher hell. Schlaf-Spur und Flächen.
-  static const Color sleepTint = Color(0xFFE4ECFD);
-  /// Alpin: Nachteis. Tiefschlaf.
-  static const Color stageDeep = Color(0xFF1E3F9E);
-  /// Alpin: Gletscher. Leichter Schlaf.
-  static const Color stageLight = Color(0xFF5A8AF0);
-  /// Alpin: Firn. REM.
-  static const Color stageRem = Color(0xFF9DBCFF);
-  /// Alpin: Morgenlicht. Wach und Lücken-Marker.
-  static const Color wake = Color(0xFFF5B13B);
-  /// Alpin: Tanne. Erholung.
-  static const Color recovery = Color(0xFF1E9E63);
-  /// Alpin: Tanne hell.
-  static const Color recoveryTint = Color(0xFFE1F5EA);
-  /// Alpin: Alpenglühen. Belastung.
-  static const Color strain = Color(0xFFF08A24);
-  /// Alpin: Alpenglühen hell.
-  static const Color strainTint = Color(0xFFFDEEDD);
-  /// Alpin: Alpenrose. Puls.
-  static const Color pulse = Color(0xFFE0457B);
-  /// Alpin: Alpenrose hell.
-  static const Color pulseTint = Color(0xFFFCE6EE);
-  /// Alpin: Gletscher für kleinen Text (≤ 14 px) auf Weiß, AA.
-  static const Color sleepText = Color(0xFF2A57C7);
-  /// Alpin: Tanne für kleinen Text auf Weiß, AA.
-  static const Color recoveryText = Color(0xFF157A4B);
-  /// Alpin: Alpenglühen für kleinen Text auf Weiß, AA.
-  static const Color strainText = Color(0xFFA85A0E);
-  /// Alpin: Alpenrose für kleinen Text auf Weiß, AA.
-  static const Color pulseText = Color(0xFFB82C60);
-  /// Alpin: Enzian für kleinen Text auf Weiß, AA.
-  static const Color foodText = Color(0xFF5F42BF);
-  /// Alpin dunkel: Nachthimmel. Seitenhintergrund.
-  static const Color darkCanvas = Color(0xFF0F1420);
-  /// Alpin dunkel: Karte.
-  static const Color darkCard = Color(0xFF181F2E);
-  /// Alpin dunkel: vertiefte Innenfläche.
-  static const Color darkWell = Color(0xFF111828);
-  /// Alpin dunkel: Trennlinie.
-  static const Color darkLine = Color(0xFF2A3447);
-  /// Alpin dunkel: Haupttext.
-  static const Color darkInk = Color(0xFFF2F5FA);
-  /// Alpin dunkel: Sekundärtext.
-  static const Color darkMuted = Color(0xFFA3AEC2);
-  /// Alpin dunkel: Aktion.
-  static const Color darkAction = Color(0xFF8FB0FF);
-  /// Alpin dunkel: Gletscher, Schlaf-Bogen.
-  static const Color darkSleep = Color(0xFF7FA3FF);
-  /// Alpin dunkel: Schlaf-Spur.
-  static const Color darkSleepTint = Color(0xFF1E2C4F);
-  /// Alpin dunkel: Tanne, Erholung.
-  static const Color darkRecovery = Color(0xFF4CC98A);
-  /// Alpin dunkel: Erholung-Spur.
-  static const Color darkRecoveryTint = Color(0xFF173628);
-  /// Alpin dunkel: Alpenglühen, Belastung.
-  static const Color darkStrain = Color(0xFFFFA24D);
-  /// Alpin dunkel: Belastung-Spur.
-  static const Color darkStrainTint = Color(0xFF3A2A18);
-  /// Alpin dunkel: Alpenrose, Puls.
-  static const Color darkPulse = Color(0xFFFF6F9C);
-  /// Alpin dunkel: Puls-Spur.
-  static const Color darkPulseTint = Color(0xFF3B1F2C);
-  /// Alpin dunkel: Wach und Lücken-Marker.
-  static const Color darkWake = Color(0xFFFFC65C);
-  /// Alpin dunkel: Tiefschlaf.
-  static const Color darkStageDeep = Color(0xFF3D63D9);
-  /// Alpin dunkel: Leichtschlaf.
-  static const Color darkStageLight = Color(0xFF7FA3FF);
-  /// Alpin dunkel: REM.
-  static const Color darkStageRem = Color(0xFFBFD2FF);
-  /// Alpin: Warntext auf Warnfläche.
-  static const Color warning = Color(0xFF8A5A00);
-  /// Alpin: Warnfläche.
-  static const Color warningTint = Color(0xFFFFF1D6);
-  /// Alpin: Fehlertext und destruktive Aktion.
-  static const Color danger = Color(0xFFC42B3D);
-  /// Alpin: Fehlerfläche.
-  static const Color dangerTint = Color(0xFFFDE7EA);
-  /// Alpin: Enzian. Ernährung / Fett.
-  static const Color food = Color(0xFF7A5AD9);
-  /// Alpin: Enzian hell.
-  static const Color foodTint = Color(0xFFEEE9FB);
-  /// Alpin: gestrichelte Lücke, keine Daten.
-  static const Color gap = Color(0xFFC9D2E0);
-  /// Alpin dunkel: Enzian, Ernährung / Fett.
-  static const Color darkFood = Color(0xFFB6A0F2);
-  /// Alpin dunkel: Ernährung-Spur.
-  static const Color darkFoodTint = Color(0xFF2B2442);
-  /// Alpin dunkel: gestrichelte Lücke, keine Daten, Chevrons.
-  static const Color darkGap = Color(0xFF3C475C);
-  /// Alpin dunkel: Warntext.
+  /// G2 Gerät: Gehäuse. Erhabene Panels und Tasten.
+  static const Color canvas = Color(0xFFF5F5F2);
+
+  /// G2 Gerät: Mulde im Panel. Datenbilder und Skalenspur.
+  static const Color well = Color(0xFFEAEAE6);
+
+  /// G2 Gerät: Trennlinie im Panel.
+  static const Color line = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: Tinte. Text, Zeiger, Primärtaste.
+  static const Color ink = Color(0xFF1B1B1A);
+
+  /// G2 Gerät: Beschriftung. Paper's label grey on Gehäuse and Mulde.
+  static const Color muted = Color(0xFF6A6A66);
+
+  /// G2 Gerät: Aktion ist Tinte; Handlungen sind Tasten, nicht Farbe.
+  static const Color action = Color(0xFF1B1B1A);
+
+  /// G2 Gerät: Schlaf-Füllung.
+  static const Color sleep = Color(0xFF1B1B1A);
+
+  /// G2 Gerät: Schlaf-Spur.
+  static const Color sleepTint = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: Tiefschlaf, volle LED.
+  static const Color stageDeep = Color(0xFF1B1B1A);
+
+  /// G2 Gerät: Leichtschlaf.
+  static const Color stageLight = Color(0xFF6A6A66);
+
+  /// G2 Gerät: REM.
+  static const Color stageRem = Color(0xFFAEAEA9);
+
+  /// G2 Gerät: Wach.
+  static const Color wake = Color(0xFFC9C9C4);
+
+  /// G2 Gerät: Signal-Orange. Nur Erholung.
+  static const Color recovery = Color(0xFFFF5A1A);
+
+  /// G2 Gerät: Signal-Spur.
+  static const Color recoveryTint = Color(0xFFFBE3D8);
+
+  /// G2 Gerät: Belastung-Füllung.
+  static const Color strain = Color(0xFF33332F);
+
+  /// G2 Gerät: Belastung-Spur.
+  static const Color strainTint = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: Puls-Linie.
+  static const Color pulse = Color(0xFF262624);
+
+  /// G2 Gerät: Puls-Spur.
+  static const Color pulseTint = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: Schlaf für kleinen Text.
+  static const Color sleepText = Color(0xFF1B1B1A);
+
+  /// G2 Gerät: Signal für kleinen Text, AA auf Gehäuse.
+  static const Color recoveryText = Color(0xFFB8400C);
+
+  /// G2 Gerät: Belastung für kleinen Text.
+  static const Color strainText = Color(0xFF33332F);
+
+  /// G2 Gerät: Puls für kleinen Text.
+  static const Color pulseText = Color(0xFF262624);
+
+  /// G2 Gerät: Ernährung für kleinen Text.
+  static const Color foodText = Color(0xFF55554F);
+
+  /// G2 Gerät dunkel: Seite (Alpin-Name: dunkler Seitenhintergrund).
+  static const Color darkCanvas = Color(0xFF121211);
+
+  /// G2 Gerät dunkel: Gehäuse (Karte).
+  static const Color darkCard = Color(0xFF1F1F1D);
+
+  /// G2 Gerät dunkel: Mulde.
+  static const Color darkWell = Color(0xFF161615);
+
+  /// G2 Gerät dunkel: Trennlinie.
+  static const Color darkLine = Color(0xFF2E2E2B);
+
+  /// G2 Gerät dunkel: Tinte.
+  static const Color darkInk = Color(0xFFEDEDE9);
+
+  /// G2 Gerät dunkel: Beschriftung.
+  static const Color darkMuted = Color(0xFFA3A39D);
+
+  /// G2 Gerät dunkel: Aktion.
+  static const Color darkAction = Color(0xFFEDEDE9);
+
+  /// G2 Gerät dunkel: Schlaf.
+  static const Color darkSleep = Color(0xFFEDEDE9);
+
+  /// G2 Gerät dunkel: Schlaf-Spur.
+  static const Color darkSleepTint = Color(0xFF2E2E2B);
+
+  /// G2 Gerät dunkel: Signal-Orange.
+  static const Color darkRecovery = Color(0xFFFF6A2E);
+
+  /// G2 Gerät dunkel: Signal-Spur.
+  static const Color darkRecoveryTint = Color(0xFF3A2217);
+
+  /// G2 Gerät dunkel: Belastung.
+  static const Color darkStrain = Color(0xFFD6D6D1);
+
+  /// G2 Gerät dunkel: Belastung-Spur.
+  static const Color darkStrainTint = Color(0xFF2E2E2B);
+
+  /// G2 Gerät dunkel: Puls.
+  static const Color darkPulse = Color(0xFFE4E4DF);
+
+  /// G2 Gerät dunkel: Puls-Spur.
+  static const Color darkPulseTint = Color(0xFF2E2E2B);
+
+  /// G2 Gerät dunkel: Wach.
+  static const Color darkWake = Color(0xFF4A4A45);
+
+  /// G2 Gerät dunkel: Tiefschlaf.
+  static const Color darkStageDeep = Color(0xFFEDEDE9);
+
+  /// G2 Gerät dunkel: Leichtschlaf.
+  static const Color darkStageLight = Color(0xFF9A9A94);
+
+  /// G2 Gerät dunkel: REM.
+  static const Color darkStageRem = Color(0xFF5E5E59);
+
+  /// G2 Gerät: Warntext.
+  static const Color warning = Color(0xFF7A4F00);
+
+  /// G2 Gerät: Warnfläche.
+  static const Color warningTint = Color(0xFFEFE3C6);
+
+  /// G2 Gerät: Fehlertext und destruktive Aktion.
+  static const Color danger = Color(0xFFB3261E);
+
+  /// G2 Gerät: Fehlerfläche.
+  static const Color dangerTint = Color(0xFFF2D9D5);
+
+  /// G2 Gerät: Ernährung.
+  static const Color food = Color(0xFF6A6A66);
+
+  /// G2 Gerät: Ernährung-Spur.
+  static const Color foodTint = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: hohl und gestrichelt, keine Daten, Chevrons.
+  static const Color gap = Color(0xFFAEAEA9);
+
+  /// G2 Gerät dunkel: Ernährung.
+  static const Color darkFood = Color(0xFFA3A39D);
+
+  /// G2 Gerät dunkel: Ernährung-Spur.
+  static const Color darkFoodTint = Color(0xFF2E2E2B);
+
+  /// G2 Gerät dunkel: hohl, keine Daten, Chevrons.
+  static const Color darkGap = Color(0xFF4A4A45);
+
+  /// G2 Gerät dunkel: Warntext.
   static const Color darkWarning = Color(0xFFF2C36B);
-  /// Alpin dunkel: Warnfläche.
+
+  /// G2 Gerät dunkel: Warnfläche.
   static const Color darkWarningTint = Color(0xFF3A2F17);
-  /// Alpin dunkel: Fehlertext.
-  static const Color darkDanger = Color(0xFFFF7A88);
-  /// Alpin dunkel: Fehlerfläche.
-  static const Color darkDangerTint = Color(0xFF3E1F26);
+
+  /// G2 Gerät dunkel: Fehlertext.
+  static const Color darkDanger = Color(0xFFFF7A6E);
+
+  /// G2 Gerät dunkel: Fehlerfläche.
+  static const Color darkDangerTint = Color(0xFF3E1F1C);
+
+  /// G2 Gerät: Seite hinter den Panels.
+  static const Color page = Color(0xFFE3E3DF);
+
+  /// G2 Gerät: eingedrückte Fläche auf der Seite (verweigerte Werte, Hinweise).
+  static const Color inset = Color(0xFFD8D8D3);
+
+  /// G2 Gerät: Status-LED, verbunden.
+  static const Color led = Color(0xFF2FB344);
+
+  /// G2 Gerät: Signal-Orange.
+  static const Color signal = Color(0xFFFF5A1A);
+
+  /// G2 Gerät dunkel: eingedrückte Fläche.
+  static const Color darkInset = Color(0xFF0B0B0A);
+
+  /// G2 Gerät dunkel: Status-LED.
+  static const Color darkLed = Color(0xFF3DDC5A);
+
+  /// G2 Gerät dunkel: Signal-Orange.
+  static const Color darkSignal = Color(0xFFFF6A2E);
+
+  /// Verdict: outside your normal range on the good side. Delta text.
+  static const Color better = Color(0xFF1E7D34);
+
+  /// Verdict: today's marker (knob, newest bar) on the good side.
+  static const Color betterMark = Color(0xFF2FB344);
+
+  /// Verdict: outside your normal range on the bad side. Delta text.
+  static const Color worse = Color(0xFFA15C00);
+
+  /// Verdict: today's marker on the bad side.
+  static const Color worseMark = Color(0xFFE39A2D);
+
+  /// Dark: verdict good side, text and marker.
+  static const Color darkBetter = Color(0xFF3DDC5A);
+
+  /// Dark: verdict bad side, text and marker.
+  static const Color darkWorse = Color(0xFFF0A43A);
 }
 
 abstract final class AlpText {
@@ -140,14 +234,15 @@ abstract final class AlpSpace {
   static const double s24 = 24;
   static const double s32 = 32;
   static const double s48 = 48;
+
   /// Karteninnenraum · 14 pt
   static const double s14 = 14;
 }
 
 abstract final class AlpRadius {
-  static const double well = 14;
-  static const double row = 18;
-  static const double card = 24;
+  static const double well = 12;
+  static const double row = 14;
+  static const double card = 18;
   static const double pill = 60;
 }
 
