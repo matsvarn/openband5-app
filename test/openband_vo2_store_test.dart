@@ -1297,7 +1297,7 @@ void main() {
 
   test('fresh schema reports the vo2 table healthy', () async {
     await _use('vo2_health.db');
-    expect(LocalDb.schemaVersion, 67);
+    expect(LocalDb.schemaVersion, 68);
     final names = await LocalDb.tableNames();
     expect(names, contains('manual_vo2'));
     final health = await LocalDb.schemaHealth();

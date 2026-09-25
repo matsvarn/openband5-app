@@ -96,7 +96,7 @@ void main() {
     final db = await LocalDb.instance;
     expect(
       (await db.rawQuery('PRAGMA user_version')).first.values.first,
-      67,
+      68,
     );
     final revs = await MedDb.revisionsForKey(db, 'custom_legacy');
     expect(revs, hasLength(1));
@@ -965,7 +965,7 @@ void main() {
 
   test('backup merge list includes revision history', () async {
     await _use('med_merge_src.db');
-    expect(LocalDb.schemaVersion, 67);
+    expect(LocalDb.schemaVersion, 68);
     final db = await LocalDb.instance;
     await MedDb.commitPlan(
       db,

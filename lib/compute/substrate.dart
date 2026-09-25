@@ -210,6 +210,33 @@ List<int?> beatTimesMs(int recTs, int? tsSubsec, List<int> rrMs,
   return out;
 }
 
+/// Minimum band-clock step, in 1/32768 s ticks (0.9 s), between two records
+/// that share a whole second before [isBoundaryCollision] treats them as a
+/// 1 Hz pair split by the second boundary.
+const int kBoundaryCollisionMinStepTicks = 29491;
+
+/// Whether a record with sub-second [subsec] and its direct predecessor with
+/// [prevSubsec] — same whole second, consecutive record index — are a 1 Hz
+/// pair that the second boundary split, rather than two genuine readings of
+/// one second.
+///
+/// MEASURED on 277,036 WHOOP 5 v18 records: consecutive indices are 1.000 s
+/// apart on the band's own clock (276,099 of them) with occasional ±10 ms
+/// steps, and the sub-second phase drifts through the whole second over days.
+/// When a +10 ms step carries the phase from x.990 across the boundary, the
+/// band stamps ... (x-2).990, x.000, x.990 ... — so truncating to whole
+/// seconds files two consecutive records under second x and leaves x-1 empty.
+/// `decoded_onehz` keys on the second, so the earlier record was REPLACEd
+/// away: its row and its beats. The pair's band-clock step is ~1 s even though
+/// both truncate to x, which is what this checks; the caller moves the
+/// predecessor into x-1 only when that second is empty.
+bool isBoundaryCollision({required int? prevSubsec, required int? subsec}) =>
+    prevSubsec != null &&
+    subsec != null &&
+    prevSubsec >= 0 &&
+    subsec < 32768 &&
+    subsec - prevSubsec >= kBoundaryCollisionMinStepTicks;
+
 /// Cross-record state for [beatTimesMs]'s continuity anchor.
 ///
 /// Records place independently when fed nothing — same as before. A caller
@@ -828,7 +855,44 @@ Substrate decodeSubstrate(List<String> hexes) {
       }
     }
   }
-  recs.sort((a, b) => a.ts.compareTo(b.ts));
+  // Ties broken on the record index so the order is deterministic.
+  recs.sort((a, b) {
+    final c = a.ts.compareTo(b.ts);
+    return c != 0 ? c : a.counter.compareTo(b.counter);
+  });
+  // The same record twice (a re-flood re-sliced into another raw_blob) is ONE
+  // second, exactly as REPLACE leaves it in `decoded_onehz`. Adjacent after
+  // the sort, so one pass.
+  var w = 0;
+  for (final r in recs) {
+    final last = w > 0 ? recs[w - 1] : null;
+    if (last != null &&
+        r.counter > 0 &&
+        r.counter == last.counter &&
+        r.ts == last.ts &&
+        r.tsSubsec == last.tsSubsec) {
+      recs[w - 1] = r;
+    } else {
+      recs[w++] = r;
+    }
+  }
+  recs.length = w;
+  // Each record's STORAGE second. Normally its own whole second; a
+  // boundary-split pair moves the earlier record into the empty second before
+  // it — the same rule `LocalDb` applies at the write, so a replay lands on
+  // the rows the store holds (see [isBoundaryCollision]). Beats are still
+  // placed on the band's own second below, as they were at the write.
+  final keys = [for (final r in recs) r.ts];
+  for (var i = 1; i < recs.length; i++) {
+    final p = recs[i - 1], c = recs[i];
+    if (p.ts == c.ts &&
+        c.counter > 0 &&
+        c.counter == p.counter + 1 &&
+        isBoundaryCollision(prevSubsec: p.tsSubsec, subsec: c.tsSubsec) &&
+        (i < 2 || keys[i - 2] < c.ts - 1)) {
+      keys[i - 1] = c.ts - 1;
+    }
+  }
 
   final n = recs.length;
   final tsSec = List<int>.filled(n, 0);
@@ -848,7 +912,7 @@ Substrate decodeSubstrate(List<String> hexes) {
   final beatClock = BeatClock();
   for (var i = 0; i < n; i++) {
     final r = recs[i];
-    tsSec[i] = r.ts;
+    tsSec[i] = keys[i];
     hr[i] = plausibleHrOrNull(r.hr) ?? 0;
     if (r.accelG.length == 3) {
       ax[i] = r.accelG[0];
@@ -997,6 +1061,8 @@ int? hardwareStepsFromCounter(
 
 class _Rec {
   final int ts;
+  // The band's record index (`counter` in `decoded_onehz`).
+  final int counter;
   final int hr;
   final List<double> accelG;
   final List<int> rrIntervalsMs;
@@ -1010,6 +1076,7 @@ class _Rec {
 
   _Rec.gen4(proto.R24 r)
       : ts = r.tsEpoch,
+        counter = r.counter,
         hr = r.hr,
         accelG = r.accelG,
         rrIntervalsMs = r.rrIntervalsMs,
@@ -1027,6 +1094,7 @@ class _Rec {
 
   _Rec.gen5(proto.Gen5HistorySample g)
       : ts = g.unix,
+        counter = g.recordIndex,
         hr = g.heartRate,
         accelG = g.gravityG,
         rrIntervalsMs = List<int>.from(g.rrIntervalsMs),

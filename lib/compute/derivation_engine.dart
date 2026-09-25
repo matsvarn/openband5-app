@@ -1678,7 +1678,18 @@ import 'substrate.dart';
 // same history) with 0–100 bounds, spread floor 3, half-lives 14/21. Additive
 // key; every other output unchanged. The app compares Erholung against it
 // once it is trusted (14 valid days).
-const int kAlgoVersion = 97;
+// 98 — boundary collisions stop destroying seconds. The band stamps its 1 Hz
+// records ~1.000 s apart but its sub-second phase drifts; a +10 ms step across
+// a second boundary (… (x-2).990, x.000, x.990 …) truncated two consecutive
+// records onto second x, and the REPLACE key dropped the first one — row and
+// beats — leaving x-1 empty (9 records in 277,036 on the owner's band).
+// `_queueBoundaryMove` now moves that predecessor into the empty second, band
+// time preserved; `decodeSubstrate` applies the same rule and dedupes
+// re-flooded records, so a raw replay lands on the stored rows; the schema 68
+// rung restores the lost records still held in `raw_blob`. Input change for the
+// few affected days (a restored second, a beat chain no longer broken by a
+// false hole), hence the bump.
+const int kAlgoVersion = 98;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
