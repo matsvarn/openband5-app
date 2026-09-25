@@ -1687,8 +1687,9 @@ import 'substrate.dart';
 // time preserved; `decodeSubstrate` applies the same rule and dedupes
 // re-flooded records, so a raw replay lands on the stored rows; the schema 68
 // rung restores the lost records still held in `raw_blob`. Input change for the
-// few affected days (a restored second, a beat chain no longer broken by a
-// false hole), hence the bump.
+// few affected days (a restored second and its beats on the 1 Hz grid), hence
+// the bump. Beat instants (`beat_ts_ms`) do not move, and the beat chain is
+// still not joined across the pair — both keep the band's own second.
 const int kAlgoVersion = 98;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.

@@ -882,6 +882,10 @@ Substrate decodeSubstrate(List<String> hexes) {
   // it — the same rule `LocalDb` applies at the write, so a replay lands on
   // the rows the store holds (see [isBoundaryCollision]). Beats are still
   // placed on the band's own second below, as they were at the write.
+  // ponytail: the store also refuses the move when x-1 holds beats but no
+  // row (only gen4 R10-lite writes those); this replay cannot see that and
+  // moves anyway. Unreachable on gen5; join the beat-only seconds here if a
+  // gen4 replay ever has to match the store exactly.
   final keys = [for (final r in recs) r.ts];
   for (var i = 1; i < recs.length; i++) {
     final p = recs[i - 1], c = recs[i];

@@ -197,11 +197,41 @@ void main() {
       await commit([a, b, c, d]);
       expectFixed(await rows());
       expect(await beats(), before);
-      // Split re-delivery: B alone, then the rest.
+      // Split re-delivery: the batch ends on B, then the rest. Every commit
+      // is its own durable state (a crash can land between them), so each is
+      // checked, not just the last.
       await commit([a, b]);
+      expectFixed(await rows());
+      expect(await beats(), before);
       await commit([c, d]);
       expectFixed(await rows());
       expect(await beats(), before);
+    });
+
+    test('the moved record re-delivered alone keeps its successor', () async {
+      await fresh('boundary_alone.db');
+      await commit([a, b, c, d]);
+      final before = await beats();
+      for (final writeB in [
+        () => commit([b]),
+        () {
+          final s = decodeGen5HistoricalSample(b)!;
+          return LocalDb.insertRecord(
+            RawRecord(
+              counter: s.counter,
+              packetType: PacketType.historicalData,
+              hex: hexOf(b),
+              capturedAt: 0,
+              recTs: s.tsEpoch,
+            ),
+            s,
+          );
+        },
+      ]) {
+        await writeB();
+        expectFixed(await rows());
+        expect(await beats(), before);
+      }
     });
 
     test('a normal 1 Hz run is untouched', () async {
@@ -290,6 +320,18 @@ void main() {
       );
     }
 
+    // The only caller is the rung, so the repair is exercised the way the
+    // phone runs it: a v67 file reopened by this build, inside onUpgrade.
+    Future<void> upgradeFrom67() async {
+      await (await LocalDb.instance).execute('PRAGMA user_version = 67');
+      await LocalDb.close();
+      final db = await LocalDb.instance;
+      expect(
+        (await db.rawQuery('PRAGMA user_version')).first.values.first,
+        LocalDb.schemaVersion,
+      );
+    }
+
     test('restores a lost record from raw_blob, idempotently', () async {
       await fresh('boundary_repair.db');
       await commit([a, b, c, d]);
@@ -298,23 +340,77 @@ void main() {
       await losePredecessor();
       expect((await rows()).length, 3);
 
-      final db = await LocalDb.instance;
-      expect(await LocalDb.repairBoundaryCollisions(db), 1);
+      await upgradeFrom67();
       expect(await rows(), fixedRows);
       expect(await beats(), fixedBeats);
 
-      expect(await LocalDb.repairBoundaryCollisions(db), 0);
+      await upgradeFrom67();
+      expect(await rows(), fixedRows);
+      expect(await beats(), fixedBeats);
+    });
+
+    test('finds the right frame when a reboot reused the counters', () async {
+      await fresh('boundary_repair_epochs.db');
+      // An earlier band epoch with the same record indices, a day before —
+      // committed first, so its blob is the one a naive lookup meets first.
+      await commit([
+        for (var i = 0; i < 4; i++)
+          v18(index: 100 + i, unix: x - 86400 + i, subsec: 32440),
+      ]);
+      await commit([a, b, c, d]);
+      final fixedRows = await rows();
+      await losePredecessor();
+      await upgradeFrom67();
       expect(await rows(), fixedRows);
     });
+
+    test('an unreadable blob is skipped, not fatal to the upgrade', () async {
+      await fresh('boundary_repair_corrupt.db');
+      await commit([a, b, c, d]);
+      final fixedRows = await rows();
+      await losePredecessor();
+      await (await LocalDb.instance).insert('raw_blob', {
+        'device_id': '',
+        'first_counter': 90,
+        'last_counter': 110,
+        'first_ts': 0,
+        'n': 1,
+        'codec': 1,
+        'payload': Uint8List.fromList([1, 2, 3, 4]),
+        'captured_at': 0,
+      });
+      await upgradeFrom67();
+      expect(await rows(), fixedRows);
+    });
+
+    test(
+      'a write that fails mid-repair rolls back, keeping record n',
+      () async {
+        await fresh('boundary_repair_rollback.db');
+        await commit([a, b, c, d]);
+        await losePredecessor();
+        final before = await rows();
+        final beatsBefore = await beats();
+        // Fail the SECOND write (record n = 102), after the first has already
+        // evicted it from x.
+        await (await LocalDb.instance).execute(
+          'CREATE TRIGGER fail_repair BEFORE INSERT ON decoded_onehz '
+          'WHEN NEW.counter = 102 BEGIN SELECT RAISE(ABORT, \'boom\'); END',
+        );
+        await upgradeFrom67();
+        await (await LocalDb.instance).execute('DROP TRIGGER fail_repair');
+        expect(await rows(), before);
+        expect(await beats(), beatsBefore);
+      },
+    );
 
     test('leaves an honest hole when the bytes are gone', () async {
       await fresh('boundary_repair_nobytes.db');
       await commit([a, b, c, d]);
       await losePredecessor();
-      final db = await LocalDb.instance;
-      await db.delete('raw_blob');
+      await (await LocalDb.instance).delete('raw_blob');
       final before = await rows();
-      expect(await LocalDb.repairBoundaryCollisions(db), 0);
+      await upgradeFrom67();
       expect(await rows(), before);
     });
 
@@ -328,7 +424,7 @@ void main() {
       ]);
       final before = await rows();
       expect(before.map((m) => m['rec_ts']), [x - 2, x, x + 1]);
-      expect(await LocalDb.repairBoundaryCollisions(await LocalDb.instance), 0);
+      await upgradeFrom67();
       expect(await rows(), before);
     });
   });

@@ -8095,9 +8095,10 @@ class LocalDb {
   /// x-1 and takes x back. A candidate whose bytes are gone, or that the rule
   /// does not claim, is left exactly as it is — an honest hole.
   ///
-  /// Bounded for the upgrade path: one indexed pass over `decoded_onehz` and
-  /// only the blobs that hold a candidate are inflated. Idempotent — a
-  /// restored second no longer matches.
+  /// Bounded for the upgrade path: one scan of `decoded_onehz` with two
+  /// primary-key lookups per row (0.9 s over 821k rows on a Mac), and only
+  /// the blobs that hold a candidate are inflated. Idempotent — a restored
+  /// second no longer matches.
   static Future<int> repairBoundaryCollisions(Database db) async {
     final hasBlob = await db.rawQuery(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'raw_blob'",
@@ -8124,18 +8125,26 @@ class LocalDb {
         where: 'device_id = ? AND first_counter <= ? AND last_counter >= ?',
         whereArgs: [deviceId, n, n - 1],
       );
+      // Several blobs can hold these counters (a band reboot restarts them),
+      // so the frame is chosen by its own second, not by being found first.
+      // An unreadable blob is skipped: this runs inside onUpgrade, where a
+      // throw quarantines the whole database.
       RawRecord? lost, next;
       for (final row in blobs) {
-        for (final r in _rawBlobRowRecords(row)) {
+        final List<RawRecord> recs;
+        try {
+          recs = _rawBlobRowRecords(row);
+        } catch (_) {
+          continue;
+        }
+        for (final r in recs) {
+          if (r.counter != n - 1 && r.counter != n) continue;
+          if (_decodeOneHzSample(r)?.tsEpoch != x) continue;
           if (r.counter == n - 1) lost ??= r;
           if (r.counter == n) next ??= r;
         }
       }
       if (lost == null || next == null) continue;
-      // Only the collision this rung exists for: both records on second x.
-      final lostSample = _decodeOneHzSample(lost);
-      final nextSample = _decodeOneHzSample(next);
-      if (lostSample?.tsEpoch != x || nextSample?.tsEpoch != x) continue;
       final batch = db.batch();
       final beatClock = BeatClock();
       for (final r in [lost, next]) {
@@ -8148,7 +8157,19 @@ class LocalDb {
           beatClock: beatClock,
         );
       }
-      await batch.commit(noResult: true);
+      // All or nothing per candidate: the first write evicts record n from
+      // x until the second puts it back, so a half-applied batch must not
+      // survive a failure. Only ever called from the schema 68 rung, i.e.
+      // inside onUpgrade's transaction, which the savepoint nests in.
+      await db.execute('SAVEPOINT boundary_repair');
+      try {
+        await batch.commit(noResult: true);
+        await db.execute('RELEASE boundary_repair');
+      } catch (_) {
+        await db.execute('ROLLBACK TO boundary_repair');
+        await db.execute('RELEASE boundary_repair');
+        continue;
+      }
       final back = await db.query(
         'decoded_onehz',
         columns: ['counter'],
@@ -8459,6 +8480,16 @@ class LocalDb {
     }
     final recTs = _recTsFrom(raw, decoded);
     final ambient = decoded.ambientRaw == 0 ? null : decoded.ambientRaw;
+    // This record was already moved back a second by its successor
+    // ([_queueBoundaryMove]): it is stored, so a re-delivery leaves it — and
+    // the successor now holding its old second — exactly as they are.
+    final alreadyMoved = preDeviceKey || raw.counter <= 0
+        ? null
+        : (
+            'SELECT 1 FROM decoded_onehz g WHERE g.device_id = ? '
+                'AND g.ts_ms = ? AND g.counter = ? AND g.ts_subsec >= 32768',
+            <Object?>[deviceId, (recTs - 1) * 1000, raw.counter],
+          );
     final moveOps = preDeviceKey
         ? 0
         : _queueBoundaryMove(
@@ -8475,7 +8506,7 @@ class LocalDb {
     // stale one. Because rec_ts is the key, the strap's per-reboot counter reset
     // can no longer make one second's record evict another's (the pre-fix
     // counter-PK eviction that silently, unrecoverably deleted 1 Hz rows).
-    batch.insert('decoded_onehz', {
+    _replaceUnless(batch, 'decoded_onehz', {
       // v47: WHICH DEVICE, in front of the key. '' is the primary band and
       // nothing else may ever use it — see _createDecodedStore for why an
       // unstable BLE remoteId must never reach this column.
@@ -8550,7 +8581,7 @@ class LocalDb {
       // column. Naming a column that does not exist yet throws inside
       // onUpgrade's single transaction and quarantines the whole database.
       'device_family': ?deviceFamily,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }, alreadyMoved);
     return moveOps +
         1 /* the decoded_onehz insert */ +
         _queueRrBeats(
@@ -8561,6 +8592,7 @@ class LocalDb {
           deviceId: deviceId,
           preDeviceKey: preDeviceKey,
           beatClock: beatClock,
+          unless: alreadyMoved,
         );
   }
 
@@ -8576,6 +8608,27 @@ class LocalDb {
   static int _recTsFrom(RawRecord raw, Sample decoded) {
     final rawRecTs = raw.recTs;
     return (rawRecTs != null && rawRecTs > 0) ? rawRecTs : decoded.tsEpoch;
+  }
+
+  /// REPLACE [row] into [table] — or, with [unless], only while that query
+  /// finds nothing, decided inside the same batch statement.
+  static void _replaceUnless(
+    Batch batch,
+    String table,
+    Map<String, Object?> row,
+    (String, List<Object?>)? unless,
+  ) {
+    if (unless == null) {
+      batch.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+      return;
+    }
+    final cols = row.keys.toList();
+    batch.rawInsert(
+      'INSERT OR REPLACE INTO $table (${cols.join(', ')}) '
+      'SELECT ${List.filled(cols.length, '?').join(', ')} '
+      'WHERE NOT EXISTS (${unless.$1})',
+      [...row.values, ...unless.$2],
+    );
   }
 
   /// Queued BEFORE a record's own REPLACE at [recTs]: keeps a 1 Hz pair that
@@ -8595,7 +8648,9 @@ class LocalDb {
   /// Pure SQL on the caller's batch, so every write path gets the same rule
   /// inside its own transaction — the live commit (before the ACK), the
   /// single-record fallback, [insertRecordsBatch] and the collision repair —
-  /// whether the predecessor committed in this batch or an earlier one.
+  /// whether the predecessor committed in this batch or an earlier one. A
+  /// moved record that is re-delivered later is left where it is by the
+  /// `alreadyMoved` guard in [_queueDecodedOneHz].
   static int _queueBoundaryMove(
     Batch batch, {
     required String deviceId,
@@ -8608,20 +8663,6 @@ class LocalDb {
     }
     final t = recTs * 1000;
     final before = t - 1000;
-    // A RE-DELIVERED record that was moved back earlier: drop that copy first
-    // so one record is never banked at two seconds. Its successor moves it
-    // back again when it is re-delivered too.
-    batch.rawDelete(
-      'DELETE FROM decoded_rr WHERE device_id = ? AND ts_ms = ? AND EXISTS '
-      '(SELECT 1 FROM decoded_onehz o WHERE o.device_id = ? AND o.ts_ms = ? '
-      'AND o.counter = ? AND o.ts_subsec >= 32768)',
-      [deviceId, before, deviceId, before, counter],
-    );
-    batch.rawDelete(
-      'DELETE FROM decoded_onehz WHERE device_id = ? AND ts_ms = ? '
-      'AND counter = ? AND ts_subsec >= 32768',
-      [deviceId, before, counter],
-    );
     // The predecessor row. `ts_subsec <= tsSubsec - min step` is
     // [isBoundaryCollision] in SQL, and excludes an already-moved row.
     batch.rawUpdate(
@@ -8655,7 +8696,7 @@ class LocalDb {
       'AND m.ts_ms = ? AND m.counter = ? AND m.ts_subsec >= 32768)',
       [deviceId, t, deviceId, t, deviceId, before, counter - 1],
     );
-    return 4;
+    return 2;
   }
 
 
@@ -8677,6 +8718,9 @@ class LocalDb {
     // than the emit anchor, PPG-measured). Null = per-record emit anchor,
     // exactly as before.
     BeatClock? beatClock,
+    // Skip every write while this query finds a row — see
+    // [_queueDecodedOneHz]'s `alreadyMoved`.
+    (String, List<Object?>)? unless,
   }) {
     // SCOPED TO THE WRITING DEVICE (v47). Unscoped, this cleared every device's
     // beats for the second — so a second band writing one row deleted the
@@ -8686,8 +8730,9 @@ class LocalDb {
       batch.rawDelete('DELETE FROM decoded_rr WHERE rec_ts = ?', [recTs]);
     } else {
       batch.rawDelete(
-        'DELETE FROM decoded_rr WHERE device_id = ? AND ts_ms = ?',
-        [deviceId, recTs * 1000],
+        'DELETE FROM decoded_rr WHERE device_id = ? AND ts_ms = ?'
+        '${unless == null ? '' : ' AND NOT EXISTS (${unless.$1})'}',
+        [deviceId, recTs * 1000, ...?unless?.$2],
       );
     }
     final beatTs = beatClock?.place(
@@ -8697,7 +8742,7 @@ class LocalDb {
     for (var i = 0; i < decoded.rrIntervalsMs.length; i++) {
       final rr = decoded.rrIntervalsMs[i];
       if (rr <= 0) continue;
-      batch.insert('decoded_rr', {
+      _replaceUnless(batch, 'decoded_rr', {
         // Same key prefix as the parent row — see _createDecodedStore. Omitted
         // on the mid-ladder replay for the reason _queueDecodedOneHz gives.
         'device_id': ?(preDeviceKey ? null : deviceId),
@@ -8724,7 +8769,7 @@ class LocalDb {
         // mid-ladder backfill, same trap.
         'beat_ts_ms': ?beatTs[i],
         'device_family': ?deviceFamily,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }, unless);
       ops++;
     }
     return ops;
