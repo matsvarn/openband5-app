@@ -20849,13 +20849,13 @@ void main() {
           await tester.pumpAndSettle();
           expect(resumeCalls, 1);
           expect(find.text('Verbunden'), findsNothing);
-          expect(find.text('Erneut'), findsOneWidget);
+          expect(find.text('Erneut versuchen'), findsOneWidget);
           await capture('release-sync-failed-$suffix');
-          await tester.tap(find.text('Erneut'));
+          await tester.tap(find.text('Erneut versuchen'));
           await tester.pumpAndSettle();
           expect(resumeCalls, 2);
           expect(find.text('Verbunden'), findsOneWidget);
-          expect(find.text('Erneut'), findsNothing);
+          expect(find.text('Erneut versuchen'), findsNothing);
           expect(find.text('bis 02:10'), findsWidgets);
           await capture('release-sync-retry-$suffix');
           await tester.tap(find.text('Weiter'));
