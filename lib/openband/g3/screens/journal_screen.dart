@@ -36,7 +36,7 @@ const _questions = <_Question>[
   ),
   _Question(
     'caffeine_late',
-    'Koffein nach 14 Uhr?',
+    'Gestern nach 14 Uhr Koffein?',
     'Koffein nach 14 Uhr',
     _Answer.yesNo,
   ),
@@ -63,6 +63,9 @@ String _patternFooter(G3JournalPattern result) {
         ? '${result.noNights} von ${result.perSideMinimum} nötig'
         : '${p.noNights} vorhanden';
     return '${p.pairedN} Paare · Ja $yes · Nein $no';
+  }
+  if (result.historyNeed case final history?) {
+    return '${history.have} von ${history.need} Paaren für den Test';
   }
   return '${p.pairedN} Paare · Ja ${result.yesNights ?? '—'} · Nein ${result.noNights ?? '—'}';
 }
@@ -570,7 +573,13 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         onReload: _load,
       ),
     );
-    if (mounted) setState(() => _editing = false);
+    if (mounted) {
+      setState(() {
+        _editing = false;
+        _draft = null;
+        _saveError = null;
+      });
+    }
   }
 
   List<String> _historyChips(JournalDaySnapshot day) => [
@@ -860,8 +869,12 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                 'Noch kein Vergleich',
                             },
                             detail: 'Koffein nach 14 Uhr · folgende Nacht',
-                            have: pattern.pattern.pairedN,
-                            need: pattern.pairedMinimum,
+                            have:
+                                pattern.historyNeed?.have ??
+                                pattern.pattern.pairedN,
+                            need:
+                                pattern.historyNeed?.need ??
+                                pattern.pairedMinimum,
                             footer: _patternFooter(pattern),
                             partial: pattern.pattern.partial,
                           )
@@ -1039,6 +1052,13 @@ class G3JournalPatternScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (p.partial) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Teilweise auswertbar',
+                      style: g.t(13, 17, color: g.muted),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (meaningful && minutes != null) ...[
                     Row(
@@ -1107,6 +1127,8 @@ class G3JournalPatternScreen extends StatelessWidget {
                                           'Für den Vergleich fehlen Tag-Nacht-Paare: ${p.pairedN} von ${pattern.pairedMinimum} vorhanden.',
                                         G3PatternRefusalGate.side =>
                                           'Für den Vergleich braucht es je ${pattern.perSideMinimum} Nächte mit Ja und Nein.',
+                                        G3PatternRefusalGate.history =>
+                                          'Für den statistischen Vergleich fehlen Tag-Nacht-Paare: ${pattern.historyNeed!.have} von ${pattern.historyNeed!.need} nötig.',
                                         null =>
                                           'Ein Vergleich ist noch nicht möglich.',
                                       },
@@ -1121,8 +1143,11 @@ class G3JournalPatternScreen extends StatelessWidget {
                   if (!ready) ...[
                     const SizedBox(height: 16),
                     OBPatternProgress(
-                      have: p.pairedN.clamp(0, pattern.pairedMinimum),
-                      need: pattern.pairedMinimum,
+                      have: (pattern.historyNeed?.have ?? p.pairedN).clamp(
+                        0,
+                        pattern.historyNeed?.need ?? pattern.pairedMinimum,
+                      ),
+                      need: pattern.historyNeed?.need ?? pattern.pairedMinimum,
                     ),
                     const SizedBox(height: 10),
                     Text(

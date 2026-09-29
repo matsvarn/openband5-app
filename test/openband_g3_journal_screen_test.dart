@@ -193,10 +193,29 @@ void main() {
         )).metrics['alcohol_evening']?.value,
         1,
       );
-      expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+      expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
       expect(find.text('1 von 4'), findsWidgets);
     },
   );
+
+  testWidgets('today caffeine answer belongs to yesterday', (tester) async {
+    repo.seedJournalEditor(
+      day: '2026-09-14',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    await mount(tester);
+    expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
+    await tester.tap(find.text('Ja').first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-14')).metrics['caffeine_late']?.value,
+      1,
+    );
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['caffeine_late'],
+      isNull,
+    );
+  });
 
   testWidgets('a past check-in shows and writes each question target day', (
     tester,
@@ -310,7 +329,7 @@ void main() {
       expect(find.text('Erneut speichern'), findsNothing);
       await tester.tap(find.text('Neu laden'));
       await tester.pumpAndSettle();
-      expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+      expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
       expect(
         (await repo.readJournalDay(
           '2026-09-14',
@@ -471,13 +490,50 @@ void main() {
       metrics: {'alcohol_evening': const JournalMetricValue(0)},
     );
     await mount(tester);
-    expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+    expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
     await tester.tap(find.byTooltip('Alkohol ändern'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ja').last);
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+    expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
+  });
+
+  testWidgets('dismissing a failed edit cannot retry onto the open question', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-14',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    await mount(tester);
+    expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ja').last);
+    repo.failJournalPatch = true;
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Erneut speichern'), findsOneWidget);
+    await tester.tap(find.byTooltip('Schließen'));
+    await tester.pumpAndSettle();
+    repo.failJournalPatch = false;
+    final retry = find.text('Erneut speichern');
+    if (retry.evaluate().isNotEmpty) {
+      await tester.tap(retry);
+      await tester.pumpAndSettle();
+    }
+    expect(retry, findsNothing);
+    expect(
+      (await repo.readJournalDay('2026-09-14')).metrics['caffeine_late'],
+      isNull,
+    );
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-14',
+      )).metrics['alcohol_evening']?.value,
+      0,
+    );
   });
 
   testWidgets('a failed delete retries null and leaves the question open', (
@@ -700,6 +756,79 @@ void main() {
       );
       expect(
         find.text('Für den Vergleich braucht es je 3 Nächte mit Ja und Nein.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('partial pattern keeps its label beside a minute result', (
+    tester,
+  ) async {
+    const model = CaffeineSleepPattern(
+      kind: CaffeineSleepPatternKind.meaningful,
+      pairedN: 12,
+      yesNights: 5,
+      noNights: 7,
+      delta: 4,
+      endDay: '2026-09-15',
+      startDay: '2026-08-17',
+      nights: 30,
+      algoVersion: 1,
+      partial: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: const G3JournalPatternScreen(pattern: G3JournalPattern(model)),
+      ),
+    );
+    expect(find.text('+4'), findsOneWidget);
+    expect(find.text('Teilweise auswertbar'), findsOneWidget);
+  });
+
+  testWidgets(
+    'history refusal names the producer count and unknown stays generic',
+    (tester) async {
+      const history = CaffeineSleepPattern(
+        kind: CaffeineSleepPatternKind.insufficient,
+        pairedN: 8,
+        yesNights: 4,
+        noNights: 4,
+        note: 'need_history:have=8,need=18',
+        endDay: '2026-09-15',
+        startDay: '2026-08-17',
+        nights: 30,
+        algoVersion: 1,
+      );
+      Widget screen(CaffeineSleepPattern pattern) => MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3JournalPatternScreen(pattern: G3JournalPattern(pattern)),
+      );
+      await tester.pumpWidget(screen(history));
+      expect(
+        find.text(
+          'Für den statistischen Vergleich fehlen Tag-Nacht-Paare: 8 von 18 nötig.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('8 von 18 Paaren für den Test'), findsOneWidget);
+      await tester.pumpWidget(
+        screen(
+          const CaffeineSleepPattern(
+            kind: CaffeineSleepPatternKind.insufficient,
+            pairedN: 8,
+            yesNights: 4,
+            noNights: 4,
+            note: 'other',
+            endDay: '2026-09-15',
+            startDay: '2026-08-17',
+            nights: 30,
+            algoVersion: 1,
+          ),
+        ),
+      );
+      expect(
+        find.text('Ein Vergleich ist noch nicht möglich.'),
         findsOneWidget,
       );
     },
