@@ -56,15 +56,15 @@
     "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)",
     "5DJX-0": "G2 · 15 · Nickerchen · Hell (lib/openband/naps.dart)",
     "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)",
-    "5OIV-0": "G3 Heute · Hell",
-    "5ONU-0": "G3 Heute · Dunkel",
-    "5OST-0": "G3 Heute · gescrollt · Hell",
-    "5Q4B-0": "G3 Heute · Basis im Aufbau · Hell",
-    "5QH9-0": "G3 Heute · Basis im Aufbau · Dunkel",
-    "5QMC-0": "G3 Heute · Vergangener Tag · Hell",
-    "5QRH-0": "G3 Heute · Noch kein Band · Hell",
-    "5QUE-0": "G3 Heute · Band getrennt · Hell",
-    "5QYJ-0": "G3 Heute · Nacht mit Lücke · Hell",
+    "5OIV-0": "G3 Heute · Hell (lib/openband/g3/screens/heute.dart)",
+    "5ONU-0": "G3 Heute · Dunkel (lib/openband/g3/screens/heute.dart)",
+    "5OST-0": "G3 Heute · gescrollt · Hell (lib/openband/g3/screens/heute.dart)",
+    "5Q4B-0": "G3 Heute · Basis im Aufbau · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QH9-0": "G3 Heute · Basis im Aufbau · Dunkel (lib/openband/g3/screens/heute.dart)",
+    "5QMC-0": "G3 Heute · Vergangener Tag · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QRH-0": "G3 Heute · Noch kein Band · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QUE-0": "G3 Heute · Band getrennt · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QYJ-0": "G3 Heute · Nacht mit Lücke · Hell (lib/openband/g3/screens/heute.dart)",
     "5R5F-0": "G3 Verlauf · Erholung 30 T · Hell",
     "5RBJ-0": "G3 Verlauf · Erholung 30 T · Dunkel",
     "5RHN-0": "G3 Verlauf · HRV · Hell",
@@ -2019,6 +2019,18 @@
       "usedIn": [],
       "widget": "OBZoneRows",
       "file": "g3/charts.dart"
+    },
+    {
+      "name": "OBCheckInRating",
+      "design": "G3",
+      "paperNode": "none:OBCheckInRating",
+      "widget": "OBCheckInRating",
+      "file": "g3/heute_parts.dart",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "notes": "Heute check-in for the four stored 1–5 ratings (kG3CheckInKeys). Paper's OBCheckIn asks yes/no questions, so this has no Paper node yet; requested as a Baustein variant on Bausteine · G3."
     }
   ],
   "openBlocks": [],
