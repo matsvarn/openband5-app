@@ -12,7 +12,7 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/g3/journal_parts.dart'
-    show OBPatternCard, OBPatternDotPlot, OBSwitch;
+    show OBCheckIn, OBPatternCard, OBPatternDotPlot, OBSwitch;
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -195,9 +195,72 @@ void main() {
         1,
       );
       expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
-      expect(find.text('1 von 4'), findsWidgets);
+      expect(find.text('2 von 4'), findsOneWidget);
     },
   );
+
+  testWidgets('Journal uses typed open order and answered-count progress', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'mood': const JournalMetricValue(4)},
+    );
+    await mount(tester);
+    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+    expect(find.text('2 von 4'), findsOneWidget);
+    await tester.tap(find.text('Später'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gestern nach 14 Uhr Koffein?'), findsOneWidget);
+    expect(find.text('2 von 4'), findsOneWidget);
+    await tester.tap(find.text('Ja').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Noch etwas zu gestern?'), findsOneWidget);
+    expect(find.text('3 von 4'), findsOneWidget);
+  });
+
+  testWidgets('dark check-in separates done, current, and future segments', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.dark),
+        home: Scaffold(
+          body: OBCheckIn(
+            title: 'Frage',
+            index: 2,
+            total: 4,
+            answer: const SizedBox.shrink(),
+            onLater: () {},
+          ),
+        ),
+      ),
+    );
+    final segments = tester
+        .widgetList<Container>(
+          find.descendant(
+            of: find.byType(OBCheckIn),
+            matching: find.byType(Container),
+          ),
+        )
+        .where((widget) => widget.constraints?.minHeight == 4)
+        .toList();
+    expect(segments, hasLength(4));
+    final colors = [
+      for (final segment in segments)
+        (segment.decoration! as BoxDecoration).color!,
+    ];
+    expect(
+      colors[0].computeLuminance(),
+      greaterThan(colors[1].computeLuminance()),
+    );
+    expect(colors[1].a, 1);
+    expect(
+      colors[1].computeLuminance(),
+      greaterThan(colors[2].computeLuminance() + .2),
+    );
+    expect(colors[2], colors[3]);
+  });
 
   testWidgets('today caffeine answer belongs to yesterday', (tester) async {
     repo.seedJournalEditor(

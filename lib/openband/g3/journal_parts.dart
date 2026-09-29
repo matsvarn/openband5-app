@@ -59,7 +59,9 @@ class OBCheckIn extends StatelessWidget {
                       color: i < index - 1
                           ? g.ink
                           : i == index - 1
-                          ? g.ink2.withValues(alpha: .45)
+                          ? g.dark
+                                ? g.ink2
+                                : g.ink2.withValues(alpha: .45)
                           : g.band,
                       borderRadius: BorderRadius.circular(3),
                     ),
