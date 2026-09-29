@@ -34,8 +34,8 @@ import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart'
     show isEncryptedBackup;
-import 'package:openstrap_edge/ui2/screens/log_workout.dart'
-    show WorkoutSuggestionScreen;
+import 'package:openstrap_edge/openband/g3/screens/training_screen.dart'
+    show G3SuggestionRoute;
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -298,11 +298,11 @@ void main() {
       final route = workoutSuggestionRoute(id);
       expect(domainForRoute(route), ShellDomain.workout);
       final screen = screenForRoute(route);
-      expect(screen, isA<WorkoutSuggestionScreen>());
-      expect((screen! as WorkoutSuggestionScreen).focusId, id);
+      expect(screen, isA<G3SuggestionRoute>());
+      expect((screen! as G3SuggestionRoute).focusId, id);
       // A payload from a build that carried no id still reviews everything.
       expect(
-        (screenForRoute(kRouteWorkoutSuggestion)! as WorkoutSuggestionScreen)
+        (screenForRoute(kRouteWorkoutSuggestion)! as G3SuggestionRoute)
             .focusId,
         isNull,
       );
