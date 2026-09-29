@@ -550,6 +550,32 @@ class NotificationCenter {
     );
   }
 
+  /// The Für-heute bedtime reminder: opt-in, one-shot, armed only by the
+  /// user's Erinnern tap for the time the note shows. A user who asks for a
+  /// reminder at a time they chose is exempt from quiet hours, like the alarm.
+  /// Returns false, without arming, when [at] has passed or notifications are
+  /// not allowed; the caller says so instead of showing "erinnert".
+  Future<bool> scheduleBedtimeReminder({
+    required DateTime at,
+    required String body,
+  }) async {
+    if (!at.isAfter(DateTime.now())) return false;
+    final svc = NotificationService.instance;
+    if (!await svc.ensurePermission()) return false;
+    await svc.scheduleOnce(
+      id: NotificationService.idBedtimeNote,
+      category: NotifCategory.reminders,
+      title: 'Zeit fürs Bett',
+      body: body,
+      at: at,
+      route: '/sleep',
+    );
+    return true;
+  }
+
+  Future<void> cancelBedtimeReminder() =>
+      NotificationService.instance.cancel(NotificationService.idBedtimeNote);
+
   /// How long before the learned bedtime the wind-down lands.
   static const int windDownBeforeBedMin = 45;
 
