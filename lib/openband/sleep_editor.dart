@@ -700,9 +700,9 @@ class _SleepEditorState extends State<SleepEditor> {
                                   secondary: true,
                                   onPressed: () {
                                     widget.onReturnToOverview?.call();
-                                    Navigator.of(context).popUntil(
-                                      (route) => route.isFirst,
-                                    );
+                                    Navigator.of(
+                                      context,
+                                    ).popUntil((route) => route.isFirst);
                                   },
                                 ),
                             ],
@@ -843,6 +843,19 @@ class _SleepEditorState extends State<SleepEditor> {
     final previous = original.onset == null || original.wake == null
         ? null
         : original.wake!.difference(original.onset!).inMinutes;
+    DateTime? recordedStart, recordedEnd;
+    for (final segment in original.segments) {
+      if (segment.stage == null) continue;
+      if (recordedStart == null || segment.start.isBefore(recordedStart)) {
+        recordedStart = segment.start;
+      }
+      if (recordedEnd == null || segment.end.isAfter(recordedEnd)) {
+        recordedEnd = segment.end;
+      }
+    }
+    final recordedSpan = recordedStart == null || recordedEnd == null
+        ? '—'
+        : '${obTime(recordedTime(recordedStart, original.recordingTimezone))}–${obTime(recordedTime(recordedEnd, original.recordingTimezone))}';
     return g3_chrome.OBPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -880,9 +893,7 @@ class _SleepEditorState extends State<SleepEditor> {
           ),
           const SizedBox(height: 12),
           Text(
-            original.segments.isEmpty
-                ? 'Für dieses Zeitfenster liegt keine Aufzeichnung vor.'
-                : 'Band hat aufgezeichnet   ⋮ vorher ${obTime(original.onset)}',
+            'Band hat aufgezeichnet $recordedSpan · vorher ${obTime(original.onset)}',
             style: g.t(12, 16, color: g.ink2),
           ),
         ],

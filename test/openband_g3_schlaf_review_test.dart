@@ -13,8 +13,11 @@ import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
+import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
+import 'package:openstrap_edge/ui2/app_shell.dart';
 
 Map _fixture(String name) =>
     jsonDecode(
@@ -229,6 +232,37 @@ void main() {
     expect(find.text('13 Min.'), findsOneWidget);
     expect(find.text('÷ übliche Schlafeffizienz'), findsOneWidget);
     expect(find.text('8h35 im Bett'), findsNothing);
+  });
+
+  testWidgets('the need clamp is a signed visible Rechnung term', (
+    tester,
+  ) async {
+    await _card(
+      tester,
+      const OBPlanBreakdown(
+        baseline: 420,
+        debt: 10,
+        bonus: 21,
+        napCredit: 115,
+        needClamp: G3SleepNeedClamp(360, 24),
+        need: 360,
+      ),
+    );
+    expect(find.text('Begrenzt auf 6h00'), findsOneWidget);
+    expect(find.text('+ 24 Min.'), findsOneWidget);
+    await _card(
+      tester,
+      const OBPlanBreakdown(
+        baseline: 570,
+        debt: 120,
+        bonus: 0,
+        napCredit: 0,
+        needClamp: G3SleepNeedClamp(660, -30),
+        need: 660,
+      ),
+    );
+    expect(find.text('Obergrenze 11h00'), findsOneWidget);
+    expect(find.text('− 30 Min.'), findsOneWidget);
   });
 
   testWidgets('tonight subtitle uses the next civil day at DST end', (
@@ -551,7 +585,9 @@ void main() {
     expect(find.text('2h00'), findsOneWidget);
   });
 
-  testWidgets('multiple night gaps name their count', (tester) async {
+  testWidgets('multiple night gaps name every uncovered clock range', (
+    tester,
+  ) async {
     final start = DateTime(2026, 9, 28, 23);
     final night = SleepNight(
       onset: start,
@@ -583,7 +619,8 @@ void main() {
       ],
     );
     await _root(tester, night);
-    expect(find.textContaining('2 Lücken insgesamt'), findsOneWidget);
+    expect(find.textContaining('00:00–01:00 ohne Daten'), findsOneWidget);
+    expect(find.textContaining('02:00–03:00 ohne Daten'), findsOneWidget);
   });
 
   test('stale reminder reconcile cannot cancel a newly armed slot', () async {
@@ -664,6 +701,90 @@ void main() {
     await tester.pumpAndSettle();
     expect((await repo.readDay(day)).correction, isNull);
     expect(find.text('Von dir korrigiert'), findsNothing);
+  });
+
+  testWidgets(
+    'sleep correction covers the floating tab bar and names its recorded span',
+    (tester) async {
+      final start = DateTime(2026, 9, 28, 23, 10);
+      final end = DateTime(2026, 9, 29, 6, 54);
+      final repo = _ClosedNightRepo(
+        SleepNight(
+          onset: start,
+          wake: end,
+          duration: const DayMetric(438),
+          bedMinutes: 464,
+          segments: [NightSegment(start, end, NightStage.light)],
+        ),
+      );
+      final controller = OpenBandController(
+        repository: repo,
+        initialDay: '2026-09-29',
+        now: () => DateTime(2026, 9, 29, 10),
+      );
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: AppShell(
+            initial: ShellDomain.sleep,
+            releaseStyle: true,
+            domains: const [ShellDomain.home, ShellDomain.sleep],
+            builder: (context, domain) => domain == ShellDomain.sleep
+                ? G3SleepScreen(controller: controller, asTab: true)
+                : const Scaffold(body: Text('Heute')),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(OBTabBar), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Schlafzeiten ändern'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await Scrollable.ensureVisible(
+        tester.element(find.text('Schlafzeiten ändern')),
+        alignment: .3,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Schlafzeiten ändern'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SleepEditor), findsOneWidget);
+      expect(find.byType(OBTabBar), findsNothing);
+      expect(
+        find.text('Band hat aufgezeichnet 23:10–06:54 · vorher 23:10'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('correction uses a dash when recorded span is unknown', (
+    tester,
+  ) async {
+    final controller = OpenBandController(
+      repository: _ClosedNightRepo(
+        SleepNight(
+          onset: DateTime(2026, 9, 28, 23, 10),
+          wake: DateTime(2026, 9, 29, 6, 54),
+        ),
+      ),
+      initialDay: '2026-09-29',
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: SleepEditor(controller: controller, g3: true),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Band hat aufgezeichnet — · vorher 23:10'),
+      findsOneWidget,
+    );
   });
 
   test('nap calculation failure keeps the committed revision', () async {
