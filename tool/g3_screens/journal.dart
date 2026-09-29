@@ -1,0 +1,5 @@
+// G3 journal screen builders for tool/g3_review_test.dart, keyed like
+// docs/openband5/design/paper-g3/screens/journal.json.
+import 'package:flutter/widgets.dart';
+
+final Map<String, Widget Function()> journalScreens = {};
