@@ -545,6 +545,58 @@ void main() {
       expect(find.byType(G3Dashed), findsNWidgets(7));
     });
 
+    testWidgets('week bars end at the baseline without covering day labels', (
+      tester,
+    ) async {
+      const days = ['Mi', 'Do', 'Fr', 'Sa', 'So', 'Mo', 'Di'];
+      for (final (name, max, today, labelsBelow) in [
+        ('Belastung 20,1', 21.0, 20.1, false),
+        ('Belastung 21', 21.0, 21.0, false),
+        ('Erholung 111', 111.0, 111.0, false),
+        ('Schlaf 11h', 660.0, 660.0, true),
+      ]) {
+        final values = [
+          0.0,
+          max * .25,
+          max * .5,
+          max * .75,
+          max,
+          max * .9,
+          today,
+        ];
+        await tester.pumpWidget(
+          _app(
+            SizedBox(
+              width: 361,
+              child: OBWeekBars(
+                max: max,
+                labelsBelow: labelsBelow,
+                bars: [
+                  for (final (i, day) in days.indexed)
+                    OBWeekBar(
+                      day,
+                      values[i],
+                      label: values[i].toStringAsFixed(1),
+                      today: i == 6,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final baseline = tester.getRect(
+          find.byKey(const ValueKey('week-baseline')),
+        );
+        for (final day in days) {
+          final bar = tester.getRect(find.byKey(ValueKey('week-bar-$day')));
+          final label = tester.getRect(find.text(day));
+          expect(bar.bottom, closeTo(baseline.top, .01), reason: '$name $day');
+          expect(bar.overlaps(label), isFalse, reason: '$name $day');
+        }
+      }
+    });
+
     testWidgets('steps without a transfer read "—" and draw no bars', (
       tester,
     ) async {
