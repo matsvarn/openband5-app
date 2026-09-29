@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/app.dart' show screenForRoute;
 import 'package:openstrap_edge/openband/controller.dart';
@@ -128,11 +129,48 @@ void main() {
   });
   tearDown(() => controller.dispose());
 
-  test('journal compose deep link opens the G3 editor route', () {
-    expect(
-      screenForRoute('/journal/compose', repository: repo),
-      isA<G3JournalComposeRoute>(),
+  testWidgets('journal compose deep link saves and returns to its caller', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      screenForRoute('/journal/compose', repository: repo)!,
+                ),
+              ),
+              child: const Text('Öffnen'),
+            ),
+          ),
+        ),
+      ),
     );
+    await tester.tap(find.text('Öffnen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+    await tester.tap(find.text('Nein').first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay(
+        todayLabel(),
+      )).metrics['alcohol_evening']?.value,
+      0,
+    );
+    await tester.tap(find.bySemanticsLabel('Zurück zu Journal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Öffnen'), findsOneWidget);
   });
 
   Future<void> mount(WidgetTester tester, {bool settle = true}) async {
