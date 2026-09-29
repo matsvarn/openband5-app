@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../data/day_label.dart';
 import '../../../data/journal_fields.dart';
 import '../../domain.dart';
 import '../charts.dart';
@@ -59,6 +60,17 @@ String _date(String day) =>
 
 String _longDate(String day) =>
     DateFormat('EEEE, d. MMMM', 'de_DE').format(DateTime.parse(day));
+
+String _endLabel(String day) => day == todayLabel()
+    ? 'heute'
+    : DateFormat('dd.MM', 'de_DE').format(DateTime.parse(day));
+
+String _bandStamp(BandSnapshot band) {
+  final stored = band.latestStoredAt?.toLocal();
+  if (stored == null) return 'Letzter Bandwert —';
+  final pattern = dayLabelOf(stored) == todayLabel() ? 'HH:mm' : 'dd.MM HH:mm';
+  return 'Letzter Bandwert ${DateFormat(pattern, 'de_DE').format(stored)}';
+}
 
 double? _usable(MetricPoint point) =>
     point.partial || point.value?.isFinite != true ? null : point.value;
@@ -188,7 +200,9 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
     final value = points.isEmpty ? null : _usable(points.last);
     final valueCount = points.where((p) => _usable(p) != null).length;
     final remaining = valueCount < 7 ? 7 - valueCount : null;
-    final range = _baseline?.status.phase == BaselinePhase.trusted
+    final range =
+        metric != G3Metric.skinTempZ &&
+            _baseline?.status.phase == BaselinePhase.trusted
         ? _baseline?.range
         : null;
     final outside = value == null || range == null || range.contains(value)
@@ -262,7 +276,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 deltaUp:
                     value == null || range == null || value >= range.median,
                 caption: metric == G3Metric.skinTempZ
-                    ? 'Abweichung von deiner Basis · keine °C'
+                    ? 'Relative Abweichung von deiner Basis'
                     : range == null
                     ? _baseline?.status.nightsNeeded == null
                           ? 'Ohne verlässlichen Normalbereich'
@@ -309,7 +323,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                         DateFormat('dd.MM', 'de_DE').format(
                           DateTime.parse(points[points.length ~/ 2].day),
                         ),
-                        'heute',
+                        _endLabel(widget.endDay),
                       ],
                 footLeft: remaining != null
                     ? '$valueCount Werte · Verlauf ab 7'
@@ -394,15 +408,11 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     ? 'Was das ist'
                     : 'Lücken bleiben leer',
                 text: metric == G3Metric.skinTempZ
-                    ? 'Relative Abweichung der Hauttemperatur von deiner Basis, in Sensor-Einheiten. Keine °C, keine Körpertemperatur.'
+                    ? 'Relative Abweichung der Hauttemperatur von deiner Basis, in Sensor-Einheiten. Das ist keine Körpertemperatur.'
                     : 'Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
               ),
               if (widget.band != null)
-                chrome.OBFooterStamp(
-                  widget.band!.latestStoredAt == null
-                      ? 'Letzter Bandwert —'
-                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
-                ),
+                chrome.OBFooterStamp(_bandStamp(widget.band!)),
             ],
           ],
         ),
@@ -507,7 +517,7 @@ OBTrendMark _pointMark(
       range.contains(value)) {
     return OBTrendMark.none;
   }
-  if (metric == G3Metric.skinTempZ) return OBTrendMark.outside;
+  if (metric == G3Metric.skinTempZ) return OBTrendMark.none;
   if (metric == G3Metric.rhr) {
     return value < range.low ? OBTrendMark.better : OBTrendMark.worse;
   }
@@ -586,7 +596,7 @@ void _showExplanation(BuildContext context, G3Metric metric) {
     builder: (sheet) => chrome.OBSheet(
       title: g3MetricName(metric),
       subtitle: metric == G3Metric.skinTempZ
-          ? 'Die Abweichung ist relativ zu deiner Basis und keine Temperatur in °C.'
+          ? 'Die Abweichung ist relativ zu deiner Basis. Sie zeigt keine Körpertemperatur.'
           : 'Dein Normalbereich stammt aus gespeicherten Messungen. Fehlende Tage bleiben leer.',
       confirmLabel: 'Schließen',
       onCancel: () => Navigator.pop(sheet),
@@ -712,8 +722,13 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                       metrics.OBBodyRow(
                         state: metric == G3Metric.skinTempZ
                             ? metrics.OBBodyState.deviation
-                            : trends[metric]!.baseline.range == null
-                            ? metrics.OBBodyState.building
+                            : trends[metric]!.points.isEmpty ||
+                                  _usable(trends[metric]!.points.last) == null
+                            ? metrics.OBBodyState.missing
+                            : trends[metric]!.baseline.status.phase !=
+                                      BaselinePhase.trusted ||
+                                  trends[metric]!.baseline.range == null
+                            ? metrics.OBBodyState.plain
                             : metrics.OBBodyState.range,
                         name: g3MetricName(metric),
                         value:
@@ -801,14 +816,10 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
               const _InfoCard(
                 title: 'So liest du die Zeilen',
                 text:
-                    'Grauer Bereich: dein persönlicher Normalbereich. Strich: letzte Nacht. Farbe nur außerhalb deines Bereichs.',
+                    'Strich: letzter Wert. Ein grauer Bereich zeigt deinen Normalbereich, sobald er verlässlich ist. Farbe nur außerhalb davon.',
               ),
               if (widget.band != null)
-                chrome.OBFooterStamp(
-                  widget.band!.latestStoredAt == null
-                      ? 'Letzter Bandwert —'
-                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
-                ),
+                chrome.OBFooterStamp(_bandStamp(widget.band!)),
             ],
           ],
         ),
@@ -952,7 +963,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                       g3DaysEnding(widget.endDay, history.days).first,
                     ),
                   ),
-                  'heute',
+                  _endLabel(widget.endDay),
                 ],
                 footLeft:
                     '${history.entries.length} Einträge · keine Tageswerte geschätzt',
@@ -1002,11 +1013,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 const SizedBox(height: 6),
               ],
               if (widget.band != null)
-                chrome.OBFooterStamp(
-                  widget.band!.latestStoredAt == null
-                      ? 'Letzter Bandwert —'
-                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
-                ),
+                chrome.OBFooterStamp(_bandStamp(widget.band!)),
             ],
           ],
         ),

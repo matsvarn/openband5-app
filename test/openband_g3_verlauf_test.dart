@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -45,6 +47,27 @@ class _ControlledTrendRepository extends SyntheticOpenBandRepository {
     }
     return super.readTrend(metric, endDay, days);
   }
+}
+
+class _BuildingBodyRepository extends SyntheticOpenBandRepository {
+  _BuildingBodyRepository()
+    : super.fromMaps(
+        _fixture('day-summary.json'),
+        _fixture('sleep-detail.json'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+
+  @override
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async =>
+      g3Trend(metric, [
+        MetricPoint(endDay, switch (metric) {
+          G3Metric.hrv => 73,
+          G3Metric.rhr => 51,
+          G3Metric.respRate => 14,
+          G3Metric.skinTempZ => -0.5,
+          _ => null,
+        }),
+      ], const G3Baseline(BaselineStatus(BaselinePhase.building)));
 }
 
 Widget _app(Widget child) =>
@@ -148,6 +171,59 @@ void main() {
       tester.widget<G3MetricDetail>(find.byType(G3MetricDetail)).metric,
       G3Metric.rhr,
     );
+  });
+
+  testWidgets('body values with a building baseline remain recorded', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(G3AllMetrics(repository: _BuildingBodyRepository(), endDay: _day)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('HRV 73 ms'), findsOneWidget);
+    expect(find.bySemanticsLabel('Ruhepuls 51 /min'), findsOneWidget);
+    expect(find.text('nicht erfasst'), findsNothing);
+  });
+
+  testWidgets('an older stored band value includes its date', (tester) async {
+    final stored = DateTime.now().subtract(const Duration(days: 3));
+    await tester.pumpWidget(
+      _app(
+        G3AllMetrics(
+          repository: _repo(SyntheticScenario.g3Sample),
+          endDay: dayLabelOf(stored),
+          band: BandSnapshot(
+            connection: BandConnection.connected,
+            latestStoredAt: stored,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        'Letzter Bandwert ${DateFormat('dd.MM').format(stored)}',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('skin temperature stays relative without a temperature unit', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.skinTempZ,
+          repository: _repo(SyntheticScenario.g3Sample),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('°C'), findsNothing);
   });
 
   testWidgets('manual weight entry writes through the journal seam', (
