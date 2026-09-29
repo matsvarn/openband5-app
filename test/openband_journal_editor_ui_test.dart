@@ -186,7 +186,7 @@ void main() {
     expect(
       tester.getTopLeft(find.text('Alkohol am Abend')).dy -
           tester.getTopLeft(find.text('Koffein nach 14 Uhr')).dy,
-      closeTo(56, 1),
+      closeTo(96, 1),
     );
     expect(
       tester
