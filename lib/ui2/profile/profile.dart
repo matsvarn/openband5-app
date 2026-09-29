@@ -393,6 +393,7 @@ class _ProfileHomeState extends State<ProfileHome> {
         G3BandScreen(
           band: _band,
           diagnostics: _diagnostics,
+          deviceName: c.read<AppState>().strapName,
           now: DateTime.now(),
           clock: DateTime.now,
           bandUpdates: c.read<AppState>(),

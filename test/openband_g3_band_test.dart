@@ -73,6 +73,65 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'battery scale keeps a gutter before the backlog at mini widths',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+      addTearDown(tester.view.reset);
+      for (final width in [375.0, 360.0]) {
+        tester.view.physicalSize = Size(width, 812);
+        await pump(
+          tester,
+          G3BandScreen(
+            key: ValueKey(width),
+            band: const BandSnapshot(
+              connection: BandConnection.connected,
+              batteryPercent: 64,
+            ),
+            now: DateTime(2026, 9, 29, 9, 41),
+          ),
+        );
+        final scaleEnd = tester.getRect(find.text('100 %'));
+        final batteryBar = tester.getRect(find.byType(LinearProgressIndicator));
+        final backlog = tester.getRect(find.text('unbekannt'));
+        expect(backlog.left - scaleEnd.right, greaterThanOrEqualTo(16));
+        expect(backlog.left - batteryBar.right, greaterThanOrEqualTo(16));
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
+  testWidgets('stored frontier and distinct device name remain truthful', (
+    tester,
+  ) async {
+    final band = BandSnapshot(
+      connection: BandConnection.connected,
+      latestStoredAt: DateTime(2026, 9, 29, 9, 38),
+    );
+    await pump(
+      tester,
+      G3BandScreen(
+        band: band,
+        deviceName: 'Band',
+        now: DateTime(2026, 9, 29, 9, 37),
+      ),
+    );
+    expect(find.text('auf dem iPhone gespeichert'), findsOneWidget);
+    expect(find.text('Datenstand unbekannt'), findsNothing);
+    expect(find.text('Band'), findsNothing);
+    await pump(
+      tester,
+      G3BandScreen(
+        band: band,
+        deviceName: 'WHOOP 5.0',
+        now: DateTime(2026, 9, 29, 9, 37),
+      ),
+    );
+    expect(find.text('WHOOP 5.0'), findsOneWidget);
+  });
+
   testWidgets('stored band diagnostics replace older card observations', (
     tester,
   ) async {
