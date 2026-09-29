@@ -64,6 +64,16 @@ Widget _shell(
                 showOpenBandJournalInfo(context, title: 'Root sheet'),
             child: const Text('Open sheet'),
           ),
+          TextButton(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              builder: (_) => const SizedBox(
+                height: 180,
+                child: Center(child: Text('Tab sheet')),
+              ),
+            ),
+            child: const Text('Open tab sheet'),
+          ),
         ],
       ),
     ),
@@ -211,6 +221,22 @@ void main() {
     await rootKey.currentState!.maybePop();
     await tester.pumpAndSettle();
     expect(rootKey.currentState!.canPop(), isFalse);
+  });
+
+  testWidgets('a tab modal covers and disables the floating bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
+    final barCenter = tester.getCenter(find.byType(OBTabBar));
+    await tester.tap(find.text('Open tab sheet'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tab sheet'), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsNothing);
+    expect(find.byType(ModalBarrier).hitTestable(), findsWidgets);
+    expect(tester.getRect(find.byType(BottomSheet)).contains(barCenter), isTrue);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
   });
 
   testWidgets('system back pops the inner detail before the shell', (

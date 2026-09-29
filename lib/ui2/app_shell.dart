@@ -164,7 +164,7 @@ class AppShellState extends State<AppShell> {
                     bottom: tabBottom + kOBTabBarHeight + kOBTabBarBannerGap,
                     child: widget.banner!,
                   ),
-                if (widget.releaseStyle)
+                if (widget.releaseStyle && !_observers[_current]!.hasPopup)
                   Positioned(
                     left: kOBTabBarHorizontalInset,
                     right: kOBTabBarHorizontalInset,
@@ -252,18 +252,24 @@ class AppShellState extends State<AppShell> {
 class _TabObserver extends NavigatorObserver {
   final VoidCallback changed;
   int depth = 0;
+  Route<dynamic>? _topRoute;
   final _exitingRoutes = <Route<dynamic>>{};
   bool get coversRoot => depth > 1 || _exitingRoutes.isNotEmpty;
+  bool get hasPopup =>
+      _topRoute is PopupRoute<dynamic> ||
+      _exitingRoutes.any((route) => route is PopupRoute<dynamic>);
   _TabObserver(this.changed);
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth++;
+    _topRoute = route;
     changed();
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    _topRoute = previousRoute;
     if (previousRoute != null && route is TransitionRoute<dynamic>) {
       _exitingRoutes.add(route);
       route.completed.then((_) {
@@ -277,6 +283,7 @@ class _TabObserver extends NavigatorObserver {
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    if (identical(_topRoute, route)) _topRoute = previousRoute;
     changed();
   }
 }
