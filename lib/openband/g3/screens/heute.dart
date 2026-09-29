@@ -1409,30 +1409,17 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
           onTap: tap,
         );
       }
-      if (base?.status.phase == BaselinePhase.building &&
-          metric == G3Metric.respRate) {
-        final left = base?.status.remaining;
-        return OBBodyRow(
-          state: OBBodyState.building,
-          name: name,
-          value: text,
-          unit: unit,
-          note: left == null ? 'Basis im Aufbau' : 'Basis: noch $left Nächte',
-          onTap: tap,
-        );
-      }
-      final lo = (value * .75).floorToDouble(),
-          hi = (value * 1.25).ceilToDouble();
+      // No trusted range: HRV, Ruhepuls and Atemfrequenz have no fixed,
+      // metric-defined scale, so no track is drawn from the value itself.
+      final left = base?.status.remaining;
       return OBBodyRow(
-        state: OBBodyState.plain,
+        state: OBBodyState.building,
         name: name,
         value: text,
         unit: unit,
-        at: value,
-        min: lo,
-        max: hi,
-        minLabel: g3Number(lo),
-        maxLabel: g3Number(hi),
+        note: base?.status.phase == BaselinePhase.building
+            ? (left == null ? 'Basis im Aufbau' : 'Basis: noch $left Nächte')
+            : 'kein Normalbereich',
         onTap: tap,
       );
     }
