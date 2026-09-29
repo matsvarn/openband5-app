@@ -358,9 +358,16 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final method = top['source'];
       final maxHr = top['hi'];
       if (method is! String || maxHr is! num) return null;
-      // The persisted bands include the ceiling and method, but no resting
-      // anchor. It cannot be reconstructed from today's RHR without drift.
-      return G3ZoneBasis(method: method, maxHr: maxHr.toDouble());
+      final source = switch (method) {
+        'tanaka' => G3MaxHrSource.estimated,
+        'observed' || 'karvonen' => G3MaxHrSource.measured,
+        _ => null,
+      };
+      return G3ZoneBasis(
+        method: method,
+        maxHr: maxHr.toDouble(),
+        maxHrSource: source,
+      );
     } on FormatException {
       return null;
     }
@@ -503,6 +510,32 @@ class LocalOpenBandRepository implements OpenBandRepository {
     );
   }
 
+  static G3SleepDebt _g3SleepDebt(Map<String, dynamic>? source) {
+    final envelope = source?['sleep_debt'];
+    if (envelope is! Map) {
+      return const G3SleepDebt(refusalNote: 'Braucht längere freie Nächte.');
+    }
+    final value = envelope['value'];
+    final data = value is Map ? value : null;
+    double? number(String key) {
+      final raw = data?[key];
+      return raw is num && raw.isFinite ? raw.toDouble() : null;
+    }
+    final hasFreeNight = data?['has_free_night'];
+    final observed = hasFreeNight == true;
+    return G3SleepDebt(
+      freeNightP75Hours: observed ? number('osd_hours') : null,
+      habitualMedianHours: number('habitual_hours'),
+      debtHours: observed ? number('debt_hours') : null,
+      hasFreeNight: hasFreeNight is bool ? hasFreeNight : null,
+      refusalNote: envelope['note'] is String
+          ? envelope['note'] as String
+          : observed
+          ? null
+          : 'Braucht längere freie Nächte.',
+    );
+  }
+
   @override
   Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async {
     _requireDay(day);
@@ -535,12 +568,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       'abs_hours',
       'Braucht freie und Arbeitstage.',
     );
-    final debt = _crossdayValue(
-      source,
-      'sleep_debt',
-      'debt_hours',
-      'Braucht längere freie Nächte.',
-    );
+    final debt = _g3SleepDebt(source);
     final plan = await readSleepPlan(day, now: clock);
     final available =
         plan.status == SleepPlanStatus.available ||
@@ -562,12 +590,20 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
 
     final planned = available ? plan.plan : null;
+    final goal = (await readSleepGoal(day)).targetMinutes;
     return G3SleepPlus(
       regularity: gatedRegularity,
       socialJetlag: social,
       sleepDebt: debt,
       bedtime: time(planned?.bedtimeMinuteOfDay, day),
       wake: time(planned?.wakeMinuteOfDay, sleepPlanWakeDay(day)),
+      needMinutes: planned?.needSeconds == null
+          ? null
+          : planned!.needSeconds / 60,
+      goalMinutes: goal?.toDouble(),
+      strainBonusMinutes: planned?.strainBonusMin,
+      napCreditMinutes: planned?.napCreditMin,
+      napsIncomplete: planned == null ? null : planned.napCreditMin == null,
     );
   }
 

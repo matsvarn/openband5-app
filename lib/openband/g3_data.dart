@@ -13,6 +13,31 @@ enum G3Metric {
   steps,
 }
 
+/// Skin temperature is a relative z-score, never an absolute °C reading.
+enum G3ValueUnit {
+  percent,
+  milliseconds,
+  bpm,
+  breathsPerMinute,
+  relativeZ,
+  minutes,
+  strain,
+  steps,
+}
+
+extension G3MetricUnit on G3Metric {
+  G3ValueUnit get unit => switch (this) {
+    G3Metric.recovery => G3ValueUnit.percent,
+    G3Metric.hrv => G3ValueUnit.milliseconds,
+    G3Metric.rhr => G3ValueUnit.bpm,
+    G3Metric.respRate => G3ValueUnit.breathsPerMinute,
+    G3Metric.skinTempZ => G3ValueUnit.relativeZ,
+    G3Metric.sleepMinutes => G3ValueUnit.minutes,
+    G3Metric.strain => G3ValueUnit.strain,
+    G3Metric.steps => G3ValueUnit.steps,
+  };
+}
+
 enum BaselinePhase { trusted, building, none }
 
 class BaselineStatus {
@@ -125,10 +150,15 @@ class G3SignalGap {
 }
 
 class G3ZoneBasis {
-  const G3ZoneBasis({this.method, this.restingHr, this.maxHr});
+  const G3ZoneBasis({this.method, this.maxHr, this.maxHrSource});
+
+  /// Stored zone method: tanaka/observed use %HRmax; karvonen uses %HR reserve.
   final String? method;
-  final double? restingHr, maxHr;
+  final double? maxHr;
+  final G3MaxHrSource? maxHrSource;
 }
+
+enum G3MaxHrSource { estimated, measured, userSet }
 
 class G3Activity {
   const G3Activity({
@@ -147,8 +177,6 @@ class G3Activity {
     this.signalGaps = const [],
     this.opticalShare,
     this.hrRecoveryOneMinute,
-    this.hrrEndBpm,
-    this.hrrMinuteBpm,
     this.priorHrrCount,
   });
   final String id, sport;
@@ -158,13 +186,16 @@ class G3Activity {
   final DateTime? end;
   Duration? get duration => end?.difference(start);
   final double? strain, avgHr, maxHr;
+
+  /// Null for suggestions. Confirmed sessions are scored by the existing
+  /// manual-session writer at save; absent substrate/anchors keep scores null.
+  /// The normal session re-score can improve them after a later band drain.
   final List<double>? zoneMinutes;
   final G3ZoneBasis? zoneBasis;
   final List<G3HrPoint> hrTrace;
   final List<G3SignalGap> signalGaps;
   final double? opticalShare;
   final double? hrRecoveryOneMinute;
-  final double? hrrEndBpm, hrrMinuteBpm;
   final int? priorHrrCount;
 }
 
@@ -180,6 +211,21 @@ class G3AvailableValue {
   final String? gate;
 }
 
+/// Stored analytics comparison of longer free nights with habitual sleep.
+/// This is not a sum of shortfalls against the user's goal.
+class G3SleepDebt {
+  const G3SleepDebt({
+    this.freeNightP75Hours,
+    this.habitualMedianHours,
+    this.debtHours,
+    this.hasFreeNight,
+    this.refusalNote,
+  });
+  final double? freeNightP75Hours, habitualMedianHours, debtHours;
+  final bool? hasFreeNight;
+  final String? refusalNote;
+}
+
 class G3SleepPlus {
   const G3SleepPlus({
     required this.regularity,
@@ -187,9 +233,21 @@ class G3SleepPlus {
     required this.sleepDebt,
     required this.bedtime,
     required this.wake,
+    this.needMinutes,
+    this.goalMinutes,
+    this.strainBonusMinutes,
+    this.napCreditMinutes,
+    this.napsIncomplete,
+    this.typicalEfficiency,
   });
-  final G3AvailableValue regularity, socialJetlag, sleepDebt;
+  final G3AvailableValue regularity, socialJetlag;
+  final G3SleepDebt sleepDebt;
   final DateTime? bedtime, wake;
+  final double? needMinutes, goalMinutes, strainBonusMinutes, napCreditMinutes;
+  final bool? napsIncomplete;
+
+  /// Null until the stored plan snapshot carries this source value.
+  final double? typicalEfficiency;
 }
 
 class G3CheckInQuestion {

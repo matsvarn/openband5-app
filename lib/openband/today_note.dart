@@ -19,6 +19,17 @@ String _clock(DateTime time) =>
 String _sleepLength(int minutes) =>
     '${minutes ~/ 60}h${(minutes % 60).toString().padLeft(2, '0')}';
 
+DateTime _roundedBedtime(DateTime bedtime) {
+  final minute = ((bedtime.minute / 5).round() * 5);
+  return DateTime(
+    bedtime.year,
+    bedtime.month,
+    bedtime.day,
+    bedtime.hour,
+    minute,
+  );
+}
+
 /// A note can describe only the current derived day and available inputs.
 TodayNote? todayNote({
   required String derivedDay,
@@ -27,6 +38,7 @@ TodayNote? todayNote({
   required G3Baseline recoveryBaseline,
   required int? sleepMinutes,
   required int? sleepGoalMinutes,
+  required double? sleepNeedMinutes,
   required DateTime? suggestedBedtime,
   required DateTime? suggestedWake,
 }) {
@@ -54,15 +66,17 @@ TodayNote? todayNote({
   TodayNoteAction? action;
   if (sleepMinutes != null &&
       sleepGoalMinutes != null &&
+      sleepNeedMinutes != null &&
       suggestedBedtime != null &&
       sleepMinutes < sleepGoalMinutes - 15) {
     sentences.add('Heute früher ins Bett.');
     facts.add('Schlaf ${sleepGoalMinutes - sleepMinutes} Min. unter Ziel');
     if (suggestedWake != null) {
+      final displayedBedtime = _roundedBedtime(suggestedBedtime);
       action = TodayNoteAction(
-        '${_clock(suggestedBedtime)} ins Bett',
-        'für ${_sleepLength(sleepGoalMinutes)} Schlaf bis ${_clock(suggestedWake)}',
-        suggestedBedtime,
+        '${_clock(displayedBedtime)} ins Bett',
+        'für ${_sleepLength(sleepNeedMinutes.round())} Schlafbedarf bis ${_clock(suggestedWake)}',
+        displayedBedtime.subtract(const Duration(minutes: 15)),
       );
     }
   }

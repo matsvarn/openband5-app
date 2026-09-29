@@ -32,7 +32,12 @@ void main() {
     expect(today.hrv.value, 48);
     expect(today.restingHr.value, 54);
     expect(today.respiration.value, 15.8);
-    expect(today.skinTemperature.value, .2);
+    expect(today.skinTemperature.value, .4);
+    expect(G3Metric.skinTempZ.unit, G3ValueUnit.relativeZ);
+    expect(
+      (await repo.readTrend(G3Metric.skinTempZ, day, 7)).points.last.value,
+      .4,
+    );
     expect(today.steps.value, 6480);
     expect(today.stepIntervals.map((s) => s.steps), [820, 4630, 1030]);
     expect(today.calculatedAt, DateTime(2026, 9, 29, 9, 38));
@@ -110,12 +115,13 @@ void main() {
       expect(activity.duration, const Duration(minutes: 42));
       expect(activity.zoneMinutes, [6, 14, 15, 6, 1]);
       expect(activity.zoneBasis!.maxHr, 186);
+      expect(activity.zoneBasis!.method, 'tanaka');
+      expect(activity.zoneBasis!.maxHrSource, G3MaxHrSource.estimated);
       expect(activity.avgHr, 148);
       expect(activity.maxHr, 176);
       expect(activity.strain, 6.1);
       expect(activity.opticalShare, .96);
       expect(activity.hrRecoveryOneMinute, 31);
-      expect([activity.hrrEndBpm, activity.hrrMinuteBpm], [136, 105]);
       expect(activity.hrTrace.length, 84);
       expect(activity.hrTrace.where((p) => p.meanBpm == null).length, 1);
       expect(activity.signalGaps.single.duration, const Duration(seconds: 40));
@@ -146,12 +152,19 @@ void main() {
       expect(plus.regularity.value, isNull);
       expect(plus.regularity.gate, isNotNull);
       expect(plus.socialJetlag.value, isNull);
-      expect(plus.sleepDebt.value, isNull);
-      expect(plus.bedtime, DateTime(2026, 9, 29, 22, 45));
+      expect(plus.sleepDebt.debtHours, isNull);
+      expect(plus.sleepDebt.refusalNote, isNotNull);
+      expect(plus.needMinutes, 485);
+      expect(plus.goalMinutes, 465);
+      expect(plus.strainBonusMinutes, 20);
+      expect(plus.napCreditMinutes, 0);
+      expect(plus.napsIncomplete, isFalse);
+      expect(plus.typicalEfficiency, .94);
+      expect(plus.bedtime, DateTime(2026, 9, 29, 22, 18));
       expect(plus.wake, DateTime(2026, 9, 30, 6, 54));
       expect(
         (await repo.readSleepPlan(day)).plan?.bedtimeMinuteOfDay,
-        22 * 60 + 45,
+        22 * 60 + 18,
       );
       var checkIn = await repo.readCheckIn(day);
       expect([checkIn.answered, checkIn.total], [1, 4]);
