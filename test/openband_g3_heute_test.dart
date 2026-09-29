@@ -334,6 +334,28 @@ void main() {
     expect(find.text('Zonen nach Bestätigung'), findsNothing);
   });
 
+  testWidgets('Ändern stores the sport; a reopened sheet and Stimmt keep it', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    await tester.tap(find.textContaining('07:58–08:40'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ändern'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rad'));
+    await tester.pumpAndSettle();
+    expect((await h.repo.readActivities(_day)).single.sport, 'cycling');
+    // Close without confirming, then reopen from the refreshed list.
+    Navigator.of(tester.element(find.text('Automatisch erkannt'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('07:58–08:40'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Rad')), findsOneWidget);
+    await tester.tap(find.text('Stimmt'));
+    await tester.pumpAndSettle();
+    final a = (await h.repo.readActivities(_day)).single;
+    expect(a.confirmed, isTrue);
+    expect(a.sport, 'cycling');
+  });
+
   testWidgets('a past day has no note, no check-in and says it is stored', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     await h.controller.selectDay('2026-09-27');
