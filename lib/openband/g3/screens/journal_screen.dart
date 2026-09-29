@@ -73,6 +73,8 @@ String _patternFooter(G3JournalPattern result, {int? perSideMinimum}) {
 
 enum _Answer { yesNo, amount, scale, note }
 
+enum JournalAnswerSaveResult { saved, failed, conflict }
+
 class _Question {
   const _Question(this.key, this.prompt, this.title, this.kind);
   final String key, prompt, title;
@@ -106,6 +108,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   List<JournalDaySnapshot> _history = const [];
   G3JournalPattern? _pattern;
   bool _loading = true, _saving = false, _editing = false;
+  bool _patternLoading = true, _patternFailed = false;
   String? _readError, _saveError;
   String? _loadedDay;
   int _serial = 0, _position = 0;
@@ -160,8 +163,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       _loading = true;
       _readError = null;
       _saveError = null;
+      _saving = false;
       _today = null;
       _pattern = null;
+      _patternLoading = true;
+      _patternFailed = false;
       _position = 0;
       _draft = null;
     });
@@ -196,14 +202,31 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   }
 
   Future<void> _loadPattern(String day, int id) async {
+    if (mounted && id == _serial) {
+      setState(() {
+        _patternLoading = true;
+        _patternFailed = false;
+      });
+    }
     try {
       final pattern = await widget.controller.repository.readJournalPattern(
         day,
         30,
       );
-      if (mounted && id == _serial) setState(() => _pattern = pattern);
+      if (mounted && id == _serial) {
+        setState(() {
+          _pattern = pattern;
+          _patternLoading = false;
+          _patternFailed = false;
+        });
+      }
     } catch (_) {
-      // The unknown card remains "—"; a failed read is not zero pairs.
+      if (mounted && id == _serial) {
+        setState(() {
+          _patternLoading = false;
+          _patternFailed = true;
+        });
+      }
     }
   }
 
@@ -224,6 +247,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           : '—';
     }
     if (q.kind == _Answer.amount) {
+      if (v == 0) return 'Keins';
       final field = snap.fields.where((f) => f.key == q.key).firstOrNull;
       return field?.formatWithUnit(v) ?? '—';
     }
@@ -232,9 +256,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         : '—';
   }
 
-  Future<bool> _save(_Question q, Object? value) async {
+  Future<JournalAnswerSaveResult> _save(_Question q, Object? value) async {
     final base = _today;
-    if (base == null || _saving) return false;
+    if (base == null || _saving) return JournalAnswerSaveResult.failed;
+    final saveSerial = _serial;
+    final wasCurrent = !_editing && _questionsFor(base)[_position].key == q.key;
     setState(() {
       _draft = value;
       _saveError = null;
@@ -252,6 +278,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               },
             );
       await widget.controller.repository.patchJournalDay(patch);
+      if (!mounted ||
+          saveSerial != _serial ||
+          widget.controller.selectedDay != base.day) {
+        return JournalAnswerSaveResult.saved;
+      }
       late final JournalDaySnapshot updated;
       try {
         updated = await widget.controller.repository.readJournalDay(base.day);
@@ -264,15 +295,26 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 'Antwort gespeichert. Ansicht konnte nicht aktualisiert werden.';
           });
         }
-        return true;
+        return JournalAnswerSaveResult.saved;
       }
-      if (!mounted || widget.controller.selectedDay != base.day) return true;
+      if (!mounted ||
+          saveSerial != _serial ||
+          widget.controller.selectedDay != base.day) {
+        return JournalAnswerSaveResult.saved;
+      }
       setState(() {
         _today = updated;
         _saving = false;
         _draft = null;
         _saveError = null;
-        _position = (_position + 1) % _questionsFor(updated).length;
+        if (wasCurrent) {
+          _position = (_position + 1) % _questionsFor(updated).length;
+        } else {
+          final next = _questionsFor(
+            updated,
+          ).indexWhere((candidate) => !_answered(updated, candidate));
+          _position = next < 0 ? 0 : next;
+        }
       });
       if (q.key == 'caffeine_late') {
         try {
@@ -280,32 +322,39 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             base.day,
             30,
           );
-          if (mounted && widget.controller.selectedDay == base.day) {
+          if (mounted &&
+              saveSerial == _serial &&
+              widget.controller.selectedDay == base.day) {
             setState(() => _pattern = pattern);
           }
         } catch (_) {
           /* Keep the old pattern result until a read succeeds. */
         }
       }
-      return true;
+      return JournalAnswerSaveResult.saved;
     } on JournalConflict {
-      if (mounted) {
+      if (mounted &&
+          saveSerial == _serial &&
+          widget.controller.selectedDay == base.day) {
         setState(() {
           _saving = false;
+          _draft = null;
           _saveError =
               'Antwort inzwischen geändert. Neu laden und erneut wählen.';
         });
       }
-      return false;
+      return JournalAnswerSaveResult.conflict;
     } catch (_) {
-      if (mounted) {
+      if (mounted &&
+          saveSerial == _serial &&
+          widget.controller.selectedDay == base.day) {
         setState(() {
           _saving = false;
           _saveError =
               'Speichern fehlgeschlagen. Deine Auswahl bleibt erhalten.';
         });
       }
-      return false;
+      return JournalAnswerSaveResult.failed;
     }
   }
 
@@ -413,6 +462,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         onSave: (value) async {
           return _save(q, value);
         },
+        onReload: _load,
       ),
     );
     if (mounted) setState(() => _editing = false);
@@ -654,14 +704,24 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                   G3JournalPatternScreen(pattern: pattern),
                             ),
                           ),
-                    child: pattern == null
+                    child: pattern == null && _patternLoading
+                        ? OBPatternCard(
+                            title: 'Vergleich wird geladen',
+                            detail: '',
+                            have: null,
+                            need: null,
+                            loading: true,
+                          )
+                        : pattern == null && _patternFailed
                         ? OBPatternCard(
                             title: '—',
                             detail: 'Vergleich konnte nicht geladen werden.',
                             have: null,
                             need: null,
+                            onRetry: () => _loadPattern(day, _serial),
                           )
-                        : OBPatternCard(
+                        : pattern != null
+                        ? OBPatternCard(
                             title: switch (pattern.pattern.kind) {
                               CaffeineSleepPatternKind.meaningful =>
                                 'Koffein und Einschlafen',
@@ -676,7 +736,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                             have: pattern.pattern.pairedN,
                             need: pattern.pairedMinimum,
                             footer: _patternFooter(pattern),
-                          ),
+                            partial: pattern.pattern.partial,
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ),
               ],
@@ -1439,7 +1501,8 @@ class G3JournalAnswerSheet extends StatefulWidget {
     required this.previous,
     required this.initial,
     required this.onSave,
-  }) : field = definition,
+  }) : onReload = null,
+       field = definition,
        _question = _Question(
          definition.key,
          definition.label,
@@ -1457,12 +1520,14 @@ class G3JournalAnswerSheet extends StatefulWidget {
     required this.initial,
     required this.field,
     required this.onSave,
+    required this.onReload,
   }) : _question = question;
   final _Question _question;
   final String previous;
   final Object? initial;
   final JournalFieldSpec? field;
-  final Future<bool> Function(Object?) onSave;
+  final Future<JournalAnswerSaveResult> Function(Object?) onSave;
+  final Future<void> Function()? onReload;
   @override
   State<G3JournalAnswerSheet> createState() => _AnswerEditSheetState();
 }
@@ -1471,6 +1536,8 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
   Object? _draft;
   late final TextEditingController _note;
   bool _saving = false;
+  bool _needsReload = false;
+  Object? _attempted;
   String? _error;
   @override
   void initState() {
@@ -1492,17 +1559,26 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
     setState(() {
       _saving = true;
       _error = null;
+      _attempted = value;
     });
-    final saved = await widget.onSave(value);
+    final result = await widget.onSave(value);
     if (!mounted) return;
-    if (saved) {
+    if (result == JournalAnswerSaveResult.saved) {
       Navigator.pop(context);
       return;
     }
     setState(() {
       _saving = false;
-      _error = 'Speichern fehlgeschlagen. Deine Auswahl bleibt erhalten.';
+      _needsReload = result == JournalAnswerSaveResult.conflict;
+      _error = _needsReload
+          ? 'Antwort inzwischen geändert. Neu laden und erneut wählen.'
+          : 'Speichern fehlgeschlagen. Deine Auswahl bleibt erhalten.';
     });
+  }
+
+  void _reload() {
+    Navigator.pop(context);
+    widget.onReload?.call();
   }
 
   @override
@@ -1627,8 +1703,8 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
               const SizedBox(height: 12),
               OBInlineError(
                 message: _error!,
-                onRetry: () =>
-                    _commit(q.kind == _Answer.note ? _note.text : _draft),
+                retryLabel: _needsReload ? 'Neu laden' : 'Erneut speichern',
+                onRetry: _needsReload ? _reload : () => _commit(_attempted),
               ),
             ],
             const SizedBox(height: 8),

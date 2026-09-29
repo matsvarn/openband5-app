@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -54,6 +55,49 @@ class _ReadFailsAfterWrite extends SyntheticOpenBandRepository {
   }
 }
 
+class _PatternRepository extends SyntheticOpenBandRepository {
+  _PatternRepository()
+    : super.fromMaps(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      );
+
+  Completer<G3JournalPattern>? pending;
+  bool failPattern = false;
+  bool partialPattern = false;
+
+  @override
+  Future<G3JournalPattern> readJournalPattern(String endDay, int nights) async {
+    if (pending case final wait?) return wait.future;
+    if (failPattern) throw StateError('pattern read failed');
+    return G3JournalPattern(
+      CaffeineSleepPattern(
+        kind: CaffeineSleepPatternKind.meaningful,
+        pairedN: 12,
+        yesNights: 5,
+        noNights: 7,
+        delta: 4,
+        endDay: endDay,
+        startDay: '2026-08-17',
+        nights: nights,
+        algoVersion: 1,
+        partial: partialPattern,
+      ),
+      pairedMinimum: 8,
+    );
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -91,7 +135,7 @@ void main() {
     );
   });
 
-  Future<void> mount(WidgetTester tester) async {
+  Future<void> mount(WidgetTester tester, {bool settle = true}) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -110,6 +154,7 @@ void main() {
       ),
     );
     await tester.pump();
+    if (!settle) return;
     final pending = repo.caffeineSleepPatternPending;
     if (pending != null) {
       await tester.runAsync(() async {
@@ -186,6 +231,61 @@ void main() {
       0,
     );
   });
+
+  testWidgets('changing day during a save leaves the new day writable', (
+    tester,
+  ) async {
+    final barrier = Completer<void>();
+    repo.journalPatchBarrier = barrier.future;
+    await mount(tester);
+    await tester.tap(find.text('Nein').first);
+    await tester.pump();
+    unawaited(controller.selectDay('2026-09-14'));
+    await tester.pump();
+    barrier.complete();
+    repo.journalPatchBarrier = null;
+    await tester.pumpAndSettle();
+    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+    await tester.tap(find.text('Ja').first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-14',
+      )).metrics['alcohol_evening']?.value,
+      1,
+    );
+  });
+
+  testWidgets(
+    'a conflict reloads the latest answer instead of retrying a stale patch',
+    (tester) async {
+      await mount(tester);
+      final before = await repo.readJournalDay('2026-09-15');
+      await repo.patchJournalDay(
+        JournalDayPatch.fromBase(
+          before,
+          metrics: {'alcohol_evening': const JournalMetricValue(1)},
+        ),
+      );
+      await tester.tap(find.text('Nein').first);
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Antwort inzwischen geändert'),
+        findsOneWidget,
+      );
+      expect(find.text('Neu laden'), findsOneWidget);
+      expect(find.text('Erneut speichern'), findsNothing);
+      await tester.tap(find.text('Neu laden'));
+      await tester.pumpAndSettle();
+      expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+      expect(
+        (await repo.readJournalDay(
+          '2026-09-15',
+        )).metrics['alcohol_evening']?.value,
+        1,
+      );
+    },
+  );
 
   testWidgets(
     'successful write with failed refresh offers reload, not another save',
@@ -330,6 +430,118 @@ void main() {
     },
   );
 
+  testWidgets('editing an earlier answer keeps the first open question', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    await mount(tester);
+    expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ja').last);
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
+  });
+
+  testWidgets('a failed delete retries null and leaves the question open', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'alcohol_evening': const JournalMetricValue(1)},
+    );
+    await mount(tester);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    repo.failJournalPatch = true;
+    await tester.tap(find.text('Antwort löschen'));
+    await tester.pumpAndSettle();
+    repo.failJournalPatch = false;
+    await tester.tap(find.text('Erneut speichern').last);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['alcohol_evening'],
+      isNull,
+    );
+    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+  });
+
+  testWidgets('a sheet conflict offers reload and drops its stale draft', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    await mount(tester);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    final before = await repo.readJournalDay('2026-09-15');
+    await repo.patchJournalDay(
+      JournalDayPatch.fromBase(
+        before,
+        metrics: {'alcohol_evening': const JournalMetricValue(1)},
+      ),
+    );
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Neu laden'), findsOneWidget);
+    expect(find.text('Erneut speichern'), findsNothing);
+    await tester.tap(find.text('Neu laden'));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3JournalAnswerSheet), findsNothing);
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-15',
+      )).metrics['alcohol_evening']?.value,
+      1,
+    );
+  });
+
+  testWidgets('zero is Keins and Später does not create a metric', (
+    tester,
+  ) async {
+    await repo.createJournalField(
+      const JournalFieldSpec(
+        key: 'custom_count',
+        label: 'Wie viele?',
+        kind: JournalFieldKind.dose,
+        unit: 'Anzahl',
+        max: 20,
+        step: 1,
+        custom: true,
+      ),
+    );
+    await mount(tester);
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.text('Später'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Wie viele?'), findsOneWidget);
+    await tester.tap(find.text('Später'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['custom_count'],
+      isNull,
+    );
+    for (var i = 0; i < 4; i++) {
+      await tester.tap(find.text('Später'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('Keins'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-15')).metrics['custom_count']?.value,
+      0,
+    );
+    expect(find.text('Keins'), findsWidgets);
+    expect(find.text('0 Anzahl'), findsNothing);
+  });
+
   testWidgets('pattern refusal shows the repository minimum and paired count', (
     tester,
   ) async {
@@ -346,6 +558,41 @@ void main() {
     expect(find.text('5 von 8 Paaren · noch 3'), findsOneWidget);
     expect(find.textContaining('ms'), findsNothing);
   });
+
+  testWidgets(
+    'pattern card separates loading, failure, retry, and partial data',
+    (tester) async {
+      final patternRepo = _PatternRepository();
+      final pending = patternRepo.pending = Completer<G3JournalPattern>();
+      repo = patternRepo;
+      controller.dispose();
+      controller = OpenBandController(
+        repository: repo,
+        initialDay: '2026-09-15',
+        now: () => DateTime(2026, 9, 15),
+      );
+      await mount(tester, settle: false);
+      await tester.pump();
+      expect(find.text('Vergleich wird geladen.'), findsOneWidget);
+      patternRepo.pending = null;
+      patternRepo.failPattern = true;
+      pending.completeError(StateError('pattern read failed'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Vergleich konnte nicht geladen werden.'),
+        findsOneWidget,
+      );
+    expect(find.text('Erneut'), findsOneWidget);
+    patternRepo.failPattern = false;
+    patternRepo.partialPattern = true;
+    await tester.ensureVisible(find.text('Erneut'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Erneut'));
+      await tester.pumpAndSettle();
+      expect(find.text('Teilweise auswertbar'), findsOneWidget);
+      expect(find.text('Vergleich konnte nicht geladen werden.'), findsNothing);
+    },
+  );
 
   testWidgets(
     'per-side refusal counts remain unknown until the repository supplies them',

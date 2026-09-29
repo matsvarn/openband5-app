@@ -583,11 +583,16 @@ class OBPatternCard extends StatelessWidget {
     required this.have,
     required this.need,
     this.footer,
+    this.loading = false,
+    this.onRetry,
+    this.partial = false,
   });
   final String title, detail;
   final int? have;
   final int? need;
   final String? footer;
+  final bool loading, partial;
+  final VoidCallback? onRetry;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -602,13 +607,48 @@ class OBPatternCard extends StatelessWidget {
             children: [
               Expanded(child: Text('MUSTER ›', style: g.caps())),
               Text(
-                awaiting ? 'noch kein Vergleich' : title,
+                loading
+                    ? 'wird geladen'
+                    : onRetry != null
+                    ? 'nicht verfügbar'
+                    : partial
+                    ? 'Teilweise auswertbar'
+                    : awaiting
+                    ? 'noch kein Vergleich'
+                    : title,
                 style: g.t(13, 17, color: g.muted),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          if (awaiting)
+          if (loading)
+            Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  child: Text('…', style: g.t(18, 19, color: g.ink2)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Vergleich wird geladen.',
+                    style: g.t(14, 19, color: g.ink2),
+                  ),
+                ),
+              ],
+            )
+          else if (onRetry != null)
+            Row(
+              children: [
+                Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(detail, style: g.t(14, 19, color: g.ink2)),
+                ),
+                TextButton(onPressed: onRetry, child: const Text('Erneut')),
+              ],
+            )
+          else if (awaiting)
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -639,18 +679,20 @@ class OBPatternCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(detail, style: g.t(14, 19, color: g.ink2)),
           ],
-          if (have != null && need != null) ...[
+          if (!loading && onRetry == null && have != null && need != null) ...[
             const SizedBox(height: 16),
             OBPatternProgress(have: have!.clamp(0, need!), need: need!),
           ],
-          const SizedBox(height: 10),
-          Text(
-            footer ??
-                (have == null || need == null
-                    ? '—'
-                    : '$have von $need Paaren · noch ${(need! - have!).clamp(0, need!)}'),
-            style: g.t(13, 17, weight: FontWeight.w700),
-          ),
+          if (!loading && onRetry == null) ...[
+            const SizedBox(height: 10),
+            Text(
+              footer ??
+                  (have == null || need == null
+                      ? '—'
+                      : '$have von $need Paaren · noch ${(need! - have!).clamp(0, need!)}'),
+              style: g.t(13, 17, weight: FontWeight.w700),
+            ),
+          ],
         ],
       ),
     );
