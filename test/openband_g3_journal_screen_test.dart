@@ -11,6 +11,7 @@ import 'package:openstrap_edge/app.dart' show screenForRoute;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
+import 'package:openstrap_edge/openband/g3/journal_parts.dart' show OBSwitch;
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -266,7 +267,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('Anpassen ›'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(Switch).first);
+    await tester.tap(find.byType(OBSwitch).first);
     await tester.pumpAndSettle();
     expect(
       (await repo.listJournalFields(
@@ -274,7 +275,7 @@ void main() {
       )).firstWhere((f) => f.key == 'custom_evening_walk').hidden,
       isTrue,
     );
-    await tester.tap(find.byType(Switch).first);
+    await tester.tap(find.byType(OBSwitch).first);
     await tester.pumpAndSettle();
     expect(
       (await repo.listJournalFields(
@@ -338,9 +339,9 @@ void main() {
       seed: SyntheticCaffeineSleepSeed.insufficient,
     );
     await mount(tester);
-    await tester.ensureVisible(find.text('Noch zu wenige Nächte'));
+    await tester.ensureVisible(find.text('noch kein Vergleich'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Noch zu wenige Nächte'));
+    await tester.tap(find.text('noch kein Vergleich'));
     await tester.pumpAndSettle();
     expect(find.text('5 von 8 Paaren · noch 3'), findsOneWidget);
     expect(find.textContaining('ms'), findsNothing);
