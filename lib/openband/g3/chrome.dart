@@ -323,9 +323,12 @@ class OBPageHeader extends StatelessWidget {
           ),
         );
       case _Kind.compact:
+        // Opaque page tone: it floats over scrolled content, and a
+        // translucent fill without blur shows that content as ghosts.
         return Container(
           padding: const EdgeInsets.only(left: 16, right: 14, bottom: 4),
           decoration: BoxDecoration(
+            color: g.page,
             border: Border(bottom: BorderSide(color: g.hairline)),
           ),
           child: Row(

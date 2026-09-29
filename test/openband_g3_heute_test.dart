@@ -16,6 +16,7 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPageHeader;
 import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
 import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
@@ -565,6 +566,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Gespeicherter Tag · Daten bis 23:58'), findsOneWidget);
     expect(find.text('Letzter Bandwert 27.09. 23:58 · Übertragung 09:38'), findsOneWidget);
+  });
+
+  testWidgets('scrolled: the compact header is opaque, content does not show through', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    final header = find.byType(OBPageHeader);
+    expect(header, findsOneWidget, reason: 'the compact header replaces the hub');
+    // The header's own surface (its root container), not a capsule inside it.
+    final surface = tester.widget<Container>(find.descendant(of: header, matching: find.byType(Container)).first);
+    final fill = (surface.decoration as BoxDecoration?)?.color;
+    expect(fill, isNotNull);
+    expect(fill!.a, 1.0);
   });
 
   testWidgets('the lead opens its detail', (tester) async {
