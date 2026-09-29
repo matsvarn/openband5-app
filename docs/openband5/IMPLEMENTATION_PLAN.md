@@ -1,21 +1,50 @@
 # OpenBand 5 release plan
 
-Updated 22 September 2026. Mats approved the radical scope reduction following the Fable consultation. Implementation has resumed. The earlier full-product queue is preserved in `design/archive/state_checklist-20260921.json`; its unmarked names are no longer release obligations.
+Updated 29 September 2026. Mats approved the G3 expansion. It reverses part of the 22 September scope reduction. The reduced-release record is kept below under "Previous reduced release"; the archived full-product queue stays in `design/archive/state_checklist-20260921.json`.
 
-## Release scope
+## Scope · G3 "Tagesblatt"
 
-- Übersicht: stored band metrics, sleep, battery, freshness and coverage. Sleep and metric details are drill-downs; Band and Profile remain in the header. No four-tab navigation in the default production build.
-- Schlaf: night detail, actual gaps, history and durable correction. Existing naps and sleep goals remain; no new planning or physiological claims.
-- Band: pairing, transfer, connection, failure and recovery.
-- Essential Profile, settings and data: export, backup and restore.
+Ranked by daily value × how well the captured data supports it. Evidence: the 28 September capability audit (private, `OpenBand5Lab/scope-20260928/AUDIT.md`) and the Mobbin boards on Paper page `G3 · Referenzen · Mobbin`.
 
-Training/templates, full Journal/Nutrition/intake, weight/manual VO₂max, cycle, medication, labs/glucose, coach and widget expansion are parked. Keep their code, storage, migrations, tests and explicit development access. Do not describe parking as implementation. Saved tabs, notification routes and gestures must not reopen parked flows in the release. An already-running workout must remain finishable.
+### Wave 1 · this pass
+
+| # | Module | Shows | Data | Owner of new work | Absence and refusal |
+|---|---|---|---|---|---|
+| 1 | Heute | Lead Erholung on the personal range, Schlaf and Belastung, "Für heute" note with one action, activities, check-in, week strip, night, body values, steps | Existing `day_result` / `metric_series` | edge | Erholung shows "Basis: noch N Nächte" until 14 prior nights. The note appears only when every input it names exists. |
+| 2 | Training & Belastung | Auto-detected activities with confirm/change, activity result (HR trace with gaps, zones by % HR reserve, Belastung contribution, Pulserholung, optical share), manual add, live session, weekly load | 1 Hz HR, motion, on-chip counter; `autoDetectWorkouts`, `trainingZones`, `hrRecovery`, `banisterTrimp`, `ctlAtlTsb` | edge | Zones and strain state the usable optical share and refuse on thin coverage. Pulserholung needs a clean tail. No distance, pace or calories from the band. |
+| 3 | Verlauf | 7/30/90-day trend per metric with the personal band; reached from every metric and the week strip | `metric_series` | edge | Gaps stay gaps. Fewer than 7 values: "noch N Tage". |
+| 4 | Schlaf+ | Regularity (SRI), social jetlag, sleep debt, bedtime suggestion feeding the note and reminder | Existing crossday sleep analytics | edge | No personal sleep need, no need. Regularity needs 7 scored nights. |
+| 5 | Journal | One-question check-in on Heute, Journal tab with history and patterns | Manual entries; existing `associations` | edge | Patterns withheld until the algorithm's paired-day minimum, with the remaining count. "Später" carries no penalty; no streaks. |
+| 6 | Widgets | Home Screen, Lock Screen, Live Activity for a running session in the G3 language | App-group snapshot; existing WidgetKit extension | edge / iOS | Stale data shows "—" and "Daten bis HH:MM". No watch complication. |
+| 7 | Körper | Skin-temperature deviation over time; weight (manual or Health import) | `skin_temp_z`; `observation`, `imported_measurement` | edge | Temperature needs three prior nights and is a deviation from your normal, never body temperature. No cycle claims. |
+
+Wave 1 needs no analytics or protocol change. If any analytics output changes, bump `kAlgoVersion` with a deliberate, reviewed sibling pin.
+
+### Wave 2 · after wave 1 is installed
+
+Atmen (paced breathing with live RR; device proof required), Apple Health export acceptance, strength templates and exercise library, Beobachtungen (anomaly/illness flags; longitudinal evaluation first, never a push).
+
+### Parked
+
+Ernährung, Zyklus, Medikamente, Labor/Glukose, Coach and manual VO₂max remain behind development access (`OB_RELEASE=false`). Keep their code, storage, migrations and tests. Saved tabs, notification routes and gestures must not reopen them in the release.
+
+### Refused
+
+SpO₂ percentage, estimated VO₂max, a daytime stress score (the parked sleep-only stress index is not shipped), smart wake by sleep phase, cycle phase from temperature, and any vessel or waveform-morphology claim. The captured data does not support them.
+
+## Design decisions (29 September)
+
+- Direction **G3 · Tagesblatt**: sample on Paper page `G3 · Richtung · Probe`. One lead number per screen, a second ink level, the "Für heute" note as the only filled block, dark designed separately.
+- Colour marks only values outside the personal normal range: green family better, amber family worse. Neutral inside the range and without a trusted baseline. The live LED stays green.
+- Navigation: floating tab bar **Heute · Schlaf · Training · Journal**. Band and Profil stay in the header. Verlauf opens from each metric and the week strip.
+- "Für heute" is rule-based (no LLM). The bedtime reminder is opt-in and goes through `NotificationCenter.emit`.
+- Tokens: `tokens.json` is the code source of truth. The Paper file's existing `alp` names still hold the archived Alpin 3 values; G3 only adds new `alp` names and never rewrites existing ones, so archive pages keep their look.
 
 ## Design and acceptance
 
-Paper file `01M2TRX5GZKAXKTSXK7D34E8AY` is canonical. Its first pages are **Release · Alpin 3** and **Bausteine · Release · Alpin 3**; older pages are archives. Designphase 2 (`01M2KDQRH0A9K3N46EWHMBF61D`) remains frozen. Preserve the Alpin tokens, existing polished components and short copy. Match the retained Paper composition closely in native Flutter. Use canonical light/dark screens and representative missing/error states; do not expand a cross-product of nearly identical artboards.
+Paper file `01M2TRX5GZKAXKTSXK7D34E8AY` is canonical; G3 pages are named `G3 · …`, components on `Bausteine · G3`. Designphase 2 stays frozen and is mined read-only. Each shipped screen gets canonical light and dark plus its real missing, partial, error and scrolled states — no cross-product of near-identical artboards. Short German copy.
 
-One implementation owner and one fresh reviewer. The lead owns scope, Paper, integration and acceptance. Workers implement, test and fix ordinary failures in an isolated clone. Mats additionally authorized Devin CLI SWE-2 and proportionate simplification of tests/architecture to prioritize data quality and delivery speed. Keep correctness checks; remove repeated work only with source evidence. Review actual diffs and rendered evidence before acceptance. Required checks remain:
+Native Flutter in `edge` matches Paper through `tool/paper_refs.py` / `tool/g2_review.py` and is checked with `--real` against a pulled phone database. Goldens only in `test/openband_goldens/`; inspect every regenerated PNG. Required checks:
 
 ```
 ~/.local/share/flutter/3.41.6/bin/flutter test --no-pub test/openband_*_test.dart
@@ -23,26 +52,18 @@ One implementation owner and one fresh reviewer. The lead owns scope, Paper, int
 python3 tool/check_design_manifest.py
 ```
 
-Run targeted native checks during implementation and a release checkpoint on the dedicated iPhone 15 Pro and iPhone 13 mini simulators. Inspect every regenerated PNG. Goldens belong only in `test/openband_goldens/`; never create `test/goldens/`. Preserve all existing checks for parked features. Do not repeat passed checks without a new change or unresolved risk.
+Plus the iPhone 15 Pro and iPhone 13 mini simulator runs (`tool/ui_review.py`) at the release checkpoint.
 
-## Architecture and authority
+Delivery is a stack of focused PRs on `openband5/g2-design`, each independently reviewed by a fresh reviewer and fixed until clean, CI green on the exact head. No merge. The final signed build is installed in place on the owner's iPhone with WAL-aware pre/post copies; `verify_capture.py` must stay CLEAN and `replay_check.dart` must exit 0.
 
-Only `edge/`, branch `openband5/ios-device-setup`, PR1. No push, merge, publish or deploy. Preserve unrelated tracked/untracked work. `protocol/` owns bytes/decoding; `analytics/` owns algorithms; `edge/` owns flows, contracts, persistence and Bluetooth orchestration. Preserve commit-before-ACK and retained source, nullable metrics, timing/provenance and separate saving/recalculation states. No invented baselines, goals or readings.
+Hard limits are unchanged: commit-before-ACK, REPLACE on `rec_ts` and the boundary-collision rule, idempotent derivation, additive/idempotent/cheap migrations, never fabricate, no firmware, experimental R22, force-trim or pointer-manipulation commands, and personal data only under `~/Library/Application Support/OpenBand5Lab`.
 
-Verified source baseline: Flutter3.41.6, app0.9.31+67, schema67, algorithm92 (edge#226 personal quiet-HRR across all five strain paths, gen5 skin-temp raw replay, measured gen5 settle band via repin, GET_DATA_RANGE read cursor persisted to `band_backlog`). Protocol pin `0df79ff49a358c3fbb20586ef67d4b30d9ef123e`; analytics pin `9b827a960a6054be346a1e46e4086a1406a63241`. Reconcile pins, lock and manually maintained iOS/widget/watch metadata again at final acceptance.
+Out of scope and unproven: the interruption trial (CAPTURE_TRIAL.md) and the upstream protocol fold-ins (#57/#58/#59/#61/#68/#69).
 
-Mats provided the existing full device database in Downloads for this review. Read-only inspection and isolated-copy migration/export checks are authorized. Keep databases, raw rows and real screenshots outside Git under OpenBand5Lab. This does not authorize a new live-phone or Bluetooth session. Existing physical evidence, current source tests, simulator proof and physiological validity remain distinct.
+## Source baseline
 
-## Acceptance and continuation
+Verified 28 September on `openband5/g2-design` at `e7e83137`: Flutter 3.41.6, app 0.9.31+67, schema 68, algorithm 98, protocol pin `2c1bf3c51579b3212f3046af0f1be8d8ba4a0040`, analytics pin `2503ca127f78847def0db6f363f000431789d254`; pins and lock agree. PR stack #1 ← #3 ← #2; #2 CI `test` green on that head.
 
-The approved reduced release is locally verified and ready for review. All seven current checklist outcomes have evidence-backed dispositions. The historical full-product archive remains parked, not completed by relabeling.
+## Previous reduced release (22 September)
 
-Accepted commits:3e0558cd compact Profile/Data,6284c1bd durable restore,428b9cd6 sleep/device evidence,6bb77008 reduced navigation,48eb0fe5 reduced queue. The final Band/acceptance unit is recorded in the commit containing this update. Nothing pushed; unrelated untracked assets remain untouched.
-
-No implementation worker is active. Mats task `/private/tmp/openband-release-reduction-20260921` retains bounded worker reports, fresh Devin SWE-2 reviews, integrated hashes and check logs. Both stalled Grok workers and earlier timed-out owners were drained/reconciled. Band source corrections were returned to Sol and inspected by the lead. Durable details are in IMPLEMENTATION_VERIFICATION.md.
-
-Final required checks:2226 OpenBand tests,115-target analysis,59-block/28-screen manifest and diff check pass. All12 changed/new Band goldens were inspected. Band Pro/mini runs passed;32 PNGs inspected,26 accepted after six replacements. Prior accepted navigation, sleep, Profile/Data and restore evidence is retained without repeating identical checks. Paper has28 representative Release boards and32 shared boards; archives and Phase2 remain intact.
-
-App/widget/watch0.9.31+67, schema67 and full dependency pins match source/lock as rechecked22September; algorithm is now91 after the same-day audit repair (`9e58f5d8`, live-verified on device: `raw_blob` filling, steps publishing the on-chip counter, build provenance stamped). No release metadata drift remains. No further in-scope implementation is queued. Publishing or a future physical-device session requires separate authority. Mats subsequently authorized the22September installation: signed release artifact256982f4 is installed as0.9.31+67 on the connected iPhone, with fresh backup, physical schema54→67 migration, retained data/preferences and launch/relaunch checks; the algorithm91 build was then installed and verified the same day (`OpenBand5Lab/device-install-20260922-9e58f5d8`). See IMPLEMENTATION_VERIFICATION.md.
-
-The supplied device database passed isolated migration and durable restore; private evidence remains in OpenBand5Lab. It establishes capture, retained source and recorded retry, not controlled phone-kill/zero-loss trials or physiological validity. An earlier whole-suite diagnostic found three unchanged parked nutrition failures; the full suite is not claimed green. That proof statement describes the earlier database review. The subsequently authorized install/session above establishes launch, migration and short continued-storage observation; it does not establish a zero-loss or physiological trial.
+The reduced release (Übersicht, Schlaf, Band, essential Profile/Data) was locally verified and installed as signed 0.9.31+67 on the owner's iPhone; G2 · Gerät then replaced its visuals. Accepted units, check counts and device evidence are in IMPLEMENTATION_VERIFICATION.md. That record establishes capture, retained source and recorded retry, not zero-loss trials or physiological validity.
