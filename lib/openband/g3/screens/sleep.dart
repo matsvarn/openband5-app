@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -6,15 +8,18 @@ import '../../../data/day_label.dart';
 import '../../controller.dart';
 import '../../day_picker.dart';
 import '../../domain.dart';
-import '../../naps.dart';
-import '../../night_signals.dart';
 import '../../sleep_editor.dart';
-import '../../sleep_goal.dart';
 import '../../tab_bar.dart';
+import '../../today_note.dart';
+import '../../../notify/notification_center.dart';
 import '../chrome.dart' as chrome;
 import '../day.dart' as day_parts;
 import '../g3_theme.dart';
 import '../sleep_parts.dart';
+import 'sleep_goal.dart';
+import 'sleep_night.dart';
+import 'sleep_naps.dart';
+import 'sleep_reminder.dart';
 
 class G3SleepScreen extends StatefulWidget {
   const G3SleepScreen({
@@ -22,10 +27,12 @@ class G3SleepScreen extends StatefulWidget {
     required this.controller,
     this.asTab = false,
     this.scrollController,
+    this.reminder,
   });
   final OpenBandController controller;
   final bool asTab;
   final ScrollController? scrollController;
+  final SleepBedtimeReminder? reminder;
   @override
   State<G3SleepScreen> createState() => _G3SleepScreenState();
 }
@@ -94,16 +101,62 @@ class _SleepReads {
   }
 }
 
-class _G3SleepScreenState extends State<G3SleepScreen> {
+class _G3SleepScreenState extends State<G3SleepScreen>
+    with WidgetsBindingObserver {
   _SleepReads? _reads;
   OpenBandController get controller => widget.controller;
+  SleepBedtimeReminder get reminder =>
+      widget.reminder ?? NotificationSleepBedtimeReminder();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_reconcileDay());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_reconcileDay());
+  }
+
+  Future<void> _reconcileDay() async {
+    if (controller.day?.synthetic == true) return;
+    await reminder.reconcile(
+      today: todayLabel(controller.now()),
+      planLoaded: false,
+    );
+  }
 
   _SleepReads get reads {
     final previous = _reads;
     if (previous == null ||
         previous.selectedDay != controller.selectedDay ||
         !identical(previous.day, controller.day)) {
-      return _reads = _SleepReads(controller);
+      final next = _reads = _SleepReads(controller);
+      if (controller.day?.synthetic != true &&
+          controller.selectedDay == todayLabel(controller.now())) {
+        unawaited(
+          next.plus
+              .then((plan) async {
+                if (mounted && controller.selectedDay == next.selectedDay) {
+                  await reminder.reconcile(
+                    today: todayLabel(controller.now()),
+                    planLoaded: true,
+                    bedtime: plan.bedtime,
+                  );
+                }
+              })
+              .catchError((Object _) {}),
+        );
+      }
+      return next;
     }
     return previous;
   }
@@ -111,17 +164,12 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
   void _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
-  void _goal() => Navigator.of(context)
-      .push(
-        MaterialPageRoute<void>(
-          builder: (_) => OpenBandSleepGoal(
-            repository: controller.repository,
-            day: controller.selectedDay,
-            synthetic: controller.day?.synthetic == true,
-          ),
-        ),
-      )
-      .then((_) {
+  void _goal() =>
+      G3SleepGoalSheet.show(
+        context,
+        controller.repository,
+        controller.selectedDay,
+      ).then((_) {
         if (mounted) setState(() => _reads = null);
       });
 
@@ -188,14 +236,26 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
               FutureBuilder<SleepGoalSnapshot>(
                 future: current.goal,
                 builder: (context, goal) => _inset(
-                  OBSleepLead(
-                    minutes: controller.day == null
-                        ? null
-                        : night.duration.value,
-                    goalMinutes: goal.hasError
-                        ? null
-                        : goal.data?.targetMinutes,
-                    onGoal: _goal,
+                  Column(
+                    children: [
+                      OBSleepLead(
+                        minutes: controller.day == null
+                            ? null
+                            : night.duration.value,
+                        goalMinutes: goal.hasError
+                            ? null
+                            : goal.data?.targetMinutes,
+                        onGoal: goal.hasError ? null : _goal,
+                      ),
+                      if (goal.hasError) ...[
+                        const SizedBox(height: 8),
+                        chrome.OBErrorBlock(
+                          title: 'Schlafziel nicht geladen',
+                          reason: 'Bitte erneut versuchen.',
+                          onRetry: () => setState(() => _reads = null),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -234,7 +294,7 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                   title: 'Nachtverlauf Puls',
                   subtitle: 'Puls · HRV · Atmung',
                   onTap: () => _push(
-                    OpenBandNightSignals(
+                    G3SleepNightSignals(
                       repository: controller.repository,
                       day: selected,
                     ),
@@ -247,7 +307,8 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                   icon: LucideIcons.pencil,
                   title: 'Schlafzeiten ändern',
                   subtitle: 'Wenn Beginn oder Ende nicht stimmen',
-                  onTap: () => _push(SleepEditor(controller: controller)),
+                  onTap: () =>
+                      _push(SleepEditor(controller: controller, g3: true)),
                 ),
               ),
               const SizedBox(height: 18),
@@ -321,11 +382,17 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                           _tonight(
                             context,
                             plus,
+                            error: plusSnap.hasError,
                             onTap: () => _push(
                               G3SleepTonight(
                                 repository: controller.repository,
                                 day: selected,
                                 now: controller.now,
+                                reminder:
+                                    widget.reminder ??
+                                    (controller.day?.synthetic == true
+                                        ? MemorySleepBedtimeReminder()
+                                        : NotificationSleepBedtimeReminder()),
                               ),
                             ),
                           ),
@@ -342,7 +409,7 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                   icon: LucideIcons.moon,
                   title: 'Nickerchen',
                   subtitle: 'Erkannte und eingetragene Ruhezeiten',
-                  onTap: () => _push(OpenBandNaps(controller: controller)),
+                  onTap: () => _push(G3SleepNaps(controller: controller)),
                 ),
               ),
               const SizedBox(height: 18),
@@ -595,6 +662,7 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
   Widget _tonight(
     BuildContext context,
     G3SleepPlus? plus, {
+    required bool error,
     required VoidCallback onTap,
   }) {
     final g = G3.of(context);
@@ -615,14 +683,18 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
               Text('HEUTE NACHT', style: g.caps(color: g.noteMuted)),
               const SizedBox(height: 5),
               Text(
-                plus?.bedtime == null
+                error
+                    ? 'Plan nicht geladen'
+                    : plus?.bedtime == null
                     ? 'Kein Vorschlag'
                     : '${obSleepClock(plus!.bedtime)} ins Bett',
                 style: g.t(21, 25, weight: FontWeight.w700, color: g.noteInk),
               ),
               const SizedBox(height: 5),
               Text(
-                plus?.bedtime == null
+                error
+                    ? 'Bitte erneut versuchen.'
+                    : plus?.bedtime == null
                     ? 'Ohne Schlafziel oder belastbare Schätzung keine Bettzeit.'
                     : 'Geschätzter Bedarf ${obSleepDuration(plus!.needMinutes)}. Kann bis zum Abend steigen.',
                 style: g.t(13, 17, color: g.noteInk2),
@@ -690,7 +762,7 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
   }
 }
 
-class G3SleepRegularity extends StatelessWidget {
+class G3SleepRegularity extends StatefulWidget {
   const G3SleepRegularity({
     super.key,
     required this.repository,
@@ -699,20 +771,42 @@ class G3SleepRegularity extends StatelessWidget {
   final OpenBandRepository repository;
   final String day;
   @override
+  State<G3SleepRegularity> createState() => _G3SleepRegularityState();
+}
+
+class _G3SleepRegularityState extends State<G3SleepRegularity> {
+  late final Future<G3SleepPlus> _plus = widget.repository.readSleepPlus(
+    widget.day,
+  );
+  late final Future<List<OBSleepWindow>> _windows = _SleepReads._windows(
+    widget.repository,
+    widget.day,
+  );
+
+  @override
   Widget build(BuildContext context) => _SleepDetail(
     title: 'REGELMÄSSIGKEIT',
     child: FutureBuilder<G3SleepPlus>(
-      future: repository.readSleepPlus(day),
+      future: _plus,
       builder: (context, snap) {
         final plus = snap.data;
         return Column(
           children: [
-            OBSleepWindows(
-              windows: const [],
-              regularity: plus?.regularity.value,
-              gate:
-                  plus?.regularity.gate ??
-                  (snap.hasError ? 'Nicht verfügbar' : null),
+            OBSriLead(
+              value: plus?.regularity.value,
+              gate: plus?.regularity.gate,
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<OBSleepWindow>>(
+              future: _windows,
+              builder: (context, windows) => OBSleepWindows(
+                windows: windows.data ?? const [],
+                regularity: plus?.regularity.value,
+                gate:
+                    plus?.regularity.gate ??
+                    (snap.hasError ? 'Nicht verfügbar' : null),
+                detail: true,
+              ),
             ),
             const SizedBox(height: 12),
             OBSocialJetlag(
@@ -722,9 +816,11 @@ class G3SleepRegularity extends StatelessWidget {
               gate: plus?.socialJetlag.gate,
             ),
             const SizedBox(height: 12),
-            Text(
-              'Der SRI vergleicht Schlaf und Wachsein Minute für Minute über sieben bewertete Nächte.',
-              style: G3.of(context).t(13, 18, color: G3.of(context).ink2),
+            chrome.OBPanel(
+              child: Text(
+                'So wird gerechnet\nDer SRI vergleicht Schlaf und Wachsein Minute für Minute über sieben bewertete Nächte.',
+                style: G3.of(context).t(13, 18, color: G3.of(context).ink2),
+              ),
             ),
           ],
         );
@@ -733,7 +829,7 @@ class G3SleepRegularity extends StatelessWidget {
   );
 }
 
-class G3SleepDebtDetail extends StatelessWidget {
+class G3SleepDebtDetail extends StatefulWidget {
   const G3SleepDebtDetail({
     super.key,
     required this.repository,
@@ -742,30 +838,136 @@ class G3SleepDebtDetail extends StatelessWidget {
   final OpenBandRepository repository;
   final String day;
   @override
+  State<G3SleepDebtDetail> createState() => _G3SleepDebtDetailState();
+}
+
+class _G3SleepDebtDetailState extends State<G3SleepDebtDetail> {
+  late final Future<G3SleepPlus> _plus = widget.repository.readSleepPlus(
+    widget.day,
+  );
+  late final Future<List<(String, double?)>> _freeNights = _readFreeNights();
+
+  Future<List<(String, double?)>> _readFreeNights() {
+    final date = DateTime.parse(widget.day);
+    final days =
+        [
+          for (var i = 0; i < 21; i++)
+            DateTime(date.year, date.month, date.day - i),
+        ].where(
+          (d) => d.weekday == DateTime.saturday || d.weekday == DateTime.sunday,
+        );
+    return Future.wait([
+      for (final date in days)
+        () async {
+          final label = dayLabelOf(date);
+          final stored = await widget.repository.readDay(label);
+          return (label, stored.sleep.duration.value);
+        }(),
+    ]);
+  }
+
+  @override
   Widget build(BuildContext context) => _SleepDetail(
     title: 'SCHLAFSCHULD',
     child: FutureBuilder<G3SleepPlus>(
-      future: repository.readSleepPlus(day),
+      future: _plus,
       builder: (context, snap) {
         final debt = snap.data?.sleepDebt;
+        final minutes = debt?.debtHours == null ? null : debt!.debtHours! * 60;
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            OBSleepDebtLead(minutes: minutes),
+            const SizedBox(height: 12),
             OBSleepDebt(
-              minutes: debt?.debtHours == null ? null : debt!.debtHours! * 60,
+              minutes: minutes,
               freeMinutes: debt?.freeNightP75Hours == null
                   ? null
                   : debt!.freeNightP75Hours! * 60,
               usualMinutes: debt?.habitualMedianHours == null
                   ? null
                   : debt!.habitualMedianHours! * 60,
-              gate:
-                  debt?.refusalNote ??
-                  (snap.hasError ? 'Nicht verfügbar' : null),
+              gate: debt?.debtHours == null
+                  ? debt?.refusalNote ??
+                        (snap.hasError ? 'Nicht verfügbar' : null)
+                  : null,
+              detail: true,
             ),
             const SizedBox(height: 12),
             Text(
-              '75. Perzentil freier Nächte minus Median der letzten sieben Nächte. Kein gemessener Schlafbedarf.',
-              style: G3.of(context).t(13, 18, color: G3.of(context).ink2),
+              'FREIE NÄCHTE · SA UND SO',
+              style: G3.of(context).caps(color: G3.of(context).muted),
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<List<(String, double?)>>(
+              future: _freeNights,
+              builder: (context, nights) {
+                if (nights.hasError) {
+                  return const OBInlineNotice(
+                    text: 'Freie Nächte nicht geladen.',
+                  );
+                }
+                if (nights.data == null) {
+                  return const Center(
+                    child: CircularProgressIndicator.adaptive(),
+                  );
+                }
+                return chrome.OBPanel(
+                  child: Column(
+                    children: [
+                      for (final (label, value) in nights.data!) ...[
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 68,
+                              child: Text(
+                                DateFormat(
+                                  'EE dd.MM',
+                                  'de_DE',
+                                ).format(DateTime.parse(label)),
+                                style: G3.of(context).t(12, 16),
+                              ),
+                            ),
+                            Expanded(
+                              child: value == null
+                                  ? const G3Dashed(height: 9)
+                                  : LinearProgressIndicator(
+                                      value: (value / 600).clamp(0.0, 1.0),
+                                      minHeight: 9,
+                                      borderRadius: BorderRadius.circular(5),
+                                      color: G3.of(context).bar,
+                                      backgroundColor: G3.of(context).track,
+                                    ),
+                            ),
+                            SizedBox(
+                              width: 57,
+                              child: Text(
+                                obSleepDuration(value),
+                                textAlign: TextAlign.end,
+                                style: G3
+                                    .of(context)
+                                    .t(12, 16, weight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      Text(
+                        'Aufgezeichnete Wochenendnächte; die Schätzung kann Nächte ausschließen.',
+                        style: G3.of(context).t(11, 15, color: G3.of(context).muted),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            chrome.OBPanel(
+              child: Text(
+                'So wird gerechnet\n75. Perzentil freier Nächte minus Median der letzten sieben Nächte. Kein gemessener Schlafbedarf.',
+                style: G3.of(context).t(13, 18, color: G3.of(context).ink2),
+              ),
             ),
           ],
         );
@@ -780,54 +982,158 @@ class G3SleepTonight extends StatefulWidget {
     required this.repository,
     required this.day,
     required this.now,
+    this.reminder,
   });
   final OpenBandRepository repository;
   final String day;
   final DateTime Function() now;
+  final SleepBedtimeReminder? reminder;
   @override
   State<G3SleepTonight> createState() => _G3SleepTonightState();
 }
 
-class _G3SleepTonightState extends State<G3SleepTonight> {
+class _G3SleepTonightState extends State<G3SleepTonight>
+    with WidgetsBindingObserver {
+  SleepBedtimeReminder get reminder =>
+      widget.reminder ?? NotificationSleepBedtimeReminder();
   late Future<G3SleepPlus> plus = widget.repository.readSleepPlus(
     widget.day,
     now: widget.now(),
   );
+  TodayNoteAction? _action;
+  SleepNight? _lastNight;
+  DateTime? _armedAt;
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_loadReminder());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_loadReminder());
+  }
+
+  Future<void> _loadReminder() async {
+    try {
+      final plan = await plus;
+      final today = todayLabel(widget.now());
+      await reminder.reconcile(
+        today: today,
+        planLoaded: widget.day == today,
+        bedtime: widget.day == today ? plan.bedtime : null,
+      );
+      final day = await widget.repository.readDay(widget.day);
+      final goal = await widget.repository.readSleepGoal(widget.day);
+      final recovery = await widget.repository.readPersonalRange(
+        G3Metric.recovery,
+        widget.day,
+      );
+      final action = todayNote(
+        derivedDay: widget.day,
+        now: widget.now(),
+        recovery: day.recovery.value,
+        recoveryBaseline: recovery,
+        sleepMinutes: day.sleep.duration.value?.round(),
+        sleepGoalMinutes: goal.targetMinutes,
+        sleepNeedMinutes: plan.needMinutes,
+        suggestedBedtime: plan.bedtime,
+        suggestedWake: plan.wake,
+      )?.action;
+      final armed = await reminder.armed();
+      if (!mounted) return;
+      setState(() {
+        _action = action;
+        _lastNight = day.sleep;
+        _armedAt = armed?.day == today ? armed?.at : null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _message = 'Erinnerung nicht verfügbar.');
+    }
+  }
+
+  Future<void> _toggleReminder() async {
+    final action = _action;
+    if (action == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      if (_armedAt == action.reminderAt) {
+        await reminder.cancel();
+        if (mounted) setState(() => _armedAt = null);
+      } else {
+        final result = await reminder.arm(
+          action.reminderAt,
+          widget.day,
+          '${action.label} · ${action.sub}',
+        );
+        if (!mounted) return;
+        setState(() {
+          _armedAt = result == BedtimeReminderResult.scheduled
+              ? action.reminderAt
+              : null;
+          _message = switch (result) {
+            BedtimeReminderResult.scheduled => null,
+            BedtimeReminderResult.passed =>
+              'Keine Erinnerung gestellt: Die Zeit ist vorbei.',
+            BedtimeReminderResult.denied =>
+              'Mitteilungen sind aus. In den iOS-Einstellungen erlauben.',
+            BedtimeReminderResult.failed =>
+              'Erinnerung konnte nicht gestellt werden. Bitte erneut versuchen.',
+          };
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _message = 'Erinnerung nicht verfügbar.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => _SleepDetail(
     title: 'HEUTE NACHT',
     child: FutureBuilder<G3SleepPlus>(
       future: plus,
       builder: (context, snap) {
+        if (snap.hasError) {
+          return chrome.OBErrorBlock(
+            title: 'Plan nicht geladen',
+            reason: 'Bitte erneut versuchen.',
+            onRetry: () {
+              setState(() {
+                plus = widget.repository.readSleepPlus(
+                  widget.day,
+                  now: widget.now(),
+                );
+                _message = null;
+              });
+              unawaited(_loadReminder());
+            },
+          );
+        }
         final value = snap.data;
         final g = G3.of(context);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            chrome.OBPanel(
-              hero: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('INS BETT', style: g.caps()),
-                  const SizedBox(height: 8),
-                  Text(
-                    obSleepClock(value?.bedtime),
-                    style: g.t(
-                      68,
-                      74,
-                      weight: FontWeight.w700,
-                      tracking: -.045,
-                    ),
-                  ),
-                  Text(
-                    value?.bedtime == null
-                        ? 'Kein Vorschlag'
-                        : 'Schätzung · Belastung läuft',
-                    style: g.t(13, 17, color: g.ink2),
-                  ),
-                ],
-              ),
+            OBBedtimeLead(
+              bedtime: value?.bedtime,
+              wake: value?.wake,
+              lastOnset: _lastNight?.onset,
+              lastWake: _lastNight?.wake,
             ),
             const SizedBox(height: 12),
             OBPlanBreakdown(
@@ -841,6 +1147,26 @@ class _G3SleepTonightState extends State<G3SleepTonight> {
               bedtime: value?.bedtime,
             ),
             const SizedBox(height: 12),
+            if (_action != null &&
+                _action!.reminderAt.isAfter(widget.now())) ...[
+              if (_armedAt == _action!.reminderAt)
+                OBInlineNotice(
+                  text: 'Erinnerung um ${obSleepClock(_armedAt)} gestellt',
+                  action: 'Abbestellen',
+                  onAction: _busy ? null : _toggleReminder,
+                )
+              else
+                chrome.OBActionPrimary(
+                  'Um ${obSleepClock(_action!.reminderAt)} erinnern',
+                  expand: true,
+                  onPressed: _busy ? null : _toggleReminder,
+                ),
+              const SizedBox(height: 12),
+            ],
+            if (_message != null) ...[
+              OBInlineNotice(text: _message!),
+              const SizedBox(height: 12),
+            ],
             Text(
               value?.bedtime == null
                   ? 'Ohne Schlafziel und aktuelle Schätzung keine Bettzeit.'
