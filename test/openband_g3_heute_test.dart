@@ -384,6 +384,19 @@ void main() {
     expect(find.text('Heute'), findsNothing, reason: 'no "Heute" week label on a past day');
   });
 
+  testWidgets('"vor N Tagen" counts calendar days across the DST change (29.03.2026)', (tester) async {
+    // Meaningful in a zone with DST on 29.03 (Europe/Berlin on the dev
+    // machine): a local 30.03−28.03 span is 47 h there.
+    final h = _Harness(_Repo(SyntheticScenario.g3Sample), _connected)..clock = DateTime(2026, 3, 30, 9, 41);
+    await _pump(tester, h);
+    await h.controller.selectDay('2026-03-28');
+    await tester.pumpAndSettle();
+    expect(find.text('28. März · vor 2 Tagen'), findsOneWidget);
+    await h.controller.selectDay('2026-03-29');
+    await tester.pumpAndSettle();
+    expect(find.text('29. März · gestern'), findsOneWidget);
+  });
+
   testWidgets('the lead opens its detail', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
     await tester.tap(find.text('ERHOLUNG'));

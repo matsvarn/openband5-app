@@ -573,11 +573,13 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   ) {
     final day = DateTime.parse(c.selectedDay);
     final now = c.now();
-    final ago = DateTime(
+    // Calendar days, not 24 h spans: a local span across a DST change is
+    // 23 or 25 h. UTC dates have none.
+    final ago = DateTime.utc(
       now.year,
       now.month,
       now.day,
-    ).difference(DateTime(day.year, day.month, day.day)).inDays;
+    ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
     final title = isToday ? 'Heute' : DateFormat('EEEE', 'de_DE').format(day);
     final date = DateFormat('d. MMMM', 'de_DE').format(day);
     final subtitle = isToday
