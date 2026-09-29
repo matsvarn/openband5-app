@@ -27,6 +27,8 @@ enum SyntheticScenario {
   draftFailure,
   saveFailure,
   calculationFailure,
+  g3Sample,
+  g3Building,
 }
 
 /// Isolated Paper inputs for [SyntheticOpenBandRepository.seedCaffeineSleepPattern].
@@ -370,9 +372,391 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     _seedFixtureMedication();
     _seedFixtureCycle();
     _seedFixtureCycleNights();
+    if (_g3) {
+      sleepPlanNow = () => _g3At(9, 41);
+      final row = _journal[_g3Day] ??= _SynthJournalDay();
+      row.metrics['mood'] = const JournalMetricValue(4);
+      row.metricUpdatedAt['mood'] = _nextJournalRev(0);
+      _writeSleepGoal(_g3Day, 465);
+    }
+  }
+
+  static const _g3Day = '2026-09-29';
+  bool get _g3 =>
+      scenario == SyntheticScenario.g3Sample ||
+      scenario == SyntheticScenario.g3Building;
+  bool get _g3Building => scenario == SyntheticScenario.g3Building;
+  bool _g3SuggestionConfirmed = false;
+  bool _g3SuggestionDismissed = false;
+  String _g3Sport = 'running';
+
+  DateTime _g3At(int hour, int minute) => DateTime(2026, 9, 29, hour, minute);
+
+  OpenBandDay _g3DayFixture() => OpenBandDay(
+    day: _g3Day,
+    sleep: SleepNight(
+      duration: const DayMetric(438),
+      bedMinutes: 464,
+      awakeMinutes: 26,
+      deepMinutes: 68,
+      lightMinutes: 247,
+      remMinutes: 123,
+    ),
+    recovery: _g3Building
+        ? const DayMetric.missing()
+        : const DayMetric(74, baseline: 68, baselineSpread: 11 / 1.253),
+    strain: const DayMetric(9.4),
+    hrv: DayMetric(
+      48,
+      baseline: _g3Building ? null : 45,
+      baselineSpread: _g3Building ? null : 7 / 1.253,
+    ),
+    restingHr: DayMetric(
+      54,
+      baseline: _g3Building ? null : 55,
+      baselineSpread: _g3Building ? null : 3 / 1.253,
+    ),
+    respiration: const DayMetric(15.8),
+    skinTemperature: _g3Building
+        ? const DayMetric.missing()
+        : const DayMetric(0.2, unit: NightScalarUnit.sd),
+    steps: const DayMetric(6480),
+    stepIntervals: [
+      StepInterval(_g3At(6, 0), _g3At(7, 0), 820),
+      StepInterval(_g3At(7, 0), _g3At(8, 0), 4630),
+      StepInterval(_g3At(8, 0), _g3At(9, 38), 1030),
+    ],
+    calculatedAt: _g3At(9, 38),
+    synthetic: true,
+  );
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    if (_g3 && day == _g3Day) {
+      if (_g3Building &&
+          const {
+            G3Metric.recovery,
+            G3Metric.hrv,
+            G3Metric.rhr,
+            G3Metric.respRate,
+          }.contains(metric)) {
+        return const G3Baseline(
+          BaselineStatus(
+            BaselinePhase.building,
+            nightsHave: 11,
+            nightsNeeded: 14,
+          ),
+        );
+      }
+      final range = switch (metric) {
+        G3Metric.recovery => const PersonalRange(58, 80, 68),
+        G3Metric.hrv => const PersonalRange(38, 52, 45),
+        G3Metric.rhr => const PersonalRange(52, 58, 55),
+        _ => null,
+      };
+      if (range != null) {
+        return G3Baseline(
+          const BaselineStatus(BaselinePhase.trusted),
+          range: range,
+        );
+      }
+      if (metric == G3Metric.respRate) {
+        return const G3Baseline(
+          BaselineStatus(
+            BaselinePhase.building,
+            nightsHave: 11,
+            nightsNeeded: 14,
+          ),
+        );
+      }
+    }
+    final d = await readDay(day);
+    final value = switch (metric) {
+      G3Metric.recovery => d.recovery,
+      G3Metric.hrv => d.hrv,
+      G3Metric.rhr => d.restingHr,
+      G3Metric.respRate => d.respiration,
+      _ => const DayMetric.missing(),
+    };
+    if (value.baseline != null && value.baselineSpread != null) {
+      final half = value.baselineSpread! * 1.253;
+      return G3Baseline(
+        const BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(
+          value.baseline! - half,
+          value.baseline! + half,
+          value.baseline!,
+        ),
+      );
+    }
+    return const G3Baseline(BaselineStatus(BaselinePhase.none));
+  }
+
+  @override
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
+    if (!const {7, 30, 90}.contains(days)) {
+      throw ArgumentError.value(days, 'days');
+    }
+    final labels = g3DaysEnding(endDay, days);
+    if (_g3) {
+      final week = g3DaysEnding(_g3Day, 7);
+      const recovery = <double>[66, 55, 62, 71, 49, 63, 74];
+      const sleep = <double>[422, 391, 460, 485, 372, 445, 438];
+      final values = <String, double>{};
+      for (var i = 0; i < week.length; i++) {
+        final value = switch (metric) {
+          G3Metric.recovery => _g3Building ? null : recovery[i],
+          G3Metric.sleepMinutes => sleep[i],
+          _ => null,
+        };
+        if (value != null) values[week[i]] = value;
+      }
+      final selected = switch (metric) {
+        G3Metric.hrv => _g3Building ? null : 48.0,
+        G3Metric.rhr => _g3Building ? null : 54.0,
+        G3Metric.respRate => 15.8,
+        G3Metric.skinTempZ => _g3Building ? null : 0.2,
+        G3Metric.strain => 9.4,
+        G3Metric.steps => 6480.0,
+        _ => null,
+      };
+      if (selected != null) values[_g3Day] = selected;
+      return g3Trend(metric, [
+        for (final label in labels) MetricPoint(label, values[label]),
+      ], await readPersonalRange(metric, endDay));
+    }
+    final key = switch (metric) {
+      G3Metric.recovery => MetricKey.recovery,
+      G3Metric.hrv => MetricKey.hrv,
+      G3Metric.rhr => MetricKey.restingHr,
+      G3Metric.respRate => MetricKey.respiration,
+      G3Metric.skinTempZ => MetricKey.skinTemperature,
+      G3Metric.sleepMinutes => MetricKey.sleepDuration,
+      G3Metric.strain => MetricKey.strain,
+      G3Metric.steps => null,
+    };
+    final points = key == null
+        ? [
+            for (final label in labels)
+              MetricPoint(label, (await readDay(label)).steps.value),
+          ]
+        : await readMetricHistory(key, endDay, days);
+    return g3Trend(metric, points, await readPersonalRange(metric, endDay));
+  }
+
+  @override
+  Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay) async {
+    if (!const {
+      G3Metric.recovery,
+      G3Metric.sleepMinutes,
+      G3Metric.strain,
+    }.contains(metric)) {
+      throw ArgumentError.value(metric, 'metric');
+    }
+    final trend = await readTrend(metric, endDay, 7);
+    return g3WeekStrip(
+      metric,
+      trend.points,
+      range: metric == G3Metric.recovery ? trend.baseline.range : null,
+      goal: metric == G3Metric.sleepMinutes
+          ? (await readSleepGoal(endDay)).targetMinutes?.toDouble()
+          : null,
+    );
+  }
+
+  @override
+  Future<List<G3Activity>> readActivities(String day) async {
+    if (_g3) {
+      if (day != _g3Day || _g3SuggestionDismissed) return const [];
+      final start = _g3At(7, 58);
+      final trace = [
+        for (var i = 0; i < 84; i++)
+          G3HrPoint(
+            start.add(Duration(seconds: i * 30)),
+            i == 42
+                ? null
+                : i == 50
+                ? 176
+                : i == 51
+                ? 120
+                : 148,
+          ),
+      ];
+      return [
+        G3Activity(
+          id: 'g3-run-0758',
+          sport: _g3Sport,
+          source: G3ActivitySource.auto,
+          confirmed: _g3SuggestionConfirmed,
+          start: start,
+          end: _g3At(8, 40),
+          strain: 6.1,
+          avgHr: 148,
+          maxHr: 176,
+          zoneMinutes: const [6, 14, 15, 6, 1],
+          zoneBasis: const G3ZoneBasis(
+            method: 'hr_reserve',
+            restingHr: 54,
+            maxHr: 186,
+          ),
+          hrTrace: trace,
+          signalGaps: [
+            G3SignalGap(
+              _g3At(8, 19),
+              _g3At(8, 19).add(const Duration(seconds: 40)),
+            ),
+          ],
+          opticalShare: .96,
+          hrRecoveryOneMinute: 31,
+          hrrEndBpm: 136,
+          hrrMinuteBpm: 105,
+          priorHrrCount: 0,
+        ),
+      ];
+    }
+    final sessions = await readSessions(day, 1);
+    return [
+      for (final session in sessions)
+        if (session.day == day && session.durationMin != null)
+          G3Activity(
+            id: session.id,
+            sport: session.type,
+            source: session.live
+                ? G3ActivitySource.live
+                : G3ActivitySource.manual,
+            confirmed: true,
+            start: session.start,
+            end: session.start.add(Duration(minutes: session.durationMin!)),
+            strain: session.strain,
+          ),
+    ];
+  }
+
+  @override
+  Future<String> confirmSuggestion(String id, {String? sport}) async {
+    if (!_g3 || id != 'g3-run-0758' || _g3SuggestionDismissed) {
+      throw StateError('Suggestion is no longer active: $id');
+    }
+    if (sport != null) _g3Sport = sport;
+    _g3SuggestionConfirmed = true;
+    return 'g3-run-0758';
+  }
+
+  @override
+  Future<void> changeSuggestionSport(String id, String sport) async {
+    if (!_g3 ||
+        id != 'g3-run-0758' ||
+        _g3SuggestionDismissed ||
+        _g3SuggestionConfirmed) {
+      throw StateError('Suggestion is no longer active');
+    }
+    if (sport.trim().isEmpty) {
+      throw ArgumentError.value(sport, 'sport');
+    }
+    _g3Sport = sport;
+  }
+
+  @override
+  Future<void> dismissSuggestion(String id) async {
+    if (!_g3 || id != 'g3-run-0758' || _g3SuggestionConfirmed) {
+      throw StateError('Suggestion is no longer active');
+    }
+    _g3SuggestionDismissed = true;
+  }
+
+  @override
+  Future<G3WeeklyLoad> readWeeklyLoad(String endDay) async =>
+      G3WeeklyLoad((await readTrend(G3Metric.strain, endDay, 7)).points);
+
+  @override
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async {
+    if (_g3 && day == _g3Day) {
+      final snapshot = await readSleepPlan(day, now: now);
+      final plan = snapshot.plan;
+      return G3SleepPlus(
+        regularity: const G3AvailableValue(
+          null,
+          gate: 'Regelmäßigkeit braucht 7 ausgewertete Nächte.',
+        ),
+        socialJetlag: const G3AvailableValue(
+          null,
+          gate: 'Braucht freie und Arbeitstage.',
+        ),
+        sleepDebt: const G3AvailableValue(
+          null,
+          gate: 'Braucht längere freie Nächte.',
+        ),
+        bedtime: plan?.bedtimeMinuteOfDay == null ? null : _g3At(22, 45),
+        wake: plan?.wakeMinuteOfDay == null
+            ? null
+            : DateTime(2026, 9, 30, 6, 54),
+      );
+    }
+    final plan = await readSleepPlan(day, now: now);
+    return G3SleepPlus(
+      regularity: const G3AvailableValue(null),
+      socialJetlag: const G3AvailableValue(null),
+      sleepDebt: G3AvailableValue(null, gate: plan.issue?.name),
+      bedtime: null,
+      wake: null,
+    );
+  }
+
+  @override
+  Future<G3CheckIn> readCheckIn(String day) async {
+    final snapshot = await readJournalDay(day);
+    return G3CheckIn(day, [
+      for (final field in snapshot.fields)
+        if (!field.hidden && kG3CheckInKeys.contains(field.key))
+          G3CheckInQuestion(field, snapshot.metrics[field.key]),
+    ]);
+  }
+
+  @override
+  Future<void> answerCheckIn(
+    String day,
+    String key,
+    JournalMetricValue value,
+  ) async {
+    final snapshot = await readJournalDay(day);
+    if (!snapshot.fields.any(
+      (f) => f.key == key && !f.hidden && kG3CheckInKeys.contains(f.key),
+    )) {
+      throw ArgumentError.value(key, 'key');
+    }
+    await patchJournalDay(
+      JournalDayPatch.fromBase(snapshot, metrics: {key: value}),
+    );
+  }
+
+  @override
+  Future<G3JournalPattern> readJournalPattern(
+    String endDay,
+    int nights,
+  ) async => G3JournalPattern(
+    await readCaffeineSleepPattern(endDay, nights),
+    pairedMinimum: 8,
+  );
+
+  @override
+  Future<G3Weight> readG3Weight(String endDay, int days) async {
+    final history = await readWeightHistory(endDay, days);
+    return G3Weight(history, {
+      for (final entry in history.entries) entry.day: G3WeightSource.manual,
+    });
   }
 
   BandSnapshot get band {
+    if (_g3) {
+      return BandSnapshot(
+        connection: BandConnection.connected,
+        transfer: TransferState.idle,
+        batteryPercent: _baseBand.batteryPercent,
+        batteryObservedAt: _g3At(9, 38),
+        latestStoredAt: _g3At(9, 38),
+        receivedAt: _g3At(9, 38),
+      );
+    }
     switch (scenario) {
       case SyntheticScenario.disconnected:
         return BandSnapshot(
@@ -2699,6 +3083,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     if (failDayRead) {
       throw StateError('Tag konnte nicht gelesen werden');
     }
+    if (_g3 && day == _g3Day) return _g3DayFixture();
     if (day == _day) return _withNightScalarCards(_overlay(_baseDay()));
     return _withNightScalarCards(
       OpenBandDay(
@@ -3285,6 +3670,34 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     }
     if (!isLabCalendarDay(day)) {
       throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    if (_g3 && day == _g3Day) {
+      final today = todayLabel(now ?? sleepPlanNow());
+      if (today != day) return SleepPlanSnapshot.unavailable(day, today);
+      const need = SleepPlanMetric(present: true, value: 465 * 60);
+      const bedtime = SleepPlanMetric(present: true, value: 22 * 60 + 45);
+      const wake = SleepPlanMetric(present: true, value: 6 * 60 + 54);
+      return SleepPlanSnapshot(
+        requestedDay: day,
+        today: today,
+        status: SleepPlanStatus.available,
+        need: need,
+        bedtime: bedtime,
+        wake: wake,
+        plan: ComingNightSleepPlan(
+          nightStartDay: day,
+          wakeDay: '2026-09-30',
+          needSeconds: 465 * 60,
+          bedtimeMinuteOfDay: 22 * 60 + 45,
+          wakeMinuteOfDay: 6 * 60 + 54,
+          builtAtEpoch: _g3At(9, 38).millisecondsSinceEpoch ~/ 1000,
+          algoVersion: kAlgoVersion,
+          need: need,
+          bedtime: bedtime,
+          wake: wake,
+          freshness: SleepPlanFreshness.fresh,
+        ),
+      );
     }
     return sleepPlanFromStoredCrossday(
       requestedDay: day,

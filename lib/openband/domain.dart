@@ -12,6 +12,7 @@ import 'cycle_measurements_data.dart';
 import 'cycle_medians_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
+import 'g3_data.dart';
 import 'medication_data.dart';
 import 'night_scalar_data.dart';
 import 'sleep_plan_data.dart';
@@ -27,6 +28,7 @@ export 'cycle_measurements_data.dart';
 export 'cycle_medians_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
+export 'g3_data.dart';
 export 'medication_data.dart';
 export 'night_scalar_data.dart';
 export 'sleep_plan_data.dart';
@@ -2282,6 +2284,19 @@ String? labBoundsError(LabParse low, LabParse high) {
 }
 
 abstract interface class OpenBandRepository {
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day);
+  Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay);
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days);
+  Future<List<G3Activity>> readActivities(String day);
+  Future<String> confirmSuggestion(String id, {String? sport});
+  Future<void> changeSuggestionSport(String id, String sport);
+  Future<void> dismissSuggestion(String id);
+  Future<G3WeeklyLoad> readWeeklyLoad(String endDay);
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now});
+  Future<G3CheckIn> readCheckIn(String day);
+  Future<void> answerCheckIn(String day, String key, JournalMetricValue value);
+  Future<G3JournalPattern> readJournalPattern(String endDay, int nights);
+  Future<G3Weight> readG3Weight(String endDay, int days);
   Future<OpenBandDay> readDay(String day);
   Future<SetupEvaluation> readSetupEvaluation(String day);
   Future<NightSignals> readNightSignals(String day);
