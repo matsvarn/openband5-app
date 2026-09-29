@@ -178,7 +178,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('5h00').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Speichern'));
+    await tester.tap(find.text('Ziel speichern'));
     await tester.pumpAndSettle();
     expect(find.text('5h00'), findsOneWidget);
     expect(

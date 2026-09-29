@@ -46,6 +46,23 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
   Future<SleepGoalSnapshot> _read() async {
     final goal = await widget.repository.readSleepGoal(widget.day);
     _draft = goal.targetMinutes;
+    if (_draft == null) {
+      try {
+        final nights = (await _history)
+            .where((point) => point.value != null)
+            .toList();
+        if (nights.length == 7) {
+          final average =
+              nights.map((point) => point.value!).reduce((a, b) => a + b) / 7;
+          _draft = average.round().clamp(
+            kSleepGoalMinMinutes,
+            kSleepGoalMaxMinutes,
+          );
+        }
+      } catch (_) {
+        // A missing history keeps the goal unselected.
+      }
+    }
     return goal;
   }
 
@@ -148,8 +165,8 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Schlafziel',
-                      style: g.t(28, 33, weight: FontWeight.w700),
+                      saved == null ? 'Schlafziel festlegen' : 'Schlafziel',
+                      style: g.t(20, 25, weight: FontWeight.w700),
                     ),
                   ),
                   IconButton(
@@ -165,7 +182,9 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                 ],
               ),
               Text(
-                'Grundlage für Bedarf und Bettzeit heute Nacht.',
+                saved == null
+                    ? 'Noch kein Ziel. Es zeigt nur den Abstand deiner Nächte. Bedarf und Bettzeit rechnen ohne Ziel.'
+                    : 'Vergleiche deine Nächte mit deinem eigenen Ziel.',
                 style: g.t(14, 19, color: g.ink2),
               ),
               const SizedBox(height: 22),
@@ -221,11 +240,52 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                   final average = points.length == 7
                       ? points.map((p) => p.value!).reduce((a, b) => a + b) / 7
                       : null;
-                  return Text(
-                    average == null
-                        ? 'Ø — · noch keine 7 Nächte'
-                        : 'Ø ${obSleepDuration(average)} in 7 Nächten',
-                    style: g.t(13, 17, weight: FontWeight.w600, color: g.ink2),
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          average == null
+                              ? 'Ø — · noch keine 7 Nächte'
+                              : saved == null
+                              ? 'Start: dein Ø der letzten 7 Nächte'
+                              : 'Ø ${obSleepDuration(average)} in 7 Nächten',
+                          style: g.t(
+                            13,
+                            17,
+                            weight: FontWeight.w600,
+                            color: g.ink2,
+                          ),
+                        ),
+                      ),
+                      if (average != null)
+                        TextButton(
+                          onPressed: () => showDialog<void>(
+                            context: context,
+                            builder: (dialog) => AlertDialog(
+                              title: const Text('Letzte 7 Nächte'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final point in points)
+                                    Row(
+                                      children: [
+                                        Expanded(child: Text(point.day)),
+                                        Text(obSleepDuration(point.value)),
+                                      ],
+                                    ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(dialog),
+                                  child: const Text('Schließen'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          child: const Text('Verlauf ›'),
+                        ),
+                    ],
                   );
                 },
               ),
@@ -287,7 +347,7 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OBActionPrimary(
-                      'Speichern',
+                      saved == null ? 'Ziel speichern' : 'Speichern',
                       expand: true,
                       onPressed:
                           _busy ||
