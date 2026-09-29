@@ -783,6 +783,43 @@ void main() {
     );
   });
 
+  testWidgets('live average pulse appears only when the engine provides it', (
+    tester,
+  ) async {
+    final run = ValueNotifier(const LiveRun(elapsedSec: 962, heartRate: 154));
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LiveRun(
+          run: run,
+          sport: 'running',
+          onPause: () {},
+          onResume: () {},
+          onFinish: () async => throw StateError('disk'),
+        ),
+      ),
+    );
+    expect(find.text('Ø PULS'), findsNothing);
+
+    run.value = const LiveRun(
+      elapsedSec: 963,
+      heartRate: 154,
+      averageHr: 141,
+    );
+    await tester.pump();
+    expect(find.text('Ø PULS'), findsOneWidget);
+    expect(find.text('141'), findsOneWidget);
+
+    run.value = const LiveRun(elapsedSec: 964, heartRate: 154);
+    await tester.pump();
+    await tester.tap(find.text('Beenden'));
+    await tester.pump();
+    expect(find.text('Ø PULS'), findsNothing);
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ø PULS'), findsNothing);
+  });
+
   testWidgets('discard asks before invoking session teardown', (tester) async {
     final run = ValueNotifier(const LiveRun(elapsedSec: 60));
     addTearDown(run.dispose);

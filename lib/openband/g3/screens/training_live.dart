@@ -278,14 +278,15 @@ class _G3LiveRunState extends State<G3LiveRun> {
                                 ? 'wartet auf Signal'
                                 : 'bisher',
                           ),
-                          _stat(
-                            context,
-                            'Ø PULS',
-                            run.averageHr?.toString() ?? '—',
-                            run.maxHrSeen == null
-                                ? '/min'
-                                : 'max ${run.maxHrSeen}',
-                          ),
+                          if (run.averageHr case final average?)
+                            _stat(
+                              context,
+                              'Ø PULS',
+                              average.toString(),
+                              run.maxHrSeen == null
+                                  ? '/min'
+                                  : 'max ${run.maxHrSeen}',
+                            ),
                         ],
                       ),
                     ),
@@ -409,14 +410,15 @@ class _G3LiveRunState extends State<G3LiveRun> {
                             trainingNumber(run.strain, signed: true),
                             '',
                           ),
-                          _stat(
-                            context,
-                            'Ø PULS',
-                            run.averageHr?.toString() ?? '—',
-                            run.maxHrSeen == null
-                                ? '/min'
-                                : 'max ${run.maxHrSeen}',
-                          ),
+                          if (run.averageHr case final average?)
+                            _stat(
+                              context,
+                              'Ø PULS',
+                              average.toString(),
+                              run.maxHrSeen == null
+                                  ? '/min'
+                                  : 'max ${run.maxHrSeen}',
+                            ),
                         ],
                       ),
                     ],
@@ -529,12 +531,13 @@ class _G3LiveRunState extends State<G3LiveRun> {
                       trainingNumber(run.strain, signed: true),
                       '',
                     ),
-                    _stat(
-                      context,
-                      'Ø PULS',
-                      run.averageHr?.toString() ?? '—',
-                      run.maxHrSeen == null ? '/min' : 'max ${run.maxHrSeen}',
-                    ),
+                    if (run.averageHr case final average?)
+                      _stat(
+                        context,
+                        'Ø PULS',
+                        average.toString(),
+                        run.maxHrSeen == null ? '/min' : 'max ${run.maxHrSeen}',
+                      ),
                   ],
                 ),
               ),
