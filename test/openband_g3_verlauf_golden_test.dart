@@ -10,6 +10,20 @@ import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
+class _PaperRecoveryRepository extends SyntheticOpenBandRepository {
+  _PaperRecoveryRepository(super.summary, super.detail)
+    : super.fromMaps(scenario: SyntheticScenario.g3Sample);
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      metric == G3Metric.recovery
+      ? const G3Baseline(
+          BaselineStatus(BaselinePhase.trusted),
+          range: PersonalRange(58, 80, 68),
+        )
+      : super.readPersonalRange(metric, day);
+}
+
 void main() {
   setUpAll(() async {
     await initializeDateFormatting('de_DE');
@@ -34,10 +48,9 @@ void main() {
           )
           as Map,
     );
-    final repo = SyntheticOpenBandRepository.fromMaps(
+    final repo = _PaperRecoveryRepository(
       fixture('day-summary.json'),
       fixture('sleep-detail.json'),
-      scenario: SyntheticScenario.g3Sample,
     );
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
