@@ -1,6 +1,11 @@
 import '../data/day_label.dart';
 import '../data/journal_fields.dart';
-import 'domain.dart' show MetricPoint, CaffeineSleepPattern, WeightHistory;
+import 'domain.dart'
+    show
+        MetricPoint,
+        CaffeineSleepPattern,
+        CaffeineSleepPatternKind,
+        WeightHistory;
 
 enum G3Metric {
   recovery,
@@ -150,15 +155,12 @@ class G3SignalGap {
 }
 
 class G3ZoneBasis {
-  const G3ZoneBasis({this.method, this.maxHr, this.maxHrSource});
-
-  /// Stored zone method: tanaka/observed use %HRmax; karvonen uses %HR reserve.
-  final String? method;
-  final double? maxHr;
-  final G3MaxHrSource? maxHrSource;
+  const G3ZoneBasis(this.kind, this.maxHr);
+  final G3ZoneBasisKind kind;
+  final double maxHr;
 }
 
-enum G3MaxHrSource { estimated, measured, userSet }
+enum G3ZoneBasisKind { hfmaxEstimated, hfmaxObserved, heartRateReserve }
 
 class G3Activity {
   const G3Activity({
@@ -265,11 +267,16 @@ class G3CheckIn {
 }
 
 class G3JournalPattern {
-  const G3JournalPattern(this.pattern, {required this.pairedMinimum});
+  const G3JournalPattern(this.pattern);
   final CaffeineSleepPattern pattern;
-  final int pairedMinimum;
-  int get remaining =>
-      (pairedMinimum - pattern.pairedN).clamp(0, pairedMinimum);
+  int? get yesNights => pattern.yesNights;
+  int? get noNights => pattern.noNights;
+  String? get refusalNote => pattern.note;
+  int? get remaining =>
+      pattern.kind == CaffeineSleepPatternKind.insufficient &&
+          pattern.pairedN < CaffeineSleepPattern.minPairedNights
+      ? CaffeineSleepPattern.minPairedNights - pattern.pairedN
+      : null;
 }
 
 enum G3WeightSource { manual, imported }
@@ -278,9 +285,21 @@ enum G3WeightSource { manual, imported }
 const kG3CheckInKeys = {'mood', 'sleep_quality', 'energy', 'stress'};
 
 class G3Weight {
-  const G3Weight(this.history, this.sources);
+  const G3Weight(this.history, this.sources, {this.imported = const []});
   final WeightHistory history;
+
+  /// Imported measurements remain separate from dated journal history.
+  final List<G3ImportedWeight> imported;
   final Map<String, G3WeightSource> sources;
+}
+
+class G3ImportedWeight {
+  const G3ImportedWeight(this.id, this.at, this.kg, this.sourceName);
+  final String id;
+  final DateTime at;
+  final double kg;
+  final String sourceName;
+  G3WeightSource get source => G3WeightSource.imported;
 }
 
 List<String> g3DaysEnding(String endDay, int days) {

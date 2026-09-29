@@ -26,8 +26,18 @@ void main() {
     final repo = _repo(SyntheticScenario.g3Sample);
     final today = await repo.readDay(day);
     expect(today.recovery.value, 74);
+    expect(
+      today.recovery.baseline! - 1.253 * today.recovery.baselineSpread!,
+      58,
+    );
+    expect(
+      today.recovery.baseline! + 1.253 * today.recovery.baselineSpread!,
+      80,
+    );
     expect(today.sleep.duration.value, 438);
     expect(today.sleep.bedMinutes, 464);
+    expect(today.sleep.onset, DateTime(2026, 9, 28, 23, 10));
+    expect(today.sleep.wake, DateTime(2026, 9, 29, 6, 54));
     expect(today.strain.value, 9.4);
     expect(today.hrv.value, 48);
     expect(today.restingHr.value, 54);
@@ -78,6 +88,34 @@ void main() {
     expect(() => repo.readTrend(G3Metric.hrv, day, 8), throwsArgumentError);
   });
 
+  test('journal refusal exposes pair and side floors separately', () {
+    CaffeineSleepPattern pattern(int n, int yes, int no, String note) =>
+        CaffeineSleepPattern.fromProducer(
+          empty: false,
+          binary: true,
+          insufficient: true,
+          meaningful: false,
+          n: n,
+          nWith: yes,
+          nWithout: no,
+          note: note,
+          endDay: day,
+          startDay: '2026-09-01',
+          nights: 30,
+          algoVersion: 1,
+        );
+    final paired = G3JournalPattern(pattern(5, 3, 2, 'min_n'));
+    expect(paired.yesNights, 3);
+    expect(paired.noNights, 2);
+    expect(paired.refusalNote, 'min_n');
+    expect(paired.remaining, 3);
+    final side = G3JournalPattern(pattern(8, 6, 2, 'min_per_side'));
+    expect(side.refusalNote, 'min_per_side');
+    expect(side.yesNights, 6);
+    expect(side.noNights, 2);
+    expect(side.remaining, isNull);
+  });
+
   test('building fixture withholds score and normal bands', () async {
     final repo = _repo(SyntheticScenario.g3Building);
     final today = await repo.readDay(day);
@@ -113,10 +151,8 @@ void main() {
       expect(activity.start, DateTime(2026, 9, 29, 7, 58));
       expect(activity.end, DateTime(2026, 9, 29, 8, 40));
       expect(activity.duration, const Duration(minutes: 42));
-      expect(activity.zoneMinutes, [6, 14, 15, 6, 1]);
-      expect(activity.zoneBasis!.maxHr, 186);
-      expect(activity.zoneBasis!.method, 'tanaka');
-      expect(activity.zoneBasis!.maxHrSource, G3MaxHrSource.estimated);
+      expect(activity.zoneMinutes, isNull);
+      expect(activity.zoneBasis, isNull);
       expect(activity.avgHr, 148);
       expect(activity.maxHr, 176);
       expect(activity.strain, 6.1);
@@ -131,6 +167,9 @@ void main() {
       expect(await repo.confirmSuggestion(activity.id), activity.id);
       activity = (await repo.readActivities(day)).single;
       expect(activity.confirmed, isTrue);
+      expect(activity.zoneMinutes, [6, 14, 15, 6, 1]);
+      expect(activity.zoneBasis!.kind, G3ZoneBasisKind.hfmaxEstimated);
+      expect(activity.zoneBasis!.maxHr, 186);
       expect(activity.sport, 'cycling');
       await expectLater(repo.dismissSuggestion(activity.id), throwsStateError);
     },
@@ -150,10 +189,10 @@ void main() {
       final repo = _repo(SyntheticScenario.g3Sample);
       final plus = await repo.readSleepPlus(day);
       expect(plus.regularity.value, isNull);
-      expect(plus.regularity.gate, isNotNull);
+      expect(plus.regularity.gate, isNull);
       expect(plus.socialJetlag.value, isNull);
       expect(plus.sleepDebt.debtHours, isNull);
-      expect(plus.sleepDebt.refusalNote, isNotNull);
+      expect(plus.sleepDebt.refusalNote, isNull);
       expect(plus.needMinutes, 485);
       expect(plus.goalMinutes, 465);
       expect(plus.strainBonusMinutes, 20);
@@ -179,7 +218,7 @@ void main() {
       expect(weight.history.entries, isEmpty);
       expect(weight.sources, isEmpty);
       final pattern = await repo.readJournalPattern(day, 7);
-      expect(pattern.remaining, greaterThanOrEqualTo(0));
+      expect(pattern.remaining, isNull);
     },
   );
 

@@ -76,22 +76,25 @@ void main() {
     'stored readiness gate supplies count; absent basis stays unknown',
     () async {
       await putDay({
-        'clinical': {
-          'readiness_composite': {'note': 'need_baseline:have=11,need=14'},
-        },
+        'readiness_absent_diag': {'note': 'need_baseline:have=11,need=14'},
       });
       var result = await repo.readPersonalRange(G3Metric.recovery, day);
       expect(result.status.phase, BaselinePhase.building);
       expect(result.status.nightsHave, 11);
       expect(result.status.nightsNeeded, 14);
       await putDay({
-        'clinical': {
-          'readiness_composite': {'note': 'missing_hrv'},
-        },
+        'readiness_absent_diag': {'note': 'missing_hrv'},
       });
       result = await repo.readPersonalRange(G3Metric.recovery, day);
+      expect(result.status.phase, BaselinePhase.none);
       expect(result.status.nightsHave, isNull);
-      expect(result.status.nightsNeeded, 14);
+      expect(result.status.nightsNeeded, isNull);
+      await putDay({
+        'readiness_absent_diag': {'note': 'unstable_baseline:z=4.2'},
+      });
+      result = await repo.readPersonalRange(G3Metric.recovery, day);
+      expect(result.status.phase, BaselinePhase.none);
+      expect(result.status.nightsNeeded, isNull);
     },
   );
 
@@ -163,6 +166,9 @@ void main() {
       expect(activity.zoneMinutes, isNull);
       expect(activity.opticalShare, isNull);
       expect(activity.hrRecoveryOneMinute, isNull);
+      expect(activity.hrTrace.length, 42);
+      expect(activity.hrTrace.every((p) => p.meanBpm == null), isTrue);
+      expect(activity.signalGaps.single.duration, const Duration(minutes: 42));
       await putDay({
         'workout_suggestions': [
           {'start': start, 'end': end, 'hrr_bpm': 31},
@@ -179,10 +185,11 @@ void main() {
   );
 
   test(
-    'confirm uses the manual session write and retires suggestion',
+    'confirm banks scored trace, HRR and retires overlapping suggestions',
     () async {
       final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;
       final end = DateTime(2026, 9, 27, 8, 40).millisecondsSinceEpoch ~/ 1000;
+      app.user = {'birth_date': '1994-01-01'};
       await LocalDb.putWorkoutSuggestion({
         'id': 'detected-2',
         'date': day,
@@ -191,18 +198,50 @@ void main() {
         'sport': 'running',
         'created_at': start * 1000,
       });
-      final sessionId = await repo.confirmSuggestion('detected-2');
-      expect((await LocalDb.session(sessionId))?['source'], 'auto');
-      expect(await repo.confirmSuggestion('detected-2'), sessionId);
+      await LocalDb.putWorkoutSuggestion({
+        'id': 'detected-fragment',
+        'date': day,
+        'start_ts': start + 60,
+        'end_ts': end - 60,
+        'sport': 'running',
+        'created_at': start * 1000,
+      });
+      await putDay({
+        'workout_suggestions': [
+          {'start': start, 'end': end, 'hrr_bpm': 31},
+        ],
+      });
       final db = await LocalDb.instance;
+      for (var i = 0; i < 60; i++) {
+        await db.insert('decoded_onehz', {
+          'device_id': '',
+          'ts_ms': (start + i) * 1000,
+          'rec_ts': start + i,
+          'counter': i + 1,
+          'hr': 148,
+          'signal_quality_logvar': -5.0,
+        });
+      }
+      final sessionId = await repo.confirmSuggestion('detected-2');
+      final saved = (await LocalDb.session(sessionId))!;
+      expect(saved['source'], 'auto');
+      expect(saved['hrr_bpm'], 31);
+      expect(saved['zone_min_json'], isNotNull);
+      expect(saved['trace_json'], isNotNull);
+      final trace = jsonDecode(saved['trace_json'] as String) as Map;
+      expect((trace['zone_bands'] as List).last['source'], 'tanaka');
+      expect(
+        (await repo.readActivities(day)).single.zoneBasis!.kind,
+        G3ZoneBasisKind.hfmaxEstimated,
+      );
+      expect(await repo.confirmSuggestion('detected-2'), sessionId);
       expect((await db.query('sessions')).length, 1);
       expect(await HealthExporter.exportWorkoutId(sessionId), isFalse);
-      expect(
-        (await LocalDb.activeWorkoutSuggestions()).any(
-          (row) => row['id'] == 'detected-2',
-        ),
-        isFalse,
-      );
+      expect(await LocalDb.activeWorkoutSuggestions(), isEmpty);
+      await db.delete('decoded_onehz');
+      final frozen = (await repo.readActivities(day)).single;
+      expect(frozen.hrTrace.first.meanBpm, 148);
+      expect(frozen.hrTrace.skip(1).every((p) => p.meanBpm == null), isTrue);
       expect((await repo.readActivities(day)).single.confirmed, isTrue);
     },
   );
@@ -238,49 +277,85 @@ void main() {
   });
 
   test(
-    'retained HR creates 30-second slots with a gap and quality share',
+    'prior HRR counts only numeric same-sport starts strictly earlier',
     () async {
       final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;
-      await LocalDb.putSession({
-        'id': 'run-1',
-        'start_ts': start,
-        'end_ts': start + 90,
-        'type': 'running',
-        'status': 'done',
-        'source': 'manual',
-        'created_at': start * 1000,
-        'hrr_bpm': 31,
-        'zone_min_json': jsonEncode([1, 0, 0, 0, 0]),
-        'trace_json': jsonEncode({
-          'zone_bands': [
-            for (var i = 0; i < 5; i++)
-              {'source': 'karvonen', 'hi': i == 4 ? 186 : 100 + i * 20},
-          ],
-        }),
-      });
-      final db = await LocalDb.instance;
-      for (var i = 0; i < 90; i++) {
-        if (i >= 30 && i < 60) continue;
-        await db.insert('decoded_onehz', {
-          'device_id': '',
-          'ts_ms': (start + i) * 1000,
-          'rec_ts': start + i,
-          'counter': i + 1,
-          'hr': 148,
-          'signal_quality_logvar': i < 30 ? -5.0 : -4.0,
+      for (final (id, offset, sport, hrr) in [
+        ('prior-day', -86400, 'running', 20),
+        ('prior-hour', -3600, 'running', 31),
+        ('same-start', 0, 'running', 25),
+        ('later', 3600, 'running', 28),
+        ('other-sport', -7200, 'cycling', 19),
+      ]) {
+        await LocalDb.putSession({
+          'id': id,
+          'start_ts': start + offset,
+          'end_ts': start + offset + 60,
+          'type': sport,
+          'status': 'done',
+          'source': 'manual',
+          'created_at': start * 1000,
+          'hrr_bpm': hrr,
         });
       }
-      final result = (await repo.readActivities(day)).single;
-      expect(result.hrTrace.map((p) => p.meanBpm), [148, null, 148]);
-      expect(result.signalGaps.single.duration, const Duration(seconds: 30));
-      expect(result.opticalShare, .5);
-      expect(result.hrRecoveryOneMinute, 31);
-      expect(result.zoneMinutes, [1, 0, 0, 0, 0]);
-      expect(result.zoneBasis!.method, 'karvonen');
-      expect(result.zoneBasis!.maxHr, 186);
-      expect(result.zoneBasis!.maxHrSource, G3MaxHrSource.measured);
+      await LocalDb.putWorkoutSuggestion({
+        'id': 'target',
+        'date': day,
+        'start_ts': start,
+        'end_ts': start + 120,
+        'sport': 'running',
+        'created_at': start * 1000,
+      });
+      final activity = (await repo.readActivities(
+        day,
+      )).singleWhere((v) => v.id == 'target');
+      expect(activity.priorHrrCount, 2);
     },
   );
+
+  test('retained HR uses clock minutes and engine off-wrist gaps', () async {
+    final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;
+    await LocalDb.putSession({
+      'id': 'run-1',
+      'start_ts': start,
+      'end_ts': start + 300,
+      'type': 'running',
+      'status': 'done',
+      'source': 'manual',
+      'created_at': start * 1000,
+      'hrr_bpm': 31,
+      'zone_min_json': jsonEncode([1, 0, 0, 0, 0]),
+      'trace_json': jsonEncode({
+        'zone_bands': [
+          for (var i = 0; i < 5; i++)
+            {'source': 'karvonen', 'hi': i == 4 ? 186 : 100 + i * 20},
+        ],
+      }),
+    });
+    final db = await LocalDb.instance;
+    for (var i = 0; i < 300; i++) {
+      if (i >= 60 && i < 200 || i >= 260) continue;
+      await db.insert('decoded_onehz', {
+        'device_id': '',
+        'ts_ms': (start + i) * 1000,
+        'rec_ts': start + i,
+        'counter': i + 1,
+        'hr': 148,
+        'signal_quality_logvar': i < 60 ? -5.0 : -4.0,
+      });
+    }
+    final result = (await repo.readActivities(day)).single;
+    expect(result.hrTrace.map((p) => p.meanBpm), [148, null, null, 148, 148]);
+    expect(
+      result.signalGaps.map((g) => g.duration),
+      contains(const Duration(seconds: 140)),
+    );
+    expect(result.opticalShare, .5);
+    expect(result.hrRecoveryOneMinute, 31);
+    expect(result.zoneMinutes, [1, 0, 0, 0, 0]);
+    expect(result.zoneBasis!.kind, G3ZoneBasisKind.heartRateReserve);
+    expect(result.zoneBasis!.maxHr, 186);
+  });
 
   test(
     'missing crossday inputs, journal answers, and weight stay distinct',
@@ -290,10 +365,11 @@ void main() {
         now: DateTime(2026, 9, 27, 12),
       );
       expect(plus.regularity.value, isNull);
-      expect(plus.regularity.gate, isNotNull);
+      expect(plus.regularity.gate, isNull);
       expect(plus.socialJetlag.value, isNull);
+      expect(plus.socialJetlag.gate, isNull);
       expect(plus.sleepDebt.debtHours, isNull);
-      expect(plus.sleepDebt.refusalNote, isNotNull);
+      expect(plus.sleepDebt.refusalNote, isNull);
       expect(plus.needMinutes, isNull);
       expect(plus.napsIncomplete, isNull);
       expect(plus.typicalEfficiency, isNull);
@@ -316,6 +392,32 @@ void main() {
       expect(weight.sources, isEmpty);
     },
   );
+
+  test('imported kg remains separate from journal weight history', () async {
+    final db = await LocalDb.instance;
+    final inWindow = DateTime(2026, 9, 27, 8).millisecondsSinceEpoch ~/ 1000;
+    for (final (id, ts, kind, unit) in [
+      ('weight-1', inWindow, 'weight_kg', 'kg'),
+      ('old-weight', inWindow - 8 * 86400, 'weight_kg', 'kg'),
+      ('wrong-unit', inWindow, 'weight_kg', 'lb'),
+      ('temperature', inWindow, 'body_temp', 'kg'),
+    ]) {
+      await db.insert('imported_measurement', {
+        'uuid': id,
+        'ts': ts,
+        'kind': kind,
+        'unit': unit,
+        'value': 74.2,
+        'source': 'Apple Health',
+      });
+    }
+    final weight = await repo.readG3Weight(day, 7);
+    expect(weight.history.entries, isEmpty);
+    expect(weight.imported.map((v) => v.id), ['weight-1']);
+    expect(weight.imported.single.kg, 74.2);
+    expect(weight.imported.single.source, G3WeightSource.imported);
+    expect(weight.imported.single.sourceName, 'Apple Health');
+  });
 
   test(
     'stored crossday values are read only for their own day and version',
@@ -366,11 +468,34 @@ void main() {
       expect(plus.sleepDebt.debtHours, isNull);
       expect(plus.sleepDebt.refusalNote, 'need_free_night:have=0,need=1');
 
+      final gated = artifact(day);
+      gated['regularity'] = {
+        'value': {'sri': 82, 'days': 4},
+        'note': 'needs_7_scored_nights:have=4',
+      };
+      await LocalDb.putBaseline('crossday', jsonEncode(gated));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.regularity.value, isNull);
+      expect(plus.regularity.gate, 'needs_7_scored_nights:have=4');
+
       await LocalDb.putBaseline('crossday', jsonEncode(artifact('2026-09-26')));
       plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, isNull);
+      expect(plus.regularity.gate, isNull);
+      expect(plus.socialJetlag.value, isNull);
+      expect(plus.socialJetlag.gate, isNull);
+      expect(plus.sleepDebt.debtHours, isNull);
+      expect(plus.sleepDebt.refusalNote, isNull);
       load = await repo.readWeeklyLoad(day);
       expect(load.ctl, isNull);
+
+      final oldAlgo = artifact(day)..['algo_version'] = kAlgoVersion - 1;
+      await LocalDb.putBaseline('crossday', jsonEncode(oldAlgo));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.regularity.value, isNull);
+      expect(plus.regularity.gate, isNull);
+      expect(plus.socialJetlag.gate, isNull);
+      expect(plus.sleepDebt.refusalNote, isNull);
     },
   );
 

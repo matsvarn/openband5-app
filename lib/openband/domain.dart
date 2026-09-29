@@ -586,6 +586,8 @@ enum CaffeineSleepPatternKind {
 }
 
 class CaffeineSleepPattern {
+  static const int minPairedNights = 8;
+  static const int minPerSideNights = 3;
   static const field = 'caffeine_late';
   static const outcome = 'sol_min';
   static const lagDays = 1;
@@ -654,7 +656,7 @@ class CaffeineSleepPattern {
     bool partial = false,
     int availableOutcomes = 0,
   }) {
-    final countsOk = binary && nWith != null && nWithout != null;
+    final countsOk = n > 0 && nWith != null && nWithout != null && nWith + nWithout == n;
     final kind = empty || n == 0 || (!binary && !insufficient)
         ? CaffeineSleepPatternKind.unavailable
         : insufficient
@@ -669,8 +671,8 @@ class CaffeineSleepPattern {
     return CaffeineSleepPattern(
       kind: kind,
       pairedN: n,
-      yesNights: showSplit ? nWith : null,
-      noNights: showSplit ? nWithout : null,
+      yesNights: countsOk ? nWith : null,
+      noNights: countsOk ? nWithout : null,
       delta: showSplit ? delta : null,
       note: kind == CaffeineSleepPatternKind.insufficient ? note : null,
       endDay: endDay,

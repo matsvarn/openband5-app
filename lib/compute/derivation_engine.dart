@@ -2310,6 +2310,8 @@ class DerivationBusy implements Exception {
 }
 
 class DerivationEngine {
+  static const int offWristGapSec = 120;
+  static const double trustedLogVarMax = -4.6;
   DerivationEngine({this.log, this.background = false});
   final void Function(String)? log;
 
@@ -7097,7 +7099,7 @@ class DerivationEngine {
         'optical_trusted_pct': null,
       };
     }
-    const offGapSec = 120; // a >2-min hole in the 1 Hz stream = off / not worn
+    const offGapSec = offWristGapSec; // a >2-min hole in the 1 Hz stream = off / not worn
     final firstOn = s.tsSec.first;
     final lastOn = s.tsSec.last + 1;
 
@@ -7153,7 +7155,6 @@ class DerivationEngine {
     // difference between a motion-contaminated hour and a clean one.
     // Denominator is seconds where the field is PRESENT: a source that cannot
     // report quality (gen4) yields null, not a misleading 0 or 100.
-    const trustedLogVarMax = -4.6;
     var presentSec = 0, trustedSec = 0;
     for (var i = 0; i < s.length; i++) {
       final lv = s.signalQualityLogVarAt(i);
