@@ -85,6 +85,34 @@ class _Question {
   final G3CheckInQuestion? checkIn;
 }
 
+class _JournalSectionHeader extends StatelessWidget {
+  const _JournalSectionHeader(this.text, {this.trailing});
+
+  final String text;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 24, right: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 18, bottom: 8),
+              child: Text(text, style: g.caps(color: g.muted)),
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
 class G3JournalScreen extends StatefulWidget {
   const G3JournalScreen({
     super.key,
@@ -711,10 +739,15 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                       : 'Daten bis ${DateFormat('HH:mm').format(storedAt)}',
                   synthetic: widget.controller.day?.synthetic == true,
                 ),
-                OBSectionHeader(
+                _JournalSectionHeader(
                   sectionDay,
                   trailing: TextButton(
                     onPressed: _openCustomize,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                     child: Text(
                       'Anpassen ›',
                       style: g.t(13, 17, weight: FontWeight.w700),
@@ -766,10 +799,10 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                               : () => _save(current, currentDraft),
                         ),
                 ),
-                OBSectionHeader(
+                _JournalSectionHeader(
                   '$sectionDay BEANTWORTET',
                   trailing: Text(
-                    '$count von ${questions.length}',
+                    '$count beantwortet',
                     style: g.t(13, 17, color: g.ink2),
                   ),
                 ),

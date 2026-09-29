@@ -967,4 +967,34 @@ void main() {
       matchesGoldenFile('openband_goldens/g3-journal-tab-light.png'),
     );
   }, tags: const ['golden']);
+
+  testWidgets('Journal section labels align with their trailing text', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'mood': const JournalMetricValue(4)},
+    );
+    await mount(tester);
+
+    double baseline(String text) {
+      final box = tester.renderObject<RenderBox>(find.text(text));
+      final offset = box.getDryBaseline(
+        box.constraints,
+        TextBaseline.alphabetic,
+      )!;
+      return box.localToGlobal(Offset(0, offset)).dy;
+    }
+
+    expect((baseline('HEUTE') - baseline('Anpassen ›')).abs(), lessThan(1));
+    expect(
+      (baseline('HEUTE BEANTWORTET') - baseline('1 beantwortet')).abs(),
+      lessThan(1),
+    );
+    final action = find.ancestor(
+      of: find.text('Anpassen ›'),
+      matching: find.byType(TextButton),
+    );
+    expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
+  });
 }
