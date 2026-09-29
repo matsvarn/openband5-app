@@ -2286,6 +2286,8 @@ String? labBoundsError(LabParse low, LabParse high) {
 }
 
 abstract interface class OpenBandRepository {
+  Future<BandDiagnostics> readBandDiagnostics();
+  Future<FirstTransferReceipt?> readFirstTransferReceipt();
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day);
   Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay);
   Future<G3Trend> readTrend(G3Metric metric, String endDay, int days);
