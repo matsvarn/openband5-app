@@ -92,7 +92,30 @@
     "6J05-0": "G3JournalPatternRefusedDark",
     "5ZHX-0": "G3JournalPatternMatureLight",
     "5ZR8-0": "G3JournalPatternMatureDark",
-    "6JDZ-0": "G3JournalParts"
+    "6JDZ-0": "G3JournalParts",
+    "69RS-0": "band-profil-hell",
+    "69ZB-0": "band-profil-dunkel",
+    "6A6U-0": "band-profil-mitteilungen-nicht-erlaubt-hell",
+    "6EGL-0": "band-band-verbunden-hell",
+    "6EMO-0": "band-band-uebertragung-laeuft-hell",
+    "6EQQ-0": "band-band-getrennt-hell",
+    "6EYY-0": "band-band-verbunden-dunkel",
+    "6F43-0": "band-band-bluetooth-aus-hell",
+    "6F7Y-0": "band-band-nicht-gefunden-hell",
+    "6LGX-0": "band-einrichtung-band-verbinden-hell",
+    "6LJH-0": "band-einrichtung-erste-uebertragung-laeuft-hell",
+    "6LMC-0": "band-einrichtung-erste-uebertragung-unterbrochen-hell",
+    "6LPK-0": "band-einrichtung-erste-uebertragung-unterbrochen-dunkel",
+    "6LSS-0": "band-einrichtung-erste-uebertragung-fertig-hell",
+    "6OC4-0": "band-daten-und-sicherung-hell",
+    "6OGW-0": "band-daten-und-sicherung-dunkel",
+    "6OQ7-0": "band-daten-und-sicherung-teilweise-uebernommen-hell",
+    "6PAA-0": "band-daten-und-sicherung-sicherung-fehlgeschlagen-hell",
+    "6T76-0": "band-dein-datenstand-hell",
+    "6TEI-0": "band-dein-datenstand-dunkel",
+    "6TLU-0": "band-dein-datenstand-verbunden-mit-rueckstand-hell",
+    "6TT7-0": "band-datum-waehlen-hell",
+    "6U3C-0": "band-datum-waehlen-dunkel"
   },
   "blocks": [
     {
@@ -2193,6 +2216,73 @@
         "600J-0",
         "605U-0"
       ]
+    },
+    {
+      "name": "OBSettingsGroup.g3",
+      "paperNode": "6PLR-0",
+      "widget": "OBSettingsGroup",
+      "file": "lib/openband/g3/band_parts.dart",
+      "usedIn": [
+        "69RS-0",
+        "69ZB-0",
+        "6OC4-0",
+        "6OGW-0"
+      ],
+      "notes": "G3 band and profile presentation; missing input remains unavailable."
+    },
+    {
+      "name": "OBSettingsRow.g3",
+      "paperNode": "6PM6-0",
+      "widget": "OBSettingsRow",
+      "file": "lib/openband/g3/band_parts.dart",
+      "usedIn": [
+        "69RS-0",
+        "69ZB-0",
+        "6OC4-0",
+        "6OGW-0"
+      ],
+      "notes": "G3 band and profile presentation; missing input remains unavailable."
+    },
+    {
+      "name": "OBStepProgress",
+      "paperNode": "6POH-0",
+      "widget": "OBStepProgress",
+      "file": "lib/openband/g3/band_parts.dart",
+      "usedIn": [
+        "6LGX-0",
+        "6LJH-0",
+        "6LMC-0",
+        "6LPK-0",
+        "6LSS-0"
+      ],
+      "notes": "G3 band and profile presentation; missing input remains unavailable."
+    },
+    {
+      "name": "OBBandHero",
+      "paperNode": "6POT-0",
+      "widget": "OBBandHero",
+      "file": "lib/openband/g3/band_parts.dart",
+      "usedIn": [
+        "6EGL-0",
+        "6EYY-0",
+        "6EMO-0",
+        "6EQQ-0"
+      ],
+      "notes": "G3 band and profile presentation; missing input remains unavailable."
+    },
+    {
+      "name": "OBFrontierCard",
+      "paperNode": "6PU1-0",
+      "widget": "OBFrontierCard",
+      "file": "lib/openband/g3/band_parts.dart",
+      "usedIn": [
+        "6T76-0",
+        "6TEI-0",
+        "6TLU-0",
+        "6LJH-0",
+        "6LMC-0"
+      ],
+      "notes": "G3 band and profile presentation; missing input remains unavailable."
     }
   ],
   "openBlocks": [],

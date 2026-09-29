@@ -754,7 +754,7 @@ void main() {
     final labels = [
       find.text('Daten bis'),
       find.text('Letzter Bandwert'),
-      find.text('Rohdaten-Archiv'),
+      find.text('Datenbankdatei'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
@@ -1111,6 +1111,11 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('data-export-database')));
     await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('data-action-receipt')),
+      -150,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Export erstellt'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

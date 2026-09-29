@@ -1,1 +1,117 @@
-{}
+{
+  "band-profil-hell": {
+    "page": "p-1A-0",
+    "node": "69RS-0",
+    "mode": "light"
+  },
+  "band-profil-dunkel": {
+    "page": "p-1A-0",
+    "node": "69ZB-0",
+    "mode": "dark"
+  },
+  "band-profil-mitteilungen-nicht-erlaubt-hell": {
+    "page": "p-1A-0",
+    "node": "6A6U-0",
+    "mode": "light"
+  },
+  "band-band-verbunden-hell": {
+    "page": "p-1A-0",
+    "node": "6EGL-0",
+    "mode": "light"
+  },
+  "band-band-uebertragung-laeuft-hell": {
+    "page": "p-1A-0",
+    "node": "6EMO-0",
+    "mode": "light"
+  },
+  "band-band-getrennt-hell": {
+    "page": "p-1A-0",
+    "node": "6EQQ-0",
+    "mode": "light"
+  },
+  "band-band-verbunden-dunkel": {
+    "page": "p-1A-0",
+    "node": "6EYY-0",
+    "mode": "dark"
+  },
+  "band-band-bluetooth-aus-hell": {
+    "page": "p-1A-0",
+    "node": "6F43-0",
+    "mode": "light"
+  },
+  "band-band-nicht-gefunden-hell": {
+    "page": "p-1A-0",
+    "node": "6F7Y-0",
+    "mode": "light"
+  },
+  "band-einrichtung-band-verbinden-hell": {
+    "page": "p-1A-0",
+    "node": "6LGX-0",
+    "mode": "light"
+  },
+  "band-einrichtung-erste-uebertragung-laeuft-hell": {
+    "page": "p-1A-0",
+    "node": "6LJH-0",
+    "mode": "light"
+  },
+  "band-einrichtung-erste-uebertragung-unterbrochen-hell": {
+    "page": "p-1A-0",
+    "node": "6LMC-0",
+    "mode": "light"
+  },
+  "band-einrichtung-erste-uebertragung-unterbrochen-dunkel": {
+    "page": "p-1A-0",
+    "node": "6LPK-0",
+    "mode": "dark"
+  },
+  "band-einrichtung-erste-uebertragung-fertig-hell": {
+    "page": "p-1A-0",
+    "node": "6LSS-0",
+    "mode": "light"
+  },
+  "band-daten-und-sicherung-hell": {
+    "page": "p-1A-0",
+    "node": "6OC4-0",
+    "mode": "light"
+  },
+  "band-daten-und-sicherung-dunkel": {
+    "page": "p-1A-0",
+    "node": "6OGW-0",
+    "mode": "dark"
+  },
+  "band-daten-und-sicherung-teilweise-uebernommen-hell": {
+    "page": "p-1A-0",
+    "node": "6OQ7-0",
+    "mode": "light"
+  },
+  "band-daten-und-sicherung-sicherung-fehlgeschlagen-hell": {
+    "page": "p-1A-0",
+    "node": "6PAA-0",
+    "mode": "light"
+  },
+  "band-dein-datenstand-hell": {
+    "page": "p-1A-0",
+    "node": "6T76-0",
+    "mode": "light"
+  },
+  "band-dein-datenstand-dunkel": {
+    "page": "p-1A-0",
+    "node": "6TEI-0",
+    "mode": "dark"
+  },
+  "band-dein-datenstand-verbunden-mit-rueckstand-hell": {
+    "page": "p-1A-0",
+    "node": "6TLU-0",
+    "mode": "light"
+  },
+  "band-datum-waehlen-hell": {
+    "page": "p-1A-0",
+    "node": "6TT7-0",
+    "mode": "light"
+  },
+  "band-datum-waehlen-dunkel": {
+    "page": "p-1A-0",
+    "node": "6U3C-0",
+    "mode": "dark"
+  }
+}
