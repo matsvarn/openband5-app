@@ -46,6 +46,45 @@ void main() {
         partial: partial,
       );
 
+  Future<G3SleepPlus> readCoachParts({
+    required double osdHours,
+    required double debtHours,
+    required double needMinutes,
+    required int strainBonus,
+    required int napCredit,
+  }) async {
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': osdHours,
+            'debt_hours': debtHours,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': needMinutes * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 23 * 60},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 7 * 60},
+          },
+          'strain_bonus_min': strainBonus,
+          'nap_credit_min': napCredit,
+        },
+      }),
+    );
+    return repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+  }
+
   test(
     'stored trusted baseline is the only source of the personal band',
     () async {
@@ -372,6 +411,7 @@ void main() {
       expect(plus.needMinutes, isNull);
       expect(plus.baselineOsdMinutes, isNull);
       expect(plus.appliedDebtMinutes, isNull);
+      expect(plus.needClamp, isNull);
       expect(plus.napsJudged, isNull);
       expect(plus.typicalEfficiency, isNull);
       expect(plus.bedtime, isNull);
@@ -681,6 +721,7 @@ void main() {
       expect(plus.needMinutes, 485);
       expect(plus.baselineOsdMinutes, closeTo(455, 1e-9));
       expect(plus.appliedDebtMinutes, isNull);
+      expect(plus.needClamp, isNull);
       expect(plus.strainBonusMinutes, 20);
       expect(plus.napCreditMinutes, isNull);
       expect(plus.napsJudged, isFalse);
@@ -772,11 +813,7 @@ void main() {
         'built_at_epoch':
             DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
         'sleep_debt': {
-          'value': {
-            'osd_hours': 9.5,
-            'debt_hours': 2,
-            'has_free_night': true,
-          },
+          'value': {'osd_hours': 9.5, 'debt_hours': 2, 'has_free_night': true},
         },
         'sleep_coach': {
           'need': {
@@ -797,10 +834,15 @@ void main() {
     expect(plus.needMinutes, 660);
     expect(plus.sleepDebt.debtHours, 2); // Raw evidence remains available.
     expect(plus.baselineOsdMinutes, 570);
-    expect(plus.appliedDebtMinutes, 90);
+    expect(plus.appliedDebtMinutes, 120);
+    expect(plus.needClamp?.limitMinutes, 660);
+    expect(plus.needClamp?.adjustmentMinutes, -30);
     expect(
-      plus.baselineOsdMinutes! + plus.appliedDebtMinutes! +
-          plus.strainBonusMinutes! - plus.napCreditMinutes!,
+      plus.baselineOsdMinutes! +
+          plus.appliedDebtMinutes! +
+          plus.strainBonusMinutes! -
+          plus.napCreditMinutes! +
+          plus.needClamp!.adjustmentMinutes,
       plus.needMinutes,
     );
 
@@ -830,7 +872,7 @@ void main() {
           'wake': {
             'value': {'wake_min_of_day': 5 * 60 + 23},
           },
-          'strain_bonus_min': 0,
+          'strain_bonus_min': 21,
           'nap_credit_min': 115,
         },
       }),
@@ -839,7 +881,41 @@ void main() {
     expect(plus.needMinutes, 360);
     expect(plus.baselineOsdMinutes, 420);
     expect(plus.sleepDebt.debtHours, closeTo(10 / 60, 1e-9));
-    expect(plus.appliedDebtMinutes, isNull);
+    expect(plus.appliedDebtMinutes, closeTo(10, 1e-9));
+    expect(plus.needClamp?.limitMinutes, 360);
+    expect(plus.needClamp?.adjustmentMinutes, closeTo(24, 1e-9));
+    expect(
+      plus.baselineOsdMinutes! +
+          plus.appliedDebtMinutes! +
+          plus.strainBonusMinutes! -
+          plus.napCreditMinutes! +
+          plus.needClamp!.adjustmentMinutes,
+      plus.needMinutes,
+    );
+  });
+
+  test('whole-minute strain bonus does not erase zero debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 0,
+      needMinutes: 442.5,
+      strainBonus: 23,
+      napCredit: 0,
+    );
+    expect(plus.appliedDebtMinutes, 0);
+    expect(plus.needClamp, isNull);
+  });
+
+  test('sub-minute strain effect does not invent debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 0,
+      needMinutes: 420 + 1 / 7,
+      strainBonus: 0,
+      napCredit: 0,
+    );
+    expect(plus.appliedDebtMinutes, 0);
+    expect(plus.needClamp, isNull);
   });
 
   test('check-in reads and writes yesterday’s caffeine on its journal day', () async {

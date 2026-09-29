@@ -830,19 +830,30 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final strainBonus = planned?.strainBonusMin;
     final napCredit = planned?.napCreditMin;
     double? appliedDebtMinutes;
+    G3SleepNeedClamp? needClamp;
     if (needMinutes != null &&
         baselineOsdMinutes != null &&
         debtHours != null &&
         strainBonus != null &&
         napCredit != null) {
-      // The coach stores applied strain/nap deltas but raw debt. Its final
-      // 6–11 h clamp can absorb part of debt, so project only the residual
-      // that reconciles with the published need. Refuse inconsistent inputs.
+      // Strain and nap adjustments are stored as rounded whole minutes.
+      // Debt remains raw, and the final need may hit the coach's 6–11 h limit.
       final residual =
           needMinutes - baselineOsdMinutes - strainBonus + napCredit;
       final rawPositiveDebt = debtHours < 0 ? 0.0 : debtHours * 60;
-      if (residual >= -1e-6 && residual <= rawPositiveDebt + 1e-6) {
-        appliedDebtMinutes = residual < 0 ? 0 : residual;
+      final unbounded =
+          baselineOsdMinutes + rawPositiveDebt + strainBonus - napCredit;
+      const rounding = 0.500001;
+      if ((needMinutes - 360).abs() < 1e-6 && unbounded < 360 - rounding) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = G3SleepNeedClamp(360, needMinutes - unbounded);
+      } else if ((needMinutes - 660).abs() < 1e-6 &&
+          unbounded > 660 + rounding) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = G3SleepNeedClamp(660, needMinutes - unbounded);
+      } else if (residual >= -rounding &&
+          residual <= rawPositiveDebt + rounding) {
+        appliedDebtMinutes = residual.clamp(0.0, rawPositiveDebt).toDouble();
       }
     }
     return G3SleepPlus(
@@ -857,6 +868,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       goalMinutes: goal?.toDouble(),
       baselineOsdMinutes: baselineOsdMinutes,
       appliedDebtMinutes: appliedDebtMinutes,
+      needClamp: needClamp,
       strainBonusMinutes: planned?.strainBonusMin,
       napCreditMinutes: planned?.napCreditMin,
       napsJudged: planned == null ? null : planned.napCreditMin != null,
