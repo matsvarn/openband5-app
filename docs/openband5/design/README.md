@@ -1,6 +1,6 @@
 # Designbrücke · Paper → Flutter
 
-Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**). Die aktuelle Richtung ist **G2 · Gerät**, Alternative A mit Messleisten, auf den Seiten **G2 · Gerät · Screens** und **G2 · Gerät · Dunkel**. **Release · Alpin 3** und **Bausteine · Release · Alpin 3** halten die vorherige Release-Stufe fest. Designphase 2 bleibt eingefroren.
+Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**). Die aktuelle Richtung ist **G3 · Tagesblatt** (Seiten `Bausteine · G3` und `G3 · …`); sie baut auf **G2 · Gerät**, Alternative A mit Messleisten, auf den Seiten **G2 · Gerät · Screens** und **G2 · Gerät · Dunkel**. **Release · Alpin 3** und **Bausteine · Release · Alpin 3** halten die vorherige Release-Stufe fest. Designphase 2 bleibt eingefroren.
 
 ## Dateien
 
@@ -27,6 +27,7 @@ Screens sind Spezifikation für Komposition, Inhalt und Zustände. Für das Auss
 
 ```bash
 python3 tool/gen_alp_tokens.py        # schreibt lib/openband/alp_tokens.dart
+~/.local/share/flutter/3.41.6/bin/dart format lib/openband/alp_tokens.dart
 python3 tool/check_design_manifest.py # prüft blocks.json
 ~/.local/share/flutter/3.41.6/bin/flutter analyze --no-pub lib/openband/alp_tokens.dart
 ```

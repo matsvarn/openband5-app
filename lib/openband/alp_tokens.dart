@@ -1,5 +1,5 @@
 // GENERATED from docs/openband5/design/tokens.json
-// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash a96ee6a1).
+// (Paper file 01M2TRX5GZKAXKTSXK7D34E8AY, hash 7aa43eab).
 // Do not edit; run tool/gen_alp_tokens.py.
 import 'dart:ui';
 
@@ -181,6 +181,24 @@ abstract final class AlpColor {
   /// G2 Gerät: Status-LED, verbunden.
   static const Color led = Color(0xFF2FB344);
 
+  /// Verdict: outside your normal range on the good side. Delta text (4.8:1 on card).
+  static const Color better = Color(0xFF1E7D34);
+
+  /// Verdict: today's marker (knob, newest bar) on the good side.
+  static const Color betterMark = Color(0xFF2FB344);
+
+  /// Verdict: outside your normal range on the bad side. Delta text (4.8:1 on card).
+  static const Color worse = Color(0xFFA15C00);
+
+  /// Verdict: today's marker on the bad side.
+  static const Color worseMark = Color(0xFFE39A2D);
+
+  /// Dark: verdict good side, text and marker.
+  static const Color darkBetter = Color(0xFF3DDC5A);
+
+  /// Dark: verdict bad side, text and marker.
+  static const Color darkWorse = Color(0xFFF0A43A);
+
   /// G2 Gerät: Signal-Orange.
   static const Color signal = Color(0xFFFF5A1A);
 
@@ -193,23 +211,167 @@ abstract final class AlpColor {
   /// G2 Gerät dunkel: Signal-Orange.
   static const Color darkSignal = Color(0xFFFF6A2E);
 
-  /// Verdict: outside your normal range on the good side. Delta text.
-  static const Color better = Color(0xFF1E7D34);
+  /// G3 Tagesblatt: G3: zweite Tintenstufe für Fließtext und Meta.
+  static const Color ink2 = Color(0xFF3D3D3A);
 
-  /// Verdict: today's marker (knob, newest bar) on the good side.
-  static const Color betterMark = Color(0xFF2FB344);
+  /// G3 Tagesblatt: G3: persönlicher Normalbereich auf Skalen.
+  static const Color band = Color(0xFFC4C4BE);
 
-  /// Verdict: outside your normal range on the bad side. Delta text.
-  static const Color worse = Color(0xFFA15C00);
+  /// G3 Tagesblatt: G3: Skalenspur, in die Karte gedrückt.
+  static const Color track = Color(0xFFE3E3DF);
 
-  /// Verdict: today's marker on the bad side.
-  static const Color worseMark = Color(0xFFE39A2D);
+  /// G3 Tagesblatt: G3: neutrale Chip-Fläche (Delta, Tag).
+  static const Color chip = Color(0xFFE3E3DF);
 
-  /// Dark: verdict good side, text and marker.
-  static const Color darkBetter = Color(0xFF3DDC5A);
+  /// G3 Tagesblatt: G3: Haarlinie auf der Seite (Grundlinie, Kopf).
+  static const Color hairline = Color(0xFFD2D2CC);
 
-  /// Dark: verdict bad side, text and marker.
-  static const Color darkWorse = Color(0xFFF0A43A);
+  /// G3 Tagesblatt: G3: Säule für vergangene Tage.
+  static const Color bar = Color(0xFFB4B4AE);
+
+  /// G3 Tagesblatt: G3: besser, Chip-Fläche.
+  static const Color betterTint = Color(0xFFDCEBD9);
+
+  /// G3 Tagesblatt: G3: schlechter, Chip-Fläche.
+  static const Color worseTint = Color(0xFFF3E4CB);
+
+  /// G3 Tagesblatt: G3: Fläche der Für-heute-Notiz, einzige gefüllte Fläche.
+  static const Color note = Color(0xFF1B1B1A);
+
+  /// G3 Tagesblatt: G3: Handlungszeile in der Notiz.
+  static const Color noteInset = Color(0xFF0B0B0A);
+
+  /// G3 Tagesblatt: G3: Text auf der Notiz.
+  static const Color noteInk = Color(0xFFF5F5F2);
+
+  /// G3 Tagesblatt: G3: Begründung auf der Notiz.
+  static const Color noteInk2 = Color(0xFFCFCFCA);
+
+  /// G3 Tagesblatt: G3: Beschriftung auf der Notiz.
+  static const Color noteMuted = Color(0xFFA3A39D);
+
+  /// G3 Tagesblatt: G3: Taste auf der Notiz.
+  static const Color noteAction = Color(0xFFF5F5F2);
+
+  /// G3 Tagesblatt: G3: Zone 1, graue Rampe.
+  static const Color zone1 = Color(0xFFD2D2CC);
+
+  /// G3 Tagesblatt: G3: Zone 2.
+  static const Color zone2 = Color(0xFFB4B4AE);
+
+  /// G3 Tagesblatt: G3: Zone 3.
+  static const Color zone3 = Color(0xFF8A8A84);
+
+  /// G3 Tagesblatt: G3: Zone 4.
+  static const Color zone4 = Color(0xFF55554F);
+
+  /// G3 Tagesblatt: G3: Zone 5.
+  static const Color zone5 = Color(0xFF1B1B1A);
+
+  /// G3 Tagesblatt: G3: Zonenband 1 im Pulsdiagramm.
+  static const Color zoneTint1 = Color(0xFFEEEEEA);
+
+  /// G3 Tagesblatt: G3: Zonenband 2.
+  static const Color zoneTint2 = Color(0xFFE8E8E3);
+
+  /// G3 Tagesblatt: G3: Zonenband 3.
+  static const Color zoneTint3 = Color(0xFFE1E1DB);
+
+  /// G3 Tagesblatt: G3: Zonenband 4.
+  static const Color zoneTint4 = Color(0xFFD8D8D2);
+
+  /// G3 Tagesblatt: G3: Zonenband 5.
+  static const Color zoneTint5 = Color(0xFFCDCDC7);
+
+  /// G3 Tagesblatt: G3: Spur einer Schlafphase im Hypnogramm.
+  static const Color hypnoLane = Color(0xFFEDEDE9);
+
+  /// G3 Tagesblatt: G3 dunkel: zweite Tintenstufe für Fließtext und Meta.
+  static const Color darkInk2 = Color(0xFFCFCFCA);
+
+  /// G3 Tagesblatt: G3 dunkel: persönlicher Normalbereich auf Skalen.
+  static const Color darkBand = Color(0xFF4A4A45);
+
+  /// G3 Tagesblatt: G3 dunkel: Skalenspur, in die Karte gedrückt.
+  static const Color darkTrack = Color(0xFF121211);
+
+  /// G3 Tagesblatt: G3 dunkel: neutrale Chip-Fläche (Delta, Tag).
+  static const Color darkChip = Color(0xFF2E2E2B);
+
+  /// G3 Tagesblatt: G3 dunkel: Haarlinie auf der Seite (Grundlinie, Kopf).
+  static const Color darkHairline = Color(0xFF2E2E2B);
+
+  /// G3 Tagesblatt: G3 dunkel: Säule für vergangene Tage.
+  static const Color darkBar = Color(0xFF55554F);
+
+  /// G3 Tagesblatt: G3 dunkel: besser als dein Normalbereich (Marke).
+  static const Color darkBetterMark = Color(0xFF45C865);
+
+  /// G3 Tagesblatt: G3 dunkel: besser, kleiner Text.
+  static const Color darkBetterText = Color(0xFF6BD983);
+
+  /// G3 Tagesblatt: G3 dunkel: besser, Chip-Fläche.
+  static const Color darkBetterTint = Color(0xFF1C3322);
+
+  /// G3 Tagesblatt: G3 dunkel: schlechter als dein Normalbereich (Marke).
+  static const Color darkWorseMark = Color(0xFFF0A640);
+
+  /// G3 Tagesblatt: G3 dunkel: schlechter, kleiner Text.
+  static const Color darkWorseText = Color(0xFFF2B35E);
+
+  /// G3 Tagesblatt: G3 dunkel: schlechter, Chip-Fläche.
+  static const Color darkWorseTint = Color(0xFF3A2C17);
+
+  /// G3 Tagesblatt: G3 dunkel: Fläche der Für-heute-Notiz, einzige gefüllte Fläche.
+  static const Color darkNote = Color(0xFF2A2A27);
+
+  /// G3 Tagesblatt: G3 dunkel: Handlungszeile in der Notiz.
+  static const Color darkNoteInset = Color(0xFF161615);
+
+  /// G3 Tagesblatt: G3 dunkel: Text auf der Notiz.
+  static const Color darkNoteInk = Color(0xFFF5F5F2);
+
+  /// G3 Tagesblatt: G3 dunkel: Begründung auf der Notiz.
+  static const Color darkNoteInk2 = Color(0xFFCFCFCA);
+
+  /// G3 Tagesblatt: G3 dunkel: Beschriftung auf der Notiz.
+  static const Color darkNoteMuted = Color(0xFFA3A39D);
+
+  /// G3 Tagesblatt: G3 dunkel: Taste auf der Notiz.
+  static const Color darkNoteAction = Color(0xFFEDEDE9);
+
+  /// G3 Tagesblatt: G3 dunkel: Zone 1, graue Rampe.
+  static const Color darkZone1 = Color(0xFF3A3A36);
+
+  /// G3 Tagesblatt: G3 dunkel: Zone 2.
+  static const Color darkZone2 = Color(0xFF55554F);
+
+  /// G3 Tagesblatt: G3 dunkel: Zone 3.
+  static const Color darkZone3 = Color(0xFF7C7C76);
+
+  /// G3 Tagesblatt: G3 dunkel: Zone 4.
+  static const Color darkZone4 = Color(0xFFAEAEA9);
+
+  /// G3 Tagesblatt: G3 dunkel: Zone 5.
+  static const Color darkZone5 = Color(0xFFEDEDE9);
+
+  /// G3 Tagesblatt: G3 dunkel: Zonenband 1 im Pulsdiagramm.
+  static const Color darkZoneTint1 = Color(0xFF262624);
+
+  /// G3 Tagesblatt: G3 dunkel: Zonenband 2.
+  static const Color darkZoneTint2 = Color(0xFF2B2B28);
+
+  /// G3 Tagesblatt: G3 dunkel: Zonenband 3.
+  static const Color darkZoneTint3 = Color(0xFF31312E);
+
+  /// G3 Tagesblatt: G3 dunkel: Zonenband 4.
+  static const Color darkZoneTint4 = Color(0xFF393935);
+
+  /// G3 Tagesblatt: G3 dunkel: Zonenband 5.
+  static const Color darkZoneTint5 = Color(0xFF44443F);
+
+  /// G3 Tagesblatt: G3 dunkel: Spur einer Schlafphase im Hypnogramm.
+  static const Color darkHypnoLane = Color(0xFF262624);
 }
 
 abstract final class AlpText {
@@ -223,6 +385,18 @@ abstract final class AlpText {
   static const double value = 34;
   static const double gauge = 60;
   static const double hero = 64;
+
+  /// G3 Tagesblatt: note-title
+  static const double noteTitle = 21;
+
+  /// G3 Tagesblatt: metric
+  static const double metric = 36;
+
+  /// G3 Tagesblatt: figure
+  static const double figure = 44;
+
+  /// G3 Tagesblatt: lead
+  static const double lead = 92;
 }
 
 abstract final class AlpSpace {
@@ -244,6 +418,22 @@ abstract final class AlpRadius {
   static const double row = 14;
   static const double card = 18;
   static const double pill = 60;
+
+  /// G3 Tagesblatt: hero
+  static const double hero = 22;
+
+  /// G3 Tagesblatt: tabbar
+  static const double tabbar = 32;
+}
+
+abstract final class AlpLeading {
+  /// G3 Tagesblatt: lead
+  static const double lead = 84;
+}
+
+abstract final class AlpTracking {
+  /// G3 Tagesblatt: lead
+  static const double lead = -0.045;
 }
 
 abstract final class AlpFont {
