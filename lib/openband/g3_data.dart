@@ -52,10 +52,9 @@ class BandTimeInterval {
   final DateTime end;
 }
 
-/// Last 24 hours of retained primary-band 1 Hz rows. Each recorded second is
-/// observed wear under the engine's record-presence definition. Coverage is the
-/// share of seconds actually stored, not a claim that missing seconds were off
-/// wrist. Wrist-off spans come only from the band's stored toggle events.
+/// Last 24 hours of retained primary-band 1 Hz rows. Recorded seconds and
+/// stored wrist-toggle intervals are separate observations. Neither is the
+/// engine's gap-absorbing wear coverage over this window.
 class BandCoverage {
   const BandCoverage({
     required this.start,
@@ -70,6 +69,8 @@ class BandCoverage {
 
   /// Null when there is no retained 1 Hz substrate in this window.
   final int? recordedSeconds;
+
+  /// Null until this projection uses the engine's on-run definition.
   final double? coveragePercent;
 
   /// Null when no wrist-state event establishes a state for the window.
@@ -348,11 +349,14 @@ class G3RegularityDetail {
 
 class G3SocialJetlagDetail {
   const G3SocialJetlagDetail({
+    this.signedHours,
     this.midSleepWorkHours,
     this.midSleepFreeHours,
     this.workNights,
     this.freeNights,
   });
+  /// Stored shortest-arc free-day minus work-day midpoint; positive is later.
+  final double? signedHours;
   final double? midSleepWorkHours, midSleepFreeHours;
   final int? workNights, freeNights;
 }
@@ -390,7 +394,8 @@ class G3SleepPlus {
   /// Stored OSD clamped to the coach's 7–9.5 h baseline interval.
   final double? baselineOsdMinutes;
 
-  /// Positive part of stored sleep debt. The final need is clamped separately.
+  /// Residual debt visible in the clamped need after stored strain and nap
+  /// adjustments. Null if the stored terms cannot reconcile honestly.
   final double? appliedDebtMinutes;
 
   /// Adjustments actually applied by the stored coach after its clamp.

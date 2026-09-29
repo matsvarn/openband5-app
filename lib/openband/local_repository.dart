@@ -216,9 +216,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
               start: at(fromSec),
               end: at(nowSec),
               recordedSeconds: seconds == 0 ? null : seconds,
-              coveragePercent: seconds == 0
-                  ? null
-                  : 100 * seconds / const Duration(hours: 24).inSeconds,
+              coveragePercent: null,
               wristOffIntervals: wristOff == null
                   ? null
                   : [
@@ -760,6 +758,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final work = value['n_work'];
     final free = value['n_free'];
     return G3SocialJetlagDetail(
+      signedHours: _double(value['sjl_hours']),
       midSleepWorkHours: _double(value['mid_sleep_work_h']),
       midSleepFreeHours: _double(value['mid_sleep_free_h']),
       workNights: work is int && work >= 0 ? work : null,
@@ -822,6 +821,30 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final goal = (await readSleepGoal(day)).targetMinutes;
     final osdHours = planned == null ? null : debt.freeNightP75Hours;
     final debtHours = planned == null ? null : debt.debtHours;
+    final needMinutes = planned?.needSeconds == null
+        ? null
+        : planned!.needSeconds / 60;
+    final baselineOsdMinutes = osdHours == null
+        ? null
+        : osdHours.clamp(7.0, 9.5).toDouble() * 60;
+    final strainBonus = planned?.strainBonusMin;
+    final napCredit = planned?.napCreditMin;
+    double? appliedDebtMinutes;
+    if (needMinutes != null &&
+        baselineOsdMinutes != null &&
+        debtHours != null &&
+        strainBonus != null &&
+        napCredit != null) {
+      // The coach stores applied strain/nap deltas but raw debt. Its final
+      // 6–11 h clamp can absorb part of debt, so project only the residual
+      // that reconciles with the published need. Refuse inconsistent inputs.
+      final residual =
+          needMinutes - baselineOsdMinutes - strainBonus + napCredit;
+      final rawPositiveDebt = debtHours < 0 ? 0.0 : debtHours * 60;
+      if (residual >= -1e-6 && residual <= rawPositiveDebt + 1e-6) {
+        appliedDebtMinutes = residual < 0 ? 0 : residual;
+      }
+    }
     return G3SleepPlus(
       regularity: gatedRegularity,
       socialJetlag: social,
@@ -830,16 +853,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
       socialJetlagDetail: _g3SocialJetlagDetail(source),
       bedtime: time(planned?.bedtimeMinuteOfDay, day),
       wake: time(planned?.wakeMinuteOfDay, sleepPlanWakeDay(day)),
-      needMinutes: planned?.needSeconds == null
-          ? null
-          : planned!.needSeconds / 60,
+      needMinutes: needMinutes,
       goalMinutes: goal?.toDouble(),
-      baselineOsdMinutes: osdHours == null
-          ? null
-          : osdHours.clamp(7.0, 9.5).toDouble() * 60,
-      appliedDebtMinutes: debtHours == null
-          ? null
-          : (debtHours < 0 ? 0.0 : debtHours) * 60,
+      baselineOsdMinutes: baselineOsdMinutes,
+      appliedDebtMinutes: appliedDebtMinutes,
       strainBonusMinutes: planned?.strainBonusMin,
       napCreditMinutes: planned?.napCreditMin,
       napsJudged: planned == null ? null : planned.napCreditMin != null,

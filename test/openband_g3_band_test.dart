@@ -97,7 +97,7 @@ void main() {
       expect(result.backlog!.heldPages, 5);
       expect(result.backlog!.unreadPages, 3);
       expect(result.coverage!.recordedSeconds, 2);
-      expect(result.coverage!.coveragePercent, closeTo(200 / 86400, .00001));
+      expect(result.coverage!.coveragePercent, isNull);
       expect(result.coverage!.wristOffIntervals, isNull);
       expect(result.battery!.percent, 67);
       expect(result.battery!.charging, false);
@@ -116,6 +116,7 @@ void main() {
         });
       }
       result = await repo.readBandDiagnostics();
+      expect(result.coverage!.coveragePercent, isNull);
       expect(result.coverage!.wristOffIntervals, hasLength(1));
       expect(
         result.coverage!.wristOffIntervals!.single.start,

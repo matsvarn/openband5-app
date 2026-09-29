@@ -25,13 +25,14 @@ void main() {
     final repo = _repo(SyntheticScenario.g3Sample);
     final today = await repo.readDay(day);
     expect(today.recovery.value, 74);
+    expect(today.recovery.baseline, 68);
     expect(
       today.recovery.baseline! - 1.253 * today.recovery.baselineSpread!,
       58,
     );
     expect(
       today.recovery.baseline! + 1.253 * today.recovery.baselineSpread!,
-      80,
+      78,
     );
     expect(today.sleep.duration.value, 438);
     expect(today.sleep.bedMinutes, 464);
@@ -81,7 +82,7 @@ void main() {
     expect(range.status.phase, BaselinePhase.trusted);
     expect(
       [range.range!.low, range.range!.median, range.range!.high],
-      [58, 68, 80],
+      [58, 68, 78],
     );
     final recovery = await repo.readWeekStrip(G3Metric.recovery, day);
     expect(recovery.days.map((d) => d.value), [66, 55, 62, 71, 49, 63, 74]);
@@ -327,6 +328,11 @@ void main() {
     'missing generic fixture never gains a range or invented steps',
     () async {
       final repo = _repo(SyntheticScenario.missing);
+      final sleepPlus = await repo.readSleepPlus(
+        '2026-09-15',
+        now: DateTime(2026, 9, 15, 12),
+      );
+      expect(sleepPlus.sleepDebt.refusalNote, isNull);
       final trend = await repo.readTrend(G3Metric.steps, '2026-09-15', 7);
       expect(trend.valueCount, 0);
       expect(trend.insufficient, 7);

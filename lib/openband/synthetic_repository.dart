@@ -451,7 +451,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     ),
     recovery: _g3Building
         ? const DayMetric.missing()
-        : const DayMetric(74, baseline: 69, baselineSpread: 11 / 1.253),
+        : const DayMetric(74, baseline: 68, baselineSpread: 10 / 1.253),
     strain: const DayMetric(9.4),
     hrv: DayMetric(
       48,
@@ -496,7 +496,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         );
       }
       final range = switch (metric) {
-        G3Metric.recovery => const PersonalRange(58, 80, 68),
+        G3Metric.recovery => const PersonalRange(58, 78, 68),
         G3Metric.hrv => const PersonalRange(38, 52, 45),
         G3Metric.rhr => const PersonalRange(52, 58, 55),
         _ => null,
@@ -739,11 +739,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         typicalEfficiency: plan == null ? null : .94,
       );
     }
-    final plan = await readSleepPlan(day, now: now);
     return G3SleepPlus(
       regularity: const G3AvailableValue(null),
       socialJetlag: const G3AvailableValue(null),
-      sleepDebt: G3SleepDebt(refusalNote: plan.issue?.name),
+      sleepDebt: const G3SleepDebt(),
       bedtime: null,
       wake: null,
     );

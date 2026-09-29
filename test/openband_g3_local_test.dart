@@ -511,6 +511,7 @@ void main() {
         },
         'social_jetlag': {
           'value': {
+            'sjl_hours': 1.5,
             'abs_hours': 1.5,
             'mid_sleep_work_h': 3.25,
             'mid_sleep_free_h': 4.75,
@@ -539,6 +540,7 @@ void main() {
       expect(plus.regularityDetail!.pairs!.single.sri, 76.5);
       expect(plus.regularityDetail!.pairs!.single.cases, 800);
       expect(plus.socialJetlag.value, 1.5);
+      expect(plus.socialJetlagDetail!.signedHours, 1.5);
       expect(plus.socialJetlagDetail!.midSleepWorkHours, 3.25);
       expect(plus.socialJetlagDetail!.midSleepFreeHours, 4.75);
       expect(plus.socialJetlagDetail!.workNights, 5);
@@ -550,6 +552,29 @@ void main() {
       var load = await repo.readWeeklyLoad(day);
       expect(load.ctl, 12);
       expect(load.atl, 19);
+
+      final earlierFreeDays = artifact(day);
+      earlierFreeDays['social_jetlag'] = {
+        'value': {
+          'sjl_hours': -1.5,
+          'abs_hours': 1.5,
+          'mid_sleep_work_h': 3.25,
+          'mid_sleep_free_h': 1.75,
+          'n_work': 5,
+          'n_free': 2,
+        },
+      };
+      await LocalDb.putBaseline('crossday', jsonEncode(earlierFreeDays));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.socialJetlag.value, 1.5);
+      expect(plus.socialJetlagDetail!.signedHours, -1.5);
+
+      final noSignedValue = artifact(day);
+      (noSignedValue['social_jetlag']['value'] as Map).remove('sjl_hours');
+      await LocalDb.putBaseline('crossday', jsonEncode(noSignedValue));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.socialJetlag.value, 1.5);
+      expect(plus.socialJetlagDetail!.signedHours, isNull);
 
       final withoutFreeNight = artifact(day);
       withoutFreeNight['sleep_debt'] = {
@@ -626,6 +651,13 @@ void main() {
           'built_for_day': day,
           'algo_version': kAlgoVersion,
           'built_at_epoch': built.millisecondsSinceEpoch ~/ 1000,
+          'sleep_debt': {
+            'value': {
+              'osd_hours': 455 / 60,
+              'debt_hours': 10 / 60,
+              'has_free_night': true,
+            },
+          },
           'sleep_coach': {
             'need': {
               'value': {'need_sec': 485 * 60},
@@ -647,7 +679,7 @@ void main() {
       );
       expect(plus.goalMinutes, 465);
       expect(plus.needMinutes, 485);
-      expect(plus.baselineOsdMinutes, isNull);
+      expect(plus.baselineOsdMinutes, closeTo(455, 1e-9));
       expect(plus.appliedDebtMinutes, isNull);
       expect(plus.strainBonusMinutes, 20);
       expect(plus.napCreditMinutes, isNull);
@@ -731,6 +763,83 @@ void main() {
     plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
     expect(plus.baselineOsdMinutes, 420);
     expect(plus.appliedDebtMinutes, 0);
+
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': 9.5,
+            'debt_hours': 2,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': 660 * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 20 * 60},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 7 * 60 + 42},
+          },
+          'strain_bonus_min': 0,
+          'nap_credit_min': 0,
+        },
+      }),
+    );
+    plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+    expect(plus.needMinutes, 660);
+    expect(plus.sleepDebt.debtHours, 2); // Raw evidence remains available.
+    expect(plus.baselineOsdMinutes, 570);
+    expect(plus.appliedDebtMinutes, 90);
+    expect(
+      plus.baselineOsdMinutes! + plus.appliedDebtMinutes! +
+          plus.strainBonusMinutes! - plus.napCreditMinutes!,
+      plus.needMinutes,
+    );
+
+    // At the 6 h floor the independently applied strain/nap deltas cannot
+    // allocate the clamp to debt without overstating the stored 10 minutes.
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': 7,
+            'debt_hours': 10 / 60,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': 360 * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 23 * 60},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 5 * 60 + 23},
+          },
+          'strain_bonus_min': 0,
+          'nap_credit_min': 115,
+        },
+      }),
+    );
+    plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+    expect(plus.needMinutes, 360);
+    expect(plus.baselineOsdMinutes, 420);
+    expect(plus.sleepDebt.debtHours, closeTo(10 / 60, 1e-9));
+    expect(plus.appliedDebtMinutes, isNull);
   });
 
   test('check-in reads and writes yesterday’s caffeine on its journal day', () async {
