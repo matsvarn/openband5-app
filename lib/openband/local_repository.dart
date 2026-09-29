@@ -849,7 +849,12 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<G3CheckIn> readCheckIn(String day) async {
     _requireDay(day);
-    return g3CheckInFromSnapshot(await readJournalDay(day));
+    final previous = g3DaysEnding(day, 2).first;
+    final snapshots = await Future.wait([
+      readJournalDay(day),
+      readJournalDay(previous),
+    ]);
+    return g3CheckInFromSnapshots(snapshots[0], snapshots[1]);
   }
 
   @override
@@ -858,7 +863,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     String key,
     G3CheckInAnswer answer,
   ) async {
-    final snapshot = await readJournalDay(day);
+    final snapshot = await readJournalDay(g3CheckInTargetDay(day, key));
     await patchJournalDay(g3CheckInPatch(snapshot, key, answer));
   }
 
@@ -2340,16 +2345,19 @@ class LocalOpenBandRepository implements OpenBandRepository {
       }
     }
 
-    final journal = <Map<String, Object>>[
-      for (final d in days)
-        if (caffeineByDay[d] case final v?)
+    // These are exactly the lag-1 pairs supplied to analytics. Count the
+    // sides from this list as the producer omits split counts on refusals.
+    final pairedJournal = <Map<String, Object>>[
+      for (var i = 0; i + 1 < days.length; i++)
+        if (outcomes[i + 1] != null)
+        if (caffeineByDay[days[i]] case final v?)
           {
-            'date': d,
+            'date': days[i],
             'values': {CaffeineSleepPattern.field: v},
           },
     ];
 
-    if (journal.isEmpty || availableOutcomes == 0) {
+    if (pairedJournal.isEmpty || availableOutcomes == 0) {
       return CaffeineSleepPattern.fromProducer(
         empty: true,
         binary: false,
@@ -2368,15 +2376,14 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final produced = await Isolate.run(
       () => _caffeineSleepCorrelate({
         'dates': days,
-        'journal': journal,
+        'journal': pairedJournal,
         'sol': outcomes,
       }),
     );
     var yesNights = 0;
     var noNights = 0;
-    for (var i = 0; i + 1 < days.length; i++) {
-      if (outcomes[i + 1] == null) continue;
-      final answer = caffeineByDay[days[i]];
+    for (final row in pairedJournal) {
+      final answer = (row['values'] as Map)[CaffeineSleepPattern.field];
       if (answer == 1.0) yesNights++;
       if (answer == 0.0) noNights++;
     }

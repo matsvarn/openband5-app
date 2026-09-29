@@ -2300,8 +2300,13 @@ abstract interface class OpenBandRepository {
   Future<void> dismissSuggestion(String id);
   Future<G3WeeklyLoad> readWeeklyLoad(String endDay);
   Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now});
+
+  /// [day] is the selected check-in day; each question reports its journal day.
   Future<G3CheckIn> readCheckIn(String day);
+
+  /// Patches the question's journal day, which can be yesterday.
   Future<void> answerCheckIn(String day, String key, G3CheckInAnswer answer);
+
   /// Latest retained canonical band second in this local day, if any.
   Future<DateTime?> readLastBandSampleAt(String day);
   Future<G3JournalPattern> readJournalPattern(String endDay, int nights);
