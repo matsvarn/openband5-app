@@ -25,6 +25,7 @@ struct OpenStrapWidgetAttributes: ActivityAttributes {
     var zoneBasis: String?
     var zoneBasisBpm: Int?
     var elapsedSeconds: Int?
+    var paused: Bool?
     var strain: Double?
   }
   var sessionName: String
@@ -67,6 +68,7 @@ enum LiveActivityBridge {
       zoneBasis: a["zoneBasis"] as? String,
       zoneBasisBpm: iOpt(a, "zoneBasisBpm"),
       elapsedSeconds: iOpt(a, "elapsedSeconds"),
+      paused: (a["paused"] as? NSNumber)?.boolValue,
       strain: dblOpt(a, "strain"))
   }
 

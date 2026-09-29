@@ -34,6 +34,7 @@ class LiveActivity {
     'zoneBasis': null,
     'zoneBasisBpm': null,
     'elapsedSeconds': 0,
+    'paused': false,
     'strain': null,
   };
 
@@ -47,17 +48,20 @@ class LiveActivity {
     required String? zoneBasis,
     required int? zoneBasisBpm,
     required Duration elapsed,
+    bool paused = false,
     required double? strain,
     DateTime? now,
   }) {
     final at = now ?? DateTime.now();
     final fresh =
+        !paused &&
         signal == LiveSignal.live &&
         hr != null &&
         hr > 0 &&
         hrSampleAt != null &&
         !hrSampleAt.isAfter(at) &&
         at.difference(hrSampleAt) <= hrMaxAge;
+    final hasBasis = zoneBasis != null && zoneBasisBpm != null;
     final validZone =
         fresh &&
         zone != null &&
@@ -65,12 +69,13 @@ class LiveActivity {
         zone <= 5 &&
         zoneLowPct != null &&
         zoneHighPct != null &&
-        zoneBasis != null &&
-        zoneBasisBpm != null;
+        hasBasis;
     return {
       'hr': fresh ? hr : null,
       'hrSampleAtMs': fresh ? hrSampleAt.millisecondsSinceEpoch : null,
-      'signal': fresh
+      'signal': paused
+          ? LiveSignal.none.name
+          : fresh
           ? LiveSignal.live.name
           : (signal == LiveSignal.none
                 ? LiveSignal.none.name
@@ -78,9 +83,10 @@ class LiveActivity {
       'zone': validZone ? zone : null,
       'zoneLowPct': validZone ? zoneLowPct : null,
       'zoneHighPct': validZone ? zoneHighPct : null,
-      'zoneBasis': validZone ? zoneBasis : null,
-      'zoneBasisBpm': validZone ? zoneBasisBpm : null,
+      'zoneBasis': hasBasis ? zoneBasis : null,
+      'zoneBasisBpm': hasBasis ? zoneBasisBpm : null,
       'elapsedSeconds': elapsed.inSeconds < 0 ? 0 : elapsed.inSeconds,
+      'paused': paused,
       'strain': strain,
     };
   }
@@ -110,6 +116,7 @@ class LiveActivity {
     required String? zoneBasis,
     required int? zoneBasisBpm,
     required Duration elapsed,
+    bool paused = false,
     required double? strain,
   }) async {
     try {
@@ -125,6 +132,7 @@ class LiveActivity {
           zoneBasis: zoneBasis,
           zoneBasisBpm: zoneBasisBpm,
           elapsed: elapsed,
+          paused: paused,
           strain: strain,
         ),
       );

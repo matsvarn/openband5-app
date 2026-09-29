@@ -12,10 +12,14 @@ struct G3LiveData {
   let zoneBasis: String?
   let zoneBasisBpm: Int?
   let elapsedSeconds: Int?
+  let paused: Bool?
   let strain: Double?
 
   func hasLivePulse(at now: Date) -> Bool {
-    guard signal == "live", let hr, hr > 0, let hrSampleAt else { return false }
+    guard paused != true, let hr, hr > 0 else { return false }
+    // ActivityKit may restore a state written by the previous app version.
+    if signal == nil { return true }
+    guard signal == "live", let hrSampleAt else { return false }
     let age = now.timeIntervalSince(hrSampleAt)
     return age >= 0 && age <= 5
   }
@@ -23,6 +27,8 @@ struct G3LiveData {
     hasLivePulse(at: now) ? String(hr!) : "—"
   }
   func signalLabel(at now: Date) -> String {
+    if paused == true { return "Pausiert" }
+    if signal == nil { return "Signal nicht bestätigt" }
     if hasLivePulse(at: now) { return "Puls live" }
     return signal == "weak" || signal == "live" ? "Schwaches Signal" : "Kein Signal"
   }
@@ -37,7 +43,8 @@ struct G3LiveData {
     hasLivePulse(at: now) ? (zone ?? 0) : 0
   }
   func zoneLabel(at now: Date) -> String {
-    activeZone(at: now) > 0 ? "Zone \(activeZone(at: now))" : "Zone —"
+    if activeZone(at: now) > 0 { return "Zone \(activeZone(at: now))" }
+    return hasLivePulse(at: now) && zoneBasis != nil ? "unter Zone 1" : "Zone —"
   }
   func percent(at now: Date) -> String {
     guard activeZone(at: now) > 0, let zoneLowPct, let zoneHighPct,
@@ -48,13 +55,26 @@ struct G3LiveData {
     return "\(Int((zoneLowPct * 100).rounded()))–\(Int((zoneHighPct * 100).rounded())) \(unit)"
   }
   var basis: String {
-    guard let zoneBasis, let zoneBasisBpm else { return "Zonenbasis fehlt" }
+    guard let zoneBasis, let zoneBasisBpm else {
+      return signal == nil ? "Zonenbasis nicht bestätigt" : "Zonenbasis fehlt"
+    }
     switch zoneBasis {
     case "tanaka": return "HFmax \(zoneBasisBpm) · altersgeschätzt"
     case "observed": return "HFmax \(zoneBasisBpm) · beobachtet"
     case "karvonen": return "Pulsreserve · HFmax \(zoneBasisBpm) beobachtet"
     default: return "Zonenbasis fehlt"
     }
+  }
+}
+
+struct G3LiveDuration: View {
+  let data: G3LiveData
+  let size: CGFloat
+  var body: some View {
+    Group {
+      if data.paused == true { Text(data.elapsed) }
+      else { Text(data.startedAt, style: .timer) }
+    }.font(.system(size: size, weight: .bold).monospacedDigit())
   }
 }
 
@@ -100,8 +120,7 @@ struct G3LiveLockCard<End: View>: View {
             .font(.system(size: 11)).foregroundStyle(.secondary)
         }
         Spacer()
-        Text(data.elapsed)
-          .font(.system(size: 25, weight: .bold).monospacedDigit())
+        G3LiveDuration(data: data, size: 25)
       }
       HStack(alignment: .center, spacing: 12) {
         VStack(alignment: .leading, spacing: 0) {
@@ -141,8 +160,7 @@ struct G3LiveCompact: View {
     HStack(spacing: 8) {
       Text(data.pulse(at: now)).font(.system(size: 14, weight: .bold).monospacedDigit())
       Spacer()
-      Text(data.elapsed)
-        .font(.system(size: 13, weight: .bold).monospacedDigit())
+      G3LiveDuration(data: data, size: 13)
     }.foregroundStyle(.white).padding(.horizontal, 10).padding(.vertical, 6)
       .background(.black, in: Capsule())
   }
@@ -171,8 +189,7 @@ struct G3LiveExpanded<End: View>: View {
         Spacer()
         VStack(alignment: .trailing) {
           Text("Dauer").font(.system(size: 11)).foregroundStyle(.gray)
-          Text(data.elapsed)
-            .font(.system(size: 24, weight: .bold).monospacedDigit())
+          G3LiveDuration(data: data, size: 24)
         }
       }
       HStack {
