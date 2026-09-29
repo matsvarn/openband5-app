@@ -6,16 +6,19 @@ import WidgetKit
 // Codable shape mirrors ios/LiveActivityBridge.swift.
 struct OpenStrapWidgetAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
-    var hr: Int
-    var zone: Int
+    var hr: Int?
+    var hrSampleAt: Date?
+    var signal: String?
+    var zone: Int?
+    var zoneLowPct: Double?
+    var zoneHighPct: Double?
+    var zoneBasis: String?
+    var zoneBasisBpm: Int?
+    var elapsedSeconds: Int?
     var strain: Double?
-    var calories: Int?
-    var maxHr: Int
-    var rhr: Int
   }
   var sessionName: String
   var startedAt: Date
-  var targetKcal: Int
 }
 
 @available(iOSApplicationExtension 17.0, *)
@@ -34,19 +37,25 @@ private func displayData(_ context: ActivityViewContext<OpenStrapWidgetAttribute
   let state = context.state
   return G3LiveData(name: context.attributes.sessionName,
                     startedAt: context.attributes.startedAt,
-                    hr: state.hr, zone: state.zone, strain: state.strain,
-                    maxHr: state.maxHr, signal: "Signal nicht bestätigt")
+                    hr: state.hr, hrSampleAt: state.hrSampleAt,
+                    signal: state.signal, zone: state.zone,
+                    zoneLowPct: state.zoneLowPct, zoneHighPct: state.zoneHighPct,
+                    zoneBasis: state.zoneBasis, zoneBasisBpm: state.zoneBasisBpm,
+                    elapsedSeconds: state.elapsedSeconds, strain: state.strain)
 }
 
 struct OpenStrapWidgetLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: OpenStrapWidgetAttributes.self) { context in
-      G3LiveLockCard(data: displayData(context), end: Button(intent: EndSessionIntent()) {
-        Label("Beenden", systemImage: "stop")
-          .font(.system(size: 13, weight: .semibold))
-          .frame(minWidth: 44, minHeight: 44)
-          .padding(.horizontal, 8)
-      }.buttonStyle(.bordered))
+      TimelineView(.periodic(from: .now, by: 1)) { timeline in
+        G3LiveLockCard(data: displayData(context), now: timeline.date,
+                       end: Button(intent: EndSessionIntent()) {
+          Label("Beenden", systemImage: "stop")
+            .font(.system(size: 13, weight: .semibold))
+            .frame(minWidth: 44, minHeight: 44)
+            .padding(.horizontal, 8)
+        }.buttonStyle(.bordered))
+      }
     } dynamicIsland: { context in
       let data = displayData(context)
       return DynamicIsland {
@@ -57,18 +66,27 @@ struct OpenStrapWidgetLiveActivity: Widget {
           EmptyView()
         }
         DynamicIslandExpandedRegion(.bottom) {
-          G3LiveExpanded(data: data, end: Button(intent: EndSessionIntent()) {
-            Label("Beenden", systemImage: "stop")
-              .frame(minWidth: 44, minHeight: 44)
-          }.buttonStyle(.bordered))
+          TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            G3LiveExpanded(data: data, now: timeline.date,
+                           end: Button(intent: EndSessionIntent()) {
+              Label("Beenden", systemImage: "stop")
+                .frame(minWidth: 44, minHeight: 44)
+            }.buttonStyle(.bordered))
+          }
         }
       } compactLeading: {
-        Text(data.pulse).font(.system(size: 14, weight: .bold).monospacedDigit())
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+          Text(data.pulse(at: timeline.date))
+            .font(.system(size: 14, weight: .bold).monospacedDigit())
+        }
       } compactTrailing: {
-        Text(data.startedAt, style: .timer)
+        Text(data.elapsed)
           .font(.system(size: 13, weight: .bold).monospacedDigit())
       } minimal: {
-        Text(data.pulse).font(.system(size: 13, weight: .bold).monospacedDigit())
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+          Text(data.pulse(at: timeline.date))
+            .font(.system(size: 13, weight: .bold).monospacedDigit())
+        }
       }.keylineTint(.white)
     }
   }

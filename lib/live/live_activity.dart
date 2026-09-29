@@ -1,58 +1,133 @@
-// Live Activity bridge (iOS) — start/update/end the claymorphic workout Live
-// Activity on the lock screen + Dynamic Island. No-ops on Android / older iOS
-// (the MethodChannel simply isn't there → MissingPluginException, swallowed).
-
+// Workout Live Activity channel. Values absent from the live stream stay null.
 import 'package:flutter/services.dart';
+
+enum LiveSignal { live, weak, none }
 
 class LiveActivity {
   static const MethodChannel _ch = MethodChannel('openstrap/live_activity');
+  static const Duration hrMaxAge = Duration(seconds: 5);
   static bool _active = false;
 
   static bool get isActive => _active;
 
-  /// Start the activity for a session. [startedAt] drives the live timer.
-  static Future<void> start({
+  static String _sportName(String sport) => switch (sport) {
+    'running' || 'treadmill' || 'sprinting' => 'Lauf',
+    'walking' || 'dog_walking' => 'Gehen',
+    'cycling' || 'indoor_bike' || 'mountain_biking' => 'Radfahrt',
+    'weight_training' || 'powerlifting' || 'functional' => 'Krafttraining',
+    'other' => 'Aktivität',
+    _ => sport.replaceAll('_', ' '),
+  };
+
+  static Map<String, Object?> startPayload({
     required DateTime startedAt,
-    required int targetKcal,
-    required int maxHr,
-    required int rhr,
-    String name = 'Live session',
-  }) async {
-    try {
-      await _ch.invokeMethod('start', {
-        'name': name,
-        'startedAtMs': startedAt.millisecondsSinceEpoch,
-        'targetKcal': targetKcal,
-        // Null, not 0 — nothing has been measured at the moment the activity
-        // starts, and the widget renders an absent strain/kcal as "—".
-        'hr': 0, 'zone': 0, 'strain': null, 'calories': null,
-        'maxHr': maxHr, 'rhr': rhr,
-      });
-      _active = true;
-    } catch (_) {/* not iOS / not supported */}
+    required String sport,
+  }) => {
+    'name': _sportName(sport),
+    'startedAtMs': startedAt.millisecondsSinceEpoch,
+    'hr': null,
+    'hrSampleAtMs': null,
+    'signal': LiveSignal.none.name,
+    'zone': null,
+    'zoneLowPct': null,
+    'zoneHighPct': null,
+    'zoneBasis': null,
+    'zoneBasisBpm': null,
+    'elapsedSeconds': 0,
+    'strain': null,
+  };
+
+  static Map<String, Object?> updatePayload({
+    required int? hr,
+    required DateTime? hrSampleAt,
+    required LiveSignal signal,
+    required int? zone,
+    required double? zoneLowPct,
+    required double? zoneHighPct,
+    required String? zoneBasis,
+    required int? zoneBasisBpm,
+    required Duration elapsed,
+    required double? strain,
+    DateTime? now,
+  }) {
+    final at = now ?? DateTime.now();
+    final fresh =
+        signal == LiveSignal.live &&
+        hr != null &&
+        hr > 0 &&
+        hrSampleAt != null &&
+        !hrSampleAt.isAfter(at) &&
+        at.difference(hrSampleAt) <= hrMaxAge;
+    final validZone =
+        fresh &&
+        zone != null &&
+        zone >= 1 &&
+        zone <= 5 &&
+        zoneLowPct != null &&
+        zoneHighPct != null &&
+        zoneBasis != null &&
+        zoneBasisBpm != null;
+    return {
+      'hr': fresh ? hr : null,
+      'hrSampleAtMs': fresh ? hrSampleAt.millisecondsSinceEpoch : null,
+      'signal': fresh
+          ? LiveSignal.live.name
+          : (signal == LiveSignal.none
+                ? LiveSignal.none.name
+                : LiveSignal.weak.name),
+      'zone': validZone ? zone : null,
+      'zoneLowPct': validZone ? zoneLowPct : null,
+      'zoneHighPct': validZone ? zoneHighPct : null,
+      'zoneBasis': validZone ? zoneBasis : null,
+      'zoneBasisBpm': validZone ? zoneBasisBpm : null,
+      'elapsedSeconds': elapsed.inSeconds < 0 ? 0 : elapsed.inSeconds,
+      'strain': strain,
+    };
   }
 
-  /// Push a new content state. Caller should throttle (~every 3–5s).
-  ///
-  /// [strain] and [calories] are NULLABLE and must be passed through as null
-  /// when the session cannot be scored — a profile without the anchors Keytel
-  /// and Banister read, or a band that has not delivered a heart rate yet. They
-  /// were coerced to 0 here, so a new user's lock screen read a confident
-  /// "0 kcal" for a whole workout while the in-app gauge correctly read "—".
-  static Future<void> update({
-    required int hr,
-    required int zone,
-    required double? strain,
-    required int? calories,
-    required int maxHr,
-    required int rhr,
+  static Future<void> start({
+    required DateTime startedAt,
+    required String sport,
   }) async {
-    if (!_active) return;
     try {
-      await _ch.invokeMethod('update', {
-        'hr': hr, 'zone': zone, 'strain': strain, 'calories': calories,
-        'maxHr': maxHr, 'rhr': rhr,
-      });
+      await _ch.invokeMethod(
+        'start',
+        startPayload(startedAt: startedAt, sport: sport),
+      );
+      _active = true;
+    } catch (_) {
+      /* Unsupported platform. */
+    }
+  }
+
+  static Future<void> update({
+    required int? hr,
+    required DateTime? hrSampleAt,
+    required LiveSignal signal,
+    required int? zone,
+    required double? zoneLowPct,
+    required double? zoneHighPct,
+    required String? zoneBasis,
+    required int? zoneBasisBpm,
+    required Duration elapsed,
+    required double? strain,
+  }) async {
+    try {
+      await _ch.invokeMethod(
+        'update',
+        updatePayload(
+          hr: hr,
+          hrSampleAt: hrSampleAt,
+          signal: signal,
+          zone: zone,
+          zoneLowPct: zoneLowPct,
+          zoneHighPct: zoneHighPct,
+          zoneBasis: zoneBasis,
+          zoneBasisBpm: zoneBasisBpm,
+          elapsed: elapsed,
+          strain: strain,
+        ),
+      );
     } catch (_) {}
   }
 
