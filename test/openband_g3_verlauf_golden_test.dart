@@ -71,4 +71,36 @@ void main() {
       matchesGoldenFile('openband_goldens/g3-verlauf-recovery.png'),
     );
   }, tags: const ['golden']);
+
+  testWidgets('G3 HRV detail at 375 pt', (tester) async {
+    Map<String, dynamic> fixture(String name) => Map<String, dynamic>.from(
+      jsonDecode(
+            File('docs/openband5/assets/fixtures/$name').readAsStringSync(),
+          )
+          as Map,
+    );
+    final repo = SyntheticOpenBandRepository.fromMaps(
+      fixture('day-summary.json'),
+      fixture('sleep-detail.json'),
+      scenario: SyntheticScenario.g3Sample,
+    );
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: repo,
+          endDay: '2026-09-29',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(G3MetricDetail),
+      matchesGoldenFile('openband_goldens/g3-verlauf-hrv-375.png'),
+    );
+  }, tags: const ['golden']);
 }

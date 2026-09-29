@@ -341,6 +341,44 @@ void main() {
     expect(find.text('Ø 30 Tage'), findsNothing);
   });
 
+  testWidgets('HRV endpoint stays inside the chart card at 375 pt', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _ValuesRepository(
+            48,
+            const G3Baseline(BaselineStatus(BaselinePhase.none)),
+          ),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final chart = find.byType(OBTrendChart);
+    final values = tester.widget<OBTrendChart>(chart).values;
+    expect(values, hasLength(30));
+    expect(values.last, 48);
+    final plot = find.descendant(
+      of: chart,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter?.runtimeType.toString() == '_TrendPainter',
+      ),
+    );
+    expect(
+      tester.getRect(plot).right + 5.5,
+      lessThan(tester.getRect(chart).right),
+    );
+  });
+
   testWidgets('out-of-range colour follows each metric direction', (
     tester,
   ) async {
