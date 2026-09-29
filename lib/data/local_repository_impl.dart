@@ -2618,6 +2618,36 @@ class LocalRepositoryImpl extends LocalRepository {
   );
 
   @override
+  Future<Map<String, dynamic>> confirmWorkoutSuggestion(
+    String suggestionId, {
+    String? sport,
+  }) async {
+    final sessionId = 'auto-suggestion:$suggestionId';
+    final saved = await LocalDb.session(sessionId);
+    if (saved != null) return {'workout_id': sessionId};
+    final db = await LocalDb.instance;
+    final rows = await db.query(
+      'workout_suggestions',
+      where: 'id = ? AND dismissed = 0',
+      whereArgs: [suggestionId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Suggestion is no longer active: $suggestionId');
+    }
+    final suggestion = rows.single;
+    return _writeManualSession(
+      startTs: (suggestion['start_ts'] as num).toInt(),
+      endTs: (suggestion['end_ts'] as num).toInt(),
+      type: sport ?? (suggestion['sport'] as String?) ?? 'other',
+      validateAgainstId: sessionId,
+      sessionId: sessionId,
+      source: 'auto',
+      confirmedSuggestionId: suggestionId,
+    );
+  }
+
+  @override
   Future<Map<String, dynamic>> setWorkoutWindow(
     String id, {
     required int startTs,
@@ -2672,6 +2702,7 @@ class LocalRepositoryImpl extends LocalRepository {
     Map<String, dynamic>? existing,
     String? sessionId,
     String source = 'manual',
+    String? confirmedSuggestionId,
   }) async {
     // Re-check at the write seam. The form validates live, but its snapshot of
     // saved spans can be stale by the time save is tapped (a background derive
@@ -2736,6 +2767,44 @@ class LocalRepositoryImpl extends LocalRepository {
     // trace all band on the SAME ceiling this write did — `putSession` is
     // INSERT-OR-REPLACE, so omitting it would blank an edit's existing stamp.
     row['device_family'] = deviceFamily;
+    if (confirmedSuggestionId != null) {
+      final db = await LocalDb.instance;
+      await db.transaction((txn) async {
+        final alreadySaved = await txn.query(
+          'sessions',
+          columns: ['id'],
+          where: 'id = ?',
+          whereArgs: [row['id']],
+          limit: 1,
+        );
+        if (alreadySaved.isNotEmpty) return;
+        final active = await txn.query(
+          'workout_suggestions',
+          columns: ['id'],
+          where: 'id = ? AND dismissed = 0',
+          whereArgs: [confirmedSuggestionId],
+          limit: 1,
+        );
+        if (active.isEmpty) {
+          throw StateError('Suggestion is no longer active: $confirmedSuggestionId');
+        }
+        await txn.insert('sessions', row);
+        final dismissed = await txn.update(
+          'workout_suggestions',
+          {'dismissed': 1},
+          where: 'id = ? AND dismissed = 0',
+          whereArgs: [confirmedSuggestionId],
+        );
+        if (dismissed != 1) {
+          throw StateError('Suggestion is no longer active: $confirmedSuggestionId');
+        }
+      });
+      return {
+        'workout_id': row['id'],
+        'unscored': stats.isUnscored,
+        'hr_samples': stats.hrSampleCount,
+      };
+    }
     await LocalDb.putSession(row);
 
     // Retire the fragment(s) this window supersedes, so the athlete isn't
