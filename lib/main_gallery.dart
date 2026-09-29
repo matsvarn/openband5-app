@@ -398,6 +398,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                   'Entwurf kann nicht gesichert werden',
                 SyntheticScenario.calculationFailure =>
                   'Auswertung schlägt fehl',
+                SyntheticScenario.g3Sample => 'G3 · Tagesblatt',
+                SyntheticScenario.g3Building => 'G3 · Basis im Aufbau',
               }),
               selected: scenario == widget.repository.scenario,
               onTap: () {
