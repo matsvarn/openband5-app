@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
@@ -387,6 +388,24 @@ void main() {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
     await tester.tap(find.text('ERHOLUNG'));
     expect(h.opened, [G3Metric.recovery]);
+  });
+
+  testWidgets('gallery: a G3 scenario opens Heute on 29.09 with note and check-in', (tester) async {
+    tester.view.physicalSize = const Size(393, 3200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(OpenBandGallery(repository: repository));
+    await tester.pumpAndSettle();
+    expect(find.text('FÜR HEUTE'), findsNothing, reason: 'the 18.09 gallery clock has no G3 day');
+    await tester.tap(find.text('Synthetische Galerie'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('G3 · Tagesblatt'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dienstag, 29. September'), findsOneWidget);
+    expect(find.text('FÜR HEUTE'), findsOneWidget);
+    expect(find.text('Gut erholt.'), findsOneWidget);
+    expect(find.text('CHECK-IN'), findsOneWidget);
   });
 
   testWidgets('Dynamic Type 200 %: Heute lays out without overflow', (tester) async {

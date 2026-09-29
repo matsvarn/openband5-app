@@ -92,12 +92,35 @@ class OpenBandGallery extends StatefulWidget {
 
 class _OpenBandGalleryState extends State<OpenBandGallery> {
   final _heuteReminder = MemoryHeuteReminder();
+  static const _day = '2026-09-15', _g3Day = '2026-09-29';
+  static final _dayNow = DateTime(2026, 9, 18, 9, 41);
+  static final _g3Now = DateTime(2026, 9, 29, 9, 41);
+  DateTime _clock = _dayNow;
   late final controller = OpenBandController(
     repository: widget.repository,
-    initialDay: '2026-09-15',
+    initialDay: _day,
     band: widget.repository.band,
-    now: () => DateTime(2026, 9, 18, 9, 41),
+    now: () => _clock,
   );
+
+  /// The G3 scenarios hold 29.09 only: the gallery clock and the selected
+  /// day follow them so Heute shows that day as today with its note and
+  /// check-in. Other scenarios keep the 18.09 clock.
+  void _useScenario(SyntheticScenario scenario) {
+    widget.repository.scenario = scenario;
+    final g3 =
+        scenario == SyntheticScenario.g3Sample ||
+        scenario == SyntheticScenario.g3Building;
+    _clock = g3 ? _g3Now : _dayNow;
+    controller.updateBand(widget.repository.band);
+    if (g3 && controller.selectedDay != _g3Day) {
+      controller.selectDay(_g3Day);
+    } else if (!g3 && controller.selectedDay == _g3Day) {
+      controller.selectDay(_day);
+    } else {
+      controller.refresh();
+    }
+  }
   late bool dark = widget.initialBrightness == Brightness.dark;
   late double? scale = widget.initialTextScale;
   @override
@@ -200,11 +223,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             ? () => _openSyntheticProfile(c)
             : () => _options(context),
         onBand: () => _options(context),
-        onConnect: () {
-          widget.repository.scenario = SyntheticScenario.g3Sample;
-          controller.updateBand(widget.repository.band);
-          controller.refresh();
-        },
+        onConnect: () => _useScenario(SyntheticScenario.g3Sample),
         onOpenMetric: (m) => openHeuteMetric(c, controller, m),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
@@ -398,9 +417,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               }),
               selected: scenario == widget.repository.scenario,
               onTap: () {
-                widget.repository.scenario = scenario;
-                controller.updateBand(widget.repository.band);
-                controller.refresh();
+                _useScenario(scenario);
                 Navigator.pop(c);
               },
             ),
