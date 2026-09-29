@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -1022,9 +1023,41 @@ void main() {
     expect(find.byKey(const ValueKey('notif-checkin')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-weekly')), findsNothing);
     expect(find.byKey(const ValueKey('notif-autodetect')), findsOneWidget);
+    expect(find.byKey(const ValueKey('notif-workout-idle')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-steps')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-recovery')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-alarm-latch')), findsOneWidget);
+  });
+
+  testWidgets('release idle-workout switch changes its own preference',
+      (tester) async {
+    tester.view.physicalSize = const Size(390 * 3, 2400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    NotificationPrefs? changed;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: NotificationSettingsView(
+          releaseReduced: true,
+          prefs: const NotificationPrefs(remindersEnabled: false),
+          onChanged: (next) async => changed = next,
+        ),
+      ),
+    );
+    final toggle = find.descendant(
+      of: find.byKey(const ValueKey('notif-workout-idle')),
+      matching: find.byType(CupertinoSwitch),
+    );
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(changed?.workoutIdleEnabled, isFalse);
+    expect(changed?.remindersEnabled, isFalse);
   });
 
   testWidgets('reduced gallery opens Profile and deterministic Data receipts', (
@@ -1207,6 +1240,69 @@ void main() {
       '2026-09-15:alarm',
     ]);
   });
+
+  test(
+    'kept release prompts use their own switches, not weekly recap',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final center = NotificationCenter.instance;
+      final previousReduced = center.releaseReduced;
+      final previousSink = center.presentSink;
+      final shown = <String>[];
+      center.releaseReduced = true;
+      center.presentSink = (event, {bool allowPermissionPrompt = true}) async {
+        shown.add(event.dedupeKey);
+        return true;
+      };
+      addTearDown(() {
+        center.releaseReduced = previousReduced;
+        center.presentSink = previousSink;
+      });
+
+      final cases = <(String, String, NotificationPrefs Function(bool))>[
+        (
+          'steps',
+          kRouteSteps,
+          (enabled) => NotificationPrefs(stepGoalEnabled: enabled),
+        ),
+        (
+          'movement',
+          kRouteMovement,
+          (enabled) => NotificationPrefs(movementEnabled: enabled),
+        ),
+        (
+          'workout idle',
+          kRouteWorkoutIdle,
+          (enabled) => NotificationPrefs(workoutIdleEnabled: enabled),
+        ),
+        (
+          'workout suggestion',
+          workoutSuggestionRoute('bout-1'),
+          (enabled) => NotificationPrefs(autoDetectEnabled: enabled),
+        ),
+      ];
+      for (final (name, route, withSwitch) in cases) {
+        NotificationEvent event(String state) => NotificationEvent(
+          dedupeKey: 'release-prompt:$name:$state',
+          category: NotifCategory.reminders,
+          title: name,
+          body: 'test',
+          date: '2026-09-15',
+          route: route,
+        );
+        await withSwitch(
+          false,
+        ).copyWith(remindersEnabled: false, quietEnabled: false).save();
+        expect(await center.emit(event('off')), isFalse, reason: '$name off');
+        await withSwitch(
+          true,
+        ).copyWith(remindersEnabled: false, quietEnabled: false).save();
+        expect(await center.emit(event('on')), isTrue, reason: '$name on');
+        expect(shown.last, event('on').dedupeKey);
+      }
+      expect(shown, hasLength(cases.length));
+    },
+  );
 
   test('kept reminder routes and workout suggestion each claim once', () async {
     SharedPreferences.setMockInitialValues({});

@@ -5,9 +5,8 @@
 // nudges would arrive on, so a new event on it must be sanctioned by ROUTE,
 // and both directions of that keying are worth pinning — the idle route gets
 // through, and nothing else rides in with it. Unlike the movement prompt this
-// one has no switch of its own: it reports on a session the USER started (a
-// measured quiet stretch inside it), so the reminders category toggle is its
-// off switch, the same way recovery-ready rides recoveryEnabled.
+// one has its own switch in the reduced release because the weekly-lookback
+// reminders toggle is parked there.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,10 +65,26 @@ void main() {
       expect(prefs.shouldFireOs(idleEvent(), 12 * 60), isTrue);
     });
 
-    test('the reminders category toggle is its off switch', () async {
+    test('the reminders category toggle still gates development builds', () async {
       final prefs =
           (await NotificationPrefs.load()).copyWith(remindersEnabled: false);
       expect(prefs.shouldFireOs(idleEvent(), 12 * 60), isFalse);
+    });
+
+    test('the idle switch gates release even with reminders disabled', () {
+      const on = NotificationPrefs(remindersEnabled: false);
+      const off = NotificationPrefs(
+        remindersEnabled: false,
+        workoutIdleEnabled: false,
+      );
+      expect(on.shouldFireOs(idleEvent(), 12 * 60, releaseReduced: true),
+          isTrue);
+      expect(off.shouldFireOs(idleEvent(), 12 * 60, releaseReduced: true),
+          isFalse);
+      expect(
+          const NotificationPrefs(workoutIdleEnabled: false)
+              .shouldFireOs(idleEvent(), 12 * 60),
+          isTrue);
     });
 
     test('quiet hours drop it — it is not the alarm', () async {
