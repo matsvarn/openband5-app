@@ -807,7 +807,12 @@ class OBPlanBreakdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow('RECHNUNG', note: bedtime == null ? null : 'Schätzung'),
+          G3LabelRow(
+            'RECHNUNG',
+            note: bedtime == null
+                ? null
+                : 'gerundet von ${obSleepClock(bedtime)}',
+          ),
           row('Eigenes Schlafziel', obSleepDuration(goal)),
           Divider(height: 1, color: g.line),
           row(
