@@ -5,6 +5,7 @@
 // check-in, the week strip, the night, body values and steps. Every value
 // comes from the repository; a missing input renders "—" or a refusal.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -26,13 +27,19 @@ import '../g3_theme.dart';
 import '../heute_parts.dart';
 import '../metrics.dart';
 
+/// An armed bedtime reminder: its instant and the day whose note armed it.
+typedef ArmedBedtime = ({DateTime at, String day});
+
 /// The bedtime reminder behind "Erinnern". Injectable for tests; the default
 /// arms the one-shot through NotificationCenter and remembers it in Prefs.
 abstract class HeuteReminder {
-  Future<DateTime?> armedAt();
+  /// The stored reminder, also one whose time has passed.
+  Future<ArmedBedtime?> armed();
 
-  /// False when the time has passed or notifications are not allowed.
-  Future<bool> arm(DateTime at, String body);
+  /// Arms [at] for the note of [day]; anything but scheduled armed nothing.
+  Future<BedtimeReminderResult> arm(DateTime at, String day, String body);
+
+  /// Cancels the one-shot and forgets it.
   Future<void> cancel();
 }
 
@@ -41,23 +48,40 @@ class NotificationHeuteReminder implements HeuteReminder {
   static const _key = 'ui.openband.bedtimeReminder';
 
   @override
-  Future<DateTime?> armedAt() async {
+  Future<ArmedBedtime?> armed() async {
     await Prefs.ensureLoaded();
-    final at = DateTime.tryParse(Prefs.getString(_key, ''));
-    return at != null && at.isAfter(DateTime.now()) ? at : null;
+    final raw = Prefs.getString(_key, '');
+    if (raw.isEmpty) return null;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final at = DateTime.parse(m['at'] as String);
+      return (at: at, day: m['day'] as String);
+    } catch (_) {
+      // An unreadable entry (or the day-less first format) has no day to
+      // belong to: report it for an unknown day so Heute cancels it.
+      final at = DateTime.tryParse(raw);
+      return at == null ? null : (at: at, day: '');
+    }
   }
 
   @override
-  Future<bool> arm(DateTime at, String body) async {
-    final ok = await NotificationCenter.instance.scheduleBedtimeReminder(
+  Future<BedtimeReminderResult> arm(
+    DateTime at,
+    String day,
+    String body,
+  ) async {
+    final result = await NotificationCenter.instance.scheduleBedtimeReminder(
       at: at,
       body: body,
     );
-    if (ok) {
+    if (result == BedtimeReminderResult.scheduled) {
       await Prefs.ensureLoaded();
-      await Prefs.setStringAcked(_key, at.toIso8601String());
+      await Prefs.setStringAcked(
+        _key,
+        jsonEncode({'at': at.toIso8601String(), 'day': day}),
+      );
     }
-    return ok;
+    return result;
   }
 
   @override
@@ -71,20 +95,34 @@ class NotificationHeuteReminder implements HeuteReminder {
 /// Keeps the reminder in memory only: the synthetic gallery and tests arm
 /// nothing on the operating system.
 class MemoryHeuteReminder implements HeuteReminder {
-  MemoryHeuteReminder({this.allowed = true});
-  bool allowed;
-  DateTime? _at;
+  MemoryHeuteReminder({
+    this.result = BedtimeReminderResult.scheduled,
+    ArmedBedtime? armed,
+  }) : _armed = armed;
+
+  /// What the next [arm] reports.
+  BedtimeReminderResult result;
+  ArmedBedtime? _armed;
+  int cancels = 0;
+
+  Future<DateTime?> armedAt() async => _armed?.at;
   @override
-  Future<DateTime?> armedAt() async => _at;
+  Future<ArmedBedtime?> armed() async => _armed;
   @override
-  Future<bool> arm(DateTime at, String body) async {
-    if (!allowed) return false;
-    _at = at;
-    return true;
+  Future<BedtimeReminderResult> arm(
+    DateTime at,
+    String day,
+    String body,
+  ) async {
+    if (result == BedtimeReminderResult.scheduled) _armed = (at: at, day: day);
+    return result;
   }
 
   @override
-  Future<void> cancel() async => _at = null;
+  Future<void> cancel() async {
+    cancels++;
+    _armed = null;
+  }
 }
 
 /// Everything Heute reads besides [OpenBandController.day].
@@ -139,9 +177,17 @@ class OpenBandHeute extends StatefulWidget {
 
 enum _Week { recovery, sleep, strain }
 
-class _OpenBandHeuteState extends State<OpenBandHeute> {
+class _OpenBandHeuteState extends State<OpenBandHeute>
+    with WidgetsBindingObserver {
   _HeuteData _data = const _HeuteData();
+
+  /// The day [_data] was loaded for.
+  String? _dataFor;
   String? _loadedFor;
+
+  /// Bumped by every arm, cancel and reconcile: a read of the reminder that
+  /// started before one of them is stale and must not overwrite it.
+  int _reminderGen = 0;
   int _loadedRequest = -1;
   int _load = 0;
   _Week? _week;
@@ -162,6 +208,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     c.addListener(_changed);
     _scroll.addListener(() {
       final compact = _scroll.hasClients && _scroll.offset > _compactAfter;
@@ -183,9 +230,15 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     c.removeListener(_changed);
     _scroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_reconcileReminder());
   }
 
   void _jumpToAnchor() {
@@ -256,9 +309,11 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
       final w = await _try(() => repo.readWeekStrip(m, day));
       if (w != null) week[m] = w;
     }
-    final armed = today ? await _try(widget.reminder.armedAt) : null;
+    final gen = _reminderGen;
+    final armed = today ? await _try(widget.reminder.armed) : null;
     if (!mounted || request != _load) return;
     setState(() {
+      _dataFor = day;
       _data = _HeuteData(
         ranges: ranges,
         sleepGoal: goal?.targetMinutes,
@@ -266,10 +321,37 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
         activities: activities,
         checkIn: checkIn,
         week: week,
-        reminderAt: armed,
+        reminderAt: gen != _reminderGen
+            ? _data.reminderAt
+            : armed?.day == day
+            ? armed?.at
+            : null,
       );
     });
     _jumpToAnchor();
+    unawaited(_reconcileReminder());
+  }
+
+  /// Cancels an armed bedtime reminder that no longer matches: armed for a
+  /// day that is not today (after midnight too), or today's note has no
+  /// action or another time. Runs after every load and on every foreground.
+  Future<void> _reconcileReminder() async {
+    final gen = _reminderGen;
+    final armed = await _try(widget.reminder.armed);
+    if (!mounted || armed == null || gen != _reminderGen) return;
+    final now = c.now();
+    final today = todayLabel(now);
+    if (armed.day == today) {
+      final day = c.day;
+      // Judge the note only on today's loaded inputs.
+      if (day == null || day.day != today || _dataFor != today) return;
+      final action = _todayNote(day, now)?.action;
+      if (action != null && action.reminderAt == armed.at) return;
+    }
+    _reminderGen++;
+    await _try(widget.reminder.cancel);
+    if (!mounted) return;
+    setState(() => _data = _copy(reminderAt: null));
   }
 
   // ---------------------------------------------------------------------
@@ -741,9 +823,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
   // ---------------------------------------------------------------------
   // Für heute
 
-  List<Widget>? _note(OpenBandDay day, DateTime now, bool stale) {
+  TodayNote? _todayNote(OpenBandDay day, DateTime now) {
     final plus = _data.plus;
-    final note = todayNote(
+    return todayNote(
       derivedDay: c.selectedDay,
       now: now,
       recovery: day.recovery.value,
@@ -756,6 +838,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
       suggestedBedtime: plus?.bedtime,
       suggestedWake: plus?.wake,
     );
+  }
+
+  List<Widget>? _note(OpenBandDay day, DateTime now, bool stale) {
+    final note = _todayNote(day, now);
     Widget? block;
     if (note != null) {
       final action = note.action;
@@ -794,28 +880,37 @@ class _OpenBandHeuteState extends State<OpenBandHeute> {
   }
 
   Future<void> _arm(TodayNoteAction action) async {
+    _reminderGen++;
     setState(() => _remindBusy = true);
-    final ok = await widget.reminder.arm(
+    final result = await widget.reminder.arm(
       action.reminderAt,
+      c.selectedDay,
       '${action.label} · ${action.sub}',
     );
     if (!mounted) return;
+    final ok = result == BedtimeReminderResult.scheduled;
     setState(() {
       _remindBusy = false;
       if (ok) _data = _copy(reminderAt: action.reminderAt);
     });
-    if (!ok) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Keine Erinnerung gestellt: Mitteilungen sind aus. In den iOS-Einstellungen erlauben.',
-          ),
-        ),
-      );
+    final why = switch (result) {
+      BedtimeReminderResult.scheduled => null,
+      BedtimeReminderResult.passed =>
+        'Keine Erinnerung gestellt: ${_clock(action.reminderAt)} ist schon vorbei.',
+      BedtimeReminderResult.denied =>
+        'Keine Erinnerung gestellt: Mitteilungen sind aus. In den iOS-Einstellungen erlauben.',
+      BedtimeReminderResult.failed =>
+        'Keine Erinnerung gestellt. Bitte noch einmal versuchen.',
+    };
+    if (why != null) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(why)));
     }
   }
 
   Future<void> _unarm() async {
+    _reminderGen++;
     setState(() => _remindBusy = true);
     await widget.reminder.cancel();
     if (!mounted) return;

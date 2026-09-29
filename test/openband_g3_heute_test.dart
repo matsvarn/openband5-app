@@ -1,6 +1,7 @@
 // G3 · Heute: every state renders its value or an honest refusal, the note
 // action arms and cancels a reminder, the check-in and the activity
 // suggestion write through the data layer. Goldens in openband_goldens/.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
@@ -21,13 +23,12 @@ Map _json(String name) =>
     jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync()) as Map;
 
 const _day = '2026-09-29';
-DateTime _now() => DateTime(2026, 9, 29, 9, 41);
 
 /// Design repository, optionally without data for today (stale / never).
 class _Repo extends SyntheticOpenBandRepository {
   _Repo(SyntheticScenario s, {this.empty = false, this.noBaseline = false})
     : super.fromMaps(_json('day-summary.json'), _json('sleep-detail.json'), scenario: s);
-  final bool empty;
+  bool empty;
 
   /// Every personal range in phase none (no basis will be formed yet).
   final bool noBaseline;
@@ -42,13 +43,12 @@ class _Repo extends SyntheticOpenBandRepository {
 }
 
 class _Harness {
-  _Harness(this.repo, this.band, {MemoryHeuteReminder? reminder})
-    : reminder = reminder ?? MemoryHeuteReminder(),
-      controller = OpenBandController(repository: repo, initialDay: _day, band: band, now: _now);
+  _Harness(this.repo, this.band, {MemoryHeuteReminder? reminder}) : reminder = reminder ?? MemoryHeuteReminder();
   final _Repo repo;
   final BandSnapshot band;
   final MemoryHeuteReminder reminder;
-  final OpenBandController controller;
+  DateTime clock = DateTime(2026, 9, 29, 9, 41);
+  late final controller = OpenBandController(repository: repo, initialDay: _day, band: band, now: () => clock);
   int connects = 0;
   final opened = <G3Metric>[];
 }
@@ -92,6 +92,27 @@ Future<_Harness> _pump(
   await tester.pumpAndSettle();
   return h;
 }
+
+/// Holds [armed] reads until [gate] completes, returning what was stored when
+/// the read began: a load racing a cancel.
+class _GatedReminder extends MemoryHeuteReminder {
+  Completer<void>? gate;
+  int waiting = 0;
+  @override
+  Future<ArmedBedtime?> armed() async {
+    final v = await super.armed();
+    final g = gate;
+    if (g != null) {
+      waiting++;
+      await g.future;
+    }
+    return v;
+  }
+}
+
+void _foreground(WidgetTester tester) => tester.binding
+  ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+  ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 
 bool _hasText(WidgetTester tester, bool Function(String) test) => tester
     .widgetList<Text>(find.byType(Text))
@@ -195,11 +216,93 @@ void main() {
     expect(find.text('22:20 ins Bett'), findsOneWidget);
     expect(await h.reminder.armedAt(), isNull);
 
-    h.reminder.allowed = false;
+    h.reminder.result = BedtimeReminderResult.denied;
     await tester.tap(find.text('Erinnern'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Mitteilungen sind aus'), findsOneWidget);
     expect(find.text('Erinnerung um 22:05'), findsNothing);
+  });
+
+  testWidgets('a passed reminder time says so, not "Mitteilungen sind aus"', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
+    h.reminder.result = BedtimeReminderResult.passed;
+    await tester.tap(find.text('Erinnern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Keine Erinnerung gestellt: 22:05 ist schon vorbei.'), findsOneWidget);
+    expect(find.textContaining('Mitteilungen sind aus'), findsNothing);
+    expect(await h.reminder.armedAt(), isNull);
+  });
+
+  testWidgets('an armed reminder is cancelled when the note loses its action or time', (tester) async {
+    final repo = _Repo(SyntheticScenario.g3Sample);
+    final h = await _pump(tester, _Harness(repo, _connected));
+    await tester.tap(find.text('Erinnern'));
+    await tester.pumpAndSettle();
+    expect(await h.reminder.armedAt(), DateTime(2026, 9, 29, 22, 5));
+    expect(h.reminder.cancels, 0, reason: 'a matching reminder stays');
+    repo.empty = true; // the night is gone: no note, no action
+    await h.controller.refresh();
+    await tester.pumpAndSettle();
+    expect(await h.reminder.armedAt(), isNull);
+    expect(h.reminder.cancels, 1);
+
+    // Armed for another time than today's note shows.
+    final other = await _pump(
+      tester,
+      _Harness(
+        _Repo(SyntheticScenario.g3Sample),
+        _connected,
+        reminder: MemoryHeuteReminder(armed: (at: DateTime(2026, 9, 29, 21, 30), day: _day)),
+      ),
+    );
+    expect(await other.reminder.armedAt(), isNull);
+    expect(other.reminder.cancels, 1);
+    expect(find.text('Erinnerung um 21:30'), findsNothing);
+  });
+
+  testWidgets('a reminder armed for a day that is over is cancelled on the next foreground', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
+    await tester.tap(find.text('Erinnern'));
+    await tester.pumpAndSettle();
+    _foreground(tester);
+    await tester.pumpAndSettle();
+    expect(h.reminder.cancels, 0, reason: 'same day, same time: kept');
+    h.clock = DateTime(2026, 9, 30, 0, 5);
+    _foreground(tester);
+    await tester.pumpAndSettle();
+    expect(await h.reminder.armedAt(), isNull);
+    expect(h.reminder.cancels, 1);
+
+    // A bedtime after midnight is still ahead but belongs to the 29th.
+    final late = _Harness(
+      _Repo(SyntheticScenario.g3Sample),
+      _connected,
+      reminder: MemoryHeuteReminder(armed: (at: DateTime(2026, 9, 30, 0, 30), day: _day)),
+    )..clock = DateTime(2026, 9, 30, 0, 5);
+    await _pump(tester, late);
+    expect(await late.reminder.armedAt(), isNull);
+    expect(late.reminder.cancels, 1);
+  });
+
+  testWidgets('a load that read the reminder before a cancel does not re-arm the note', (tester) async {
+    final r = _GatedReminder();
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected, reminder: r));
+    await tester.tap(find.text('Erinnern'));
+    await tester.pumpAndSettle();
+    expect(find.text('Erinnerung um 22:05'), findsOneWidget);
+    r.gate = Completer<void>();
+    unawaited(h.controller.refresh());
+    for (var i = 0; i < 10 && r.waiting == 0; i++) {
+      await tester.pump();
+    }
+    expect(r.waiting, greaterThan(0), reason: 'the load is reading the reminder');
+    await tester.tap(find.byIcon(LucideIcons.check).first);
+    await tester.pump();
+    r.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(await r.armedAt(), isNull);
+    expect(find.text('Erinnerung um 22:05'), findsNothing);
+    expect(find.text('Erinnern'), findsOneWidget);
   });
 
   testWidgets('check-in answers through the data layer; Später parks it', (tester) async {

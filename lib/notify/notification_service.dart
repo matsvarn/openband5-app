@@ -645,26 +645,33 @@ class NotificationService {
   /// This is how the weekly lookback is armed — once, for a week that actually
   /// found something. (It also still carries the "time to move" nudge's call,
   /// which [schedulableIds] now refuses.)
-  Future<void> scheduleOnce({
+  /// True only when the one-shot reached the OS: false when [id] is not a
+  /// schedulable slot, the permission is off, or (non-strict) the plugin
+  /// call failed.
+  Future<bool> scheduleOnce({
     required int id,
     required NotifCategory category,
     required String title,
     required String body,
     required DateTime at,
     String? route,
-  }) =>
-      _ignoreUnlessStrict(() async {
-        if (!_maySchedule(id)) return;
-        if (!await _permissionAllowsSchedule()) return;
-        await _zonedSchedule(
-          id: id,
-          title: title,
-          body: body,
-          when: tz.TZDateTime.from(at, tz.local),
-          details: _details(category),
-          payload: route,
-        );
-      });
+  }) async {
+    var scheduled = false;
+    await _ignoreUnlessStrict(() async {
+      if (!_maySchedule(id)) return;
+      if (!await _permissionAllowsSchedule()) return;
+      await _zonedSchedule(
+        id: id,
+        title: title,
+        body: body,
+        when: tz.TZDateTime.from(at, tz.local),
+        details: _details(category),
+        payload: route,
+      );
+      scheduled = true;
+    });
+    return scheduled;
+  }
 
   Future<void> cancel(int id) => _ignoreUnlessStrict(() async {
         final hook = debugCancel;
