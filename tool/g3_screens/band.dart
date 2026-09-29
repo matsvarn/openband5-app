@@ -65,6 +65,7 @@ Widget _profile({bool? notificationsAllowed}) => ProfileHomeView(
     'weight_kg': 78.4,
   },
   band: _baseBand,
+  now: _now,
   bandName: 'WHOOP 5.0',
   languageLabel: 'Deutsch',
   onEdit: () {},

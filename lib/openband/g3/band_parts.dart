@@ -136,6 +136,7 @@ class OBSettingsRow extends StatelessWidget {
   final String? value;
   final VoidCallback? onTap;
   final Widget? trailing;
+  final bool stackAtLargeText;
   const OBSettingsRow({
     super.key,
     required this.label,
@@ -143,19 +144,20 @@ class OBSettingsRow extends StatelessWidget {
     this.value,
     this.onTap,
     this.trailing,
+    this.stackAtLargeText = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final stacked =
+        stackAtLargeText && MediaQuery.textScalerOf(context).scale(15) > 22;
     final content = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 52),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
+        child: stacked
+            ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label, style: g.t(15, 20, weight: FontWeight.w500)),
@@ -164,31 +166,64 @@ class OBSettingsRow extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(detail!, style: g.t(12, 17, color: g.muted)),
                     ),
+                  if (value != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        value!,
+                        style: g.t(15, 20, weight: FontWeight.w700),
+                      ),
+                    ),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: g.t(15, 20, weight: FontWeight.w500),
+                        ),
+                        if (detail != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              detail!,
+                              style: g.t(12, 17, color: g.muted),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (value != null) ...[
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        value!,
+                        textAlign: TextAlign.end,
+                        style: g.t(
+                          15,
+                          20,
+                          weight: onTap == null
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                          color: onTap == null ? g.ink : g.ink2,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (trailing != null) ...[
+                    const SizedBox(width: 8),
+                    trailing!,
+                  ],
+                  if (onTap != null && trailing == null) ...[
+                    const SizedBox(width: 8),
+                    Icon(LucideIcons.chevronRight, size: 14, color: g.gap),
+                  ],
                 ],
               ),
-            ),
-            if (value != null) ...[
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  value!,
-                  textAlign: TextAlign.end,
-                  style: g.t(
-                    15,
-                    20,
-                    weight: onTap == null ? FontWeight.w700 : FontWeight.w400,
-                    color: onTap == null ? g.ink : g.ink2,
-                  ),
-                ),
-              ),
-            ],
-            if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-            if (onTap != null && trailing == null) ...[
-              const SizedBox(width: 8),
-              Icon(LucideIcons.chevronRight, size: 14, color: g.gap),
-            ],
-          ],
-        ),
       ),
     );
     return Semantics(
@@ -523,6 +558,7 @@ class OBBandHero extends StatelessWidget {
   final DateTime now;
   final VoidCallback? onStatus;
   final OBBandIssue? issue;
+  final String? faultLabel;
   const OBBandHero({
     super.key,
     required this.band,
@@ -530,6 +566,7 @@ class OBBandHero extends StatelessWidget {
     required this.now,
     this.onStatus,
     this.issue,
+    this.faultLabel,
   });
 
   @override
@@ -560,12 +597,14 @@ class OBBandHero extends StatelessWidget {
         : age.inHours > 0
         ? 'vor ${age.inHours} h'
         : 'vor ${age.inMinutes} Min.';
-    final status = switch (issue) {
-      OBBandIssue.bluetoothOff => 'Bluetooth aus',
-      null when connected && band.transfer == TransferState.receiving =>
-        'Band wird gelesen',
-      null => bandConnectionLabel(band.connection),
-    };
+    final status =
+        faultLabel ??
+        switch (issue) {
+          OBBandIssue.bluetoothOff => 'Bluetooth aus',
+          null when connected && band.transfer == TransferState.receiving =>
+            'Band wird gelesen',
+          null => bandConnectionLabel(band.connection),
+        };
     return Container(
       decoration: g.raised(),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
@@ -585,7 +624,7 @@ class OBBandHero extends StatelessWidget {
                   ],
                 ),
               ),
-              if (issue != null || !connected)
+              if (faultLabel != null || issue != null || !connected)
                 Container(
                   width: 8,
                   height: 8,
@@ -599,7 +638,16 @@ class OBBandHero extends StatelessWidget {
               else
                 OBLed(on: true, size: 8),
               const SizedBox(width: 7),
-              Text(status, style: g.t(13, 18, weight: FontWeight.w700)),
+              if (faultLabel == null)
+                Text(status, style: g.t(13, 18, weight: FontWeight.w700))
+              else
+                Flexible(
+                  child: Text(
+                    status,
+                    textAlign: TextAlign.end,
+                    style: g.t(13, 18, weight: FontWeight.w700),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 12),

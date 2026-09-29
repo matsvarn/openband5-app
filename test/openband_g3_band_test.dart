@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:openstrap_edge/ble/ble_state.dart' show BandCondition;
+import 'package:openstrap_edge/ble/ble_state.dart'
+    show BandCondition, BleBlocker, bandStatusFor;
+import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
@@ -46,7 +48,7 @@ void main() {
       MaterialApp(
         locale: const Locale('de'),
         supportedLocales: const [Locale('de'), Locale('en')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         theme: openBandTheme(Brightness.light),
         home: screen,
       ),
@@ -189,6 +191,28 @@ void main() {
     );
     expect(find.text('09:38'), findsOneWidget);
     expect(find.text('67 %'), findsOneWidget);
+  });
+
+  testWidgets('profile dates a stored battery reading from yesterday', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      ProfileHomeView(
+        releaseReduced: true,
+        languageLabel: 'Deutsch',
+        stats: const ProfileStats(),
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        diagnostics: BandDiagnostics(
+          battery: BandBattery(
+            observedAt: DateTime(2026, 9, 28, 9, 37),
+            percent: 67,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('zuletzt 67 % · gestern · 09:37'), findsOneWidget);
   });
 
   testWidgets('profile distinguishes denied from unknown notifications', (
@@ -419,10 +443,72 @@ void main() {
   });
 
   test('Band issue mapping does not mistake scanning for not found', () {
-    expect(bandIssueFor(BandCondition.bluetoothOff), OBBandIssue.bluetoothOff);
-    expect(bandIssueFor(BandCondition.scanning), isNull);
-    expect(bandIssueFor(BandCondition.connecting), isNull);
-    expect(bandIssueFor(BandCondition.disconnected), isNull);
+    expect(
+      bandIssueFor(
+        bandStatusFor(
+          connection: 'disconnected',
+          blocker: BleBlocker.adapterOff,
+        ),
+      )?.condition,
+      BandCondition.bluetoothOff,
+    );
+    for (final connection in ['scanning', 'connecting', 'disconnected']) {
+      expect(bandIssueFor(bandStatusFor(connection: connection)), isNull);
+    }
+  });
+
+  testWidgets('Bluetooth permission fault names the phone-side block', (
+    tester,
+  ) async {
+    var reconnects = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        status: bandStatusFor(
+          connection: 'disconnected',
+          blocker: BleBlocker.permissionDenied,
+        ),
+        onReconnect: () async => reconnects++,
+      ),
+    );
+    expect(find.text('Bluetooth ist für diese App deaktiviert'), findsWidgets);
+    expect(find.textContaining('Einstellungen → OpenBand 5'), findsOneWidget);
+    expect(find.text('Verbinden'), findsNothing);
+    await tester.ensureVisible(find.text('Hilfe').first);
+    await tester.tap(find.text('Hilfe').first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Zugriff auf die Bluetooth'), findsWidgets);
+    expect(reconnects, 0);
+  });
+
+  testWidgets('band repair fault does not offer a plain reconnect', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.reset);
+    var reconnects = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        status: bandStatusFor(
+          connection: 'disconnected',
+          needsRepairGuide: true,
+        ),
+        onReconnect: () async => reconnects++,
+      ),
+    );
+    expect(find.text('Das Band muss erneut gekoppelt werden'), findsWidgets);
+    expect(find.textContaining('Bluetooth-Einstellungen'), findsOneWidget);
+    expect(find.text('Verbinden'), findsNothing);
+    await tester.ensureVisible(find.text('Hilfe').first);
+    await tester.tap(find.text('Hilfe').first);
+    await tester.pumpAndSettle();
+    expect(reconnects, 0);
   });
 
   testWidgets('Bluetooth off opens settings help without opening devices', (
@@ -546,6 +632,118 @@ void main() {
     expect(controller.selectedDay, '2026-09-16');
   });
 
+  testWidgets('date sheet keeps the last calendar row above its footer', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    addTearDown(tester.view.reset);
+    final repository = SyntheticOpenBandRepository.fromMaps(
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/day-summary.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/sleep-detail.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+    );
+    final controller = OpenBandController(
+      repository: repository,
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => chooseOpenBandDay(context, controller),
+              child: const Text('Datum öffnen'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datum öffnen'));
+    await tester.pumpAndSettle();
+    final lastRow = tester.getRect(find.text('29').last);
+    final footer = tester.getRect(find.byType(FilledButton).first);
+    expect(lastRow.bottom, lessThan(footer.top));
+    expect(
+      tester.getRect(find.byType(FilledButton).last).bottom,
+      lessThan(812),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('date sheet large text golden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    addTearDown(tester.view.reset);
+    final controller = OpenBandController(
+      repository: SyntheticOpenBandRepository.fromMaps(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      ),
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => chooseOpenBandDay(context, controller),
+              child: const Text('Datum öffnen'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datum öffnen'));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(Overlay).first,
+      matchesGoldenFile('openband_goldens/g3-date-picker-large.png'),
+    );
+  }, tags: const ['golden']);
+
   test('data status heading follows the selected local day', () {
     final now = DateTime(2026, 9, 18, 9, 41);
     expect(bandStatusValuesHeading('2026-09-15', now), 'WERTE FÜR 15.09.');
@@ -629,6 +827,181 @@ void main() {
     expect(find.textContaining('1 beobachtete Ablegephase'), findsOneWidget);
     expect(find.textContaining('24 h: 100 %'), findsNothing);
   });
+
+  testWidgets('data status dates the stored frontier from yesterday', (
+    tester,
+  ) async {
+    final summary =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final detail =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final controller = OpenBandController(
+      repository: _DiagnosticsRepository(
+        summary,
+        detail,
+        BandDiagnostics(lastStoredSampleAt: DateTime(2026, 9, 28, 9, 38)),
+      ),
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+      band: const BandSnapshot(connection: BandConnection.connected),
+    );
+    addTearDown(controller.dispose);
+    await pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showBandStatus(context, controller, null),
+            child: const Text('Datenstand öffnen'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datenstand öffnen'));
+    await tester.pumpAndSettle();
+    expect(find.text('bis gestern · 09:38'), findsNWidgets(2));
+  });
+
+  testWidgets('data status scrolls past its buttons at large text', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    addTearDown(tester.view.reset);
+    final summary =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final detail =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final controller = OpenBandController(
+      repository: _DiagnosticsRepository(
+        summary,
+        detail,
+        BandDiagnostics(lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38)),
+      ),
+      initialDay: '2026-09-15',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+      band: const BandSnapshot(connection: BandConnection.connected),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showBandStatus(context, controller, () {}),
+              child: const Text('Datenstand öffnen'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datenstand öffnen'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Auswertung'),
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    final label = tester.getRect(find.text('Auswertung'));
+    final primary = tester.getRect(find.text('Übertragung fortsetzen'));
+    expect(label.height, lessThan(45));
+    expect(label.bottom, lessThan(primary.top));
+    expect(find.textContaining('Ruhepuls ·'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('data status large text bottom golden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    addTearDown(tester.view.reset);
+    final controller = OpenBandController(
+      repository: _DiagnosticsRepository(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        BandDiagnostics(lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38)),
+      ),
+      initialDay: '2026-09-15',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+      band: const BandSnapshot(connection: BandConnection.connected),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => showBandStatus(context, controller, () {}),
+              child: const Text('Datenstand öffnen'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datenstand öffnen'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Auswertung'),
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(Overlay).first,
+      matchesGoldenFile('openband_goldens/g3-data-status-large-bottom.png'),
+    );
+  }, tags: const ['golden']);
 
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('band $brightness golden', (tester) async {

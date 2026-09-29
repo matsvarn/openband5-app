@@ -400,8 +400,7 @@ class _ProfileHomeState extends State<ProfileHome> {
               LocalOpenBandRepository(c.read<AppState>()).readBand(),
           readDiagnostics: () =>
               LocalOpenBandRepository(c.read<AppState>()).readBandDiagnostics(),
-          readIssue: () =>
-              bandIssueFor(c.read<AppState>().engine.bandStatus.condition),
+          readStatus: () => c.read<AppState>().engine.bandStatus,
           onStatus: () => _showBandStatus(c),
           databaseSize: snap.data?.storageBytes == null
               ? null
@@ -436,6 +435,7 @@ class ProfileHomeView extends StatelessWidget {
   final Map<String, dynamic>? user;
   final BandSnapshot? band;
   final BandDiagnostics? diagnostics;
+  final DateTime? now;
   final String? bandName;
   final VoidCallback? onDevices,
       onBand,
@@ -460,6 +460,7 @@ class ProfileHomeView extends StatelessWidget {
     this.user,
     this.band,
     this.diagnostics,
+    this.now,
     this.bandName,
     this.onDevices,
     this.onBand,
@@ -921,6 +922,10 @@ class ProfileHomeView extends StatelessWidget {
         ? '—'
         : formatBytes(s!.storageBytes!).replaceFirst('.', ',');
     final storedBattery = diagnostics?.battery;
+    final batteryAt = storedBattery?.observedAt;
+    final batteryTime = batteryAt == null
+        ? ''
+        : ' · ${bandFrontierDayPrefix(batteryAt, now ?? DateTime.now())}${obTime(batteryAt)}';
     final batteryPercent = storedBattery?.percent ?? b?.batteryPercent;
     final battery = batteryPercent == null
         ? '—'
@@ -953,7 +958,7 @@ class ProfileHomeView extends StatelessWidget {
               ),
               if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
                 Text(
-                  'zuletzt $batteryPercent %${storedBattery == null ? '' : ' · ${obTime(storedBattery.observedAt)}'}',
+                  'zuletzt $batteryPercent %$batteryTime',
                   style: g.t(11, 15, color: g.muted),
                 ),
             ]
@@ -971,7 +976,7 @@ class ProfileHomeView extends StatelessWidget {
               Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
               if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
                 Text(
-                  'zuletzt $batteryPercent %${storedBattery == null ? '' : ' · ${obTime(storedBattery.observedAt)}'}',
+                  'zuletzt $batteryPercent %$batteryTime',
                   style: g.t(11, 15, color: g.muted),
                 ),
             ],

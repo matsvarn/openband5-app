@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../ble/ble_state.dart' show BandCondition;
+import '../../../ble/band_status_l10n.dart' show localizedBandStatus;
+import '../../../ble/ble_state.dart' show BandCondition, BandStatus;
 import '../../domain.dart';
 import '../../theme.dart' show obTime;
 import '../band_parts.dart';
@@ -12,8 +13,7 @@ import '../g3_theme.dart';
 
 /// A read-only view of the latest band observation. Production injects the
 /// existing AppState notifier and repository read; no BLE work happens here.
-OBBandIssue? bandIssueFor(BandCondition condition) =>
-    condition == BandCondition.bluetoothOff ? OBBandIssue.bluetoothOff : null;
+BandStatus? bandIssueFor(BandStatus status) => status.isFault ? status : null;
 
 class G3BandScreen extends StatefulWidget {
   final BandSnapshot? band;
@@ -30,6 +30,8 @@ class G3BandScreen extends StatefulWidget {
   final VoidCallback? onBack;
   final OBBandIssue? issue;
   final OBBandIssue? Function()? readIssue;
+  final BandStatus? status;
+  final BandStatus? Function()? readStatus;
   final bool synthetic;
 
   const G3BandScreen({
@@ -48,6 +50,8 @@ class G3BandScreen extends StatefulWidget {
     this.onBack,
     this.issue,
     this.readIssue,
+    this.status,
+    this.readStatus,
     this.synthetic = false,
   });
 
@@ -59,6 +63,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
   BandSnapshot? _band;
   BandDiagnostics? _diagnostics;
   OBBandIssue? _issue;
+  BandStatus? _status;
   late DateTime _now;
   Timer? _clockTick;
   int _readVersion = 0;
@@ -69,6 +74,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
     _band = widget.band;
     _diagnostics = widget.diagnostics;
     _issue = widget.readIssue?.call() ?? widget.issue;
+    _status = widget.readStatus?.call() ?? widget.status;
     _now = widget.now;
     widget.bandUpdates?.addListener(_refreshBand);
     if (widget.clock != null) {
@@ -95,6 +101,10 @@ class _G3BandScreenState extends State<G3BandScreen> {
         oldWidget.readIssue != widget.readIssue) {
       _issue = widget.readIssue?.call() ?? widget.issue;
     }
+    if (oldWidget.status != widget.status ||
+        oldWidget.readStatus != widget.readStatus) {
+      _status = widget.readStatus?.call() ?? widget.status;
+    }
     if (oldWidget.clock != widget.clock) {
       _clockTick?.cancel();
       _clockTick = widget.clock == null
@@ -109,6 +119,10 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final issue = widget.readIssue?.call();
     if (mounted && widget.readIssue != null && issue != _issue) {
       setState(() => _issue = issue);
+    }
+    final status = widget.readStatus?.call();
+    if (mounted && widget.readStatus != null && status != _status) {
+      setState(() => _status = status);
     }
     final version = ++_readVersion;
     final readBand = widget.readBand;
@@ -149,17 +163,25 @@ class _G3BandScreenState extends State<G3BandScreen> {
   }
 
   void _help() {
+    final fault = _status == null ? null : bandIssueFor(_status!);
+    final localized = fault == null
+        ? null
+        : localizedBandStatus(context, fault);
     final issue = _issue;
-    final title = switch (issue) {
-      OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
-      null => 'Band nicht verbunden',
-    };
-    final text = switch (issue) {
-      OBBandIssue.bluetoothOff =>
-        'Bluetooth in den iPhone-Einstellungen einschalten und zur App zurückkehren.',
-      null =>
-        'Band näher ans iPhone bringen und die Verbindung erneut versuchen.',
-    };
+    final title =
+        localized?.title ??
+        switch (issue) {
+          OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
+          null => 'Band nicht verbunden',
+        };
+    final text = localized == null
+        ? switch (issue) {
+            OBBandIssue.bluetoothOff =>
+              'Bluetooth in den iPhone-Einstellungen einschalten und zur App zurückkehren.',
+            null =>
+              'Band näher ans iPhone bringen und die Verbindung erneut versuchen.',
+          }
+        : [localized.reason, ?localized.fix].join('\n\n');
     showModalBottomSheet<void>(
       context: context,
       builder: (c) => SafeArea(
@@ -198,25 +220,40 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final b = _band;
     final diagnostics = _diagnostics;
     final issue = _issue;
+    final rawStatus = _status;
+    final fault = rawStatus == null ? null : bandIssueFor(rawStatus);
+    final localizedFault = fault == null
+        ? null
+        : localizedBandStatus(context, fault);
     final disconnected =
-        issue != null || b?.connection == BandConnection.disconnected;
+        localizedFault != null ||
+        issue != null ||
+        b?.connection == BandConnection.disconnected;
     final stored = diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt;
-    final issueTitle = switch (issue) {
-      OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
-      null => 'Nicht verbunden',
-    };
-    final issueBody = switch (issue) {
-      OBBandIssue.bluetoothOff =>
-        'Ohne Bluetooth erreicht das iPhone das Band nicht. Gespeichertes bleibt erhalten.',
-      null =>
-        stored == null
-            ? 'Band näher ans iPhone bringen. Noch kein bestätigter Datenstand liegt vor.'
-            : 'Band näher ans iPhone bringen. Was seit ${obTime(stored)} gemessen wurde, kommt beim Verbinden.',
-    };
-    final action = switch (issue) {
-      OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
-      null => 'Verbinden',
-    };
+    final issueTitle =
+        localizedFault?.title ??
+        switch (issue) {
+          OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
+          null => 'Nicht verbunden',
+        };
+    final issueBody = localizedFault == null
+        ? switch (issue) {
+            OBBandIssue.bluetoothOff =>
+              'Ohne Bluetooth erreicht das iPhone das Band nicht. Gespeichertes bleibt erhalten.',
+            null =>
+              stored == null
+                  ? 'Band näher ans iPhone bringen. Noch kein bestätigter Datenstand liegt vor.'
+                  : 'Band näher ans iPhone bringen. Was seit ${obTime(stored)} gemessen wurde, kommt beim Verbinden.',
+          }
+        : [localizedFault.reason, ?localizedFault.fix].join('\n\n');
+    final action = localizedFault?.condition == BandCondition.bluetoothOff
+        ? 'Bluetooth einschalten'
+        : localizedFault != null
+        ? 'Hilfe'
+        : switch (issue) {
+            OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
+            null => 'Verbinden',
+          };
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
@@ -251,6 +288,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
                       now: _now,
                       onStatus: widget.onStatus,
                       issue: issue,
+                      faultLabel: localizedFault?.title,
                     ),
                   if (b != null && disconnected) ...[
                     const SizedBox(height: 12),
@@ -258,7 +296,9 @@ class _G3BandScreenState extends State<G3BandScreen> {
                       title: issueTitle,
                       body: issueBody,
                       action: action,
-                      onAction: issue == OBBandIssue.bluetoothOff
+                      onAction:
+                          localizedFault != null ||
+                              issue == OBBandIssue.bluetoothOff
                           ? _help
                           : widget.onReconnect == null
                           ? null
