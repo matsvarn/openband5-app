@@ -129,6 +129,44 @@ void main() {
     expect(find.text('10 Min.'), findsOneWidget);
   });
 
+  test('synthetic run trace follows the reported 42-minute session', () async {
+    final activity = (await _repo(
+      SyntheticScenario.g3Sample,
+    ).readActivities('2026-09-29')).single;
+    final trace = activity.hrTrace;
+    expect(trace, hasLength(84));
+    expect(trace.first.at, activity.start);
+    expect(trace.last.at, activity.end!.subtract(const Duration(seconds: 30)));
+    for (var i = 1; i < trace.length; i++) {
+      expect(
+        trace[i].at.difference(trace[i - 1].at),
+        const Duration(seconds: 30),
+      );
+    }
+
+    final gap = activity.signalGaps.single;
+    final absent = [
+      for (final point in trace)
+        if (point.meanBpm == null) point.at,
+    ];
+    expect(absent, [gap.start, gap.start.add(const Duration(seconds: 30))]);
+    expect(absent.last.isBefore(gap.end), isTrue);
+
+    final bpm = [for (final point in trace) point.meanBpm];
+    final valid = bpm.whereType<double>().toList();
+    expect(
+      valid.reduce((a, b) => a + b) / valid.length,
+      closeTo(activity.avgHr!, .25),
+    );
+    expect(valid.reduce((a, b) => a > b ? a : b), activity.maxHr);
+    expect(bpm.first!, lessThan(130));
+    expect(bpm[11]!, greaterThan(bpm.first!));
+    final steady = bpm.skip(12).take(56).whereType<double>().toList();
+    expect(steady.reduce((a, b) => a < b ? a : b), lessThanOrEqualTo(145));
+    expect(steady.reduce((a, b) => a > b ? a : b), greaterThanOrEqualTo(153));
+    expect(bpm.indexOf(176), inInclusiveRange(68, 78));
+  });
+
   testWidgets('Karvonen zones identify pulsreserve', (tester) async {
     final repo = _repo(SyntheticScenario.g3Sample);
     final start = DateTime(2026, 9, 29, 8);

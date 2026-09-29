@@ -616,18 +616,18 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     if (_g3) {
       if (day != _g3Day || _g3SuggestionDismissed) return const [];
       final start = _g3At(7, 58);
+      const bpm = <int?>[
+        115, 118, 121, 124, 127, 130, 134, 137, 139, 141, 143, 144,
+        144, 146, 148, 149, 147, 145, 148, 150, 149, 147, 146, 148, 151, 149,
+        147, 145, 144, 146, 148, 150, 152, 149, 147, 146, 148, 149, 147, 145,
+        146, 148, null, null, 147, 145, 144, 147, 149, 151, 153, 150, 148, 146,
+        148, 150, 152, 149, 147, 145, 147, 149, 151, 154, 152, 149, 147, 146,
+        153, 156, 159, 162, 166, 169, 172, 176, 173, 168,
+        162, 158, 154, 151, 148, 146,
+      ];
       final trace = [
-        for (var i = 0; i < 84; i++)
-          G3HrPoint(
-            start.add(Duration(seconds: i * 30)),
-            i == 42
-                ? null
-                : i == 50
-                ? 176
-                : i == 51
-                ? 120
-                : 148,
-          ),
+        for (final (i, hr) in bpm.indexed)
+          G3HrPoint(start.add(Duration(seconds: i * 30)), hr?.toDouble()),
       ];
       return [
         G3Activity(
