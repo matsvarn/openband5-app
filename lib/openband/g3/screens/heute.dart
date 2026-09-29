@@ -1074,7 +1074,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               if (picked == null || picked == sport) return;
               try {
                 await repo.changeSuggestionSport(a.id, picked);
-                setSheet(() => sport = picked);
+                if (sheet.mounted) setSheet(() => sport = picked);
+                // The list and a reopened sheet read the stored sport; a
+                // stale one would overwrite the change on Stimmt.
+                await c.refresh();
               } catch (_) {
                 await run(() async => throw StateError('closed'));
               }
