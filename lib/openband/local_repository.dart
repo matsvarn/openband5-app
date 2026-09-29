@@ -836,24 +836,22 @@ class LocalOpenBandRepository implements OpenBandRepository {
         debtHours != null &&
         strainBonus != null &&
         napCredit != null) {
-      // Strain and nap adjustments are stored as rounded whole minutes.
-      // Debt remains raw, and the final need may hit the coach's 6–11 h limit.
+      // Strain and nap adjustments are the coach's rounded post-clamp deltas.
+      // They cannot reveal how many minutes the coach's limit changed the need.
       final residual =
           needMinutes - baselineOsdMinutes - strainBonus + napCredit;
       final rawPositiveDebt = debtHours < 0 ? 0.0 : debtHours * 60;
-      final unbounded =
+      final visibleSum =
           baselineOsdMinutes + rawPositiveDebt + strainBonus - napCredit;
       const rounding = 0.500001;
-      if ((needMinutes - 360).abs() < 1e-6 && unbounded < 360 - rounding) {
-        appliedDebtMinutes = rawPositiveDebt;
-        needClamp = G3SleepNeedClamp(360, needMinutes - unbounded);
-      } else if ((needMinutes - 660).abs() < 1e-6 &&
-          unbounded > 660 + rounding) {
-        appliedDebtMinutes = rawPositiveDebt;
-        needClamp = G3SleepNeedClamp(660, needMinutes - unbounded);
-      } else if (residual >= -rounding &&
-          residual <= rawPositiveDebt + rounding) {
+      if ((needMinutes - visibleSum).abs() <= rounding) {
         appliedDebtMinutes = residual.clamp(0.0, rawPositiveDebt).toDouble();
+      } else if ((needMinutes - 360).abs() <= rounding) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = const G3SleepNeedClamp(360);
+      } else if ((needMinutes - 660).abs() <= rounding) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = const G3SleepNeedClamp(660);
       }
     }
     return G3SleepPlus(

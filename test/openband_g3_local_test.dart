@@ -813,7 +813,11 @@ void main() {
         'built_at_epoch':
             DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
         'sleep_debt': {
-          'value': {'osd_hours': 9.5, 'debt_hours': 2, 'has_free_night': true},
+          'value': {
+            'osd_hours': 9.5,
+            'debt_hours': 165 / 60,
+            'has_free_night': true,
+          },
         },
         'sleep_coach': {
           'need': {
@@ -832,22 +836,15 @@ void main() {
     );
     plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
     expect(plus.needMinutes, 660);
-    expect(plus.sleepDebt.debtHours, 2); // Raw evidence remains available.
+    expect(plus.sleepDebt.debtHours, closeTo(165 / 60, 1e-9));
     expect(plus.baselineOsdMinutes, 570);
-    expect(plus.appliedDebtMinutes, 120);
+    expect(plus.appliedDebtMinutes, 165);
     expect(plus.needClamp?.limitMinutes, 660);
-    expect(plus.needClamp?.adjustmentMinutes, -30);
-    expect(
-      plus.baselineOsdMinutes! +
-          plus.appliedDebtMinutes! +
-          plus.strainBonusMinutes! -
-          plus.napCreditMinutes! +
-          plus.needClamp!.adjustmentMinutes,
-      plus.needMinutes,
-    );
+    expect(plus.strainBonusMinutes, 0);
+    expect(plus.napCreditMinutes, 0);
 
-    // At the 6 h floor the independently applied strain/nap deltas cannot
-    // allocate the clamp to debt without overstating the stored 10 minutes.
+    // Raw strain 45 and nap 120 yield a 6 h floor. The coach stores their
+    // post-clamp applied deltas: strain 0 and nap 115.
     await LocalDb.putBaseline(
       'crossday',
       jsonEncode({
@@ -872,7 +869,7 @@ void main() {
           'wake': {
             'value': {'wake_min_of_day': 5 * 60 + 23},
           },
-          'strain_bonus_min': 21,
+          'strain_bonus_min': 0,
           'nap_credit_min': 115,
         },
       }),
@@ -883,15 +880,20 @@ void main() {
     expect(plus.sleepDebt.debtHours, closeTo(10 / 60, 1e-9));
     expect(plus.appliedDebtMinutes, closeTo(10, 1e-9));
     expect(plus.needClamp?.limitMinutes, 360);
-    expect(plus.needClamp?.adjustmentMinutes, closeTo(24, 1e-9));
-    expect(
-      plus.baselineOsdMinutes! +
-          plus.appliedDebtMinutes! +
-          plus.strainBonusMinutes! -
-          plus.napCreditMinutes! +
-          plus.needClamp!.adjustmentMinutes,
-      plus.needMinutes,
+    expect(plus.strainBonusMinutes, 0);
+    expect(plus.napCreditMinutes, 115);
+  });
+
+  test('inconsistent need away from a clamp refuses inferred debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 10 / 60,
+      needMinutes: 425,
+      strainBonus: 0,
+      napCredit: 0,
     );
+    expect(plus.appliedDebtMinutes, isNull);
+    expect(plus.needClamp, isNull);
   });
 
   test('whole-minute strain bonus does not erase zero debt', () async {

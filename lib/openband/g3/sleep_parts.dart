@@ -974,12 +974,14 @@ class OBPlanBreakdown extends StatelessWidget {
           ),
           Divider(height: 1, color: g.line),
           row(
-            strainOpen ? 'Belastung heute, läuft' : 'Belastung heute',
+            strainOpen
+                ? 'Belastung, angerechnet · läuft'
+                : 'Belastung, angerechnet',
             _sleepAdjustment(bonus),
           ),
           Divider(height: 1, color: g.line),
           row(
-            'Nickerchen heute',
+            'Nickerchen, angerechnet',
             napsIncomplete
                 ? 'unvollständig'
                 : _sleepAdjustment(napCredit == null ? null : -napCredit!),
@@ -988,9 +990,9 @@ class OBPlanBreakdown extends StatelessWidget {
             Divider(height: 1, color: g.line),
             row(
               needClamp!.limitMinutes == 360
-                  ? 'Begrenzt auf 6h00'
-                  : 'Obergrenze 11h00',
-              _sleepAdjustment(needClamp!.adjustmentMinutes),
+                  ? 'Untergrenze 6h00 angewendet'
+                  : 'Obergrenze 11h00 angewendet',
+              '—',
             ),
           ],
           Divider(height: 2, thickness: 2, color: g.ink),

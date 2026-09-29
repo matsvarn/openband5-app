@@ -190,10 +190,9 @@ void main() {
         debt: 0,
         bonus: 0,
         napCredit: 15,
-        needClamp: G3SleepNeedClamp(360, 0),
       ),
     );
-    expect(find.text('0 Min.'), findsNWidgets(3));
+    expect(find.text('0 Min.'), findsNWidgets(2));
     expect(find.text('− 15 Min.'), findsOneWidget);
     expect(find.text('+ 0 Min.'), findsNothing);
     expect(find.text('− 0 Min.'), findsNothing);
@@ -261,7 +260,7 @@ void main() {
     expect(find.text('8h35 im Bett'), findsNothing);
   });
 
-  testWidgets('the need clamp is a signed visible Rechnung term', (
+  testWidgets('a need limit is named without inferred clamp minutes', (
     tester,
   ) async {
     await _card(
@@ -269,27 +268,49 @@ void main() {
       const OBPlanBreakdown(
         baseline: 420,
         debt: 10,
-        bonus: 21,
+        bonus: 0,
         napCredit: 115,
-        needClamp: G3SleepNeedClamp(360, 24),
+        needClamp: G3SleepNeedClamp(360),
         need: 360,
       ),
     );
-    expect(find.text('Begrenzt auf 6h00'), findsOneWidget);
-    expect(find.text('+ 24 Min.'), findsOneWidget);
+    expect(find.text('Belastung, angerechnet'), findsOneWidget);
+    expect(find.text('Nickerchen, angerechnet'), findsOneWidget);
+    final floor = find.ancestor(
+      of: find.text('Untergrenze 6h00 angewendet'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(of: floor, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: floor, matching: find.textContaining('Min.')),
+      findsNothing,
+    );
     await _card(
       tester,
       const OBPlanBreakdown(
         baseline: 570,
-        debt: 120,
+        debt: 165,
         bonus: 0,
         napCredit: 0,
-        needClamp: G3SleepNeedClamp(660, -30),
+        needClamp: G3SleepNeedClamp(660),
         need: 660,
       ),
     );
-    expect(find.text('Obergrenze 11h00'), findsOneWidget);
-    expect(find.text('− 30 Min.'), findsOneWidget);
+    final ceiling = find.ancestor(
+      of: find.text('Obergrenze 11h00 angewendet'),
+      matching: find.byType(Row),
+    );
+    expect(
+      find.descendant(of: ceiling, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: ceiling, matching: find.textContaining('Min.')),
+      findsNothing,
+    );
   });
 
   testWidgets('tonight subtitle uses the next civil day at DST end', (
@@ -473,9 +494,9 @@ void main() {
     tester,
   ) async {
     await _card(tester, const OBPlanBreakdown(bonus: 20, strainOpen: false));
-    expect(find.text('Belastung heute, läuft'), findsNothing);
+    expect(find.text('Belastung, angerechnet · läuft'), findsNothing);
     await _card(tester, const OBPlanBreakdown(bonus: 20, strainOpen: true));
-    expect(find.text('Belastung heute, läuft'), findsOneWidget);
+    expect(find.text('Belastung, angerechnet · läuft'), findsOneWidget);
   });
 
   testWidgets('another day with null value and gate is not called building', (
