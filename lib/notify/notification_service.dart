@@ -129,6 +129,7 @@ class NotificationService {
   static const int idAlarmNightCheck = 2008; // scheduled daily, one-shot 19:00
   static const int idStillness = 2200; // provisional one-shot ("time to move", issue #123)
   static const int idCheckIn = 2201; // daily ("how was today?" → the journal)
+  static const int idBedtimeNote = 2202; // one-shot, the Für-heute Erinnern tap
 
   /// Slot band [idMedsBase .. idMedsBase + maxMedSlots) — one ONE-SHOT per
   /// scheduled dose that is still upcoming, armed by
@@ -188,6 +189,9 @@ class NotificationService {
   ///     BYOK key AND their own AI morning switch on. Its body is static (the
   ///     constraint above: no model text in the schedule); the screen it opens
   ///     computes on arrival.
+  ///   • [idBedtimeNote] — armed only by the user tapping Erinnern on today's
+  ///     Für-heute note, once, at the time that note shows (the sleep plan's
+  ///     bedtime minus 15 minutes), and cancelled by the same row.
   /// The AI journal prompt ([idJournalLog]) is none of those and is still
   /// refused. Its caller keeps CANCELLING, which is how an upgrade cleans out
   /// whatever an older build left standing.
@@ -199,6 +203,7 @@ class NotificationService {
     idStillness,
     idCheckIn,
     idAlarmNightCheck,
+    idBedtimeNote,
   };
 
   /// Whether [id] is one of the hydration slots. A band rather than a set
