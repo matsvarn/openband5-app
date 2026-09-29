@@ -24,6 +24,7 @@ import '../chrome.dart'
         OBSegmented,
         OBSyncKind,
         OBSyncState;
+import '../count_copy.dart';
 import '../g3_theme.dart';
 import '../journal_parts.dart';
 
@@ -48,10 +49,10 @@ String _patternFooter(G3JournalPattern result) {
   final p = result.pattern;
   if (p.kind == CaffeineSleepPatternKind.meaningful ||
       p.kind == CaffeineSleepPatternKind.nonmeaningful) {
-    return '${p.pairedN} Tag-Nacht-Paare · Vergleich berechnet';
+    return '${p.pairedN} Tag-Nacht-${g3CountNoun(p.pairedN, 'Paar', 'Paare')} · Vergleich berechnet';
   }
   if (result.refusalGate == G3PatternRefusalGate.paired) {
-    return '${p.pairedN} von ${result.pairedMinimum} Paaren · noch ${result.remaining}';
+    return '${p.pairedN} von ${result.pairedMinimum} ${g3CountNoun(result.pairedMinimum, 'Paar', 'Paaren')} · noch ${result.remaining}';
   }
   if (result.refusalGate == G3PatternRefusalGate.side &&
       result.yesNights != null &&
@@ -62,13 +63,16 @@ String _patternFooter(G3JournalPattern result) {
     final no = result.noNights! < result.perSideMinimum
         ? '${result.noNights} von ${result.perSideMinimum} nötig'
         : '${p.noNights} vorhanden';
-    return '${p.pairedN} Paare · Ja $yes · Nein $no';
+    return '${p.pairedN} ${g3CountNoun(p.pairedN, 'Paar', 'Paare')} · Ja $yes · Nein $no';
   }
   if (result.historyNeed case final history?) {
-    return '${history.have} von ${history.need} Paaren für den Test';
+    return '${history.have} von ${history.need} ${g3CountNoun(history.need, 'Paar', 'Paaren')} für den Test';
   }
-  return '${p.pairedN} Paare · Ja ${result.yesNights ?? '—'} · Nein ${result.noNights ?? '—'}';
+  return '${p.pairedN} ${g3CountNoun(p.pairedN, 'Paar', 'Paare')} · Ja ${result.yesNights ?? '—'} · Nein ${result.noNights ?? '—'}';
 }
+
+String _nightsOrDash(int? count) =>
+    count == null ? '—' : '$count ${g3CountNoun(count, 'Nacht', 'Nächte')}';
 
 enum _Answer { yesNo, amount, scale, note }
 
@@ -1059,7 +1063,7 @@ class G3JournalPatternScreen extends StatelessWidget {
                       ),
                       Text(
                         ready
-                            ? '${p.pairedN} Tag-Nacht-Paare'
+                            ? '${p.pairedN} Tag-Nacht-${g3CountNoun(p.pairedN, 'Paar', 'Paare')}'
                             : 'noch nicht möglich',
                         style: g.t(13, 17, color: g.muted),
                       ),
@@ -1103,7 +1107,7 @@ class G3JournalPatternScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${p.yesNights ?? '—'} vs. ${p.noNights ?? '—'} Nächte · kein Beweis für Ursache',
+                      '${_nightsOrDash(p.yesNights)} vs. ${_nightsOrDash(p.noNights)} · kein Beweis für Ursache',
                       style: g.t(13, 17, color: g.ink2),
                     ),
                   ] else ...[
@@ -1139,7 +1143,7 @@ class G3JournalPatternScreen extends StatelessWidget {
                                         G3PatternRefusalGate.paired =>
                                           'Für den Vergleich fehlen Tag-Nacht-Paare: ${p.pairedN} von ${pattern.pairedMinimum} vorhanden.',
                                         G3PatternRefusalGate.side =>
-                                          'Für den Vergleich braucht es je ${pattern.perSideMinimum} Nächte mit Ja und Nein.',
+                                          'Für den Vergleich braucht es je ${pattern.perSideMinimum} ${g3CountNoun(pattern.perSideMinimum, 'Nacht', 'Nächte')} mit Ja und Nein.',
                                         G3PatternRefusalGate.history =>
                                           'Für den statistischen Vergleich fehlen Tag-Nacht-Paare: ${pattern.historyNeed!.have} von ${pattern.historyNeed!.need} nötig.',
                                         null =>
