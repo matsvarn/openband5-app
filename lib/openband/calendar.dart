@@ -18,6 +18,7 @@ class OBCalendar extends StatelessWidget {
   final bool allowFuture;
   final bool showAvailability;
   final bool instrumentHeader;
+  final Key? selectedCellKey;
   final Set<String> nights;
   final ValueChanged<DateTime> onSelect;
   final VoidCallback? onPrevMonth;
@@ -33,6 +34,7 @@ class OBCalendar extends StatelessWidget {
     this.allowFuture = false,
     this.showAvailability = false,
     this.instrumentHeader = false,
+    this.selectedCellKey,
     this.nights = const {},
     this.onPrevMonth,
     this.onNextMonth,
@@ -189,6 +191,7 @@ class OBCalendar extends StatelessWidget {
     final stored = nights.contains(day);
     final ink = blocked ? p.muted : (chosen ? p.card : p.ink);
     return Semantics(
+      key: chosen ? selectedCellKey : null,
       selected: chosen,
       button: true,
       enabled: !blocked,

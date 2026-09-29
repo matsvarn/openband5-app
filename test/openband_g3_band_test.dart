@@ -632,12 +632,19 @@ void main() {
     expect(controller.selectedDay, '2026-09-16');
   });
 
-  testWidgets('date sheet keeps the last calendar row above its footer', (
+  testWidgets('large text opens with the selected date above its footer', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(375, 812);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
     addTearDown(tester.view.reset);
+    final oldHitPolicy = WidgetController.hitTestWarningShouldBeFatal;
+    WidgetController.hitTestWarningShouldBeFatal = true;
+    addTearDown(
+      () => WidgetController.hitTestWarningShouldBeFatal = oldHitPolicy,
+    );
     final repository = SyntheticOpenBandRepository.fromMaps(
       jsonDecode(
             File(
@@ -654,8 +661,8 @@ void main() {
     );
     final controller = OpenBandController(
       repository: repository,
-      initialDay: '2026-09-29',
-      now: () => DateTime(2026, 9, 29, 9, 41),
+      initialDay: '2026-08-31',
+      now: () => DateTime(2026, 8, 31, 9, 41),
     );
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -681,19 +688,195 @@ void main() {
     );
     await tester.tap(find.text('Datum öffnen'));
     await tester.pumpAndSettle();
-    final lastRow = tester.getRect(find.text('29').last);
+    final selectedCell = find
+        .ancestor(of: find.text('31'), matching: find.byType(InkWell))
+        .first;
+    final lastRow = tester.getRect(selectedCell);
+    final viewport = tester.getRect(find.byType(ListView).last);
     final footer = tester.getRect(find.byType(FilledButton).first);
+    expect(lastRow.top, greaterThanOrEqualTo(viewport.top));
+    expect(lastRow.bottom, lessThanOrEqualTo(viewport.bottom));
     expect(lastRow.bottom, lessThan(footer.top));
     expect(
       tester.getRect(find.byType(FilledButton).last).bottom,
-      lessThan(812),
+      lessThanOrEqualTo(778),
     );
+    await tester.tap(find.text('31'));
+    await tester.tap(find.widgetWithText(FilledButton, '31. August ansehen'));
+    await tester.pumpAndSettle();
+    expect(controller.selectedDay, '2026-08-31');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('mini safe area opens every week and both date actions', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    final oldHitPolicy = WidgetController.hitTestWarningShouldBeFatal;
+    WidgetController.hitTestWarningShouldBeFatal = true;
+    addTearDown(
+      () => WidgetController.hitTestWarningShouldBeFatal = oldHitPolicy,
+    );
+    final repository = SyntheticOpenBandRepository.fromMaps(
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/day-summary.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/sleep-detail.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+    );
+    for (final size in [const Size(375, 812), const Size(360, 780)]) {
+      tester.view.physicalSize = size;
+      for (final (day, last, action) in [
+        ('2026-09-29', '29', '29. September ansehen'),
+        ('2026-08-31', '31', '31. August ansehen'),
+      ]) {
+        final controller = OpenBandController(
+          repository: repository,
+          initialDay: day,
+          now: () => DateTime.parse('$day 09:41:00'),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('de'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            theme: openBandTheme(Brightness.light),
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => chooseOpenBandDay(context, controller),
+                  child: const Text('Datum öffnen'),
+                ),
+                bottomNavigationBar: const SizedBox(height: 82),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Datum öffnen'));
+        await tester.pumpAndSettle();
+        final viewport = tester.getRect(find.byType(ListView).last);
+        final selected = tester.getRect(find.text(last));
+        final card = tester.getRect(find.byType(OBCard).first);
+        final confirm = find.widgetWithText(FilledButton, action);
+        final confirmRect = tester.getRect(confirm);
+        final todayRect = tester.getRect(
+          find.widgetWithText(FilledButton, 'Zu heute'),
+        );
+        expect(
+          card.top,
+          greaterThanOrEqualTo(viewport.top),
+          reason: '$size $day',
+        );
+        expect(
+          card.bottom,
+          lessThanOrEqualTo(viewport.bottom),
+          reason: '$size $day',
+        );
+        expect(
+          selected.top,
+          greaterThanOrEqualTo(viewport.top),
+          reason: '$size $day',
+        );
+        expect(
+          selected.bottom,
+          lessThanOrEqualTo(viewport.bottom),
+          reason: '$size $day',
+        );
+        expect(
+          confirmRect.top,
+          greaterThan(viewport.bottom),
+          reason: '$size $day',
+        );
+        expect(
+          todayRect.top,
+          greaterThan(viewport.bottom),
+          reason: '$size $day',
+        );
+        expect(
+          todayRect.bottom,
+          lessThanOrEqualTo(size.height - 34),
+          reason: '$size $day',
+        );
+        expect(
+          confirmRect.bottom,
+          lessThanOrEqualTo(size.height - 34),
+          reason: '$size $day',
+        );
+        await tester.tap(find.text(last));
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(controller.selectedDay, day);
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
+  testWidgets('date sheet six-week mini golden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    final controller = OpenBandController(
+      repository: SyntheticOpenBandRepository.fromMaps(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      ),
+      initialDay: '2026-08-31',
+      now: () => DateTime(2026, 8, 31, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => chooseOpenBandDay(context, controller),
+              child: const Text('Datum öffnen'),
+            ),
+            bottomNavigationBar: const SizedBox(height: 82),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datum öffnen'));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(Overlay).first,
+      matchesGoldenFile('openband_goldens/g3-date-picker-mini-safe.png'),
+    );
+  }, tags: const ['golden']);
 
   testWidgets('date sheet large text golden', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(375, 812);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
     addTearDown(tester.view.reset);
     final controller = OpenBandController(
       repository: SyntheticOpenBandRepository.fromMaps(
@@ -732,6 +915,7 @@ void main() {
               onPressed: () => chooseOpenBandDay(context, controller),
               child: const Text('Datum öffnen'),
             ),
+            bottomNavigationBar: const SizedBox(height: 82),
           ),
         ),
       ),
