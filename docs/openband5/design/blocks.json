@@ -2333,8 +2333,8 @@
       "paperNode": "6ONJ-0",
       "paperNodeDark": "6OOG-0",
       "usedIn": ["6SB5-0", "6SEZ-0"],
-      "implementationStatus": "paper-only",
-      "notes": "The detail currently composes a simple lead in g3/screens/sleep.dart; the proposed bedtime scale remains open."
+      "widget": "OBBedtimeLead",
+      "file": "g3/sleep_parts.dart"
     },
     {
       "name": "OBPlanBreakdown",
@@ -2411,8 +2411,8 @@
       "paperNode": "5UKK-0",
       "paperNodeDark": "5UZ3-0",
       "usedIn": ["648H-0", "64CJ-0"],
-      "implementationStatus": "paper-only",
-      "notes": "Nachtverlauf still uses the retained G2 signal chart."
+      "widget": "OBNightTrace",
+      "file": "g3/sleep_parts.dart"
     },
     {
       "name": "OBInlineNotice.edit",
@@ -2431,8 +2431,9 @@
       "paperNode": "6P9J-0",
       "paperNodeDark": "6P9Z-0",
       "usedIn": ["6SEZ-0"],
-      "implementationStatus": "paper-only",
-      "notes": "Needs a cancellable scheduled bedtime notification path."
+      "widget": "OBInlineNotice",
+      "file": "g3/sleep_parts.dart",
+      "notes": "Uses the same opt-in one-shot notification slot as Heute."
     },
     {
       "name": "OBInlineNotice.busy",
@@ -2450,8 +2451,9 @@
       "paperNode": "5UMY-0",
       "paperNodeDark": "5V1H-0",
       "usedIn": ["6532-0", "655C-0", "657S-0"],
-      "implementationStatus": "paper-only",
-      "notes": "The retained correction editor is still G2 styled."
+      "widget": "SleepEditor",
+      "file": "sleep_editor.dart",
+      "notes": "G3 presentation reuses the existing draft, commit and recalculation flow."
     }
   ],
   "openBlocks": [],

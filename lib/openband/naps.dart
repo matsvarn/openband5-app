@@ -8,6 +8,8 @@ import 'day_picker.dart';
 import 'domain.dart';
 import 'theme.dart';
 import 'time.dart';
+import 'g3/chrome.dart' as g3_chrome;
+import 'g3/g3_theme.dart';
 
 class OpenBandNaps extends StatefulWidget {
   final OpenBandController controller;
@@ -621,7 +623,13 @@ Future<void> _napInfo(
 class OpenBandNapEditor extends StatefulWidget {
   final OpenBandController controller;
   final NapSession? original;
-  const OpenBandNapEditor({super.key, required this.controller, this.original});
+  final bool g3Sheet;
+  const OpenBandNapEditor({
+    super.key,
+    required this.controller,
+    this.original,
+    this.g3Sheet = false,
+  });
   @override
   State<OpenBandNapEditor> createState() => _OpenBandNapEditorState();
 }
@@ -826,6 +834,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.g3Sheet) return _buildG3Sheet(context);
     final p = OB.of(context);
     return Scaffold(
       backgroundColor: p.canvas,
@@ -995,6 +1004,141 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                 ],
               ),
       ),
+    );
+  }
+
+  Widget _buildG3Sheet(BuildContext context) {
+    final g = G3.of(context);
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return Container(
+      decoration: BoxDecoration(
+        color: g.canvas,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: g.noteShadow,
+      ),
+      padding: EdgeInsets.fromLTRB(20, 8, 20, bottom + 24),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: g.bar,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    editing ? 'Nickerchen bearbeiten' : 'Nickerchen eintragen',
+                    style: g.t(28, 33, weight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Schließen',
+                  onPressed: busy ? null : () => Navigator.of(context).pop(),
+                  icon: const Icon(LucideIcons.x),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    backgroundColor: g.track,
+                    foregroundColor: g.ink,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              'Bleibt auf diesem iPhone. Steht als „eingetragen“ in der Liste.',
+              style: g.t(14, 19, color: g.ink2),
+            ),
+            const SizedBox(height: 20),
+            if (priming)
+              const Center(child: CircularProgressIndicator.adaptive())
+            else if (primeError != null)
+              g3_chrome.OBErrorBlock(
+                title: 'Nickerchen nicht geladen',
+                reason: 'Bitte erneut versuchen.',
+                onRetry: _prime,
+              )
+            else ...[
+              Text('ZEIT', style: g.caps(color: g.muted)),
+              const SizedBox(height: 8),
+              Container(
+                decoration: g.pressed(radius: 15),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(child: _g3TimeField(g, startText, 'Beginn')),
+                    Text('–', style: g.t(30, 36, weight: FontWeight.w700)),
+                    Expanded(child: _g3TimeField(g, endText, 'Ende')),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '$_durationLabel gelegen',
+                style: g.t(13, 18, color: g.ink2),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!, style: g.t(13, 18, color: g.worseText)),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: g3_chrome.OBActionSecondary(
+                      'Abbrechen',
+                      expand: true,
+                      onPressed: busy
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: g3_chrome.OBActionPrimary(
+                      saveFailed ? 'Erneut speichern' : 'Speichern',
+                      expand: true,
+                      onPressed: busy ? null : _save,
+                    ),
+                  ),
+                ],
+              ),
+              if (editing)
+                TextButton(
+                  onPressed: busy ? null : _remove,
+                  child: const Text('Nickerchen entfernen'),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _g3TimeField(G3 g, TextEditingController controller, String label) {
+    return TextField(
+      controller: controller,
+      enabled: !busy,
+      textAlign: TextAlign.center,
+      keyboardType: TextInputType.datetime,
+      style: g.t(30, 36, weight: FontWeight.w700),
+      decoration: InputDecoration(
+        border: InputBorder.none,
+        isDense: true,
+        semanticCounterText: label,
+      ),
+      onChanged: (_) => _update(),
     );
   }
 }
