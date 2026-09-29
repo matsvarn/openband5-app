@@ -406,115 +406,122 @@ class OBZoneRows extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
       decoration: g.raised(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('ZEIT IN ZONEN', style: g.caps()),
-              const Spacer(),
-              Text(basis, style: g.t(13, 16, color: g.muted)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          for (final z in zones)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 30),
-              child: Row(
+              Row(
                 children: [
-                  SizedBox(
-                    width: 92,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 28,
-                          child: Text(
-                            'Z${z.index}',
-                            style: g.t(14, 18, weight: FontWeight.w700),
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            z.range,
-                            style: g.t(12, 16, color: g.muted),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: (z.minutes ?? 0) / longest,
-                        child: Container(
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: g.zones[z.index - 1],
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 52,
-                    child: Text(
-                      z.minutes == null ? '—' : '${z.minutes} Min.',
-                      textAlign: TextAlign.right,
-                      style: g.t(
-                        14,
-                        18,
-                        weight: FontWeight.w700,
-                        color: z.minutes == null ? g.gap : g.ink,
-                      ),
-                    ),
-                  ),
+                  Text('ZEIT IN ZONEN', style: g.caps()),
+                  const Spacer(),
+                  Text(basis, style: g.t(13, 16, color: g.muted)),
                 ],
               ),
-            ),
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: g.line)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(source, style: g.t(12, 16, color: g.muted)),
-                ),
-                if (onBasis != null)
-                  Semantics(
-                    button: true,
-                    label: 'Grundlage der Zonen',
-                    excludeSemantics: true,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onBasis,
-                      child: SizedBox(
-                        height: 44,
-                        child: Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Grundlage',
-                                style: g.t(13, 16, weight: FontWeight.w700),
+              const SizedBox(height: 8),
+              for (final z in zones)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 30),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 92,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              child: Text(
+                                'Z${z.index}',
+                                style: g.t(14, 18, weight: FontWeight.w700),
                               ),
-                              const SizedBox(width: 2),
-                              OBChevron(size: 12, color: g.muted),
-                            ],
+                            ),
+                            Flexible(
+                              child: Text(
+                                z.range,
+                                style: g.t(12, 16, color: g.muted),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: (z.minutes ?? 0) / longest,
+                            child: Container(
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: g.zones[z.index - 1],
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 52,
+                        child: Text(
+                          z.minutes == null ? '—' : '${z.minutes} Min.',
+                          textAlign: TextAlign.right,
+                          style: g.t(
+                            14,
+                            18,
+                            weight: FontWeight.w700,
+                            color: z.minutes == null ? g.gap : g.ink,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-              ],
-            ),
+                ),
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: g.line)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(source, style: g.t(12, 16, color: g.muted)),
+                    ),
+                    if (onBasis != null)
+                      ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Grundlage',
+                              style: g.t(13, 16, weight: FontWeight.w700),
+                            ),
+                            const SizedBox(width: 2),
+                            OBChevron(size: 12, color: g.muted),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
+          if (onBasis != null)
+            Positioned(
+              bottom: 0,
+              right: 0,
+              width: 92,
+              height: 44,
+              child: Semantics(
+                button: true,
+                label: 'Grundlage der Zonen',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onBasis,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -574,17 +581,21 @@ class OBTrendChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text(title, style: g.caps())),
-              OBSegmented(
-                items: const ['7 T', '30 T', '90 T'],
-                selected: period.index,
-                onChanged: onPeriod == null
-                    ? null
-                    : (i) => onPeriod!(OBTrendPeriod.values[i]),
-              ),
-            ],
+          Transform.translate(
+            offset: const Offset(0, -7),
+            child: Row(
+              children: [
+                Expanded(child: Text(title, style: g.caps())),
+                OBSegmented(
+                  items: const ['7 T', '30 T', '90 T'],
+                  selected: period.index,
+                  horizontalPadding: 11.5,
+                  onChanged: onPeriod == null
+                      ? null
+                      : (i) => onPeriod!(OBTrendPeriod.values[i]),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 0),
           SizedBox(

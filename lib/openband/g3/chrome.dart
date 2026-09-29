@@ -479,12 +479,18 @@ class OBSectionHeader extends StatelessWidget {
               child: _Hit(
                 label: action!,
                 onTap: onAction,
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.plus, size: 14, color: g.ink),
-                    const SizedBox(width: 2),
-                    Text(action!, style: g.t(13, 16, weight: FontWeight.w700)),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.plus, size: 14, color: g.ink),
+                      const SizedBox(width: 2),
+                      Text(
+                        action!,
+                        style: g.t(13, 16, weight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -792,6 +798,7 @@ class OBPillButton extends StatelessWidget {
 class OBSegmented extends StatelessWidget {
   final List<String> items;
   final int selected;
+  final double horizontalPadding;
 
   /// Indices that exist but have no data yet ("Erholung" before its basis).
   final Set<int> disabled;
@@ -801,6 +808,7 @@ class OBSegmented extends StatelessWidget {
     super.key,
     required this.items,
     required this.selected,
+    this.horizontalPadding = 10,
     this.disabled = const {},
     this.onChanged,
     this.expand = false,
@@ -813,7 +821,10 @@ class OBSegmented extends StatelessWidget {
       final on = i == selected;
       final off = disabled.contains(i);
       final child = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 5,
+        ),
         alignment: expand ? Alignment.center : null,
         decoration: on ? g.raised(radius: 12) : null,
         child: Text(
@@ -841,7 +852,7 @@ class OBSegmented extends StatelessWidget {
               alignment: Alignment.topCenter,
               widthFactor: 1,
               child: Padding(
-                padding: const EdgeInsets.only(top: 3),
+                padding: const EdgeInsets.only(top: 10),
                 child: child,
               ),
             ),
@@ -851,6 +862,99 @@ class OBSegmented extends StatelessWidget {
       return expand ? Expanded(child: tap) : tap;
     }
 
+    if (!expand) {
+      final widths = <double>[];
+      for (var i = 0; i < items.length; i++) {
+        final on = i == selected;
+        final off = disabled.contains(i);
+        final style = g.t(
+          12,
+          14,
+          weight: on ? FontWeight.w700 : FontWeight.w500,
+          color: on ? g.ink : (off ? g.gap : g.ink2),
+        );
+        final painter = TextPainter(
+          text: TextSpan(text: items[i], style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        widths.add(painter.width + 2 * horizontalPadding);
+      }
+      final visualWidth = widths.fold<double>(0, (sum, item) => sum + item);
+      final width = visualWidth < 44 ? 44.0 : visualWidth;
+      var left = 0.0;
+      final visuals = <Widget>[];
+      final targets = <Widget>[];
+      for (var i = 0; i < items.length; i++) {
+        final itemWidth = widths[i];
+        final on = i == selected;
+        final off = disabled.contains(i);
+        visuals.add(
+          Positioned(
+            left: left + 3,
+            top: 10,
+            width: itemWidth,
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 5,
+              ),
+              decoration: on ? g.raised(radius: 12) : null,
+              child: Text(
+                items[i],
+                style: g.t(
+                  12,
+                  14,
+                  weight: on ? FontWeight.w700 : FontWeight.w500,
+                  color: on ? g.ink : (off ? g.gap : g.ink2),
+                ),
+              ),
+            ),
+          ),
+        );
+        final targetWidth = itemWidth < 44 ? 44.0 : itemWidth;
+        targets.add(
+          Positioned(
+            left: (left + (itemWidth - targetWidth) / 2).clamp(
+              0.0,
+              (width - targetWidth).clamp(0.0, width),
+            ),
+            top: 0,
+            width: targetWidth,
+            height: 44,
+            child: Semantics(
+              button: true,
+              selected: on,
+              enabled: !off && onChanged != null,
+              label: off ? '${items[i]}, noch keine Werte' : items[i],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: off || onChanged == null ? null : () => onChanged!(i),
+              ),
+            ),
+          ),
+        );
+        left += itemWidth;
+      }
+      return SizedBox(
+        width: width,
+        height: 44,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 7,
+              height: 30,
+              child: DecoratedBox(decoration: g.pressed(radius: 15)),
+            ),
+            ExcludeSemantics(child: Stack(children: visuals)),
+            ...targets,
+          ],
+        ),
+      );
+    }
+
     return SizedBox(
       height: 44,
       child: Stack(
@@ -858,7 +962,7 @@ class OBSegmented extends StatelessWidget {
           Positioned(
             left: 0,
             right: 0,
-            top: 0,
+            top: 7,
             height: 30,
             child: DecoratedBox(decoration: g.pressed(radius: 15)),
           ),
@@ -1220,79 +1324,98 @@ class OBFormField extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final big = g.t(48, 52, weight: FontWeight.w700, tracking: -.04);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Stack(
       children: [
-        Text(
-          label,
-          style: g.t(
-            11,
-            14,
-            weight: FontWeight.w700,
-            color: g.muted,
-            tracking: .1,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: 88,
-          decoration: g.pressed(radius: 16),
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              IntrinsicWidth(
-                child: TextField(
-                  controller: controller,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9,]')),
-                  ],
-                  textAlign: TextAlign.right,
-                  style: big,
-                  cursorColor: g.ink,
-                  decoration: const InputDecoration.collapsed(hintText: '—'),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                unit,
-                style: g.t(18, 22, weight: FontWeight.w500, color: g.muted),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: Text(
-                when,
-                style: g.t(13, 16, weight: FontWeight.w500, color: g.ink2),
+            Text(
+              label,
+              style: g.t(
+                11,
+                14,
+                weight: FontWeight.w700,
+                color: g.muted,
+                tracking: .1,
               ),
             ),
-            if (onTime != null)
-              _Hit(
-                label: 'Zeit ändern',
-                onTap: onTime,
-                child: Row(
-                  children: [
-                    Text(
-                      'Zeit ändern',
-                      style: g.t(13, 16, weight: FontWeight.w700),
+            const SizedBox(height: 8),
+            Container(
+              height: 88,
+              decoration: g.pressed(radius: 16),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  IntrinsicWidth(
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9,]')),
+                      ],
+                      textAlign: TextAlign.right,
+                      style: big,
+                      cursorColor: g.ink,
+                      decoration: const InputDecoration.collapsed(
+                        hintText: '—',
+                      ),
                     ),
-                    const SizedBox(width: 2),
-                    OBChevron(size: 12, color: g.muted),
-                  ],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    unit,
+                    style: g.t(18, 22, weight: FontWeight.w500, color: g.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    when,
+                    style: g.t(13, 16, weight: FontWeight.w500, color: g.ink2),
+                  ),
                 ),
-              )
-            else
-              Text('Zeit ändern', style: g.t(13, 16, color: g.muted)),
+                if (onTime != null)
+                  ExcludeSemantics(
+                    child: Row(
+                      children: [
+                        Text(
+                          'Zeit ändern',
+                          style: g.t(13, 16, weight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 2),
+                        OBChevron(size: 12, color: g.muted),
+                      ],
+                    ),
+                  )
+                else
+                  Text('Zeit ändern', style: g.t(13, 16, color: g.muted)),
+              ],
+            ),
           ],
         ),
+        if (onTime != null)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            width: 100,
+            height: 44,
+            child: Semantics(
+              button: true,
+              label: 'Zeit ändern',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTime,
+              ),
+            ),
+          ),
       ],
     );
   }
