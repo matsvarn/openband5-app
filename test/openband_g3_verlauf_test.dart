@@ -6,15 +6,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3Scale, OBLeadMetric, OBLeadState;
+    show G3Scale, OBBodyRow, OBBodyState, OBLeadMetric, OBLeadState;
+import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/ui2/app_shell.dart';
 
 const _day = '2026-09-29';
 
@@ -160,6 +164,58 @@ Widget _app(Widget child) =>
 
 void main() {
   setUpAll(() async => initializeDateFormatting('de_DE'));
+
+  testWidgets('Heute HRV chevron opens G3 detail inside the Heute tab', (
+    tester,
+  ) async {
+    final controller = OpenBandController(
+      repository: _repo(SyntheticScenario.g3Sample),
+      initialDay: _day,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          releaseStyle: true,
+          domains: const [ShellDomain.home, ShellDomain.sleep],
+          builder: (context, domain) => domain == ShellDomain.home
+              ? Scaffold(
+                  body: OBBodyRow(
+                    state: OBBodyState.building,
+                    name: 'HRV',
+                    value: '48',
+                    unit: 'ms',
+                    onTap: () =>
+                        openHeuteMetric(context, controller, G3Metric.hrv),
+                  ),
+                )
+              : const Scaffold(body: Text('Schlaf tab')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final hrv = find.byWidgetPredicate(
+      (widget) => widget is OBBodyRow && widget.name == 'HRV',
+    );
+    await tester.tap(
+      find.descendant(of: hrv, matching: find.byType(OBChevron)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(G3MetricDetail), findsOneWidget);
+    expect(
+      tester.widget<G3MetricDetail>(find.byType(G3MetricDetail)).metric,
+      G3Metric.hrv,
+    );
+    expect(find.byType(OBTabBar), findsOneWidget);
+    expect(
+      tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
+      ShellDomain.home,
+    );
+  });
 
   testWidgets('missing HRV refuses a value and names the missing input', (
     tester,

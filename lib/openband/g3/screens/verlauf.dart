@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
 import '../../../data/journal_fields.dart';
+import '../../../ui2/app_shell.dart' show pushInTab;
 import '../../domain.dart';
 import '../charts.dart';
 import '../chrome.dart' as chrome;
@@ -133,7 +134,8 @@ Future<void> openG3MetricDetail(
   required String endDay,
   String backLabel = 'Heute',
   BandSnapshot? band,
-}) => Navigator.of(context).push<void>(
+}) => pushInTab<void>(
+  context,
   MaterialPageRoute(
     builder: (_) => G3MetricDetail(
       metric: metric,
@@ -803,7 +805,7 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                 value: _weight?.history.latest == null
                     ? '—'
                     : '${_weight!.history.latest!.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
-                onTap: () => Navigator.push(
+                onTap: () => pushInTab<void>(
                   context,
                   MaterialPageRoute<void>(
                     builder: (_) => G3WeightDetail(
