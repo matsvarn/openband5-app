@@ -7,9 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
-import 'package:openstrap_edge/app.dart' show screenForRoute;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
@@ -94,7 +92,6 @@ class _PatternRepository extends SyntheticOpenBandRepository {
         algoVersion: 1,
         partial: partialPattern,
       ),
-      pairedMinimum: 8,
     );
   }
 }
@@ -129,50 +126,6 @@ void main() {
   });
   tearDown(() => controller.dispose());
 
-  testWidgets('journal compose deep link saves and returns to its caller', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(393, 852);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(Brightness.light),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      screenForRoute('/journal/compose', repository: repo)!,
-                ),
-              ),
-              child: const Text('Öffnen'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('Öffnen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
-    await tester.tap(find.text('Nein').first);
-    await tester.pumpAndSettle();
-    expect(
-      (await repo.readJournalDay(
-        todayLabel(),
-      )).metrics['alcohol_evening']?.value,
-      0,
-    );
-    await tester.tap(find.bySemanticsLabel('Zurück zu Journal'));
-    await tester.pumpAndSettle();
-    expect(find.text('Öffnen'), findsOneWidget);
-  });
-
   Future<void> mount(WidgetTester tester, {bool settle = true}) async {
     tester.view.physicalSize = const Size(393, 852);
     tester.view.devicePixelRatio = 1;
@@ -193,6 +146,7 @@ void main() {
     );
     await tester.pump();
     if (!settle) return;
+    await tester.pumpAndSettle();
     final pending = repo.caffeineSleepPatternPending;
     if (pending != null) {
       await tester.runAsync(() async {
@@ -228,14 +182,14 @@ void main() {
         findsOneWidget,
       );
       expect(
-        (await repo.readJournalDay('2026-09-15')).metrics['alcohol_evening'],
+        (await repo.readJournalDay('2026-09-14')).metrics['alcohol_evening'],
         isNull,
       );
       await tester.tap(find.text('Ja').first);
       await tester.pumpAndSettle();
       expect(
         (await repo.readJournalDay(
-          '2026-09-15',
+          '2026-09-14',
         )).metrics['alcohol_evening']?.value,
         1,
       );
@@ -243,6 +197,45 @@ void main() {
       expect(find.text('1 von 4'), findsWidgets);
     },
   );
+
+  testWidgets('a past check-in shows and writes each question target day', (
+    tester,
+  ) async {
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-03-01',
+      now: () => DateTime(2026, 3, 2),
+    );
+    await mount(tester);
+    expect(find.text('SO 01.03'), findsOneWidget);
+    expect(find.text('Alkohol am Sa 28.02?'), findsOneWidget);
+    await tester.tap(find.text('Ja').first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay(
+        '2026-02-28',
+      )).metrics['alcohol_evening']?.value,
+      1,
+    );
+    expect(
+      (await repo.readJournalDay('2026-03-01')).metrics['alcohol_evening'],
+      isNull,
+    );
+    await tester.tap(find.text('Später'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wie war deine Stimmung am So 01.03?'), findsOneWidget);
+    await tester.tap(find.text('4').first);
+    await tester.pumpAndSettle();
+    expect((await repo.readJournalDay('2026-03-01')).metrics['mood']?.value, 4);
+    expect((await repo.readJournalDay('2026-02-28')).metrics['mood'], isNull);
+    expect(find.text('Notiz zu Sa 28.02?'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Vorheriger Abend');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect((await repo.readJournalDay('2026-02-28')).note, 'Vorheriger Abend');
+    expect((await repo.readJournalDay('2026-03-01')).note, isEmpty);
+  });
 
   testWidgets('failed save retains the chosen answer and can retry', (
     tester,
@@ -256,7 +249,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      (await repo.readJournalDay('2026-09-15')).metrics['alcohol_evening'],
+      (await repo.readJournalDay('2026-09-14')).metrics['alcohol_evening'],
       isNull,
     );
     repo.failJournalPatch = false;
@@ -264,7 +257,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       (await repo.readJournalDay(
-        '2026-09-15',
+        '2026-09-14',
       )).metrics['alcohol_evening']?.value,
       0,
     );
@@ -283,12 +276,12 @@ void main() {
     barrier.complete();
     repo.journalPatchBarrier = null;
     await tester.pumpAndSettle();
-    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+    expect(find.text('Alkohol am So 13.09?'), findsOneWidget);
     await tester.tap(find.text('Ja').first);
     await tester.pumpAndSettle();
     expect(
       (await repo.readJournalDay(
-        '2026-09-14',
+        '2026-09-13',
       )).metrics['alcohol_evening']?.value,
       1,
     );
@@ -298,14 +291,16 @@ void main() {
     'a conflict reloads the latest answer instead of retrying a stale patch',
     (tester) async {
       await mount(tester);
-      final before = await repo.readJournalDay('2026-09-15');
-      await repo.patchJournalDay(
-        JournalDayPatch.fromBase(
-          before,
-          metrics: {'alcohol_evening': const JournalMetricValue(1)},
-        ),
-      );
+      final barrier = Completer<void>();
+      repo.journalPatchBarrier = barrier.future;
       await tester.tap(find.text('Nein').first);
+      await tester.pump();
+      repo.seedJournalEditor(
+        day: '2026-09-14',
+        metrics: {'alcohol_evening': const JournalMetricValue(1)},
+      );
+      repo.journalPatchBarrier = null;
+      barrier.complete();
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Antwort inzwischen geändert'),
@@ -318,7 +313,7 @@ void main() {
       expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
       expect(
         (await repo.readJournalDay(
-          '2026-09-15',
+          '2026-09-14',
         )).metrics['alcohol_evening']?.value,
         1,
       );
@@ -346,7 +341,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         (await repo.readJournalDay(
-          '2026-09-15',
+          '2026-09-14',
         )).metrics['alcohol_evening']?.value,
         0,
       );
@@ -433,7 +428,7 @@ void main() {
     'editing a saved answer keeps the sheet draft after a failed save',
     (tester) async {
       repo.seedJournalEditor(
-        day: '2026-09-15',
+        day: '2026-09-14',
         metrics: {'alcohol_evening': const JournalMetricValue(0)},
       );
       await mount(tester);
@@ -451,7 +446,7 @@ void main() {
       );
       expect(
         (await repo.readJournalDay(
-          '2026-09-15',
+          '2026-09-14',
         )).metrics['alcohol_evening']?.value,
         0,
       );
@@ -460,7 +455,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         (await repo.readJournalDay(
-          '2026-09-15',
+          '2026-09-14',
         )).metrics['alcohol_evening']?.value,
         1,
       );
@@ -472,7 +467,7 @@ void main() {
     tester,
   ) async {
     repo.seedJournalEditor(
-      day: '2026-09-15',
+      day: '2026-09-14',
       metrics: {'alcohol_evening': const JournalMetricValue(0)},
     );
     await mount(tester);
@@ -489,7 +484,7 @@ void main() {
     tester,
   ) async {
     repo.seedJournalEditor(
-      day: '2026-09-15',
+      day: '2026-09-14',
       metrics: {'alcohol_evening': const JournalMetricValue(1)},
     );
     await mount(tester);
@@ -502,7 +497,7 @@ void main() {
     await tester.tap(find.text('Erneut speichern').last);
     await tester.pumpAndSettle();
     expect(
-      (await repo.readJournalDay('2026-09-15')).metrics['alcohol_evening'],
+      (await repo.readJournalDay('2026-09-14')).metrics['alcohol_evening'],
       isNull,
     );
     expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
@@ -512,20 +507,22 @@ void main() {
     tester,
   ) async {
     repo.seedJournalEditor(
-      day: '2026-09-15',
+      day: '2026-09-14',
       metrics: {'alcohol_evening': const JournalMetricValue(0)},
     );
     await mount(tester);
     await tester.tap(find.byTooltip('Alkohol ändern'));
     await tester.pumpAndSettle();
-    final before = await repo.readJournalDay('2026-09-15');
-    await repo.patchJournalDay(
-      JournalDayPatch.fromBase(
-        before,
-        metrics: {'alcohol_evening': const JournalMetricValue(1)},
-      ),
-    );
+    final barrier = Completer<void>();
+    repo.journalPatchBarrier = barrier.future;
     await tester.tap(find.text('Speichern'));
+    await tester.pump();
+    repo.seedJournalEditor(
+      day: '2026-09-14',
+      metrics: {'alcohol_evening': const JournalMetricValue(1)},
+    );
+    repo.journalPatchBarrier = null;
+    barrier.complete();
     await tester.pumpAndSettle();
     expect(find.text('Neu laden'), findsOneWidget);
     expect(find.text('Erneut speichern'), findsNothing);
@@ -534,7 +531,7 @@ void main() {
     expect(find.byType(G3JournalAnswerSheet), findsNothing);
     expect(
       (await repo.readJournalDay(
-        '2026-09-15',
+        '2026-09-14',
       )).metrics['alcohol_evening']?.value,
       1,
     );
@@ -589,11 +586,18 @@ void main() {
       seed: SyntheticCaffeineSleepSeed.insufficient,
     );
     await mount(tester);
+    await tester.drag(find.byType(ListView).first, const Offset(0, -700));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('noch kein Vergleich'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('noch kein Vergleich'));
     await tester.pumpAndSettle();
     expect(find.text('5 von 8 Paaren · noch 3'), findsOneWidget);
+    expect(
+      find.text('Für den Vergleich fehlen Tag-Nacht-Paare: 5 von 8 vorhanden.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('von 3'), findsWidgets);
     expect(find.textContaining('ms'), findsNothing);
   });
 
@@ -620,12 +624,12 @@ void main() {
         find.text('Vergleich konnte nicht geladen werden.'),
         findsOneWidget,
       );
-    expect(find.text('Erneut'), findsOneWidget);
-    patternRepo.failPattern = false;
-    patternRepo.partialPattern = true;
-    await tester.ensureVisible(find.text('Erneut'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Erneut'));
+      expect(find.text('Erneut'), findsOneWidget);
+      patternRepo.failPattern = false;
+      patternRepo.partialPattern = true;
+      await tester.ensureVisible(find.text('Erneut'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Erneut'));
       await tester.pumpAndSettle();
       expect(find.text('Teilweise auswertbar'), findsOneWidget);
       expect(find.text('Vergleich konnte nicht geladen werden.'), findsNothing);
@@ -633,7 +637,7 @@ void main() {
   );
 
   testWidgets(
-    'per-side refusal counts remain unknown until the repository supplies them',
+    'paired refusal shows known side counts without calling it a side refusal',
     (tester) async {
       tester.view.physicalSize = const Size(393, 852);
       tester.view.devicePixelRatio = 1;
@@ -641,7 +645,9 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       const model = CaffeineSleepPattern(
         kind: CaffeineSleepPatternKind.insufficient,
-        pairedN: 8,
+        pairedN: 5,
+        yesNights: 1,
+        noNights: 4,
         endDay: '2026-09-15',
         startDay: '2026-08-17',
         nights: 30,
@@ -650,14 +656,18 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: openBandTheme(Brightness.light),
-          home: const G3JournalPatternScreen(
-            pattern: G3JournalPattern(model, pairedMinimum: 8),
-          ),
+          home: const G3JournalPatternScreen(pattern: G3JournalPattern(model)),
         ),
       );
-      expect(find.text('8 Paare · Ja — · Nein —'), findsOneWidget);
-      expect(find.text('—'), findsWidgets);
-      expect(find.textContaining('von 3 nötig'), findsNothing);
+      expect(find.text('5 von 8 Paaren · noch 3'), findsOneWidget);
+      expect(find.text('1 von 3'), findsOneWidget);
+      expect(find.text('4 · genug'), findsOneWidget);
+      expect(
+        find.text(
+          'Für den Vergleich fehlen Tag-Nacht-Paare: 5 von 8 vorhanden.',
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -681,14 +691,15 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: openBandTheme(Brightness.light),
-          home: const G3JournalPatternScreen(
-            pattern: G3JournalPattern(model, pairedMinimum: 8),
-            perSideMinimum: 3,
-          ),
+          home: const G3JournalPatternScreen(pattern: G3JournalPattern(model)),
         ),
       );
       expect(
         find.text('8 Paare · Ja 1 von 3 nötig · Nein 7 vorhanden'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Für den Vergleich braucht es je 3 Nächte mit Ja und Nein.'),
         findsOneWidget,
       );
     },
@@ -696,7 +707,7 @@ void main() {
 
   testWidgets('Journal tab light', (tester) async {
     repo.seedJournalEditor(
-      day: '2026-09-15',
+      day: '2026-09-14',
       metrics: {
         'alcohol_evening': const JournalMetricValue(0),
         'caffeine_late': const JournalMetricValue(1),

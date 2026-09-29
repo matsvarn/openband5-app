@@ -119,9 +119,15 @@ class OBCheckIn extends StatelessWidget {
 }
 
 class OBCheckInDone extends StatelessWidget {
-  const OBCheckInDone({super.key, required this.total, required this.answers});
+  const OBCheckInDone({
+    super.key,
+    required this.total,
+    required this.answers,
+    this.title = 'Für heute erledigt',
+  });
   final int total;
   final List<String> answers;
+  final String title;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -162,10 +168,7 @@ class OBCheckInDone extends StatelessWidget {
               Icon(LucideIcons.check, size: 22, color: g.ink),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  'Für heute erledigt',
-                  style: g.t(21, 26, weight: FontWeight.w700),
-                ),
+                child: Text(title, style: g.t(21, 26, weight: FontWeight.w700)),
               ),
             ],
           ),

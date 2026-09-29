@@ -106,61 +106,50 @@ class _JournalPreviewState extends State<_JournalPreview> {
             as Map;
     summary['day'] = '2026-09-29';
     final repo = SyntheticOpenBandRepository.fromMaps(summary, detail);
-    repo.seedCaffeineSleepPattern(
-      '2026-09-29',
-      seed: SyntheticCaffeineSleepSeed.insufficient,
-    );
-    final filled =
-        name.contains('Tab') ||
-        name.contains('Scrolled') ||
-        name.contains('Done') ||
-        name.contains('EditSheet') ||
-        name.contains('SaveFailed');
+    if (name.contains('Tab') || name.contains('Scrolled')) {
+      repo.seedCaffeineSleepPattern(
+        '2026-09-29',
+        seed: SyntheticCaffeineSleepSeed.insufficient,
+      );
+    }
+    final done = name.contains('Done') || name.contains('EditSheet');
+    final amount = name.contains('Amount');
+    final note = name.contains('Note');
+    final saveFailed = name.contains('SaveFailed');
+    final tab = name.contains('Tab') || name.contains('Scrolled');
     if (name.contains('Amount')) {
       repo.seedJournalEditor(withCustom: true);
+    }
+    if (done || amount || saveFailed) {
       repo.seedJournalEditor(
-        day: '2026-09-29',
-        filled: true,
-        metrics: {'alcohol_evening': const JournalMetricValue(0)},
-      );
-    } else if (name.contains('EditSheet') || name.contains('Done')) {
-      repo.seedJournalEditor(
-        day: '2026-09-29',
+        day: '2026-09-28',
         filled: true,
         metrics: {
           'alcohol_evening': const JournalMetricValue(0),
-          if (name.contains('EditSheet'))
-            'alcohol_units': const JournalMetricValue(2),
+          'caffeine_late': const JournalMetricValue(1),
         },
       );
-    } else if (filled) {
+    } else if (tab || note) {
       repo.seedJournalEditor(
-        day: '2026-09-29',
+        day: '2026-09-28',
         metrics: {
           'alcohol_evening': const JournalMetricValue(0),
           'caffeine_late': const JournalMetricValue(1),
-          if (name.contains('Done')) 'mood': const JournalMetricValue(3),
         },
       );
     }
-    if (name.contains('Note')) {
+    if (done || amount || note) {
       repo.seedJournalEditor(
         day: '2026-09-29',
-        metrics: {
-          'alcohol_evening': const JournalMetricValue(0),
-          'caffeine_late': const JournalMetricValue(1),
-          'mood': const JournalMetricValue(3),
-        },
+        metrics: {'mood': const JournalMetricValue(4)},
       );
     }
-    repo.seedJournalEditor(
-      day: '2026-09-28',
-      metrics: {
-        'alcohol_evening': const JournalMetricValue(1),
-        'caffeine_late': const JournalMetricValue(0),
-        'mood': const JournalMetricValue(3),
-      },
-    );
+    if (name.contains('EditSheet')) {
+      repo.seedJournalEditor(
+        day: '2026-09-29',
+        metrics: {'alcohol_units': const JournalMetricValue(2)},
+      );
+    }
     repo.seedJournalEditor(
       day: '2026-09-27',
       metrics: {
@@ -241,9 +230,7 @@ class _JournalPreviewState extends State<_JournalPreview> {
                       nights: 45,
                       algoVersion: 98,
                     ),
-                    pairedMinimum: 8,
                   ),
-                  perSideMinimum: 3,
                 )
               : detail
               ? G3JournalCustomize(repository: repo)
