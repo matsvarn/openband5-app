@@ -6,11 +6,16 @@
 // The App Group id MUST match the one set in Xcode (Runner + widget targets) and
 // in the Swift suite name. See guides/IOS_INSTALLATION.md.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:flutter/services.dart';
 
 import '../data/local_repository.dart';
+import '../data/db.dart';
+import '../data/day_label.dart';
+import '../compute/derivation_engine.dart' show kAlgoVersion;
 import '../models/metric.dart';
 import '../models/payloads.dart';
 import '../ui2/screens/home_screen.dart' show hm, readinessBand;
@@ -43,6 +48,7 @@ class WidgetService {
     (_iOSName, _androidName),
     ('OpenStrapSleepWidget', 'SleepWidgetProvider'),
     ('OpenStrapOvernightWidget', 'OvernightWidgetProvider'),
+    (_batteryIOSName, _batteryAndroidName),
   ];
 
   static Future<void> _reloadSnapshotWidgets() async {
@@ -82,7 +88,9 @@ class WidgetService {
     if (repo == null) return;
     try {
       await push(TodayData.fromJson(await repo.getToday()));
-    } catch (_) {/* the widget is a mirror; it must never break its source */}
+    } catch (_) {
+      /* the widget is a mirror; it must never break its source */
+    }
   }
 
   /// True when [t] is describing a day that is more than one calendar day
@@ -101,9 +109,7 @@ class WidgetService {
     final day = _parseDay(s.overnightDay ?? s.activityDay ?? s.todayDay);
     if (day == null) return false;
     final today = now ?? DateTime.now();
-    return DateTime(today.year, today.month, today.day)
-            .difference(day)
-            .inDays >
+    return DateTime(today.year, today.month, today.day).difference(day).inDays >
         1;
   }
 
@@ -112,7 +118,9 @@ class WidgetService {
     if (label == null) return null;
     final p = label.split('-');
     if (p.length != 3) return null;
-    final y = int.tryParse(p[0]), m = int.tryParse(p[1]), d = int.tryParse(p[2]);
+    final y = int.tryParse(p[0]),
+        m = int.tryParse(p[1]),
+        d = int.tryParse(p[2]);
     if (y == null || m == null || d == null) return null;
     return DateTime(y, m, d);
   }
@@ -161,6 +169,15 @@ class WidgetService {
     'ring_sleep_sub',
     'ring_sleep_why',
     'ring_sleep_frac',
+    'g3_has_snapshot',
+    'g3_never_connected',
+    'g3_sample_at',
+    'g3_recovery_low',
+    'g3_recovery_high',
+    'g3_recovery_median',
+    'g3_baseline_have',
+    'g3_baseline_need',
+    'g3_sleep_goal_min',
     // 'updated_at' deliberately absent: write-time metadata. Any genuinely
     // new data moves at least one fingerprinted value.
   ];
@@ -230,10 +247,28 @@ class WidgetService {
       // clean current-day sync. Including it guarantees a new day always
       // pushes while keeping the within-day skip that is the point of the
       // gate.
-      final statusDay = t.status?.overnightDay ??
+      final statusDay =
+          t.status?.overnightDay ??
           t.status?.activityDay ??
           t.status?.todayDay ??
           '';
+
+      // rec_ts_hw advances only after the corresponding band data commits. A
+      // transfer time or widget write time cannot support "Daten bis".
+      final sampleAt = await LocalDb.getCursorInt('rec_ts_hw') ?? -1;
+      var batteryPct = -1;
+      try {
+        batteryPct =
+            await HomeWidget.getWidgetData<int>('batt_pct', defaultValue: -1) ??
+            -1;
+      } catch (_) {
+        /* A malformed App Group value is not a battery reading. */
+      }
+      final neverConnected = sampleAt <= 0 && batteryPct < 0;
+      final baseline = baselineCountsFromNote(readiness.note);
+      final range = await _recoveryRange(t.status?.todayDay);
+      final goalRow = await LocalDb.sleepGoalPeriodAsOf(todayLabel());
+      final goalMinutes = (goalRow?['minutes'] as num?)?.toInt() ?? -1;
 
       // THE THREE HOME RINGS, RESOLVED HERE. Recovery · Strain · Sleep, the
       // same trio and the same four states as `RingTrio` on Home. Resolved in
@@ -243,26 +278,36 @@ class WidgetService {
       final rings = [
         rv == null
             ? _gapRing('recovery', readiness, 'Not scored')
-            : _Ring('recovery',
+            : _Ring(
+                'recovery',
                 value: '${rv.round()}',
                 sub: band.label,
-                frac: rv / 100),
+                frac: rv / 100,
+              ),
         s.isEmpty
             // 0-21 is the scale's own ceiling, not a target invented here.
             ? _gapRing('strain', s, 'No strain', unit: 'days')
-            : _Ring('strain',
+            : _Ring(
+                'strain',
                 value: s.value!.toStringAsFixed(1),
                 sub: 'of 21',
-                frac: s.value! / 21),
+                frac: s.value! / 21,
+              ),
         sleep.isEmpty
-            ? _gapRing('sleep', sleep, 'No sleep',
-                fallbackWhy: 'No night long enough to score was recorded.')
-            : _Ring('sleep',
+            ? _gapRing(
+                'sleep',
+                sleep,
+                'No sleep',
+                fallbackWhy: 'No night long enough to score was recorded.',
+              )
+            : _Ring(
+                'sleep',
                 value: hm(sleep.value),
                 sub: needMin <= 0 ? 'No target yet' : 'of ${hm(need.value)}',
                 frac: needMin <= 0 || sleep.isEmpty
                     ? null
-                    : sleep.value! / need.value!),
+                    : sleep.value! / need.value!,
+              ),
       ];
 
       // THE CHANGE GATE. push() runs after EVERY derive pass; an unchanged
@@ -290,6 +335,15 @@ class WidgetService {
         overnightWhy,
         coachLine,
         for (final r in rings) ...[r.state, r.value, r.sub, r.why, r.frac],
+        !t.isEmpty,
+        neverConnected,
+        sampleAt,
+        range?.$1 ?? -1.0,
+        range?.$2 ?? -1.0,
+        range?.$3 ?? -1.0,
+        baseline?.have ?? -1,
+        baseline?.need ?? -1,
+        goalMinutes,
       ];
       assert(
         fpValues.length == fingerprintKeyOrder.length,
@@ -319,6 +373,27 @@ class WidgetService {
         await HomeWidget.saveWidgetData<String>('ring_${r.key}_why', r.why);
         await HomeWidget.saveWidgetData<double>('ring_${r.key}_frac', r.frac);
       }
+      await HomeWidget.saveWidgetData<bool>('g3_has_snapshot', !t.isEmpty);
+      await HomeWidget.saveWidgetData<bool>(
+        'g3_never_connected',
+        neverConnected,
+      );
+      await setI('g3_sample_at', sampleAt);
+      await HomeWidget.saveWidgetData<double>(
+        'g3_recovery_low',
+        range?.$1 ?? -1.0,
+      );
+      await HomeWidget.saveWidgetData<double>(
+        'g3_recovery_high',
+        range?.$2 ?? -1.0,
+      );
+      await HomeWidget.saveWidgetData<double>(
+        'g3_recovery_median',
+        range?.$3 ?? -1.0,
+      );
+      await setI('g3_baseline_have', baseline?.have ?? -1);
+      await setI('g3_baseline_need', baseline?.need ?? -1);
+      await setI('g3_sleep_goal_min', goalMinutes);
       await setI('updated_at', DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
       await _reloadSnapshotWidgets();
@@ -352,6 +427,15 @@ class WidgetService {
       // The change gate must not swallow the first push after a wipe.
       _lastPushFingerprint = null;
       await HomeWidget.saveWidgetData<bool>('has_data', false);
+      await HomeWidget.saveWidgetData<bool>('g3_has_snapshot', false);
+      await HomeWidget.saveWidgetData<bool>('g3_never_connected', true);
+      await HomeWidget.saveWidgetData<int>('g3_sample_at', -1);
+      for (final key in const ['low', 'high', 'median']) {
+        await HomeWidget.saveWidgetData<double>('g3_recovery_$key', -1.0);
+      }
+      await HomeWidget.saveWidgetData<int>('g3_baseline_have', -1);
+      await HomeWidget.saveWidgetData<int>('g3_baseline_need', -1);
+      await HomeWidget.saveWidgetData<int>('g3_sleep_goal_min', -1);
       for (final k in const [
         'readiness',
         'readiness_tier',
@@ -425,18 +509,35 @@ class WidgetService {
   /// fires ~1 Hz on live HR; reloading the widget every tick is wasteful).
   /// Sentinel: pct -1 = never seen the band. [name] is the strap's advertising
   /// name (the widget falls back to "Strap" when empty/null).
-  static Future<void> pushBattery(int? pct, bool? charging, String? name) async {
+  static Future<void> pushBattery(
+    int? pct,
+    bool? charging,
+    String? name,
+  ) async {
     try {
       await init();
       await HomeWidget.saveWidgetData<int>('batt_pct', pct ?? -1);
+      if (pct != null) {
+        await HomeWidget.saveWidgetData<bool>('g3_never_connected', false);
+      }
       await HomeWidget.saveWidgetData<bool>('batt_charging', charging ?? false);
       await HomeWidget.saveWidgetData<String>('batt_name', name ?? '');
       await HomeWidget.saveWidgetData<int>(
-          'batt_at', DateTime.now().millisecondsSinceEpoch ~/ 1000);
+        'batt_at',
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      );
       await HomeWidget.updateWidget(
-          iOSName: _batteryIOSName, androidName: _batteryAndroidName);
+        iOSName: _batteryIOSName,
+        androidName: _batteryAndroidName,
+      );
+      await HomeWidget.updateWidget(
+        iOSName: _iOSName,
+        androidName: _androidName,
+      );
       await _syncWatch();
-    } catch (_) {/* widgets unavailable / not configured yet — ignore */}
+    } catch (_) {
+      /* widgets unavailable / not configured yet — ignore */
+    }
   }
 
   /// Tell the iOS widget + Live Activity which appearance the app is rendering
@@ -515,6 +616,41 @@ class WidgetService {
     return false;
   }
 
+  /// Only the current, complete derivation's trusted stored recovery baseline
+  /// can supply a personal band. The G3 day reader uses the same 1.253 spread.
+  static Future<(double, double, double)?> _recoveryRange(String? day) async {
+    if (day == null || day != todayLabel()) return null;
+    final row = await LocalDb.dayResult(day);
+    if (row == null ||
+        row['skipped'] == 1 ||
+        row['partial'] == 1 ||
+        row['algo_version'] != kAlgoVersion) {
+      return null;
+    }
+    final raw = row['payload_json'];
+    if (raw is! String) return null;
+    final payload = jsonDecode(raw);
+    if (payload is! Map) return null;
+    final baselines = payload['baselines'];
+    final recovery = baselines is Map ? baselines['recovery'] : null;
+    if (recovery is! Map || recovery['status'] != 'trusted') return null;
+    final center = recovery['baseline'];
+    final spread = recovery['spread'];
+    if (center is! num ||
+        spread is! num ||
+        !center.isFinite ||
+        !spread.isFinite ||
+        spread <= 0) {
+      return null;
+    }
+    final half = 1.253 * spread.toDouble();
+    return (
+      center.toDouble() - half,
+      center.toDouble() + half,
+      center.toDouble(),
+    );
+  }
+
   /// Why the overnight block on offer is not today's, or null when it is.
   ///
   /// Two absences that are not interchangeable and the same two sentences
@@ -532,26 +668,36 @@ class WidgetService {
   /// baseline still filling — the one absence that is progress and can honestly
   /// draw an arc — otherwise the word and the pipeline's own reason.
   /// Mirrors `_gap` in lib/ui2/screens/home_screen.dart.
-  static _Ring _gapRing(String key, Metric m, String word,
-      {String unit = 'nights', String fallbackWhy = ''}) {
+  static _Ring _gapRing(
+    String key,
+    Metric m,
+    String word, {
+    String unit = 'nights',
+    String fallbackWhy = '',
+  }) {
     final counts = baselineCountsFromNote(m.note);
     if (counts != null) {
-      return _Ring(key,
-          state: 1,
-          value: 'Calibrating',
-          sub: '${counts.have} of ${counts.need} $unit',
-          frac: (counts.have / counts.need).clamp(0.0, 1.0));
+      return _Ring(
+        key,
+        state: 1,
+        value: 'Calibrating',
+        sub: '${counts.have} of ${counts.need} $unit',
+        frac: (counts.have / counts.need).clamp(0.0, 1.0),
+      );
     }
-    return _Ring(key,
-        state: 2,
-        value: word,
-        // THE PIPELINE'S REASON FIRST, a sentence written here second, and
-        // where there is neither the ring says it does not know rather than
-        // guessing a cause.
-        why: whyFromNote(m.note, unit: unit) ??
-            (fallbackWhy.isNotEmpty
-                ? fallbackWhy
-                : 'Nothing recorded says why this is missing.'));
+    return _Ring(
+      key,
+      state: 2,
+      value: word,
+      // THE PIPELINE'S REASON FIRST, a sentence written here second, and
+      // where there is neither the ring says it does not know rather than
+      // guessing a cause.
+      why:
+          whyFromNote(m.note, unit: unit) ??
+          (fallbackWhy.isNotEmpty
+              ? fallbackWhy
+              : 'Nothing recorded says why this is missing.'),
+    );
   }
 
   static String _coachLine(CoachData? c) {
@@ -592,11 +738,12 @@ class _Ring {
   /// arc that laps itself, or a progress bar that draws past its own end,
   /// depending on which of the four targets is reading. The number the ring
   /// shows is the real one ("8h 10m of 7h 30m"); only the arc is bounded.
-  _Ring(this.key,
-      {this.state = 0,
-      required this.value,
-      this.sub = '',
-      this.why = '',
-      double? frac})
-      : frac = frac == null ? -1 : frac.clamp(0.0, 1.0);
+  _Ring(
+    this.key, {
+    this.state = 0,
+    required this.value,
+    this.sub = '',
+    this.why = '',
+    double? frac,
+  }) : frac = frac == null ? -1 : frac.clamp(0.0, 1.0);
 }
