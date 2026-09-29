@@ -719,16 +719,23 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       return G3SleepPlus(
         regularity: const G3AvailableValue(null),
         socialJetlag: const G3AvailableValue(null),
-        sleepDebt: const G3SleepDebt(),
+        sleepDebt: const G3SleepDebt(
+          freeNightP75Hours: 455 / 60,
+          habitualMedianHours: 445 / 60,
+          debtHours: 10 / 60,
+          hasFreeNight: true,
+        ),
         bedtime: plan?.bedtimeMinuteOfDay == null ? null : _g3At(22, 18),
         wake: plan?.wakeMinuteOfDay == null
             ? null
             : DateTime(2026, 9, 30, 6, 54),
         needMinutes: plan?.needSeconds == null ? null : plan!.needSeconds / 60,
         goalMinutes: 465,
+        baselineOsdMinutes: plan == null ? null : 455,
+        appliedDebtMinutes: plan == null ? null : 10,
         strainBonusMinutes: plan?.strainBonusMin,
         napCreditMinutes: plan?.napCreditMin,
-        napsIncomplete: plan == null ? null : plan.napCreditMin == null,
+        napsJudged: plan == null ? null : plan.napCreditMin != null,
         typicalEfficiency: plan == null ? null : .94,
       );
     }
@@ -3737,6 +3744,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           wakeMinuteOfDay: 6 * 60 + 54,
           napCreditMin: 0,
           strainBonusMin: 20,
+          sleepDebt: const SleepPlanDebt(osdHours: 455 / 60),
           builtAtEpoch: _g3At(9, 38).millisecondsSinceEpoch ~/ 1000,
           algoVersion: kAlgoVersion,
           need: need,

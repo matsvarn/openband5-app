@@ -67,6 +67,7 @@ void main() {
   test('sleep threshold needs real sleep, goal and suggested bedtime', () {
     expect(note(sleep: 438, goal: 465), isNull);
     expect(note(sleep: 438, bedtime: bed), isNull);
+    expect(note(sleep: 438, need: 485, bedtime: bed, wakeTime: wake), isNull);
     expect(note(goal: 465, bedtime: bed), isNull);
     expect(note(sleep: 438, goal: 465, bedtime: bed), isNull);
     expect(note(sleep: 450, goal: 465, need: 485, bedtime: bed), isNull);
