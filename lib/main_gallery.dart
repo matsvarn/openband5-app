@@ -38,6 +38,7 @@ import 'state/units_controller.dart';
 import 'theme/theme_controller.dart';
 import 'openband/g3/screens/training_screen.dart';
 import 'openband/g3/screens/training_live.dart';
+import 'openband/g3/screens/training_manual.dart';
 import 'compute/derivation_engine.dart' show kAlgoVersion;
 import 'data/auto_backup.dart' show BackupCadence;
 import 'state/alarm_schedule.dart';
@@ -282,6 +283,18 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                 onStart: (type) {
                   if (type != 'running') return;
                   _openSyntheticRun(c, type);
+                },
+                onManual: () async {
+                  await pushFullScreen<G3ManualSaved>(
+                    c,
+                    MaterialPageRoute<G3ManualSaved>(
+                      builder: (_) => G3ManualFlow(
+                        recentRepository: widget.repository,
+                        now: () => _clock,
+                        initialSpans: const [],
+                      ),
+                    ),
+                  );
                 },
               ),
       ShellDomain.wellness =>

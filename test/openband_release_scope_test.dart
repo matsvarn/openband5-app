@@ -40,6 +40,7 @@ import 'package:openstrap_edge/openband/templates.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -1355,6 +1356,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Zone 3'), findsOneWidget);
     expect(find.textContaining('% HFmax'), findsOneWidget);
+  });
+
+  testWidgets('reduced gallery Nachtragen uses its fixture activities', (
+    tester,
+  ) async {
+    phone(tester);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(
+        repository: repository,
+        releaseReduced: true,
+        showControls: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nachtragen'));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3ManualFlow), findsOneWidget);
+    expect(find.text('ZULETZT'), findsOneWidget);
+    expect(find.text('Lauf'), findsOneWidget);
   });
 
   testWidgets(

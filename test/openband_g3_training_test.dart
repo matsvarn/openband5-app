@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_edge/compute/manual_session.dart';
 import 'package:openstrap_edge/openband/controller.dart';
@@ -801,11 +802,7 @@ void main() {
     );
     expect(find.text('Ø PULS'), findsNothing);
 
-    run.value = const LiveRun(
-      elapsedSec: 963,
-      heartRate: 154,
-      averageHr: 141,
-    );
+    run.value = const LiveRun(elapsedSec: 963, heartRate: 154, averageHr: 141);
     await tester.pump();
     expect(find.text('Ø PULS'), findsOneWidget);
     expect(find.text('141'), findsOneWidget);
@@ -919,6 +916,64 @@ void main() {
     expect(title.didExceedMaxLines, isFalse);
     expect(find.byTooltip('Abbrechen'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Nachtragen omits Zuletzt without recent activity evidence', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        G3ManualFlow(
+          now: () => DateTime(2026, 9, 29, 9, 41),
+          initialSpans: const [],
+        ),
+      ),
+    );
+    expect(find.text('ZULETZT'), findsNothing);
+    expect(find.text('Lauf'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Nachtragen takes recent sports from activities without duplicates',
+    (tester) async {
+      await tester.pumpWidget(
+        _app(
+          G3ManualFlow(
+            now: () => DateTime(2026, 9, 29, 9, 41),
+            recentRepository: _repo(SyntheticScenario.g3Sample),
+            initialSpans: const [],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('ZULETZT'), findsOneWidget);
+      expect(find.text('Lauf'), findsOneWidget);
+      expect(find.text('Rad'), findsOneWidget);
+      expect(find.text('ALLE SPORTARTEN'), findsOneWidget);
+      final grids = find.byType(GridView);
+      expect(grids, findsNWidgets(2));
+      expect(
+        find.descendant(of: grids.first, matching: find.text('Lauf')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: grids.first, matching: find.text('Rad')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: grids.last, matching: find.text('Rad')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('Yoga uses a Lucide flower rather than the sport silhouette', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(trainingSportIcon('yoga', color: Colors.black)),
+    );
+    expect(tester.widget<Icon>(find.byType(Icon)).icon, LucideIcons.flower2);
   });
 
   testWidgets('live Training header stays on one line at 375 pt and 2× text', (
