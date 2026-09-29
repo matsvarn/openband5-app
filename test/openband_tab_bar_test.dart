@@ -103,6 +103,10 @@ void main() {
     ]) {
       await tester.pumpWidget(_bar(brightness));
       await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byKey(const ValueKey('bar-golden'))).height,
+        64,
+      );
       await expectLater(
         find.byKey(const ValueKey('bar-golden')),
         matchesGoldenFile('openband_goldens/openband_tab_bar_$name.png'),

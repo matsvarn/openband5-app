@@ -9,7 +9,7 @@ import 'grammar.dart' show Pressable;
 enum ShellDomain {
   home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),
-  workout('Training', LucideIcons.dumbbell, C.domMove),
+  workout('Training', LucideIcons.activity, C.domMove),
   wellness('Journal', LucideIcons.notebookPen, C.domMind),
   sleep('Schlaf', LucideIcons.moon, C.domHealth);
 
