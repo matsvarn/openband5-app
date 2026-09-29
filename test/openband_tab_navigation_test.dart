@@ -7,6 +7,7 @@ import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:openstrap_edge/ui2/profile/settings.dart' show MoreSettingsView;
 
 Widget _shell(
   GlobalKey<AppShellState> key, {
@@ -40,7 +41,9 @@ Widget _shell(
                         key: ValueKey('last-${domain.name}-card'),
                         child: SizedBox(
                           height: 80,
-                          child: Center(child: Text('Last ${domain.name} card')),
+                          child: Center(
+                            child: Text('Last ${domain.name} card'),
+                          ),
                         ),
                       ),
                     ],
@@ -125,14 +128,45 @@ void main() {
       tester.getRect(scrollable).bottom,
       greaterThan(tester.getRect(find.byType(OBTabBar)).top),
     );
-    tester.state<ScrollableState>(scrollable).position.jumpTo(
-      tester.state<ScrollableState>(scrollable).position.maxScrollExtent,
-    );
+    tester
+        .state<ScrollableState>(scrollable)
+        .position
+        .jumpTo(
+          tester.state<ScrollableState>(scrollable).position.maxScrollExtent,
+        );
     await tester.pumpAndSettle();
     expect(
       tester.getRect(find.byKey(const ValueKey('last-home-card'))).bottom,
       lessThan(tester.getRect(find.byType(OBTabBar)).top),
     );
+  });
+
+  testWidgets('settings last row clears the floating tab bar', (tester) async {
+    final key = GlobalKey<AppShellState>();
+    var resetTapped = false;
+    await tester.pumpWidget(_shell(key));
+    key.currentState!.open(
+      ShellDomain.home,
+      MoreSettingsView(releaseReduced: true, onReset: () => resetTapped = true),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.descendant(
+      of: find.byType(MoreSettingsView),
+      matching: find.byType(Scrollable),
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    final lastRow = find.text('Reset all data');
+    expect(lastRow.hitTestable(), findsOneWidget);
+    expect(
+      tester.getRect(lastRow).bottom,
+      lessThan(tester.getRect(find.byType(OBTabBar)).top),
+    );
+    await tester.tap(lastRow);
+    expect(resetTapped, isTrue);
   });
 
   testWidgets('covered tab root keeps its layout during detail pop animation', (
@@ -233,7 +267,10 @@ void main() {
     expect(find.text('Tab sheet'), findsOneWidget);
     expect(find.byType(OBTabBar).hitTestable(), findsNothing);
     expect(find.byType(ModalBarrier).hitTestable(), findsWidgets);
-    expect(tester.getRect(find.byType(BottomSheet)).contains(barCenter), isTrue);
+    expect(
+      tester.getRect(find.byType(BottomSheet)).contains(barCenter),
+      isTrue,
+    );
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);

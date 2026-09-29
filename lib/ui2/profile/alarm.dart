@@ -27,6 +27,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/alp_tokens.dart';
 import '../../openband/settings_controls.dart';
+import '../app_shell.dart';
 import '../../openband/theme.dart';
 import '../../openband/time_picker.dart';
 import '../../state/alarm_schedule.dart';
@@ -214,6 +215,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -236,7 +238,12 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                tabRouteBottomInset(c, 24),
+              ),
               children: [
                 _hero(c, p, at),
                 const SizedBox(height: 12),

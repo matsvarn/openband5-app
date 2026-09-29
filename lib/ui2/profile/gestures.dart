@@ -90,6 +90,7 @@ class BandGesturesView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             Padding(
@@ -111,7 +112,12 @@ class BandGesturesView extends StatelessWidget {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  tabRouteBottomInset(c, 40),
+                ),
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
