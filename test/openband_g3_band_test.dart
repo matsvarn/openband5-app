@@ -463,6 +463,11 @@ void main() {
       ),
     );
     expect(find.text('bis gestern · 09:28'), findsOneWidget);
+    final caption = tester.getRect(find.text('letzter gespeicherter Wert'));
+    final track = tester.getRect(
+      find.byKey(const ValueKey('band-frontier-track')),
+    );
+    expect(caption.bottom, lessThan(track.top));
   });
 
   testWidgets('band detail follows live observations and clock', (
@@ -1074,6 +1079,8 @@ void main() {
     expect(find.textContaining('Anteil unbekannt'), findsOneWidget);
     expect(find.textContaining('1 beobachtete Ablegephase'), findsOneWidget);
     expect(find.textContaining('24 h: 100 %'), findsNothing);
+    expect(find.text('letzter gespeicherter Wert vor 3 Min.'), findsOneWidget);
+    expect(find.text('Noch kein Empfang'), findsNothing);
   });
 
   testWidgets('data status dates the stored frontier from yesterday', (

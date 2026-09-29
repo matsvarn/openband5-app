@@ -13,9 +13,9 @@ import 'package:provider/provider.dart';
 import '../../data/day_label.dart';
 import '../../openband/domain.dart';
 import '../../openband/g3/band_parts.dart';
+import '../../openband/g3/chrome.dart' show OBActionSecondary, OBErrorBlock;
 import '../../openband/local_repository.dart';
 import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
-import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
 
@@ -340,6 +340,22 @@ class FirstSyncView extends StatelessWidget {
                     evaluation: evaluation,
                     now: now,
                   ),
+                  if (onResume != null &&
+                      band?.connection == BandConnection.connected &&
+                      band?.transfer == TransferState.idle &&
+                      evaluation?.state != SetupEvalState.complete &&
+                      !resumeBusy &&
+                      !resumeFailed) ...[
+                    const SizedBox(height: 12),
+                    OBActionSecondary(
+                      _s(
+                        context,
+                        'Übertragung erneut versuchen',
+                        'Try the transfer again',
+                      ),
+                      onPressed: onResume,
+                    ),
+                  ],
                   if (band?.transfer == TransferState.receiving) ...[
                     const SizedBox(height: 14),
                     Padding(
@@ -391,18 +407,14 @@ class FirstSyncView extends StatelessWidget {
                       ),
                     ),
                   ],
-                  if (resumeBusy || resumeFailed) ...[
+                  if (resumeBusy) ...[
                     const SizedBox(height: 12),
                     OBSyncState(
                       band: band ?? const BandSnapshot(),
                       now: () => now,
                       onResume: onResume,
                       showStoredTime: false,
-                      actionState: resumeBusy
-                          ? OBSyncActionState.pending
-                          : resumeFailed
-                          ? OBSyncActionState.failed
-                          : null,
+                      actionState: OBSyncActionState.pending,
                       interruptedLabel: _s(
                         context,
                         'Unterbrochen',
@@ -410,39 +422,60 @@ class FirstSyncView extends StatelessWidget {
                       ),
                       pendingLabel: _s(
                         context,
-                        'Verbindung wird hergestellt',
-                        'Connecting',
+                        'Wird erneut versucht …',
+                        'Trying again …',
                       ),
-                      failedLabel: _s(
+                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
+                    ),
+                  ],
+                  if (resumeFailed) ...[
+                    const SizedBox(height: 12),
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Fortsetzen fehlgeschlagen',
                         'Resume failed',
                       ),
-                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Die Verbindung konnte nicht fortgesetzt werden. Bereits gespeicherte Werte bleiben auf dem iPhone.',
+                        'The connection could not resume. Stored values remain on the phone.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
+                      onRetry: onResume,
                     ),
                   ],
                   if (evalError) ...[
                     const SizedBox(height: 12),
-                    OBSettingsErrorCard(
-                      message: _s(
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Auswertung nicht geladen',
                         'Evaluation not loaded',
                       ),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Der aktuelle Status ist nicht verfügbar.',
+                        'The current status is unavailable.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
                       onRetry: onRetry,
                     ),
                   ],
                   if (bandError) ...[
                     const SizedBox(height: 12),
-                    OBSettingsErrorCard(
-                      message: _s(
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Bandstatus nicht geladen',
                         'Band status not loaded',
                       ),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Der aktuelle Bandstatus ist gerade nicht verfügbar.',
+                        'The current band status is not available right now.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
                       onRetry: onRetry,
                     ),
                   ],
@@ -475,8 +508,8 @@ class FirstSyncView extends StatelessWidget {
                           )
                         : _s(
                             context,
-                            'Noch: Über dich. Danach Heute.',
-                            'Next: About you. Then Today.',
+                            'Deine Angaben fehlen noch. Ergänze sie im nächsten Schritt.',
+                            'Your profile details are still missing. Add them in the next step.',
                           ),
                     textAlign: TextAlign.center,
                     style: p.text(12, color: p.muted),

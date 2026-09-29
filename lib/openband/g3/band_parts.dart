@@ -352,8 +352,24 @@ class OBFrontierCard extends StatelessWidget {
             stored == null ? '—' : 'bis $storedDay${obTime(stored)}',
             style: g.t(40, 44, weight: FontWeight.w700),
           ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'letzter gespeicherter Wert',
+                  style: g.t(11, 15, color: g.muted),
+                ),
+              ),
+              Text(
+                'jetzt ${obTime(now)}',
+                style: g.t(11, 15, weight: FontWeight.w700, color: g.ink2),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Semantics(
+            key: const ValueKey('band-frontier-track'),
             label: stored == null
                 ? 'Noch kein gespeicherter Bandwert'
                 : 'Letzter gespeicherter Bandwert $storedDay${obTime(stored)}',
@@ -382,21 +398,6 @@ class OBFrontierCard extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'letzter gespeicherter Wert',
-                  style: g.t(11, 15, color: g.muted),
-                ),
-              ),
-              Text(
-                'jetzt ${obTime(now)}',
-                style: g.t(11, 15, weight: FontWeight.w700, color: g.ink2),
-              ),
-            ],
           ),
           const SizedBox(height: 8),
           if (caption != null || rightLabel == null)

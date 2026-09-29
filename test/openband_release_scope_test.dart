@@ -24,6 +24,7 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
     show OBSettingsRow, OBToggle;
+import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -36,6 +37,7 @@ import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/data.dart';
@@ -44,6 +46,7 @@ import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/activity/picker.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -1146,6 +1149,36 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('Export erstellt'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('release Band route cannot open the legacy device picker', (
+    tester,
+  ) async {
+    phone(tester);
+    final app = AppState.forTesting(releaseReduced: true);
+    addTearDown(app.dispose);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppState>.value(value: app),
+          ChangeNotifierProvider<LocaleController>(
+            create: (_) => LocaleController.seed('de'),
+          ),
+        ],
+        child: MaterialApp(
+          locale: const Locale('de'),
+          theme: openBandTheme(Brightness.light),
+          home: const ProfileHome(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-band')));
+    await tester.pumpAndSettle();
+    final band = tester.widget<G3BandScreen>(find.byType(G3BandScreen));
+    expect(band.onDevices, isNull);
+    expect(find.text('Meine Geräte'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

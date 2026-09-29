@@ -5,11 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBActionPrimary;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBActionPrimary, OBErrorBlock;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3;
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -415,8 +418,11 @@ void main() {
     bool evalError = false,
     bool bandError = false,
     bool receivingTransfer = true,
+    bool resumeBusy = false,
+    bool resumeFailed = false,
     SetupEvalState state = SetupEvalState.missing,
     VoidCallback? onResume,
+    VoidCallback? onRetry,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = Size(width, height);
@@ -456,6 +462,7 @@ void main() {
               now: now,
               onDone: () {},
               onResume: onResume,
+              onRetry: onRetry,
               synthetic: true,
               band:
                   band ??
@@ -468,6 +475,8 @@ void main() {
               evaluation: evaluation ?? eval(state),
               evalError: evalError,
               bandError: bandError,
+              resumeBusy: resumeBusy,
+              resumeFailed: resumeFailed,
             ),
           ),
         ),
@@ -475,6 +484,120 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('failed resume uses a neutral error and an explicit retry', (
+    tester,
+  ) async {
+    var retries = 0;
+    await pumpPaper(
+      tester,
+      receivingTransfer: false,
+      band: BandSnapshot(
+        connection: BandConnection.disconnected,
+        latestStoredAt: stored,
+      ),
+      resumeFailed: true,
+      onResume: () => retries++,
+    );
+    final error = find.byType(OBErrorBlock);
+    expect(error, findsOneWidget);
+    expect(find.text('Fortsetzen fehlgeschlagen'), findsOneWidget);
+    expect(find.text('Erneut versuchen'), findsOneWidget);
+    expect(
+      find.text('Deine Angaben fehlen noch. Ergänze sie im nächsten Schritt.'),
+      findsOneWidget,
+    );
+    final icon = tester.widget<Icon>(
+      find.descendant(
+        of: error,
+        matching: find.byIcon(LucideIcons.triangleAlert),
+      ),
+    );
+    expect(icon.color, G3.of(tester.element(error)).ink);
+    await tester.ensureVisible(find.text('Erneut versuchen'));
+    await tester.tap(find.text('Erneut versuchen'));
+    expect(retries, 1);
+  });
+
+  testWidgets('retry progress and manual retry are named separately', (
+    tester,
+  ) async {
+    var retries = 0;
+    final connected = BandSnapshot(
+      connection: BandConnection.connected,
+      latestStoredAt: stored,
+    );
+    await pumpPaper(
+      tester,
+      receivingTransfer: false,
+      band: connected,
+      resumeBusy: true,
+      onResume: () => retries++,
+    );
+    expect(find.text('Wird erneut versucht …'), findsOneWidget);
+    expect(find.text('Übertragung erneut versuchen'), findsNothing);
+
+    await pumpPaper(
+      tester,
+      receivingTransfer: false,
+      band: connected,
+      onResume: () => retries++,
+    );
+    expect(find.text('Wird erneut versucht …'), findsNothing);
+    expect(find.text('Übertragung erneut versuchen'), findsOneWidget);
+    expect(find.text('Weiter'), findsOneWidget);
+    await tester.ensureVisible(find.text('Übertragung erneut versuchen'));
+    await tester.tap(find.text('Übertragung erneut versuchen'));
+    expect(retries, 1);
+  });
+
+  testWidgets('evaluation read failure keeps its retry reachable', (
+    tester,
+  ) async {
+    var retries = 0;
+    await pumpPaper(
+      tester,
+      evalError: true,
+      onRetry: () => retries++,
+    );
+    expect(find.byType(OBErrorBlock), findsOneWidget);
+    await tester.ensureVisible(find.text('Erneut versuchen'));
+    await tester.pump();
+    expect(find.text('Erneut versuchen').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('Erneut versuchen'));
+    expect(retries, 1);
+  });
+
+  testWidgets('first-sync failure and retry goldens', (tester) async {
+    final connected = BandSnapshot(
+      connection: BandConnection.connected,
+      latestStoredAt: stored,
+    );
+    await pumpPaper(
+      tester,
+      receivingTransfer: false,
+      band: BandSnapshot(
+        connection: BandConnection.disconnected,
+        latestStoredAt: stored,
+      ),
+      resumeFailed: true,
+      onResume: () {},
+    );
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/first-sync-resume-failed.png'),
+    );
+    await pumpPaper(
+      tester,
+      receivingTransfer: false,
+      band: connected,
+      onResume: () {},
+    );
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/first-sync-retry-available.png'),
+    );
+  }, tags: const ['golden']);
 
   testWidgets('Paper interrupted first-sync frames', (tester) async {
     final interrupted = BandSnapshot(
@@ -538,13 +661,13 @@ void main() {
       matchesGoldenFile('openband_goldens/first-sync-partial-dark.png'),
     );
     expect(find.text('Teilweise'), findsOneWidget);
-    await pumpPaper(tester, evalError: true);
+    await pumpPaper(tester, evalError: true, onRetry: () {});
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/first-sync-read-error.png'),
     );
     expect(find.text('Auswertung nicht geladen'), findsOneWidget);
-    expect(find.text('Erneut'), findsOneWidget);
+    expect(find.text('Erneut versuchen'), findsOneWidget);
     await pumpPaper(tester, width: 375, height: 812, scale: 2);
     await expectLater(
       find.byKey(const ValueKey('capture')),
