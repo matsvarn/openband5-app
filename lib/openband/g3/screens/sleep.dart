@@ -104,6 +104,7 @@ class _SleepReads {
 class _G3SleepScreenState extends State<G3SleepScreen>
     with WidgetsBindingObserver {
   _SleepReads? _reads;
+  Timer? _dayTimer;
   OpenBandController get controller => widget.controller;
   SleepBedtimeReminder get reminder =>
       widget.reminder ?? NotificationSleepBedtimeReminder();
@@ -112,18 +113,35 @@ class _G3SleepScreenState extends State<G3SleepScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _armDayRollover();
     unawaited(_reconcileDay());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _dayTimer?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_reconcileDay());
+    if (state == AppLifecycleState.resumed) {
+      _armDayRollover();
+      unawaited(_reconcileDay());
+    }
+  }
+
+  void _armDayRollover() {
+    _dayTimer?.cancel();
+    final now = controller.now();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    final delay = midnight.difference(now);
+    _dayTimer = Timer(delay.isNegative ? Duration.zero : delay, () {
+      if (!mounted) return;
+      unawaited(_reconcileDay());
+      _armDayRollover();
+    });
   }
 
   Future<void> _reconcileDay() async {
@@ -955,7 +973,9 @@ class _G3SleepDebtDetailState extends State<G3SleepDebtDetail> {
                       ],
                       Text(
                         'Aufgezeichnete Wochenendnächte; die Schätzung kann Nächte ausschließen.',
-                        style: G3.of(context).t(11, 15, color: G3.of(context).muted),
+                        style: G3
+                            .of(context)
+                            .t(11, 15, color: G3.of(context).muted),
                       ),
                     ],
                   ),
