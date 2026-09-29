@@ -11,6 +11,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/data/journal_fields.dart' show kJournalFields;
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
@@ -31,6 +32,11 @@ class _Repo extends SyntheticOpenBandRepository {
   _Repo(SyntheticScenario s, {this.empty = false, this.noBaseline = false})
     : super.fromMaps(_json('day-summary.json'), _json('sleep-detail.json'), scenario: s);
   bool empty;
+
+  /// Last stored band sample per day (past days read it from here).
+  final lastSamples = <String, DateTime>{};
+  @override
+  Future<DateTime?> readLastBandSampleAt(String day) async => lastSamples[day] ?? await super.readLastBandSampleAt(day);
 
   /// The sleep plan read throws (a transient failure).
   bool planThrows = false;
@@ -61,6 +67,32 @@ class _StepsRepo extends _Repo {
     stepIntervals: spans,
     synthetic: true,
   );
+}
+
+/// A check-in with a today rating and a yesterday count: the kinds the
+/// synthetic journal does not ask.
+class _TypedCheckInRepo extends _Repo {
+  _TypedCheckInRepo() : super(SyntheticScenario.g3Sample);
+  final written = <(String, String, G3CheckInAnswer)>[];
+  @override
+  Future<G3CheckIn> readCheckIn(String day) async {
+    G3CheckInAnswer? of(String key) => written.where((w) => w.$2 == key).lastOrNull?.$3;
+    final spec = {for (final f in kJournalFields) f.key: f};
+    return G3CheckIn(day, [
+      G3CheckInQuestion(key: 'mood', label: 'Mood', targetDay: day, kind: G3CheckInKind.rating, answer: of('mood'), field: spec['mood']),
+      G3CheckInQuestion(
+        key: 'alcohol_units',
+        label: 'Alcohol',
+        targetDay: g3DaysEnding(day, 2).first,
+        kind: G3CheckInKind.quantity,
+        answer: of('alcohol_units'),
+        field: spec['alcohol_units'],
+      ),
+    ]);
+  }
+
+  @override
+  Future<void> answerCheckIn(String day, String key, G3CheckInAnswer answer) async => written.add((day, key, answer));
 }
 
 class _Harness {
@@ -158,7 +190,7 @@ void main() {
   testWidgets('trusted day: lead on the range, note with the sleep-plan bedtime, no °C', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     expect(find.text('Heute'), findsWidgets);
-    expect(find.text('normal 58–80'), findsOneWidget);
+    expect(find.text('normal 58–78'), findsOneWidget);
     expect(find.text('über deinem Median 68'), findsOneWidget);
     expect(find.text('22:20 ins Bett'), findsOneWidget);
     expect(find.text('für 8h05 Schlafbedarf bis 06:54'), findsOneWidget);
@@ -166,8 +198,8 @@ void main() {
     expect(find.text('Daten bis 09:37 · Nacht lückenlos'), findsOneWidget);
     // One instant for both: the footer's last band value is latestStoredAt.
     expect(find.text('Letzter Bandwert 09:37 · Übertragung 09:38'), findsOneWidget);
-    // The design day stores no stage timeline: totals only, no empty lanes.
-    expect(find.text('ohne Verlauf'), findsOneWidget);
+    // The design day stores its stage timeline: no totals-only fallback.
+    expect(find.text('ohne Verlauf'), findsNothing);
     expect(_hasText(tester, (s) => s.contains('°C')), isFalse);
     expect(find.text('zur Basis'), findsNothing, reason: 'unit is a span');
     expect(_hasText(tester, (s) => s.contains('+0,4')), isTrue);
@@ -179,7 +211,7 @@ void main() {
     expect(find.text('11 von 14 Nächten'), findsOneWidget);
     expect(find.text('Basis: noch 3 Nächte'), findsWidgets);
     expect(find.text('Heute früher ins Bett.'), findsOneWidget);
-    expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14'), findsOneWidget);
+    expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
     expect(find.text('Erholung: noch keine Werte'), findsOneWidget);
     // HRV 48 without a basis: no scale invented from the value (36…60).
@@ -362,19 +394,68 @@ void main() {
     expect(find.text('Erinnern'), findsOneWidget);
   });
 
-  testWidgets('check-in answers through the data layer; Später parks it', (tester) async {
+  testWidgets('check-in: yesterday questions say so and write to yesterday; Später parks it', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     expect(find.text('2 von 4'), findsOneWidget);
-    expect(find.text('Stimmung: 4 von 5'), findsOneWidget);
-    expect(find.text('Wie hast du geschlafen?'), findsOneWidget);
-    await tester.tap(find.text('3').first);
+    expect(find.text('zu gestern'), findsOneWidget);
+    expect(find.text('Stimmung: 4 von 5'), findsOneWidget, reason: 'mood belongs to today');
+    expect(find.text('Alkohol am Abend?'), findsOneWidget);
+    await tester.tap(find.text('Nein'));
     await tester.pumpAndSettle();
-    final ci = await h.repo.readCheckIn(_day);
-    expect(ci.questions.firstWhere((q) => q.field.key == 'sleep_quality').value?.value, 3);
+    expect((await h.repo.readJournalDay('2026-09-28')).metrics['alcohol_evening']?.value, 0);
+    expect((await h.repo.readJournalDay(_day)).metrics['alcohol_evening'], isNull);
     expect(find.text('3 von 4'), findsOneWidget);
+    expect(find.text('zu gestern'), findsOneWidget);
+    expect(find.text('Alkohol am Abend: Nein'), findsOneWidget);
+    expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
     await tester.tap(find.text('Später'));
     await tester.pumpAndSettle();
     expect(find.text('2 offen'), findsOneWidget);
+  });
+
+  testWidgets('check-in: the note is saved to yesterday and completes the card', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    await tester.tap(find.text('Ja'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nein'));
+    await tester.pumpAndSettle();
+    expect(find.text('4 von 4'), findsOneWidget);
+    expect(find.text('zu gestern'), findsOneWidget);
+    expect(find.text('Noch etwas zum Tag?'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'Spät gegessen');
+    await tester.pump();
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect((await h.repo.readJournalDay('2026-09-28')).note, 'Spät gegessen');
+    expect((await h.repo.readJournalDay('2026-09-28')).metrics['alcohol_evening']?.value, 1);
+    expect(find.text('CHECK-IN'), findsNothing, reason: 'all four answered');
+  });
+
+  testWidgets('check-in: a rating and a count with an explicit "Keins"', (tester) async {
+    final h = await _pump(tester, _Harness(_TypedCheckInRepo(), _connected), size: const Size(393, 3000));
+    final repo = h.repo as _TypedCheckInRepo;
+    expect(find.text('1 von 2'), findsOneWidget);
+    expect(find.text('zu gestern'), findsNothing, reason: 'mood is today: no target shown');
+    expect(find.text('Wie ist deine Stimmung?'), findsOneWidget);
+    await tester.tap(find.text('4'));
+    await tester.pumpAndSettle();
+    expect(repo.written.single.$2, 'mood');
+    expect((repo.written.single.$3 as G3RatingAnswer).value, 4);
+
+    expect(find.text('2 von 2'), findsOneWidget);
+    expect(find.text('zu gestern'), findsOneWidget);
+    expect(find.text('Stimmung: 4 von 5'), findsOneWidget);
+    expect(find.text('Wie viel Alkohol?'), findsOneWidget);
+    expect(find.text('—'), findsWidgets, reason: 'unanswered, not zero');
+    await tester.tap(find.byTooltip('Mehr'));
+    await tester.pump();
+    expect(find.text('Keins'), findsOneWidget);
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    final (day, key, answer) = repo.written.last;
+    expect((day, key), (_day, 'alcohol_units'));
+    expect((answer as G3QuantityAnswer).value, 0);
+    expect(find.text('CHECK-IN'), findsNothing);
   });
 
   testWidgets('an auto-detected run is confirmed from its sheet', (tester) async {
@@ -459,6 +540,15 @@ void main() {
     for (final h in [0, 7, 11, 13, 23]) {
       expect(h < hourly.length ? hourly[h] : null, isNull, reason: 'no span stored for $h:00');
     }
+  });
+
+  testWidgets('a past day: "Daten bis" and "Letzter Bandwert" are its last stored sample', (tester) async {
+    final repo = _Repo(SyntheticScenario.g3Sample)..lastSamples['2026-09-27'] = DateTime(2026, 9, 27, 23, 58);
+    final h = await _pump(tester, _Harness(repo, _connected), size: const Size(393, 3000));
+    await h.controller.selectDay('2026-09-27');
+    await tester.pumpAndSettle();
+    expect(find.text('Gespeicherter Tag · Daten bis 23:58'), findsOneWidget);
+    expect(find.text('Letzter Bandwert 27.09. 23:58 · Übertragung 09:38'), findsOneWidget);
   });
 
   testWidgets('the lead opens its detail', (tester) async {
