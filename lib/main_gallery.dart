@@ -16,6 +16,7 @@ import 'openband/domain.dart';
 import 'openband/g3/screens/band.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
+import 'openband/session.dart';
 import 'openband/exercise_picker.dart';
 import 'openband/template_editor.dart';
 import 'openband/strength_live.dart';
@@ -255,19 +256,19 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                   Expanded(
                     child: OpenBandTraining(
                       controller: controller,
+                      onStart: (type) => type == 'weight_training'
+                          ? _openGalleryTemplates(c)
+                          : _openSyntheticRun(c, type),
                       onStartTemplate: (template) => _openStrength(c, template),
                       onEditTemplate: (template) =>
                           _openTemplateEditor(c, template),
-                      onOpenTemplates: () => pushFullScreen(
+                      onOpenTemplates: () => _openGalleryTemplates(c),
+                      onOpen: (session) => pushFullScreen(
                         c,
                         MaterialPageRoute<void>(
-                          builder: (_) => OpenBandTemplates(
+                          builder: (_) => OpenBandSession(
                             repository: widget.repository,
-                            onStartTemplate: (template) =>
-                                _openStrength(c, template),
-                            onEditTemplate: (template) =>
-                                _openTemplateEditor(c, template),
-                            synthetic: true,
+                            session: session,
                           ),
                         ),
                       ),
@@ -279,44 +280,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                 controller: controller,
                 onStart: (type) {
                   if (type != 'running') return;
-                  final run = ValueNotifier(
-                    const LiveRun(
-                      elapsedSec: 962,
-                      distanceM: 2840,
-                      heartRate: 154,
-                      zone: 3,
-                      gps: true,
-                    ),
-                  );
-                  pushFullScreen(
-                    c,
-                    MaterialPageRoute<void>(
-                      builder: (_) => G3LiveRun(
-                        run: run,
-                        sport: 'running',
-                        onPause: () => run.value = LiveRun(
-                          elapsedSec: run.value.elapsedSec,
-                          pausedSec: run.value.pausedSec,
-                          distanceM: run.value.distanceM,
-                          heartRate: run.value.heartRate,
-                          zone: run.value.zone,
-                          gps: true,
-                          paused: true,
-                        ),
-                        onResume: () => run.value = LiveRun(
-                          elapsedSec: run.value.elapsedSec + 30,
-                          pausedSec: run.value.pausedSec + 30,
-                          distanceM: run.value.distanceM,
-                          heartRate: run.value.heartRate,
-                          zone: run.value.zone,
-                          gps: true,
-                        ),
-                        onFinish: () async {
-                          Navigator.of(c, rootNavigator: true).maybePop();
-                        },
-                      ),
-                    ),
-                  );
+                  _openSyntheticRun(c, type);
                 },
               ),
       ShellDomain.wellness =>
@@ -362,6 +326,59 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               ),
     },
   );
+
+  Future<void> _openGalleryTemplates(BuildContext c) => pushFullScreen(
+    c,
+    MaterialPageRoute<void>(
+      builder: (_) => OpenBandTemplates(
+        repository: widget.repository,
+        onStartTemplate: (template) => _openStrength(c, template),
+        onEditTemplate: (template) => _openTemplateEditor(c, template),
+        synthetic: true,
+      ),
+    ),
+  );
+
+  void _openSyntheticRun(BuildContext c, String type) {
+    final run = ValueNotifier(
+      LiveRun(
+        elapsedSec: 962,
+        distanceM: type == 'running' ? 2840 : null,
+        heartRate: 154,
+        zone: 3,
+        gps: type == 'running',
+      ),
+    );
+    pushFullScreen(
+      c,
+      MaterialPageRoute<void>(
+        builder: (_) => G3LiveRun(
+          run: run,
+          sport: type,
+          onPause: () => run.value = LiveRun(
+            elapsedSec: run.value.elapsedSec,
+            pausedSec: run.value.pausedSec,
+            distanceM: run.value.distanceM,
+            heartRate: run.value.heartRate,
+            zone: run.value.zone,
+            gps: run.value.gps,
+            paused: true,
+          ),
+          onResume: () => run.value = LiveRun(
+            elapsedSec: run.value.elapsedSec + 30,
+            pausedSec: run.value.pausedSec + 30,
+            distanceM: run.value.distanceM,
+            heartRate: run.value.heartRate,
+            zone: run.value.zone,
+            gps: run.value.gps,
+          ),
+          onFinish: () async {
+            Navigator.of(c, rootNavigator: true).maybePop();
+          },
+        ),
+      ),
+    );
+  }
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
     return pushFullScreen(
