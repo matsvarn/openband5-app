@@ -492,18 +492,25 @@ class OBCheckIn extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Semantics(
-                    button: true,
-                    label: 'Antwort ändern',
-                    excludeSemantics: true,
-                    child: GestureDetector(
-                      onTap: onChange,
-                      child: Text(
-                        'Ändern',
-                        style: g.t(13, 16, weight: FontWeight.w700),
+                  if (onChange != null)
+                    Semantics(
+                      button: true,
+                      label: 'Antwort ändern',
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onChange,
+                        child: SizedBox(
+                          height: 44,
+                          child: Center(
+                            child: Text(
+                              'Ändern',
+                              style: g.t(13, 16, weight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -600,7 +607,7 @@ class OBWeekBars extends StatelessWidget {
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
-                              if (b.value == null)
+                              if (b.value?.isFinite != true)
                                 const G3Dashed(width: 24, height: 36, radius: 5)
                               else ...[
                                 if (!labelsBelow && b.label != null) ...[
@@ -644,7 +651,7 @@ class OBWeekBars extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (goal != null)
+                if (goal?.isFinite == true)
                   Positioned(
                     left: 0,
                     right: 0,

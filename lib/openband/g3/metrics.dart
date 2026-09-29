@@ -48,17 +48,20 @@ class G3Scale extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final labelTop = top + trackHeight + 11;
+    final labelHeight = MediaQuery.textScalerOf(
+      context,
+    ).scale(16).ceilToDouble();
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
         double x(double v) => ((v - min) / (max - min)).clamp(0.0, 1.0) * w;
-        final v = value;
+        final v = value?.isFinite == true ? value : null;
         return SizedBox(
           height: ticks.isEmpty
               ? top + trackHeight + pointerHeight / 2
-              : labelTop + 16,
+              : labelTop + labelHeight,
           child: Stack(
-            clipBehavior: Clip.none,
+            clipBehavior: Clip.hardEdge,
             children: [
               Positioned(
                 left: 0,
@@ -73,14 +76,15 @@ class G3Scale extends StatelessWidget {
                 ),
               ),
               if (band case (final lo, final hi))
-                Positioned(
-                  left: x(lo),
-                  width: x(hi) - x(lo),
-                  top: top,
-                  height: trackHeight,
-                  child: ColoredBox(color: g.band),
-                ),
-              if (median != null)
+                if (lo.isFinite && hi.isFinite)
+                  Positioned(
+                    left: x(lo),
+                    width: x(hi) - x(lo),
+                    top: top,
+                    height: trackHeight,
+                    child: ColoredBox(color: g.band),
+                  ),
+              if (median?.isFinite == true)
                 Positioned(
                   left: x(median!) - .75,
                   width: 1.5,
@@ -103,22 +107,28 @@ class G3Scale extends StatelessWidget {
                   ),
                 ),
               for (final t in ticks)
-                Positioned(
-                  left: t.at == min ? 0 : (t.at == max ? null : x(t.at) - 8),
-                  right: t.at == max ? 0 : null,
-                  top: labelTop,
-                  child: Text(
-                    t.label,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: g.t(
-                      labelSize,
-                      16,
-                      weight: t.strong ? FontWeight.w500 : FontWeight.w400,
-                      color: t.strong ? g.ink2 : g.muted,
+                if (t.at.isFinite)
+                  Positioned(
+                    left: t.at == min ? 0 : (t.at == max ? null : x(t.at) - 8),
+                    right: t.at == max ? 0 : null,
+                    top: labelTop,
+                    width: t.at == min || t.at == max
+                        ? w / 2
+                        : (w - x(t.at) + 8).clamp(0.0, w),
+                    child: Text(
+                      t.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      textAlign: t.at == max ? TextAlign.right : TextAlign.left,
+                      style: g.t(
+                        labelSize,
+                        16,
+                        weight: t.strong ? FontWeight.w500 : FontWeight.w400,
+                        color: t.strong ? g.ink2 : g.muted,
+                      ),
                     ),
                   ),
-                ),
             ],
           ),
         );
@@ -319,7 +329,7 @@ class OBLeadMetric extends StatelessWidget {
       state == OBLeadState.missing ||
       (state == OBLeadState.building
           ? (have == null || need == null)
-          : value == null);
+          : value?.isFinite != true);
 
   @override
   Widget build(BuildContext context) {
@@ -548,6 +558,41 @@ class OBSecondaryMetric extends StatelessWidget {
             LayoutBuilder(
               builder: (context, c) {
                 final w = c.maxWidth;
+                final scaler = MediaQuery.textScalerOf(context);
+                final mutedStyle = g.t(12, 16, color: g.muted);
+                final goalStyle = g.t(
+                  12,
+                  16,
+                  weight: FontWeight.w500,
+                  color: g.ink2,
+                );
+                double labelWidth(String text, TextStyle style) {
+                  final painter = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    textDirection: Directionality.of(context),
+                    textScaler: scaler,
+                    maxLines: 1,
+                  )..layout();
+                  return painter.width;
+                }
+
+                final startWidth = labelWidth(
+                  start,
+                  mutedStyle,
+                ).clamp(0.0, w / 2);
+                final endWidth = labelWidth(end, mutedStyle).clamp(0.0, w / 2);
+                final goalAt = goal?.$1;
+                final goalText = goal?.$2;
+                final goalSpace = (w - startWidth - endWidth - 8).clamp(0.0, w);
+                final goalWidth = goalText == null
+                    ? 0.0
+                    : labelWidth(goalText, goalStyle).clamp(0.0, goalSpace);
+                final goalLeft = goalAt?.isFinite == true
+                    ? (w * goalAt!.clamp(0.0, 1.0) - goalWidth / 2).clamp(
+                        startWidth + 4,
+                        w - endWidth - 4 - goalWidth,
+                      )
+                    : 0.0;
                 return Column(
                   children: [
                     SizedBox(
@@ -566,7 +611,7 @@ class OBSecondaryMetric extends StatelessWidget {
                               ),
                             ),
                           ),
-                          if (v != null && fill != null)
+                          if (v != null && fill?.isFinite == true)
                             Positioned(
                               left: 0,
                               top: 4,
@@ -580,52 +625,60 @@ class OBSecondaryMetric extends StatelessWidget {
                               ),
                             ),
                           if (goal case (final at, _))
-                            Positioned(
-                              left: w * at - 1,
-                              top: 0,
-                              width: 2,
-                              height: 14,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: g.muted,
-                                  borderRadius: BorderRadius.circular(1),
+                            if (at.isFinite)
+                              Positioned(
+                                left: w * at.clamp(0.0, 1.0) - 1,
+                                top: 0,
+                                width: 2,
+                                height: 14,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: g.muted,
+                                    borderRadius: BorderRadius.circular(1),
+                                  ),
                                 ),
                               ),
-                            ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 2),
                     SizedBox(
-                      height: 16,
+                      height: scaler.scale(16).ceilToDouble() + 2,
                       child: Stack(
-                        clipBehavior: Clip.none,
+                        clipBehavior: Clip.hardEdge,
                         children: [
                           Positioned(
                             left: 0,
+                            width: startWidth,
                             child: Text(
                               start,
-                              style: g.t(12, 16, color: g.muted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: mutedStyle,
                             ),
                           ),
-                          if (goal case (_, final text))
+                          if (goalText != null &&
+                              goalAt?.isFinite == true &&
+                              goalWidth > 0)
                             Positioned(
-                              right: 32,
+                              left: goalLeft,
+                              width: goalWidth,
                               child: Text(
-                                text,
-                                style: g.t(
-                                  12,
-                                  16,
-                                  weight: FontWeight.w500,
-                                  color: g.ink2,
-                                ),
+                                goalText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: goalStyle,
                               ),
                             ),
                           Positioned(
                             right: 0,
+                            width: endWidth,
                             child: Text(
                               end,
-                              style: g.t(12, 16, color: g.muted),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                              style: mutedStyle,
                             ),
                           ),
                         ],
@@ -723,7 +776,7 @@ class OBBodyRow extends StatelessWidget {
               height: 14,
               child: ColoredBox(color: g.muted),
             ),
-            if (at != null)
+            if (at?.isFinite == true)
               Positioned(
                 left: x(at!) - 2,
                 top: 1,
@@ -757,7 +810,7 @@ class OBBodyRow extends StatelessWidget {
         child: G3Scale(
           min: min,
           max: max,
-          value: at,
+          value: at?.isFinite == true ? at : null,
           band: state == OBBodyState.range ? band : null,
           trackHeight: 8,
           pointerHeight: 18,
@@ -958,7 +1011,11 @@ class OBMetricCard extends StatelessWidget {
                         children: [
                           for (var i = 0; i < spark.length; i++) ...[
                             if (i > 0) const SizedBox(width: 3),
-                            if (spark[i] case final s?)
+                            if (spark[i] case final s?
+                                when s.isFinite &&
+                                    sparkMin.isFinite &&
+                                    sparkMax.isFinite &&
+                                    sparkMax > sparkMin)
                               Container(
                                 width: 6,
                                 height:
@@ -1094,6 +1151,7 @@ class OBDayValueRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final gap = value == null;
+    final barMissing = gap || share?.isFinite != true;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
@@ -1117,7 +1175,7 @@ class OBDayValueRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          if (gap || share == null)
+          if (barMissing)
             const G3Dashed(width: 110, height: 8, radius: 4)
           else
             Container(
