@@ -535,8 +535,9 @@ void main() {
     expect(find.text('Bluetooth ist für diese App deaktiviert'), findsWidgets);
     expect(find.textContaining('Einstellungen → OpenBand 5'), findsOneWidget);
     expect(find.text('Verbinden'), findsNothing);
-    await tester.ensureVisible(find.text('Hilfe').first);
-    await tester.tap(find.text('Hilfe').first);
+    expect(find.text('Hilfe'), findsOneWidget);
+    await tester.ensureVisible(find.text('Hilfe'));
+    await tester.tap(find.text('Hilfe'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Zugriff auf die Bluetooth'), findsWidgets);
     expect(reconnects, 0);

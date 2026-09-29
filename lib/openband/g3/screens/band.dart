@@ -256,6 +256,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
             OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
             null => 'Verbinden',
           };
+    final helpIsPrimary =
+        localizedFault != null || issue == OBBandIssue.bluetoothOff;
     final name = widget.deviceName?.trim();
     return Scaffold(
       backgroundColor: g.page,
@@ -302,14 +304,12 @@ class _G3BandScreenState extends State<G3BandScreen> {
                       title: issueTitle,
                       body: issueBody,
                       action: action,
-                      onAction:
-                          localizedFault != null ||
-                              issue == OBBandIssue.bluetoothOff
+                      onAction: helpIsPrimary
                           ? _help
                           : widget.onReconnect == null
                           ? null
                           : _reconnect,
-                      onHelp: _help,
+                      onHelp: helpIsPrimary ? null : _help,
                     ),
                   ],
                   if (b?.transfer == TransferState.receiving ||
