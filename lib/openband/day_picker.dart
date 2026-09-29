@@ -21,10 +21,8 @@ Future<void> chooseOpenBandDay(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
-    builder: (c) => FractionallySizedBox(
-      heightFactor: MediaQuery.textScalerOf(c).scale(15) > 22 ? .96 : .83,
-      child: _DayPicker(controller),
-    ),
+    builder: (_) =>
+        FractionallySizedBox(heightFactor: .96, child: _DayPicker(controller)),
   );
   if (selected != null) await controller.selectDay(selected);
 }
@@ -37,6 +35,7 @@ class _DayPicker extends StatefulWidget {
 }
 
 class _DayPickerState extends State<_DayPicker> {
+  final GlobalKey _selectedCellKey = GlobalKey();
   late DateTime selected = DateTime.parse(widget.controller.selectedDay);
   late DateTime month = DateTime(selected.year, selected.month);
   late Future<Set<String>> days = widget.controller.repository.sleepDays();
@@ -44,11 +43,28 @@ class _DayPickerState extends State<_DayPicker> {
     dayLabelOf(selected),
   );
 
-  void _select(DateTime date) => setState(() {
-    selected = date;
-    month = DateTime(date.year, date.month);
-    preview = widget.controller.repository.readDay(dayLabelOf(date));
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected();
+  }
+
+  void _revealSelected() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted || MediaQuery.textScalerOf(context).scale(15) <= 22) return;
+    final cell = _selectedCellKey.currentContext;
+    if (cell != null) {
+      Scrollable.ensureVisible(cell, alignment: .8);
+    }
   });
+
+  void _select(DateTime date) {
+    setState(() {
+      selected = date;
+      month = DateTime(date.year, date.month);
+      preview = widget.controller.repository.readDay(dayLabelOf(date));
+    });
+    _revealSelected();
+  }
 
   void _info() => showModalBottomSheet<void>(
     context: context,
@@ -188,6 +204,7 @@ class _DayPickerState extends State<_DayPicker> {
                                   allowFuture: false,
                                   showAvailability: true,
                                   instrumentHeader: true,
+                                  selectedCellKey: _selectedCellKey,
                                   nights: snapshot.data ?? const {},
                                   onSelect: _select,
                                   onPrevMonth: () => setState(
