@@ -1,4 +1,5 @@
 import '../data/day_label.dart';
+import 'domain.dart' show significantSleepGap;
 import 'g3_data.dart';
 
 class TodayNoteAction {
@@ -18,6 +19,9 @@ String _clock(DateTime time) =>
 
 String _sleepLength(int minutes) =>
     '${minutes ~/ 60}h${(minutes % 60).toString().padLeft(2, '0')}';
+
+String _deficitLength(int minutes) =>
+    minutes >= 60 ? _sleepLength(minutes) : '$minutes Min.';
 
 DateTime _roundedBedtime(DateTime bedtime) {
   final minute = ((bedtime.minute / 5).round() * 5);
@@ -41,6 +45,7 @@ TodayNote? todayNote({
   required double? sleepNeedMinutes,
   required DateTime? suggestedBedtime,
   required DateTime? suggestedWake,
+  double? sleepUnobservedMinutes,
 }) {
   if (derivedDay != todayLabel(now)) return null;
   final sentences = <String>[];
@@ -69,9 +74,12 @@ TodayNote? todayNote({
       sleepNeedMinutes != null &&
       suggestedBedtime != null &&
       suggestedWake != null &&
+      significantSleepGap(sleepUnobservedMinutes) == null &&
       sleepMinutes < sleepGoalMinutes - 15) {
     sentences.add('Heute früher ins Bett.');
-    facts.add('Schlaf ${sleepGoalMinutes - sleepMinutes} Min. unter Ziel');
+    facts.add(
+      'Schlaf ${_deficitLength(sleepGoalMinutes - sleepMinutes)} unter Ziel',
+    );
     final displayedBedtime = _roundedBedtime(suggestedBedtime);
     action = TodayNoteAction(
       '${_clock(displayedBedtime)} ins Bett',
@@ -86,5 +94,5 @@ TodayNote? todayNote({
       needed != null) {
     facts.add('Erholung ab Nacht $needed');
   }
-  return TodayNote(sentences.join(' '), facts.join(', '), action: action);
+  return TodayNote(sentences.join(' '), '${facts.join(', ')}.', action: action);
 }

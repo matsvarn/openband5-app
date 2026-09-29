@@ -22,6 +22,7 @@ void main() {
     double? need,
     DateTime? bedtime,
     DateTime? wakeTime,
+    double? sleepUnobservedMinutes,
     String day = '2026-09-29',
   }) => todayNote(
     derivedDay: day,
@@ -33,6 +34,7 @@ void main() {
     sleepNeedMinutes: need,
     suggestedBedtime: bedtime,
     suggestedWake: wakeTime,
+    sleepUnobservedMinutes: sleepUnobservedMinutes,
   );
 
   test('all missing and stale derived day abstain', () {
@@ -54,11 +56,11 @@ void main() {
   test('every recovery branch uses the trusted stored range', () {
     expect(note(recovery: 81)!.headline, 'Besser erholt als üblich.');
     expect(note(recovery: 80)!.headline, 'Gut erholt.');
-    expect(note(recovery: 68)!.reason, 'Erholung über Median');
+    expect(note(recovery: 68)!.reason, 'Erholung über Median.');
     expect(note(recovery: 67)!.headline, 'Normal erholt.');
-    expect(note(recovery: 58)!.reason, 'Erholung unter Median');
+    expect(note(recovery: 58)!.reason, 'Erholung unter Median.');
     expect(note(recovery: 57)!.headline, 'Weniger erholt als üblich.');
-    expect(note(recovery: 57)!.reason, 'Erholung unter deinem Bereich');
+    expect(note(recovery: 57)!.reason, 'Erholung unter deinem Bereich.');
     expect(note(recovery: 74, baseline: building), isNull);
   });
 
@@ -91,10 +93,44 @@ void main() {
       wakeTime: wake,
     )!;
     expect(result.headline, 'Gut erholt. Heute früher ins Bett.');
-    expect(result.reason, 'Erholung über Median, Schlaf 27 Min. unter Ziel');
+    expect(result.reason, 'Erholung über Median, Schlaf 27 Min. unter Ziel.');
     expect(result.action!.label, '22:20 ins Bett');
     expect(result.action!.sub, 'für 8h05 Schlafbedarf bis 06:54');
     expect(result.action!.reminderAt, DateTime(2026, 9, 29, 22, 5));
+  });
+
+  test('hour-scale deficit is compact and partial sleep cannot trigger it', () {
+    final full = note(
+      sleep: 391,
+      goal: 465,
+      need: 485,
+      bedtime: bed,
+      wakeTime: wake,
+    )!;
+    expect(full.reason, 'Schlaf 1h14 unter Ziel.');
+    expect(
+      note(
+        sleep: 391,
+        goal: 465,
+        need: 485,
+        bedtime: bed,
+        wakeTime: wake,
+        sleepUnobservedMinutes: 12,
+      ),
+      isNull,
+    );
+    final recoveryOnly = note(
+      recovery: 74,
+      sleep: 391,
+      goal: 465,
+      need: 485,
+      bedtime: bed,
+      wakeTime: wake,
+      sleepUnobservedMinutes: 12,
+    )!;
+    expect(recoveryOnly.headline, 'Gut erholt.');
+    expect(recoveryOnly.reason, 'Erholung über Median.');
+    expect(recoveryOnly.action, isNull);
   });
 
   test(
@@ -109,7 +145,7 @@ void main() {
         wakeTime: wake,
       )!;
       expect(result.headline, 'Heute früher ins Bett.');
-      expect(result.reason, 'Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14');
+      expect(result.reason, 'Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.');
       expect(
         note(
           baseline: const G3Baseline(BaselineStatus(BaselinePhase.building)),
@@ -119,7 +155,7 @@ void main() {
           bedtime: bed,
           wakeTime: wake,
         )!.reason,
-        'Schlaf 27 Min. unter Ziel',
+        'Schlaf 27 Min. unter Ziel.',
       );
       expect(
         note(
@@ -132,7 +168,7 @@ void main() {
           bedtime: bed,
           wakeTime: wake,
         )!.reason,
-        'Schlaf 27 Min. unter Ziel',
+        'Schlaf 27 Min. unter Ziel.',
       );
     },
   );
