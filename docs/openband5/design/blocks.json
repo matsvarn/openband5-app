@@ -1027,9 +1027,7 @@
       "design": "G3",
       "paperNode": "5MNY-0",
       "paperNodeDark": "5MQP-0",
-      "usedIn": [
-        "5Q4B-0"
-      ],
+      "usedIn": [],
       "widget": "OBBodyRow",
       "file": "g3/metrics.dart",
       "variant": "OBBodyState.plain"
