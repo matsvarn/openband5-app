@@ -1374,6 +1374,7 @@ Future<void> showRestartRequiredSheet(BuildContext c) async {
   final p = P.of(c);
   await showModalBottomSheet<void>(
     context: c,
+    useRootNavigator: true,
     backgroundColor: p.card,
     showDragHandle: true,
     builder: (sheet) => SafeArea(
@@ -1395,6 +1396,7 @@ Future<void> showReasonSheet(BuildContext c, String reason) async {
   final p = P.of(c);
   await showModalBottomSheet<void>(
     context: c,
+    useRootNavigator: true,
     backgroundColor: p.card,
     showDragHandle: true,
     builder: (sheet) => SafeArea(

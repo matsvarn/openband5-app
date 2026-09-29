@@ -445,6 +445,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     final p = OB.of(c);
     showModalBottomSheet<void>(
       context: c,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: p.card,
       builder: (sheet) {

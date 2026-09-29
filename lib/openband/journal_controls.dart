@@ -266,6 +266,7 @@ Future<Object?> showOpenBandJournalInfo(
 }) {
   return showModalBottomSheet<Object>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
     elevation: 0,

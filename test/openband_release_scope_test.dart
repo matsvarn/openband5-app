@@ -25,6 +25,7 @@ import 'package:openstrap_edge/openband/journal_editor.dart';
 import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -1077,10 +1078,14 @@ void main() {
     await tester.tap(find.byTooltip('Profil'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
+    expect(find.byType(OBTabBar), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('profile-data')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
+    expect(find.byType(OBTabBar), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('data-export-database')));
     await tester.pump();

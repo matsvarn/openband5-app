@@ -13,6 +13,7 @@ import 'health.dart';
 import 'metric_detail.dart';
 import 'night_signals.dart';
 import '../data/day_label.dart';
+import '../ui2/app_shell.dart' show pushFullScreen;
 import '../ui2/profile/profile.dart' show SetRow;
 import 'naps.dart';
 import 'scale.dart';
@@ -2035,6 +2036,7 @@ Future<void> showBandStatus(
   VoidCallback? onSync,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   backgroundColor: OB.of(context).canvas,
@@ -2452,9 +2454,14 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
     },
   );
   Future<void> _edit(BuildContext context) async {
-    await Navigator.of(context).push(
+    final tabNavigator = Navigator.of(context);
+    await pushFullScreen(context,
       MaterialPageRoute<void>(
-        builder: (_) => SleepEditor(controller: controller),
+        builder: (_) => SleepEditor(
+          controller: controller,
+          onReturnToOverview: () =>
+              tabNavigator.popUntil((route) => route.isFirst),
+        ),
       ),
     );
   }
@@ -3293,6 +3300,7 @@ Future<void> _sleepMethod(
   OpenBandController controller,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {

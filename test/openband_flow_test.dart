@@ -102,20 +102,20 @@ void main() {
             padding: const EdgeInsets.only(top: 59, bottom: 34),
             disableAnimations: reducedMotion,
           ),
-          child: child!,
-        ),
-        home: RepaintBoundary(
-          key: const ValueKey('capture'),
-          child: AppShell(
-            builder: (c, d) => d == ShellDomain.home
-                ? OpenBandOverview(
-                    controller: controller,
-                    onProfile: () {},
-                    onJournal: () {},
-                    onSync: () {},
-                  )
-                : Center(child: Text(d.label)),
+          child: RepaintBoundary(
+            key: const ValueKey('capture'),
+            child: child!,
           ),
+        ),
+        home: AppShell(
+          builder: (c, d) => d == ShellDomain.home
+              ? OpenBandOverview(
+                  controller: controller,
+                  onProfile: () {},
+                  onJournal: () {},
+                  onSync: () {},
+                )
+              : Center(child: Text(d.label)),
         ),
       ),
     );

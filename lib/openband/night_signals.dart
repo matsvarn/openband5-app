@@ -122,6 +122,7 @@ class _OpenBandNightSignalsState extends State<OpenBandNightSignals> {
     final gaps = series.readings.length - known;
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: OB.of(context).card,
       builder: (context) {

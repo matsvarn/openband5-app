@@ -12,7 +12,12 @@ import 'time.dart';
 
 class SleepEditor extends StatefulWidget {
   final OpenBandController controller;
-  const SleepEditor({super.key, required this.controller});
+  final VoidCallback? onReturnToOverview;
+  const SleepEditor({
+    super.key,
+    required this.controller,
+    this.onReturnToOverview,
+  });
   @override
   State<SleepEditor> createState() => _SleepEditorState();
 }
@@ -586,6 +591,8 @@ class _SleepEditorState extends State<SleepEditor> {
                                         MaterialPageRoute<void>(
                                           builder: (_) => SleepEditor(
                                             controller: widget.controller,
+                                            onReturnToOverview:
+                                                widget.onReturnToOverview,
                                           ),
                                         ),
                                       ),
@@ -614,9 +621,12 @@ class _SleepEditorState extends State<SleepEditor> {
                               OBAction(
                                 'Zur Übersicht',
                                 secondary: true,
-                                onPressed: () => Navigator.of(
-                                  context,
-                                ).popUntil((route) => route.isFirst),
+                                onPressed: () {
+                                  widget.onReturnToOverview?.call();
+                                  Navigator.of(context).popUntil(
+                                    (route) => route.isFirst,
+                                  );
+                                },
                               ),
                             ],
                           ],

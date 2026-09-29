@@ -576,6 +576,7 @@ Future<void> _napInfo(
   NapDay? naps,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {

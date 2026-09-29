@@ -228,7 +228,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               gps: true,
             ),
           );
-          Navigator.of(c).push(
+          pushFullScreen(c,
             MaterialPageRoute<void>(
               builder: (_) => OpenBandRunLive(
                 run: run,
@@ -250,7 +250,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                   gps: true,
                 ),
                 onLap: () {},
-                onFinish: () => Navigator.of(c).maybePop(),
+                onFinish: () => Navigator.of(c, rootNavigator: true).maybePop(),
               ),
             ),
           );
@@ -304,7 +304,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   );
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return Navigator.of(c).push(
+    return pushFullScreen(c,
       MaterialPageRoute<void>(
         builder: (_) =>
             OpenBandStrengthLive(repository: widget.repository, template: t),

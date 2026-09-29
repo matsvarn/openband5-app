@@ -1033,6 +1033,7 @@ class NotificationSettingsView extends StatelessWidget {
     final p = OB.of(context);
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: p.card,
       builder: (sheet) {

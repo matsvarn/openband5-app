@@ -20677,6 +20677,13 @@ void main() {
         await tester.tap(exportDatabase);
         await tester.pumpAndSettle();
         final exportFailure = find.textContaining('synthetischer Schreibfehler');
+        if (exportFailure.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            exportFailure,
+            200,
+            scrollable: verticalScrollable().last,
+          );
+        }
         await tester.ensureVisible(exportFailure);
         expect(exportFailure, findsOneWidget);
         await capture('release-data-export-error');
@@ -20687,7 +20694,11 @@ void main() {
         expect(exportFailure, findsNothing);
         await capture('release-data-export-retry');
         final cadence = find.byKey(const ValueKey('data-backup-cadence'));
-        await tester.ensureVisible(cadence);
+        await Scrollable.ensureVisible(
+          tester.element(cadence),
+          alignment: 0.5,
+        );
+        await tester.pumpAndSettle();
         await tester.tap(cadence);
         await tester.pumpAndSettle();
         expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);

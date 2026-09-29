@@ -6,6 +6,16 @@ import '../openband/tab_bar.dart';
 import 'theme.dart' show C;
 import 'grammar.dart' show Pressable;
 
+/// Push a detail from a tab page onto that tab's retained stack. Pass a
+/// context below the tab Navigator (for example, a page builder's context).
+/// Use [pushFullScreen] for live/setup/correction flows that cover the bar.
+Future<T?> pushInTab<T>(BuildContext context, Route<T> route) =>
+    Navigator.of(context).push(route);
+
+/// Push a full-screen flow above the shell, hiding its floating tab bar.
+Future<T?> pushFullScreen<T>(BuildContext context, Route<T> route) =>
+    Navigator.of(context, rootNavigator: true).push(route);
+
 enum ShellDomain {
   home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),
@@ -23,9 +33,10 @@ class AppShell extends StatefulWidget {
   final Widget Function(BuildContext, ShellDomain) builder;
   final ShellDomain initial;
 
-  /// Null uses every development domain. A single domain hides the bar.
+  /// Null uses every development domain. A single development domain hides
+  /// the legacy bar.
   final List<ShellDomain>? domains;
-  /// G3 floating control over root content; development keeps its old bar.
+  /// G3 floating control over every tab route; development keeps its old bar.
   final bool releaseStyle;
   final ValueChanged<ShellDomain>? onSelect;
   final Widget? banner;
@@ -73,6 +84,11 @@ class AppShellState extends State<AppShell> {
 
   void select(ShellDomain domain) {
     if (!_domains.contains(domain)) return;
+    if (_current == domain) {
+      _keys[domain]!.currentState?.popUntil((route) => route.isFirst);
+      widget.onSelect?.call(domain);
+      return;
+    }
     setState(() {
       _current = domain;
       _built.add(domain);
@@ -82,13 +98,18 @@ class AppShellState extends State<AppShell> {
 
   void open(ShellDomain domain, Widget screen) {
     if (!_domains.contains(domain)) return;
-    select(domain);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    void push() {
       if (!mounted) return;
       _keys[domain]!.currentState?.push(
         MaterialPageRoute<void>(builder: (_) => screen),
       );
-    });
+    }
+    if (_current == domain) {
+      push();
+    } else {
+      select(domain);
+      WidgetsBinding.instance.addPostFrameCallback((_) => push());
+    }
   }
 
   @override
@@ -117,11 +138,21 @@ class AppShellState extends State<AppShell> {
                         children: [
                           for (final domain in ShellDomain.values)
                             if (_built.contains(domain))
-                              Navigator(
-                                key: _keys[domain],
-                                observers: [_observers[domain]!],
-                                onGenerateRoute: (_) => MaterialPageRoute<void>(
-                                  builder: (c) => widget.builder(c, domain),
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  bottom: widget.releaseStyle &&
+                                          _observers[domain]!.depth > 1
+                                      ? tabBottom +
+                                          kOBTabBarHeight +
+                                          kOBTabBarBannerGap
+                                      : 0,
+                                ),
+                                child: Navigator(
+                                  key: _keys[domain],
+                                  observers: [_observers[domain]!],
+                                  onGenerateRoute: (_) => MaterialPageRoute<void>(
+                                    builder: (c) => widget.builder(c, domain),
+                                  ),
                                 ),
                               )
                             else
@@ -140,7 +171,7 @@ class AppShellState extends State<AppShell> {
                     bottom: tabBottom + kOBTabBarHeight + kOBTabBarBannerGap,
                     child: widget.banner!,
                   ),
-                if (widget.releaseStyle && atRoot)
+                if (widget.releaseStyle)
                   Positioned(
                     left: kOBTabBarHorizontalInset,
                     right: kOBTabBarHorizontalInset,
