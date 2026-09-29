@@ -370,7 +370,9 @@ void main() {
       expect(plus.sleepDebt.debtHours, isNull);
       expect(plus.sleepDebt.refusalNote, isNull);
       expect(plus.needMinutes, isNull);
-      expect(plus.napsIncomplete, isNull);
+      expect(plus.baselineOsdMinutes, isNull);
+      expect(plus.appliedDebtMinutes, isNull);
+      expect(plus.napsJudged, isNull);
       expect(plus.typicalEfficiency, isNull);
       expect(plus.bedtime, isNull);
       expect(plus.wake, isNull);
@@ -637,14 +639,91 @@ void main() {
       );
       expect(plus.goalMinutes, 465);
       expect(plus.needMinutes, 485);
+      expect(plus.baselineOsdMinutes, isNull);
+      expect(plus.appliedDebtMinutes, isNull);
       expect(plus.strainBonusMinutes, 20);
       expect(plus.napCreditMinutes, isNull);
-      expect(plus.napsIncomplete, isTrue);
+      expect(plus.napsJudged, isFalse);
       expect(plus.typicalEfficiency, isNull);
       expect(plus.bedtime, DateTime(2026, 9, 27, 22, 18));
       expect(plus.wake, DateTime(2026, 9, 28, 6, 54));
     },
   );
+
+  test('sleep need components come from OSD and debt, not goal', () async {
+    await LocalDb.putSleepGoalPeriod(validFromDay: day, minutes: 465);
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': 455 / 60,
+            'habitual_hours': 445 / 60,
+            'debt_hours': 10 / 60,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': 485 * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 22 * 60 + 18},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 6 * 60 + 54},
+          },
+          'strain_bonus_min': 20,
+          'nap_credit_min': 0,
+        },
+      }),
+    );
+    var plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+    expect(plus.goalMinutes, 465);
+    expect(plus.needMinutes, 485);
+    expect(plus.baselineOsdMinutes, closeTo(455, 1e-9));
+    expect(plus.appliedDebtMinutes, closeTo(10, 1e-9));
+    expect(plus.strainBonusMinutes, 20);
+    expect(plus.napCreditMinutes, 0);
+    expect(plus.napsJudged, isTrue);
+
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': 6.5,
+            'debt_hours': -0.25,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': 420 * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 23 * 60},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 6 * 60 + 27},
+          },
+          'strain_bonus_min': 0,
+          'nap_credit_min': 0,
+        },
+      }),
+    );
+    plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+    expect(plus.baselineOsdMinutes, 420);
+    expect(plus.appliedDebtMinutes, 0);
+  });
 
   test('open live session keeps unknown end and duration absent', () async {
     final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;

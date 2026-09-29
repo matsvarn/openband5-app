@@ -216,16 +216,32 @@ void main() {
       expect(plus.regularity.value, isNull);
       expect(plus.regularity.gate, isNull);
       expect(plus.socialJetlag.value, isNull);
-      expect(plus.sleepDebt.debtHours, isNull);
+      expect(plus.sleepDebt.freeNightP75Hours, closeTo(455 / 60, 1e-9));
+      expect(plus.sleepDebt.habitualMedianHours, closeTo(445 / 60, 1e-9));
+      expect(plus.sleepDebt.debtHours, closeTo(10 / 60, 1e-9));
+      expect(plus.sleepDebt.hasFreeNight, isTrue);
       expect(plus.sleepDebt.refusalNote, isNull);
       expect(plus.needMinutes, 485);
       expect(plus.goalMinutes, 465);
+      expect(plus.baselineOsdMinutes, 455);
+      expect(plus.appliedDebtMinutes, 10);
       expect(plus.strainBonusMinutes, 20);
       expect(plus.napCreditMinutes, 0);
-      expect(plus.napsIncomplete, isFalse);
+      expect(plus.napsJudged, isTrue);
+      expect(
+        plus.baselineOsdMinutes! +
+            plus.appliedDebtMinutes! +
+            plus.strainBonusMinutes! -
+            plus.napCreditMinutes!,
+        plus.needMinutes,
+      );
       expect(plus.typicalEfficiency, .94);
       expect(plus.bedtime, DateTime(2026, 9, 29, 22, 18));
       expect(plus.wake, DateTime(2026, 9, 30, 6, 54));
+      expect(
+        plus.needMinutes! / plus.wake!.difference(plus.bedtime!).inMinutes,
+        closeTo(plus.typicalEfficiency!, .001),
+      );
       expect(
         (await repo.readSleepPlan(day)).plan?.bedtimeMinuteOfDay,
         22 * 60 + 18,

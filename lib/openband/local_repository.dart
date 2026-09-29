@@ -820,6 +820,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
     final planned = available ? plan.plan : null;
     final goal = (await readSleepGoal(day)).targetMinutes;
+    final osdHours = planned == null ? null : debt.freeNightP75Hours;
+    final debtHours = planned == null ? null : debt.debtHours;
     return G3SleepPlus(
       regularity: gatedRegularity,
       socialJetlag: social,
@@ -832,9 +834,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
           ? null
           : planned!.needSeconds / 60,
       goalMinutes: goal?.toDouble(),
+      baselineOsdMinutes: osdHours == null
+          ? null
+          : osdHours.clamp(7.0, 9.5).toDouble() * 60,
+      appliedDebtMinutes: debtHours == null
+          ? null
+          : (debtHours < 0 ? 0.0 : debtHours) * 60,
       strainBonusMinutes: planned?.strainBonusMin,
       napCreditMinutes: planned?.napCreditMin,
-      napsIncomplete: planned == null ? null : planned.napCreditMin == null,
+      napsJudged: planned == null ? null : planned.napCreditMin != null,
     );
   }
 

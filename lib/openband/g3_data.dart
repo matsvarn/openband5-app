@@ -368,9 +368,11 @@ class G3SleepPlus {
     required this.wake,
     this.needMinutes,
     this.goalMinutes,
+    this.baselineOsdMinutes,
+    this.appliedDebtMinutes,
     this.strainBonusMinutes,
     this.napCreditMinutes,
-    this.napsIncomplete,
+    this.napsJudged,
     this.typicalEfficiency,
   });
   final G3AvailableValue regularity, socialJetlag;
@@ -378,8 +380,24 @@ class G3SleepPlus {
   final G3RegularityDetail? regularityDetail;
   final G3SocialJetlagDetail? socialJetlagDetail;
   final DateTime? bedtime, wake;
-  final double? needMinutes, goalMinutes, strainBonusMinutes, napCreditMinutes;
-  final bool? napsIncomplete;
+
+  /// Stored coach need. Its baseline is personal OSD, not the separate goal.
+  final double? needMinutes;
+
+  /// The user's target, used for the "unter Ziel" comparison only.
+  final double? goalMinutes;
+
+  /// Stored OSD clamped to the coach's 7–9.5 h baseline interval.
+  final double? baselineOsdMinutes;
+
+  /// Positive part of stored sleep debt. The final need is clamped separately.
+  final double? appliedDebtMinutes;
+
+  /// Adjustments actually applied by the stored coach after its clamp.
+  final double? strainBonusMinutes, napCreditMinutes;
+
+  /// Null without a plan; false when the plan has no nap reading.
+  final bool? napsJudged;
 
   /// Null until the stored plan snapshot carries this source value.
   final double? typicalEfficiency;
