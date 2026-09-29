@@ -15,6 +15,7 @@ import '../../today_note.dart';
 import '../../../notify/notification_center.dart';
 import '../../../ui2/app_shell.dart' show pushFullScreen;
 import '../chrome.dart' as chrome;
+import '../count_copy.dart';
 import '../day.dart' as day_parts;
 import '../g3_theme.dart';
 import '../sleep_parts.dart';
@@ -847,7 +848,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
             BaselinePhase.building =>
               baseline.status.remaining == null
                   ? 'Basis im Aufbau'
-                  : 'noch ${baseline.status.remaining} Nächte',
+                  : 'noch ${baseline.status.remaining} ${g3CountNoun(baseline.status.remaining!, 'Nacht', 'Nächte')}',
             BaselinePhase.none => 'kein Normalbereich',
           };
         }

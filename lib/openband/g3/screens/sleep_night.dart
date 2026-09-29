@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../domain.dart';
 import '../../time.dart';
 import '../chrome.dart' as chrome;
+import '../count_copy.dart';
 import '../g3_theme.dart';
 import '../sleep_parts.dart';
 
@@ -134,7 +135,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                       BaselinePhase.building =>
                         basis.status.remaining == null
                             ? 'Basis im Aufbau'
-                            : 'noch ${basis.status.remaining} Nächte',
+                            : 'noch ${basis.status.remaining} ${g3CountNoun(basis.status.remaining!, 'Nacht', 'Nächte')}',
                       BaselinePhase.none => 'kein Normalbereich',
                     };
                   }
