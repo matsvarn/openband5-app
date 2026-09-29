@@ -413,7 +413,9 @@ class _ProfileHomeState extends State<ProfileHome> {
           databaseSize: snap.data?.storageBytes == null
               ? null
               : formatBytes(snap.data!.storageBytes!, de: true),
-          onDevices: () => goto(c, const MyDevices()),
+          onDevices: kOpenBandReleaseReduced
+              ? null
+              : () => goto(c, const MyDevices()),
           onReconnect: () => c.read<AppState>().syncNow(),
         ),
       ),

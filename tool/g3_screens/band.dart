@@ -85,7 +85,7 @@ Widget _band(G3Env env, [BandSnapshot? band, OBBandIssue? issue]) =>
           ? () => env.repository(_syntheticBandRepository).readBandDiagnostics()
           : null,
       databaseSize: env.real ? null : '4,2 GB',
-      onDevices: () async {},
+      onDevices: env.real ? null : () async {},
       onReconnect: () async {},
       issue: issue,
       synthetic: !env.real,

@@ -1703,7 +1703,7 @@ double _textWidth(
 /// [BandSnapshot] does not carry, so none is drawn. Passive states retain their
 /// compact geometry; the interactive resume state guarantees a 44-point hit
 /// area and grows with text rather than shrinking its button below that.
-enum OBSyncActionState { pending, failed }
+enum OBSyncActionState { pending }
 
 class OBSyncState extends StatelessWidget {
   final BandSnapshot band;
@@ -1713,9 +1713,7 @@ class OBSyncState extends StatelessWidget {
   final OBSyncActionState? actionState;
   final String interruptedLabel;
   final String pendingLabel;
-  final String failedLabel;
   final String resumeLabel;
-  final String retryLabel;
   const OBSyncState({
     super.key,
     required this.band,
@@ -1725,9 +1723,7 @@ class OBSyncState extends StatelessWidget {
     this.actionState,
     this.interruptedLabel = 'Unterbrochen',
     this.pendingLabel = 'Verbindung wird hergestellt',
-    this.failedLabel = 'Fortsetzen fehlgeschlagen',
     this.resumeLabel = 'Fortsetzen',
-    this.retryLabel = 'Erneut',
   });
 
   /// Whether the passive strip has something to say for [band].
@@ -1760,26 +1756,6 @@ class OBSyncState extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
       ),
-      OBSyncActionState.failed => (
-        LucideIcons.bluetoothOff,
-        p.warning,
-        failedLabel,
-        onResume == null
-            ? null
-            : TextButton(
-                onPressed: onResume,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  minimumSize: const Size(44, 44),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  retryLabel,
-                  textAlign: TextAlign.center,
-                  style: p.text(13, weight: FontWeight.w600, color: p.ink),
-                ),
-              ),
-      ),
       null => switch (band.transfer) {
         TransferState.receiving => (
           LucideIcons.refreshCw,
@@ -1797,7 +1773,7 @@ class OBSyncState extends StatelessWidget {
         ),
         TransferState.interrupted => (
           LucideIcons.bluetoothOff,
-          p.warning,
+          p.ink,
           showStoredTime ? '$interruptedLabel · $stored' : interruptedLabel,
           onResume == null
               ? null
@@ -2103,9 +2079,11 @@ Future<void> showBandStatus(
                             OBSettingsRow(
                               label: 'Aktualität',
                               stackAtLargeText: true,
-                              detail: b.receivedAt == null
-                                  ? 'Noch kein Empfang'
-                                  : '${_relativeTime(b.receivedAt!, controller.now())} übertragen',
+                              detail: b.receivedAt != null
+                                  ? '${_relativeTime(b.receivedAt!, controller.now())} übertragen'
+                                  : stored != null
+                                  ? 'letzter gespeicherter Wert ${_relativeTime(stored, controller.now())}'
+                                  : 'Noch kein Empfang',
                               value: stored == null
                                   ? '—'
                                   : 'bis ${bandFrontierDayPrefix(stored, controller.now())}${obTime(stored)}',
