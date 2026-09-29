@@ -656,23 +656,22 @@ void main() {
       await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('14'));
+      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
       final previousDay = find.widgetWithText(
         FilledButton,
         '14. September ansehen',
       );
-      await tester.scrollUntilVisible(
-        previousDay,
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      expect(previousDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(previousDay);
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-14');
       await tester.tap(find.text(obDayTitle('2026-09-14')));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();
@@ -680,11 +679,7 @@ void main() {
         FilledButton,
         '15. September ansehen',
       );
-      await tester.scrollUntilVisible(
-        selectedDay,
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      expect(selectedDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(selectedDay);
       await tester.pumpAndSettle();
