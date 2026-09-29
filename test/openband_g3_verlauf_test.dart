@@ -6,13 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3Scale, OBBodyRow, OBBodyState, OBLeadMetric, OBLeadState;
+    show G3Scale, OBBodyRow, OBBodyState, OBChip, OBLeadMetric, OBLeadState;
 import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -248,6 +249,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
     expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
+  });
+
+  testWidgets('metric chart keeps unit case and detail delta chip is visible', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _ValuesRepository(
+            48,
+            const G3Baseline(
+              BaselineStatus(BaselinePhase.trusted),
+              range: PersonalRange(38, 52, 45),
+            ),
+          ),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<OBTrendChart>(find.byType(OBTrendChart)).title,
+      'HRV · ms',
+    );
+    final chip = find.byType(OBChip);
+    final decoration =
+        tester
+                .widget<Container>(
+                  find
+                      .descendant(of: chip, matching: find.byType(Container))
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(decoration.color, AlpColor.chip);
+    expect(decoration.border, isNotNull);
   });
 
   testWidgets('partial values stay absent for every wave-1 trend', (
@@ -579,6 +618,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Noch kein Gewicht'), findsOneWidget);
+    expect(
+      tester.widget<OBTrendChart>(find.byType(OBTrendChart)).title,
+      'GEWICHT · kg',
+    );
     await tester.tap(find.text('Gewicht eintragen'));
     await tester.pumpAndSettle();
     expect(find.byType(OBFormField), findsOneWidget);

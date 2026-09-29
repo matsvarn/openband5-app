@@ -218,7 +218,10 @@ class OBChip extends StatelessWidget {
 
   /// Arrow for delta chips: true = up, false = down, null = none.
   final bool? up;
-  const OBChip(this.kind, this.text, {super.key, this.up});
+
+  /// Keeps the neutral chip visible when it sits directly on the page.
+  final bool onPage;
+  const OBChip(this.kind, this.text, {super.key, this.up, this.onPage = false});
 
   @override
   Widget build(BuildContext context) {
@@ -241,6 +244,9 @@ class OBChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(h / 2),
+        border: onPage && !g.dark && kind == OBChipKind.delta
+            ? Border.all(color: g.hairline)
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -296,6 +302,7 @@ class OBLeadMetric extends StatelessWidget {
   /// Delta chip text and direction, e.g. ("6", up: true). Omitted when null.
   final String? delta;
   final bool deltaUp;
+  final bool deltaChipOnPage;
 
   /// Plain state: the dashed basis chip text ("kein Normalbereich").
   final String? basisChip;
@@ -322,6 +329,7 @@ class OBLeadMetric extends StatelessWidget {
     this.unit,
     this.delta,
     this.deltaUp = true,
+    this.deltaChipOnPage = false,
     this.basisChip,
     this.caption,
     this.scale,
@@ -427,6 +435,7 @@ class OBLeadMetric extends StatelessWidget {
                     },
                     delta!,
                     up: deltaUp,
+                    onPage: deltaChipOnPage,
                   ));
       final s = scale;
       body = [

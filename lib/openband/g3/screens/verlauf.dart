@@ -330,6 +330,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : _number((value - range.median).abs(), metric),
                 deltaUp:
                     value == null || range == null || value >= range.median,
+                deltaChipOnPage: true,
                 caption: metric == G3Metric.skinTempZ
                     ? 'Relative Abweichung von deiner Basis'
                     : range == null
@@ -349,8 +350,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
               OBTrendChart(
                 title: metric == G3Metric.skinTempZ
                     ? 'ABWEICHUNG · RELATIV'
-                    : '$title${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}'
-                          .toUpperCase(),
+                    : '${title.toUpperCase()}${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}',
                 period: _period,
                 values: [for (final p in points) _usable(p)],
                 marks: [for (final p in points) _pointMark(metric, p, range)],
@@ -956,7 +956,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
               ),
               const SizedBox(height: 10),
               OBTrendChart(
-                title: 'GEWICHT · KG',
+                title: 'GEWICHT · kg',
                 period: _period,
                 values: history.trend,
                 sparse: true,
