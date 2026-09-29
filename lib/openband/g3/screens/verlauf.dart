@@ -72,6 +72,54 @@ String _bandStamp(BandSnapshot band) {
   return 'Letzter Bandwert ${DateFormat(pattern, 'de_DE').format(stored)}';
 }
 
+String _weightSourceLabel(G3WeightSource? source) => switch (source) {
+  G3WeightSource.manual => 'manuell',
+  G3WeightSource.imported => 'Apple Health',
+  null => 'Quelle unbekannt',
+};
+
+String _baselineChip(G3Baseline? baseline) {
+  final status = baseline?.status;
+  if (status?.phase != BaselinePhase.building) return 'kein Normalbereich';
+  final remaining = status?.remaining;
+  if (remaining == null) return 'Basis im Aufbau';
+  return 'Basis: noch $remaining ${remaining == 1 ? 'Wert' : 'Werte'}';
+}
+
+metrics.OBBodyRow _bodyRow(
+  G3Metric metric,
+  G3Trend trend, {
+  required bool last,
+  required VoidCallback onTap,
+}) {
+  final value = trend.points.isEmpty ? null : _usable(trend.points.last);
+  final range = trend.baseline.status.phase == BaselinePhase.trusted
+      ? trend.baseline.range
+      : null;
+  final bounds = range == null ? null : _personalBounds(range);
+  return metrics.OBBodyRow(
+    state: metric == G3Metric.skinTempZ
+        ? metrics.OBBodyState.deviation
+        : value == null
+        ? metrics.OBBodyState.missing
+        : range == null
+        ? metrics.OBBodyState.building
+        : metrics.OBBodyState.range,
+    name: g3MetricName(metric),
+    value: value == null ? null : _number(value, metric),
+    unit: _unit(metric).isEmpty ? null : _unit(metric),
+    at: value,
+    min: metric == G3Metric.skinTempZ ? -1 : bounds?.$1 ?? 0,
+    max: metric == G3Metric.skinTempZ ? 1 : bounds?.$2 ?? 1,
+    band: range == null ? null : (range.low, range.high),
+    minLabel: range == null ? null : _number(range.low, metric),
+    maxLabel: range == null ? null : _number(range.high, metric),
+    note: _baselineChip(trend.baseline),
+    last: last,
+    onTap: onTap,
+  );
+}
+
 double? _usable(MetricPoint point) =>
     point.partial || point.value?.isFinite != true ? null : point.value;
 
@@ -262,14 +310,13 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 note: metric == G3Metric.skinTempZ
                     ? 'Nacht zu ${_date(widget.endDay)}'
                     : range == null
-                    ? 'Basis im Aufbau'
+                    ? _baseline?.status.phase == BaselinePhase.building
+                          ? 'Basis im Aufbau'
+                          : 'kein Normalbereich'
                     : 'normal ${_number(range.low, metric)}–${_number(range.high, metric)} ${_unit(metric)}',
                 basisChip: metric == G3Metric.skinTempZ
                     ? 'keine Wertung'
-                    : _baseline?.status.phase == BaselinePhase.building &&
-                          _baseline?.status.nightsHave != null
-                    ? 'Basis: ${_baseline!.status.nightsHave} Werte'
-                    : 'kein Normalbereich',
+                    : _baselineChip(_baseline),
                 delta: value == null || range == null
                     ? null
                     : _number((value - range.median).abs(), metric),
@@ -278,13 +325,14 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 caption: metric == G3Metric.skinTempZ
                     ? 'Relative Abweichung von deiner Basis'
                     : range == null
-                    ? _baseline?.status.nightsNeeded == null
+                    ? _baseline?.status.nightsHave == null ||
+                              _baseline?.status.nightsNeeded == null
                           ? 'Ohne verlässlichen Normalbereich'
-                          : 'Bereich ab ${_baseline!.status.nightsNeeded} Werten'
+                          : '${_baseline!.status.nightsHave} von ${_baseline!.status.nightsNeeded} Werten gespeichert'
                     : value == null
                     ? null
                     : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
-                scale: value == null ? null : _scale(metric, value, range),
+                scale: value == null ? null : _scale(metric, range),
                 title: 'Kein Messwert',
                 reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
                 onTap: () => _showExplanation(context, metric),
@@ -440,17 +488,21 @@ List<(String, String, int)> _gaps(List<MetricPoint> points) {
   return gaps;
 }
 
-metrics.G3Scale _scale(G3Metric metric, double value, PersonalRange? range) {
-  final (double lo, double hi) = switch (metric) {
-    G3Metric.recovery => (0, 100),
-    G3Metric.hrv => (30, 60),
-    G3Metric.rhr => (45, 65),
-    G3Metric.respRate => (10, 22),
-    G3Metric.skinTempZ => (-1, 1),
-    G3Metric.sleepMinutes => (0, 720),
-    G3Metric.strain => (0, 21),
-    G3Metric.steps => (0, 15000),
+/// Single-value scale endpoints come from a trusted range or a defined metric.
+(double, double) _personalBounds(PersonalRange range) {
+  final pad = (range.high - range.low) / 2;
+  return (range.low - pad, range.high + pad);
+}
+
+metrics.G3Scale? _scale(G3Metric metric, PersonalRange? range) {
+  final bounds = switch (metric) {
+    G3Metric.recovery => (0.0, 100.0),
+    G3Metric.strain => (0.0, 21.0),
+    G3Metric.skinTempZ => (-1.0, 1.0),
+    _ => range == null ? null : _personalBounds(range),
   };
+  if (bounds == null) return null;
+  final (lo, hi) = bounds;
   return metrics.G3Scale(
     min: lo,
     max: hi,
@@ -719,62 +771,9 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                     Text('KÖRPER', style: g.caps()),
                     const SizedBox(height: 8),
                     for (final metric in _bodyMetrics)
-                      metrics.OBBodyRow(
-                        state: metric == G3Metric.skinTempZ
-                            ? metrics.OBBodyState.deviation
-                            : trends[metric]!.points.isEmpty ||
-                                  _usable(trends[metric]!.points.last) == null
-                            ? metrics.OBBodyState.missing
-                            : trends[metric]!.baseline.status.phase !=
-                                      BaselinePhase.trusted ||
-                                  trends[metric]!.baseline.range == null
-                            ? metrics.OBBodyState.plain
-                            : metrics.OBBodyState.range,
-                        name: g3MetricName(metric),
-                        value:
-                            trends[metric]!.points.isEmpty ||
-                                _usable(trends[metric]!.points.last) == null
-                            ? null
-                            : _number(
-                                _usable(trends[metric]!.points.last),
-                                metric,
-                              ),
-                        unit: _unit(metric).isEmpty ? null : _unit(metric),
-                        at: trends[metric]!.points.isEmpty
-                            ? null
-                            : _usable(trends[metric]!.points.last),
-                        min: metric == G3Metric.skinTempZ
-                            ? -1
-                            : _chartBounds(
-                                metric,
-                                trends[metric]!.points,
-                                trends[metric]!.baseline.range,
-                              ).$1,
-                        max: metric == G3Metric.skinTempZ
-                            ? 1
-                            : _chartBounds(
-                                metric,
-                                trends[metric]!.points,
-                                trends[metric]!.baseline.range,
-                              ).$2,
-                        band: trends[metric]!.baseline.range == null
-                            ? null
-                            : (
-                                trends[metric]!.baseline.range!.low,
-                                trends[metric]!.baseline.range!.high,
-                              ),
-                        minLabel: trends[metric]!.baseline.range == null
-                            ? null
-                            : _number(
-                                trends[metric]!.baseline.range!.low,
-                                metric,
-                              ),
-                        maxLabel: trends[metric]!.baseline.range == null
-                            ? null
-                            : _number(
-                                trends[metric]!.baseline.range!.high,
-                                metric,
-                              ),
+                      _bodyRow(
+                        metric,
+                        trends[metric]!,
                         last: metric == _bodyMetrics.last,
                         onTap: () => openG3MetricDetail(
                           context,
@@ -794,10 +793,9 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                 title: 'Gewicht',
                 subtitle: _weight?.history.latest == null
                     ? 'Noch kein Eintrag'
-                    : _weight!.sources[_weight!.history.latest!.day] ==
-                          G3WeightSource.imported
-                    ? 'Apple Health'
-                    : 'manuell',
+                    : _weightSourceLabel(
+                        _weight!.sources[_weight!.history.latest!.day],
+                      ),
                 value: _weight?.history.latest == null
                     ? '—'
                     : '${_weight!.history.latest!.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
@@ -932,9 +930,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 basisChip: 'kein Ziel',
                 note: latest == null
                     ? 'kein Eintrag'
-                    : _weight!.sources[latest.day] == G3WeightSource.imported
-                    ? 'Apple Health'
-                    : 'manuell',
+                    : _weightSourceLabel(_weight!.sources[latest.day]),
                 scale: latest == null
                     ? null
                     : metrics.G3Scale(
@@ -993,22 +989,24 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 chrome.OBListRow(
                   icon: LucideIcons.scale,
                   title: _date(entry.day),
-                  subtitle:
-                      _weight!.sources[entry.day] == G3WeightSource.imported
-                      ? 'Apple Health'
-                      : 'manuell',
+                  subtitle: _weightSourceLabel(_weight!.sources[entry.day]),
                   value:
                       '${entry.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
-                  onTap: _weight!.sources[entry.day] == G3WeightSource.imported
-                      ? () => _showImportedWeightInfo(context)
-                      : () async {
+                  onTap: _weight!.sources[entry.day] == G3WeightSource.manual
+                      ? () async {
                           await openG3WeightEntry(
                             context,
                             widget.repository,
                             entry.day,
                           );
                           if (mounted) _load();
-                        },
+                        }
+                      : () => _showWeightSourceInfo(
+                          context,
+                          imported:
+                              _weight!.sources[entry.day] ==
+                              G3WeightSource.imported,
+                        ),
                 ),
                 const SizedBox(height: 6),
               ],
@@ -1022,15 +1020,17 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
   }
 }
 
-void _showImportedWeightInfo(
-  BuildContext context,
-) => showModalBottomSheet<void>(
+void _showWeightSourceInfo(
+  BuildContext context, {
+  required bool imported,
+}) => showModalBottomSheet<void>(
   context: context,
   useSafeArea: true,
   builder: (sheet) => chrome.OBSheet(
-    title: 'Apple Health',
-    subtitle:
-        'Dieser Gewichtseintrag wurde aus Apple Health übernommen. Die Quelle bleibt am Eintrag sichtbar.',
+    title: imported ? 'Apple Health' : 'Quelle unbekannt',
+    subtitle: imported
+        ? 'Dieser Gewichtseintrag wurde aus Apple Health übernommen. Die Quelle bleibt am Eintrag sichtbar.'
+        : 'Die Quelle dieses Gewichtseintrags ist nicht belegt. Er kann hier nicht als manueller Eintrag geändert werden.',
     confirmLabel: 'Schließen',
     onCancel: () => Navigator.pop(sheet),
     onConfirm: () => Navigator.pop(sheet),

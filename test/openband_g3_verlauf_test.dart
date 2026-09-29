@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show G3Scale;
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -59,15 +61,56 @@ class _BuildingBodyRepository extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async =>
-      g3Trend(metric, [
-        MetricPoint(endDay, switch (metric) {
-          G3Metric.hrv => 73,
-          G3Metric.rhr => 51,
-          G3Metric.respRate => 14,
-          G3Metric.skinTempZ => -0.5,
-          _ => null,
-        }),
-      ], const G3Baseline(BaselineStatus(BaselinePhase.building)));
+      g3Trend(
+        metric,
+        [
+          for (final day in g3DaysEnding(endDay, days))
+            MetricPoint(
+              day,
+              day == endDay
+                  ? switch (metric) {
+                      G3Metric.hrv => 73,
+                      G3Metric.rhr => 51,
+                      G3Metric.respRate => 14,
+                      G3Metric.skinTempZ => -0.5,
+                      _ => null,
+                    }
+                  : null,
+            ),
+        ],
+        const G3Baseline(
+          BaselineStatus(
+            BaselinePhase.building,
+            nightsHave: 9,
+            nightsNeeded: 14,
+          ),
+        ),
+      );
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      const G3Baseline(
+        BaselineStatus(BaselinePhase.building, nightsHave: 9, nightsNeeded: 14),
+      );
+}
+
+class _UnknownWeightRepository extends SyntheticOpenBandRepository {
+  _UnknownWeightRepository()
+    : super.fromMaps(
+        _fixture('day-summary.json'),
+        _fixture('sleep-detail.json'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+
+  @override
+  Future<G3Weight> readG3Weight(String endDay, int days) async => G3Weight(
+    buildWeightHistory(
+      endDay: endDay,
+      days: days,
+      rows: [WeightStoredRow(date: endDay, value: 78.4)],
+    ),
+    const {},
+  );
 }
 
 Widget _app(Widget child) =>
@@ -183,6 +226,25 @@ void main() {
     expect(find.bySemanticsLabel('HRV 73 ms'), findsOneWidget);
     expect(find.bySemanticsLabel('Ruhepuls 51 /min'), findsOneWidget);
     expect(find.text('nicht erfasst'), findsNothing);
+    expect(find.text('Basis: noch 5 Werte'), findsNWidgets(3));
+  });
+
+  testWidgets('building HRV shows progress without a single-value scale', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _BuildingBodyRepository(),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Basis: noch 5 Werte'), findsOneWidget);
+    expect(find.byType(G3Scale), findsNothing);
+    expect(find.text('Kein Messwert'), findsNothing);
   });
 
   testWidgets('an older stored band value includes its date', (tester) async {
@@ -247,6 +309,24 @@ void main() {
     await tester.pumpAndSettle();
     expect((await repo.readG3Weight(_day, 7)).history.latest?.value, 78.4);
     expect(find.text('78,4 kg'), findsWidgets);
+  });
+
+  testWidgets('weight with unknown provenance cannot open the manual editor', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        G3WeightDetail(repository: _UnknownWeightRepository(), endDay: _day),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Quelle unbekannt'), findsWidgets);
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(OBListRow));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('nicht belegt'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
   });
 
   testWidgets('small phone with large text keeps the detail readable', (
