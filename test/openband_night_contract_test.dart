@@ -110,11 +110,19 @@ void main() {
     );
     await repository.saveDraft(draft);
     final saved = await repository.saveCorrection(draft);
+    final previous = await LocalDb.dayResult(dayId);
+    final corrected = SeriesCodec.decodePayloadJson(
+      previous!['payload_json'] as String,
+    )!..['sleep_source'] = 'manual';
+    await save(corrected, dayId: dayId, partial: false);
+    final result = await LocalDb.dayResult(dayId);
     await LocalDb.updateOpenBandCalculationJob(
       dayId: dayId,
       correctionId: saved.id,
       revision: saved.revision,
       status: 'complete',
+      resultAlgoVersion: kAlgoVersion,
+      resultComputedAt: (result!['computed_at'] as num).toInt(),
     );
   }
 
@@ -201,11 +209,15 @@ void main() {
       night = await repository.readNightSignals(day);
       expect(night.processing, isFalse);
       expect(night.series, isEmpty);
+      await save({...payload(), 'sleep_source': 'manual'}, partial: false);
+      final corrected = await LocalDb.dayResult(day);
       await LocalDb.updateOpenBandCalculationJob(
         dayId: day,
         correctionId: saved.id,
         revision: saved.revision,
         status: 'complete',
+        resultAlgoVersion: kAlgoVersion,
+        resultComputedAt: (corrected!['computed_at'] as num).toInt(),
       );
       night = await repository.readNightSignals(day);
       expect(night.recordingTimezone, 'Europe/Berlin');
@@ -628,11 +640,30 @@ void main() {
         night.signal(NightSignalKind.pulse).readings.map((p) => p.value),
         [54, null, 52],
       );
+      await save(
+        {
+          ...payload(
+            windowStart: draft.onset,
+            windowEnd: draft.wake,
+            pulse: [
+              {'t': sec(start) + 180, 'v': 47},
+              {'t': sec(start) + 240, 'v': 46},
+              {'t': sec(start) + 300, 'v': 45},
+            ],
+          ),
+          'sleep_source': 'manual',
+        },
+        dayId: previous,
+        partial: false,
+      );
+      final correctedNeighbor = await LocalDb.dayResult(previous);
       await LocalDb.updateOpenBandCalculationJob(
         dayId: previous,
         correctionId: saved.id,
         revision: saved.revision,
         status: 'complete',
+        resultAlgoVersion: kAlgoVersion,
+        resultComputedAt: (correctedNeighbor!['computed_at'] as num).toInt(),
       );
       night = await repository.readNightSignals(day);
       expect(

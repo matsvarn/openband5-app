@@ -358,12 +358,15 @@ class NightSignals {
   final ({DateTime start, DateTime end})? window;
   final String? recordingTimezone;
   final Map<NightSignalKind, NightSignalSeries> series;
+  /// Exact `unobserved` intervals from the stored night hypnogram, if present.
+  final List<G3SignalGap>? unobservedGaps;
   final bool processing, synthetic;
   const NightSignals({
     required this.day,
     this.window,
     this.recordingTimezone,
     this.series = const {},
+    this.unobservedGaps,
     this.processing = false,
     this.synthetic = false,
   });

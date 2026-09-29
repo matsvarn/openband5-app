@@ -485,10 +485,28 @@ void main() {
         'built_for_day': builtFor,
         'algo_version': kAlgoVersion,
         'regularity': {
-          'value': {'sri': 82, 'days': 7},
+          'value': {
+            'sri': 82,
+            'days': 7,
+            'pairs': [
+              {
+                'prev_date': '2026-09-25',
+                'date': '2026-09-26',
+                'sri': 76.5,
+                'agreement': 706,
+                'cases': 800,
+              },
+            ],
+          },
         },
         'social_jetlag': {
-          'value': {'abs_hours': 1.5},
+          'value': {
+            'abs_hours': 1.5,
+            'mid_sleep_work_h': 3.25,
+            'mid_sleep_free_h': 4.75,
+            'n_work': 5,
+            'n_free': 2,
+          },
         },
         'sleep_debt': {
           'value': {
@@ -505,7 +523,16 @@ void main() {
       await LocalDb.putBaseline('crossday', jsonEncode(artifact(day)));
       var plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, 82);
+      expect(plus.regularityDetail!.days, 7);
+      expect(plus.regularityDetail!.pairs!.single.previousDay, '2026-09-25');
+      expect(plus.regularityDetail!.pairs!.single.day, '2026-09-26');
+      expect(plus.regularityDetail!.pairs!.single.sri, 76.5);
+      expect(plus.regularityDetail!.pairs!.single.cases, 800);
       expect(plus.socialJetlag.value, 1.5);
+      expect(plus.socialJetlagDetail!.midSleepWorkHours, 3.25);
+      expect(plus.socialJetlagDetail!.midSleepFreeHours, 4.75);
+      expect(plus.socialJetlagDetail!.workNights, 5);
+      expect(plus.socialJetlagDetail!.freeNights, 2);
       expect(plus.sleepDebt.freeNightP75Hours, 8.2);
       expect(plus.sleepDebt.habitualMedianHours, 7.8);
       expect(plus.sleepDebt.debtHours, .4);
@@ -536,13 +563,33 @@ void main() {
       plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, isNull);
       expect(plus.regularity.gate, 'needs_7_scored_nights:have=4');
+      expect(plus.regularityDetail!.days, 4);
+      expect(plus.regularityDetail!.pairs, isNull);
+
+      final refused = artifact(day);
+      refused['regularity'] = {
+        'value': '—',
+        'note': 'needs_7_scored_nights:have=0',
+      };
+      refused['social_jetlag'] = {
+        'value': '—',
+        'note': 'need_work_and_free_nights',
+      };
+      await LocalDb.putBaseline('crossday', jsonEncode(refused));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.regularityDetail, isNull);
+      expect(plus.socialJetlagDetail, isNull);
+      expect(plus.regularity.gate, 'needs_7_scored_nights:have=0');
+      expect(plus.socialJetlag.gate, 'need_work_and_free_nights');
 
       await LocalDb.putBaseline('crossday', jsonEncode(artifact('2026-09-26')));
       plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, isNull);
       expect(plus.regularity.gate, isNull);
+      expect(plus.regularityDetail, isNull);
       expect(plus.socialJetlag.value, isNull);
       expect(plus.socialJetlag.gate, isNull);
+      expect(plus.socialJetlagDetail, isNull);
       expect(plus.sleepDebt.debtHours, isNull);
       expect(plus.sleepDebt.refusalNote, isNull);
       load = await repo.readWeeklyLoad(day);

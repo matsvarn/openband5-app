@@ -722,6 +722,51 @@ class LocalOpenBandRepository implements OpenBandRepository {
     );
   }
 
+  static G3RegularityDetail? _g3RegularityDetail(Map<String, dynamic>? source) {
+    final envelope = source?['regularity'];
+    final value = envelope is Map ? envelope['value'] : null;
+    if (value is! Map) return null;
+    final days = value['days'];
+    final rawPairs = value['pairs'];
+    return G3RegularityDetail(
+      days: days is int && days >= 0 ? days : null,
+      pairs: rawPairs is! List
+          ? null
+          : List.unmodifiable([
+              for (final raw in rawPairs)
+                if (raw is Map &&
+                    raw['prev_date'] is String &&
+                    raw['date'] is String &&
+                    _double(raw['sri']) != null)
+                  G3SriPair(
+                    previousDay: raw['prev_date'] as String,
+                    day: raw['date'] as String,
+                    sri: _double(raw['sri'])!,
+                    agreement: raw['agreement'] is int
+                        ? raw['agreement'] as int
+                        : null,
+                    cases: raw['cases'] is int ? raw['cases'] as int : null,
+                  ),
+            ]),
+    );
+  }
+
+  static G3SocialJetlagDetail? _g3SocialJetlagDetail(
+    Map<String, dynamic>? source,
+  ) {
+    final envelope = source?['social_jetlag'];
+    final value = envelope is Map ? envelope['value'] : null;
+    if (value is! Map) return null;
+    final work = value['n_work'];
+    final free = value['n_free'];
+    return G3SocialJetlagDetail(
+      midSleepWorkHours: _double(value['mid_sleep_work_h']),
+      midSleepFreeHours: _double(value['mid_sleep_free_h']),
+      workNights: work is int && work >= 0 ? work : null,
+      freeNights: free is int && free >= 0 ? free : null,
+    );
+  }
+
   @override
   Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async {
     _requireDay(day);
@@ -779,6 +824,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
       regularity: gatedRegularity,
       socialJetlag: social,
       sleepDebt: debt,
+      regularityDetail: _g3RegularityDetail(source),
+      socialJetlagDetail: _g3SocialJetlagDetail(source),
       bedtime: time(planned?.bedtimeMinuteOfDay, day),
       wake: time(planned?.wakeMinuteOfDay, sleepPlanWakeDay(day)),
       needMinutes: planned?.needSeconds == null
@@ -875,7 +922,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
     final row = await LocalDb.dayResult(day);
-    if (row == null || row['skipped'] == 1) {
+    if (row == null ||
+        row['skipped'] == 1 ||
+        row['algo_version'] != kAlgoVersion) {
       return NightSignals(day: day, recordingTimezone: zone);
     }
     final payload = _payload(row['payload_json']);
@@ -888,14 +937,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return NightSignals(day: day, recordingTimezone: zone);
     }
 
-    final selectedVersion = (row['algo_version'] as num?)?.toInt();
+    if (!_nightCorrectionReady(correction, row, payload)) {
+      return NightSignals(day: day, recordingTimezone: zone);
+    }
+
     final neighborDays = [
       for (final id in _nightCandidateDays(day, start, end))
         if (id != day) id,
     ];
     final pulseSources = [_curveReadings(payload, 'hr_curve', start, end)];
     final respSources = [_curveReadings(payload, 'resp_day', start, end)];
-    if (selectedVersion != null && neighborDays.isNotEmpty) {
+    if (neighborDays.isNotEmpty) {
       final neighborRows = await LocalDb.servedDayResultsForDays(neighborDays);
       final neighborCorrections = await LocalDb.openBandSleepCorrectionsForDays(
         neighborDays,
@@ -903,16 +955,22 @@ class LocalOpenBandRepository implements OpenBandRepository {
       for (final id in neighborDays) {
         final neighborRow = neighborRows[id];
         if (neighborRow == null) continue;
-        final neighborVersion = (neighborRow['algo_version'] as num?)?.toInt();
         final neighborCorrection = neighborCorrections[id];
         if (neighborRow['skipped'] == 1 ||
-            neighborVersion != selectedVersion ||
+            neighborRow['algo_version'] != kAlgoVersion ||
             (neighborCorrection != null &&
                 neighborCorrection['status'] != 'complete')) {
           continue;
         }
         final neighborPayload = _payload(neighborRow['payload_json']);
         if (neighborPayload == null) continue;
+        if (!_nightCorrectionReady(
+          neighborCorrection,
+          neighborRow,
+          neighborPayload,
+        )) {
+          continue;
+        }
         pulseSources.add(
           _curveReadings(neighborPayload, 'hr_curve', start, end),
         );
@@ -973,6 +1031,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       day: day,
       window: (start: start, end: end),
       recordingTimezone: zone,
+      unobservedGaps: _storedNightGaps(payload, start, end),
       series: {
         NightSignalKind.pulse: storedCurve(
           _unionNightReadings(pulseSources),
@@ -990,6 +1049,65 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ),
       },
     );
+  }
+
+  /// Reuse the stored correction receipt and published-window proof used by
+  /// the night scalar seam. `complete` status alone cannot publish old curves.
+  static bool _nightCorrectionReady(
+    Map<String, dynamic>? correction,
+    Map<String, dynamic> row,
+    Map<String, dynamic> payload,
+  ) {
+    if (correction == null) return true;
+    final job = NightScalarJob(
+      day: correction['day_id'] as String,
+      status: correction['status'] as String?,
+      identityMatched: correction['status'] != null,
+      resultAlgo: (correction['result_algo_version'] as num?)?.toInt(),
+      resultComputedAt: (correction['result_computed_at'] as num?)?.toInt(),
+      action: correction['action'] as String?,
+      onsetMs: (correction['onset_ms'] as num?)?.toInt(),
+      wakeMs: (correction['wake_ms'] as num?)?.toInt(),
+    );
+    final stored = NightScalarRow(
+      day: job.day,
+      algoVersion: (row['algo_version'] as num?)?.toInt(),
+      computedAtMs: (row['computed_at'] as num?)?.toInt(),
+      sleepSource: _stringAt(payload, 'sleep_source'),
+      windowStartMs: _numAt(payload, 'sleep.window.value.onset_ms')?.toInt(),
+      windowEndMs: _numAt(payload, 'sleep.window.value.offset_ms')?.toInt(),
+    );
+    return nightScalarReceiptState(
+              job,
+              storedAlgo: stored.algoVersion,
+              storedComputedAt: stored.computedAtMs,
+            ) ==
+            null &&
+        nightScalarOverrideProof(job: job, row: stored) == true;
+  }
+
+  /// Direct projection of the engine's `unobserved` hypnogram segments. No
+  /// gap is inferred between sparse pulse/respiration chart points.
+  static List<G3SignalGap>? _storedNightGaps(
+    Map<String, dynamic> payload,
+    DateTime start,
+    DateTime end,
+  ) {
+    final raw = _at(payload, 'series.hypnogram');
+    if (raw is! List) return null;
+    final gaps = <G3SignalGap>[];
+    for (final item in raw) {
+      if (item is! Map || item['stage'] != 'unobserved') continue;
+      final from = _signalTime(item['start'], seconds: true);
+      final until = _signalTime(item['end'], seconds: true);
+      if (from == null || until == null) continue;
+      final clippedStart = from.isBefore(start) ? start : from;
+      final clippedEnd = until.isAfter(end) ? end : until;
+      if (clippedEnd.isAfter(clippedStart)) {
+        gaps.add(G3SignalGap(clippedStart, clippedEnd));
+      }
+    }
+    return List.unmodifiable(gaps);
   }
 
   static DateTime? _signalTime(Object? raw, {bool seconds = false}) {
