@@ -11,7 +11,7 @@ void main() {
     BaselineStatus(BaselinePhase.building, nightsHave: 11, nightsNeeded: 14),
   );
   final now = DateTime(2026, 9, 29, 9, 41);
-  final bed = DateTime(2026, 9, 29, 22, 45);
+  final bed = DateTime(2026, 9, 29, 22, 18);
   final wake = DateTime(2026, 9, 30, 6, 54);
 
   TodayNote? note({
@@ -19,6 +19,7 @@ void main() {
     G3Baseline baseline = trusted,
     int? sleep,
     int? goal,
+    double? need,
     DateTime? bedtime,
     DateTime? wakeTime,
     String day = '2026-09-29',
@@ -29,6 +30,7 @@ void main() {
     recoveryBaseline: baseline,
     sleepMinutes: sleep,
     sleepGoalMinutes: goal,
+    sleepNeedMinutes: need,
     suggestedBedtime: bedtime,
     suggestedWake: wakeTime,
   );
@@ -40,6 +42,7 @@ void main() {
         recovery: 74,
         sleep: 438,
         goal: 465,
+        need: 485,
         bedtime: bed,
         wakeTime: wake,
         day: '2026-09-28',
@@ -63,12 +66,16 @@ void main() {
     expect(note(sleep: 438, goal: 465), isNull);
     expect(note(sleep: 438, bedtime: bed), isNull);
     expect(note(goal: 465, bedtime: bed), isNull);
-    expect(note(sleep: 450, goal: 465, bedtime: bed), isNull);
+    expect(note(sleep: 438, goal: 465, bedtime: bed), isNull);
+    expect(note(sleep: 450, goal: 465, need: 485, bedtime: bed), isNull);
     expect(
-      note(sleep: 449, goal: 465, bedtime: bed)!.headline,
+      note(sleep: 449, goal: 465, need: 485, bedtime: bed)!.headline,
       'Heute früher ins Bett.',
     );
-    expect(note(sleep: 449, goal: 465, bedtime: bed)!.action, isNull);
+    expect(
+      note(sleep: 449, goal: 465, need: 485, bedtime: bed)!.action,
+      isNull,
+    );
   });
 
   test('sample note uses only shown facts and plan times', () {
@@ -76,14 +83,15 @@ void main() {
       recovery: 74,
       sleep: 438,
       goal: 465,
+      need: 485,
       bedtime: bed,
       wakeTime: wake,
     )!;
     expect(result.headline, 'Gut erholt. Heute früher ins Bett.');
     expect(result.reason, 'Erholung über Median, Schlaf 27 Min. unter Ziel');
-    expect(result.action!.label, '22:45 ins Bett');
-    expect(result.action!.sub, 'für 7h45 Schlaf bis 06:54');
-    expect(result.action!.reminderAt, bed);
+    expect(result.action!.label, '22:20 ins Bett');
+    expect(result.action!.sub, 'für 8h05 Schlafbedarf bis 06:54');
+    expect(result.action!.reminderAt, DateTime(2026, 9, 29, 22, 5));
   });
 
   test(
@@ -93,6 +101,7 @@ void main() {
         baseline: building,
         sleep: 438,
         goal: 465,
+        need: 485,
         bedtime: bed,
         wakeTime: wake,
       )!;
@@ -103,6 +112,7 @@ void main() {
           baseline: const G3Baseline(BaselineStatus(BaselinePhase.building)),
           sleep: 438,
           goal: 465,
+          need: 485,
           bedtime: bed,
         )!.reason,
         'Schlaf 27 Min. unter Ziel',

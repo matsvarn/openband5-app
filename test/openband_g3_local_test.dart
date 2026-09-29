@@ -6,10 +6,12 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
+import 'package:openstrap_edge/health/health_export.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +24,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
   setUp(() async {
+    SharedPreferences.setMockInitialValues({kHealthSyncPref: false});
     await LocalDb.close();
     LocalDb.dbName = 'openband_g3_local_test.db';
     final dir = await databaseFactory.getDatabasesPath();
@@ -190,6 +193,10 @@ void main() {
       });
       final sessionId = await repo.confirmSuggestion('detected-2');
       expect((await LocalDb.session(sessionId))?['source'], 'auto');
+      expect(await repo.confirmSuggestion('detected-2'), sessionId);
+      final db = await LocalDb.instance;
+      expect((await db.query('sessions')).length, 1);
+      expect(await HealthExporter.exportWorkoutId(sessionId), isFalse);
       expect(
         (await LocalDb.activeWorkoutSuggestions()).any(
           (row) => row['id'] == 'detected-2',
@@ -199,6 +206,36 @@ void main() {
       expect((await repo.readActivities(day)).single.confirmed, isTrue);
     },
   );
+
+  test('failed suggestion dismissal rolls back the session insert', () async {
+    final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;
+    await LocalDb.putWorkoutSuggestion({
+      'id': 'detected-rollback',
+      'date': day,
+      'start_ts': start,
+      'end_ts': start + 42 * 60,
+      'sport': 'running',
+      'created_at': start * 1000,
+    });
+    final db = await LocalDb.instance;
+    await db.execute('''
+      CREATE TRIGGER fail_suggestion_dismissal
+      BEFORE UPDATE OF dismissed ON workout_suggestions
+      BEGIN SELECT RAISE(ABORT, 'simulated dismissal failure'); END
+    ''');
+    await expectLater(
+      repo.confirmSuggestion('detected-rollback'),
+      throwsA(isA<Exception>()),
+    );
+    expect(await db.query('sessions'), isEmpty);
+    expect(
+      (await LocalDb.activeWorkoutSuggestions()).single['id'],
+      'detected-rollback',
+    );
+    await db.execute('DROP TRIGGER fail_suggestion_dismissal');
+    final id = await repo.confirmSuggestion('detected-rollback');
+    expect((await LocalDb.session(id))?['source'], 'auto');
+  });
 
   test(
     'retained HR creates 30-second slots with a gap and quality share',
@@ -241,7 +278,7 @@ void main() {
       expect(result.zoneMinutes, [1, 0, 0, 0, 0]);
       expect(result.zoneBasis!.method, 'karvonen');
       expect(result.zoneBasis!.maxHr, 186);
-      expect(result.zoneBasis!.restingHr, isNull);
+      expect(result.zoneBasis!.maxHrSource, G3MaxHrSource.measured);
     },
   );
 
@@ -255,7 +292,11 @@ void main() {
       expect(plus.regularity.value, isNull);
       expect(plus.regularity.gate, isNotNull);
       expect(plus.socialJetlag.value, isNull);
-      expect(plus.sleepDebt.value, isNull);
+      expect(plus.sleepDebt.debtHours, isNull);
+      expect(plus.sleepDebt.refusalNote, isNotNull);
+      expect(plus.needMinutes, isNull);
+      expect(plus.napsIncomplete, isNull);
+      expect(plus.typicalEfficiency, isNull);
       expect(plus.bedtime, isNull);
       expect(plus.wake, isNull);
 
@@ -289,7 +330,12 @@ void main() {
           'value': {'abs_hours': 1.5},
         },
         'sleep_debt': {
-          'value': {'debt_hours': .4},
+          'value': {
+            'osd_hours': 8.2,
+            'habitual_hours': 7.8,
+            'debt_hours': .4,
+            'has_free_night': true,
+          },
         },
         'load': {
           'value': {'ctl': 12, 'atl': 19},
@@ -299,16 +345,73 @@ void main() {
       var plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, 82);
       expect(plus.socialJetlag.value, 1.5);
-      expect(plus.sleepDebt.value, .4);
+      expect(plus.sleepDebt.freeNightP75Hours, 8.2);
+      expect(plus.sleepDebt.habitualMedianHours, 7.8);
+      expect(plus.sleepDebt.debtHours, .4);
+      expect(plus.sleepDebt.hasFreeNight, isTrue);
       var load = await repo.readWeeklyLoad(day);
       expect(load.ctl, 12);
       expect(load.atl, 19);
+
+      final withoutFreeNight = artifact(day);
+      withoutFreeNight['sleep_debt'] = {
+        'value': {'habitual_hours': 7.8, 'has_free_night': false},
+        'note': 'need_free_night:have=0,need=1',
+      };
+      await LocalDb.putBaseline('crossday', jsonEncode(withoutFreeNight));
+      plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+      expect(plus.sleepDebt.hasFreeNight, isFalse);
+      expect(plus.sleepDebt.habitualMedianHours, 7.8);
+      expect(plus.sleepDebt.freeNightP75Hours, isNull);
+      expect(plus.sleepDebt.debtHours, isNull);
+      expect(plus.sleepDebt.refusalNote, 'need_free_night:have=0,need=1');
 
       await LocalDb.putBaseline('crossday', jsonEncode(artifact('2026-09-26')));
       plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
       expect(plus.regularity.value, isNull);
       load = await repo.readWeeklyLoad(day);
       expect(load.ctl, isNull);
+    },
+  );
+
+  test(
+    'sleep plan exposes stored need and incomplete nap contribution',
+    () async {
+      final built = DateTime(2026, 9, 27, 9, 38);
+      await LocalDb.putSleepGoalPeriod(validFromDay: day, minutes: 465);
+      await LocalDb.putBaseline(
+        'crossday',
+        jsonEncode({
+          'built_for_day': day,
+          'algo_version': kAlgoVersion,
+          'built_at_epoch': built.millisecondsSinceEpoch ~/ 1000,
+          'sleep_coach': {
+            'need': {
+              'value': {'need_sec': 485 * 60},
+            },
+            'bedtime': {
+              'value': {'bedtime_min_of_day': 22 * 60 + 18},
+            },
+            'wake': {
+              'value': {'wake_min_of_day': 6 * 60 + 54},
+            },
+            'strain_bonus_min': 20,
+            'nap_credit_min': '—',
+          },
+        }),
+      );
+      final plus = await repo.readSleepPlus(
+        day,
+        now: DateTime(2026, 9, 27, 12),
+      );
+      expect(plus.goalMinutes, 465);
+      expect(plus.needMinutes, 485);
+      expect(plus.strainBonusMinutes, 20);
+      expect(plus.napCreditMinutes, isNull);
+      expect(plus.napsIncomplete, isTrue);
+      expect(plus.typicalEfficiency, isNull);
+      expect(plus.bedtime, DateTime(2026, 9, 27, 22, 18));
+      expect(plus.wake, DateTime(2026, 9, 28, 6, 54));
     },
   );
 

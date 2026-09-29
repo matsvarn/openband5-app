@@ -419,7 +419,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     respiration: const DayMetric(15.8),
     skinTemperature: _g3Building
         ? const DayMetric.missing()
-        : const DayMetric(0.2, unit: NightScalarUnit.sd),
+        : const DayMetric(0.4, unit: NightScalarUnit.sd),
     steps: const DayMetric(6480),
     stepIntervals: [
       StepInterval(_g3At(6, 0), _g3At(7, 0), 820),
@@ -515,7 +515,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         G3Metric.hrv => _g3Building ? null : 48.0,
         G3Metric.rhr => _g3Building ? null : 54.0,
         G3Metric.respRate => 15.8,
-        G3Metric.skinTempZ => _g3Building ? null : 0.2,
+        G3Metric.skinTempZ => _g3Building ? null : 0.4,
         G3Metric.strain => 9.4,
         G3Metric.steps => 6480.0,
         _ => null,
@@ -595,9 +595,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           maxHr: 176,
           zoneMinutes: const [6, 14, 15, 6, 1],
           zoneBasis: const G3ZoneBasis(
-            method: 'hr_reserve',
-            restingHr: 54,
+            method: 'tanaka',
             maxHr: 186,
+            maxHrSource: G3MaxHrSource.estimated,
           ),
           hrTrace: trace,
           signalGaps: [
@@ -608,8 +608,6 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           ],
           opticalShare: .96,
           hrRecoveryOneMinute: 31,
-          hrrEndBpm: 136,
-          hrrMinuteBpm: 105,
           priorHrrCount: 0,
         ),
       ];
@@ -682,21 +680,26 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           null,
           gate: 'Braucht freie und Arbeitstage.',
         ),
-        sleepDebt: const G3AvailableValue(
-          null,
-          gate: 'Braucht längere freie Nächte.',
+        sleepDebt: const G3SleepDebt(
+          refusalNote: 'Braucht längere freie Nächte.',
         ),
-        bedtime: plan?.bedtimeMinuteOfDay == null ? null : _g3At(22, 45),
+        bedtime: plan?.bedtimeMinuteOfDay == null ? null : _g3At(22, 18),
         wake: plan?.wakeMinuteOfDay == null
             ? null
             : DateTime(2026, 9, 30, 6, 54),
+        needMinutes: plan?.needSeconds == null ? null : plan!.needSeconds / 60,
+        goalMinutes: 465,
+        strainBonusMinutes: plan?.strainBonusMin,
+        napCreditMinutes: plan?.napCreditMin,
+        napsIncomplete: plan == null ? null : plan.napCreditMin == null,
+        typicalEfficiency: plan == null ? null : .94,
       );
     }
     final plan = await readSleepPlan(day, now: now);
     return G3SleepPlus(
       regularity: const G3AvailableValue(null),
       socialJetlag: const G3AvailableValue(null),
-      sleepDebt: G3AvailableValue(null, gate: plan.issue?.name),
+      sleepDebt: G3SleepDebt(refusalNote: plan.issue?.name),
       bedtime: null,
       wake: null,
     );
@@ -3674,8 +3677,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     if (_g3 && day == _g3Day) {
       final today = todayLabel(now ?? sleepPlanNow());
       if (today != day) return SleepPlanSnapshot.unavailable(day, today);
-      const need = SleepPlanMetric(present: true, value: 465 * 60);
-      const bedtime = SleepPlanMetric(present: true, value: 22 * 60 + 45);
+      const need = SleepPlanMetric(present: true, value: 485 * 60);
+      const bedtime = SleepPlanMetric(present: true, value: 22 * 60 + 18);
       const wake = SleepPlanMetric(present: true, value: 6 * 60 + 54);
       return SleepPlanSnapshot(
         requestedDay: day,
@@ -3687,9 +3690,11 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         plan: ComingNightSleepPlan(
           nightStartDay: day,
           wakeDay: '2026-09-30',
-          needSeconds: 465 * 60,
-          bedtimeMinuteOfDay: 22 * 60 + 45,
+          needSeconds: 485 * 60,
+          bedtimeMinuteOfDay: 22 * 60 + 18,
           wakeMinuteOfDay: 6 * 60 + 54,
+          napCreditMin: 0,
+          strainBonusMin: 20,
           builtAtEpoch: _g3At(9, 38).millisecondsSinceEpoch ~/ 1000,
           algoVersion: kAlgoVersion,
           need: need,
