@@ -137,6 +137,25 @@ void main() {
     expect(written['g3_sleep_goal_min'], -1);
   });
 
+  for (final variant in ['partial', 'skipped', 'old version']) {
+    test('$variant trusted payload cannot publish a range', () async {
+      const trusted =
+          '{"baselines":{"recovery":{"status":"trusted","baseline":69.0,"spread":8.0}}}';
+      await LocalDb.putDayResult(
+        dayId: todayLabel(),
+        algoVersion: variant == 'old version' ? kAlgoVersion - 1 : kAlgoVersion,
+        payloadJson: trusted,
+        windowJson: '{}',
+        partial: variant == 'partial',
+        skipped: variant == 'skipped',
+      );
+      await WidgetService.push(today());
+      expect(written['g3_recovery_low'], -1.0);
+      expect(written['g3_recovery_high'], -1.0);
+      expect(written['g3_recovery_median'], -1.0);
+    });
+  }
+
   test(
     'keeps the stored sample date when today has no derived values',
     () async {

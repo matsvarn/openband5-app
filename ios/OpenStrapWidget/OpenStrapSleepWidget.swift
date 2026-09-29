@@ -28,11 +28,9 @@ struct OpenStrapSleepWidgetEntryView: View {
     switch family {
     case .systemSmall: G3SleepSmall(snap: entry.snap, date: entry.date)
     case .accessoryCircular:
-      Text(G3Widget.status(entry.snap, entry.date) == .current
-           ? G3Widget.time(entry.snap.sleepMinutes) : "—").widgetAccentable()
+      G3SleepAccessory(snap: entry.snap, date: entry.date, circular: true)
     case .accessoryRectangular, .accessoryInline:
-      Text("Schlaf \(G3Widget.status(entry.snap, entry.date) == .current ? G3Widget.time(entry.snap.sleepMinutes) : "—")")
-        .widgetAccentable()
+      G3SleepAccessory(snap: entry.snap, date: entry.date, circular: false)
     default: G3SleepSmall(snap: entry.snap, date: entry.date)
     }
   }

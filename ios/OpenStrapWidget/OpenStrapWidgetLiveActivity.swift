@@ -15,6 +15,7 @@ struct OpenStrapWidgetAttributes: ActivityAttributes {
     var zoneBasis: String?
     var zoneBasisBpm: Int?
     var elapsedSeconds: Int?
+    var paused: Bool?
     var strain: Double?
   }
   var sessionName: String
@@ -41,7 +42,8 @@ private func displayData(_ context: ActivityViewContext<OpenStrapWidgetAttribute
                     signal: state.signal, zone: state.zone,
                     zoneLowPct: state.zoneLowPct, zoneHighPct: state.zoneHighPct,
                     zoneBasis: state.zoneBasis, zoneBasisBpm: state.zoneBasisBpm,
-                    elapsedSeconds: state.elapsedSeconds, strain: state.strain)
+                    elapsedSeconds: state.elapsedSeconds, paused: state.paused,
+                    strain: state.strain)
 }
 
 struct OpenStrapWidgetLiveActivity: Widget {
@@ -80,8 +82,7 @@ struct OpenStrapWidgetLiveActivity: Widget {
             .font(.system(size: 14, weight: .bold).monospacedDigit())
         }
       } compactTrailing: {
-        Text(data.elapsed)
-          .font(.system(size: 13, weight: .bold).monospacedDigit())
+        G3LiveDuration(data: data, size: 13)
       } minimal: {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
           Text(data.pulse(at: timeline.date))

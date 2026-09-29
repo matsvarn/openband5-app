@@ -13,6 +13,7 @@ void main() {
     expect(payload['hr'], isNull);
     expect(payload['signal'], 'none');
     expect(payload['strain'], isNull);
+    expect(payload['paused'], false);
     expect(payload.keys, isNot(contains('calories')));
     expect(payload.keys, isNot(contains('targetKcal')));
   });
@@ -41,6 +42,7 @@ void main() {
     expect(payload['zoneBasis'], 'tanaka');
     expect(payload['zoneBasisBpm'], 186);
     expect(payload['elapsedSeconds'], 1458);
+    expect(payload['paused'], false);
     expect(payload['strain'], 3.0);
     expect(payload.keys, isNot(contains('calories')));
   });
@@ -62,9 +64,55 @@ void main() {
       );
       expect(payload['hr'], isNull);
       expect(payload['zone'], isNull);
+      expect(payload['zoneBasis'], 'observed');
+      expect(payload['zoneBasisBpm'], 188);
       expect(payload['signal'], 'weak');
       expect(payload['strain'], isNull);
     }
+  });
+
+  test('below zone one keeps the source but withholds the percent band', () {
+    final payload = LiveActivity.updatePayload(
+      hr: 83,
+      hrSampleAt: now,
+      signal: LiveSignal.live,
+      zone: null,
+      zoneLowPct: null,
+      zoneHighPct: null,
+      zoneBasis: 'karvonen',
+      zoneBasisBpm: 188,
+      elapsed: const Duration(seconds: 20),
+      strain: null,
+      now: now,
+    );
+    expect(payload['hr'], 83);
+    expect(payload['zone'], isNull);
+    expect(payload['zoneLowPct'], isNull);
+    expect(payload['zoneBasis'], 'karvonen');
+    expect(payload['zoneBasisBpm'], 188);
+  });
+
+  test('paused payload freezes elapsed and withholds the last HR', () {
+    final payload = LiveActivity.updatePayload(
+      hr: 145,
+      hrSampleAt: now,
+      signal: LiveSignal.live,
+      zone: 3,
+      zoneLowPct: 0.7,
+      zoneHighPct: 0.8,
+      zoneBasis: 'tanaka',
+      zoneBasisBpm: 186,
+      elapsed: const Duration(minutes: 24, seconds: 18),
+      paused: true,
+      strain: 3.0,
+      now: now,
+    );
+    expect(payload['paused'], true);
+    expect(payload['elapsedSeconds'], 1458);
+    expect(payload['signal'], 'none');
+    expect(payload['hr'], isNull);
+    expect(payload['zone'], isNull);
+    expect(payload['zoneBasis'], 'tanaka');
   });
 
   test('missing sample or basis stays missing', () {

@@ -271,8 +271,8 @@ struct OpenStrapBatteryEntryView: View {
   var entry: BatteryEntry
   private var inlineStale: Bool {
     let snap = SW.read()
-    return family == .accessoryInline && !snap.neverConnected &&
-      SW.stale(snap, at: entry.date)
+    let state = G3Widget.status(snap, entry.date)
+    return family == .accessoryInline && (state == .stale || state == .missing)
   }
 
   var body: some View {
@@ -291,8 +291,7 @@ struct OpenStrapBatteryEntryView: View {
     case .accessoryRectangular: BatteryRectangularView(e: entry)
     case .accessoryInline:
       let snap = SW.read()
-      Label(G3Widget.statusInline(snap, entry.date),
-            systemImage: "battery.75percent")
+      G3BatteryInline(snap: snap, date: entry.date, percent: entry.pct)
     default: BatterySmallView(e: entry)
     }
   }
