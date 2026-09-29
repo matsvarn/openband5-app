@@ -16,6 +16,8 @@ class OBCheckIn extends StatelessWidget {
     this.error,
     this.onRetry,
     this.retryLabel = 'Erneut speichern',
+    this.inlineLater = false,
+    this.footerLabel,
   });
   final String title;
   final int index, total;
@@ -24,6 +26,8 @@ class OBCheckIn extends StatelessWidget {
   final String? error;
   final VoidCallback? onRetry;
   final String retryLabel;
+  final bool inlineLater;
+  final String? footerLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +55,11 @@ class OBCheckIn extends StatelessWidget {
                   child: Container(
                     height: 4,
                     decoration: BoxDecoration(
-                      color: i < index ? g.ink : g.track,
+                      color: i < index - 1
+                          ? g.ink
+                          : i == index - 1
+                          ? g.ink2.withValues(alpha: .45)
+                          : g.band,
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -60,9 +68,24 @@ class OBCheckIn extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Text(title, style: g.t(21, 25, weight: FontWeight.w700)),
+          Text(title, style: g.t(19, 24, weight: FontWeight.w700)),
           const SizedBox(height: 12),
-          answer,
+          if (inlineLater)
+            Row(
+              children: [
+                Expanded(child: answer),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: TextButton(
+                    onPressed: onLater,
+                    child: const Text('Später'),
+                  ),
+                ),
+              ],
+            )
+          else
+            answer,
           if (error != null) ...[
             const SizedBox(height: 12),
             OBInlineError(
@@ -71,16 +94,24 @@ class OBCheckIn extends StatelessWidget {
               retryLabel: retryLabel,
             ),
           ],
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: onLater,
-              child: Text(
-                'Später',
-                style: g.t(14, 18, weight: FontWeight.w700),
-              ),
+          if (!inlineLater)
+            Row(
+              children: [
+                if (footerLabel != null)
+                  Expanded(
+                    child: Text(
+                      footerLabel!,
+                      style: g.t(12, 16, color: g.muted),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                TextButton(
+                  onPressed: onLater,
+                  child: Text('Später', style: g.t(14, 18, color: g.ink2)),
+                ),
+              ],
             ),
-          ),
         ],
       ),
     );
@@ -186,14 +217,14 @@ class OBAnswerKey extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
         child: Container(
-          constraints: const BoxConstraints(minHeight: 44),
+          constraints: BoxConstraints(minHeight: icon == null ? 44 : 58),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: selected ? g.ink : g.canvas,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
           ),
           child: icon == null
               ? Text(
@@ -331,7 +362,7 @@ class OBJournalEntryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(
         children: [
           Container(
@@ -359,12 +390,12 @@ class OBJournalEntryRow extends StatelessWidget {
               ],
             ),
           ),
-          Text(value, style: g.t(15, 19, weight: FontWeight.w700)),
+          Text(value, style: g.t(17, 21, weight: FontWeight.w700)),
           IconButton(
             tooltip: '$title ändern',
             onPressed: onEdit,
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            icon: Icon(LucideIcons.pencil, size: 18, color: g.muted),
+            icon: Icon(LucideIcons.pencil, size: 14, color: g.muted),
           ),
         ],
       ),
@@ -378,16 +409,20 @@ class OBJournalDayRow extends StatelessWidget {
     required this.title,
     required this.summary,
     required this.onTap,
+    this.chips = const [],
+    this.count,
   });
   final String title, summary;
   final VoidCallback onTap;
+  final List<String> chips;
+  final String? count;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return InkWell(
       onTap: onTap,
       child: Container(
-        constraints: const BoxConstraints(minHeight: 64),
+        constraints: const BoxConstraints(minHeight: 58),
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: g.hairline)),
@@ -398,13 +433,47 @@ class OBJournalDayRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: g.t(15, 19, weight: FontWeight.w700)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: g.t(15, 19, weight: FontWeight.w700),
+                        ),
+                      ),
+                      if (count != null)
+                        Text(count!, style: g.t(12, 16, color: g.muted)),
+                    ],
+                  ),
                   const SizedBox(height: 4),
-                  Text(summary, style: g.t(12, 16, color: g.muted)),
+                  if (chips.isEmpty)
+                    Text(summary, style: g.t(13, 17, color: g.muted))
+                  else
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: [
+                        for (final chip in chips)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: g.chip,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              chip,
+                              style: g.t(11, 16, color: g.ink2),
+                            ),
+                          ),
+                      ],
+                    ),
                 ],
               ),
             ),
-            Icon(LucideIcons.chevronRight, color: g.muted, size: 18),
+            Icon(LucideIcons.chevronRight, color: g.gap, size: 14),
           ],
         ),
       ),
@@ -413,22 +482,31 @@ class OBJournalDayRow extends StatelessWidget {
 }
 
 class OBPatternProgress extends StatelessWidget {
-  const OBPatternProgress({super.key, required this.have, required this.need});
+  const OBPatternProgress({
+    super.key,
+    required this.have,
+    required this.need,
+    this.height = 22,
+  });
   final int have, need;
+  final double height;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return Wrap(
-      spacing: 3,
-      runSpacing: 3,
+    return Row(
       children: [
         for (var i = 0; i < need; i++)
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: i < have ? g.ink : g.track,
-              borderRadius: BorderRadius.circular(3),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: i == need - 1 ? 0 : 6),
+              child: Container(
+                height: height,
+                decoration: BoxDecoration(
+                  color: i < have ? g.ink : g.page,
+                  border: i < have ? null : Border.all(color: g.gap),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
             ),
           ),
       ],
@@ -463,6 +541,7 @@ class OBPatternGateRow extends StatelessWidget {
                 : OBPatternProgress(
                     have: count!.clamp(0, minimum!),
                     need: minimum!,
+                    height: 14,
                   ),
           ),
           const SizedBox(width: 8),
@@ -496,21 +575,59 @@ class OBPatternCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final awaiting = have != null && need != null && have! < need!;
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: g.raised(radius: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('ERSTER VERGLEICH', style: g.caps()),
-          const SizedBox(height: 18),
-          Text(title, style: g.t(23, 27, weight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(detail, style: g.t(14, 19, color: g.ink2)),
-          const SizedBox(height: 20),
-          if (have != null && need != null)
+          Row(
+            children: [
+              Expanded(child: Text('MUSTER ›', style: g.caps())),
+              Text(
+                awaiting ? 'noch kein Vergleich' : title,
+                style: g.t(13, 17, color: g.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (awaiting)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'von $need Tag-Nacht-Paaren',
+                          style: g.t(15, 19, weight: FontWeight.w700),
+                        ),
+                        Text(detail, style: g.t(13, 17, color: g.ink2)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else ...[
+            Text(
+              have == null ? '—' : title,
+              style: g.t(23, 27, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(detail, style: g.t(14, 19, color: g.ink2)),
+          ],
+          if (have != null && need != null) ...[
+            const SizedBox(height: 16),
             OBPatternProgress(have: have!.clamp(0, need!), need: need!),
-          const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 10),
           Text(
             footer ??
                 (have == null || need == null
@@ -531,10 +648,12 @@ class OBQuestionRow extends StatelessWidget {
     required this.subtitle,
     required this.active,
     required this.onChanged,
+    this.icon = LucideIcons.notebookPen,
   });
   final String title, subtitle;
   final bool active;
   final ValueChanged<bool>? onChanged;
+  final IconData icon;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -546,6 +665,16 @@ class OBQuestionRow extends StatelessWidget {
       ),
       child: Row(
         children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: g.track,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 17, color: g.ink),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -556,7 +685,7 @@ class OBQuestionRow extends StatelessWidget {
             ),
           ),
           if (onChanged != null)
-            Switch.adaptive(value: active, onChanged: onChanged),
+            OBSwitch(value: active, onChanged: onChanged!, label: title),
         ],
       ),
     );
@@ -576,16 +705,18 @@ class OBTextField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: g.canvas,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: g.hairline),
+    return Semantics(
+      textField: true,
+      label: label,
+      child: Container(
+        constraints: BoxConstraints(minHeight: maxLines > 1 ? 92 : 48),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: g.raised(radius: 14),
+        child: TextField(
+          controller: controller,
+          maxLines: maxLines,
+          style: g.t(15, 20),
+          decoration: InputDecoration.collapsed(hintText: label),
         ),
       ),
     );
@@ -698,8 +829,43 @@ class OBSwitch extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final String label;
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: label,
-    child: Switch.adaptive(value: value, onChanged: onChanged),
-  );
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Semantics(
+      label: label,
+      toggled: value,
+      button: true,
+      onTap: () => onChanged(!value),
+      child: GestureDetector(
+        excludeFromSemantics: true,
+        onTap: () => onChanged(!value),
+        child: SizedBox(
+          width: 46,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 46,
+              height: 28,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: value ? g.ink : g.track,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Align(
+                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: g.canvas,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

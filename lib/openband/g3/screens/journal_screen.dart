@@ -21,6 +21,7 @@ import '../chrome.dart'
         OBPageHeader,
         OBPanel,
         OBSectionHeader,
+        OBSegmented,
         OBSyncKind,
         OBSyncState;
 import '../g3_theme.dart';
@@ -40,7 +41,7 @@ const _questions = <_Question>[
     _Answer.yesNo,
   ),
   _Question('mood', 'Wie ist deine Stimmung heute?', 'Stimmung', _Answer.scale),
-  _Question('', 'Möchtest du etwas notieren?', 'Notiz', _Answer.note),
+  _Question('', 'Noch etwas zu gestern?', 'Notiz', _Answer.note),
 ];
 
 String _patternFooter(G3JournalPattern result, {int? perSideMinimum}) {
@@ -86,17 +87,21 @@ class G3JournalScreen extends StatefulWidget {
     this.onProfile,
     this.onBand,
     this.onBack,
+    this.scrollController,
   });
   final OpenBandController controller;
   final FutureOr<void> Function(String day)? onEdit;
   final VoidCallback? onProfile;
   final VoidCallback? onBand;
   final VoidCallback? onBack;
+  final ScrollController? scrollController;
   @override
   State<G3JournalScreen> createState() => _G3JournalScreenState();
 }
 
 class _G3JournalScreenState extends State<G3JournalScreen> {
+  late final ScrollController _scrollController =
+      widget.scrollController ?? ScrollController();
   JournalDaySnapshot? _today;
   List<JournalDaySnapshot> _history = const [];
   G3JournalPattern? _pattern;
@@ -139,6 +144,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   @override
   void dispose() {
     widget.controller.removeListener(_changed);
+    if (widget.scrollController == null) _scrollController.dispose();
     super.dispose();
   }
 
@@ -162,7 +168,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     try {
       final repo = widget.controller.repository;
       final date = DateTime.parse(day);
-      final days = [1, 2, 3]
+      final days = [1, 2, 3, 4, 5]
           .map((n) => dayLabelOf(DateTime(date.year, date.month, date.day - n)))
           .toList();
       final data = await Future.wait([
@@ -222,7 +228,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       return field?.formatWithUnit(v) ?? '—';
     }
     return v == v.roundToDouble() && v >= 1 && v <= 5
-        ? '${v.round()} / 5'
+        ? '${v.round()} von 5'
         : '—';
   }
 
@@ -391,6 +397,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: G3.of(context).canvas,
+      barrierColor: Colors.black.withValues(
+        alpha: Theme.of(context).brightness == Brightness.dark ? .55 : .35,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -409,12 +418,34 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     if (mounted) setState(() => _editing = false);
   }
 
-  String _historySummary(JournalDaySnapshot day) {
-    final answered = _questionsFor(
-      day,
-    ).where((q) => _answered(day, q)).toList();
-    if (answered.isEmpty) return 'Nichts eingetragen';
-    return answered.map((q) => '${q.title}: ${_value(day, q)}').join(' · ');
+  List<String> _historyChips(JournalDaySnapshot day) => [
+    for (final q in _questionsFor(day))
+      if (_answered(day, q))
+        q.kind == _Answer.note
+            ? 'Notiz'
+            : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${_value(day, q)}',
+  ];
+
+  Widget _historyRow(JournalDaySnapshot row, String selectedDay) {
+    final chips = _historyChips(row);
+    final selected = DateTime.parse(selectedDay);
+    final yesterday = dayLabelOf(
+      DateTime(selected.year, selected.month, selected.day - 1),
+    );
+    final date = DateTime.parse(row.day);
+    return OBJournalDayRow(
+      title:
+          '${row.day == yesterday ? 'Gestern · ' : ''}${DateFormat('EEE', 'de_DE').format(date).replaceAll('.', '')} ${DateFormat('dd.MM', 'de_DE').format(date)}',
+      summary: 'nichts eingetragen',
+      chips: chips,
+      count: chips.isEmpty
+          ? null
+          : '${chips.length} von ${_questionsFor(row).length}',
+      onTap: () async {
+        await widget.onEdit?.call(row.day);
+        if (mounted) _load();
+      },
+    );
   }
 
   @override
@@ -430,204 +461,258 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final pattern = _pattern;
     final band = widget.controller.band;
     final storedAt = band.latestStoredAt;
+    final compactDate = DateFormat(
+      'EEE dd.MM',
+      'de_DE',
+    ).format(DateTime.parse(day)).replaceAll('.', '');
     return ColoredBox(
       color: g.page,
-      child: ListView(
-        key: const PageStorageKey('g3.journal'),
-        padding: const EdgeInsets.only(top: 20, bottom: kOBTabBarContentInset),
-        children: [
-          if (widget.onBack != null)
-            OBPageHeader.detail(
-              title: 'JOURNAL',
-              subtitle: DateFormat(
-                'EEEE, d. MMMM',
-                'de_DE',
-              ).format(DateTime.parse(day)),
-              backLabel: 'Journal',
-              onBack: widget.onBack,
-            )
-          else
-            OBPageHeader.hub(
-              title: 'Journal',
-              subtitle: DateFormat(
-                'EEEE, d. MMMM',
-                'de_DE',
-              ).format(DateTime.parse(day)),
-              band: OBBandCapsule(
-                state: band.connection == BandConnection.connected
-                    ? OBBandState.live
-                    : storedAt == null
-                    ? OBBandState.none
-                    : OBBandState.off,
-                battery: band.batteryPercent,
-                onTap: widget.onBand,
+      child: AnimatedBuilder(
+        animation: _scrollController,
+        builder: (context, _) => Stack(
+          children: [
+            ListView(
+              controller: _scrollController,
+              key: const PageStorageKey('g3.journal'),
+              padding: const EdgeInsets.only(
+                top: 20,
+                bottom: kOBTabBarContentInset,
               ),
-              onProfile: widget.onProfile,
-              onTitle: () async {
-                final chosen = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.parse(day),
-                  firstDate: DateTime(2020),
-                  lastDate: widget.controller.now(),
-                );
-                if (chosen != null) {
-                  await widget.controller.selectDay(dayLabelOf(chosen));
-                }
-              },
-            ),
-          OBSyncState(
-            kind: storedAt == null
-                ? OBSyncKind.never
-                : band.connection == BandConnection.connected
-                ? OBSyncKind.live
-                : OBSyncKind.stale,
-            text: storedAt == null
-                ? 'Datenstand unbekannt'
-                : 'Daten bis ${DateFormat('HH:mm').format(storedAt)}',
-            synthetic: widget.controller.day?.synthetic == true,
-          ),
-          OBSectionHeader(
-            'HEUTE',
-            trailing: TextButton(
-              onPressed: _openCustomize,
-              child: Text(
-                'Anpassen ›',
-                style: g.t(13, 17, weight: FontWeight.w700),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _readError != null
-                ? OBInlineError(
-                    message: _readError!,
-                    onRetry: _load,
-                    retryLabel: 'Neu laden',
+              children: [
+                if (widget.onBack != null)
+                  OBPageHeader.detail(
+                    title: 'JOURNAL',
+                    subtitle: DateFormat(
+                      'EEEE, d. MMMM',
+                      'de_DE',
+                    ).format(DateTime.parse(day)),
+                    backLabel: 'Journal',
+                    onBack: widget.onBack,
                   )
-                : snap != null && count == questions.length
-                ? OBCheckInDone(
-                    total: questions.length,
-                    answers: [
-                      for (final q in questions)
-                        q.kind == _Answer.note
-                            ? 'Notiz'
-                            : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${_value(snap, q)}',
-                    ],
-                  )
-                : OBCheckIn(
-                    title: current.prompt,
-                    index: _position + 1,
-                    total: questions.length,
-                    answer: _answer(current),
-                    onLater: _next,
-                    error: _editing ? null : _saveError,
-                    retryLabel: _draft == null
-                        ? 'Neu laden'
-                        : 'Erneut speichern',
-                    onRetry: _editing || _saveError == null
-                        ? null
-                        : _draft == null
-                        ? _load
-                        : () => _save(current, _draft),
+                else
+                  OBPageHeader.hub(
+                    title: 'Journal',
+                    subtitle: DateFormat(
+                      'EEEE, d. MMMM',
+                      'de_DE',
+                    ).format(DateTime.parse(day)),
+                    band: OBBandCapsule(
+                      state: band.connection == BandConnection.connected
+                          ? OBBandState.live
+                          : storedAt == null
+                          ? OBBandState.none
+                          : OBBandState.off,
+                      battery: band.batteryPercent,
+                      onTap: widget.onBand,
+                    ),
+                    onProfile: widget.onProfile,
+                    onTitle: () async {
+                      final chosen = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.parse(day),
+                        firstDate: DateTime(2020),
+                        lastDate: widget.controller.now(),
+                      );
+                      if (chosen != null) {
+                        await widget.controller.selectDay(dayLabelOf(chosen));
+                      }
+                    },
                   ),
-          ),
-          OBSectionHeader(
-            'HEUTE BEANTWORTET',
-            trailing: Text(
-              '$count von ${questions.length}',
-              style: g.t(13, 17, color: g.ink2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: OBPanel(
-              child: snap == null || count == 0
-                  ? Text(
-                      'Noch nichts beantwortet. Auslassen kostet nichts.',
-                      style: g.t(14, 19, color: g.ink2),
-                    )
-                  : Column(
+                OBSyncState(
+                  kind: storedAt == null
+                      ? OBSyncKind.never
+                      : band.connection == BandConnection.connected
+                      ? OBSyncKind.live
+                      : OBSyncKind.stale,
+                  text: storedAt == null
+                      ? 'Datenstand unbekannt'
+                      : 'Daten bis ${DateFormat('HH:mm').format(storedAt)}',
+                  synthetic: widget.controller.day?.synthetic == true,
+                ),
+                OBSectionHeader(
+                  'HEUTE',
+                  trailing: TextButton(
+                    onPressed: _openCustomize,
+                    child: Text(
+                      'Anpassen ›',
+                      style: g.t(13, 17, weight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _readError != null
+                      ? OBInlineError(
+                          message: _readError!,
+                          onRetry: _load,
+                          retryLabel: 'Neu laden',
+                        )
+                      : snap != null && count == questions.length
+                      ? OBCheckInDone(
+                          total: questions.length,
+                          answers: [
+                            for (final q in questions)
+                              q.kind == _Answer.note
+                                  ? 'Notiz'
+                                  : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${_value(snap, q)}',
+                          ],
+                        )
+                      : OBCheckIn(
+                          title: current.prompt,
+                          index: _position + 1,
+                          total: questions.length,
+                          answer: _answer(current),
+                          onLater: _next,
+                          inlineLater: current.kind == _Answer.yesNo,
+                          footerLabel: current.kind == _Answer.scale
+                              ? '1 schlecht · 5 sehr gut'
+                              : null,
+                          error: _editing ? null : _saveError,
+                          retryLabel: _draft == null
+                              ? 'Neu laden'
+                              : 'Erneut speichern',
+                          onRetry: _editing || _saveError == null
+                              ? null
+                              : _draft == null
+                              ? _load
+                              : () => _save(current, _draft),
+                        ),
+                ),
+                OBSectionHeader(
+                  'HEUTE BEANTWORTET',
+                  trailing: Text(
+                    '$count von ${questions.length}',
+                    style: g.t(13, 17, color: g.ink2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: snap == null || count == 0
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: g.pressed(radius: 18),
+                          child: Text(
+                            'Noch nichts beantwortet. Auslassen kostet nichts.',
+                            style: g.t(13, 17, color: g.ink2),
+                          ),
+                        )
+                      : OBPanel(
+                          child: Column(
+                            children: [
+                              for (final q in questions)
+                                if (_answered(snap, q))
+                                  OBJournalEntryRow(
+                                    title: q.title,
+                                    value: _value(snap, q),
+                                    subtitle: q.kind == _Answer.note
+                                        ? 'zu gestern'
+                                        : q.key == 'alcohol_evening'
+                                        ? 'gestern Abend'
+                                        : q.key == 'caffeine_late'
+                                        ? 'gestern'
+                                        : 'heute',
+                                    icon: q.kind == _Answer.note
+                                        ? LucideIcons.stickyNote
+                                        : q.kind == _Answer.scale
+                                        ? LucideIcons.smile
+                                        : journalFieldIcon(
+                                            snap.fields.firstWhere(
+                                              (f) => f.key == q.key,
+                                            ),
+                                          ),
+                                    onEdit: () => _edit(q),
+                                  ),
+                            ],
+                          ),
+                        ),
+                ),
+                const OBSectionHeader('FRÜHERE TAGE'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: OBPanel(
+                    child: Column(
                       children: [
-                        for (final q in questions)
-                          if (_answered(snap, q))
-                            OBJournalEntryRow(
-                              title: q.title,
-                              value: _value(snap, q),
-                              icon: q.kind == _Answer.note
-                                  ? LucideIcons.fileText
-                                  : journalFieldIcon(
-                                      snap.fields.firstWhere(
-                                        (f) => f.key == q.key,
-                                      ),
-                                    ),
-                              onEdit: () => _edit(q),
-                            ),
+                        for (final row in _history) _historyRow(row, day),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: InkWell(
+                    onTap: pattern == null
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  G3JournalPatternScreen(pattern: pattern),
+                            ),
+                          ),
+                    child: pattern == null
+                        ? OBPatternCard(
+                            title: '—',
+                            detail: 'Vergleich konnte nicht geladen werden.',
+                            have: null,
+                            need: null,
+                          )
+                        : OBPatternCard(
+                            title: switch (pattern.pattern.kind) {
+                              CaffeineSleepPatternKind.meaningful =>
+                                'Koffein und Einschlafen',
+                              CaffeineSleepPatternKind.nonmeaningful =>
+                                'Kein klares Muster',
+                              CaffeineSleepPatternKind.insufficient =>
+                                'Noch zu wenige Nächte',
+                              CaffeineSleepPatternKind.unavailable =>
+                                'Noch kein Vergleich',
+                            },
+                            detail: 'Koffein nach 14 Uhr · folgende Nacht',
+                            have: pattern.pattern.pairedN,
+                            need: pattern.pairedMinimum,
+                            footer: _patternFooter(pattern),
+                          ),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const OBSectionHeader('FRÜHERE TAGE'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: OBPanel(
-              child: Column(
-                children: [
-                  for (final row in _history)
-                    OBJournalDayRow(
-                      title: DateFormat(
-                        'EEE, dd.MM',
-                        'de_DE',
-                      ).format(DateTime.parse(row.day)),
-                      summary: _historySummary(row),
-                      onTap: () async {
-                        await widget.onEdit?.call(row.day);
-                        if (mounted) _load();
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const OBSectionHeader('MUSTER'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: InkWell(
-              onTap: pattern == null
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            G3JournalPatternScreen(pattern: pattern),
+            if (_scrollController.initialScrollOffset > 300 ||
+                (_scrollController.hasClients &&
+                    _scrollController.offset > 300))
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: ColoredBox(
+                  color: g.page,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 20),
+                    child: OBPageHeader.compact(
+                      title: 'Journal',
+                      subtitle:
+                          '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
+                      band: OBBandCapsule(
+                        state: band.connection == BandConnection.connected
+                            ? OBBandState.live
+                            : storedAt == null
+                            ? OBBandState.none
+                            : OBBandState.off,
+                        battery: band.batteryPercent,
+                        small: true,
+                        onTap: widget.onBand,
                       ),
+                      onProfile: widget.onProfile,
                     ),
-              child: pattern == null
-                  ? OBPatternCard(
-                      title: '—',
-                      detail: 'Vergleich konnte nicht geladen werden.',
-                      have: null,
-                      need: null,
-                    )
-                  : OBPatternCard(
-                      title: switch (pattern.pattern.kind) {
-                        CaffeineSleepPatternKind.meaningful =>
-                          'Koffein und Einschlafen',
-                        CaffeineSleepPatternKind.nonmeaningful =>
-                          'Kein klares Muster',
-                        CaffeineSleepPatternKind.insufficient =>
-                          'Noch zu wenige Nächte',
-                        CaffeineSleepPatternKind.unavailable =>
-                          'Noch kein Vergleich',
-                      },
-                      detail: 'Koffein nach 14 Uhr · folgende Nacht',
-                      have: pattern.pattern.pairedN,
-                      need: pattern.pairedMinimum,
-                      footer: _patternFooter(pattern),
-                    ),
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -708,6 +793,11 @@ class _NoteAnswerState extends State<_NoteAnswer> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      Text(
+        'Freitext, optional. Wird nicht ausgewertet.',
+        style: G3.of(context).t(13, 17, color: G3.of(context).ink2),
+      ),
+      const SizedBox(height: 8),
       OBTextField(controller: _text, label: 'Notiz (optional)', maxLines: 3),
       const SizedBox(height: 8),
       FilledButton(
@@ -733,54 +823,102 @@ class G3JournalPatternScreen extends StatelessWidget {
     final ready =
         p.kind == CaffeineSleepPatternKind.meaningful ||
         p.kind == CaffeineSleepPatternKind.nonmeaningful;
+    final meaningful = p.kind == CaffeineSleepPatternKind.meaningful;
+    final minutes = p.delta?.round();
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
           children: [
             OBPageHeader.detail(
               title: 'MUSTER',
-              subtitle: 'Koffein und folgende Nacht',
+              subtitle: 'Koffein nach 14 Uhr · Einschlafen',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
             ),
-            const SizedBox(height: 24),
-            OBPatternCard(
-              title: ready
-                  ? (p.kind == CaffeineSleepPatternKind.meaningful
-                        ? 'Ein Zusammenhang'
-                        : 'Kein klares Muster')
-                  : 'Noch kein Muster',
-              detail: ready
-                  ? 'Koffein nach 14 Uhr und Einschlafdauer'
-                  : 'Ein Vergleich braucht bestätigte Nächte mit Antwort und Einschlafdauer.',
-              have: p.pairedN,
-              need: pattern.pairedMinimum,
-              footer: _patternFooter(pattern, perSideMinimum: perSideMinimum),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             OBPanel(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('KOFFEIN NACH 14 UHR', style: g.caps()),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${p.pairedN} Tag-Nacht-Paare',
-                    style: g.t(17, 22, weight: FontWeight.w700),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('KOFFEIN · EINSCHLAFEN', style: g.caps()),
+                      ),
+                      Text(
+                        ready
+                            ? '${p.pairedN} Tag-Nacht-Paare'
+                            : 'noch nicht möglich',
+                        style: g.t(13, 17, color: g.muted),
+                      ),
+                    ],
                   ),
-                  if (p.yesNights != null && p.noNights != null)
-                    Text(
-                      'Ja ${p.yesNights} · Nein ${p.noNights}',
-                      style: g.t(14, 19, color: g.ink2),
+                  const SizedBox(height: 16),
+                  if (meaningful && minutes != null) ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${minutes > 0 ? '+' : ''}$minutes',
+                          style: g.t(72, 72, weight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 6),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'Min.',
+                            style: g.t(17, 20, color: g.muted),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Ja gegen Nein',
+                          style: g.t(13, 17, weight: FontWeight.w700),
+                        ),
+                      ],
                     ),
-                  if (!ready) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Nach Tagen mit Koffein nach 14 Uhr hast du im Mittel ${minutes.abs()} Min. ${minutes >= 0 ? 'länger' : 'kürzer'} zum Einschlafen gebraucht.',
+                      style: g.t(17, 22, weight: FontWeight.w700),
+                    ),
                     const SizedBox(height: 8),
                     Text(
-                      'Je Gruppe',
-                      style: g.t(14, 18, weight: FontWeight.w700),
+                      '${p.yesNights ?? '—'} vs. ${p.noNights ?? '—'} Nächte · kein Beweis für Ursache',
+                      style: g.t(13, 17, color: g.ink2),
                     ),
+                  ] else ...[
+                    Text(
+                      '—',
+                      style: g.t(64, 72, color: g.gap, weight: FontWeight.w700),
+                    ),
+                    Text(
+                      ready ? 'Kein klares Muster' : 'Noch kein Muster',
+                      style: g.t(17, 21, weight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      ready
+                          ? 'Der Vergleich zeigt keinen ausreichend klaren Zusammenhang.'
+                          : 'Ein Vergleich braucht ${pattern.pairedMinimum} Tag-Nacht-Paare${perSideMinimum == null ? '' : ', davon je $perSideMinimum mit Ja und mit Nein'}.',
+                      style: g.t(13, 17, color: g.ink2),
+                    ),
+                  ],
+                  if (!ready) ...[
+                    const SizedBox(height: 16),
+                    OBPatternProgress(
+                      have: p.pairedN.clamp(0, pattern.pairedMinimum),
+                      need: pattern.pairedMinimum,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _patternFooter(pattern, perSideMinimum: perSideMinimum),
+                      style: g.t(13, 17, weight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 12),
+                    Divider(color: g.hairline),
                     OBPatternGateRow(
                       label: 'Ja',
                       count: p.yesNights,
@@ -792,19 +930,51 @@ class G3JournalPatternScreen extends StatelessWidget {
                       minimum: perSideMinimum,
                     ),
                   ],
-                  if (ready && p.delta != null)
-                    Text(
-                      '${p.delta!.toStringAsFixed(1)} Min. Unterschied bei der Einschlafdauer',
-                      style: g.t(14, 19),
-                    ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
             OBPanel(
-              child: Text(
-                'Ein Zusammenhang belegt keine Ursache. Es zählen nur Tage mit Antwort und bestätigter folgender Nacht.',
-                style: g.t(14, 19),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'So wird geprüft',
+                    style: g.t(17, 21, weight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${CaffeineSleepPattern.infoComparison} ${CaffeineSleepPattern.infoEligibility} ${CaffeineSleepPattern.infoCausation}',
+                    style: g.t(14, 19, color: g.ink2),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text('ANDERE FRAGEN', style: g.caps(color: g.muted)),
+            const SizedBox(height: 8),
+            OBPanel(
+              child: Row(
+                children: [
+                  const Icon(LucideIcons.notebookPen, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Alkohol, Stimmung, Notiz',
+                          style: g.t(15, 19, weight: FontWeight.w700),
+                        ),
+                        Text(
+                          'werden noch nicht verglichen',
+                          style: g.t(12, 16, color: g.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text('—', style: g.t(15, 19, color: g.gap)),
+                ],
               ),
             ),
           ],
@@ -864,25 +1034,37 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
     final g = G3.of(context);
     final custom =
         _fields?.where((f) => f.custom).toList() ?? const <JournalFieldSpec>[];
+    final active = custom.where((f) => !f.hidden).toList();
+    final hidden = custom.where((f) => f.hidden).toList();
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 36),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 36),
           children: [
             OBPageHeader.detail(
               title: 'ANPASSEN',
-              subtitle: 'Fragen im Journal',
+              subtitle: 'Fragen im Check-in',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
             ),
             const SizedBox(height: 24),
             Text(
-              'Deine Fragen bleiben gespeichert, auch wenn du sie ausblendest.',
+              'Der Check-in stellt diese Fragen, eine nach der anderen.',
               style: g.t(14, 19, color: g.ink2),
             ),
             const SizedBox(height: 18),
-            Text('IM CHECK-IN', style: g.caps(color: g.muted)),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('IM CHECK-IN', style: g.caps(color: g.muted)),
+                ),
+                Text(
+                  '${_questions.length + active.length} Fragen',
+                  style: g.t(13, 16, color: g.ink2),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             OBPanel(
               child: Column(
@@ -893,44 +1075,101 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
                       subtitle: q.kind == _Answer.note
                           ? 'Freitext · wird nicht verglichen'
                           : q.kind == _Answer.scale
-                          ? 'Skala 1–5'
-                          : 'Ja / Nein',
+                          ? 'Skala 1–5 · heute'
+                          : q.key == 'alcohol_evening'
+                          ? 'Ja / Nein · zu gestern Abend'
+                          : 'Ja / Nein · zu gestern',
                       active: true,
                       onChanged: null,
+                      icon: q.kind == _Answer.note
+                          ? LucideIcons.stickyNote
+                          : q.kind == _Answer.scale
+                          ? LucideIcons.smile
+                          : q.key == 'alcohol_evening'
+                          ? LucideIcons.wine
+                          : LucideIcons.coffee,
+                    ),
+                  for (final f in active)
+                    OBQuestionRow(
+                      title: f.label,
+                      subtitle: switch (f.kind) {
+                        JournalFieldKind.yesNo => 'Ja / Nein · eigene Frage',
+                        JournalFieldKind.rating => 'Skala 1–5 · eigene Frage',
+                        JournalFieldKind.dose => 'Anzahl · eigene Frage',
+                        JournalFieldKind.duration => 'Dauer · eigene Frage',
+                      },
+                      active: true,
+                      onChanged: (on) => _toggle(f, on),
                     ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-            Text('EIGENE FRAGEN', style: g.caps(color: g.muted)),
-            const SizedBox(height: 8),
+            if (hidden.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('AUSGEBLENDET', style: g.caps(color: g.muted)),
+                  ),
+                  Text('${hidden.length}', style: g.t(13, 16, color: g.ink2)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OBPanel(
+                child: Column(
+                  children: [
+                    for (final f in hidden)
+                      OBQuestionRow(
+                        title: f.label,
+                        subtitle: 'Ausgeblendet · Antworten bleiben erhalten',
+                        active: false,
+                        onChanged: (on) => _toggle(f, on),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Ausgeblendete Fragen behalten ihre Antworten. Einblenden zählt weiter.',
+                style: g.t(12, 16, color: g.muted),
+              ),
+            ],
+            const SizedBox(height: 18),
             if (_error != null) OBInlineError(message: _error!, onRetry: _load),
             OBPanel(
-              child: Column(
+              child: Row(
                 children: [
-                  for (final f in custom)
-                    OBQuestionRow(
-                      title: f.label,
-                      subtitle: f.hidden
-                          ? 'Ausgeblendet · Antworten bleiben erhalten'
-                          : f.kind.name,
-                      active: !f.hidden,
-                      onChanged: (on) => _toggle(f, on),
+                  const Icon(LucideIcons.plus, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Eigene Frage'),
+                      subtitle: const Text('Name und Antwortart festlegen'),
+                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                      onTap: () async {
+                        await showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: g.canvas,
+                          barrierColor: Colors.black.withValues(
+                            alpha:
+                                Theme.of(context).brightness == Brightness.dark
+                                ? .55
+                                : .35,
+                          ),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(28),
+                            ),
+                          ),
+                          builder: (_) => G3JournalNewQuestionSheet(
+                            repository: widget.repository,
+                          ),
+                        );
+                        if (mounted) _load();
+                      },
                     ),
-                  ListTile(
-                    leading: const Icon(LucideIcons.plus),
-                    title: const Text('Eigene Frage'),
-                    subtitle: const Text('Name und Antwortart festlegen'),
-                    onTap: () async {
-                      await showModalBottomSheet<void>(
-                        context: context,
-                        isScrollControlled: true,
-                        builder: (_) => G3JournalNewQuestionSheet(
-                          repository: widget.repository,
-                        ),
-                      );
-                      if (mounted) _load();
-                    },
                   ),
                 ],
               ),
@@ -1009,7 +1248,7 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
           20,
           10,
           20,
-          MediaQuery.viewInsetsOf(context).bottom + 24,
+          MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1025,13 +1264,13 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: Text(
                     'Eigene Frage',
-                    style: g.t(22, 27, weight: FontWeight.w700),
+                    style: g.t(20, 24, weight: FontWeight.w700),
                   ),
                 ),
                 IconButton(
@@ -1047,40 +1286,74 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
             ),
             const SizedBox(height: 2),
             Text(
-              'Die Frage erscheint künftig in deinem Check-in.',
-              style: g.t(14, 18, color: g.ink2),
+              'Zählt ab heute. Eigene Fragen werden noch nicht mit Nächten verglichen.',
+              style: g.t(14, 19, color: g.ink2),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Text('NAME', style: g.caps(color: g.muted)),
-            const SizedBox(height: 8),
-            OBTextField(controller: _name, label: 'Name'),
-            const SizedBox(height: 20),
-            Text('ANTWORT', style: g.caps(color: g.muted)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                for (final (kind, label) in [
-                  (JournalFieldKind.yesNo, 'Ja / Nein'),
-                  (JournalFieldKind.dose, 'Anzahl'),
-                  (JournalFieldKind.rating, 'Skala 1–5'),
-                ]) ...[
-                  if (kind != JournalFieldKind.yesNo) const SizedBox(width: 6),
+            const SizedBox(height: 6),
+            Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: g.pressed(radius: 14),
+              child: Row(
+                children: [
                   Expanded(
-                    child: OBAnswerKey(
-                      label: label,
-                      selected: _kind == kind,
-                      onTap: _busy ? null : () => setState(() => _kind = kind),
+                    child: TextField(
+                      controller: _name,
+                      maxLength: 32,
+                      style: g.t(17, 22, weight: FontWeight.w500),
+                      decoration: const InputDecoration(
+                        hintText: 'Name der Frage',
+                        border: InputBorder.none,
+                        counterText: '',
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _name,
+                    builder: (_, value, _) => Text(
+                      '${value.text.characters.length} / 32',
+                      style: g.t(11, 14, color: g.muted),
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
+            Text('ANTWORT', style: g.caps(color: g.muted)),
+            const SizedBox(height: 6),
+            OBSegmented(
+              items: const ['Ja / Nein', 'Anzahl', 'Skala 1–5'],
+              selected: switch (_kind) {
+                JournalFieldKind.yesNo => 0,
+                JournalFieldKind.dose => 1,
+                JournalFieldKind.rating => 2,
+                JournalFieldKind.duration => 1,
+              },
+              expand: true,
+              onChanged: _busy
+                  ? null
+                  : (index) => setState(
+                      () => _kind = [
+                        JournalFieldKind.yesNo,
+                        JournalFieldKind.dose,
+                        JournalFieldKind.rating,
+                      ][index],
+                    ),
+            ),
+            const SizedBox(height: 16),
             Text('SO ERSCHEINT SIE', style: g.caps(color: g.muted)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             ValueListenableBuilder<TextEditingValue>(
               valueListenable: _name,
-              builder: (context, value, _) => OBPanel(
+              builder: (context, value, _) => Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+                decoration: g.pressed(radius: 14),
                 child: Row(
                   children: [
                     const Icon(LucideIcons.notebookPen, size: 20),
@@ -1107,11 +1380,14 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
               const SizedBox(height: 12),
               OBInlineError(message: _error!),
             ],
-            const SizedBox(height: 28),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                    ),
                     onPressed: _busy ? null : () => Navigator.pop(context),
                     child: const Text('Abbrechen'),
                   ),
@@ -1119,6 +1395,9 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                    ),
                     onPressed: _busy ? null : _save,
                     child: const Text('Hinzufügen'),
                   ),
