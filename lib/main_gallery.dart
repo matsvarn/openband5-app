@@ -9,8 +9,8 @@ import 'openband/cycle.dart';
 import 'openband/cycle_comparison.dart';
 import 'openband/cycle_medians.dart';
 import 'openband/health.dart';
-import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
+import 'openband/g3/screens/journal_screen.dart';
 import 'openband/domain.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
@@ -291,9 +291,10 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           ),
         ),
       ),
-      ShellDomain.wellness => OpenBandJournal(
+      ShellDomain.wellness => G3JournalScreen(
         controller: controller,
-        releaseReduced: widget.releaseReduced,
+        onBand: () => showBandStatus(c, controller, () {}),
+        onProfile: () => _openSyntheticProfile(c),
         onEdit: (day) async {
           await Navigator.of(c).push(
             MaterialPageRoute<void>(
@@ -305,14 +306,6 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           );
           controller.refresh();
         },
-        onNutrition: () => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) => OpenBandNutritionRoute(
-              controller: controller,
-              onBarcode: _syntheticBarcode,
-            ),
-          ),
-        ),
       ),
     },
   );
