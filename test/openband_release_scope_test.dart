@@ -39,6 +39,7 @@ import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/templates.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -1314,6 +1315,46 @@ void main() {
       find.text('Für diese Einheit sind keine Details gespeichert.'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('development gallery run shows estimated HFmax zones', (
+    tester,
+  ) async {
+    phone(tester);
+    for (final (family, path) in [
+      ('Inter', 'assets/fonts/Inter/Inter.ttf'),
+      ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
+    ]) {
+      await (FontLoader(family)..addFont(
+            Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+          ))
+          .load();
+    }
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(repository: repository, showControls: false),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Training'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Laufen starten'));
+    await tester.pumpAndSettle();
+
+    final live = tester.widget<G3LiveRun>(find.byType(G3LiveRun));
+    expect(live.run.value.zoneSet?.source, 'tanaka');
+    expect(live.run.value.zoneSet?.maxHr, 186);
+    expect(find.text('Zone 3'), findsOneWidget);
+    expect(find.textContaining('% HFmax'), findsOneWidget);
+    expect(find.text('136'), findsOneWidget);
+    expect(find.textContaining('3,8'), findsOneWidget);
+
+    await tester.tap(find.text('Pause'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pausiert · Puls zählt nicht mit'), findsOneWidget);
+    await tester.tap(find.text('Fortsetzen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Zone 3'), findsOneWidget);
+    expect(find.textContaining('% HFmax'), findsOneWidget);
   });
 
   testWidgets(

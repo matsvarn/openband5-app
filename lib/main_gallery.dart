@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'openband/controller.dart';
 import 'openband/cycle.dart';
 import 'openband/cycle_comparison.dart';
@@ -340,12 +341,17 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   );
 
   void _openSyntheticRun(BuildContext c, String type) {
+    final zoneSet = ana.HeartRateZones.zonesFromMaxHr(186, source: 'tanaka');
     final run = ValueNotifier(
       LiveRun(
         elapsedSec: 962,
         distanceM: type == 'running' ? 2840 : null,
-        heartRate: 154,
-        zone: 3,
+        heartRate: 141,
+        zone: zoneSet.zoneNumber(141),
+        zoneSet: zoneSet,
+        strain: 3.8,
+        maxHrSeen: 158,
+        averageHr: 136,
         gps: type == 'running',
       ),
     );
@@ -361,6 +367,10 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             distanceM: run.value.distanceM,
             heartRate: run.value.heartRate,
             zone: run.value.zone,
+            zoneSet: run.value.zoneSet,
+            strain: run.value.strain,
+            maxHrSeen: run.value.maxHrSeen,
+            averageHr: run.value.averageHr,
             gps: run.value.gps,
             paused: true,
           ),
@@ -370,6 +380,10 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             distanceM: run.value.distanceM,
             heartRate: run.value.heartRate,
             zone: run.value.zone,
+            zoneSet: run.value.zoneSet,
+            strain: run.value.strain,
+            maxHrSeen: run.value.maxHrSeen,
+            averageHr: run.value.averageHr,
             gps: run.value.gps,
           ),
           onFinish: () async {

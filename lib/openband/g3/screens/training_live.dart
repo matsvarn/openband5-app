@@ -243,7 +243,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                         style: g.t(14, 19, color: g.ink2),
                       ),
                     const SizedBox(height: 14),
-                    _liveZoneMeter(context, run),
+                    _liveZoneMeter(context, run, canZone: canZone),
                     const SizedBox(height: 38),
                     Container(
                       padding: const EdgeInsets.all(18),
@@ -534,13 +534,18 @@ class _G3LiveRunState extends State<G3LiveRun> {
   }
 }
 
-Widget _liveZoneMeter(BuildContext context, LiveRun run) {
+Widget _liveZoneMeter(
+  BuildContext context,
+  LiveRun run, {
+  required bool canZone,
+}) {
   final g = G3.of(context);
-  final set = run.zoneSet;
+  final showZone = canZone && !run.paused;
+  final set = showZone ? run.zoneSet : null;
   final first = set?.zones.first.lower;
   final last = set?.zones.last.upper;
   final fraction =
-      run.paused ||
+      !showZone ||
           run.heartRate == null ||
           first == null ||
           last == null ||
@@ -566,12 +571,8 @@ Widget _liveZoneMeter(BuildContext context, LiveRun run) {
                         child: Container(
                           height: 10,
                           decoration: BoxDecoration(
-                            color: run.paused || run.heartRate == null
-                                ? g.track
-                                : g.zones[i],
-                            border: run.paused || run.heartRate == null
-                                ? Border.all(color: g.gap)
-                                : null,
+                            color: showZone ? g.zones[i] : g.track,
+                            border: showZone ? null : Border.all(color: g.gap),
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -611,10 +612,10 @@ Widget _liveZoneMeter(BuildContext context, LiveRun run) {
                 style: g.t(
                   12,
                   16,
-                  weight: run.zone == i && !run.paused
+                  weight: showZone && run.zone == i
                       ? FontWeight.w700
                       : FontWeight.w400,
-                  color: run.zone == i && !run.paused ? g.ink : g.muted,
+                  color: showZone && run.zone == i ? g.ink : g.muted,
                 ),
               ),
             ),

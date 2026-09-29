@@ -689,6 +689,45 @@ void main() {
     expect(find.text('Zonen: Grundlage unbekannt'), findsNothing);
   });
 
+  testWidgets('unknown live zone basis leaves every meter slot neutral', (
+    tester,
+  ) async {
+    final run = ValueNotifier(
+      const LiveRun(elapsedSec: 60, heartRate: 154, zone: 3),
+    );
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LiveRun(
+          run: run,
+          sport: 'running',
+          onPause: () {},
+          onResume: () {},
+          onFinish: () async {},
+        ),
+      ),
+    );
+    expect(find.text('Zonen: Grundlage unbekannt'), findsOneWidget);
+    for (var i = 1; i <= 5; i++) {
+      expect(
+        tester.widget<Text>(find.text('Z$i')).style?.fontWeight,
+        FontWeight.w400,
+      );
+    }
+    final slots = tester
+        .widgetList<Container>(find.byType(Container))
+        .where(
+          (widget) =>
+              widget.constraints?.maxHeight == 10 &&
+              widget.decoration is BoxDecoration,
+        );
+    expect(slots, hasLength(5));
+    expect(
+      slots.map((slot) => (slot.decoration! as BoxDecoration).color).toSet(),
+      hasLength(1),
+    );
+  });
+
   testWidgets('discard asks before invoking session teardown', (tester) async {
     final run = ValueNotifier(const LiveRun(elapsedSec: 60));
     addTearDown(run.dispose);
