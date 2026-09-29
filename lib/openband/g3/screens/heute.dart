@@ -158,7 +158,11 @@ class OpenBandHeute extends StatefulWidget {
   final OpenBandController controller;
   final HeuteAnchor? initialAnchor;
   final HeuteReminder reminder;
-  final VoidCallback? onProfile, onBand, onConnect, onAddActivity, onJournal;
+  final VoidCallback? onProfile, onBand, onConnect, onAddActivity;
+
+  /// Opens the journal on a day: a check-in answer's own day, which can be
+  /// yesterday while Heute shows today.
+  final ValueChanged<String>? onJournalDay;
   final ValueChanged<G3Metric>? onOpenMetric;
   final ValueChanged<G3Activity>? onOpenActivity;
   final VoidCallback? onOpenSleep;
@@ -171,7 +175,7 @@ class OpenBandHeute extends StatefulWidget {
     this.onBand,
     this.onConnect,
     this.onAddActivity,
-    this.onJournal,
+    this.onJournalDay,
     this.onOpenMetric,
     this.onOpenActivity,
     this.onOpenSleep,
@@ -1223,7 +1227,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         question: question,
         target: _targetLabel(ci.day, q.targetDay),
         answered: last == null ? null : _answerText(last),
-        onChange: last == null ? null : widget.onJournal,
+        onChange: last == null || widget.onJournalDay == null
+            ? null
+            : () => widget.onJournalDay!(last.targetDay),
         onLater: () => setState(() => _checkInLater = true),
         answer: answer,
       );

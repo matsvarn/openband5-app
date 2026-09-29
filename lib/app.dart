@@ -696,7 +696,17 @@ class _ShellState extends State<_Shell> {
           onBand: () => _app!.openSession(),
           onConnect: () => _app!.openSession(),
           onAddActivity: () => _go(ShellDomain.workout),
-          onJournal: () => _go(ShellDomain.wellness),
+          onJournalDay: (day) async {
+            await pushInTab(c,
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandJournalEditor(
+                  repository: _day.repository,
+                  day: day,
+                ),
+              ),
+            );
+            _day.refresh();
+          },
           onOpenMetric: (m) => openHeuteMetric(c, _day, m),
           onOpenActivity: (_) => _go(ShellDomain.workout),
           onOpenSleep: () => _go(ShellDomain.sleep),

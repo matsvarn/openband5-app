@@ -250,7 +250,7 @@ class _HeuteFrameState extends State<_HeuteFrame> {
             onBand: () {},
             onConnect: () {},
             onAddActivity: () {},
-            onJournal: () {},
+            onJournalDay: (_) {},
             onOpenMetric: (_) {},
             onOpenActivity: (_) {},
             onOpenSleep: () {},
