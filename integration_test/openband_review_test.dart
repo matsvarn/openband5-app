@@ -34,6 +34,11 @@ import 'package:openstrap_edge/openband/cycle_observations.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' as g3chrome;
+import 'package:openstrap_edge/openband/g3/journal_parts.dart';
+import 'package:openstrap_edge/openband/g3/screens/band.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
+import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/glucose.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -44,6 +49,7 @@ import 'package:openstrap_edge/openband/meal_entry.dart';
 import 'package:openstrap_edge/openband/nutrition.dart';
 import 'package:openstrap_edge/openband/nutrition_browser.dart';
 import 'package:openstrap_edge/openband/screens.dart';
+import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/settings_controls.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/sleep_goal.dart';
@@ -1003,8 +1009,26 @@ void main() {
         bool release = false,
         bool failRead = false,
       }) async {
-        final repository = await loadGalleryRepository();
-        repository.scenario = scenario;
+        final g3 = scenario == SyntheticScenario.g3Sample ||
+            scenario == SyntheticScenario.g3Building;
+        final SyntheticOpenBandRepository repository;
+        if (g3) {
+          Future<Map> fixture(String name) async => jsonDecode(
+                await rootBundle.loadString(
+                  'docs/openband5/assets/fixtures/$name.json',
+                ),
+              ) as Map;
+          repository = SyntheticOpenBandRepository.fromMaps(
+            await fixture('day-summary'),
+            await fixture('sleep-detail'),
+            scenario: scenario,
+            activity: await fixture('additional-flows'),
+            run: await fixture('run-detail'),
+          );
+        } else {
+          repository = await loadGalleryRepository();
+          repository.scenario = scenario;
+        }
         repository.failDayRead = failRead;
         await tester.pumpWidget(
           OpenBandGallery(
@@ -20513,216 +20537,148 @@ void main() {
       binding.reportData ??= <String, dynamic>{};
       binding.reportData!['flow'] = kOpenBandReviewFlow;
       if (kOpenBandReviewFlow == 'release') {
-        Future<void> openMesswerte(String name) async {
-          final row = find.byKey(const ValueKey('alle-messwerte'));
-          final scrollable = verticalScrollable().last;
-          tester.state<ScrollableState>(scrollable).position.jumpTo(0);
-          await tester.pump();
-          await tester.scrollUntilVisible(row, 200, scrollable: scrollable);
-          await tester.ensureVisible(row);
+        Future<void> chooseG3Scenario(String label) async {
+          await tester.tap(find.byType(g3chrome.OBBandCapsule).first);
           await tester.pumpAndSettle();
-          await tester.tap(row);
-          await tester.pumpAndSettle();
-          expect(find.text('MESSWERTE'), findsOneWidget);
-          expect(find.text('7 Nächte'), findsNothing);
-          expect(find.text('Laborwerte'), findsNothing);
-          expect(find.text('Glukose'), findsNothing);
-          expect(find.byKey(const ValueKey('atemfrequenz')), findsOneWidget);
-          expect(find.byKey(const ValueKey('hauttemperatur')), findsOneWidget);
-          final back = tester.getRect(find.byTooltip('Zurück').last);
-          final inset = tester.view.padding.top / tester.view.devicePixelRatio;
-          expect(
-            back.top,
-            greaterThanOrEqualTo(inset),
-            reason: 'Messwerte header must clear the status-bar inset',
-          );
-          await capture(name);
-          await reviewTapHeaderBack(tester);
-        }
-
-        await mount(release: true);
-        expect(find.byKey(const ValueKey('ob-tab-workout')), findsOneWidget);
-        expect(find.byKey(const ValueKey('ob-tab-wellness')), findsOneWidget);
-        expect(find.text('Wasser'), findsNothing);
-        expect(find.text('Energie'), findsNothing);
-        expect(find.text('Alle Messwerte'), findsOneWidget);
-        expect(find.text('Dein Journal'), findsNothing);
-        await capture('release-happy-light');
-        for (final (domain, name) in [
-          ('sleep', 'release-tab-sleep-light'),
-          ('workout', 'release-tab-training-light'),
-          ('wellness', 'release-tab-journal-light'),
-        ]) {
-          await tester.tap(find.byKey(ValueKey('ob-tab-$domain')));
-          await tester.pumpAndSettle();
-          await capture(name);
-        }
-        await tester.tap(find.byKey(const ValueKey('ob-tab-home')));
-        await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(
-          find.text('SCHRITTE'),
-          300,
-          scrollable: verticalScrollable().last,
-        );
-        await capture('release-happy-light-bottom');
-        await openMesswerte('release-messwerte-light');
-
-        await mount(release: true, brightness: Brightness.dark);
-        await capture('release-happy-dark');
-        await tester.scrollUntilVisible(
-          find.text('SCHRITTE'),
-          300,
-          scrollable: verticalScrollable().last,
-        );
-        await capture('release-happy-dark-bottom');
-        await openMesswerte('release-messwerte-dark');
-
-        await mount(release: true, scenario: SyntheticScenario.missing);
-        expect(find.text('Tief'), findsNothing);
-        expect(find.text('Wasser'), findsNothing);
-        await capture('release-missing');
-        await openMesswerte('release-messwerte-missing');
-
-        await mount(release: true, failRead: true);
-        expect(find.text('Daten konnten nicht geladen werden.'), findsOneWidget);
-        expect(find.text('Alle Messwerte'), findsNothing);
-        await capture('release-error');
-
-        await mount(release: true, scale: 2);
-        expect(find.byKey(const ValueKey('ob-tab-workout')), findsOneWidget);
-        await capture('release-large');
-        await tester.scrollUntilVisible(
-          find.text('SCHRITTE'),
-          300,
-          scrollable: verticalScrollable().last,
-        );
-        await capture('release-large-bottom');
-
-        for (final brightness in [Brightness.light, Brightness.dark]) {
-          final suffix = brightness == Brightness.light ? 'light' : 'dark';
-          await mount(release: true, brightness: brightness);
-          await tester.tap(find.text('64 %'));
-          await tester.pumpAndSettle();
-          await capture('release-data-status-$suffix');
-          await tester.tap(find.text('Schließen'));
-          await tester.pumpAndSettle();
-          await tester.tap(find.text(obDayTitle(
-            '2026-09-15', DateTime(2026, 9, 18, 9, 41),
-          )));
-          await tester.pumpAndSettle();
-          await capture('release-day-picker-$suffix');
-        }
-        await mount(release: true, scale: 2);
-        await tester.tap(find.text(obDayTitle(
-          '2026-09-15', DateTime(2026, 9, 18, 9, 41),
-        )));
-        await tester.pumpAndSettle();
-        await capture('release-day-picker-large');
-        await tester.scrollUntilVisible(
-          find.text('Synthetische Daten'), 200,
-          scrollable: verticalScrollable().last,
-        );
-        await capture('release-day-picker-large-bottom');
-
-        Future<void> openReleaseProfile() async {
-          await tester.tap(find.byTooltip('Profil'));
-          await tester.pumpAndSettle();
-          if (find.text('Daten & Sicherung').evaluate().isEmpty) {
-            await tester.scrollUntilVisible(
-              find.byKey(const ValueKey('profile-data')),
-              250,
-              scrollable: verticalScrollable().last,
-            );
-            await tester.pumpAndSettle();
-          }
-          expect(find.text('Daten & Sicherung'), findsOneWidget);
-          expect(find.text('Community'), findsNothing);
-        }
-
-        Future<void> openReleaseData() async {
-          final data = find.text('Daten & Sicherung');
-          await tester.ensureVisible(data);
-          await tester.tap(data);
-          await tester.pumpAndSettle();
-          expect(find.byKey(const ValueKey('data-export-database')),
-              findsOneWidget);
-          expect(find.text('Glukose'), findsNothing);
-        }
-
-        for (final brightness in [Brightness.light, Brightness.dark]) {
-          final suffix = brightness == Brightness.light ? 'light' : 'dark';
-          await mount(release: true, brightness: brightness);
-          await openReleaseProfile();
-          await capture('release-profile-$suffix');
-          await openReleaseData();
-          await capture('release-data-$suffix');
-        }
-
-        await mount(release: true, scale: 2);
-        await openReleaseProfile();
-        await capture('release-profile-large');
-        await openReleaseData();
-        await capture('release-data-large');
-        await tester.scrollUntilVisible(
-          find.byKey(const ValueKey('data-reanalyze')),
-          220,
-          scrollable: verticalScrollable().last,
-        );
-        await capture('release-data-large-bottom');
-
-        await mount(release: true);
-        await openReleaseProfile();
-        await openReleaseData();
-        final exportDatabase = find.byKey(const ValueKey('data-export-database'));
-        await tester.tap(exportDatabase);
-        await tester.pumpAndSettle();
-        final exportFailure = find.textContaining('synthetischer Schreibfehler');
-        if (exportFailure.evaluate().isEmpty) {
+          final choice = find.text(label);
+          final sheetScroll = find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.byType(Scrollable),
+          ).last;
           await tester.scrollUntilVisible(
-            exportFailure,
-            200,
-            scrollable: verticalScrollable().last,
+            choice, 240, scrollable: sheetScroll,
           );
+          await Scrollable.ensureVisible(
+            tester.element(choice), alignment: .2,
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(choice);
+          await tester.pumpAndSettle();
+          expect(find.textContaining('29. September'), findsWidgets);
         }
-        await tester.ensureVisible(exportFailure);
-        expect(exportFailure, findsOneWidget);
-        await capture('release-data-export-error');
-        await tester.ensureVisible(exportDatabase);
-        await tester.tap(exportDatabase);
-        await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Export erstellt'));
-        expect(exportFailure, findsNothing);
-        await capture('release-data-export-retry');
-        final cadence = find.byKey(const ValueKey('data-backup-cadence'));
-        await Scrollable.ensureVisible(
-          tester.element(cadence),
-          alignment: 0.5,
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(cadence);
-        await tester.pumpAndSettle();
-        expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
 
-        const restoreReceipt = ImportOutcome(
-          source: 'OpenStrap backup',
-          restoredRows: 12,
-          unchangedRows: 3,
-          restoreConflicts: 1,
-          unreadableRows: 1,
-          pendingRecalculations: 2,
+        Future<void> backFromG3() async {
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> revealG3(Finder target, {double delta = 240}) async {
+          await tester.scrollUntilVisible(
+            target, delta, scrollable: verticalScrollable().last,
+          );
+          await Scrollable.ensureVisible(
+            tester.element(target), alignment: .2,
+          );
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> reviewG3(Brightness brightness) async {
+          final suffix = brightness.name;
+          await mount(
+            release: true,
+            scenario: SyntheticScenario.g3Sample,
+            brightness: brightness,
+          );
+          await chooseG3Scenario('G3 · Tagesblatt');
+          for (final domain in ['home', 'sleep', 'workout', 'wellness']) {
+            expect(find.byKey(ValueKey('ob-tab-$domain')), findsOneWidget);
+          }
+          expect(find.byKey(const ValueKey('ob-tab-health')), findsNothing);
+          await capture('g3-heute-$suffix');
+
+          await revealG3(find.text('KÖRPER'));
+          await capture('g3-heute-scrolled-$suffix');
+          await tester.tap(find.text('HRV').last);
+          await tester.pumpAndSettle();
+          expect(find.byType(G3MetricDetail), findsOneWidget);
+          await capture('g3-verlauf-hrv-$suffix');
+          await backFromG3();
+
+          tester.state<ScrollableState>(verticalScrollable().last)
+              .position.jumpTo(0);
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(
+            of: find.byType(g3chrome.OBPageHeader).first,
+            matching: find.text('Heute'),
+          ));
+          await tester.pumpAndSettle();
+          await capture('g3-date-picker-$suffix');
+          await backFromG3();
+
+          await tester.tap(find.bySemanticsLabel('Profil'));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
+          await capture('g3-profile-$suffix');
+          await tester.tap(find.byKey(const ValueKey('profile-band')));
+          await tester.pumpAndSettle();
+          expect(find.byType(G3BandScreen), findsOneWidget);
+          await capture('g3-band-$suffix');
+          await backFromG3();
+          await backFromG3();
+
+          await tester.tap(find.byKey(const ValueKey('ob-tab-sleep')));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('g3-sleep')), findsOneWidget);
+          await capture('g3-schlaf-$suffix');
+          await revealG3(find.text('HEUTE NACHT'));
+          await tester.tap(find.text('HEUTE NACHT'));
+          await tester.pumpAndSettle();
+          expect(find.byType(G3SleepTonight), findsOneWidget);
+          await capture('g3-heute-nacht-$suffix');
+          await backFromG3();
+          await revealG3(find.text('Schlafzeiten ändern'), delta: -240);
+          await tester.tap(find.text('Schlafzeiten ändern'));
+          await tester.pumpAndSettle();
+          expect(find.byType(SleepEditor), findsOneWidget);
+          await capture('g3-schlaf-correction-$suffix');
+          await backFromG3();
+
+          await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
+          await tester.pumpAndSettle();
+          await capture('g3-training-$suffix');
+          await revealG3(find.text('Zuletzt'));
+          await tester.tap(find.text('Laufen').last);
+          await tester.pumpAndSettle();
+          expect(find.byType(OpenBandSession), findsOneWidget);
+          await capture('g3-training-result-$suffix');
+          await backFromG3();
+          tester.state<ScrollableState>(verticalScrollable().last)
+              .position.jumpTo(0);
+          await tester.pumpAndSettle();
+          await tester.tap(find.bySemanticsLabel('Laufen starten'));
+          await tester.pumpAndSettle();
+          await capture('g3-training-live-$suffix');
+          await backFromG3();
+
+          await tester.tap(find.byKey(const ValueKey('ob-tab-wellness')));
+          await tester.pumpAndSettle();
+          await capture('g3-journal-$suffix');
+          expect(find.byType(OBCheckIn), findsOneWidget);
+          await tester.tap(find.text('Nein'));
+          await tester.pumpAndSettle();
+          await capture('g3-journal-checkin-$suffix');
+        }
+
+        for (final brightness in [Brightness.light, Brightness.dark]) {
+          await reviewG3(brightness);
+        }
+        await mount(
+          release: true,
+          scenario: SyntheticScenario.g3Building,
         );
-        await reviewMountImportReceipt(tester, restoreReceipt);
-        expect(find.text('Teilweise importiert'), findsOneWidget);
-        expect(find.text('12 Einträge gespeichert'), findsOneWidget);
-        expect(find.text('1 Konflikt · lokal beibehalten'), findsOneWidget);
-        await capture('release-restore-partial');
-        await reviewMountImportReceipt(
-          tester, restoreReceipt, brightness: Brightness.dark,
-        );
-        await capture('release-restore-partial-dark');
-        await reviewMountImportReceipt(tester, restoreReceipt, scale: 2);
-        await tester.ensureVisible(find.text('2 Neuberechnungen ausstehend'));
-        await capture('release-restore-partial-large');
+        await chooseG3Scenario('G3 · Basis im Aufbau');
+        await capture('g3-heute-baseline-building');
+        await revealG3(find.text('KÖRPER'));
+        expect(find.textContaining('Basis: noch 3 Nächte'), findsWidgets);
+        await capture('g3-heute-baseline-building-scrolled');
+
+        await mount(scenario: SyntheticScenario.g3Sample);
+        await chooseG3Scenario('G3 · Tagesblatt');
+        expect(find.bySemanticsLabel('Gesundheit'), findsOneWidget);
+        await capture('g3-development-shell');
+        await tester.tap(find.bySemanticsLabel('Gesundheit'));
+        await tester.pumpAndSettle();
+        await capture('g3-development-health');
 
         Future<void> mountBandView(
           Widget child, {
@@ -20766,13 +20722,15 @@ void main() {
         for (final brightness in [Brightness.light, Brightness.dark]) {
           final suffix = brightness == Brightness.light ? 'light' : 'dark';
           await mountBandView(pairingFixture(), brightness: brightness);
-          expect(find.text('WHOOP 5.0'), findsOneWidget);
+          expect(find.text('Noch nicht verbunden. Band nah ans iPhone halten.'),
+              findsOneWidget);
           await capture('release-pairing-$suffix');
           final pairAction = find.byType(OBAction).first;
           await tester.tap(pairAction);
           await tester.pumpAndSettle();
           expect(pairingActions, greaterThan(0));
-          expect(find.text('WHOOP 5.0'), findsNothing);
+          expect(find.text('Noch nicht verbunden. Band nah ans iPhone halten.'),
+              findsNothing);
           await capture('release-pairing-permission-$suffix');
         }
         await mountBandView(pairingFixture(), scale: 2);
@@ -20815,7 +20773,7 @@ void main() {
           final suffix = brightness == Brightness.light ? 'light' : 'dark';
           resumeCalls = 0;
           await mountBandView(syncFixture(), brightness: brightness);
-          expect(find.text('bis 02:10'), findsOneWidget);
+          expect(find.text('bis 02:10'), findsWidgets);
           await capture('release-sync-interrupted-$suffix');
           await tester.tap(find.text('Fortsetzen'));
           await tester.pumpAndSettle();
@@ -20828,18 +20786,21 @@ void main() {
           expect(resumeCalls, 2);
           expect(find.text('Verbunden'), findsOneWidget);
           expect(find.text('Erneut'), findsNothing);
-          expect(find.text('bis 02:10'), findsOneWidget);
+          expect(find.text('bis 02:10'), findsWidgets);
           await capture('release-sync-retry-$suffix');
-          await tester.tap(find.text('Weiter zum Profil'));
+          await tester.tap(find.text('Weiter'));
           await tester.pumpAndSettle();
         }
         expect(doneCalls, 2);
         resumeCalls = 0;
         await mountBandView(syncFixture(), scale: 2);
         await capture('release-sync-large');
-        await tester.ensureVisible(find.text('Fortsetzen'));
+        await tester.scrollUntilVisible(
+          find.text('Fortsetzen'), 240,
+          scrollable: verticalScrollable().last,
+        );
         await capture('release-sync-large-bottom');
-        await tester.tap(find.text('Weiter zum Profil'));
+        await tester.tap(find.text('Weiter'));
         await tester.pumpAndSettle();
         expect(doneCalls, 3);
 
@@ -20858,7 +20819,7 @@ void main() {
             ),
             brightness: brightness,
           );
-          expect(find.text('bis 06:54'), findsOneWidget);
+          expect(find.text('bis 06:54'), findsWidgets);
           await capture('release-sync-receiving-$suffix');
         }
         await mountBandView(
