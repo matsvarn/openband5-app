@@ -110,10 +110,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   G3JournalPattern? _pattern;
   bool _loading = true, _saving = false, _editing = false;
   bool _patternLoading = true, _patternFailed = false;
-  String? _readError, _saveError;
+  String? _readError, _refreshError;
   String? _loadedDay;
   int _serial = 0, _position = 0;
-  Object? _draft;
+  final Map<String, Object?> _drafts = {};
+  final Map<String, String> _saveErrors = {};
 
   String _shortDay(String day) {
     final date = DateTime.parse(day);
@@ -210,7 +211,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     setState(() {
       _loading = true;
       _readError = null;
-      _saveError = null;
+      _refreshError = null;
+      _saveErrors.clear();
       _saving = false;
       _checkIn = null;
       _today = null;
@@ -218,7 +220,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       _patternLoading = true;
       _patternFailed = false;
       _position = 0;
-      _draft = null;
+      _drafts.clear();
     });
     try {
       final repo = widget.controller.repository;
@@ -338,8 +340,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final targetDay = q.checkIn?.targetDay ?? base.day;
     final wasCurrent = !_editing && _questionsFor(base)[_position].key == q.key;
     setState(() {
-      _draft = value;
-      _saveError = null;
+      _drafts[q.key] = value;
+      _saveErrors.remove(q.key);
+      _refreshError = null;
       _saving = true;
     });
     try {
@@ -387,8 +390,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         if (mounted && widget.controller.selectedDay == base.day) {
           setState(() {
             _saving = false;
-            _draft = null;
-            _saveError =
+            _drafts.remove(q.key);
+            _refreshError =
                 'Antwort gespeichert. Ansicht konnte nicht aktualisiert werden.';
           });
         }
@@ -409,8 +412,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           ];
         }
         _saving = false;
-        _draft = null;
-        _saveError = null;
+        _drafts.remove(q.key);
+        _saveErrors.remove(q.key);
+        _refreshError = null;
         if (wasCurrent) {
           _position = (_position + 1) % _questionsFor(updated).length;
         } else {
@@ -442,8 +446,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           widget.controller.selectedDay == base.day) {
         setState(() {
           _saving = false;
-          _draft = null;
-          _saveError =
+          _drafts.remove(q.key);
+          _saveErrors[q.key] =
               'Antwort inzwischen geändert. Neu laden und erneut wählen.';
         });
       }
@@ -454,7 +458,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           widget.controller.selectedDay == base.day) {
         setState(() {
           _saving = false;
-          _saveError =
+          _saveErrors[q.key] =
               'Speichern fehlgeschlagen. Deine Auswahl bleibt erhalten.';
         });
       }
@@ -462,11 +466,16 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     }
   }
 
-  void _next() => setState(() {
-    _position = (_position + 1) % _questionsFor(_today).length;
-    _draft = null;
-    _saveError = null;
-  });
+  void _next() {
+    final questions = _questionsFor(_today);
+    final key = questions[_position].key;
+    setState(() {
+      _position = (_position + 1) % questions.length;
+      _drafts.remove(key);
+      _saveErrors.remove(key);
+      _refreshError = null;
+    });
+  }
 
   Future<void> _openCustomize() async {
     await Navigator.of(context).push(
@@ -479,6 +488,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   }
 
   Widget _answer(_Question q) {
+    final draft = _drafts[q.key];
     switch (q.kind) {
       case _Answer.yesNo:
         return Row(
@@ -488,7 +498,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               Expanded(
                 child: OBAnswerKey(
                   label: text,
-                  selected: _draft == i,
+                  selected: draft == i,
                   onTap: _saving ? null : () => _save(q, i),
                 ),
               ),
@@ -504,7 +514,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 child: OBAnswerKey(
                   label: '$i',
                   icon: kJournalMoodIcons[i - 1],
-                  selected: _draft == i,
+                  selected: draft == i,
                   onTap: _saving ? null : () => _save(q, i),
                 ),
               ),
@@ -516,8 +526,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             q.checkIn?.field ??
             _today?.fields.where((f) => f.key == q.key).firstOrNull;
         final step = field?.step ?? 1;
-        final value = _draft is num
-            ? (_draft as num).toDouble()
+        final value = draft is num
+            ? draft.toDouble()
             : _today == null
             ? null
             : _inputValue(_today!, q) as num?;
@@ -539,7 +549,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         );
       case _Answer.note:
         return _NoteAnswer(
-          initial: _draft as String? ?? '',
+          initial: draft as String? ?? '',
           busy: _saving,
           onSave: (v) => _save(q, v),
         );
@@ -576,8 +586,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     if (mounted) {
       setState(() {
         _editing = false;
-        _draft = null;
-        _saveError = null;
+        _drafts.remove(q.key);
+        _saveErrors.remove(q.key);
       });
     }
   }
@@ -622,6 +632,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         ? 0
         : questions.where((q) => _answered(snap, q)).length;
     final current = questions[_position.clamp(0, questions.length - 1)];
+    final currentDraft = _drafts[current.key];
+    final currentError = _refreshError ?? _saveErrors[current.key];
     final pattern = _pattern;
     final band = widget.controller.band;
     final storedAt = band.latestStoredAt;
@@ -738,15 +750,16 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                           footerLabel: current.kind == _Answer.scale
                               ? '1 schlecht · 5 sehr gut'
                               : null,
-                          error: _editing ? null : _saveError,
-                          retryLabel: _draft == null
+                          error: _editing ? null : currentError,
+                          retryLabel:
+                              _refreshError != null || currentDraft == null
                               ? 'Neu laden'
                               : 'Erneut speichern',
-                          onRetry: _editing || _saveError == null
+                          onRetry: _editing || currentError == null
                               ? null
-                              : _draft == null
+                              : _refreshError != null || currentDraft == null
                               ? _load
-                              : () => _save(current, _draft),
+                              : () => _save(current, currentDraft),
                         ),
                 ),
                 OBSectionHeader(
