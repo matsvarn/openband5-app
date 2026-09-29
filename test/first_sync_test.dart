@@ -247,10 +247,10 @@ void main() {
       await tester.tap(find.text('Fortsetzen'));
       await tester.pump();
       expect(find.text('Fortsetzen fehlgeschlagen'), findsOneWidget);
-      expect(find.text('Erneut'), findsOneWidget);
+      expect(find.text('Erneut versuchen'), findsOneWidget);
       expect(find.text('Übertragung unterbrochen'), findsNothing);
 
-      await tester.tap(find.text('Erneut'));
+      await tester.tap(find.text('Erneut versuchen'));
       await tester.pump();
       expect(attempts, 2);
       expect(find.text('Fortsetzen fehlgeschlagen'), findsNothing);
@@ -320,13 +320,14 @@ void main() {
     await tester.tap(find.text('Fortsetzen'));
     await tester.pump();
     await tester.scrollUntilVisible(
-      find.text('Verbindung wird hergestellt'),
+      find.text('Wird erneut versucht …'),
       120,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('Verbindung wird hergestellt'), findsOneWidget);
+    expect(find.text('Wird erneut versucht …'), findsOneWidget);
     expect(attempts, 1);
-    await tester.tap(find.text('Verbindung wird hergestellt'));
+    await tester.ensureVisible(find.text('Fortsetzen'));
+    await tester.tap(find.text('Fortsetzen'));
     await tester.pump();
     expect(attempts, 1);
     resume.complete();
@@ -490,7 +491,7 @@ void main() {
     );
     expect(find.text('Auswertung nicht geladen'), findsOneWidget);
     expect(find.text('Bandstatus nicht geladen'), findsNothing);
-    await tester.tap(find.text('Erneut'));
+    await tester.tap(find.text('Erneut versuchen'));
     await tester.pump();
     expect(retries, greaterThan(1));
     await _unmount(tester);
