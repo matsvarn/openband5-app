@@ -1060,4 +1060,69 @@ void main() {
     );
     expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
   });
+
+  testWidgets('Journal hub starts at the tab top and compact date keeps dots', (
+    tester,
+  ) async {
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29),
+    );
+    await mount(tester);
+    expect(tester.getTopLeft(find.text('Journal').first).dy, lessThan(12));
+    tester.view.physicalSize = const Size(393, 500);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -700));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Di 29.09'), findsWidgets);
+    expect(find.textContaining('Di 2909'), findsNothing);
+  });
+
+  testWidgets('Journal detail info controls open explanations', (tester) async {
+    Widget app(Widget child) => MaterialApp(
+      theme: openBandTheme(Brightness.light),
+      home: Scaffold(body: child),
+    );
+    await tester.pumpWidget(
+      app(G3JournalScreen(controller: controller, onBack: () {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(find.text('Journal verstehen'), findsOneWidget);
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(
+      app(
+        const G3JournalPatternScreen(
+          pattern: G3JournalPattern(
+            CaffeineSleepPattern(
+              kind: CaffeineSleepPatternKind.insufficient,
+              pairedN: 5,
+              yesNights: 1,
+              noNights: 4,
+              endDay: '2026-09-15',
+              startDay: '2026-08-17',
+              nights: 30,
+              algoVersion: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(find.text('Muster verstehen'), findsOneWidget);
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+
+    await tester.pumpWidget(app(G3JournalCustomize(repository: repo)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fragen anpassen'), findsOneWidget);
+  });
 }

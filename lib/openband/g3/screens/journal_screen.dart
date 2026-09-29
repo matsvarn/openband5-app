@@ -16,6 +16,7 @@ import '../../journal_fields.dart' show journalFieldIcon;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart'
     show
+        OBActionPrimary,
         OBBandCapsule,
         OBBandState,
         OBPageHeader,
@@ -73,6 +74,43 @@ String _patternFooter(G3JournalPattern result) {
 
 String _nightsOrDash(int? count) =>
     count == null ? '—' : '$count ${g3CountNoun(count, 'Nacht', 'Nächte')}';
+
+void _showJournalInfo(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) {
+  final g = G3.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: g.canvas,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheet) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: g.t(20, 24, weight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            Text(body, style: g.t(14, 19, color: g.ink2)),
+            const SizedBox(height: 20),
+            OBActionPrimary(
+              'Schließen',
+              expand: true,
+              onPressed: () => Navigator.pop(sheet),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 enum _Answer { yesNo, amount, scale, note }
 
@@ -682,10 +720,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final storedAt = band.latestStoredAt;
     final openDayIsToday = day == dayLabelOf(widget.controller.now());
     final sectionDay = openDayIsToday ? 'HEUTE' : _shortDay(day).toUpperCase();
-    final compactDate = DateFormat(
-      'EEE dd.MM',
-      'de_DE',
-    ).format(DateTime.parse(day)).replaceAll('.', '');
+    final compactDate = _shortDay(day);
     return ColoredBox(
       color: g.page,
       child: AnimatedBuilder(
@@ -695,10 +730,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             ListView(
               controller: _scrollController,
               key: const PageStorageKey('g3.journal'),
-              padding: const EdgeInsets.only(
-                top: 20,
-                bottom: kOBTabBarContentInset,
-              ),
+              padding: const EdgeInsets.only(bottom: kOBTabBarContentInset),
               children: [
                 if (widget.onBack != null)
                   OBPageHeader.detail(
@@ -709,6 +741,12 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     ).format(DateTime.parse(day)),
                     backLabel: 'Journal',
                     onBack: widget.onBack,
+                    onTrailing: () => _showJournalInfo(
+                      context,
+                      title: 'Journal verstehen',
+                      body:
+                          'Alkohol, Koffein und die Notiz gehören zum Vortag. Stimmung und eigene Fragen gelten für den ausgewählten Tag. Fehlende Antworten bleiben offen.',
+                    ),
                   )
                 else
                   OBPageHeader.hub(
@@ -953,24 +991,21 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 right: 0,
                 child: ColoredBox(
                   color: g.page,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 20),
-                    child: OBPageHeader.compact(
-                      title: 'Journal',
-                      subtitle:
-                          '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
-                      band: OBBandCapsule(
-                        state: band.connection == BandConnection.connected
-                            ? OBBandState.live
-                            : storedAt == null
-                            ? OBBandState.none
-                            : OBBandState.off,
-                        battery: band.batteryPercent,
-                        small: true,
-                        onTap: widget.onBand,
-                      ),
-                      onProfile: widget.onProfile,
+                  child: OBPageHeader.compact(
+                    title: 'Journal',
+                    subtitle:
+                        '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
+                    band: OBBandCapsule(
+                      state: band.connection == BandConnection.connected
+                          ? OBBandState.live
+                          : storedAt == null
+                          ? OBBandState.none
+                          : OBBandState.off,
+                      battery: band.batteryPercent,
+                      small: true,
+                      onTap: widget.onBand,
                     ),
+                    onProfile: widget.onProfile,
                   ),
                 ),
               ),
@@ -1095,6 +1130,12 @@ class G3JournalPatternScreen extends StatelessWidget {
               subtitle: 'Koffein nach 14 Uhr · Einschlafen',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
+              onTrailing: () => _showJournalInfo(
+                context,
+                title: 'Muster verstehen',
+                body:
+                    'Koffein nach 14 Uhr wird mit dem Einschlafen in der folgenden Nacht verglichen. Dafür braucht es mindestens ${pattern.pairedMinimum} Tag-Nacht-Paare und je ${pattern.perSideMinimum} Nächte mit Ja und Nein. Ein Vergleich beweist keine Ursache.',
+              ),
             ),
             const SizedBox(height: 16),
             OBPanel(
@@ -1347,6 +1388,12 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
               subtitle: 'Fragen im Check-in',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
+              onTrailing: () => _showJournalInfo(
+                context,
+                title: 'Fragen anpassen',
+                body:
+                    'Eigene Fragen lassen sich ausblenden und wieder einblenden. Gespeicherte Antworten bleiben erhalten. Neue Fragen zählen ab heute und werden nicht mit Schlafnächten verglichen.',
+              ),
             ),
             const SizedBox(height: 24),
             Text(
