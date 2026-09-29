@@ -74,7 +74,25 @@
     "5S2V-0": "G3 Verlauf · Gewicht · Hell",
     "5S8B-0": "G3 Verlauf · Gewicht · Eintrag · Hell",
     "6URK-0": "G3 Alle Messwerte · Hell",
-    "6UW9-0": "G3 Alle Messwerte · Dunkel"
+    "6UW9-0": "G3 Alle Messwerte · Dunkel",
+    "5T4H-0": "G3 Journal · Hell",
+    "5TAF-0": "G3 Journal · Dunkel",
+    "5W5Y-0": "G3 Journal · gescrollt",
+    "5XHD-0": "G3 Journal · Muster verweigert",
+    "5VFE-0": "G3JournalYesNoLight",
+    "5WCQ-0": "G3JournalAmountLight",
+    "5VOB-0": "G3JournalNoteLight",
+    "5VTQ-0": "G3JournalDoneLight",
+    "5WHJ-0": "G3JournalSaveFailedLight",
+    "5WNX-0": "G3JournalEditSheetLight",
+    "5YV7-0": "G3JournalCustomizeLight",
+    "5Z19-0": "G3JournalCustomizeDark",
+    "600J-0": "G3JournalCustomSheetLight",
+    "605U-0": "G3JournalCustomSheetDark",
+    "6J05-0": "G3JournalPatternRefusedDark",
+    "5ZHX-0": "G3JournalPatternMatureLight",
+    "5ZR8-0": "G3JournalPatternMatureDark",
+    "6JDZ-0": "G3JournalParts"
   },
   "blocks": [
     {
@@ -2053,6 +2071,128 @@
         "5Q4B-0"
       ],
       "notes": "Heute check-in for the typed G3 questions: yes/no (OBYesNoKeys), 1–5 rating (OBRatingKeys), count with explicit Keins (OBCountAnswer) and note (OBNoteAnswer), with a 'zu gestern' line when the answer belongs to the previous day. Paper's OBCheckIn has no slot for the answer's day, so this has no Paper node; requested as a Baustein variant on Bausteine · G3. Count and note controls swap to the Journal's parts at integration."
+    },
+    {
+      "name": "OBCheckIn",
+      "design": "G3",
+      "paperNode": "6JE9-0",
+      "widget": "OBCheckIn",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5T4H-0"
+      ]
+    },
+    {
+      "name": "OBCheckInDone",
+      "design": "G3",
+      "paperNode": "6JL0-0",
+      "widget": "OBCheckInDone",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5VTQ-0"
+      ]
+    },
+    {
+      "name": "OBStepper",
+      "design": "G3",
+      "paperNode": "6JLX-0",
+      "widget": "OBStepper",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5WCQ-0"
+      ]
+    },
+    {
+      "name": "OBJournalEntryRow",
+      "design": "G3",
+      "paperNode": "6JMA-0",
+      "widget": "OBJournalEntryRow",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5T4H-0"
+      ]
+    },
+    {
+      "name": "OBJournalDayRow",
+      "design": "G3",
+      "paperNode": "6JN7-0",
+      "widget": "OBJournalDayRow",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5T4H-0"
+      ]
+    },
+    {
+      "name": "OBPatternCard",
+      "design": "G3",
+      "paperNode": "6JNW-0",
+      "widget": "OBPatternCard",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5XHD-0"
+      ]
+    },
+    {
+      "name": "OBPatternProgress",
+      "design": "G3",
+      "paperNode": "6JQQ-0",
+      "widget": "OBPatternProgress",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5XHD-0"
+      ]
+    },
+    {
+      "name": "OBPatternDotPlot",
+      "design": "G3",
+      "paperNode": "6JTY-0",
+      "widget": "OBPatternDotPlot",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5ZHX-0"
+      ]
+    },
+    {
+      "name": "OBQuestionRow",
+      "design": "G3",
+      "paperNode": "6JWY-0",
+      "widget": "OBQuestionRow",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5YV7-0"
+      ]
+    },
+    {
+      "name": "OBSwitch",
+      "design": "G3",
+      "paperNode": "6JYU-0",
+      "widget": "OBSwitch",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5YV7-0"
+      ]
+    },
+    {
+      "name": "OBInlineError",
+      "design": "G3",
+      "paperNode": "6JIR-0",
+      "widget": "OBInlineError",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5WHJ-0"
+      ]
+    },
+    {
+      "name": "OBTextField",
+      "design": "G3",
+      "paperNode": "6JIF-0",
+      "widget": "OBTextField",
+      "file": "g3/journal_parts.dart",
+      "usedIn": [
+        "5VOB-0",
+        "600J-0",
+        "605U-0"
+      ]
     }
   ],
   "openBlocks": [],

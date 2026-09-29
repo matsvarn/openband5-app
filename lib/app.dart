@@ -4,9 +4,8 @@ import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/g3/screens/verlauf.dart';
-import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
-import 'openband/cycle.dart';
+import 'openband/g3/screens/journal_screen.dart';
 import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
@@ -764,9 +763,12 @@ class _ShellState extends State<_Shell> {
             ),
           ),
         ),
-        ShellDomain.wellness => OpenBandJournal(
+        ShellDomain.wellness => G3JournalScreen(
           controller: _day,
-          releaseReduced: reduced,
+          onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
+          onProfile: () => Navigator.of(
+            c,
+          ).push(MaterialPageRoute<void>(builder: (_) => const ProfileHome())),
           onEdit: (day) async {
             await pushInTab(c,
               MaterialPageRoute<void>(
@@ -777,21 +779,6 @@ class _ShellState extends State<_Shell> {
               ),
             );
           },
-          onNutrition: () => Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandNutritionRoute(
-                controller: _day,
-                onBarcode: _nutritionBarcode,
-              ),
-            ),
-          ),
-          onCycle: () => OpenBandCycle.push(
-            c,
-            repository: _day.repository,
-            day: _day.selectedDay,
-            now: _day.now,
-            synthetic: _day.day?.synthetic == true,
-          ),
         ),
       },
     );
