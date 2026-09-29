@@ -155,32 +155,44 @@ class _G3LiveRunState extends State<G3LiveRun> {
                         Expanded(
                           child: Column(
                             children: [
-                              Text(
-                                '${trainingSport(widget.sport).toUpperCase()} · $started',
-                                style: g.caps(size: 16),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${trainingSport(widget.sport).toUpperCase()} · $started',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: g.caps(size: 16),
+                                ),
                               ),
                               Text(
                                 run.startedAt == null
                                     ? 'Einheit läuft auf dem iPhone'
                                     : 'seit ${run.startedAt!.hour.toString().padLeft(2, '0')}:${run.startedAt!.minute.toString().padLeft(2, '0')}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: g.t(12, 16, color: g.muted),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 44),
+                        const SizedBox(width: 48),
                       ],
                     ),
                     const SizedBox(height: 42),
                     Row(
                       children: [
                         Text('PULS', style: g.caps(color: g.muted)),
-                        const Spacer(),
-                        Text(
-                          hr == null
-                              ? 'Kein verlässlicher Bandpuls'
-                              : 'vom Band',
-                          style: g.t(13, 17, color: g.ink2),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            hr == null
+                                ? 'Kein verlässlicher Bandpuls'
+                                : 'vom Band',
+                            textAlign: TextAlign.right,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: g.t(13, 17, color: g.ink2),
+                          ),
                         ),
                       ],
                     ),

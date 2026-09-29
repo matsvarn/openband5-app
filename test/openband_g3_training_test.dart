@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -16,6 +17,9 @@ import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBActionPrimary;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    as g3chrome
+    show OBPageHeader;
 import 'package:openstrap_edge/openband/g3/training_parts.dart';
 import 'package:openstrap_edge/openband/run_live.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -802,6 +806,89 @@ void main() {
     await tester.pump();
     expect(find.text('Schritt 3 von 3'), findsOneWidget);
     expect(find.textContaining('Belastung —'), findsOneWidget);
+  });
+
+  testWidgets('Nachtragen title stays on one line at 375 pt and 2× text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: G3ManualFlow(now: () => DateTime(2026, 9, 29, 9, 41)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final title = tester.renderObject<RenderParagraph>(find.text('NACHTRAGEN'));
+    expect(
+      title.size.height,
+      lessThanOrEqualTo(title.preferredLineHeight * 1.2),
+    );
+    expect(title.didExceedMaxLines, isFalse);
+    expect(find.byTooltip('Abbrechen'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('live Training header stays on one line at 375 pt and 2× text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final run = ValueNotifier(const LiveRun(elapsedSec: 60));
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: G3LiveRun(
+            run: run,
+            sport: 'martial_arts',
+            onPause: () {},
+            onResume: () {},
+            onFinish: () async {},
+          ),
+        ),
+      ),
+    );
+    final title = tester.renderObject<RenderParagraph>(
+      find.text('KAMPFSPORT · LÄUFT'),
+    );
+    expect(
+      title.size.height,
+      lessThanOrEqualTo(title.preferredLineHeight * 1.2),
+    );
+    expect(title.didExceedMaxLines, isFalse);
+  });
+
+  testWidgets('load detail title stays on one line at 375 pt and 2× text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: g3chrome.OBPageHeader.detail(
+            title: 'BELASTUNG',
+            backLabel: 'Training',
+            onBack: () {},
+          ),
+        ),
+      ),
+    );
+    final title = tester.renderObject<RenderParagraph>(find.text('BELASTUNG'));
+    expect(
+      title.size.height,
+      lessThanOrEqualTo(title.preferredLineHeight * 1.2),
+    );
+    expect(title.didExceedMaxLines, isFalse);
   });
 
   testWidgets('overlap review cannot offer a second save', (tester) async {
