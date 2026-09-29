@@ -23,6 +23,7 @@ class G3BandScreen extends StatefulWidget {
   final Future<BandSnapshot> Function()? readBand;
   final BandDiagnostics? diagnostics;
   final Future<BandDiagnostics> Function()? readDiagnostics;
+  final String? deviceName;
   final String? databaseSize;
   final Future<void> Function()? onDevices;
   final Future<void> Function()? onReconnect;
@@ -43,6 +44,7 @@ class G3BandScreen extends StatefulWidget {
     this.readBand,
     this.diagnostics,
     this.readDiagnostics,
+    this.deviceName,
     this.databaseSize,
     this.onDevices,
     this.onReconnect,
@@ -254,6 +256,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
             OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
             null => 'Verbinden',
           };
+    final name = widget.deviceName?.trim();
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
@@ -261,7 +264,10 @@ class _G3BandScreenState extends State<G3BandScreen> {
           children: [
             chrome.OBPageHeader.detail(
               title: 'BAND',
-              subtitle: diagnostics?.model ?? 'Band',
+              subtitle:
+                  name == null || name.isEmpty || name.toLowerCase() == 'band'
+                  ? null
+                  : name,
               backLabel: 'Profil',
               onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
               onTrailing: widget.onStatus,

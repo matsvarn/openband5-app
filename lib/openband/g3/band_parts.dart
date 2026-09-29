@@ -592,8 +592,10 @@ class OBBandHero extends StatelessWidget {
     final age = stored == null || stored.isAfter(now)
         ? null
         : now.difference(stored);
-    final ageText = age == null
+    final ageText = stored == null
         ? 'Datenstand unbekannt'
+        : age == null
+        ? 'auf dem iPhone gespeichert'
         : age.inHours > 0
         ? 'vor ${age.inHours} h'
         : 'vor ${age.inMinutes} Min.';
@@ -757,6 +759,7 @@ class OBBandHero extends StatelessWidget {
                   battery: connected ? batteryPercent : null,
                 ),
               ),
+              const SizedBox(width: 16),
               Expanded(
                 child: _HeroFact(
                   'AUSSTEHEND',
