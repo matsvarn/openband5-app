@@ -13,6 +13,7 @@ import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart' show ImportOutcome;
+import 'package:openstrap_edge/ui2/profile/profile.dart';
 
 void main() {
   setUpAll(() async {
@@ -62,6 +63,24 @@ void main() {
     expect(find.text('0 Min.'), findsNothing);
     expect(find.textContaining('% übertragen'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('profile distinguishes denied from unknown notifications', (
+    tester,
+  ) async {
+    var opened = 0;
+    Widget profile(bool? allowed) => ProfileHomeView(
+      releaseReduced: true,
+      stats: ProfileStats(notificationsAllowed: allowed),
+      languageLabel: 'Deutsch',
+      onNotifications: () => opened++,
+    );
+    await pump(tester, profile(null));
+    expect(find.text('Mitteilungen nicht erlaubt'), findsNothing);
+    await pump(tester, profile(false));
+    expect(find.text('Mitteilungen nicht erlaubt'), findsOneWidget);
+    await tester.tap(find.text('Mitteilungen nicht erlaubt'));
+    expect(opened, 1);
   });
 
   testWidgets(
