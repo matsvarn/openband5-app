@@ -27,6 +27,7 @@ import '../../openband/theme.dart';
 import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
+import '../../notify/notification_service.dart';
 import '../ui2.dart';
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import 'data.dart';
@@ -272,12 +273,14 @@ class ProfileStats {
   final int sources;
   final int? storageBytes;
   final bool bandReadFailed;
+  final bool? notificationsAllowed;
 
   const ProfileStats({
     this.name,
     this.sources = 0,
     this.storageBytes,
     this.bandReadFailed = false,
+    this.notificationsAllowed,
   });
 }
 
@@ -302,6 +305,13 @@ class _ProfileHomeState extends State<ProfileHome> {
     final repo = app.repo;
     final sources = liveSources(app).length;
     var bandReadFailed = false;
+    bool? notificationsAllowed;
+    try {
+      notificationsAllowed = await NotificationService.instance
+          .readPermissionStatus();
+    } catch (_) {
+      // Unknown permission is not a denial.
+    }
     try {
       _band = await LocalOpenBandRepository(app).readBand();
     } catch (_) {
@@ -315,6 +325,7 @@ class _ProfileHomeState extends State<ProfileHome> {
         name: app.user?['name'] as String?,
         sources: sources,
         bandReadFailed: bandReadFailed,
+        notificationsAllowed: notificationsAllowed,
       );
     }
     final bytes = await app.dataFileBytes();
@@ -323,6 +334,7 @@ class _ProfileHomeState extends State<ProfileHome> {
       sources: sources,
       storageBytes: bytes,
       bandReadFailed: bandReadFailed,
+      notificationsAllowed: notificationsAllowed,
     );
   }
 
@@ -354,6 +366,10 @@ class _ProfileHomeState extends State<ProfileHome> {
       ),
       onData: () => _open(c, const DataScreen()),
       onSettings: () => _open(c, const MoreSettings()),
+      onNotifications: () => _open(
+        c,
+        NotificationSettings(releaseReduced: kOpenBandReleaseReduced),
+      ),
       onEdit: () => _open(c, const EditProfile()),
       onLanguage: () => _pickLanguage(c),
       showCoach: !kOpenBandReleaseReduced,
@@ -375,6 +391,7 @@ class ProfileHomeView extends StatelessWidget {
       onBand,
       onData,
       onSettings,
+      onNotifications,
       onEdit,
       onCoach,
       onLanguage;
@@ -395,6 +412,7 @@ class ProfileHomeView extends StatelessWidget {
     this.onData,
     this.onCoach,
     this.onSettings,
+    this.onNotifications,
     this.onEdit,
     this.onLanguage,
     this.languageLabel,
@@ -656,10 +674,19 @@ class ProfileHomeView extends StatelessWidget {
                   ),
                   section('BAND', [_g3BandSummary(c, s, b)]),
                   section('MITTEILUNGEN', [
+                    if (s?.notificationsAllowed == false)
+                      OBSettingsRow(
+                        label: 'Mitteilungen nicht erlaubt',
+                        detail:
+                            'Erinnerungen sind aus, bis du sie in iOS erlaubst.',
+                        onTap: onNotifications ?? onSettings,
+                      ),
                     OBSettingsRow(
                       label: 'Mitteilungen',
-                      detail: 'Erinnerungen und Bandstatus',
-                      onTap: onSettings,
+                      detail: s?.notificationsAllowed == false
+                          ? 'Alle aus, bis du erlaubst'
+                          : 'Erinnerungen und Bandstatus',
+                      onTap: onNotifications ?? onSettings,
                     ),
                   ]),
                   section('DATEN', [
