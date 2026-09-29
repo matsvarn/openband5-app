@@ -1974,207 +1974,243 @@ Future<void> showBandStatus(
   BuildContext context,
   OpenBandController controller,
   VoidCallback? onSync,
-) => showModalBottomSheet<void>(
-  context: context,
-  useRootNavigator: true,
-  isScrollControlled: true,
-  useSafeArea: true,
-  barrierColor: Colors.black.withValues(alpha: .38),
-  backgroundColor: G3.of(context).canvas,
-  shape: const RoundedRectangleBorder(
-    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-  ),
-  builder: (c) {
-    final g = G3.of(c);
-    final b = controller.band;
-    final day = controller.day;
-    final ready = day == null
-        ? const <(String, DayMetric)>[]
-        : <(String, DayMetric)>[
-            ('Erholung', day.recovery),
-            ('Belastung', day.strain),
-            ('HRV', day.hrv),
-            ('Ruhepuls', day.restingHr),
-          ];
-    return SizedBox(
-      height: MediaQuery.sizeOf(c).height * .88,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 5,
-                margin: const EdgeInsets.only(top: 8, bottom: 18),
-                decoration: BoxDecoration(
-                  color: g.muted.withValues(alpha: .5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Dein Datenstand',
-                          style: g.t(
-                            20,
-                            24,
-                            weight: FontWeight.w700,
-                            tracking: -.02,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Schließen',
-                        onPressed: () => Navigator.pop(c),
-                        icon: Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: g.chip,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(LucideIcons.x, size: 16, color: g.ink),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    'Verbindung, Aktualität, Abdeckung und Auswertung sind vier getrennte Dinge.',
-                    style: g.t(14, 19, color: g.ink2),
-                  ),
-                  const SizedBox(height: 14),
-                  OBFrontierCard(
-                    storedAt: b.latestStoredAt,
-                    now: controller.now(),
-                    rightLabel: b.latestStoredAt == null
-                        ? null
-                        : 'letzter Wert ${_relativeTime(b.latestStoredAt!, controller.now())}',
-                  ),
-                  const SizedBox(height: 14),
-                  OBSettingsGroup(
-                    inset: true,
-                    children: [
-                      OBSettingsRow(
-                        label: 'Verbindung',
-                        detail: b.batteryPercent == null
-                            ? 'Akku —'
-                            : 'Akku ${b.batteryPercent} %${b.batteryObservedAt == null ? '' : ' · gemessen ${obTime(b.batteryObservedAt)}'}',
-                        value: bandConnectionLabel(b.connection),
-                      ),
-                      OBSettingsRow(
-                        label: 'Aktualität',
-                        detail: b.receivedAt == null
-                            ? 'Noch kein Empfang'
-                            : '${_relativeTime(b.receivedAt!, controller.now())} übertragen',
-                        value: b.latestStoredAt == null
-                            ? '—'
-                            : 'bis ${obTime(b.latestStoredAt)}',
-                      ),
-                      OBSettingsRow(
-                        label: 'Abdeckung',
-                        detail:
-                            day?.sleep.onset == null || day?.sleep.wake == null
-                            ? 'Schlafzeit unbekannt'
-                            : 'Schlaf ${obTime(day!.sleep.onset)}–${obTime(day.sleep.wake)}',
-                        value: day == null
-                            ? '—'
-                            : day.sleep.duration.value != null &&
-                                  day.sleep.unobservedMinutes == 0
-                            ? 'Nacht lückenlos'
-                            : _nightLabel(day.sleep),
-                      ),
-                      OBSettingsRow(
-                        label: 'Auswertung',
-                        detail: day?.calculatedAt == null
-                            ? null
-                            : obTime(day!.calculatedAt),
-                        value: controller.calculating
-                            ? 'Wird berechnet'
-                            : day?.calculatedAt == null
-                            ? '—'
-                            : day!.sleep.duration.readiness ==
-                                      MetricReadiness.partial ||
-                                  day.sleep.duration.readiness ==
-                                      MetricReadiness.unreliable
-                            ? 'Teilweise'
-                            : 'Fertig',
-                      ),
-                    ],
-                  ),
-                  if (ready.isNotEmpty) ...[
-                    const SizedBox(height: 18),
-                    Text(
-                      bandStatusValuesHeading(
-                        controller.selectedDay,
-                        controller.now(),
-                      ),
-                      style: g.caps(color: g.muted),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final item in ready)
-                          OBChip(
-                            OBChipKind.tag,
-                            '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
-                          ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+) {
+  final diagnosticsRead = controller.repository
+      .readBandDiagnostics()
+      .then<BandDiagnostics?>((value) => value, onError: (Object _) => null);
+  return showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    isScrollControlled: true,
+    useSafeArea: true,
+    barrierColor: Colors.black.withValues(alpha: .38),
+    backgroundColor: G3.of(context).canvas,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (c) {
+      final g = G3.of(c);
+      final b = controller.band;
+      final day = controller.day;
+      final ready = day == null
+          ? const <(String, DayMetric)>[]
+          : <(String, DayMetric)>[
+              ('Erholung', day.recovery),
+              ('Belastung', day.strain),
+              ('HRV', day.hrv),
+              ('Ruhepuls', day.restingHr),
+            ];
+      return FutureBuilder<BandDiagnostics?>(
+        future: diagnosticsRead,
+        builder: (c, result) {
+          final diagnostics = result.data;
+          final stored = diagnostics?.lastStoredSampleAt ?? b.latestStoredAt;
+          final battery = diagnostics?.battery;
+          final batteryPercent = battery?.percent ?? b.batteryPercent;
+          final batteryObservedAt = battery?.observedAt ?? b.batteryObservedAt;
+          final coverage = diagnostics?.coverage;
+          final unreadPages = diagnostics?.backlog?.unreadPages;
+          final sleepDetail =
+              day?.sleep.onset == null || day?.sleep.wake == null
+              ? 'Schlafzeit unbekannt'
+              : 'Schlaf ${obTime(day!.sleep.onset)}–${obTime(day.sleep.wake)}';
+          final coverageDetail = coverage?.coveragePercent != null
+              ? '24 h: ${coverage!.coveragePercent!.round()} %'
+              : coverage?.recordedSeconds != null
+              ? '24 h: ${coverage!.recordedSeconds} Sek. aufgezeichnet · Anteil unbekannt'
+              : null;
+          final wristOff = coverage?.wristOffIntervals;
+          return SizedBox(
+            height: MediaQuery.sizeOf(c).height * .88,
+            child: SafeArea(
               child: Column(
                 children: [
-                  if (onSync != null) ...[
-                    g3chrome.OBActionPrimary(
-                      'Übertragung fortsetzen',
-                      expand: true,
-                      onPressed: () {
-                        Navigator.pop(c);
-                        onSync();
-                      },
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 5,
+                      margin: const EdgeInsets.only(top: 8, bottom: 18),
+                      decoration: BoxDecoration(
+                        color: g.muted.withValues(alpha: .5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (onSync == null)
-                    g3chrome.OBActionPrimary(
-                      'Schließen',
-                      expand: true,
-                      onPressed: () => Navigator.pop(c),
-                    )
-                  else
-                    g3chrome.OBActionSecondary(
-                      'Schließen',
-                      expand: true,
-                      onPressed: () => Navigator.pop(c),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Dein Datenstand',
+                                style: g.t(
+                                  20,
+                                  24,
+                                  weight: FontWeight.w700,
+                                  tracking: -.02,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Schließen',
+                              onPressed: () => Navigator.pop(c),
+                              icon: Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: g.chip,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  LucideIcons.x,
+                                  size: 16,
+                                  color: g.ink,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          'Verbindung, Aktualität, Abdeckung und Auswertung sind vier getrennte Dinge.',
+                          style: g.t(14, 19, color: g.ink2),
+                        ),
+                        const SizedBox(height: 14),
+                        OBFrontierCard(
+                          storedAt: stored,
+                          now: controller.now(),
+                          caption: unreadPages == null
+                              ? null
+                              : '$unreadPages Bandseiten ungelesen · Stand ${bandFrontierDayPrefix(diagnostics!.backlog!.observedAt, controller.now())}${obTime(diagnostics.backlog!.observedAt)}',
+                          rightLabel: stored == null
+                              ? null
+                              : 'letzter Wert ${_relativeTime(stored, controller.now())}',
+                        ),
+                        const SizedBox(height: 14),
+                        OBSettingsGroup(
+                          inset: true,
+                          children: [
+                            OBSettingsRow(
+                              label: 'Verbindung',
+                              detail: batteryPercent == null
+                                  ? 'Akku —'
+                                  : 'Akku $batteryPercent %${batteryObservedAt == null ? '' : ' · gemessen ${obTime(batteryObservedAt)}'}',
+                              value: bandConnectionLabel(b.connection),
+                            ),
+                            OBSettingsRow(
+                              label: 'Aktualität',
+                              detail: b.receivedAt == null
+                                  ? 'Noch kein Empfang'
+                                  : '${_relativeTime(b.receivedAt!, controller.now())} übertragen',
+                              value: stored == null
+                                  ? '—'
+                                  : 'bis ${obTime(stored)}',
+                            ),
+                            OBSettingsRow(
+                              label: 'Abdeckung',
+                              detail: [
+                                sleepDetail,
+                                ?coverageDetail,
+                                if (wristOff?.isNotEmpty == true)
+                                  '${wristOff!.length} beobachtete Ablegephase${wristOff.length == 1 ? '' : 'n'}',
+                              ].join(' · '),
+                              value: day == null
+                                  ? '—'
+                                  : day.sleep.duration.value != null &&
+                                        day.sleep.unobservedMinutes == 0
+                                  ? 'Nacht lückenlos'
+                                  : _nightLabel(day.sleep),
+                            ),
+                            OBSettingsRow(
+                              label: 'Auswertung',
+                              detail: day?.calculatedAt == null
+                                  ? null
+                                  : obTime(day!.calculatedAt),
+                              value: controller.calculating
+                                  ? 'Wird berechnet'
+                                  : day?.calculatedAt == null
+                                  ? '—'
+                                  : day!.sleep.duration.readiness ==
+                                            MetricReadiness.partial ||
+                                        day.sleep.duration.readiness ==
+                                            MetricReadiness.unreliable
+                                  ? 'Teilweise'
+                                  : 'Fertig',
+                            ),
+                          ],
+                        ),
+                        if (ready.isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          Text(
+                            bandStatusValuesHeading(
+                              controller.selectedDay,
+                              controller.now(),
+                            ),
+                            style: g.caps(color: g.muted),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final item in ready)
+                                OBChip(
+                                  OBChipKind.tag,
+                                  '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
+                                ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
-                  if (day?.synthetic == true) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'SYNTHETISCHE DATEN',
-                      style: g.caps(color: g.muted, size: 11),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                    child: Column(
+                      children: [
+                        if (onSync != null) ...[
+                          g3chrome.OBActionPrimary(
+                            'Übertragung fortsetzen',
+                            expand: true,
+                            onPressed: () {
+                              Navigator.pop(c);
+                              onSync();
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        if (onSync == null)
+                          g3chrome.OBActionPrimary(
+                            'Schließen',
+                            expand: true,
+                            onPressed: () => Navigator.pop(c),
+                          )
+                        else
+                          g3chrome.OBActionSecondary(
+                            'Schließen',
+                            expand: true,
+                            onPressed: () => Navigator.pop(c),
+                          ),
+                        if (day?.synthetic == true) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            'SYNTHETISCHE DATEN',
+                            style: g.caps(color: g.muted, size: 11),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  },
-);
+          );
+        },
+      );
+    },
+  );
+}
 
 class OpenBandSleep extends StatefulWidget {
   final OpenBandController controller;
@@ -2484,7 +2520,8 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
   );
   Future<void> _edit(BuildContext context) async {
     final tabNavigator = Navigator.of(context);
-    await pushFullScreen(context,
+    await pushFullScreen(
+      context,
       MaterialPageRoute<void>(
         builder: (_) => SleepEditor(
           controller: controller,

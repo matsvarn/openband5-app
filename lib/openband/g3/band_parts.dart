@@ -492,12 +492,14 @@ class OBBandActionNotice extends StatelessWidget {
 
 class OBBandHero extends StatelessWidget {
   final BandSnapshot band;
+  final BandDiagnostics? diagnostics;
   final DateTime now;
   final VoidCallback? onStatus;
   final OBBandIssue? issue;
   const OBBandHero({
     super.key,
     required this.band,
+    this.diagnostics,
     required this.now,
     this.onStatus,
     this.issue,
@@ -506,7 +508,13 @@ class OBBandHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    final stored = band.latestStoredAt;
+    final stored = diagnostics?.lastStoredSampleAt ?? band.latestStoredAt;
+    final battery = diagnostics?.battery;
+    final batteryPercent = battery?.percent ?? band.batteryPercent;
+    final backlog = diagnostics?.backlog;
+    final unreadPages = backlog?.unreadPages;
+    final coverage = diagnostics?.coverage;
+    final coveragePercent = coverage?.coveragePercent;
     final connected = band.connection == BandConnection.connected;
     final sameDay = stored != null && dayLabelOf(stored) == todayLabel(now);
     final yesterday = DateTime(now.year, now.month, now.day - 1);
@@ -615,19 +623,44 @@ class OBBandHero extends StatelessWidget {
               Expanded(
                 child: Text('LETZTE 24 STUNDEN', style: g.caps(color: g.muted)),
               ),
-              Text('—', style: g.t(12, 17, color: g.ink2)),
+              Text(
+                coveragePercent == null ? '—' : '${coveragePercent.round()} %',
+                style: g.t(12, 17, color: g.ink2),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 14,
-            child: CustomPaint(painter: _DashedTrack(g.gap)),
-          ),
+          if (coveragePercent == null)
+            SizedBox(
+              height: 14,
+              child: CustomPaint(painter: _DashedTrack(g.gap)),
+            )
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(7),
+              child: LinearProgressIndicator(
+                value: (coveragePercent / 100).clamp(0, 1),
+                minHeight: 14,
+                backgroundColor: g.track,
+                valueColor: AlwaysStoppedAnimation(g.ink),
+              ),
+            ),
           const SizedBox(height: 6),
           Text(
-            'Abdeckung noch nicht erfasst',
+            coveragePercent != null
+                ? 'Abdeckung der letzten 24 Stunden'
+                : coverage?.recordedSeconds == null
+                ? 'Abdeckung noch nicht erfasst'
+                : '${coverage!.recordedSeconds} Sek. aufgezeichnet · Abdeckung unbekannt',
             style: g.t(12, 17, color: g.ink2),
           ),
+          if (coverage?.wristOffIntervals?.isNotEmpty == true) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${coverage!.wristOffIntervals!.length} beobachtete Ablegephase${coverage.wristOffIntervals!.length == 1 ? '' : 'n'}',
+              style: g.t(12, 17, color: g.ink2),
+            ),
+          ],
           const SizedBox(height: 20),
           Divider(height: 1, color: g.hairline),
           const SizedBox(height: 16),
@@ -636,17 +669,27 @@ class OBBandHero extends StatelessWidget {
               Expanded(
                 child: _HeroFact(
                   'AKKU',
-                  connected && band.batteryPercent != null
-                      ? '${band.batteryPercent} %'
+                  connected && batteryPercent != null
+                      ? '$batteryPercent %'
                       : '—',
-                  detail: !connected && band.batteryPercent != null
-                      ? 'zuletzt ${band.batteryPercent} %'
-                      : null,
-                  battery: connected ? band.batteryPercent : null,
+                  detail: batteryPercent == null
+                      ? null
+                      : connected
+                      ? battery == null
+                            ? null
+                            : 'gemessen ${bandFrontierDayPrefix(battery.observedAt, now)}${obTime(battery.observedAt)}'
+                      : 'zuletzt $batteryPercent %${battery == null ? '' : ' · ${bandFrontierDayPrefix(battery.observedAt, now)}${obTime(battery.observedAt)}'}',
+                  battery: connected ? batteryPercent : null,
                 ),
               ),
               Expanded(
-                child: _HeroFact('AUSSTEHEND', '—', detail: 'unbekannt'),
+                child: _HeroFact(
+                  'AUSSTEHEND',
+                  unreadPages == null ? '—' : '$unreadPages',
+                  detail: unreadPages == null
+                      ? 'unbekannt'
+                      : 'Seiten ungelesen · Stand ${bandFrontierDayPrefix(backlog!.observedAt, now)}${obTime(backlog.observedAt)}',
+                ),
               ),
             ],
           ),

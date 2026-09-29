@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,23 @@ final _baseBand = BandSnapshot(
   batteryObservedAt: _stored,
 );
 
+SyntheticOpenBandRepository _syntheticBandRepository() =>
+    SyntheticOpenBandRepository.fromMaps(
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/day-summary.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/sleep-detail.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      scenario: SyntheticScenario.g3Sample,
+    );
+
 Widget _profile({bool? notificationsAllowed}) => ProfileHomeView(
   releaseReduced: true,
   synthetic: true,
@@ -62,6 +80,9 @@ Widget _band(G3Env env, [BandSnapshot? band, OBBandIssue? issue]) =>
     G3BandScreen(
       band: env.band(() => band ?? _baseBand),
       now: env.now(() => _now)(),
+      readDiagnostics: band == null
+          ? () => env.repository(_syntheticBandRepository).readBandDiagnostics()
+          : null,
       databaseSize: env.real ? null : '4,2 GB',
       onDevices: () async {},
       onReconnect: () async {},
