@@ -4,6 +4,7 @@ import '../domain.dart'
     show G3SleepNeedClamp, NightSignalReading, NightSignalSeries;
 import '../theme.dart' show OBChevron;
 import 'chrome.dart' show OBPanel, OBPillButton;
+import 'count_copy.dart';
 import 'g3_theme.dart';
 import 'metrics.dart' show G3LabelRow;
 
@@ -562,7 +563,7 @@ class OBSleepWindows extends StatelessWidget {
                       : 'Basis im Aufbau'
                 : windows.isEmpty
                 ? null
-                : '${windows.length} Nächte',
+                : '${windows.length} ${g3CountNoun(windows.length, 'Nacht', 'Nächte')}',
           ),
           if (!detail) ...[
             const SizedBox(height: 4),
@@ -1107,12 +1108,13 @@ class OBNightTrace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final readingCount = series.readings.where((r) => r.value != null).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
           label:
-              'Nachtverlauf mit ${series.readings.where((r) => r.value != null).length} gespeicherten Messpunkten. Lücken bleiben leer.',
+              'Nachtverlauf mit $readingCount ${g3CountNoun(readingCount, 'gespeichertem Messpunkt', 'gespeicherten Messpunkten')}. Lücken bleiben leer.',
           child: RepaintBoundary(
             child: SizedBox(
               height: 180,

@@ -113,6 +113,14 @@ class _RespirationRangeRepo extends _PlanWithoutGoalRepo {
       : super.readPersonalRange(metric, day);
 }
 
+class _OneNightBasisRepo extends _PlanWithoutGoalRepo {
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      const G3Baseline(
+        BaselineStatus(BaselinePhase.building, nightsHave: 6, nightsNeeded: 7),
+      );
+}
+
 class _SignedJetlagRepo extends _PlanWithoutGoalRepo {
   @override
   Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async =>
@@ -362,6 +370,82 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('aus 7 Nächten'), findsNothing);
+  });
+
+  testWidgets('one remaining night is singular in root and night detail', (
+    tester,
+  ) async {
+    final repo = _OneNightBasisRepo();
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 10),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepScreen(controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('HRV · MS'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('noch 1 Nacht'), findsWidgets);
+    expect(find.text('noch 1 Nächte'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepNightSignals(repository: repo, day: '2026-09-29'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('noch 1 Nacht'), findsWidgets);
+    expect(find.text('noch 1 Nächte'), findsNothing);
+  });
+
+  testWidgets('one window and one measured point use singular', (tester) async {
+    final at = DateTime(2026, 9, 29, 0);
+    await _card(
+      tester,
+      OBSleepWindows(
+        windows: [
+          (
+            day: 'Mo',
+            start: at,
+            end: at.add(const Duration(hours: 7)),
+            minutes: 420,
+          ),
+        ],
+        regularity: 75,
+      ),
+    );
+    expect(find.text('1 Nacht'), findsOneWidget);
+    expect(find.text('1 Nächte'), findsNothing);
+
+    await _card(
+      tester,
+      OBNightTrace(
+        series: NightSignalSeries(readings: [NightSignalReading(at, 60)]),
+        start: at,
+        end: at.add(const Duration(minutes: 1)),
+      ),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label ==
+                'Nachtverlauf mit 1 gespeichertem Messpunkt. Lücken bleiben leer.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('ungated missing SRI says this day has no evaluation', (
