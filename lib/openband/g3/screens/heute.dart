@@ -57,8 +57,10 @@ class NotificationHeuteReminder implements HeuteReminder {
       final at = DateTime.parse(m['at'] as String);
       return (at: at, day: m['day'] as String);
     } catch (_) {
-      // An unreadable entry (or the day-less first format) has no day to
-      // belong to: report it for an unknown day so Heute cancels it.
+      // An unreadable entry has no day to belong to: report it for an
+      // unknown day so Heute cancels it. The {at, day} shape has no
+      // predecessor in any installed build (0.9.31+67 predates the
+      // reminder), so a bare-string pref is safely cancelled.
       final at = DateTime.tryParse(raw);
       return at == null ? null : (at: at, day: '');
     }
@@ -183,6 +185,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
 
   /// The day [_data] was loaded for.
   String? _dataFor;
+
+  /// False when the sleep goal or sleep plan read threw on the last load:
+  /// the note's missing action is then unknown, not absent.
+  bool _planRead = false;
   String? _loadedFor;
 
   /// Bumped by every arm, cancel and reconcile: a read of the reminder that
@@ -293,9 +299,19 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       final r = await _try(() => repo.readPersonalRange(m, day));
       if (r != null) ranges[m] = r;
     }
-    final goal = await _try(() => repo.readSleepGoal(day));
+    var planFailed = false;
+    Future<T?> plan<T>(Future<T> Function() read) async {
+      try {
+        return await read();
+      } catch (_) {
+        planFailed = true;
+        return null;
+      }
+    }
+
+    final goal = await plan(() => repo.readSleepGoal(day));
     final plus = today
-        ? await _try(() => repo.readSleepPlus(day, now: c.now()))
+        ? await plan(() => repo.readSleepPlus(day, now: c.now()))
         : null;
     final activities =
         await _try(() => repo.readActivities(day)) ?? const <G3Activity>[];
@@ -314,6 +330,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     if (!mounted || request != _load) return;
     setState(() {
       _dataFor = day;
+      _planRead = !planFailed;
       _data = _HeuteData(
         ranges: ranges,
         sleepGoal: goal?.targetMinutes,
@@ -345,6 +362,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       final day = c.day;
       // Judge the note only on today's loaded inputs.
       if (day == null || day.day != today || _dataFor != today) return;
+      // A failed plan read is not "no action": keep the reminder.
+      if (!_planRead) return;
       final action = _todayNote(day, now)?.action;
       if (action != null && action.reminderAt == armed.at) return;
     }

@@ -32,6 +32,12 @@ class _Repo extends SyntheticOpenBandRepository {
     : super.fromMaps(_json('day-summary.json'), _json('sleep-detail.json'), scenario: s);
   bool empty;
 
+  /// The sleep plan read throws (a transient failure).
+  bool planThrows = false;
+  @override
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async =>
+      planThrows ? throw StateError('transient') : super.readSleepPlus(day, now: now);
+
   /// Every personal range in phase none (no basis will be formed yet).
   final bool noBaseline;
   @override
@@ -291,6 +297,24 @@ void main() {
     expect(await other.reminder.armedAt(), isNull);
     expect(other.reminder.cancels, 1);
     expect(find.text('Erinnerung um 21:30'), findsNothing);
+  });
+
+  testWidgets('a failed sleep-plan read keeps the armed reminder', (tester) async {
+    final repo = _Repo(SyntheticScenario.g3Sample);
+    final h = await _pump(tester, _Harness(repo, _connected));
+    await tester.tap(find.text('Erinnern'));
+    await tester.pumpAndSettle();
+    repo.planThrows = true;
+    await h.controller.refresh();
+    await tester.pumpAndSettle();
+    expect(await h.reminder.armedAt(), DateTime(2026, 9, 29, 22, 5));
+    expect(h.reminder.cancels, 0);
+    // The read works again and today's plan still has the action: kept.
+    repo.planThrows = false;
+    await h.controller.refresh();
+    await tester.pumpAndSettle();
+    expect(h.reminder.cancels, 0);
+    expect(find.text('Erinnerung um 22:05'), findsOneWidget);
   });
 
   testWidgets('a reminder armed for a day that is over is cancelled on the next foreground', (tester) async {
