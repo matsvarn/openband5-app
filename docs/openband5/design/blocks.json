@@ -6,7 +6,9 @@
     "blocksPageName": "Bausteine · Release · Alpin 3",
     "exportedAt": "2026-09-22",
     "releasePageId": "U-0",
-    "releasePageName": "Release · Alpin 3"
+    "releasePageName": "Release · Alpin 3",
+    "g3BlocksPageId": "p-16-0",
+    "g3BlocksPageName": "Bausteine · G3"
   },
   "conventions": {
     "layerName": "Paper layer name is canonical. Variants use a dot suffix (OBSetRow.done). A block may map to a shared widget or an inline composition; the Dart owner need not match the Paper name.",
@@ -53,7 +55,24 @@
     "5DJU-0": "G2 · 12 · Datum wählen · Hell (lib/openband/day_picker.dart)",
     "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)",
     "5DJX-0": "G2 · 15 · Nickerchen · Hell (lib/openband/naps.dart)",
-    "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)"
+    "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)",
+    "5OIV-0": "G3 Heute · Hell",
+    "5ONU-0": "G3 Heute · Dunkel",
+    "5OST-0": "G3 Heute · gescrollt · Hell",
+    "5Q4B-0": "G3 Heute · Basis im Aufbau · Hell",
+    "5QH9-0": "G3 Heute · Basis im Aufbau · Dunkel",
+    "5QMC-0": "G3 Heute · Vergangener Tag · Hell",
+    "5QRH-0": "G3 Heute · Noch kein Band · Hell",
+    "5QUE-0": "G3 Heute · Band getrennt · Hell",
+    "5QYJ-0": "G3 Heute · Nacht mit Lücke · Hell",
+    "5R5F-0": "G3 Verlauf · Erholung 30 T · Hell",
+    "5RBJ-0": "G3 Verlauf · Erholung 30 T · Dunkel",
+    "5RHN-0": "G3 Verlauf · HRV · Hell",
+    "5ROH-0": "G3 Verlauf · Atemfrequenz < 7 Werte · Hell",
+    "5RSK-0": "G3 Verlauf · Ruhepuls 90 T mit Lücken · Hell",
+    "5RXG-0": "G3 Verlauf · Hauttemperatur-Abweichung · Hell",
+    "5S2V-0": "G3 Verlauf · Gewicht · Hell",
+    "5S8B-0": "G3 Verlauf · Gewicht · Eintrag · Hell"
   },
   "blocks": [
     {
@@ -872,6 +891,1134 @@
         "durablePartial": "569J-0",
         "durablePartialDark": "56AB-0"
       }
+    },
+    {
+      "name": "OBActionPrimary",
+      "design": "G3",
+      "paperNode": "5MW8-0",
+      "paperNodeDark": "5MYH-0",
+      "usedIn": [
+        "5QRH-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBActionPrimary",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBActionSecondary",
+      "design": "G3",
+      "paperNode": "5MWE-0",
+      "paperNodeDark": "5MYN-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0",
+        "5S8B-0"
+      ],
+      "widget": "OBActionSecondary",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBActivityRow.auto",
+      "design": "G3",
+      "paperNode": "5LX5-0",
+      "paperNodeDark": "5M0V-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBActivityRow",
+      "file": "g3/day.dart",
+      "variant": "unconfirmed: true"
+    },
+    {
+      "name": "OBActivityRow.confirmed",
+      "design": "G3",
+      "paperNode": "5LXY-0",
+      "paperNodeDark": "5M1O-0",
+      "usedIn": [],
+      "widget": "OBActivityRow",
+      "file": "g3/day.dart",
+      "variant": "zoneMinutes given"
+    },
+    {
+      "name": "OBBandCapsule.live",
+      "design": "G3",
+      "paperNode": "5L2P-0",
+      "paperNodeDark": "5L53-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBBandCapsule",
+      "file": "g3/chrome.dart",
+      "variant": "OBBandState.live"
+    },
+    {
+      "name": "OBBandCapsule.none",
+      "design": "G3",
+      "paperNode": "5L33-0",
+      "paperNodeDark": "5L5H-0",
+      "usedIn": [
+        "5QRH-0"
+      ],
+      "widget": "OBBandCapsule",
+      "file": "g3/chrome.dart",
+      "variant": "OBBandState.none"
+    },
+    {
+      "name": "OBBandCapsule.off",
+      "design": "G3",
+      "paperNode": "5L2W-0",
+      "paperNodeDark": "5L5A-0",
+      "usedIn": [
+        "5QUE-0"
+      ],
+      "widget": "OBBandCapsule",
+      "file": "g3/chrome.dart",
+      "variant": "OBBandState.off"
+    },
+    {
+      "name": "OBBodyRow.building",
+      "design": "G3",
+      "paperNode": "5MOF-0",
+      "paperNodeDark": "5MR6-0",
+      "usedIn": [
+        "5Q4B-0"
+      ],
+      "widget": "OBBodyRow",
+      "file": "g3/metrics.dart",
+      "variant": "OBBodyState.building"
+    },
+    {
+      "name": "OBBodyRow.deviation",
+      "design": "G3",
+      "paperNode": "5WTU-0",
+      "paperNodeDark": "5WUD-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "widget": "OBBodyRow",
+      "file": "g3/metrics.dart",
+      "variant": "OBBodyState.deviation"
+    },
+    {
+      "name": "OBBodyRow.missing",
+      "design": "G3",
+      "paperNode": "5MOU-0",
+      "paperNodeDark": "5MRL-0",
+      "usedIn": [],
+      "widget": "OBBodyRow",
+      "file": "g3/metrics.dart",
+      "variant": "OBBodyState.missing"
+    },
+    {
+      "name": "OBBodyRow.plain",
+      "design": "G3",
+      "paperNode": "5MNY-0",
+      "paperNodeDark": "5MQP-0",
+      "usedIn": [
+        "5Q4B-0"
+      ],
+      "widget": "OBBodyRow",
+      "file": "g3/metrics.dart",
+      "variant": "OBBodyState.plain"
+    },
+    {
+      "name": "OBBodyRow.range",
+      "design": "G3",
+      "paperNode": "5MNG-0",
+      "paperNodeDark": "5MQ7-0",
+      "usedIn": [
+        "5OST-0",
+        "5R5F-0",
+        "5RBJ-0"
+      ],
+      "widget": "OBBodyRow",
+      "file": "g3/metrics.dart",
+      "variant": "OBBodyState.range"
+    },
+    {
+      "name": "OBCardHeader",
+      "design": "G3",
+      "paperNode": "5O43-0",
+      "paperNodeDark": "5OB3-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0",
+        "5R5F-0",
+        "5RBJ-0"
+      ],
+      "widget": "OBCardHeader",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBCheckIn.answered",
+      "design": "G3",
+      "paperNode": "5LZD-0",
+      "paperNodeDark": "5M33-0",
+      "usedIn": [],
+      "widget": "OBCheckIn",
+      "file": "g3/day.dart",
+      "variant": "OBCheckInState.answered"
+    },
+    {
+      "name": "OBCheckIn.later",
+      "design": "G3",
+      "paperNode": "5M07-0",
+      "paperNodeDark": "5M3X-0",
+      "usedIn": [],
+      "widget": "OBCheckIn",
+      "file": "g3/day.dart",
+      "variant": "OBCheckInState.later"
+    },
+    {
+      "name": "OBCheckIn.question",
+      "design": "G3",
+      "paperNode": "5LYP-0",
+      "paperNodeDark": "5M2F-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "widget": "OBCheckIn",
+      "file": "g3/day.dart",
+      "variant": "OBCheckInState.question"
+    },
+    {
+      "name": "OBChip.basis",
+      "design": "G3",
+      "paperNode": "5MY7-0",
+      "paperNodeDark": "5N0G-0",
+      "usedIn": [
+        "5ROH-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBChip",
+      "file": "g3/metrics.dart",
+      "variant": "OBChipKind.basis"
+    },
+    {
+      "name": "OBChip.better",
+      "design": "G3",
+      "paperNode": "5MXJ-0",
+      "paperNodeDark": "5MZS-0",
+      "usedIn": [],
+      "widget": "OBChip",
+      "file": "g3/metrics.dart",
+      "variant": "OBChipKind.better"
+    },
+    {
+      "name": "OBChip.delta",
+      "design": "G3",
+      "paperNode": "5MXA-0",
+      "paperNodeDark": "5MZJ-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5RSK-0"
+      ],
+      "widget": "OBChip",
+      "file": "g3/metrics.dart",
+      "variant": "OBChipKind.delta"
+    },
+    {
+      "name": "OBChip.tag",
+      "design": "G3",
+      "paperNode": "5MY1-0",
+      "paperNodeDark": "5N0A-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBChip",
+      "file": "g3/metrics.dart",
+      "variant": "OBChipKind.tag"
+    },
+    {
+      "name": "OBChip.worse",
+      "design": "G3",
+      "paperNode": "5MXS-0",
+      "paperNodeDark": "5N01-0",
+      "usedIn": [
+        "5QMC-0"
+      ],
+      "widget": "OBChip",
+      "file": "g3/metrics.dart",
+      "variant": "OBChipKind.worse"
+    },
+    {
+      "name": "OBDateStrip",
+      "design": "G3",
+      "paperNode": "5O8F-0",
+      "paperNodeDark": "5OFF-0",
+      "usedIn": [
+        "5QMC-0"
+      ],
+      "widget": "OBDateStrip",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBDayNote.absent",
+      "design": "G3",
+      "paperNode": "5LUT-0",
+      "paperNodeDark": "5LWK-0",
+      "usedIn": [
+        "5QUE-0"
+      ],
+      "widget": "OBDayNote",
+      "file": "g3/day.dart",
+      "variant": "OBNoteState.absent"
+    },
+    {
+      "name": "OBDayNote.action",
+      "design": "G3",
+      "paperNode": "5LTI-0",
+      "paperNodeDark": "5LV9-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBDayNote",
+      "file": "g3/day.dart",
+      "variant": "OBNoteState.action"
+    },
+    {
+      "name": "OBDayNote.reminded",
+      "design": "G3",
+      "paperNode": "5LU0-0",
+      "paperNodeDark": "5LVR-0",
+      "usedIn": [],
+      "widget": "OBDayNote",
+      "file": "g3/day.dart",
+      "variant": "OBNoteState.reminded"
+    },
+    {
+      "name": "OBDayNote.text",
+      "design": "G3",
+      "paperNode": "5LUJ-0",
+      "paperNodeDark": "5LWA-0",
+      "usedIn": [],
+      "widget": "OBDayNote",
+      "file": "g3/day.dart",
+      "variant": "OBNoteState.text"
+    },
+    {
+      "name": "OBDayValueRow.default",
+      "design": "G3",
+      "paperNode": "5O9Z-0",
+      "paperNodeDark": "5OGZ-0",
+      "usedIn": [
+        "5RHN-0"
+      ],
+      "widget": "OBDayValueRow",
+      "file": "g3/metrics.dart",
+      "variant": "value given"
+    },
+    {
+      "name": "OBDayValueRow.gap",
+      "design": "G3",
+      "paperNode": "5OAA-0",
+      "paperNodeDark": "5OHA-0",
+      "usedIn": [
+        "5RSK-0"
+      ],
+      "widget": "OBDayValueRow",
+      "file": "g3/metrics.dart",
+      "variant": "value: null"
+    },
+    {
+      "name": "OBEmptyState",
+      "design": "G3",
+      "paperNode": "5N1G-0",
+      "paperNodeDark": "5N36-0",
+      "usedIn": [
+        "5QMC-0",
+        "5QRH-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0"
+      ],
+      "widget": "OBEmptyState",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBErrorBlock",
+      "design": "G3",
+      "paperNode": "5N1V-0",
+      "paperNodeDark": "5N3L-0",
+      "usedIn": [
+        "5QUE-0"
+      ],
+      "widget": "OBErrorBlock",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBFooterStamp",
+      "design": "G3",
+      "paperNode": "5O88-0",
+      "paperNodeDark": "5OF8-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0"
+      ],
+      "widget": "OBFooterStamp",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBFormField.number",
+      "design": "G3",
+      "paperNode": "5OAK-0",
+      "paperNodeDark": "5OHK-0",
+      "usedIn": [
+        "5S8B-0"
+      ],
+      "widget": "OBFormField",
+      "file": "g3/chrome.dart",
+      "variant": "OBFormField.number()"
+    },
+    {
+      "name": "OBHrTrace",
+      "design": "G3",
+      "paperNode": "5N4G-0",
+      "paperNodeDark": "5N7G-0",
+      "usedIn": [],
+      "widget": "OBHrTrace",
+      "file": "g3/charts.dart"
+    },
+    {
+      "name": "OBIconButton",
+      "design": "G3",
+      "paperNode": "5L3C-0",
+      "paperNodeDark": "5L5Q-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QRH-0",
+        "5QUE-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBIconButton",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBLeadMetric.better",
+      "design": "G3",
+      "paperNode": "5LKT-0",
+      "paperNodeDark": "5LPI-0",
+      "usedIn": [],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.better"
+    },
+    {
+      "name": "OBLeadMetric.building",
+      "design": "G3",
+      "paperNode": "5LN6-0",
+      "paperNodeDark": "5LRV-0",
+      "usedIn": [
+        "5Q4B-0",
+        "5QH9-0"
+      ],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.building"
+    },
+    {
+      "name": "OBLeadMetric.missing",
+      "design": "G3",
+      "paperNode": "5LO4-0",
+      "paperNodeDark": "5LST-0",
+      "usedIn": [
+        "5QRH-0",
+        "5QUE-0"
+      ],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.missing"
+    },
+    {
+      "name": "OBLeadMetric.normal",
+      "design": "G3",
+      "paperNode": "5LJZ-0",
+      "paperNodeDark": "5LOO-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5RSK-0"
+      ],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.normal"
+    },
+    {
+      "name": "OBLeadMetric.plain",
+      "design": "G3",
+      "paperNode": "5LMH-0",
+      "paperNodeDark": "5LR6-0",
+      "usedIn": [
+        "5ROH-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.plain"
+    },
+    {
+      "name": "OBLeadMetric.worse",
+      "design": "G3",
+      "paperNode": "5LLN-0",
+      "paperNodeDark": "5LQC-0",
+      "usedIn": [
+        "5QMC-0"
+      ],
+      "widget": "OBLeadMetric",
+      "file": "g3/metrics.dart",
+      "variant": "OBLeadState.worse"
+    },
+    {
+      "name": "OBListRow.default",
+      "design": "G3",
+      "paperNode": "5MTK-0",
+      "paperNodeDark": "5MV2-0",
+      "usedIn": [],
+      "widget": "OBListRow",
+      "file": "g3/chrome.dart",
+      "variant": "value given"
+    },
+    {
+      "name": "OBListRow.value",
+      "design": "G3",
+      "paperNode": "5MTZ-0",
+      "paperNodeDark": "5MVH-0",
+      "usedIn": [
+        "5S2V-0"
+      ],
+      "widget": "OBListRow",
+      "file": "g3/chrome.dart",
+      "variant": "value given"
+    },
+    {
+      "name": "OBMetricCard.default",
+      "design": "G3",
+      "paperNode": "5MP8-0",
+      "paperNodeDark": "5MRZ-0",
+      "usedIn": [],
+      "widget": "OBMetricCard",
+      "file": "g3/metrics.dart",
+      "variant": "value given"
+    },
+    {
+      "name": "OBMetricCard.missing",
+      "design": "G3",
+      "paperNode": "5MPS-0",
+      "paperNodeDark": "5MSJ-0",
+      "usedIn": [],
+      "widget": "OBMetricCard",
+      "file": "g3/metrics.dart",
+      "variant": "value: null"
+    },
+    {
+      "name": "OBNightCard.full",
+      "design": "G3",
+      "paperNode": "5MEX-0",
+      "paperNodeDark": "5MJ4-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "widget": "OBNightCard",
+      "file": "g3/day.dart",
+      "variant": "OBNightState.full"
+    },
+    {
+      "name": "OBNightCard.gap",
+      "design": "G3",
+      "paperNode": "5MGQ-0",
+      "paperNodeDark": "5MKX-0",
+      "usedIn": [
+        "5QYJ-0"
+      ],
+      "widget": "OBNightCard",
+      "file": "g3/day.dart",
+      "variant": "OBNightState.gap"
+    },
+    {
+      "name": "OBNightCard.missing",
+      "design": "G3",
+      "paperNode": "5MIM-0",
+      "paperNodeDark": "5MMT-0",
+      "usedIn": [],
+      "widget": "OBNightCard",
+      "file": "g3/day.dart",
+      "variant": "OBNightState.missing"
+    },
+    {
+      "name": "OBPageHeader.compact",
+      "design": "G3",
+      "paperNode": "5KQ4-0",
+      "paperNodeDark": "5KS1-0",
+      "usedIn": [
+        "5OST-0"
+      ],
+      "widget": "OBPageHeader",
+      "file": "g3/chrome.dart",
+      "variant": "OBPageHeader.compact()"
+    },
+    {
+      "name": "OBPageHeader.detail",
+      "design": "G3",
+      "paperNode": "5KPN-0",
+      "paperNodeDark": "5KRK-0",
+      "usedIn": [
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBPageHeader",
+      "file": "g3/chrome.dart",
+      "variant": "OBPageHeader.detail()"
+    },
+    {
+      "name": "OBPageHeader.hub",
+      "design": "G3",
+      "paperNode": "5KP4-0",
+      "paperNodeDark": "5KR1-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QRH-0",
+        "5QUE-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBPageHeader",
+      "file": "g3/chrome.dart",
+      "variant": "OBPageHeader.hub()"
+    },
+    {
+      "name": "OBPanel",
+      "design": "G3",
+      "paperNode": "5LHG-0",
+      "paperNodeDark": "5LJK-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5RSK-0"
+      ],
+      "widget": "OBPanel",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBPanel.hero",
+      "design": "G3",
+      "paperNode": "5LHA-0",
+      "paperNodeDark": "5LJE-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QRH-0",
+        "5QUE-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "widget": "OBPanel",
+      "file": "g3/chrome.dart",
+      "variant": "hero: true"
+    },
+    {
+      "name": "OBPillButton",
+      "design": "G3",
+      "paperNode": "5MWK-0",
+      "paperNodeDark": "5MYT-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "widget": "OBPillButton",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBSecondaryMetric.goal",
+      "design": "G3",
+      "paperNode": "5LFM-0",
+      "paperNodeDark": "5LHQ-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBSecondaryMetric",
+      "file": "g3/metrics.dart",
+      "variant": "goal: given"
+    },
+    {
+      "name": "OBSecondaryMetric.missing",
+      "design": "G3",
+      "paperNode": "5LGQ-0",
+      "paperNodeDark": "5LIU-0",
+      "usedIn": [
+        "5QUE-0"
+      ],
+      "widget": "OBSecondaryMetric",
+      "file": "g3/metrics.dart",
+      "variant": "value: null"
+    },
+    {
+      "name": "OBSecondaryMetric.plain",
+      "design": "G3",
+      "paperNode": "5LG7-0",
+      "paperNodeDark": "5LIB-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBSecondaryMetric",
+      "file": "g3/metrics.dart",
+      "variant": "no goal"
+    },
+    {
+      "name": "OBSectionHeader",
+      "design": "G3",
+      "paperNode": "5MT3-0",
+      "paperNodeDark": "5MUL-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QYJ-0"
+      ],
+      "widget": "OBSectionHeader",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBSectionHeader.plain",
+      "design": "G3",
+      "paperNode": "5MTE-0",
+      "paperNodeDark": "5MUW-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0",
+        "5QMC-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5RSK-0",
+        "5S2V-0"
+      ],
+      "widget": "OBSectionHeader",
+      "file": "g3/chrome.dart",
+      "variant": "no action"
+    },
+    {
+      "name": "OBSegmented",
+      "design": "G3",
+      "paperNode": "5MWQ-0",
+      "paperNodeDark": "5MYZ-0",
+      "usedIn": [
+        "5S8B-0"
+      ],
+      "widget": "OBSegmented",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBSegmented.range",
+      "design": "G3",
+      "paperNode": "5MWZ-0",
+      "paperNodeDark": "5MZ8-0",
+      "usedIn": [
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0"
+      ],
+      "widget": "OBSegmented",
+      "file": "g3/chrome.dart",
+      "variant": "7/30/90 T (OBTrendChart)"
+    },
+    {
+      "name": "OBSegmented.week",
+      "design": "G3",
+      "paperNode": "5M4Q-0",
+      "paperNodeDark": "5M9R-0",
+      "usedIn": [
+        "5OST-0"
+      ],
+      "widget": "OBSegmented",
+      "file": "g3/chrome.dart",
+      "variant": "Erholung/Schlaf/Belastung"
+    },
+    {
+      "name": "OBSegmented.week.sleep",
+      "design": "G3",
+      "paperNode": "5M51-0",
+      "paperNodeDark": "5MA2-0",
+      "usedIn": [
+        "5Q4B-0"
+      ],
+      "widget": "OBSegmented",
+      "file": "g3/chrome.dart",
+      "variant": "disabled: {0}"
+    },
+    {
+      "name": "OBSheet",
+      "design": "G3",
+      "paperNode": "5N0V-0",
+      "paperNodeDark": "5N2L-0",
+      "usedIn": [
+        "5S8B-0"
+      ],
+      "widget": "OBSheet",
+      "file": "g3/chrome.dart"
+    },
+    {
+      "name": "OBStatRow",
+      "design": "G3",
+      "paperNode": "5O9I-0",
+      "paperNodeDark": "5OGI-0",
+      "usedIn": [
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0"
+      ],
+      "widget": "OBStatRow",
+      "file": "g3/metrics.dart"
+    },
+    {
+      "name": "OBStatusBar",
+      "design": "G3",
+      "paperNode": "5KOQ-0",
+      "paperNodeDark": "5KQN-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QRH-0",
+        "5QUE-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
+      "implementationStatus": "paper-only",
+      "notes": "Built by the app-shell slice (tab_bar.dart); not part of lib/openband/g3."
+    },
+    {
+      "name": "OBStepsCard.default",
+      "design": "G3",
+      "paperNode": "5O4E-0",
+      "paperNodeDark": "5OBE-0",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "widget": "OBStepsCard",
+      "file": "g3/day.dart",
+      "variant": "total given"
+    },
+    {
+      "name": "OBStepsCard.missing",
+      "design": "G3",
+      "paperNode": "5O6B-0",
+      "paperNodeDark": "5ODB-0",
+      "usedIn": [],
+      "widget": "OBStepsCard",
+      "file": "g3/day.dart",
+      "variant": "total: null"
+    },
+    {
+      "name": "OBSyncState.live",
+      "design": "G3",
+      "paperNode": "5L1A-0",
+      "paperNodeDark": "5L3O-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5Q4B-0",
+        "5QH9-0"
+      ],
+      "widget": "OBSyncState",
+      "file": "g3/chrome.dart",
+      "variant": "OBSyncKind.live"
+    },
+    {
+      "name": "OBSyncState.never",
+      "design": "G3",
+      "paperNode": "5L25-0",
+      "paperNodeDark": "5L4J-0",
+      "usedIn": [
+        "5QRH-0"
+      ],
+      "widget": "OBSyncState",
+      "file": "g3/chrome.dart",
+      "variant": "OBSyncKind.never"
+    },
+    {
+      "name": "OBSyncState.partial",
+      "design": "G3",
+      "paperNode": "5L1K-0",
+      "paperNodeDark": "5L3Y-0",
+      "usedIn": [
+        "5QYJ-0"
+      ],
+      "widget": "OBSyncState",
+      "file": "g3/chrome.dart",
+      "variant": "OBSyncKind.partial"
+    },
+    {
+      "name": "OBSyncState.past",
+      "design": "G3",
+      "paperNode": "5L2F-0",
+      "paperNodeDark": "5L4T-0",
+      "usedIn": [
+        "5QMC-0"
+      ],
+      "widget": "OBSyncState",
+      "file": "g3/chrome.dart",
+      "variant": "OBSyncKind.past"
+    },
+    {
+      "name": "OBSyncState.stale",
+      "design": "G3",
+      "paperNode": "5L1U-0",
+      "paperNodeDark": "5L48-0",
+      "usedIn": [
+        "5QUE-0"
+      ],
+      "widget": "OBSyncState",
+      "file": "g3/chrome.dart",
+      "variant": "OBSyncKind.stale"
+    },
+    {
+      "name": "OBTabBar.heute",
+      "design": "G3",
+      "paperNode": "5KSP-0",
+      "paperNodeDark": "5KWX-0",
+      "usedIn": [
+        "5OIV-0",
+        "5ONU-0",
+        "5OST-0",
+        "5Q4B-0",
+        "5QH9-0",
+        "5QMC-0",
+        "5QRH-0",
+        "5QUE-0",
+        "5QYJ-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5ROH-0",
+        "5RSK-0",
+        "5RXG-0",
+        "5S2V-0"
+      ],
+      "implementationStatus": "paper-only",
+      "notes": "Built by the app-shell slice (tab_bar.dart); not part of lib/openband/g3.",
+      "variant": "heute"
+    },
+    {
+      "name": "OBTabBar.journal",
+      "design": "G3",
+      "paperNode": "5KVS-0",
+      "paperNodeDark": "5L00-0",
+      "usedIn": [],
+      "implementationStatus": "paper-only",
+      "notes": "Built by the app-shell slice (tab_bar.dart); not part of lib/openband/g3.",
+      "variant": "journal"
+    },
+    {
+      "name": "OBTabBar.schlaf",
+      "design": "G3",
+      "paperNode": "5KTQ-0",
+      "paperNodeDark": "5KXY-0",
+      "usedIn": [],
+      "implementationStatus": "paper-only",
+      "notes": "Built by the app-shell slice (tab_bar.dart); not part of lib/openband/g3.",
+      "variant": "schlaf"
+    },
+    {
+      "name": "OBTabBar.training",
+      "design": "G3",
+      "paperNode": "5KUR-0",
+      "paperNodeDark": "5KYZ-0",
+      "usedIn": [],
+      "implementationStatus": "paper-only",
+      "notes": "Built by the app-shell slice (tab_bar.dart); not part of lib/openband/g3.",
+      "variant": "training"
+    },
+    {
+      "name": "OBTrendChart.d30",
+      "design": "G3",
+      "paperNode": "5NK3-0",
+      "paperNodeDark": "5NO7-0",
+      "usedIn": [
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0",
+        "5RXG-0"
+      ],
+      "widget": "OBTrendChart",
+      "file": "g3/charts.dart",
+      "variant": "OBTrendPeriod.d30"
+    },
+    {
+      "name": "OBTrendChart.d7",
+      "design": "G3",
+      "paperNode": "5NIY-0",
+      "paperNodeDark": "5NN2-0",
+      "usedIn": [
+        "5ROH-0"
+      ],
+      "widget": "OBTrendChart",
+      "file": "g3/charts.dart",
+      "variant": "OBTrendPeriod.d7"
+    },
+    {
+      "name": "OBTrendChart.d90",
+      "design": "G3",
+      "paperNode": "5NLT-0",
+      "paperNodeDark": "5NPX-0",
+      "usedIn": [
+        "5RSK-0",
+        "5S2V-0"
+      ],
+      "widget": "OBTrendChart",
+      "file": "g3/charts.dart",
+      "variant": "OBTrendPeriod.d90"
+    },
+    {
+      "name": "OBWeekBars.empty",
+      "design": "G3",
+      "paperNode": "5M8E-0",
+      "paperNodeDark": "5MDF-0",
+      "usedIn": [],
+      "widget": "OBWeekBars",
+      "file": "g3/day.dart",
+      "variant": "values null + emptyReason"
+    },
+    {
+      "name": "OBWeekBars.recovery",
+      "design": "G3",
+      "paperNode": "5M5C-0",
+      "paperNodeDark": "5MAD-0",
+      "usedIn": [
+        "5OST-0"
+      ],
+      "widget": "OBWeekBars",
+      "file": "g3/day.dart",
+      "variant": "band + labels above"
+    },
+    {
+      "name": "OBWeekBars.sleep",
+      "design": "G3",
+      "paperNode": "5M6S-0",
+      "paperNodeDark": "5MBT-0",
+      "usedIn": [
+        "5Q4B-0"
+      ],
+      "widget": "OBWeekBars",
+      "file": "g3/day.dart",
+      "variant": "goal + labelsBelow"
+    },
+    {
+      "name": "OBZoneRows",
+      "design": "G3",
+      "paperNode": "5N5Z-0",
+      "paperNodeDark": "5N8Z-0",
+      "usedIn": [],
+      "widget": "OBZoneRows",
+      "file": "g3/charts.dart"
     }
   ],
   "openBlocks": [],
