@@ -10,6 +10,7 @@
 // OpenBand5Lab/ui-review-real/<stamp>/ only and are never compared with Paper.
 import 'package:flutter/widgets.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:path/path.dart' as p;
 
 class G3Env {
   const G3Env._({
@@ -56,3 +57,22 @@ class G3Env {
 /// Builder contract for every area file in tool/g3_screens/: return the
 /// screen for a registered frame, or null to skip it (only under --real).
 typedef G3ScreenBuilder = Widget? Function(G3Env env);
+
+/// The --real output directory: G3_OUT, required, and strictly inside
+/// ~/Library/Application Support/OpenBand5Lab/ui-review-real/. Real renders
+/// show personal data; any other target (the repo, build/, a typo) throws
+/// before anything is rendered.
+String g3RealOut(Map<String, String> env) {
+  final home = env['HOME'];
+  final out = env['G3_OUT'];
+  if (home == null || home.isEmpty) throw StateError('--real: HOME is not set');
+  final root = p.join(home, 'Library', 'Application Support', 'OpenBand5Lab', 'ui-review-real');
+  if (out == null || out.isEmpty) {
+    throw StateError('--real: G3_OUT is required (a folder under $root)');
+  }
+  final dir = p.normalize(p.absolute(out));
+  if (!p.isWithin(root, dir)) {
+    throw StateError('--real: G3_OUT must be under $root, not $dir');
+  }
+  return dir;
+}
