@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
+import '../../ble/ble_state.dart' show BandCondition;
 
 import '../../health/health_import_state.dart' show storeName;
 import '../../l10n/app_localizations.dart';
@@ -19,8 +20,11 @@ import '../../openband/alp_tokens.dart';
 import '../../openband/g3/band_parts.dart';
 import '../../openband/g3/g3_theme.dart';
 import '../../openband/g3/screens/band.dart';
+import '../../openband/controller.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
+import '../../openband/screens.dart' show showBandStatus;
+import '../../data/day_label.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/scale.dart';
 import '../../openband/theme.dart';
@@ -299,6 +303,30 @@ class _ProfileHomeState extends State<ProfileHome> {
   /// re-entered.
   late Future<ProfileStats> _stats = _load();
   BandSnapshot? _band;
+  bool _dismissedNotificationWarning = false;
+
+  Future<void> _showBandStatus(BuildContext c) async {
+    final app = context.read<AppState>();
+    final repository = LocalOpenBandRepository(app);
+    var band = _band;
+    try {
+      band = await repository.readBand();
+    } catch (_) {
+      // Keep the previous real observation if a fresh read fails.
+    }
+    if (band == null || !c.mounted) return;
+    final controller = OpenBandController(
+      repository: repository,
+      initialDay: todayLabel(),
+      band: band,
+    );
+    try {
+      await controller.refresh();
+      if (c.mounted) await showBandStatus(c, controller, null);
+    } finally {
+      controller.dispose();
+    }
+  }
 
   Future<ProfileStats> _load() async {
     final app = context.read<AppState>();
@@ -358,6 +386,16 @@ class _ProfileHomeState extends State<ProfileHome> {
         G3BandScreen(
           band: _band,
           now: DateTime.now(),
+          clock: DateTime.now,
+          bandUpdates: c.read<AppState>(),
+          readBand: () =>
+              LocalOpenBandRepository(c.read<AppState>()).readBand(),
+          readIssue: () =>
+              c.read<AppState>().engine.bandStatus.condition ==
+                  BandCondition.bluetoothOff
+              ? OBBandIssue.bluetoothOff
+              : null,
+          onStatus: () => _showBandStatus(c),
           databaseSize: snap.data?.storageBytes == null
               ? null
               : formatBytes(snap.data!.storageBytes!),
@@ -370,6 +408,9 @@ class _ProfileHomeState extends State<ProfileHome> {
         c,
         NotificationSettings(releaseReduced: kOpenBandReleaseReduced),
       ),
+      dismissedNotificationWarning: _dismissedNotificationWarning,
+      onDismissNotificationWarning: () =>
+          setState(() => _dismissedNotificationWarning = true),
       onEdit: () => _open(c, const EditProfile()),
       onLanguage: () => _pickLanguage(c),
       showCoach: !kOpenBandReleaseReduced,
@@ -400,6 +441,9 @@ class ProfileHomeView extends StatelessWidget {
 
   /// Explicit so archive/gallery fixtures retain the full-product surface.
   final bool releaseReduced;
+  final bool dismissedNotificationWarning;
+  final bool synthetic;
+  final VoidCallback? onDismissNotificationWarning;
 
   const ProfileHomeView({
     super.key,
@@ -418,6 +462,9 @@ class ProfileHomeView extends StatelessWidget {
     this.languageLabel,
     this.showCoach = true,
     this.releaseReduced = false,
+    this.dismissedNotificationWarning = false,
+    this.synthetic = false,
+    this.onDismissNotificationWarning,
   });
 
   @override
@@ -614,14 +661,21 @@ class ProfileHomeView extends StatelessWidget {
     final b = band;
     final language =
         languageLabel ?? _languageLabel(c, c.watch<LocaleController>().code);
-    Widget section(String title, List<Widget> rows) => Padding(
+    Widget section(String title, List<Widget> rows, {Widget? tag}) => Padding(
       padding: const EdgeInsets.only(top: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(6, 0, 0, 9),
-            child: Text(title, style: g.caps(color: g.muted)),
+            padding: const EdgeInsets.fromLTRB(18, 0, 0, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title, style: g.caps(color: g.muted)),
+                ),
+                ?tag,
+              ],
+            ),
           ),
           OBSettingsGroup(children: rows),
         ],
@@ -637,13 +691,28 @@ class ProfileHomeView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Row(
                 children: [
-                  TextButton.icon(
-                    onPressed: () => Navigator.of(c).maybePop(),
-                    icon: const Icon(LucideIcons.chevronLeft),
-                    label: const Text('Heute'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: g.ink,
-                      minimumSize: const Size(44, 44),
+                  InkWell(
+                    onTap: () => Navigator.of(c).maybePop(),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
+                      decoration: g.raised(radius: 20),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          OBChevron(
+                            direction: AxisDirection.left,
+                            size: 20,
+                            color: g.ink,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Heute',
+                            style: g.t(15, 18, weight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Expanded(
@@ -664,31 +733,124 @@ class ProfileHomeView extends StatelessWidget {
                 children: [
                   OBSettingsGroup(
                     children: [
-                      OBSettingsRow(
+                      InkWell(
                         key: const ValueKey('profile-identity'),
-                        label: name.isEmpty ? 'Profil' : name,
-                        detail: facts.join(' · '),
                         onTap: onEdit,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: g.track,
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  name.isEmpty ? 'P' : name[0].toUpperCase(),
+                                  style: g.t(18, 22, weight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name.isEmpty ? 'Profil' : name,
+                                      style: g.t(
+                                        15,
+                                        20,
+                                        weight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      facts.join(' · '),
+                                      style: g.t(12, 17, color: g.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                LucideIcons.chevronRight,
+                                size: 14,
+                                color: g.gap,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  section('BAND', [_g3BandSummary(c, s, b)]),
-                  section('MITTEILUNGEN', [
-                    if (s?.notificationsAllowed == false)
+                  section(
+                    'BAND',
+                    [_g3BandSummary(c, s, b)],
+                    tag: Row(
+                      children: [
+                        if (s?.bandReadFailed != true &&
+                            b?.connection == BandConnection.connected)
+                          OBLed(on: true, size: 8)
+                        else
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: g.muted, width: 1.5),
+                            ),
+                          ),
+                        const SizedBox(width: 6),
+                        Text(
+                          s?.bandReadFailed == true
+                              ? 'Status unbekannt'
+                              : b?.connection == BandConnection.connected
+                              ? 'Verbunden'
+                              : 'Nicht verbunden',
+                          style: g.t(13, 18, weight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (s?.notificationsAllowed == false &&
+                      !dismissedNotificationWarning) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 22, 0, 9),
+                      child: Text(
+                        'MITTEILUNGEN',
+                        style: g.caps(color: g.muted),
+                      ),
+                    ),
+                    OBBandActionNotice(
+                      title: 'Mitteilungen nicht erlaubt',
+                      body:
+                          'Die Erinnerung zur Schlafenszeit braucht die Erlaubnis. In iOS ist sie für OpenBand 5 aus.',
+                      action: 'Erlauben',
+                      onAction: onNotifications ?? onSettings,
+                      helpLabel: 'Später',
+                      onHelp: onDismissNotificationWarning,
+                    ),
+                    const SizedBox(height: 12),
+                    OBSettingsGroup(
+                      children: [
+                        OBSettingsRow(
+                          label: 'Mitteilungen',
+                          detail: 'Alle aus, bis du erlaubst',
+                          onTap: onNotifications ?? onSettings,
+                        ),
+                      ],
+                    ),
+                  ] else
+                    section('MITTEILUNGEN', [
                       OBSettingsRow(
-                        label: 'Mitteilungen nicht erlaubt',
-                        detail:
-                            'Erinnerungen sind aus, bis du sie in iOS erlaubst.',
+                        label: 'Mitteilungen',
+                        detail: s?.notificationsAllowed == false
+                            ? 'Alle aus, bis du erlaubst'
+                            : 'Erinnerungen und Bandstatus',
                         onTap: onNotifications ?? onSettings,
                       ),
-                    OBSettingsRow(
-                      label: 'Mitteilungen',
-                      detail: s?.notificationsAllowed == false
-                          ? 'Alle aus, bis du erlaubst'
-                          : 'Erinnerungen und Bandstatus',
-                      onTap: onNotifications ?? onSettings,
-                    ),
-                  ]),
+                    ]),
                   section('DATEN', [
                     OBSettingsRow(
                       key: const ValueKey('profile-data'),
@@ -719,6 +881,15 @@ class ProfileHomeView extends StatelessWidget {
                       style: g.t(12, 17, color: g.muted),
                     ),
                   ),
+                  if (synthetic) ...[
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        'SYNTHETISCHE DATEN',
+                        style: g.caps(color: g.muted, size: 11),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -738,10 +909,15 @@ class ProfileHomeView extends StatelessWidget {
     final archive = s?.storageBytes == null
         ? '—'
         : formatBytes(s!.storageBytes!).replaceFirst('.', ',');
+    final battery = b?.batteryPercent == null
+        ? '—'
+        : b?.connection == BandConnection.connected && s?.bandReadFailed != true
+        ? '${b!.batteryPercent} %'
+        : '—';
     final facts = <(String, String)>[
       ('Daten bis', obTime(b?.latestStoredAt)),
-      ('Letzter Bandwert', obTime(b?.receivedAt)),
-      ('Datenbankdatei', archive),
+      ('Akku', battery),
+      ('Datenbank', archive),
     ];
     final large = bigText(c);
     Widget fact((String, String) item) => Column(
@@ -749,11 +925,43 @@ class ProfileHomeView extends StatelessWidget {
       children: large
           ? [
               Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
-              Text(item.$1, style: g.t(12, 17, color: g.muted)),
+              Text(
+                item.$1,
+                style: g.t(
+                  11,
+                  15,
+                  weight: FontWeight.w700,
+                  color: g.muted,
+                  tracking: .08,
+                ),
+              ),
+              if (item.$1 == 'Akku' &&
+                  battery == '—' &&
+                  b?.batteryPercent != null)
+                Text(
+                  'zuletzt ${b!.batteryPercent} %',
+                  style: g.t(11, 15, color: g.muted),
+                ),
             ]
           : [
-              Text(item.$1, style: g.t(12, 17, color: g.muted)),
+              Text(
+                item.$1,
+                style: g.t(
+                  11,
+                  15,
+                  weight: FontWeight.w700,
+                  color: g.muted,
+                  tracking: .08,
+                ),
+              ),
               Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
+              if (item.$1 == 'Akku' &&
+                  battery == '—' &&
+                  b?.batteryPercent != null)
+                Text(
+                  'zuletzt ${b!.batteryPercent} %',
+                  style: g.t(11, 15, color: g.muted),
+                ),
             ],
     );
     return Semantics(
@@ -764,48 +972,41 @@ class ProfileHomeView extends StatelessWidget {
         onTap: onBand ?? onDevices,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Band',
-                      style: g.t(15, 20, weight: FontWeight.w700),
-                    ),
-                  ),
-                  if (s?.bandReadFailed != true &&
-                      b?.connection == BandConnection.connected)
-                    OBLed(on: true, size: 7),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(status, style: g.t(13, 18, color: g.muted)),
-                  ),
-                  if (b?.batteryPercent != null) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      '${b!.batteryPercent} %',
-                      style: g.t(13, 18, weight: FontWeight.w700),
-                    ),
-                  ],
-                ],
+              Expanded(
+                child: large
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final item in facts) ...[
+                            fact(item),
+                            const SizedBox(height: 7),
+                          ],
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          for (var i = 0; i < facts.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 10),
+                            Expanded(
+                              child: Container(
+                                padding: EdgeInsets.only(left: i > 0 ? 14 : 0),
+                                decoration: i > 0
+                                    ? BoxDecoration(
+                                        border: Border(
+                                          left: BorderSide(color: g.hairline),
+                                        ),
+                                      )
+                                    : null,
+                                child: fact(facts[i]),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
               ),
-              const SizedBox(height: 12),
-              if (large)
-                for (final item in facts) ...[
-                  fact(item),
-                  const SizedBox(height: 7),
-                ]
-              else
-                Row(
-                  children: [
-                    for (var i = 0; i < facts.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      Expanded(child: fact(facts[i])),
-                    ],
-                  ],
-                ),
+              Icon(LucideIcons.chevronRight, size: 14, color: g.gap),
             ],
           ),
         ),

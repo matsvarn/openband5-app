@@ -8,6 +8,8 @@ import 'charts.dart';
 import 'controller.dart';
 import 'day_picker.dart';
 import 'g3/band_parts.dart';
+import 'g3/chrome.dart' as g3chrome;
+import 'g3/metrics.dart' show OBChip, OBChipKind;
 import 'g3/g3_theme.dart';
 import 'domain.dart';
 import 'daily_activity.dart';
@@ -1956,6 +1958,18 @@ class _BatteryGlyph extends CustomPainter {
       old.percent != percent || old.p.dark != p.dark;
 }
 
+String _relativeTime(DateTime at, DateTime now) {
+  if (at.isAfter(now)) return 'Zeit unbekannt';
+  final age = now.difference(at);
+  if (age.inHours > 0) return 'vor ${age.inHours} h ${age.inMinutes % 60} Min.';
+  return 'vor ${age.inMinutes} Min.';
+}
+
+String bandStatusValuesHeading(String selectedDay, DateTime now) =>
+    selectedDay == todayLabel(now)
+    ? 'WERTE FÜR HEUTE'
+    : 'WERTE FÜR ${DateFormat('dd.MM.').format(DateTime.parse(selectedDay))}';
+
 Future<void> showBandStatus(
   BuildContext context,
   OpenBandController controller,
@@ -1989,9 +2003,9 @@ Future<void> showBandStatus(
           children: [
             Center(
               child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 12),
+                width: 36,
+                height: 5,
+                margin: const EdgeInsets.only(top: 8, bottom: 18),
                 decoration: BoxDecoration(
                   color: g.muted.withValues(alpha: .5),
                   borderRadius: BorderRadius.circular(4),
@@ -2007,33 +2021,50 @@ Future<void> showBandStatus(
                       Expanded(
                         child: Text(
                           'Dein Datenstand',
-                          style: g.t(25, 30, weight: FontWeight.w700),
+                          style: g.t(
+                            20,
+                            24,
+                            weight: FontWeight.w700,
+                            tracking: -.02,
+                          ),
                         ),
                       ),
                       IconButton(
                         tooltip: 'Schließen',
                         onPressed: () => Navigator.pop(c),
-                        icon: const Icon(LucideIcons.x),
+                        icon: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: g.chip,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(LucideIcons.x, size: 16, color: g.ink),
+                        ),
                       ),
                     ],
                   ),
                   Text(
                     'Verbindung, Aktualität, Abdeckung und Auswertung sind vier getrennte Dinge.',
-                    style: g.t(13, 19, color: g.muted),
+                    style: g.t(14, 19, color: g.ink2),
                   ),
                   const SizedBox(height: 14),
                   OBFrontierCard(
                     storedAt: b.latestStoredAt,
                     now: controller.now(),
+                    rightLabel: b.latestStoredAt == null
+                        ? null
+                        : 'letzter Wert ${_relativeTime(b.latestStoredAt!, controller.now())}',
                   ),
                   const SizedBox(height: 14),
                   OBSettingsGroup(
+                    inset: true,
                     children: [
                       OBSettingsRow(
                         label: 'Verbindung',
                         detail: b.batteryPercent == null
                             ? 'Akku —'
-                            : '${b.batteryPercent} %${b.batteryObservedAt == null ? '' : ' · gemessen ${obTime(b.batteryObservedAt)}'}',
+                            : 'Akku ${b.batteryPercent} %${b.batteryObservedAt == null ? '' : ' · gemessen ${obTime(b.batteryObservedAt)}'}',
                         value: switch (b.connection) {
                           BandConnection.connected => 'Verbunden',
                           BandConnection.connecting => 'Verbindet',
@@ -2044,25 +2075,17 @@ Future<void> showBandStatus(
                         label: 'Aktualität',
                         detail: b.receivedAt == null
                             ? 'Noch kein Empfang'
-                            : 'Zuletzt empfangen ${obTime(b.receivedAt)}',
+                            : '${_relativeTime(b.receivedAt!, controller.now())} übertragen',
                         value: b.latestStoredAt == null
                             ? '—'
                             : 'bis ${obTime(b.latestStoredAt)}',
                       ),
                       OBSettingsRow(
-                        label: 'Gespeicherte Banddaten bis',
-                        value: b.latestStoredAt == null
-                            ? '—'
-                            : '${DateFormat('dd.MM').format(b.latestStoredAt!)} · ${obTime(b.latestStoredAt)}',
-                      ),
-                      OBSettingsRow(
-                        label: 'Auf dem iPhone gespeichert',
-                        value: obTime(b.receivedAt),
-                      ),
-                      OBSettingsRow(
                         label: 'Abdeckung',
                         detail:
-                            'Nacht am ${DateFormat('dd.MM').format(DateTime.parse(controller.selectedDay))}',
+                            day?.sleep.onset == null || day?.sleep.wake == null
+                            ? 'Schlafzeit unbekannt'
+                            : 'Schlaf ${obTime(day!.sleep.onset)}–${obTime(day.sleep.wake)}',
                         value: day == null
                             ? '—'
                             : day.sleep.duration.value != null &&
@@ -2072,6 +2095,9 @@ Future<void> showBandStatus(
                       ),
                       OBSettingsRow(
                         label: 'Auswertung',
+                        detail: day?.calculatedAt == null
+                            ? null
+                            : obTime(day!.calculatedAt),
                         value: controller.calculating
                             ? 'Wird berechnet'
                             : day?.calculatedAt == null
@@ -2087,17 +2113,22 @@ Future<void> showBandStatus(
                   ),
                   if (ready.isNotEmpty) ...[
                     const SizedBox(height: 18),
-                    Text('WERTE FÜR HEUTE', style: g.caps(color: g.muted)),
+                    Text(
+                      bandStatusValuesHeading(
+                        controller.selectedDay,
+                        controller.now(),
+                      ),
+                      style: g.caps(color: g.muted),
+                    ),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
                       children: [
                         for (final item in ready)
-                          Chip(
-                            label: Text(
-                              '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
-                            ),
+                          OBChip(
+                            OBChipKind.tag,
+                            '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
                           ),
                       ],
                     ),
@@ -2110,8 +2141,9 @@ Future<void> showBandStatus(
               child: Column(
                 children: [
                   if (onSync != null) ...[
-                    OBAction(
+                    g3chrome.OBActionPrimary(
                       'Übertragung fortsetzen',
+                      expand: true,
                       onPressed: () {
                         Navigator.pop(c);
                         onSync();
@@ -2119,11 +2151,25 @@ Future<void> showBandStatus(
                     ),
                     const SizedBox(height: 10),
                   ],
-                  OBAction(
-                    'Schließen',
-                    secondary: onSync != null,
-                    onPressed: () => Navigator.pop(c),
-                  ),
+                  if (onSync == null)
+                    g3chrome.OBActionPrimary(
+                      'Schließen',
+                      expand: true,
+                      onPressed: () => Navigator.pop(c),
+                    )
+                  else
+                    g3chrome.OBActionSecondary(
+                      'Schließen',
+                      expand: true,
+                      onPressed: () => Navigator.pop(c),
+                    ),
+                  if (day?.synthetic == true) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      style: g.caps(color: g.muted, size: 11),
+                    ),
+                  ],
                 ],
               ),
             ),

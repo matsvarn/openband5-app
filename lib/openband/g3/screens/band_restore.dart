@@ -3,12 +3,14 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../ui2/onboarding/welcome.dart' show ImportOutcome;
 import '../band_parts.dart';
+import '../chrome.dart' show OBActionPrimary, OBActionSecondary;
 import '../g3_theme.dart';
 
 Future<void> showG3RestoreReceipt(
   BuildContext context,
-  ImportOutcome outcome,
-) => showModalBottomSheet<void>(
+  ImportOutcome outcome, {
+  bool synthetic = false,
+}) => showModalBottomSheet<void>(
   context: context,
   useSafeArea: true,
   isScrollControlled: true,
@@ -17,17 +19,22 @@ Future<void> showG3RestoreReceipt(
   shape: const RoundedRectangleBorder(
     borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
   ),
-  builder: (c) =>
-      G3RestoreReceiptSheet(outcome: outcome, onClose: () => Navigator.pop(c)),
+  builder: (c) => G3RestoreReceiptSheet(
+    outcome: outcome,
+    synthetic: synthetic,
+    onClose: () => Navigator.pop(c),
+  ),
 );
 
 class G3RestoreReceiptSheet extends StatelessWidget {
   final ImportOutcome outcome;
   final VoidCallback onClose;
+  final bool synthetic;
   const G3RestoreReceiptSheet({
     super.key,
     required this.outcome,
     required this.onClose,
+    this.synthetic = false,
   });
 
   @override
@@ -36,13 +43,38 @@ class G3RestoreReceiptSheet extends StatelessWidget {
     final o = outcome;
     final skipped = o.unchangedRows + o.restoreConflicts;
     final rejected = o.unreadableRows;
-    Widget count(String label, int value) => Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: g.caps(color: g.muted)),
-          Text('$value', style: g.t(27, 32, weight: FontWeight.w700)),
-        ],
+    final withheld = o.restoreConflicts > 0 || rejected > 0;
+    final title = o.restoredRows > 0
+        ? withheld
+              ? 'Teilweise übernommen'
+              : 'Übernommen'
+        : withheld
+        ? 'Nicht übernommen'
+        : 'Unverändert';
+    Widget count(String label, int value, {bool divided = false}) => Expanded(
+      child: Container(
+        padding: EdgeInsets.only(left: divided ? 14 : 0),
+        decoration: divided
+            ? BoxDecoration(
+                border: Border(left: BorderSide(color: g.hairline)),
+              )
+            : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: g.t(
+                11,
+                15,
+                weight: FontWeight.w700,
+                color: g.muted,
+                tracking: .08,
+              ),
+            ),
+            Text('$value', style: g.t(22, 27, weight: FontWeight.w700)),
+          ],
+        ),
       ),
     );
     return SafeArea(
@@ -53,81 +85,137 @@ class G3RestoreReceiptSheet extends StatelessWidget {
           children: [
             Center(
               child: Container(
-                width: 40,
-                height: 4,
+                width: 36,
+                height: 5,
                 decoration: BoxDecoration(
                   color: g.muted.withValues(alpha: .5),
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Teilweise übernommen',
-                    style: g.t(24, 29, weight: FontWeight.w700),
+                    title,
+                    key: const ValueKey('restore-title'),
+                    style: g.t(20, 24, weight: FontWeight.w700, tracking: -.02),
                   ),
                 ),
                 IconButton(
                   tooltip: 'Schließen',
                   onPressed: onClose,
-                  icon: const Icon(LucideIcons.x),
+                  icon: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: g.chip,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(LucideIcons.x, size: 16, color: g.ink),
+                  ),
                 ),
               ],
             ),
             Text(
-              'Deine vorhandenen Daten wurden nicht überschrieben.',
-              style: g.t(13, 19, color: g.muted),
+              '${o.source}. Deine Daten auf dem iPhone wurden nicht überschrieben.',
+              style: g.t(14, 19, color: g.ink2),
             ),
             const SizedBox(height: 18),
             Row(
               children: [
-                count('ÜBERNOMMEN', o.restoredRows),
-                count('ÜBERSPRUNGEN', skipped),
-                count('ABGELEHNT', rejected),
+                count('Übernommen', o.restoredRows),
+                count('Übersprungen', skipped, divided: true),
+                count('Abgelehnt', rejected, divided: true),
               ],
             ),
             const SizedBox(height: 18),
             OBSettingsGroup(
+              inset: true,
               children: [
                 if (o.unchangedRows > 0)
                   OBSettingsRow(
                     label: 'Unverändert',
-                    detail: 'Schon gleich auf dem iPhone',
+                    detail: 'schon gleich auf dem iPhone',
                     value: '${o.unchangedRows}',
                   ),
                 if (o.restoreConflicts > 0)
                   OBSettingsRow(
                     label: 'Konflikt',
-                    detail: 'Lokaler Stand behalten',
+                    detail: 'lokal behalten',
                     value: '${o.restoreConflicts}',
                   ),
                 if (o.unreadableRows > 0)
                   OBSettingsRow(
                     label: 'Nicht lesbar',
-                    detail: 'Abgelehnt, nichts geschätzt',
+                    detail: 'abgelehnt, nichts geschätzt',
                     value: '${o.unreadableRows}',
                   ),
                 if (o.pendingRecalculations > 0)
                   OBSettingsRow(
                     label: 'Neuberechnung',
-                    detail: 'Noch ausstehend',
+                    detail: 'ausstehend',
                     value: '${o.pendingRecalculations}',
                   ),
               ],
             ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: onClose,
-              style: FilledButton.styleFrom(
-                backgroundColor: g.ink,
-                foregroundColor: g.onInk,
-                minimumSize: const Size(44, 52),
-              ),
-              child: const Text('Fertig'),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OBActionSecondary(
+                    'Details',
+                    expand: true,
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      builder: (c) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Wiederherstellung',
+                                style: g.t(20, 24, weight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${o.restoredRows} übernommen · $skipped übersprungen · $rejected abgelehnt',
+                                style: g.t(14, 20),
+                              ),
+                              const SizedBox(height: 16),
+                              TextButton(
+                                onPressed: () => Navigator.pop(c),
+                                child: const Text('Schließen'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OBActionPrimary(
+                    'Fertig',
+                    expand: true,
+                    onPressed: onClose,
+                  ),
+                ),
+              ],
             ),
+            if (synthetic) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  'SYNTHETISCHE DATEN',
+                  style: g.caps(color: g.muted, size: 11),
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
+import 'g3/g3_theme.dart';
 import 'calendar.dart';
 import 'controller.dart';
 import 'domain.dart';
@@ -16,7 +17,7 @@ Future<void> chooseOpenBandDay(
     isScrollControlled: true,
     useSafeArea: true,
     barrierColor: Colors.black.withValues(alpha: .38),
-    backgroundColor: OB.of(context).card,
+    backgroundColor: G3.of(context).canvas,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -82,6 +83,7 @@ class _DayPickerState extends State<_DayPicker> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    final g = G3.of(context);
     final now = widget.controller.now();
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = dayLabelOf(selected);
@@ -94,8 +96,8 @@ class _DayPickerState extends State<_DayPicker> {
           children: [
             Center(
               child: Container(
-                width: 40,
-                height: 4,
+                width: 36,
+                height: 5,
                 margin: const EdgeInsets.only(top: 10, bottom: 16),
                 decoration: BoxDecoration(
                   color: p.muted.withValues(alpha: .5),
@@ -110,13 +112,26 @@ class _DayPickerState extends State<_DayPicker> {
                   Expanded(
                     child: Text(
                       'Datum wählen',
-                      style: p.text(24, weight: FontWeight.w700, display: true),
+                      style: g.t(
+                        20,
+                        24,
+                        weight: FontWeight.w700,
+                        tracking: -.02,
+                      ),
                     ),
                   ),
                   IconButton(
                     tooltip: 'Schließen',
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(LucideIcons.x),
+                    icon: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: g.chip,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(LucideIcons.x, size: 16, color: g.ink),
+                    ),
                   ),
                 ],
               ),
@@ -271,14 +286,6 @@ class _DayPickerState extends State<_DayPicker> {
                       );
                     },
                   ),
-                  if (widget.controller.day?.synthetic == true) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Synthetische Daten',
-                      textAlign: TextAlign.center,
-                      style: p.text(12, color: p.muted),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -289,23 +296,35 @@ class _DayPickerState extends State<_DayPicker> {
                 16,
                 MediaQuery.paddingOf(context).bottom,
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(
-                    child: OBAction(
-                      'Zu heute',
-                      secondary: true,
-                      onPressed: () =>
-                          Navigator.pop(context, dayLabelOf(today)),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OBAction(
+                          'Zu heute',
+                          secondary: true,
+                          onPressed: () =>
+                              Navigator.pop(context, dayLabelOf(today)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OBAction(
+                          '${obDate(selectedDay)} ansehen',
+                          onPressed: () => Navigator.pop(context, selectedDay),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OBAction(
-                      '${obDate(selectedDay)} ansehen',
-                      onPressed: () => Navigator.pop(context, selectedDay),
+                  if (widget.controller.day?.synthetic == true) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      textAlign: TextAlign.center,
+                      style: g.caps(color: g.muted, size: 11),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

@@ -24,10 +24,13 @@ import 'package:share_plus/share_plus.dart';
 import '../../data/auto_backup.dart';
 import '../../data/csv_export.dart';
 import '../../data/db.dart';
+import '../../data/day_label.dart';
 import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/band_parts.dart' show OBBandActionNotice, OBToggle;
+import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/screens/band_restore.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
@@ -64,6 +67,7 @@ class _DataScreenState extends State<DataScreen> {
   /// Whether [_note] is a failure. Every outcome used to render as "Done" with
   /// a green check — a thrown FileSystemException from the export included.
   bool _noteFailed = false;
+  bool _backupAction = false;
   ImportOutcome? _outcome;
 
   void _say(String s, {bool failed = false}) {
@@ -79,13 +83,14 @@ class _DataScreenState extends State<DataScreen> {
   ///
   /// Every action on this screen is slow, destructive-adjacent or both, and a
   /// second tap while one is running would race the first over the same files.
-  Future<void> _run(Future<_Note> Function() job) async {
+  Future<void> _run(Future<_Note> Function() job, {bool backup = false}) async {
     if (_busy) return;
     final failedMessage = AppLocalizations.of(context)?.dataFailed;
     setState(() {
       _busy = true;
       _note = null;
       _outcome = null;
+      _backupAction = backup;
     });
     try {
       final (text, failed) = await job();
@@ -287,6 +292,7 @@ class _DataScreenState extends State<DataScreen> {
         busy: _busy,
         note: _note,
         noteFailed: _noteFailed,
+        backupFailed: _backupAction && _noteFailed,
         outcome: o,
         rebuilt: rebuilt,
         importRollupError: app.importRollupError,
@@ -303,7 +309,9 @@ class _DataScreenState extends State<DataScreen> {
                   enabled ? BackupCadence.daily : BackupCadence.off,
                 ),
               ),
-        onBackupNow: _busy ? null : () => _run(() => _backupNow(app)),
+        onBackupNow: _busy
+            ? null
+            : () => _run(() => _backupNow(app), backup: true),
         onImport: _busy ? null : () => _run(() => _import(app)),
         onReanalyze: _busy || app.reanalyzing
             ? null
@@ -528,7 +536,9 @@ class _DataScreenState extends State<DataScreen> {
 class DataScreenView extends StatelessWidget {
   final BackupCadence cadence;
   final DateTime? lastBackupAt;
-  final bool busy, noteFailed, reanalyzing;
+  final DateTime? now;
+  final bool busy, noteFailed, backupFailed, reanalyzing;
+  final bool synthetic;
   final String? note, importRollupError, reanalyzeProgress;
   final ImportOutcome? outcome;
   final Widget? rebuilt;
@@ -545,9 +555,12 @@ class DataScreenView extends StatelessWidget {
     super.key,
     this.cadence = BackupCadence.off,
     this.lastBackupAt,
+    this.now,
     this.busy = false,
     this.noteFailed = false,
+    this.backupFailed = false,
     this.reanalyzing = false,
+    this.synthetic = false,
     this.note,
     this.importRollupError,
     this.reanalyzeProgress,
@@ -569,39 +582,51 @@ class DataScreenView extends StatelessWidget {
     final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final de = Localizations.localeOf(c).languageCode == 'de';
+    final backupDay = lastBackupAt == null
+        ? null
+        : _backupDay(lastBackupAt!, now ?? DateTime.now(), de);
     return Scaffold(
       key: const ValueKey('data-screen'),
       backgroundColor: g.page,
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: () => Navigator.of(c).maybePop(),
-                    icon: const Icon(LucideIcons.chevronLeft),
-                    label: Text(de ? 'Profil' : 'Profile'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: g.ink,
-                      minimumSize: const Size(44, 44),
-                    ),
-                  ),
-                  Expanded(
+            chrome.OBPageHeader.detail(
+              title: de ? 'DATEN & SICHERUNG' : 'DATA & BACKUP',
+              subtitle: 'OpenBand 5',
+              backLabel: de ? 'Profil' : 'Profile',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showModalBottomSheet<void>(
+                context: c,
+                builder: (sheet) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          de ? 'DATEN & SICHERUNG' : 'DATA & BACKUP',
-                          style: g.caps(),
+                          de ? 'Daten & Sicherung' : 'Data & backup',
+                          style: g.t(20, 24, weight: FontWeight.w700),
                         ),
-                        Text('OpenBand 5', style: g.t(13, 18, color: g.muted)),
+                        const SizedBox(height: 10),
+                        Text(
+                          de
+                              ? 'Sicherungen bleiben auf diesem iPhone. Erst ein Export gibt eine Kopie weiter.'
+                              : 'Backups stay on this iPhone. Export a copy when you want to move it.',
+                          style: g.t(14, 20),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () => Navigator.pop(sheet),
+                          child: Text(de ? 'Schließen' : 'Close'),
+                        ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 70),
-                ],
+                ),
               ),
+              trailingLabel: de ? 'Informationen' : 'Information',
             ),
             Expanded(
               child: ListView(
@@ -611,7 +636,7 @@ class DataScreenView extends StatelessWidget {
                     rebuilt!,
                     const SizedBox(height: 12),
                   ],
-                  if (note != null && note!.isNotEmpty) ...[
+                  if (note != null && note!.isNotEmpty && !backupFailed) ...[
                     StatusCard(
                       noteFailed
                           ? (l?.dataThatDidNotWork ??
@@ -642,37 +667,104 @@ class DataScreenView extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '$kBackupsKept lokale Kopien',
+                              de
+                                  ? '$kBackupsKept lokale Kopien'
+                                  : '$kBackupsKept local copies',
                               style: g.t(12, 17, color: g.muted),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Text(
-                          lastBackupAt == null
-                              ? '—'
-                              : _stamp(lastBackupAt!).split(' ').last,
-                          key: const ValueKey('data-last-backup'),
-                          style: g.t(64, 70, weight: FontWeight.w700),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                lastBackupAt == null
+                                    ? '—'
+                                    : _backupTime(lastBackupAt!),
+                                key: const ValueKey('data-last-backup'),
+                                style: g.t(
+                                  92,
+                                  84,
+                                  weight: FontWeight.w700,
+                                  tracking: -.045,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    backupDay ?? (de ? '—' : '—'),
+                                    style: g.t(14, 19, weight: FontWeight.w700),
+                                  ),
+                                  Text(
+                                    lastBackupAt == null
+                                        ? (de
+                                              ? 'Noch keine Sicherung'
+                                              : 'No backup yet')
+                                        : (de ? 'automatisch' : 'automatic'),
+                                    style: g.t(13, 18, color: g.ink2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          lastBackupAt == null
-                              ? 'Noch keine Sicherung'
-                              : 'Zuletzt erfolgreich gespeichert',
-                          style: g.t(13, 18, color: g.muted),
-                        ),
-                        const SizedBox(height: 18),
-                        OBAction(
-                          de
-                              ? 'Sicherung jetzt erstellen'
-                              : 'Create backup now',
-                          ink: true,
-                          onPressed: onBackupNow,
-                        ),
+                        if (!backupFailed) ...[
+                          const SizedBox(height: 16),
+                          KeyedSubtree(
+                            key: const ValueKey('data-backup-now'),
+                            child: OBAction(
+                              de
+                                  ? 'Sicherung jetzt erstellen'
+                                  : 'Create backup now',
+                              ink: true,
+                              onPressed: onBackupNow,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  _sectionLabel(p, de ? 'Sicherung' : 'Backup'),
+                  if (backupFailed && note != null && note!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    OBBandActionNotice(
+                      title: de ? 'Sicherung fehlgeschlagen' : 'Backup failed',
+                      body: lastBackupAt == null
+                          ? '$note ${de ? 'Noch keine erfolgreiche Sicherung vorhanden.' : 'No successful backup exists yet.'}'
+                          : '$note ${de ? 'Die Sicherung von' : 'The backup from'} $backupDay ${_backupTime(lastBackupAt!)} ${de ? 'bleibt erhalten.' : 'remains available.'}',
+                      action: de ? 'Erneut versuchen' : 'Try again',
+                      actionIcon: LucideIcons.refreshCw,
+                      onAction: onBackupNow,
+                      helpLabel: de ? 'Details' : 'Details',
+                      onHelp: () => showModalBottomSheet<void>(
+                        context: c,
+                        builder: (sheet) => SafeArea(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(note!, style: g.t(15, 21)),
+                                const SizedBox(height: 16),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(sheet),
+                                  child: Text(de ? 'Schließen' : 'Close'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  _sectionLabel(c, de ? 'Sicherung' : 'Backup'),
                   OBCard(
                     child: Column(
                       children: [
@@ -709,7 +801,10 @@ class DataScreenView extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                Switch.adaptive(
+                                OBToggle(
+                                  label: de
+                                      ? 'Automatisch sichern'
+                                      : 'Automatic backup',
                                   value: cadence != BackupCadence.off,
                                   onChanged:
                                       onAutomatic ??
@@ -721,19 +816,10 @@ class DataScreenView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        Divider(color: p.line, height: 1),
-                        _paperRow(
-                          p,
-                          de
-                              ? 'Sicherung jetzt erstellen'
-                              : 'Create backup now',
-                          key: const ValueKey('data-backup-now'),
-                          onTap: onBackupNow,
-                        ),
                       ],
                     ),
                   ),
-                  _sectionLabel(p, 'Export'),
+                  _sectionLabel(c, 'Export'),
                   OBCard(
                     child: Column(
                       children: [
@@ -749,7 +835,7 @@ class DataScreenView extends StatelessWidget {
                         _paperRow(
                           p,
                           de ? 'Verschlüsselt exportieren' : 'Export encrypted',
-                          sub: de ? 'Mit Passwort' : 'With password',
+                          sub: de ? 'Mit Passphrase' : 'With passphrase',
                           key: const ValueKey('data-export-encrypted'),
                           onTap: onExportEncrypted,
                         ),
@@ -766,7 +852,7 @@ class DataScreenView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _sectionLabel(p, de ? 'Wiederherstellen' : 'Restore'),
+                  _sectionLabel(c, de ? 'Wiederherstellen' : 'Restore'),
                   OBCard(
                     child: Column(
                       children: [
@@ -817,10 +903,21 @@ class DataScreenView extends StatelessWidget {
                   ],
                   const SizedBox(height: 28),
                   Text(
-                    'Nichts verlässt das iPhone ohne deinen Export.',
+                    de
+                        ? 'Nichts verlässt das iPhone ohne deinen Export.'
+                        : 'Nothing leaves the iPhone without your export.',
                     textAlign: TextAlign.center,
                     style: g.t(12, 17, color: g.muted),
                   ),
+                  if (synthetic) ...[
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        'SYNTHETISCHE DATEN',
+                        style: g.caps(color: g.muted, size: 11),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -830,9 +927,12 @@ class DataScreenView extends StatelessWidget {
     );
   }
 
-  Widget _sectionLabel(OB p, String label) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 18, 0, 8),
-    child: Text(label.toUpperCase(), style: p.label(size: 11)),
+  Widget _sectionLabel(BuildContext c, String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(18, 20, 0, 8),
+    child: Text(
+      label.toUpperCase(),
+      style: G3.of(c).caps(color: G3.of(c).muted),
+    ),
   );
 
   Widget _paperRow(
@@ -889,4 +989,16 @@ String _stamp(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
   return '${t.year}-${two(t.month)}-${two(t.day)} '
       '${two(t.hour)}:${two(t.minute)}';
+}
+
+String _backupTime(DateTime t) =>
+    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+String _backupDay(DateTime t, DateTime now, bool de) {
+  if (dayLabelOf(t) == todayLabel(now)) return de ? 'heute' : 'today';
+  final yesterday = DateTime(now.year, now.month, now.day - 1);
+  if (dayLabelOf(t) == dayLabelOf(yesterday)) {
+    return de ? 'gestern' : 'yesterday';
+  }
+  return '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')}.';
 }
