@@ -38,6 +38,9 @@ import 'package:openstrap_edge/openband/g3/chrome.dart' as g3chrome;
 import 'package:openstrap_edge/openband/g3/journal_parts.dart';
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/glucose.dart';
 import 'package:openstrap_edge/openband/health.dart';
@@ -49,7 +52,6 @@ import 'package:openstrap_edge/openband/meal_entry.dart';
 import 'package:openstrap_edge/openband/nutrition.dart';
 import 'package:openstrap_edge/openband/nutrition_browser.dart';
 import 'package:openstrap_edge/openband/screens.dart';
-import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/settings_controls.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/sleep_goal.dart';
@@ -20562,13 +20564,17 @@ void main() {
           await tester.pumpAndSettle();
         }
 
-        Future<void> revealG3(Finder target, {double delta = 240}) async {
+        Future<void> revealG3(
+          Finder target, {
+          double delta = 240,
+          Finder? scrollable,
+        }) async {
           await tester.scrollUntilVisible(
-            target, delta, scrollable: verticalScrollable().last,
+            target,
+            delta,
+            scrollable: scrollable ?? verticalScrollable().hitTestable().last,
           );
-          await Scrollable.ensureVisible(
-            tester.element(target), alignment: .2,
-          );
+          await Scrollable.ensureVisible(tester.element(target), alignment: .2);
           await tester.pumpAndSettle();
         }
 
@@ -20594,13 +20600,17 @@ void main() {
           await capture('g3-verlauf-hrv-$suffix');
           await backFromG3();
 
-          tester.state<ScrollableState>(verticalScrollable().last)
-              .position.jumpTo(0);
+          tester
+              .state<ScrollableState>(verticalScrollable().hitTestable().last)
+              .position
+              .jumpTo(0);
           await tester.pumpAndSettle();
-          await tester.tap(find.descendant(
-            of: find.byType(g3chrome.OBPageHeader).first,
-            matching: find.text('Heute'),
-          ));
+          await tester.tap(
+            find.descendant(
+              of: find.byType(g3chrome.OBPageHeader).first,
+              matching: find.text('Heute'),
+            ),
+          );
           await tester.pumpAndSettle();
           await capture('g3-date-picker-$suffix');
           await backFromG3();
@@ -20635,20 +20645,80 @@ void main() {
 
           await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
           await tester.pumpAndSettle();
+          expect(find.byType(G3TrainingScreen), findsOneWidget);
           await capture('g3-training-$suffix');
-          await revealG3(find.text('Zuletzt'));
-          await tester.tap(find.text('Laufen').last);
+          final trainingScroll = find
+              .descendant(
+                of: find.byType(G3TrainingScreen),
+                matching: verticalScrollable(),
+              )
+              .hitTestable()
+              .last;
+          await revealG3(find.text('Stimmt'), scrollable: trainingScroll);
+          await tester.tap(find.text('Stimmt'));
           await tester.pumpAndSettle();
-          expect(find.byType(OpenBandSession), findsOneWidget);
+          await tester.tap(
+            find
+                .descendant(
+                  of: find.byType(G3TrainingScreen),
+                  matching: find.text('Lauf'),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(G3ActivityScreen), findsOneWidget);
           await capture('g3-training-result-$suffix');
+          await revealG3(
+            find.text('ZEIT IN ZONEN'),
+            scrollable: find
+                .descendant(
+                  of: find.byType(G3ActivityScreen),
+                  matching: verticalScrollable(),
+                )
+                .hitTestable()
+                .last,
+          );
+          await capture('g3-training-result-zones-$suffix');
           await backFromG3();
-          tester.state<ScrollableState>(verticalScrollable().last)
-              .position.jumpTo(0);
+          tester.state<ScrollableState>(trainingScroll).position.jumpTo(0);
           await tester.pumpAndSettle();
-          await tester.tap(find.bySemanticsLabel('Laufen starten'));
+          await tester.tap(find.text('Nachtragen'));
           await tester.pumpAndSettle();
+          expect(find.byType(G3ManualFlow), findsOneWidget);
+          await capture('g3-training-manual-$suffix');
+          await backFromG3();
+
+          await tester.tap(find.text('Training starten'));
+          await tester.pumpAndSettle();
+          expect(find.byType(BottomSheet), findsOneWidget);
+          await capture('g3-training-sport-picker-$suffix');
+          await tester.tap(
+            find.ancestor(
+              of: find.descendant(
+                of: find.byType(BottomSheet),
+                matching: find.text('Lauf'),
+              ),
+              matching: find.byType(ActionChip),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(G3LiveRun), findsOneWidget);
           await capture('g3-training-live-$suffix');
-          await backFromG3();
+          await tester.tap(find.text('Pause'));
+          await tester.pumpAndSettle();
+          await capture('g3-training-live-paused-$suffix');
+          await tester.tap(find.text('Beenden'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Verwerfen'));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.descendant(
+              of: find.byType(AlertDialog),
+              matching: find.text('Verwerfen'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(G3LiveRun), findsNothing);
 
           await tester.tap(find.byKey(const ValueKey('ob-tab-wellness')));
           await tester.pumpAndSettle();

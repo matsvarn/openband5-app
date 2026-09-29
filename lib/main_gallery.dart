@@ -402,6 +402,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           onFinish: () async {
             Navigator.of(c, rootNavigator: true).maybePop();
           },
+          onDiscard: () async {
+            Navigator.of(c, rootNavigator: true).maybePop();
+          },
         ),
       ),
     );
