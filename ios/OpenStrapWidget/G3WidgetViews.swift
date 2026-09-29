@@ -276,7 +276,10 @@ struct G3OverviewMedium: View {
         Text(state == .current || state == .building ? G3Widget.time(snap.sleepMinutes) : "—")
           .font(G3Widget.number(25)).minimumScaleFactor(0.7).lineLimit(1)
           .fixedSize(horizontal: true, vertical: false)
-        Text((state != .current && state != .building) || snap.sleepMinutes < 0
+        Text(state == .empty ||
+             (state == .stale && snap.g3SnapshotPresent && !snap.g3HasSnapshot)
+             ? "Heute keine Werte" :
+             (state != .current && state != .building) || snap.sleepMinutes < 0
              ? "Nacht fehlt" :
              !snap.g3HasSnapshot ? "Ziel nicht verfügbar" :
              snap.sleepGoalMinutes > 0 ? "Ziel \(G3Widget.time(snap.sleepGoalMinutes))" : "Ziel fehlt")
@@ -322,10 +325,12 @@ struct G3SleepSmall: View {
       Spacer(minLength: 0)
       Text(state == .current || state == .building ? G3Widget.time(snap.sleepMinutes) : "—")
         .font(G3Widget.number(39)).minimumScaleFactor(0.6).lineLimit(1)
-      Text(state == .stale ? "\(G3Widget.staleLabel(snap, date)) · Nacht fehlt" :
+      Text(state == .empty ||
+           (state == .stale && snap.g3SnapshotPresent && !snap.g3HasSnapshot)
+           ? "Heute keine Werte" :
+           state == .stale ? "\(G3Widget.staleLabel(snap, date)) · Nacht fehlt" :
            state == .never ? "Zum Verbinden tippen" :
            state == .missing ? "Aktualität unklar" :
-           state == .empty ? "Heute keine Werte" :
            !snap.g3HasSnapshot ? "Ziel nicht verfügbar" :
            snap.sleepGoalMinutes > 0 ? "Ziel \(G3Widget.time(snap.sleepGoalMinutes))" : "Ziel fehlt")
         .font(.system(size: 11, weight: .medium)).lineLimit(2)
