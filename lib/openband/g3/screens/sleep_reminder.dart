@@ -16,8 +16,10 @@ abstract class SleepBedtimeReminder {
     required String today,
     required bool planLoaded,
     DateTime? bedtime,
+    bool Function()? active,
   }) async {
     final current = await armed();
+    if (active?.call() == false) return false;
     if (current == null) return false;
     final expected = bedtime == null ? null : sleepReminderAt(bedtime);
     if (current.day == today &&

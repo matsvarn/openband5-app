@@ -1,10 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../domain.dart';
 import '../../time.dart';
 import '../chrome.dart' as chrome;
 import '../g3_theme.dart';
 import '../sleep_parts.dart';
+
+bool nightSignalHasUncoveredInterval(
+  NightSignalSeries series,
+  ({DateTime start, DateTime end}) window,
+) {
+  final maxGap = series.maxConnectingGap;
+  final readings =
+      series.readings
+          .where(
+            (r) => !r.at.isBefore(window.start) && !r.at.isAfter(window.end),
+          )
+          .toList()
+        ..sort((a, b) => a.at.compareTo(b.at));
+  if (readings.any((r) => r.value == null)) return true;
+  final valid = readings.where((r) => r.value != null).toList();
+  if (valid.isEmpty || maxGap == null) return false;
+  if (valid.first.at.difference(window.start) > maxGap ||
+      window.end.difference(valid.last.at) > maxGap) {
+    return true;
+  }
+  for (var i = 1; i < valid.length; i++) {
+    if (valid[i].at.difference(valid[i - 1].at) > maxGap) return true;
+  }
+  return false;
+}
 
 class G3SleepNightSignals extends StatefulWidget {
   const G3SleepNightSignals({
@@ -55,7 +81,8 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
           children: [
             chrome.OBPageHeader.detail(
               title: 'NACHTVERLAUF',
-              subtitle: 'Nacht zu ${widget.day}',
+              subtitle:
+                  'Nacht zu ${DateFormat('EE dd.MM', 'de_DE').format(DateTime.parse(widget.day)).replaceFirst('.', '')}',
               backLabel: 'Schlaf',
               onBack: () => Navigator.of(context).pop(),
               onTrailing: () => showDialog<void>(
@@ -145,7 +172,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             basis?.range != null &&
                             metric?.value != null) ...[
                           Text(
-                            'Normal ${basis!.range!.low.toStringAsFixed(0)}–${basis.range!.high.toStringAsFixed(0)}',
+                            'Normal ${basis!.range!.low.toStringAsFixed(_kind == NightSignalKind.respiration ? 1 : 0).replaceAll('.', ',')}–${basis.range!.high.toStringAsFixed(_kind == NightSignalKind.respiration ? 1 : 0).replaceAll('.', ',')}',
                             style: g.t(13, 17, color: g.ink2),
                           ),
                           const SizedBox(height: 14),
@@ -196,7 +223,14 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                           ),
                           const Spacer(),
                           Text(
-                            series?.partial == true
+                            recorded.isEmpty
+                                ? 'keine Daten'
+                                : series != null &&
+                                    window != null &&
+                                    nightSignalHasUncoveredInterval(
+                                      series,
+                                      window,
+                                    )
                                 ? 'teilweise'
                                 : 'gespeichert',
                             style: g.t(12, 16, color: g.muted),

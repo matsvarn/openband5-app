@@ -18,6 +18,74 @@ String obSleepClock(DateTime? time) => time == null
     ? '—'
     : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
+DateTime? roundedSleepBedtime(DateTime? value) {
+  if (value == null) return null;
+  return DateTime(
+    value.year,
+    value.month,
+    value.day,
+    value.hour,
+    (value.minute / 5).round() * 5,
+  );
+}
+
+String sleepDebtDirection(double minutes) => minutes > 0
+    ? 'weniger als in freien Nächten'
+    : minutes < 0
+    ? 'mehr als in freien Nächten'
+    : 'gleich lang wie in freien Nächten';
+
+bool _onDebtScale(double? minutes) =>
+    minutes != null && minutes >= 360 && minutes <= 540;
+
+class OBSleepClockAxis extends StatelessWidget {
+  const OBSleepClockAxis({
+    super.key,
+    required this.startHour,
+    required this.endHour,
+    this.leftInset = 0,
+    this.labels = const ['22:00', '02:00', '06:00'],
+  });
+  final int startHour, endHour;
+  final double leftInset;
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final length = (endHour - startHour + 24) % 24 * 60;
+    return Padding(
+      padding: EdgeInsets.only(left: leftInset),
+      child: LayoutBuilder(
+        builder: (context, box) => SizedBox(
+          height: 17,
+          child: Stack(
+            children: [
+              for (final label in labels)
+                Positioned(
+                  left:
+                      (((int.parse(label.substring(0, 2)) - startHour + 24) %
+                                      24 *
+                                      60 /
+                                      length) *
+                                  box.maxWidth -
+                              22)
+                          .clamp(0.0, box.maxWidth - 44),
+                  width: 44,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: g.t(10, 14, color: g.muted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class OBBedtimeLead extends StatelessWidget {
   const OBBedtimeLead({
     super.key,
@@ -25,25 +93,19 @@ class OBBedtimeLead extends StatelessWidget {
     required this.wake,
     this.lastOnset,
     this.lastWake,
+    this.strainOpen = false,
+    this.noFreeNight = false,
   });
   final DateTime? bedtime, wake, lastOnset, lastWake;
+  final bool strainOpen;
+  final bool noFreeNight;
 
-  DateTime? get _roundedBedtime {
-    final value = bedtime;
-    if (value == null) return null;
-    return DateTime(
-      value.year,
-      value.month,
-      value.day,
-      value.hour,
-      (value.minute / 5).round() * 5,
-    );
-  }
+  DateTime? get _roundedBedtime => roundedSleepBedtime(bedtime);
 
   double _position(DateTime time) {
     final minute = time.hour * 60 + time.minute;
-    final afterEight = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
-    return (afterEight / (14 * 60)).clamp(0.0, 1.0);
+    final afterNine = minute >= 21 * 60 ? minute - 21 * 60 : minute + 3 * 60;
+    return (afterNine / (12 * 60)).clamp(0.0, 1.0);
   }
 
   Widget _track(
@@ -104,8 +166,13 @@ class OBBedtimeLead extends StatelessWidget {
     final shown = _roundedBedtime;
     final earlier = shown == null || lastOnset == null
         ? null
-        : (lastOnset!.hour * 60 + lastOnset!.minute) -
-              (shown.hour * 60 + shown.minute);
+        : ((lastOnset!.hour * 60 +
+                      lastOnset!.minute -
+                      shown.hour * 60 -
+                      shown.minute +
+                      720) %
+                  1440) -
+              720;
     return OBPanel(
       hero: true,
       child: Column(
@@ -119,7 +186,9 @@ class OBBedtimeLead extends StatelessWidget {
                 child: Text(
                   shown == null
                       ? 'Kein Vorschlag'
-                      : 'Schätzung · Belastung läuft',
+                      : strainOpen
+                      ? 'Schätzung · Belastung läuft'
+                      : 'Schätzung',
                   textAlign: TextAlign.end,
                   style: g.t(12, 16, color: g.muted),
                 ),
@@ -127,27 +196,45 @@ class OBBedtimeLead extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.end,
-            spacing: 10,
-            children: [
-              MediaQuery.withClampedTextScaling(
-                maxScaleFactor: 1.2,
-                child: Text(
-                  obSleepClock(shown),
-                  style: g.t(68, 72, weight: FontWeight.w700, tracking: -.045),
-                ),
-              ),
-              if (wake != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
+          if (noFreeNight) ...[
+            Container(width: 60, height: 6, color: g.gap),
+            const SizedBox(height: 14),
+            Text(
+              'Noch keine freie Nacht',
+              style: g.t(17, 22, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Ohne freie Nacht kein Bedarf und keine Bettzeit.',
+              style: g.t(13, 18, color: g.ink2),
+            ),
+          ] else
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 10,
+              children: [
+                MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.2,
                   child: Text(
-                    'bis ${obSleepClock(wake)}${earlier == null ? '' : '\n${earlier.abs()} Min. ${earlier >= 0 ? 'früher' : 'später'}'}',
-                    style: g.t(13, 18, color: g.ink2),
+                    obSleepClock(shown),
+                    style: g.t(
+                      68,
+                      72,
+                      weight: FontWeight.w700,
+                      tracking: -.045,
+                    ),
                   ),
                 ),
-            ],
-          ),
+                if (wake != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: Text(
+                      'bis ${obSleepClock(wake)}${earlier == null ? '' : '\n${earlier.abs()} Min. ${earlier >= 0 ? 'früher' : 'später'}'}',
+                      style: g.t(13, 18, color: g.ink2),
+                    ),
+                  ),
+              ],
+            ),
           if (shown != null && wake != null) ...[
             const SizedBox(height: 18),
             _track(g, 'Heute', shown, wake, true),
@@ -156,13 +243,7 @@ class OBBedtimeLead extends StatelessWidget {
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(left: 58),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  for (final label in ['22:00', '02:00', '06:00'])
-                    Text(label, style: g.t(11, 15, color: g.muted)),
-                ],
-              ),
+              child: const OBSleepClockAxis(startHour: 21, endHour: 9),
             ),
           ],
         ],
@@ -176,9 +257,11 @@ class OBSleepLead extends StatelessWidget {
     super.key,
     required this.minutes,
     required this.goalMinutes,
+    this.bedMinutes,
     this.onGoal,
   });
   final double? minutes;
+  final double? bedMinutes;
   final int? goalMinutes;
   final VoidCallback? onGoal;
 
@@ -196,60 +279,90 @@ class OBSleepLead extends StatelessWidget {
           G3LabelRow(
             'SCHLAF',
             note: goalMinutes == null
-                ? null
+                ? 'kein Ziel'
                 : 'Ziel ${obSleepDuration(goalMinutes)}',
           ),
           const SizedBox(height: 8),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.end,
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              MediaQuery.withClampedTextScaling(
-                maxScaleFactor: 1.2,
-                child: Text(
-                  obSleepDuration(minutes),
-                  style: g.t(72, 76, weight: FontWeight.w700, tracking: -.045),
-                ),
-              ),
-              if (difference != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: g.chip,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          '${difference < 0
-                              ? '↓'
-                              : difference > 0
-                              ? '↑'
-                              : '·'} ${difference.abs()} Min.',
-                          style: g.t(13, 16, weight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        difference < 0
-                            ? 'unter deinem Ziel'
-                            : difference > 0
-                            ? 'über deinem Ziel'
-                            : 'dein Ziel erreicht',
-                        style: g.t(13, 17, color: g.ink2),
-                      ),
-                    ],
+          if (minutes == null) ...[
+            Row(
+              children: [
+                Container(
+                  width: 60,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: g.gap,
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-            ],
-          ),
+                const SizedBox(width: 12),
+                Text(
+                  'Keine Nacht erkannt',
+                  style: g.t(17, 22, weight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Das Band fand kein Schlaffenster.',
+              style: g.t(13, 17, color: g.ink2),
+            ),
+          ] else ...[
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                MediaQuery.withClampedTextScaling(
+                  maxScaleFactor: 1.2,
+                  child: Text(
+                    obSleepDuration(minutes),
+                    style: g.t(
+                      72,
+                      76,
+                      weight: FontWeight.w700,
+                      tracking: -.045,
+                    ),
+                  ),
+                ),
+                if (difference != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: g.chip,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Text(
+                            '${difference < 0
+                                ? '↓'
+                                : difference > 0
+                                ? '↑'
+                                : '·'} ${obSleepDuration(difference.abs())}',
+                            style: g.t(13, 16, weight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          difference < 0
+                              ? 'unter deinem Ziel'
+                              : difference > 0
+                              ? 'über deinem Ziel'
+                              : 'dein Ziel erreicht',
+                          style: g.t(13, 17, color: g.ink2),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
           if (minutes != null) ...[
             const SizedBox(height: 15),
             LayoutBuilder(
@@ -308,16 +421,20 @@ class OBSleepLead extends StatelessWidget {
                 Text('10 h', style: g.t(12, 16, color: g.muted)),
               ],
             ),
-          ] else
-            Text(
-              'Keine Nacht erkannt. Nichts wird geschätzt.',
-              style: g.t(13, 18, color: g.ink2),
-            ),
+          ],
           if (goalMinutes == null && onGoal != null) ...[
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OBPillButton('Ziel festlegen', onPressed: onGoal),
+            Row(
+              children: [
+                OBPillButton('Ziel festlegen', onPressed: onGoal),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'zeigt, wie weit du davon weg bist',
+                    style: g.t(12, 16, color: g.muted),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -366,7 +483,7 @@ class OBSriLead extends StatelessWidget {
             ],
           ),
           Text(
-            gate ?? 'kein Normalbereich · 100 = jeden Tag gleich',
+            gate ?? 'SRI reicht von −100 bis 100 · 100 = jeden Tag gleich',
             style: g.t(13, 18, color: g.ink2),
           ),
           const SizedBox(height: 16),
@@ -386,7 +503,9 @@ class OBSriLead extends StatelessWidget {
                   ),
                   if (value != null)
                     Positioned(
-                      left: (value! / 100).clamp(0.0, 1.0) * (box.maxWidth - 3),
+                      left:
+                          ((value! + 100) / 200).clamp(0.0, 1.0) *
+                          (box.maxWidth - 3),
                       child: Container(width: 3, height: 23, color: g.ink),
                     ),
                 ],
@@ -395,6 +514,8 @@ class OBSriLead extends StatelessWidget {
           ),
           Row(
             children: [
+              Text('−100', style: g.t(12, 16, color: g.muted)),
+              const Spacer(),
               Text('0', style: g.t(12, 16, color: g.muted)),
               const Spacer(),
               Text('100', style: g.t(12, 16, color: g.muted)),
@@ -431,7 +552,9 @@ class OBSleepWindows extends StatelessWidget {
           G3LabelRow(
             detail ? 'IM BETT JE NACHT' : 'REGELMÄSSIGKEIT',
             note: regularity == null
-                ? 'im Aufbau'
+                ? gate == null
+                      ? 'nicht für diesen Tag'
+                      : 'Basis im Aufbau'
                 : windows.isEmpty
                 ? null
                 : '${windows.length} Nächte',
@@ -449,13 +572,17 @@ class OBSleepWindows extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
                   child: Text(
-                    'SRI · 0 bis 100',
+                    'SRI · −100 bis 100',
                     style: g.t(12, 16, color: g.ink2),
                   ),
                 ),
               ],
             ),
-            if (gate != null) Text(gate!, style: g.t(12, 16, color: g.ink2)),
+            if (regularity == null)
+              Text(
+                gate ?? 'Für diesen Tag keine Auswertung gespeichert.',
+                style: g.t(12, 16, color: g.ink2),
+              ),
           ],
           const SizedBox(height: 10),
           for (final window in windows)
@@ -519,15 +646,9 @@ class OBSleepWindows extends StatelessWidget {
                 ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(left: 42, top: 5),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                for (final label in ['22:00', '02:00', '06:00'])
-                  Text(label, style: g.t(10, 14, color: g.muted)),
-              ],
-            ),
+          const Padding(
+            padding: EdgeInsets.only(top: 5),
+            child: OBSleepClockAxis(startHour: 21, endHour: 10, leftInset: 42),
           ),
           if (onTap != null)
             Align(
@@ -559,14 +680,16 @@ class OBSocialJetlag extends StatelessWidget {
             spacing: 8,
             children: [
               Text(
-                obSleepDuration(minutes),
+                obSleepDuration(minutes?.abs()),
                 style: g.t(34, 40, weight: FontWeight.w700),
               ),
               if (minutes != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
                   child: Text(
-                    'später an freien Tagen',
+                    minutes! < 0
+                        ? 'früher an freien Tagen'
+                        : 'später an freien Tagen',
                     style: g.t(12, 16, color: g.ink2),
                   ),
                 ),
@@ -575,7 +698,9 @@ class OBSocialJetlag extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             gate ??
-                'Schlafmitte an Arbeitstagen gegenüber Sa und So, ohne Kalender.',
+                (minutes == null
+                    ? 'Für diesen Tag keine Auswertung gespeichert.'
+                    : 'Schlafmitte an Arbeitstagen gegenüber Sa und So, ohne Kalender.'),
             style: g.t(12, 16, color: g.ink2),
           ),
           if (onTap != null)
@@ -609,9 +734,7 @@ class OBSleepDebtLead extends StatelessWidget {
             spacing: 12,
             children: [
               Text(
-                rounded == null
-                    ? '—'
-                    : '${rounded ~/ 60}h${(rounded % 60).toString().padLeft(2, '0')}',
+                obSleepDuration(rounded?.abs()),
                 style: g.t(72, 76, weight: FontWeight.w700),
               ),
               if (minutes != null)
@@ -620,7 +743,7 @@ class OBSleepDebtLead extends StatelessWidget {
                   child: SizedBox(
                     width: 105,
                     child: Text(
-                      'weniger als in freien Nächten',
+                      sleepDebtDirection(minutes!),
                       style: g.t(13, 18, color: g.ink2),
                     ),
                   ),
@@ -665,14 +788,14 @@ class OBSleepDebt extends StatelessWidget {
               spacing: 8,
               children: [
                 Text(
-                  obSleepDuration(minutes),
+                  obSleepDuration(minutes?.abs()),
                   style: g.t(34, 40, weight: FontWeight.w700),
                 ),
                 if (minutes != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 5),
                     child: Text(
-                      'weniger als in freien Nächten',
+                      sleepDebtDirection(minutes!),
                       style: g.t(12, 16, color: g.ink2),
                     ),
                   ),
@@ -682,7 +805,7 @@ class OBSleepDebt extends StatelessWidget {
           const SizedBox(height: 12),
           _fact(context, 'Frei · p75', freeMinutes),
           _fact(context, 'Üblich · Median', usualMinutes),
-          if (freeMinutes != null || usualMinutes != null) ...[
+          if (_onDebtScale(freeMinutes) || _onDebtScale(usualMinutes)) ...[
             const SizedBox(height: 8),
             _debtTrack(g, freeMinutes, hollow: true),
             const SizedBox(height: 8),
@@ -696,9 +819,18 @@ class OBSleepDebt extends StatelessWidget {
               ],
             ),
           ],
+          if ((freeMinutes != null && !_onDebtScale(freeMinutes)) ||
+              (usualMinutes != null && !_onDebtScale(usualMinutes)))
+            Text(
+              'Wert außerhalb der Skala 6–9 h.',
+              style: g.t(12, 16, color: g.muted),
+            ),
           const SizedBox(height: 10),
           Text(
-            gate ?? 'Perzentil freien Schlafs, kein gemessener Bedarf.',
+            gate ??
+                (minutes == null
+                    ? 'Für diesen Tag keine Auswertung gespeichert.'
+                    : 'Perzentil freien Schlafs, kein gemessener Bedarf.'),
             style: g.t(12, 16, color: g.ink2),
           ),
           if (onTap != null)
@@ -732,9 +864,9 @@ class OBSleepDebt extends StatelessWidget {
   Widget _debtTrack(G3 g, double? minutes, {required bool hollow}) {
     return LayoutBuilder(
       builder: (context, box) {
-        final x = minutes == null
+        final x = minutes == null || minutes < 360 || minutes > 540
             ? null
-            : ((minutes - 360) / 180).clamp(0.0, 1.0) * (box.maxWidth - 12);
+            : ((minutes - 360) / 180) * (box.maxWidth - 12);
         return SizedBox(
           height: 12,
           child: Stack(
@@ -769,17 +901,20 @@ class OBSleepDebt extends StatelessWidget {
 class OBPlanBreakdown extends StatelessWidget {
   const OBPlanBreakdown({
     super.key,
-    this.goal,
+    this.baseline,
+    this.debt,
     this.bonus,
     this.napCredit,
     this.napsIncomplete = false,
+    this.strainOpen = false,
     this.need,
     this.efficiency,
     this.wake,
     this.bedtime,
   });
-  final double? goal, bonus, napCredit, need, efficiency;
+  final double? baseline, debt, bonus, napCredit, need, efficiency;
   final bool napsIncomplete;
+  final bool strainOpen;
   final DateTime? wake, bedtime;
   @override
   Widget build(BuildContext context) {
@@ -813,10 +948,21 @@ class OBPlanBreakdown extends StatelessWidget {
                 ? null
                 : 'gerundet von ${obSleepClock(bedtime)}',
           ),
-          row('Eigenes Schlafziel', obSleepDuration(goal)),
+          row('Freie Nächte · p75', obSleepDuration(baseline)),
           Divider(height: 1, color: g.line),
           row(
-            'Belastung heute',
+            'Schlafschuld, positiv',
+            obSleepDuration(
+              debt == null
+                  ? null
+                  : debt! > 0
+                  ? debt
+                  : 0,
+            ),
+          ),
+          Divider(height: 1, color: g.line),
+          row(
+            strainOpen ? 'Belastung heute, läuft' : 'Belastung heute',
             bonus == null ? '—' : '+ ${obSleepDuration(bonus)}',
           ),
           Divider(height: 1, color: g.line),
@@ -832,13 +978,19 @@ class OBPlanBreakdown extends StatelessWidget {
           row('Geschätzter Bedarf', obSleepDuration(need), strong: true),
           Divider(height: 1, color: g.line),
           row(
-            'Übliche Schlafeffizienz',
-            efficiency == null ? '—' : '${(efficiency! * 100).round()} %',
+            '÷ übliche Schlafeffizienz',
+            efficiency == null || efficiency! <= 0 || need == null
+                ? '—'
+                : '${obSleepDuration(need! / efficiency!)} im Bett',
           ),
           Divider(height: 1, color: g.line),
           row('Aufstehen, üblich', obSleepClock(wake)),
           Divider(height: 2, thickness: 2, color: g.ink),
-          row('Ins Bett', obSleepClock(bedtime), strong: true),
+          row(
+            'Ins Bett',
+            obSleepClock(roundedSleepBedtime(bedtime)),
+            strong: true,
+          ),
           if (napsIncomplete)
             Text(
               'Nickerchen heute noch offen, nicht abgezogen.',
@@ -854,12 +1006,18 @@ class OBInlineNotice extends StatelessWidget {
   const OBInlineNotice({
     super.key,
     required this.text,
+    this.subtitle,
+    this.icon,
     this.action,
     this.onAction,
+    this.actionChevron = true,
   });
   final String text;
+  final String? subtitle;
+  final IconData? icon;
   final String? action;
   final VoidCallback? onAction;
+  final bool actionChevron;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -869,8 +1027,29 @@ class OBInlineNotice extends StatelessWidget {
       decoration: g.pressed(),
       child: Row(
         children: [
+          if (icon != null) ...[
+            Icon(icon, size: 18, color: g.ink),
+            const SizedBox(width: 10),
+          ],
           Expanded(
-            child: Text(text, style: g.t(13, 17, color: g.ink2)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: g.t(
+                    subtitle == null ? 13 : 15,
+                    subtitle == null ? 17 : 19,
+                    weight: subtitle == null
+                        ? FontWeight.w400
+                        : FontWeight.w700,
+                    color: subtitle == null ? g.ink2 : g.ink,
+                  ),
+                ),
+                if (subtitle != null)
+                  Text(subtitle!, style: g.t(13, 17, color: g.ink2)),
+              ],
+            ),
           ),
           if (action != null && onAction != null)
             TextButton(
@@ -879,8 +1058,10 @@ class OBInlineNotice extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(action!),
-                  const SizedBox(width: 3),
-                  OBChevron(size: 12),
+                  if (actionChevron) ...[
+                    const SizedBox(width: 3),
+                    OBChevron(size: 12),
+                  ],
                 ],
               ),
             ),

@@ -1038,7 +1038,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                 Expanded(
                   child: Text(
                     editing ? 'Nickerchen bearbeiten' : 'Nickerchen eintragen',
-                    style: g.t(28, 33, weight: FontWeight.w700),
+                    style: g.t(20, 25, weight: FontWeight.w700),
                   ),
                 ),
                 IconButton(
@@ -1054,7 +1054,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
               ],
             ),
             Text(
-              'Bleibt auf diesem iPhone. Steht als „eingetragen“ in der Liste.',
+              'Tag: ${DateFormat('EE dd.MM', 'de_DE').format(DateTime.parse(day)).replaceFirst('.', '')} · Bleibt auf diesem iPhone.',
               style: g.t(14, 19, color: g.ink2),
             ),
             const SizedBox(height: 20),

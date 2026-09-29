@@ -11,6 +11,7 @@ import 'theme.dart';
 import 'time.dart';
 import 'g3/chrome.dart' as g3_chrome;
 import 'g3/g3_theme.dart';
+import 'g3/sleep_parts.dart' show OBSleepClockAxis;
 
 class SleepEditor extends StatefulWidget {
   final OpenBandController controller;
@@ -492,19 +493,30 @@ class _SleepEditorState extends State<SleepEditor> {
                               const SizedBox(height: 12),
                             ],
                             if (error != null) ...[
-                              Semantics(
-                                liveRegion: true,
-                                child: OBCard(
-                                  child: Text(
-                                    error!,
-                                    style: p.text(
-                                      14,
-                                      weight: FontWeight.w500,
-                                      color: p.danger,
+                              if (widget.g3 && saveFailed)
+                                g3_chrome.OBErrorBlock(
+                                  title: 'Nicht gespeichert',
+                                  reason:
+                                      'Die Zeiten ließen sich nicht speichern. Dein Entwurf ${obTime(draft!.onset)}–${obTime(draft!.wake)} bleibt hier.',
+                                  retryLabel: 'Erneut speichern',
+                                  onRetry: _save,
+                                  secondaryLabel: 'Details',
+                                  onSecondary: _showDetails,
+                                )
+                              else
+                                Semantics(
+                                  liveRegion: true,
+                                  child: OBCard(
+                                    child: Text(
+                                      error!,
+                                      style: p.text(
+                                        14,
+                                        weight: FontWeight.w500,
+                                        color: widget.g3 ? p.ink : p.danger,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
                               const SizedBox(height: 12),
                             ],
                             if (draftError != null && receipt == null) ...[
@@ -563,6 +575,18 @@ class _SleepEditorState extends State<SleepEditor> {
                               ),
                             ] else ...[
                               if (!completed) ...[
+                                if (widget.g3 &&
+                                    !failed &&
+                                    (widget.controller.calculating ||
+                                        widget.initialReceipt != null)) ...[
+                                  const g3_chrome.OBEmptyState(
+                                    icon: LucideIcons.refreshCw,
+                                    title: 'Wird neu ausgewertet',
+                                    reason:
+                                        'Phasen, Schlafschuld, Regelmäßigkeit',
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                                 Semantics(
                                   liveRegion: true,
                                   child: OBCard(
@@ -601,7 +625,18 @@ class _SleepEditorState extends State<SleepEditor> {
                                 ),
                                 const SizedBox(height: 12),
                               ],
-                              if (failed ||
+                              if (widget.g3 &&
+                                  !completed &&
+                                  !failed &&
+                                  (widget.controller.calculating ||
+                                      widget.initialReceipt != null)) ...[
+                                g3_chrome.OBActionPrimary(
+                                  'Wird ausgewertet …',
+                                  expand: true,
+                                  onPressed: null,
+                                ),
+                                const SizedBox(height: 12),
+                              ] else if (failed ||
                                   !completed &&
                                       !widget.controller.calculating) ...[
                                 OBAction(
@@ -655,16 +690,21 @@ class _SleepEditorState extends State<SleepEditor> {
                                 ),
                                 const SizedBox(height: 8),
                               ],
-                              OBAction(
-                                'Zur Übersicht',
-                                secondary: true,
-                                onPressed: () {
-                                  widget.onReturnToOverview?.call();
-                                  Navigator.of(context).popUntil(
-                                    (route) => route.isFirst,
-                                  );
-                                },
-                              ),
+                              if (!widget.g3 ||
+                                  completed ||
+                                  failed ||
+                                  !widget.controller.calculating &&
+                                      widget.initialReceipt == null)
+                                OBAction(
+                                  'Zur Übersicht',
+                                  secondary: true,
+                                  onPressed: () {
+                                    widget.onReturnToOverview?.call();
+                                    Navigator.of(context).popUntil(
+                                      (route) => route.isFirst,
+                                    );
+                                  },
+                                ),
                             ],
                           ],
                         ),
@@ -678,7 +718,9 @@ class _SleepEditorState extends State<SleepEditor> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                if (widget.g3)
+                                if (widget.g3 && saveFailed)
+                                  const SizedBox.shrink()
+                                else if (widget.g3)
                                   g3_chrome.OBActionPrimary(
                                     busy
                                         ? 'Wird gespeichert …'
@@ -700,8 +742,13 @@ class _SleepEditorState extends State<SleepEditor> {
                                 TextButton(
                                   onPressed: busy || !changed ? null : _discard,
                                   child: Text(
-                                    'Änderung verwerfen',
-                                    style: p.text(13, color: p.muted),
+                                    saveFailed && widget.g3
+                                        ? 'Entwurf verwerfen'
+                                        : 'Änderung verwerfen',
+                                    style: p.text(
+                                      13,
+                                      color: widget.g3 ? p.ink : p.muted,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -826,12 +873,10 @@ class _SleepEditorState extends State<SleepEditor> {
               ),
             ),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              for (final time in ['20:00', '00:00', '04:00', '10:00'])
-                Text(time, style: g.t(12, 16, color: g.muted)),
-            ],
+          const OBSleepClockAxis(
+            startHour: 20,
+            endHour: 10,
+            labels: ['20:00', '00:00', '04:00', '10:00'],
           ),
           const SizedBox(height: 12),
           Text(
@@ -865,7 +910,10 @@ class _SleepEditorState extends State<SleepEditor> {
     final value = start ? draft!.onset : draft!.wake;
     final text = start ? startText : endText;
     final enabled = receipt == null && !busy;
-    final weekday = DateFormat('E', 'de_DE').format(value).toUpperCase();
+    final weekday = DateFormat(
+      'E',
+      'de_DE',
+    ).format(value).replaceAll('.', '').toUpperCase();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

@@ -21,6 +21,22 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
   late Future<List<NapDay>> _week = _readWeek();
   String? _error;
 
+  void _info() => showDialog<void>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: const Text('Nickerchen'),
+      content: const Text(
+        'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialog).pop(),
+          child: const Text('Schließen'),
+        ),
+      ],
+    ),
+  );
+
   Future<List<NapDay>> _readWeek() {
     final end = DateTime.parse(widget.controller.selectedDay);
     return Future.wait([
@@ -111,21 +127,7 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
               ).format(DateTime.parse(selected)),
               backLabel: 'Schlaf',
               onBack: () => Navigator.of(context).pop(),
-              onTrailing: () => showDialog<void>(
-                context: context,
-                builder: (dialog) => AlertDialog(
-                  title: const Text('Nickerchen'),
-                  content: const Text(
-                    'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialog).pop(),
-                      child: const Text('Schließen'),
-                    ),
-                  ],
-                ),
-              ),
+              onTrailing: _info,
             ),
             const SizedBox(height: 18),
             FutureBuilder<List<NapDay>>(
@@ -178,9 +180,22 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                           ),
                           const SizedBox(height: 8),
                           if (total == 0 && sessions.isEmpty)
-                            Text(
-                              'Keine Nickerchen',
-                              style: g.t(27, 32, weight: FontWeight.w700),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 60,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: g.gap,
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Keine Nickerchen',
+                                  style: g.t(17, 22, weight: FontWeight.w700),
+                                ),
+                              ],
                             )
                           else
                             Wrap(
@@ -236,11 +251,12 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                     ],
                     if (sessions.isEmpty && total == 0) ...[
                       const SizedBox(height: 14),
-                      chrome.OBPanel(
-                        child: Text(
-                          'Wie erkannt wird\nDas Band erkennt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen, dann trag es ein.',
-                          style: g.t(14, 19, color: g.ink2),
-                        ),
+                      chrome.OBEmptyState(
+                        title: 'Wie erkannt wird',
+                        reason:
+                            'Das Band erkennt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen, dann trag es ein.',
+                        action: 'Methode',
+                        onAction: _info,
                       ),
                     ] else ...[
                       const SizedBox(height: 18),
@@ -253,7 +269,7 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                               ? 'Noch keins'
                               : 'Noch nicht beurteilbar',
                           subtitle: days.first.judged
-                              ? 'Heute kein Nickerchen erkannt'
+                              ? 'Daten bis ${obSleepClock(widget.controller.band.latestStoredAt)}'
                               : 'Daten fehlen',
                           onTap: () => _edit(),
                         )
@@ -293,12 +309,17 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
   }
 
   Widget _row(String day, NapSession nap) {
-    final label = DateFormat('EE dd.MM', 'de_DE').format(DateTime.parse(day));
+    final label = DateFormat(
+      'EE dd.MM',
+      'de_DE',
+    ).format(DateTime.parse(day)).replaceFirst('.', '');
     final time = '${obSleepClock(nap.start)}–${obSleepClock(nap.end)}';
     return chrome.OBListRow(
       icon: LucideIcons.moon,
       title: '$label · $time',
-      subtitle: nap.source == NapSource.manual ? 'eingetragen' : 'auto-erkannt',
+      subtitle: nap.source == NapSource.manual
+          ? 'eingetragen'
+          : 'auto-erkannt${nap.durationMin == null ? '' : ' · ${nap.durationMin} Min. gelegen'}',
       value: obSleepDuration(nap.durationMin),
       onTap: () => _edit(day: day, session: nap),
     );
