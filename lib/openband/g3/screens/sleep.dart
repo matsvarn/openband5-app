@@ -44,44 +44,53 @@ class _SleepReads {
         controller.selectedDay,
         7,
       ),
+      baselines = Future.wait([
+        controller.repository.readPersonalRange(
+          G3Metric.hrv,
+          controller.selectedDay,
+        ),
+        controller.repository.readPersonalRange(
+          G3Metric.rhr,
+          controller.selectedDay,
+        ),
+        controller.repository.readPersonalRange(
+          G3Metric.respRate,
+          controller.selectedDay,
+        ),
+      ]),
       windows = _windows(controller.repository, controller.selectedDay);
   final String selectedDay;
   final OpenBandDay? day;
   final Future<G3SleepPlus> plus;
   final Future<SleepGoalSnapshot> goal;
   final Future<List<MetricPoint>> history;
+  final Future<List<G3Baseline>> baselines;
   final Future<List<OBSleepWindow>> windows;
 
   static Future<List<OBSleepWindow>> _windows(
     OpenBandRepository repo,
     String endDay,
-  ) async {
+  ) {
     final date = DateTime.parse(endDay);
-    final result = <OBSleepWindow>[];
-    for (var i = 6; i >= 0; i--) {
+    Future<OBSleepWindow> read(int i) async {
       final day = dayLabelOf(DateTime(date.year, date.month, date.day - i));
+      final label = i == 0
+          ? 'Heute'
+          : DateFormat('EE', 'de_DE').format(DateTime.parse(day));
       try {
         final night = (await repo.readDay(day)).sleep;
-        result.add((
-          day: i == 0
-              ? 'Heute'
-              : DateFormat('EE', 'de_DE').format(DateTime.parse(day)),
+        return (
+          day: label,
           start: night.onset,
           end: night.wake,
           minutes: night.duration.value,
-        ));
+        );
       } catch (_) {
-        result.add((
-          day: i == 0
-              ? 'Heute'
-              : DateFormat('EE', 'de_DE').format(DateTime.parse(day)),
-          start: null,
-          end: null,
-          minutes: null,
-        ));
+        return (day: label, start: null, end: null, minutes: null);
       }
     }
-    return result;
+
+    return Future.wait([for (var i = 6; i >= 0; i--) read(i)]);
   }
 }
 
@@ -217,7 +226,7 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
               ],
               const SizedBox(height: 18),
               _section('IN DER NACHT'),
-              _inset(_nightFacts(controller.day)),
+              _inset(_nightFacts(controller.day, current.baselines)),
               const SizedBox(height: 8),
               _inset(
                 chrome.OBListRow(
@@ -295,7 +304,9 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                               plus?.sleepDebt.habitualMedianHours == null
                               ? null
                               : plus!.sleepDebt.habitualMedianHours! * 60,
-                          gate: plus?.sleepDebt.refusalNote,
+                          gate: plus?.sleepDebt.debtHours == null
+                              ? plus?.sleepDebt.refusalNote
+                              : null,
                           onTap: () => _push(
                             G3SleepDebtDetail(
                               repository: controller.repository,
@@ -507,15 +518,36 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
     );
   }
 
-  Widget _nightFacts(OpenBandDay? day) {
-    return Builder(
-      builder: (context) {
+  Widget _nightFacts(OpenBandDay? day, Future<List<G3Baseline>> baselines) {
+    return FutureBuilder<List<G3Baseline>>(
+      future: baselines,
+      builder: (context, snapshot) {
         final g = G3.of(context);
         final values = [
           ('HRV · MS', day?.hrv.value, 0),
           ('RUHEPULS', day?.restingHr.value, 0),
           ('ATMUNG', day?.respiration.value, 1),
         ];
+        String basis(int index) {
+          final baseline = snapshot.data?.elementAtOrNull(index);
+          if (baseline == null) {
+            return snapshot.hasError
+                ? 'Basis nicht verfügbar'
+                : 'Basis wird geladen';
+          }
+          return switch (baseline.status.phase) {
+            BaselinePhase.trusted =>
+              baseline.range == null
+                  ? 'kein Normalbereich'
+                  : 'eigener Normalbereich',
+            BaselinePhase.building =>
+              baseline.status.remaining == null
+                  ? 'Basis im Aufbau'
+                  : 'noch ${baseline.status.remaining} Nächte',
+            BaselinePhase.none => 'kein Normalbereich',
+          };
+        }
+
         return chrome.OBPanel(
           child: Row(
             children: [
@@ -543,6 +575,10 @@ class _G3SleepScreenState extends State<G3SleepScreen> {
                                     .toStringAsFixed(value.$3)
                                     .replaceAll('.', ','),
                           style: g.t(22, 27, weight: FontWeight.w700),
+                        ),
+                        Text(
+                          value.$2 == null ? 'keine Daten' : basis(i),
+                          style: g.t(10, 14, color: g.muted),
                         ),
                       ],
                     ),

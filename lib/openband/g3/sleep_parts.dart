@@ -201,7 +201,11 @@ class OBSleepWindows extends StatelessWidget {
         children: [
           G3LabelRow(
             'REGELMÄSSIGKEIT',
-            note: regularity == null ? 'im Aufbau' : '${windows.length} Nächte',
+            note: regularity == null
+                ? 'im Aufbau'
+                : windows.isEmpty
+                ? null
+                : '${windows.length} Nächte',
           ),
           const SizedBox(height: 4),
           Row(
