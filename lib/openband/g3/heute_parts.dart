@@ -11,6 +11,42 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'chrome.dart' show OBActionSecondary;
 import 'g3_theme.dart';
 
+/// Training's sport names, so an activity reads the same on Heute and in
+/// Training (Lauf, Rad, Gehen, …; unknown sports read "Training").
+// ponytail: mirrors trainingSport in g3/training_parts.dart, which lives on
+// openband5/g3-training and is not on this stack; call it at integration.
+String heuteSportLabel(String sport) => switch (sport) {
+  'running' => 'Lauf',
+  'cycling' => 'Rad',
+  'hiking' => 'Wandern',
+  'walking' => 'Gehen',
+  'tennis' => 'Tennis',
+  'intervals' => 'Intervalle',
+  'stretching' => 'Dehnen',
+  'soccer' || 'football' => 'Fußball',
+  'rowing' => 'Rudern',
+  'climbing' => 'Klettern',
+  'skiing' => 'Ski',
+  'martial_arts' => 'Kampfsport',
+  'swimming' => 'Schwimmen',
+  'yoga' => 'Yoga',
+  'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
+  _ => sport == 'other' ? 'Sonstiges' : 'Training',
+};
+
+/// Training's sport picker, in its order.
+const kHeuteSports = [
+  'running',
+  'cycling',
+  'walking',
+  'hiking',
+  'weight_training',
+  'swimming',
+  'yoga',
+  'tennis',
+  'other',
+];
+
 /// Question copy for a check-in key; the day it belongs to is shown apart
 /// ("zu gestern"), so questions do not say "gestern" themselves.
 String heuteCheckInQuestion(String key, String title) {

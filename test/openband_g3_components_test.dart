@@ -9,6 +9,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
@@ -71,6 +72,13 @@ Widget _app(Widget child, {bool dark = false, double textScale = 1}) =>
         child: Material(color: G3(dark).page, child: child),
       ),
     );
+
+/// Painted width of a right-aligned label (its box is wider than the text).
+double _textWidth(WidgetTester tester, Finder text) => tester
+    .renderObject<RenderParagraph>(
+      find.descendant(of: text, matching: find.byType(RichText)),
+    )
+    .getMaxIntrinsicWidth(double.infinity);
 
 Widget _specimen(String name, bool dark) {
   final g = G3(dark);
@@ -421,6 +429,42 @@ void main() {
         expect(find.byType(G3Dashed), findsNWidgets(5));
       },
     );
+
+    testWidgets('secondary scale: the goal label keeps 8 pt to the end label', (
+      tester,
+    ) async {
+      for (final width in [148.0, 139.0, 120.0]) {
+        await tester.pumpWidget(
+          _app(
+            Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                child: const OBSecondaryMetric(
+                  label: 'SCHLAF',
+                  value: '7h18',
+                  fill: 438 / 600,
+                  goal: (465 / 600, 'Ziel 7h45'),
+                  start: '0 h',
+                  end: '10 h',
+                ),
+              ),
+            ),
+          ),
+        );
+        final goal = find.textContaining('Ziel');
+        final end = find.text('10 h');
+        expect(end, findsOneWidget, reason: 'the end label stays');
+        if (goal.evaluate().isEmpty) continue;
+        final goalRight = tester.getTopRight(goal).dx;
+        final endLeft = tester.getTopRight(end).dx - _textWidth(tester, end);
+        expect(
+          endLeft - goalRight,
+          greaterThanOrEqualTo(8),
+          reason: '$width pt',
+        );
+      }
+    });
 
     testWidgets(
       'sync line: the chevron stays on its text; the synthetic tag yields',

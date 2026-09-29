@@ -478,6 +478,8 @@ void main() {
   testWidgets('an auto-detected run is confirmed from its sheet', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     expect(find.text('auto-erkannt'), findsOneWidget);
+    expect(find.text('Lauf'), findsOneWidget, reason: 'the name Training uses');
+    expect(find.text('Laufen'), findsNothing);
     await tester.tap(find.textContaining('07:58–08:40'));
     await tester.pumpAndSettle();
     expect(find.text('Automatisch erkannt'), findsOneWidget);
@@ -495,6 +497,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Ändern')));
     await tester.pumpAndSettle();
+    // Training's sport picker, in its order.
+    final picker = find.descendant(of: find.byType(BottomSheet).last, matching: find.byType(Text));
+    final labels = tester.widgetList<Text>(picker).map((t) => t.data).whereType<String>().toList();
+    const training = ['Lauf', 'Rad', 'Gehen', 'Wandern', 'Kraft', 'Schwimmen', 'Yoga', 'Tennis', 'Sonstiges'];
+    expect(labels.where(training.contains).toList(), training);
     await tester.tap(find.text('Rad'));
     await tester.pumpAndSettle();
     expect((await h.repo.readActivities(_day)).single.sport, 'cycling');

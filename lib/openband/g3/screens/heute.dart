@@ -1021,7 +1021,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final minutes = a.duration?.inMinutes;
     return OBActivityRow(
       pictogram: OBSportIcon(sport.icon, size: 24, color: g.ink),
-      title: sport.label,
+      title: heuteSportLabel(a.sport),
       subtitle: [
         end == null
             ? 'seit ${_clock(a.start)}'
@@ -1040,15 +1040,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           : () => widget.onOpenActivity!(a),
     );
   }
-
-  static const _sports = [
-    'running',
-    'walking',
-    'cycling',
-    'hiking',
-    'strength',
-    'other',
-  ];
 
   Future<void> _suggestion(G3Activity a) async {
     var sport = a.sport;
@@ -1100,7 +1091,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   onConfirm: () => Navigator.of(pick).pop(),
                   child: Column(
                     children: [
-                      for (final s in _sports)
+                      for (final s in kHeuteSports)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: OBListRow(
@@ -1109,7 +1100,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                               size: 18,
                               color: g.ink,
                             ),
-                            title: obSport(s).label,
+                            title: heuteSportLabel(s),
                             onTap: () => Navigator.of(pick).pop(s),
                           ),
                         ),
@@ -1147,7 +1138,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        meta.label,
+                        heuteSportLabel(sport),
                         style: g.t(17, 22, weight: FontWeight.w700),
                       ),
                     ),
