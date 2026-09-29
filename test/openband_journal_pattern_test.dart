@@ -117,7 +117,7 @@ void main() {
   });
 
   test(
-    'too few nights is insufficient without invented split counts',
+    'too few nights retains eligible yes and no pair counts',
     () async {
       final days = openBandDaysEnding(endDay, nights + 1);
       final fixture = _pairs(
@@ -133,8 +133,8 @@ void main() {
       expect(actual.kind, CaffeineSleepPatternKind.insufficient);
       expect(actual.pairedN, expected.n);
       expect(actual.pairedN, 5);
-      expect(actual.yesNights, isNull);
-      expect(actual.noNights, isNull);
+      expect(actual.yesNights, 3);
+      expect(actual.noNights, 2);
       expect(actual.delta, isNull);
     },
   );
@@ -152,6 +152,21 @@ void main() {
     expect(actual.yesNights, expected.nWith);
     expect(actual.noNights, expected.nWithout);
     expect(actual.delta, closeTo(expected.delta!, 1e-9));
+  });
+
+  test('G3 side-floor refusal has counts but no paired-night remainder', () async {
+    await _seedWindow(_pairs(
+      start: DateTime(2026, 8, 21),
+      flags: [1, 1, 1, 1, 1, 1, 0, 0],
+      yesSol: 24,
+      noSol: 12,
+    ));
+    final pattern = await repository.readJournalPattern(endDay, nights);
+    expect(pattern.pattern.kind, CaffeineSleepPatternKind.insufficient);
+    expect(pattern.pattern.pairedN, 8);
+    expect(pattern.yesNights, 6);
+    expect(pattern.noNights, 2);
+    expect(pattern.remaining, isNull);
   });
 
   test('wake day without journal is not Nein', () async {
@@ -605,7 +620,7 @@ void main() {
     expect(actual.delta, isNull);
   });
 
-  test('synthetic insufficient seed does not invent split counts', () async {
+  test('synthetic insufficient seed retains eligible split counts', () async {
     final synthetic = _gallerySynthetic();
     synthetic.seedCaffeineSleepPattern(
       endDay,
@@ -623,7 +638,8 @@ void main() {
     expect(actual.kind, CaffeineSleepPatternKind.insufficient);
     expect(actual.pairedN, 5);
     expect(actual.pairedN, expected.n);
-    expect(actual.yesNights, isNull);
+    expect(actual.yesNights, 3);
+    expect(actual.noNights, 2);
     expect(actual.delta, isNull);
   });
 

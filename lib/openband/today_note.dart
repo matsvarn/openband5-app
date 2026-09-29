@@ -68,21 +68,21 @@ TodayNote? todayNote({
       sleepGoalMinutes != null &&
       sleepNeedMinutes != null &&
       suggestedBedtime != null &&
+      suggestedWake != null &&
       sleepMinutes < sleepGoalMinutes - 15) {
     sentences.add('Heute früher ins Bett.');
     facts.add('Schlaf ${sleepGoalMinutes - sleepMinutes} Min. unter Ziel');
-    if (suggestedWake != null) {
-      final displayedBedtime = _roundedBedtime(suggestedBedtime);
-      action = TodayNoteAction(
-        '${_clock(displayedBedtime)} ins Bett',
-        'für ${_sleepLength(sleepNeedMinutes.round())} Schlafbedarf bis ${_clock(suggestedWake)}',
-        displayedBedtime.subtract(const Duration(minutes: 15)),
-      );
-    }
+    final displayedBedtime = _roundedBedtime(suggestedBedtime);
+    action = TodayNoteAction(
+      '${_clock(displayedBedtime)} ins Bett',
+      'für ${_sleepLength(sleepNeedMinutes.round())} Schlafbedarf bis ${_clock(suggestedWake)}',
+      displayedBedtime.subtract(const Duration(minutes: 15)),
+    );
   }
   if (sentences.isEmpty) return null;
   final needed = recoveryBaseline.status.nightsNeeded;
   if (recoveryBaseline.status.phase == BaselinePhase.building &&
+      recoveryBaseline.status.nightsHave != null &&
       needed != null) {
     facts.add('Erholung ab Nacht $needed');
   }

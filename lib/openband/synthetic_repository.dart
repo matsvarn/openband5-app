@@ -395,6 +395,8 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   OpenBandDay _g3DayFixture() => OpenBandDay(
     day: _g3Day,
     sleep: SleepNight(
+      onset: DateTime(2026, 9, 28, 23, 10),
+      wake: DateTime(2026, 9, 29, 6, 54),
       duration: const DayMetric(438),
       bedMinutes: 464,
       awakeMinutes: 26,
@@ -404,7 +406,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     ),
     recovery: _g3Building
         ? const DayMetric.missing()
-        : const DayMetric(74, baseline: 68, baselineSpread: 11 / 1.253),
+        : const DayMetric(74, baseline: 69, baselineSpread: 11 / 1.253),
     strain: const DayMetric(9.4),
     hrv: DayMetric(
       48,
@@ -593,12 +595,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           strain: 6.1,
           avgHr: 148,
           maxHr: 176,
-          zoneMinutes: const [6, 14, 15, 6, 1],
-          zoneBasis: const G3ZoneBasis(
-            method: 'tanaka',
-            maxHr: 186,
-            maxHrSource: G3MaxHrSource.estimated,
-          ),
+          zoneMinutes: _g3SuggestionConfirmed ? const [6, 14, 15, 6, 1] : null,
+          zoneBasis: _g3SuggestionConfirmed
+              ? const G3ZoneBasis(G3ZoneBasisKind.hfmaxEstimated, 186)
+              : null,
           hrTrace: trace,
           signalGaps: [
             G3SignalGap(
@@ -672,17 +672,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       final snapshot = await readSleepPlan(day, now: now);
       final plan = snapshot.plan;
       return G3SleepPlus(
-        regularity: const G3AvailableValue(
-          null,
-          gate: 'Regelmäßigkeit braucht 7 ausgewertete Nächte.',
-        ),
-        socialJetlag: const G3AvailableValue(
-          null,
-          gate: 'Braucht freie und Arbeitstage.',
-        ),
-        sleepDebt: const G3SleepDebt(
-          refusalNote: 'Braucht längere freie Nächte.',
-        ),
+        regularity: const G3AvailableValue(null),
+        socialJetlag: const G3AvailableValue(null),
+        sleepDebt: const G3SleepDebt(),
         bedtime: plan?.bedtimeMinuteOfDay == null ? null : _g3At(22, 18),
         wake: plan?.wakeMinuteOfDay == null
             ? null
@@ -738,7 +730,6 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     int nights,
   ) async => G3JournalPattern(
     await readCaffeineSleepPattern(endDay, nights),
-    pairedMinimum: 8,
   );
 
   @override
@@ -2521,14 +2512,28 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         'sol': outcomes,
       }),
     );
+    final answerByDay = {
+      for (final row in journal)
+        row['date'] as String:
+            ((row['values'] as Map)[CaffeineSleepPattern.field] as num)
+                .toDouble(),
+    };
+    var yesNights = 0;
+    var noNights = 0;
+    for (var i = 0; i + 1 < days.length; i++) {
+      if (outcomes[i + 1] == null) continue;
+      final answer = answerByDay[days[i]];
+      if (answer == 1.0) yesNights++;
+      if (answer == 0.0) noNights++;
+    }
     return CaffeineSleepPattern.fromProducer(
       empty: produced['empty'] == true,
       binary: produced['binary'] == true,
       insufficient: produced['insufficient'] == true,
       meaningful: produced['meaningful'] == true,
       n: (produced['n'] as num?)?.toInt() ?? 0,
-      nWith: (produced['nWith'] as num?)?.toInt(),
-      nWithout: (produced['nWithout'] as num?)?.toInt(),
+      nWith: yesNights,
+      nWithout: noNights,
       delta: (produced['delta'] as num?)?.toDouble(),
       note: produced['note'] as String?,
       endDay: endDay,
@@ -5630,6 +5635,8 @@ Map<String, Object?> _syntheticCaffeineSleepCorrelate(
     fieldLagDays: const {
       CaffeineSleepPattern.field: CaffeineSleepPattern.lagDays,
     },
+    minN: CaffeineSleepPattern.minPairedNights,
+    minPerSide: CaffeineSleepPattern.minPerSideNights,
   );
   if (corr.isEmpty || corr.first.effects.isEmpty) {
     return const {'empty': true, 'n': 0};

@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
 
 import '../data/cycle_store.dart';
 import '../data/db.dart';
+import '../data/local_repository_impl.dart' show sessionHrTimeline;
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/med_store.dart';
@@ -16,14 +17,92 @@ import '../data/nutrition_targets.dart';
 import '../data/vo2_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
-import '../compute/derivation_engine.dart' show kAlgoVersion;
+import '../compute/derivation_engine.dart' show DerivationEngine, kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../health/health_measurement_import.dart';
 import '../health/health_export.dart';
+import '../models/metric.dart' show baselineCountsFromNote;
 import '../state/app_state.dart';
 import 'domain.dart';
 import 'theme.dart';
 import 'time.dart';
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps}) _g3ProjectTimeline(
+  Object? means,
+  Object? gaps,
+  int startSec,
+  int endSec,
+) {
+  final values = <int, double>{};
+  if (means is List) {
+    for (final item in means) {
+      if (item is! Map || item['t'] is! num || item['v'] is! num) continue;
+      values[(item['t'] as num).toInt()] = (item['v'] as num).toDouble();
+    }
+  }
+  final points = <G3HrPoint>[
+    if (endSec > startSec)
+      for (var t = (startSec ~/ 60) * 60;
+          t <= ((endSec - 1) ~/ 60) * 60;
+          t += 60)
+        G3HrPoint(DateTime.fromMillisecondsSinceEpoch(t * 1000), values[t]),
+  ];
+  final signalGaps = <G3SignalGap>[];
+  if (gaps is List) {
+    for (final item in gaps) {
+      if (item is! Map || item['start'] is! num || item['end'] is! num) {
+        continue;
+      }
+      signalGaps.add(G3SignalGap(
+        DateTime.fromMillisecondsSinceEpoch((item['start'] as num).toInt() * 1000),
+        DateTime.fromMillisecondsSinceEpoch((item['end'] as num).toInt() * 1000),
+      ));
+    }
+  }
+  if (values.isEmpty && signalGaps.isEmpty && endSec > startSec) {
+    signalGaps.add(G3SignalGap(
+      DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+      DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+    ));
+  }
+  return (points: points, gaps: signalGaps);
+}
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps}) _g3ProjectRawTrace(
+  List<Map<String, dynamic>> samples,
+  int startSec,
+  int endSec,
+) {
+  final timeline = sessionHrTimeline(
+    [for (final row in samples) (row['rec_ts'] as num).toInt()],
+    [for (final row in samples) (row['hr'] as num).toInt()],
+    startSec,
+    endSec,
+  );
+  return _g3ProjectTimeline(timeline.means, timeline.gaps, startSec, endSec);
+}
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps})? _g3ProjectFrozenTrace(
+  String raw,
+  int startSec,
+  int endSec,
+) {
+  try {
+    final trace = jsonDecode(raw);
+    if (trace is Map) {
+      if (!trace.containsKey('hr')) return null;
+      return _g3ProjectTimeline(
+        SeriesCodec.decodeCurve(trace['hr']),
+        trace['signal_gaps'],
+        startSec,
+        endSec,
+      );
+    }
+  } on FormatException {
+    // Corrupt frozen data cannot supply a curve.
+  }
+  return null;
+}
 
 /// SQLite-backed boundary for the first OpenBand daily/sleep-correction flow.
 /// All legacy Map payloads are decoded here; callers only see typed values.
@@ -123,30 +202,19 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
     if (metric == G3Metric.recovery) {
-      final note = _stringAt(payload, 'clinical.readiness_composite.note');
-      final have = note?.startsWith('need_baseline:') == true
-          ? _needField(note, 'have')
-          : null;
-      final need = note?.startsWith('need_baseline:') == true
-          ? _needField(note, 'need')
-          : null;
-      if (need != null) {
+      final counts = baselineCountsFromNote(
+        _stringAt(payload, 'readiness_absent_diag.note'),
+      );
+      if (counts != null) {
         return G3Baseline(
           BaselineStatus(
             BaselinePhase.building,
-            nightsHave: have,
-            nightsNeeded: need,
+            nightsHave: counts.have,
+            nightsNeeded: counts.need,
           ),
         );
       }
-      // A missing headline can also mean thin inputs or unstable dispersion.
-      // Its stored output supplies no honest night count in that case.
-      return const G3Baseline(
-        BaselineStatus(
-          BaselinePhase.building,
-          nightsNeeded: ana.readinessCompositeMinBaseline,
-        ),
-      );
+      return const G3Baseline(BaselineStatus(BaselinePhase.none));
     }
     if (stored?.status != null && stored!.status != 'absent') {
       return G3Baseline(
@@ -211,7 +279,12 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final from = localDayStartSec(day)!;
     final until = localDayEndSec(day)!;
     final rows = await LocalDb.sessionsInRange(from, until - 1);
-    final suggestions = await LocalDb.activeWorkoutSuggestions();
+    final db = await LocalDb.instance;
+    final suggestions = await db.query(
+      'workout_suggestions',
+      where: 'date = ? AND dismissed = 0',
+      whereArgs: [day],
+    );
     final derived = await LocalDb.dayResult(day);
     final derivedPayload =
         derived?['algo_version'] == kAlgoVersion &&
@@ -220,7 +293,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ? _payload(derived?['payload_json'])
         : null;
     final derivedBouts = derivedPayload?['workout_suggestions'];
-    final prior = await LocalDb.sessionsInRange(0, from - 1);
+    final priorCounts = await _g3PriorHrrCounts([
+      for (final r in [...rows, ...suggestions])
+        if (r['id'] is String && r['start_ts'] is num)
+          (
+            id: r['id'] as String,
+            sport: (r['type'] ?? r['sport'] ?? 'other') as String,
+            startSec: (r['start_ts'] as num).toInt(),
+          ),
+    ]);
     final result = <G3Activity>[];
     for (final r in rows) {
       final id = r['id'];
@@ -263,7 +344,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
           /* corrupt split remains absent */
         }
       }
-      final trace = await _g3HrTrace(startSec, endSec);
+      final trace = await _g3HrTrace(
+        startSec,
+        endSec,
+        frozenTrace: r['trace_json'] as String?,
+      );
       final share = await _g3OpticalShare(startSec, endSec);
       final sport = (r['type'] as String?) ?? 'other';
       final source = r['status'] == 'live'
@@ -289,9 +374,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
           opticalShare: share,
           // The derivation engine banks only the clean-tail hrRecovery result.
           hrRecoveryOneMinute: (r['hrr_bpm'] as num?)?.toDouble(),
-          priorHrrCount: prior
-              .where((p) => p['type'] == sport && p['hrr_bpm'] is num)
-              .length,
+          priorHrrCount: priorCounts[id] ?? 0,
         ),
       );
     }
@@ -335,9 +418,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
           signalGaps: trace.gaps,
           opticalShare: await _g3OpticalShare(startSec, endSec),
           hrRecoveryOneMinute: hrr,
-          priorHrrCount: prior
-              .where((p) => p['type'] == sport && p['hrr_bpm'] is num)
-              .length,
+          priorHrrCount: priorCounts[id] ?? 0,
         ),
       );
     }
@@ -358,16 +439,13 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final method = top['source'];
       final maxHr = top['hi'];
       if (method is! String || maxHr is! num) return null;
-      final source = switch (method) {
-        'tanaka' => G3MaxHrSource.estimated,
-        'observed' || 'karvonen' => G3MaxHrSource.measured,
+      final kind = switch (method) {
+        'tanaka' => G3ZoneBasisKind.hfmaxEstimated,
+        'observed' => G3ZoneBasisKind.hfmaxObserved,
+        'karvonen' => G3ZoneBasisKind.heartRateReserve,
         _ => null,
       };
-      return G3ZoneBasis(
-        method: method,
-        maxHr: maxHr.toDouble(),
-        maxHrSource: source,
-      );
+      return kind == null ? null : G3ZoneBasis(kind, maxHr.toDouble());
     } on FormatException {
       return null;
     }
@@ -376,65 +454,60 @@ class LocalOpenBandRepository implements OpenBandRepository {
   Future<({List<G3HrPoint> points, List<G3SignalGap> gaps})> _g3HrTrace(
     int startSec,
     int endSec,
+    {String? frozenTrace}
   ) async {
-    final samples = await LocalDb.hrSamplesInRange(startSec, endSec - 1);
-    if (samples.isEmpty) {
-      return (points: const <G3HrPoint>[], gaps: const <G3SignalGap>[]);
-    }
-    final byBin = <int, List<int>>{};
-    final gaps = <G3SignalGap>[];
-    var next = startSec;
-    for (final row in samples) {
-      final t = (row['rec_ts'] as num?)?.toInt();
-      final hr = (row['hr'] as num?)?.toInt();
-      if (t == null || hr == null || hr <= 0) continue;
-      if (t > next) {
-        gaps.add(
-          G3SignalGap(
-            DateTime.fromMillisecondsSinceEpoch(next * 1000),
-            DateTime.fromMillisecondsSinceEpoch(t * 1000),
-          ),
-        );
-      }
-      next = t + 1;
-      (byBin[(t - startSec) ~/ 30] ??= []).add(hr);
-    }
-    if (next < endSec) {
-      gaps.add(
-        G3SignalGap(
-          DateTime.fromMillisecondsSinceEpoch(next * 1000),
-          DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
-        ),
+    if (frozenTrace != null) {
+      final frozen = await Isolate.run(
+        () => _g3ProjectFrozenTrace(frozenTrace, startSec, endSec),
       );
+      if (frozen != null) return frozen;
     }
-    final points = [
-      for (var bin = 0; bin < (endSec - startSec + 29) ~/ 30; bin++)
-        G3HrPoint(
-          DateTime.fromMillisecondsSinceEpoch((startSec + bin * 30) * 1000),
-          byBin[bin] == null
-              ? null
-              : byBin[bin]!.reduce((a, b) => a + b) / byBin[bin]!.length,
-        ),
-    ];
-    return (points: points, gaps: gaps);
+    final samples = await LocalDb.hrSamplesInRange(startSec, endSec - 1);
+    return Isolate.run(() => _g3ProjectRawTrace(samples, startSec, endSec));
   }
 
   Future<double?> _g3OpticalShare(int startSec, int endSec) async {
     final db = await LocalDb.instance;
     final rows = await db.rawQuery(
-      'SELECT signal_quality_logvar FROM decoded_onehz '
+      'SELECT COUNT(*) AS n, '
+      'SUM(CASE WHEN signal_quality_logvar < ${DerivationEngine.trustedLogVarMax} THEN 1 ELSE 0 END) AS trusted '
+      'FROM decoded_onehz '
       'WHERE rec_ts >= ? AND rec_ts < ? AND signal_quality_logvar IS NOT NULL '
       'AND ${derivableSourceSql()}',
       [startSec, endSec],
     );
-    if (rows.isEmpty) return null;
-    final valid = [
-      for (final row in rows)
-        if (row['signal_quality_logvar'] is num)
-          (row['signal_quality_logvar'] as num).toDouble(),
+    final count = (rows.first['n'] as num?)?.toInt() ?? 0;
+    return count == 0
+        ? null
+        : ((rows.first['trusted'] as num?)?.toInt() ?? 0) / count;
+  }
+
+  Future<Map<String, int>> _g3PriorHrrCounts(
+    List<({String id, String sport, int startSec})> targets,
+  ) async {
+    if (targets.isEmpty) return const {};
+    final values = List.filled(targets.length, '(?, ?, ?)').join(', ');
+    final args = <Object?>[
+      for (final target in targets) ...[
+        target.id,
+        target.sport,
+        target.startSec,
+      ],
     ];
-    if (valid.isEmpty) return null;
-    return valid.where((v) => v.isFinite && v < -4.6).length / valid.length;
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'WITH targets(id, sport, start_ts) AS (VALUES $values) '
+      'SELECT t.id, COUNT(s.id) AS n FROM targets t '
+      'LEFT JOIN sessions s ON s.type = t.sport '
+      "AND s.start_ts < t.start_ts AND typeof(s.hrr_bpm) IN ('integer', 'real') "
+      'GROUP BY t.id',
+      args,
+    );
+    return {
+      for (final row in rows)
+        if (row['id'] is String && row['n'] is num)
+          row['id'] as String: (row['n'] as num).toInt(),
+    };
   }
 
   Future<Map<String, dynamic>> _activeSuggestion(String id) async {
@@ -496,24 +569,23 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Map<String, dynamic>? artifact,
     String root,
     String field,
-    String missing,
   ) {
     final envelope = artifact?[root];
-    if (envelope is! Map) return G3AvailableValue(null, gate: missing);
+    if (envelope is! Map) return const G3AvailableValue(null);
     final value = envelope['value'];
     final number = value is Map ? value[field] : null;
     return G3AvailableValue(
       number is num && number.isFinite ? number.toDouble() : null,
       gate: number is num && number.isFinite
           ? null
-          : (envelope['note'] as String?) ?? missing,
+          : envelope['note'] as String?,
     );
   }
 
   static G3SleepDebt _g3SleepDebt(Map<String, dynamic>? source) {
     final envelope = source?['sleep_debt'];
     if (envelope is! Map) {
-      return const G3SleepDebt(refusalNote: 'Braucht längere freie Nächte.');
+      return const G3SleepDebt();
     }
     final value = envelope['value'];
     final data = value is Map ? value : null;
@@ -530,9 +602,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       hasFreeNight: hasFreeNight is bool ? hasFreeNight : null,
       refusalNote: envelope['note'] is String
           ? envelope['note'] as String
-          : observed
-          ? null
-          : 'Braucht längere freie Nächte.',
+          : null,
     );
   }
 
@@ -551,22 +621,20 @@ class LocalOpenBandRepository implements OpenBandRepository {
       source,
       'regularity',
       'sri',
-      'Regelmäßigkeit braucht 7 ausgewertete Nächte.',
     );
     final sriDays = (_at(source, 'regularity.value.days') as num?)?.toInt();
-    final gatedRegularity = sriDays != null && sriDays >= 7
+    final gatedRegularity = source?['regularity'] is! Map
+        ? const G3AvailableValue(null)
+        : sriDays != null && sriDays >= 7
         ? regularity
         : G3AvailableValue(
             null,
-            gate: sriDays == null
-                ? 'Regelmäßigkeit braucht 7 ausgewertete Nächte.'
-                : 'Braucht 7 ausgewertete Nächte, vorhanden $sriDays.',
+            gate: (source!['regularity'] as Map)['note'] as String?,
           );
     final social = _crossdayValue(
       source,
       'social_jetlag',
       'abs_hours',
-      'Braucht freie und Arbeitstage.',
     );
     final debt = _g3SleepDebt(source);
     final plan = await readSleepPlan(day, now: clock);
@@ -641,15 +709,34 @@ class LocalOpenBandRepository implements OpenBandRepository {
     int nights,
   ) async => G3JournalPattern(
     await readCaffeineSleepPattern(endDay, nights),
-    pairedMinimum: 8,
   );
 
   @override
   Future<G3Weight> readG3Weight(String endDay, int days) async {
     final history = await readWeightHistory(endDay, days);
+    final labels = g3DaysEnding(endDay, days);
+    final start = localDayStartSec(labels.first)!;
+    final end = localDayEndSec(endDay)!;
+    final db = await LocalDb.instance;
+    final rows = await db.query(
+      'imported_measurement',
+      columns: ['uuid', 'ts', 'value', 'source'],
+      where: 'kind = ? AND unit = ? AND ts >= ? AND ts < ?',
+      whereArgs: ['weight_kg', 'kg', start, end],
+      orderBy: 'ts DESC',
+    );
     return G3Weight(history, {
       for (final entry in history.entries) entry.day: G3WeightSource.manual,
-    });
+    }, imported: [
+      for (final row in rows)
+        if (row['uuid'] is String && row['ts'] is num && row['value'] is num && row['source'] is String)
+          G3ImportedWeight(
+            row['uuid'] as String,
+            DateTime.fromMillisecondsSinceEpoch((row['ts'] as num).toInt() * 1000),
+            (row['value'] as num).toDouble(),
+            row['source'] as String,
+          ),
+    ]);
   }
 
 
@@ -2037,14 +2124,22 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'sol': outcomes,
       }),
     );
+    var yesNights = 0;
+    var noNights = 0;
+    for (var i = 0; i + 1 < days.length; i++) {
+      if (outcomes[i + 1] == null) continue;
+      final answer = caffeineByDay[days[i]];
+      if (answer == 1.0) yesNights++;
+      if (answer == 0.0) noNights++;
+    }
     return CaffeineSleepPattern.fromProducer(
       empty: produced['empty'] == true,
       binary: produced['binary'] == true,
       insufficient: produced['insufficient'] == true,
       meaningful: produced['meaningful'] == true,
       n: (produced['n'] as num?)?.toInt() ?? 0,
-      nWith: (produced['nWith'] as num?)?.toInt(),
-      nWithout: (produced['nWithout'] as num?)?.toInt(),
+      nWith: yesNights,
+      nWithout: noNights,
       delta: (produced['delta'] as num?)?.toDouble(),
       note: produced['note'] as String?,
       endDay: endDay,
@@ -4605,6 +4700,8 @@ Map<String, Object?> _caffeineSleepCorrelate(Map<String, Object?> input) {
     fieldLagDays: const {
       CaffeineSleepPattern.field: CaffeineSleepPattern.lagDays,
     },
+    minN: CaffeineSleepPattern.minPairedNights,
+    minPerSide: CaffeineSleepPattern.minPerSideNights,
   );
   if (corr.isEmpty || corr.first.effects.isEmpty) {
     return const {'empty': true, 'n': 0};
