@@ -15,6 +15,13 @@ String obSleepDuration(num? minutes) {
       : '$value Min.';
 }
 
+String _sleepAdjustment(num? minutes) {
+  if (minutes == null) return '—';
+  final rounded = minutes.round();
+  if (rounded == 0) return '0 Min.';
+  return '${rounded > 0 ? '+' : '−'} ${obSleepDuration(rounded.abs())}';
+}
+
 String obSleepClock(DateTime? time) => time == null
     ? '—'
     : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
@@ -957,7 +964,7 @@ class OBPlanBreakdown extends StatelessWidget {
           Divider(height: 1, color: g.line),
           row(
             'Schlafschuld, positiv',
-            obSleepDuration(
+            _sleepAdjustment(
               debt == null
                   ? null
                   : debt! > 0
@@ -968,16 +975,14 @@ class OBPlanBreakdown extends StatelessWidget {
           Divider(height: 1, color: g.line),
           row(
             strainOpen ? 'Belastung heute, läuft' : 'Belastung heute',
-            bonus == null ? '—' : '+ ${obSleepDuration(bonus)}',
+            _sleepAdjustment(bonus),
           ),
           Divider(height: 1, color: g.line),
           row(
             'Nickerchen heute',
             napsIncomplete
                 ? 'unvollständig'
-                : napCredit == null
-                ? '—'
-                : '− ${obSleepDuration(napCredit)}',
+                : _sleepAdjustment(napCredit == null ? null : -napCredit!),
           ),
           if (needClamp != null) ...[
             Divider(height: 1, color: g.line),
@@ -985,7 +990,7 @@ class OBPlanBreakdown extends StatelessWidget {
               needClamp!.limitMinutes == 360
                   ? 'Begrenzt auf 6h00'
                   : 'Obergrenze 11h00',
-              '${needClamp!.adjustmentMinutes >= 0 ? '+' : '−'} ${obSleepDuration(needClamp!.adjustmentMinutes.abs())}',
+              _sleepAdjustment(needClamp!.adjustmentMinutes),
             ),
           ],
           Divider(height: 2, thickness: 2, color: g.ink),

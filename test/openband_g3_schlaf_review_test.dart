@@ -172,6 +172,33 @@ void main() {
     expect(find.text('22:20'), findsOneWidget);
   });
 
+  testWidgets('Rechnung signs nonzero terms and leaves zero unsigned', (
+    tester,
+  ) async {
+    await _card(
+      tester,
+      const OBPlanBreakdown(debt: 10, bonus: 20, napCredit: 0),
+    );
+    expect(find.text('+ 10 Min.'), findsOneWidget);
+    expect(find.text('+ 20 Min.'), findsOneWidget);
+    expect(find.text('0 Min.'), findsOneWidget);
+    expect(find.text('− 0 Min.'), findsNothing);
+
+    await _card(
+      tester,
+      const OBPlanBreakdown(
+        debt: 0,
+        bonus: 0,
+        napCredit: 15,
+        needClamp: G3SleepNeedClamp(360, 0),
+      ),
+    );
+    expect(find.text('0 Min.'), findsNWidgets(3));
+    expect(find.text('− 15 Min.'), findsOneWidget);
+    expect(find.text('+ 0 Min.'), findsNothing);
+    expect(find.text('− 0 Min.'), findsNothing);
+  });
+
   testWidgets('first goal starts from measured nights without storing it', (
     tester,
   ) async {
@@ -217,7 +244,7 @@ void main() {
     expect(find.textContaining('erinnern'), findsOneWidget);
     expect(find.text('Eigenes Schlafziel'), findsNothing);
     expect(find.text('7h35'), findsOneWidget);
-    expect(find.text('10 Min.'), findsOneWidget);
+    expect(find.text('+ 10 Min.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -229,7 +256,7 @@ void main() {
       const OBPlanBreakdown(baseline: 451, debt: 13, need: 484),
     );
     expect(find.text('7h31'), findsOneWidget);
-    expect(find.text('13 Min.'), findsOneWidget);
+    expect(find.text('+ 13 Min.'), findsOneWidget);
     expect(find.text('÷ übliche Schlafeffizienz'), findsOneWidget);
     expect(find.text('8h35 im Bett'), findsNothing);
   });
