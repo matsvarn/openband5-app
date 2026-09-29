@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme.dart' show OBChevron;
+import 'count_copy.dart';
 import 'g3_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -303,7 +304,7 @@ class OBLeadMetric extends StatelessWidget {
 
   /// Building: nights (or values) stored and needed.
   final int? have, need;
-  final String unitNoun, unitNounDative;
+  final String unitNoun, unitNounDative, unitNounSingular;
   final String title, reason;
 
   /// Show a leading + for positive values (relative deviations).
@@ -328,6 +329,7 @@ class OBLeadMetric extends StatelessWidget {
     this.need,
     this.unitNoun = 'Nächte',
     this.unitNounDative = 'Nächten',
+    this.unitNounSingular = 'Nacht',
     this.title = 'Noch keine Werte',
     this.reason = 'Es fehlt die Nacht. Nichts wird geschätzt.',
     this.signed = false,
@@ -397,11 +399,11 @@ class OBLeadMetric extends StatelessWidget {
           spacing: 8,
           children: [
             Text(
-              '$have von $need $unitNounDative',
+              '$have von $need ${g3CountNoun(need!, unitNounSingular, unitNounDative)}',
               style: g.t(12, 16, weight: FontWeight.w700),
             ),
             Text(
-              'Basis: noch $left $unitNoun',
+              'Basis: noch $left ${g3CountNoun(left, unitNounSingular, unitNoun)}',
               style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
             ),
           ],

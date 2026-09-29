@@ -10,6 +10,7 @@ import '../../../ui2/app_shell.dart' show pushInTab;
 import '../../domain.dart';
 import '../charts.dart';
 import '../chrome.dart' as chrome;
+import '../count_copy.dart';
 import '../g3_theme.dart';
 import '../metrics.dart' as metrics;
 
@@ -85,7 +86,7 @@ String _baselineChip(G3Baseline? baseline) {
   if (status?.phase != BaselinePhase.building) return 'kein Normalbereich';
   final remaining = status?.remaining;
   if (remaining == null) return 'Basis im Aufbau';
-  return 'Basis: noch $remaining ${remaining == 1 ? 'Wert' : 'Werte'}';
+  return 'Basis: noch $remaining ${g3CountNoun(remaining, 'Wert', 'Werte')}';
 }
 
 metrics.OBBodyRow _bodyRow(
@@ -335,7 +336,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     ? _baseline?.status.nightsHave == null ||
                               _baseline?.status.nightsNeeded == null
                           ? 'Ohne verlässlichen Normalbereich'
-                          : '${_baseline!.status.nightsHave} von ${_baseline!.status.nightsNeeded} Werten gespeichert'
+                          : '${_baseline!.status.nightsHave} von ${_baseline!.status.nightsNeeded} ${g3CountNoun(_baseline!.status.nightsNeeded!, 'Wert', 'Werten')} gespeichert'
                     : value == null
                     ? null
                     : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
@@ -381,9 +382,11 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                         _endLabel(widget.endDay),
                       ],
                 footLeft: remaining != null
-                    ? '$valueCount Werte · Verlauf ab 7'
-                    : '$valueCount von ${points.length} Tagen mit Wert',
-                footRight: remaining == null ? null : 'noch $remaining Tage',
+                    ? '$valueCount ${g3CountNoun(valueCount, 'Wert', 'Werte')} · Verlauf ab 7'
+                    : '$valueCount von ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tagen')} mit Wert',
+                footRight: remaining == null
+                    ? null
+                    : 'noch $remaining ${g3CountNoun(remaining, 'Tag', 'Tage')}',
                 onPeriod: _changePeriod,
               ),
               if (remaining != null) ...[
@@ -448,7 +451,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                             child: Text(
                               '${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$1))}'
                               '${gap.$1 == gap.$2 ? '' : '–${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$2))}'}'
-                              ' · ${gap.$3} ${gap.$3 == 1 ? 'Tag' : 'Tage'} ohne Messwert',
+                              ' · ${gap.$3} ${g3CountNoun(gap.$3, 'Tag', 'Tage')} ohne Messwert',
                               style: g.t(14, 18, color: g.ink2),
                             ),
                           ),
@@ -610,11 +613,15 @@ class _Stats extends StatelessWidget {
     final lo = values.isEmpty ? null : values.reduce(math.min);
     final hi = values.isEmpty ? null : values.reduce(math.max);
     final averageLabel = values.length == points.length
-        ? 'Ø ${points.length} Tage'
-        : 'Ø ${values.length} von ${points.length} Tagen';
+        ? 'Ø ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tage')}'
+        : 'Ø ${values.length} von ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tagen')}';
     return metrics.OBStatRow([
       (averageLabel, average == null ? null : _number(average, metric), null),
-      ('Unter Bereich', under?.toString(), under == null ? null : 'Tage'),
+      (
+        'Unter Bereich',
+        under?.toString(),
+        under == null ? null : g3CountNoun(under, 'Tag', 'Tage'),
+      ),
       (
         'Spanne',
         lo == null ? null : '${_number(lo, metric)}–${_number(hi, metric)}',
@@ -965,7 +972,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 ],
                 footLeft: history.entries.isEmpty && latest != null
                     ? 'Keine Einträge im Zeitraum · letzter Eintrag ${_date(latest.day)}'
-                    : '${history.entries.length} Einträge · keine Tageswerte geschätzt',
+                    : '${history.entries.length} ${g3CountNoun(history.entries.length, 'Eintrag', 'Einträge')} · keine Tageswerte geschätzt',
                 footRight: values.isEmpty
                     ? null
                     : '${_number(values.reduce(math.min), G3Metric.respRate)}–${_number(values.reduce(math.max), G3Metric.respRate)} kg',

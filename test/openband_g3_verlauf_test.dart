@@ -232,6 +232,24 @@ void main() {
     expect(find.text('48'), findsNothing);
   });
 
+  testWidgets('one HRV value uses the singular trend footer', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _ValuesRepository(
+            48,
+            const G3Baseline(BaselineStatus(BaselinePhase.none)),
+          ),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
+    expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
+  });
+
   testWidgets('partial values stay absent for every wave-1 trend', (
     tester,
   ) async {
@@ -576,6 +594,7 @@ void main() {
     await tester.pumpAndSettle();
     expect((await repo.readG3Weight(_day, 7)).history.latest?.value, 78.4);
     expect(find.text('78,4 kg'), findsWidgets);
+    expect(find.textContaining('1 Eintrag ·'), findsOneWidget);
   });
 
   testWidgets('weight chart leaves gaps and lists every visible entry', (
