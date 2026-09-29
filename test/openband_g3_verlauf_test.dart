@@ -1,0 +1,200 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
+import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/theme.dart';
+
+const _day = '2026-09-29';
+
+Map<String, dynamic> _fixture(String name) => Map<String, dynamic>.from(
+  jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync())
+      as Map,
+);
+
+SyntheticOpenBandRepository _repo(SyntheticScenario scenario) {
+  return SyntheticOpenBandRepository.fromMaps(
+    _fixture('day-summary.json'),
+    _fixture('sleep-detail.json'),
+    scenario: scenario,
+  );
+}
+
+class _ControlledTrendRepository extends SyntheticOpenBandRepository {
+  _ControlledTrendRepository({this.fail = false, this.partial = false})
+    : super.fromMaps(
+        _fixture('day-summary.json'),
+        _fixture('sleep-detail.json'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+  final bool fail, partial;
+
+  @override
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
+    if (fail) throw StateError('unreadable trend');
+    if (partial) {
+      final labels = g3DaysEnding(endDay, days);
+      return g3Trend(metric, [
+        for (final day in labels)
+          MetricPoint(day, day == endDay ? 99 : null, partial: day == endDay),
+      ], await readPersonalRange(metric, endDay));
+    }
+    return super.readTrend(metric, endDay, days);
+  }
+}
+
+Widget _app(Widget child) =>
+    MaterialApp(theme: openBandTheme(Brightness.light), home: child);
+
+void main() {
+  setUpAll(() async => initializeDateFormatting('de_DE'));
+
+  testWidgets('missing HRV refuses a value and names the missing input', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Building);
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(metric: G3Metric.hrv, repository: repo, endDay: _day),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('—'), findsWidgets);
+    expect(find.text('Kein Messwert'), findsOneWidget);
+    expect(find.text('48'), findsNothing);
+  });
+
+  testWidgets('partial values stay absent for every wave-1 trend', (
+    tester,
+  ) async {
+    final repo = _ControlledTrendRepository(partial: true);
+    for (final metric in [
+      G3Metric.recovery,
+      G3Metric.hrv,
+      G3Metric.rhr,
+      G3Metric.respRate,
+      G3Metric.skinTempZ,
+      G3Metric.sleepMinutes,
+      G3Metric.steps,
+    ]) {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            key: ValueKey(metric),
+            metric: metric,
+            repository: repo,
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Kein Messwert'), findsOneWidget, reason: '$metric');
+      expect(find.text('99'), findsNothing, reason: '$metric');
+      expect(
+        find.text('0 Werte · Verlauf ab 7'),
+        findsOneWidget,
+        reason: '$metric',
+      );
+    }
+  });
+
+  testWidgets('read error is a retryable refusal', (tester) async {
+    final repo = _ControlledTrendRepository(fail: true);
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.recovery,
+          repository: repo,
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Verlauf konnte nicht geladen werden'), findsOneWidget);
+    expect(find.text('74'), findsNothing);
+    expect(find.text('Erneut versuchen'), findsOneWidget);
+  });
+
+  testWidgets('period switch reads the selected window', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.recovery,
+          repository: repo,
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('74'), findsWidgets);
+    await tester.tap(find.text('7 T').first);
+    await tester.pumpAndSettle();
+    expect(find.text('7 von 7 Tagen mit Wert'), findsOneWidget);
+  });
+
+  testWidgets('every body row opens its own trend', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    await tester.pumpWidget(_app(G3AllMetrics(repository: repo, endDay: _day)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ruhepuls').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(G3MetricDetail), findsOneWidget);
+    expect(
+      tester.widget<G3MetricDetail>(find.byType(G3MetricDetail)).metric,
+      G3Metric.rhr,
+    );
+  });
+
+  testWidgets('manual weight entry writes through the journal seam', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    await tester.pumpWidget(
+      _app(G3WeightDetail(repository: repo, endDay: _day)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Noch kein Gewicht'), findsOneWidget);
+    await tester.tap(find.text('Gewicht eintragen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '78,45');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect((await repo.readG3Weight(_day, 7)).history.latest, isNull);
+    expect(find.textContaining('0,1-kg-Schritten'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '78,4');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect((await repo.readG3Weight(_day, 7)).history.latest?.value, 78.4);
+    expect(find.text('78,4 kg'), findsWidgets);
+  });
+
+  testWidgets('small phone with large text keeps the detail readable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _repo(SyntheticScenario.g3Sample);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.6)),
+          child: G3MetricDetail(
+            metric: G3Metric.recovery,
+            repository: repo,
+            endDay: _day,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('ERHOLUNG'), findsWidgets);
+  });
+}

@@ -3,6 +3,7 @@ import 'openband/controller.dart';
 import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
+import 'openband/g3/screens/verlauf.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/cycle.dart';
@@ -379,6 +380,7 @@ ShellDomain domainForTab(int tab) => switch (tab) {
 /// to Home rather than crashing a cold launch on a payload from an older
 /// build.
 ShellDomain domainForRoute(String route) => switch (routePath(route)) {
+  '/heart' || '/body' => ShellDomain.home,
   '/sleep' => ShellDomain.sleep,
   '/workouts' => ShellDomain.workout,
   kRouteAiMorning || kRouteAiEvening => ShellDomain.home,
@@ -461,6 +463,30 @@ Widget? releaseScreenForRoute(
 
 Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
     switch (routePath(route)) {
+      kRouteRecovery =>
+        repository == null
+            ? null
+            : G3MetricDetail(
+                metric: G3Metric.recovery,
+                repository: repository,
+                endDay: todayLabel(),
+              ),
+      kRouteSteps =>
+        repository == null
+            ? null
+            : G3MetricDetail(
+                metric: G3Metric.steps,
+                repository: repository,
+                endDay: todayLabel(),
+              ),
+      '/heart' =>
+        repository == null
+            ? null
+            : G3AllMetrics(repository: repository, endDay: todayLabel()),
+      '/body' =>
+        repository == null
+            ? null
+            : G3AllMetrics(repository: repository, endDay: todayLabel()),
       kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
       kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
       kRouteJournalCompose => const OpenBandJournalEditorRoute(),

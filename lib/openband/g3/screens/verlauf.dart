@@ -1,0 +1,1195 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../data/journal_fields.dart';
+import '../../domain.dart';
+import '../charts.dart';
+import '../chrome.dart' as chrome;
+import '../g3_theme.dart';
+import '../metrics.dart' as metrics;
+
+const _bodyMetrics = [
+  G3Metric.hrv,
+  G3Metric.rhr,
+  G3Metric.respRate,
+  G3Metric.skinTempZ,
+];
+
+String g3MetricName(G3Metric metric) => switch (metric) {
+  G3Metric.recovery => 'Erholung',
+  G3Metric.hrv => 'HRV',
+  G3Metric.rhr => 'Ruhepuls',
+  G3Metric.respRate => 'Atemfrequenz',
+  G3Metric.skinTempZ => 'Hauttemperatur',
+  G3Metric.sleepMinutes => 'Schlaf-Dauer',
+  G3Metric.strain => 'Belastung',
+  G3Metric.steps => 'Schritte',
+};
+
+String _unit(G3Metric metric) => switch (metric) {
+  G3Metric.recovery => '',
+  G3Metric.hrv => 'ms',
+  G3Metric.rhr || G3Metric.respRate => '/min',
+  G3Metric.skinTempZ => '',
+  G3Metric.sleepMinutes => '',
+  G3Metric.strain => '',
+  G3Metric.steps => '',
+};
+
+int _digits(G3Metric metric) => switch (metric) {
+  G3Metric.respRate || G3Metric.skinTempZ || G3Metric.strain => 1,
+  _ => 0,
+};
+
+String _number(double? value, G3Metric metric) {
+  if (value == null || !value.isFinite) return '—';
+  if (metric == G3Metric.sleepMinutes) {
+    final m = value.round();
+    return '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}';
+  }
+  final text = value.toStringAsFixed(_digits(metric)).replaceAll('.', ',');
+  return metric == G3Metric.skinTempZ && value > 0 ? '+$text' : text;
+}
+
+String _date(String day) =>
+    DateFormat('EEE d.MM', 'de_DE').format(DateTime.parse(day));
+
+String _longDate(String day) =>
+    DateFormat('EEEE, d. MMMM', 'de_DE').format(DateTime.parse(day));
+
+double? _usable(MetricPoint point) =>
+    point.partial || point.value?.isFinite != true ? null : point.value;
+
+/// The shared entry point for Heute, Schlaf and Messwerte. The Training area
+/// owns the Belastung detail and may reuse [G3MetricDetail] for its trend.
+Future<void> openG3MetricDetail(
+  BuildContext context,
+  G3Metric metric, {
+  required OpenBandRepository repository,
+  required String endDay,
+  String backLabel = 'Heute',
+  BandSnapshot? band,
+}) => Navigator.of(context).push<void>(
+  MaterialPageRoute(
+    builder: (_) => G3MetricDetail(
+      metric: metric,
+      repository: repository,
+      endDay: endDay,
+      backLabel: backLabel,
+      band: band,
+    ),
+  ),
+);
+
+class G3MetricDetail extends StatefulWidget {
+  const G3MetricDetail({
+    super.key,
+    required this.metric,
+    required this.repository,
+    required this.endDay,
+    this.backLabel = 'Heute',
+    this.band,
+    this.initialPeriod,
+  });
+  final G3Metric metric;
+  final OpenBandRepository repository;
+  final String endDay, backLabel;
+  final BandSnapshot? band;
+  final OBTrendPeriod? initialPeriod;
+
+  @override
+  State<G3MetricDetail> createState() => _G3MetricDetailState();
+}
+
+class _G3MetricDetailState extends State<G3MetricDetail> {
+  late OBTrendPeriod _period =
+      widget.initialPeriod ??
+      (widget.metric == G3Metric.rhr ? OBTrendPeriod.d90 : OBTrendPeriod.d30);
+  G3Trend? _trend;
+  G3Baseline? _baseline;
+  bool _loading = true, _error = false;
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant G3MetricDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.metric != widget.metric ||
+        oldWidget.endDay != widget.endDay ||
+        !identical(oldWidget.repository, widget.repository)) {
+      _trend = null;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _request++;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _error = false;
+      _trend = null;
+    });
+    try {
+      final days = switch (_period) {
+        OBTrendPeriod.d7 => 7,
+        OBTrendPeriod.d30 => 30,
+        OBTrendPeriod.d90 => 90,
+      };
+      final trend = await widget.repository.readTrend(
+        widget.metric,
+        widget.endDay,
+        days,
+      );
+      final baseline = await widget.repository.readPersonalRange(
+        widget.metric,
+        widget.endDay,
+      );
+      if (!mounted || request != _request) return;
+      setState(() {
+        _trend = trend;
+        _baseline = baseline;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+    }
+  }
+
+  void _changePeriod(OBTrendPeriod period) {
+    if (period == _period) return;
+    setState(() => _period = period);
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final metric = widget.metric;
+    final trend = _trend;
+    final points = trend?.points ?? const <MetricPoint>[];
+    final value = points.isEmpty ? null : _usable(points.last);
+    final valueCount = points.where((p) => _usable(p) != null).length;
+    final remaining = valueCount < 7 ? 7 - valueCount : null;
+    final range = _baseline?.status.phase == BaselinePhase.trusted
+        ? _baseline?.range
+        : null;
+    final outside = value == null || range == null || range.contains(value)
+        ? null
+        : (value < range.low ? -1 : 1);
+    final better =
+        outside != null &&
+        ((metric == G3Metric.rhr && outside < 0) ||
+            ((metric == G3Metric.recovery || metric == G3Metric.hrv) &&
+                outside > 0));
+    final mark = metric == G3Metric.skinTempZ ? null : outside;
+    final title = g3MetricName(metric);
+    return Scaffold(
+      backgroundColor: g.page,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          children: [
+            chrome.OBPageHeader.detail(
+              title: title.toUpperCase(),
+              subtitle: _longDate(widget.endDay),
+              backLabel: widget.backLabel,
+              onBack: () => Navigator.of(context).pop(),
+              onTrailing: () => _showExplanation(context, metric),
+            ),
+            const SizedBox(height: 12),
+            if (_error)
+              chrome.OBErrorBlock(
+                title: 'Verlauf konnte nicht geladen werden',
+                reason:
+                    'Deine gespeicherten Messwerte sind gerade nicht lesbar.',
+                onRetry: _load,
+              )
+            else if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else ...[
+              metrics.OBLeadMetric(
+                label: metric == G3Metric.skinTempZ ? 'Abweichung' : title,
+                state: value == null
+                    ? metrics.OBLeadState.missing
+                    : metric == G3Metric.skinTempZ || range == null
+                    ? metrics.OBLeadState.plain
+                    : mark == null
+                    ? metrics.OBLeadState.normal
+                    : better
+                    ? metrics.OBLeadState.better
+                    : metrics.OBLeadState.worse,
+                value: value,
+                digits: _digits(metric),
+                unit: _unit(metric).isEmpty ? null : _unit(metric),
+                signed: metric == G3Metric.skinTempZ,
+                note: metric == G3Metric.skinTempZ
+                    ? 'Nacht zu ${_date(widget.endDay)}'
+                    : range == null
+                    ? 'Basis im Aufbau'
+                    : 'normal ${_number(range.low, metric)}–${_number(range.high, metric)} ${_unit(metric)}',
+                basisChip: metric == G3Metric.skinTempZ
+                    ? 'keine Wertung'
+                    : _baseline?.status.phase == BaselinePhase.building &&
+                          _baseline?.status.nightsHave != null
+                    ? 'Basis: ${_baseline!.status.nightsHave} Werte'
+                    : 'kein Normalbereich',
+                delta: value == null || range == null
+                    ? null
+                    : _number((value - range.median).abs(), metric),
+                deltaUp:
+                    value == null || range == null || value >= range.median,
+                caption: metric == G3Metric.skinTempZ
+                    ? 'Abweichung von deiner Basis · keine °C'
+                    : range == null
+                    ? _baseline?.status.nightsNeeded == null
+                          ? 'Ohne verlässlichen Normalbereich'
+                          : 'Bereich ab ${_baseline!.status.nightsNeeded} Werten'
+                    : value == null
+                    ? null
+                    : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
+                scale: value == null ? null : _scale(metric, value, range),
+                title: 'Kein Messwert',
+                reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
+                onTap: () => _showExplanation(context, metric),
+              ),
+              const SizedBox(height: 10),
+              OBTrendChart(
+                title: metric == G3Metric.skinTempZ
+                    ? 'ABWEICHUNG · RELATIV'
+                    : '$title${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}'
+                          .toUpperCase(),
+                period: _period,
+                values: [for (final p in points) _usable(p)],
+                marks: [for (final p in points) _pointMark(metric, p, range)],
+                min: _chartBounds(metric, points, range).$1,
+                max: _chartBounds(metric, points, range).$2,
+                band: range == null ? null : (range.low, range.high),
+                bandLabels: range == null
+                    ? null
+                    : (_number(range.low, metric), _number(range.high, metric)),
+                zero: metric == G3Metric.skinTempZ ? 0 : null,
+                xLabels: _period == OBTrendPeriod.d7
+                    ? [
+                        for (final p in points)
+                          DateFormat(
+                            'E',
+                            'de_DE',
+                          ).format(DateTime.parse(p.day)),
+                      ]
+                    : points.isEmpty
+                    ? const []
+                    : [
+                        DateFormat(
+                          'dd.MM',
+                          'de_DE',
+                        ).format(DateTime.parse(points.first.day)),
+                        DateFormat('dd.MM', 'de_DE').format(
+                          DateTime.parse(points[points.length ~/ 2].day),
+                        ),
+                        'heute',
+                      ],
+                footLeft: remaining != null
+                    ? '$valueCount Werte · Verlauf ab 7'
+                    : '$valueCount von ${points.length} Tagen mit Wert',
+                footRight: remaining == null ? null : 'noch $remaining Tage',
+                onPeriod: _changePeriod,
+              ),
+              if (remaining != null) ...[
+                const SizedBox(height: 10),
+                _InfoCard(
+                  title: 'Noch kein Verlauf',
+                  text:
+                      'Ein Verlauf braucht 7 Werte. Du hast $valueCount. Fehlende Tage bleiben leer.',
+                ),
+              ] else ...[
+                const SizedBox(height: 10),
+                if (metric != G3Metric.skinTempZ)
+                  _Stats(metric: metric, points: points, range: range),
+                if (metric == G3Metric.hrv || metric == G3Metric.recovery) ...[
+                  chrome.OBSectionHeader(
+                    metric == G3Metric.hrv ? 'NÄCHTE' : 'LETZTE NACHT',
+                  ),
+                  chrome.OBPanel(
+                    child: Column(
+                      children: [
+                        for (final p in points.reversed.take(5).indexed)
+                          metrics.OBDayValueRow(
+                            date: _date(p.$2.day),
+                            value: p.$2.partial || p.$2.value == null
+                                ? null
+                                : _number(p.$2.value, metric),
+                            note: p.$2.partial ? 'teilweise erfasst' : null,
+                            share: _usable(p.$2) == null
+                                ? null
+                                : ((p.$2.value! -
+                                              _chartBounds(
+                                                metric,
+                                                points,
+                                                range,
+                                              ).$1) /
+                                          (_chartBounds(
+                                                metric,
+                                                points,
+                                                range,
+                                              ).$2 -
+                                              _chartBounds(
+                                                metric,
+                                                points,
+                                                range,
+                                              ).$1))
+                                      .clamp(0, 1),
+                            last: p.$1 == math.min(points.length, 5) - 1,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+                if (metric == G3Metric.rhr && _gaps(points).isNotEmpty) ...[
+                  const chrome.OBSectionHeader('LÜCKEN'),
+                  chrome.OBPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final gap in _gaps(points))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(
+                              '${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$1))}'
+                              '${gap.$1 == gap.$2 ? '' : '–${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$2))}'}'
+                              ' · ${gap.$3} ${gap.$3 == 1 ? 'Tag' : 'Tage'} ohne Messwert',
+                              style: g.t(14, 18, color: g.ink2),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+              const SizedBox(height: 12),
+              _InfoCard(
+                title: metric == G3Metric.skinTempZ
+                    ? 'Was das ist'
+                    : 'Lücken bleiben leer',
+                text: metric == G3Metric.skinTempZ
+                    ? 'Relative Abweichung der Hauttemperatur von deiner Basis, in Sensor-Einheiten. Keine °C, keine Körpertemperatur.'
+                    : 'Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
+              ),
+              if (widget.band != null)
+                chrome.OBFooterStamp(
+                  widget.band!.latestStoredAt == null
+                      ? 'Letzter Bandwert —'
+                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+List<(String, String, int)> _gaps(List<MetricPoint> points) {
+  final gaps = <(String, String, int)>[];
+  String? start, end;
+  var count = 0;
+  for (final point in points) {
+    if (_usable(point) == null) {
+      start ??= point.day;
+      end = point.day;
+      count++;
+    } else if (start != null) {
+      gaps.add((start, end!, count));
+      start = null;
+      count = 0;
+    }
+  }
+  if (start != null) gaps.add((start, end!, count));
+  return gaps;
+}
+
+metrics.G3Scale _scale(G3Metric metric, double value, PersonalRange? range) {
+  final (double lo, double hi) = switch (metric) {
+    G3Metric.recovery => (0, 100),
+    G3Metric.hrv => (30, 60),
+    G3Metric.rhr => (45, 65),
+    G3Metric.respRate => (10, 22),
+    G3Metric.skinTempZ => (-1, 1),
+    G3Metric.sleepMinutes => (0, 720),
+    G3Metric.strain => (0, 21),
+    G3Metric.steps => (0, 15000),
+  };
+  return metrics.G3Scale(
+    min: lo,
+    max: hi,
+    band: range == null
+        ? null
+        : (range.low.clamp(lo, hi), range.high.clamp(lo, hi)),
+    median: metric == G3Metric.skinTempZ ? 0 : range?.median,
+    ticks: metric == G3Metric.skinTempZ
+        ? const [
+            metrics.G3Tick(-1, 'kühler'),
+            metrics.G3Tick(0, 'normal'),
+            metrics.G3Tick(1, 'wärmer'),
+          ]
+        : [
+            metrics.G3Tick(lo, _number(lo, metric)),
+            if (range != null) ...[
+              metrics.G3Tick(
+                range.low,
+                _number(range.low, metric),
+                strong: true,
+              ),
+              metrics.G3Tick(
+                range.high,
+                _number(range.high, metric),
+                strong: true,
+              ),
+            ],
+            metrics.G3Tick(hi, _number(hi, metric)),
+          ],
+  );
+}
+
+(double, double) _chartBounds(
+  G3Metric metric,
+  List<MetricPoint> points,
+  PersonalRange? range,
+) {
+  final values = [
+    for (final p in points)
+      if (!p.partial && p.value?.isFinite == true) p.value!,
+    if (range != null) range.low,
+    if (range != null) range.high,
+  ];
+  if (metric == G3Metric.skinTempZ) {
+    values.addAll([-0.5, 0.5]);
+  }
+  if (values.isEmpty) {
+    return metric == G3Metric.recovery ? (0, 100) : (0, 1);
+  }
+  final lo = values.reduce(math.min), hi = values.reduce(math.max);
+  final pad = math.max((hi - lo) * .25, metric == G3Metric.skinTempZ ? .1 : 1);
+  return (lo - pad, hi + pad);
+}
+
+OBTrendMark _pointMark(
+  G3Metric metric,
+  MetricPoint point,
+  PersonalRange? range,
+) {
+  final value = point.partial ? null : point.value;
+  if (value == null ||
+      !value.isFinite ||
+      range == null ||
+      range.contains(value)) {
+    return OBTrendMark.none;
+  }
+  if (metric == G3Metric.skinTempZ) return OBTrendMark.outside;
+  if (metric == G3Metric.rhr) {
+    return value < range.low ? OBTrendMark.better : OBTrendMark.worse;
+  }
+  if (metric == G3Metric.recovery || metric == G3Metric.hrv) {
+    return value > range.high ? OBTrendMark.better : OBTrendMark.worse;
+  }
+  return OBTrendMark.worse;
+}
+
+class _Stats extends StatelessWidget {
+  const _Stats({
+    required this.metric,
+    required this.points,
+    required this.range,
+  });
+  final G3Metric metric;
+  final List<MetricPoint> points;
+  final PersonalRange? range;
+  @override
+  Widget build(BuildContext context) {
+    final values = [
+      for (final p in points)
+        if (!p.partial && p.value?.isFinite == true) p.value!,
+    ];
+    final average = values.isEmpty
+        ? null
+        : values.reduce((a, b) => a + b) / values.length;
+    final under = range == null
+        ? null
+        : values.where((v) => v < range!.low).length;
+    final lo = values.isEmpty ? null : values.reduce(math.min);
+    final hi = values.isEmpty ? null : values.reduce(math.max);
+    return metrics.OBStatRow([
+      (
+        'Ø ${points.length} Tage',
+        average == null ? null : _number(average, metric),
+        null,
+      ),
+      ('Unter Bereich', under?.toString(), under == null ? null : 'Tage'),
+      (
+        'Spanne',
+        lo == null ? null : '${_number(lo, metric)}–${_number(hi, metric)}',
+        null,
+      ),
+    ]);
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.title, required this.text});
+  final String title, text;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: g.pressed(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(LucideIcons.info, size: 20, color: g.ink),
+          const SizedBox(height: 14),
+          Text(title, style: g.t(18, 23, weight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(text, style: g.t(14, 19, color: g.ink2)),
+        ],
+      ),
+    );
+  }
+}
+
+void _showExplanation(BuildContext context, G3Metric metric) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    builder: (sheet) => chrome.OBSheet(
+      title: g3MetricName(metric),
+      subtitle: metric == G3Metric.skinTempZ
+          ? 'Die Abweichung ist relativ zu deiner Basis und keine Temperatur in °C.'
+          : 'Dein Normalbereich stammt aus gespeicherten Messungen. Fehlende Tage bleiben leer.',
+      confirmLabel: 'Schließen',
+      onCancel: () => Navigator.pop(sheet),
+      onConfirm: () => Navigator.pop(sheet),
+      child: const SizedBox.shrink(),
+    ),
+  );
+}
+
+void _showWeightInfo(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (sheet) => chrome.OBSheet(
+    title: 'Gewicht',
+    subtitle:
+        'Der Verlauf zeigt deine datierten Einträge. Tage ohne Eintrag bleiben leer.',
+    confirmLabel: 'Schließen',
+    onCancel: () => Navigator.pop(sheet),
+    onConfirm: () => Navigator.pop(sheet),
+    child: const SizedBox.shrink(),
+  ),
+);
+
+/// Band-owned values plus the dated, manually recorded weight.
+class G3AllMetrics extends StatefulWidget {
+  const G3AllMetrics({
+    super.key,
+    required this.repository,
+    required this.endDay,
+    this.band,
+  });
+  final OpenBandRepository repository;
+  final String endDay;
+  final BandSnapshot? band;
+  @override
+  State<G3AllMetrics> createState() => _G3AllMetricsState();
+}
+
+class _G3AllMetricsState extends State<G3AllMetrics> {
+  Map<G3Metric, G3Trend>? _trends;
+  G3Weight? _weight;
+  bool _error = false;
+  int _request = 0;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _request++;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final request = ++_request;
+    setState(() {
+      _trends = null;
+      _error = false;
+    });
+    try {
+      final trends = <G3Metric, G3Trend>{};
+      for (final metric in _bodyMetrics) {
+        trends[metric] = await widget.repository.readTrend(
+          metric,
+          widget.endDay,
+          7,
+        );
+      }
+      final weight = await widget.repository.readG3Weight(widget.endDay, 7);
+      if (!mounted || request != _request) return;
+      setState(() {
+        _trends = trends;
+        _weight = weight;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() => _error = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final trends = _trends;
+    return Scaffold(
+      backgroundColor: g.page,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          children: [
+            chrome.OBPageHeader.detail(
+              title: 'MESSWERTE',
+              subtitle: 'Nacht zu ${_date(widget.endDay)}',
+              backLabel: 'Heute',
+              onBack: () => Navigator.pop(context),
+              onTrailing: () => _showExplanation(context, G3Metric.hrv),
+            ),
+            const SizedBox(height: 12),
+            if (_error)
+              chrome.OBErrorBlock(
+                title: 'Messwerte konnten nicht geladen werden',
+                reason: 'Die gespeicherten Werte sind gerade nicht lesbar.',
+                onRetry: _load,
+              )
+            else if (trends == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else ...[
+              chrome.OBPanel(
+                hero: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('KÖRPER', style: g.caps()),
+                    const SizedBox(height: 8),
+                    for (final metric in _bodyMetrics)
+                      metrics.OBBodyRow(
+                        state: metric == G3Metric.skinTempZ
+                            ? metrics.OBBodyState.deviation
+                            : trends[metric]!.baseline.range == null
+                            ? metrics.OBBodyState.building
+                            : metrics.OBBodyState.range,
+                        name: g3MetricName(metric),
+                        value:
+                            trends[metric]!.points.isEmpty ||
+                                _usable(trends[metric]!.points.last) == null
+                            ? null
+                            : _number(
+                                _usable(trends[metric]!.points.last),
+                                metric,
+                              ),
+                        unit: _unit(metric).isEmpty ? null : _unit(metric),
+                        at: trends[metric]!.points.isEmpty
+                            ? null
+                            : _usable(trends[metric]!.points.last),
+                        min: metric == G3Metric.skinTempZ
+                            ? -1
+                            : _chartBounds(
+                                metric,
+                                trends[metric]!.points,
+                                trends[metric]!.baseline.range,
+                              ).$1,
+                        max: metric == G3Metric.skinTempZ
+                            ? 1
+                            : _chartBounds(
+                                metric,
+                                trends[metric]!.points,
+                                trends[metric]!.baseline.range,
+                              ).$2,
+                        band: trends[metric]!.baseline.range == null
+                            ? null
+                            : (
+                                trends[metric]!.baseline.range!.low,
+                                trends[metric]!.baseline.range!.high,
+                              ),
+                        minLabel: trends[metric]!.baseline.range == null
+                            ? null
+                            : _number(
+                                trends[metric]!.baseline.range!.low,
+                                metric,
+                              ),
+                        maxLabel: trends[metric]!.baseline.range == null
+                            ? null
+                            : _number(
+                                trends[metric]!.baseline.range!.high,
+                                metric,
+                              ),
+                        last: metric == _bodyMetrics.last,
+                        onTap: () => openG3MetricDetail(
+                          context,
+                          metric,
+                          repository: widget.repository,
+                          endDay: widget.endDay,
+                          backLabel: 'Messwerte',
+                          band: widget.band,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const chrome.OBSectionHeader('EINGETRAGEN'),
+              chrome.OBListRow(
+                icon: LucideIcons.scale,
+                title: 'Gewicht',
+                subtitle: _weight?.history.latest == null
+                    ? 'Noch kein Eintrag'
+                    : _weight!.sources[_weight!.history.latest!.day] ==
+                          G3WeightSource.imported
+                    ? 'Apple Health'
+                    : 'manuell',
+                value: _weight?.history.latest == null
+                    ? '—'
+                    : '${_weight!.history.latest!.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => G3WeightDetail(
+                      repository: widget.repository,
+                      endDay: widget.endDay,
+                      band: widget.band,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const _InfoCard(
+                title: 'So liest du die Zeilen',
+                text:
+                    'Grauer Bereich: dein persönlicher Normalbereich. Strich: letzte Nacht. Farbe nur außerhalb deines Bereichs.',
+              ),
+              if (widget.band != null)
+                chrome.OBFooterStamp(
+                  widget.band!.latestStoredAt == null
+                      ? 'Letzter Bandwert —'
+                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class G3WeightDetail extends StatefulWidget {
+  const G3WeightDetail({
+    super.key,
+    required this.repository,
+    required this.endDay,
+    this.band,
+  });
+  final OpenBandRepository repository;
+  final String endDay;
+  final BandSnapshot? band;
+  @override
+  State<G3WeightDetail> createState() => _G3WeightDetailState();
+}
+
+class _G3WeightDetailState extends State<G3WeightDetail> {
+  OBTrendPeriod _period = OBTrendPeriod.d90;
+  G3Weight? _weight;
+  bool _error = false;
+  int _request = 0;
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _request++;
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final request = ++_request;
+    setState(() {
+      _weight = null;
+      _error = false;
+    });
+    try {
+      final weight = await widget.repository.readG3Weight(
+        widget.endDay,
+        switch (_period) {
+          OBTrendPeriod.d7 => 7,
+          OBTrendPeriod.d30 => 30,
+          OBTrendPeriod.d90 => 90,
+        },
+      );
+      if (!mounted || request != _request) return;
+      setState(() => _weight = weight);
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() => _error = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final history = _weight?.history;
+    final values =
+        history?.entries
+            .where((e) => e.usableForTrend)
+            .map((e) => e.value)
+            .toList() ??
+        [];
+    final lo = values.isEmpty ? 0.0 : values.reduce(math.min) - 2;
+    final hi = values.isEmpty ? 100.0 : values.reduce(math.max) + 2;
+    final latest = history?.latest;
+    return Scaffold(
+      backgroundColor: g.page,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          children: [
+            chrome.OBPageHeader.detail(
+              title: 'GEWICHT',
+              subtitle: _longDate(widget.endDay),
+              backLabel: 'Heute',
+              onBack: () => Navigator.pop(context),
+              onTrailing: () => _showWeightInfo(context),
+            ),
+            const SizedBox(height: 12),
+            if (_error)
+              chrome.OBErrorBlock(
+                title: 'Gewicht konnte nicht geladen werden',
+                reason: 'Deine Einträge sind gerade nicht lesbar.',
+                onRetry: _load,
+              )
+            else if (history == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(48),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else ...[
+              metrics.OBLeadMetric(
+                label: 'Gewicht',
+                state: metrics.OBLeadState.plain,
+                value: latest?.value,
+                digits: 1,
+                unit: 'kg',
+                basisChip: 'kein Ziel',
+                note: latest == null
+                    ? 'kein Eintrag'
+                    : _weight!.sources[latest.day] == G3WeightSource.imported
+                    ? 'Apple Health'
+                    : 'manuell',
+                scale: latest == null
+                    ? null
+                    : metrics.G3Scale(
+                        min: lo,
+                        max: hi,
+                        ticks: [
+                          metrics.G3Tick(lo, lo.toStringAsFixed(0)),
+                          metrics.G3Tick(hi, hi.toStringAsFixed(0)),
+                        ],
+                      ),
+                title: 'Noch kein Gewicht',
+                reason: 'Trage dein Gewicht ein, um einen Verlauf zu sehen.',
+                onTap: () => _showWeightInfo(context),
+              ),
+              const SizedBox(height: 10),
+              OBTrendChart(
+                title: 'GEWICHT · KG',
+                period: _period,
+                values: [for (final v in history.trend) v],
+                sparse: true,
+                min: lo,
+                max: hi,
+                xLabels: [
+                  DateFormat('dd.MM', 'de_DE').format(
+                    DateTime.parse(
+                      g3DaysEnding(widget.endDay, history.days).first,
+                    ),
+                  ),
+                  'heute',
+                ],
+                footLeft:
+                    '${history.entries.length} Einträge · keine Tageswerte geschätzt',
+                footRight: values.isEmpty
+                    ? null
+                    : '${_number(values.reduce(math.min), G3Metric.respRate)}–${_number(values.reduce(math.max), G3Metric.respRate)} kg',
+                onPeriod: (period) {
+                  setState(() => _period = period);
+                  _load();
+                },
+              ),
+              const SizedBox(height: 12),
+              chrome.OBActionPrimary(
+                'Gewicht eintragen',
+                expand: true,
+                onPressed: () async {
+                  await openG3WeightEntry(
+                    context,
+                    widget.repository,
+                    widget.endDay,
+                  );
+                  if (mounted) _load();
+                },
+              ),
+              const chrome.OBSectionHeader('EINTRÄGE'),
+              for (final entry in history.entries.take(3)) ...[
+                chrome.OBListRow(
+                  icon: LucideIcons.scale,
+                  title: _date(entry.day),
+                  subtitle:
+                      _weight!.sources[entry.day] == G3WeightSource.imported
+                      ? 'Apple Health'
+                      : 'manuell',
+                  value:
+                      '${entry.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
+                  onTap: _weight!.sources[entry.day] == G3WeightSource.imported
+                      ? () => _showImportedWeightInfo(context)
+                      : () async {
+                          await openG3WeightEntry(
+                            context,
+                            widget.repository,
+                            entry.day,
+                          );
+                          if (mounted) _load();
+                        },
+                ),
+                const SizedBox(height: 6),
+              ],
+              if (widget.band != null)
+                chrome.OBFooterStamp(
+                  widget.band!.latestStoredAt == null
+                      ? 'Letzter Bandwert —'
+                      : 'Letzter Bandwert ${DateFormat('HH:mm').format(widget.band!.latestStoredAt!)}',
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showImportedWeightInfo(
+  BuildContext context,
+) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  builder: (sheet) => chrome.OBSheet(
+    title: 'Apple Health',
+    subtitle:
+        'Dieser Gewichtseintrag wurde aus Apple Health übernommen. Die Quelle bleibt am Eintrag sichtbar.',
+    confirmLabel: 'Schließen',
+    onCancel: () => Navigator.pop(sheet),
+    onConfirm: () => Navigator.pop(sheet),
+    child: const SizedBox.shrink(),
+  ),
+);
+
+Future<void> openG3WeightEntry(
+  BuildContext context,
+  OpenBandRepository repository,
+  String day,
+) async {
+  JournalDaySnapshot base;
+  try {
+    base = await repository.readJournalDay(day);
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Eintrag konnte nicht geladen werden.')),
+    );
+    return;
+  }
+  if (!context.mounted) return;
+  await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _WeightEntrySheet(repository: repository, base: base),
+  );
+}
+
+class _WeightEntrySheet extends StatefulWidget {
+  const _WeightEntrySheet({required this.repository, required this.base});
+  final OpenBandRepository repository;
+  final JournalDaySnapshot base;
+  @override
+  State<_WeightEntrySheet> createState() => _WeightEntrySheetState();
+}
+
+class _WeightEntrySheetState extends State<_WeightEntrySheet> {
+  late final TextEditingController _input = TextEditingController(
+    text:
+        widget.base.metrics[kWeightJournalField]?.value
+            .toStringAsFixed(1)
+            .replaceAll('.', ',') ??
+        '',
+  );
+  late int? _minute = widget.base.metrics[kWeightJournalField]?.atMinuteOfDay;
+  bool _saving = false, _conflicted = false;
+  String? _error;
+  @override
+  void dispose() {
+    _input.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final input = _input.text.trim();
+    final parsed = double.tryParse(input.replaceAll(',', '.'));
+    final max = kJournalFieldsByKey[kWeightJournalField]!.max;
+    if (!RegExp(r'^\d{1,3}(?:[,.]\d)?$').hasMatch(input) ||
+        parsed == null ||
+        !parsed.isFinite ||
+        parsed <= 0 ||
+        parsed > max) {
+      setState(
+        () => _error =
+            'Gewicht zwischen 0 und ${max.toStringAsFixed(0)} kg in 0,1-kg-Schritten eingeben.',
+      );
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.patchJournalDay(
+        JournalDayPatch.fromBase(
+          widget.base,
+          metrics: {
+            kWeightJournalField: JournalMetricValue(
+              parsed,
+              atMinuteOfDay: _minute,
+            ),
+          },
+        ),
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } on JournalConflict {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _conflicted = true;
+          _error = 'Eintrag wurde anderswo geändert. Bitte erneut öffnen.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = 'Speichern fehlgeschlagen. Erneut versuchen.';
+        });
+      }
+    }
+  }
+
+  Future<void> _chooseTime() async {
+    final now = TimeOfDay.now();
+    final chosen = await showTimePicker(
+      context: context,
+      initialTime: _minute == null
+          ? now
+          : TimeOfDay(hour: _minute! ~/ 60, minute: _minute! % 60),
+    );
+    if (!mounted || chosen == null) return;
+    setState(() => _minute = chosen.hour * 60 + chosen.minute);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: chrome.OBSheet(
+        title: 'Gewicht eintragen',
+        subtitle: 'Bleibt auf diesem iPhone. Quelle: manuell.',
+        cancelLabel: 'Abbrechen',
+        confirmLabel: _saving ? 'Speichert …' : 'Speichern',
+        onCancel: _saving ? null : () => Navigator.pop(context),
+        onConfirm: _saving || _conflicted ? null : _save,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('GEWICHT', style: g.caps(color: g.muted)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _input,
+              autofocus: false,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                hintText: '—',
+                labelText: 'Gewicht in Kilogramm',
+                suffixText: 'kg',
+                filled: true,
+                fillColor: g.inset,
+                border: InputBorder.none,
+              ),
+              style: g.t(44, 52, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _saving ? null : _chooseTime,
+              child: Text(
+                '${_date(widget.base.day)} · ${_minute == null ? 'ohne Uhrzeit' : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}'} · Zeit ändern',
+              ),
+            ),
+            if (_error != null)
+              Text(_error!, style: g.t(13, 17, color: g.worseText)),
+          ],
+        ),
+      ),
+    );
+  }
+}
