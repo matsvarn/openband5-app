@@ -702,14 +702,13 @@ class DataScreenView extends StatelessWidget {
                                     backupDay ?? (de ? '—' : '—'),
                                     style: g.t(14, 19, weight: FontWeight.w700),
                                   ),
-                                  Text(
-                                    lastBackupAt == null
-                                        ? (de
-                                              ? 'Noch keine Sicherung'
-                                              : 'No backup yet')
-                                        : (de ? 'automatisch' : 'automatic'),
-                                    style: g.t(13, 18, color: g.ink2),
-                                  ),
+                                  if (lastBackupAt == null)
+                                    Text(
+                                      de
+                                          ? 'Noch keine Sicherung'
+                                          : 'No backup yet',
+                                      style: g.t(13, 18, color: g.ink2),
+                                    ),
                                 ],
                               ),
                             ),

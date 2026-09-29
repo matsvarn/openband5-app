@@ -12,7 +12,6 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
-import '../../ble/ble_state.dart' show BandCondition;
 
 import '../../health/health_import_state.dart' show storeName;
 import '../../l10n/app_localizations.dart';
@@ -391,15 +390,13 @@ class _ProfileHomeState extends State<ProfileHome> {
           readBand: () =>
               LocalOpenBandRepository(c.read<AppState>()).readBand(),
           readIssue: () =>
-              c.read<AppState>().engine.bandStatus.condition ==
-                  BandCondition.bluetoothOff
-              ? OBBandIssue.bluetoothOff
-              : null,
+              bandIssueFor(c.read<AppState>().engine.bandStatus.condition),
           onStatus: () => _showBandStatus(c),
           databaseSize: snap.data?.storageBytes == null
               ? null
               : formatBytes(snap.data!.storageBytes!),
           onDevices: () => goto(c, const MyDevices()),
+          onReconnect: () => c.read<AppState>().syncNow(),
         ),
       ),
       onData: () => _open(c, const DataScreen()),

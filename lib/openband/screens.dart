@@ -2065,11 +2065,7 @@ Future<void> showBandStatus(
                         detail: b.batteryPercent == null
                             ? 'Akku —'
                             : 'Akku ${b.batteryPercent} %${b.batteryObservedAt == null ? '' : ' · gemessen ${obTime(b.batteryObservedAt)}'}',
-                        value: switch (b.connection) {
-                          BandConnection.connected => 'Verbunden',
-                          BandConnection.connecting => 'Verbindet',
-                          BandConnection.disconnected => 'Nicht verbunden',
-                        },
+                        value: bandConnectionLabel(b.connection),
                       ),
                       OBSettingsRow(
                         label: 'Aktualität',

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ble/ble_state.dart' show BandCondition;
 import '../../domain.dart';
 import '../../theme.dart' show obTime;
 import '../band_parts.dart';
@@ -11,6 +12,9 @@ import '../g3_theme.dart';
 
 /// A read-only view of the latest band observation. Production injects the
 /// existing AppState notifier and repository read; no BLE work happens here.
+OBBandIssue? bandIssueFor(BandCondition condition) =>
+    condition == BandCondition.bluetoothOff ? OBBandIssue.bluetoothOff : null;
+
 class G3BandScreen extends StatefulWidget {
   final BandSnapshot? band;
   final DateTime now;
@@ -19,6 +23,7 @@ class G3BandScreen extends StatefulWidget {
   final Future<BandSnapshot> Function()? readBand;
   final String? databaseSize;
   final Future<void> Function()? onDevices;
+  final Future<void> Function()? onReconnect;
   final VoidCallback? onStatus;
   final VoidCallback? onBack;
   final OBBandIssue? issue;
@@ -34,6 +39,7 @@ class G3BandScreen extends StatefulWidget {
     this.readBand,
     this.databaseSize,
     this.onDevices,
+    this.onReconnect,
     this.onStatus,
     this.onBack,
     this.issue,
@@ -116,18 +122,20 @@ class _G3BandScreenState extends State<G3BandScreen> {
     if (mounted) await _refreshBand();
   }
 
+  Future<void> _reconnect() async {
+    await widget.onReconnect?.call();
+    if (mounted) await _refreshBand();
+  }
+
   void _help() {
     final issue = _issue;
     final title = switch (issue) {
       OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
-      OBBandIssue.notFound => 'Kein Band in Reichweite',
       null => 'Band nicht verbunden',
     };
     final text = switch (issue) {
       OBBandIssue.bluetoothOff =>
         'Bluetooth in den iPhone-Einstellungen einschalten und zur App zurückkehren.',
-      OBBandIssue.notFound =>
-        'Band tragen oder laden, WHOOP-App schließen und das Band nah ans iPhone halten.',
       null =>
         'Band näher ans iPhone bringen und die Verbindung erneut versuchen.',
     };
@@ -173,14 +181,11 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final stored = b?.latestStoredAt;
     final issueTitle = switch (issue) {
       OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
-      OBBandIssue.notFound => 'Kein Band in Reichweite',
       null => 'Nicht verbunden',
     };
     final issueBody = switch (issue) {
       OBBandIssue.bluetoothOff =>
         'Ohne Bluetooth erreicht das iPhone das Band nicht. Gespeichertes bleibt erhalten.',
-      OBBandIssue.notFound =>
-        'Band tragen oder laden, WHOOP-App schließen und das Band nah ans iPhone halten.',
       null =>
         stored == null
             ? 'Band näher ans iPhone bringen. Noch kein bestätigter Datenstand liegt vor.'
@@ -188,7 +193,6 @@ class _G3BandScreenState extends State<G3BandScreen> {
     };
     final action = switch (issue) {
       OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
-      OBBandIssue.notFound => 'Erneut suchen',
       null => 'Verbinden',
     };
     return Scaffold(
@@ -231,10 +235,11 @@ class _G3BandScreenState extends State<G3BandScreen> {
                       title: issueTitle,
                       body: issueBody,
                       action: action,
-                      actionIcon: issue == OBBandIssue.notFound
-                          ? LucideIcons.refreshCw
-                          : null,
-                      onAction: widget.onDevices == null ? null : _openDevices,
+                      onAction: issue == OBBandIssue.bluetoothOff
+                          ? _help
+                          : widget.onReconnect == null
+                          ? null
+                          : _reconnect,
                       onHelp: _help,
                     ),
                   ],
@@ -268,9 +273,9 @@ class _G3BandScreenState extends State<G3BandScreen> {
                             label: 'Übertragung unterbrochen',
                             detail:
                                 'Bereits gespeicherte Abschnitte bleiben erhalten.',
-                            onTap: widget.onDevices == null
+                            onTap: widget.onReconnect == null
                                 ? null
-                                : _openDevices,
+                                : _reconnect,
                           ),
                         ],
                       ),
