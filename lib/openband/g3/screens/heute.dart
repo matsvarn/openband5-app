@@ -1591,30 +1591,33 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
 
   Widget _steps(OpenBandDay day, bool isToday) {
     final total = day.steps.value?.round();
-    final intervals = day.stepIntervals;
-    final hourly = List<int?>.filled(24, null);
+    // Stored spans only, split across hours by overlap like stepsByHour. An
+    // hour without a stored span stays empty; zero is a stored zero.
+    final sums = List<double?>.filled(24, null);
     DateTime? last;
-    for (final iv in intervals) {
-      if (dayLabelOf(iv.start) != c.selectedDay) continue;
-      hourly[iv.start.hour] = (hourly[iv.start.hour] ?? 0) + iv.steps.round();
-      if (last == null || iv.end.isAfter(last)) last = iv.end;
+    for (final iv in day.stepIntervals) {
+      final ms = iv.end.difference(iv.start).inMilliseconds;
+      if (ms <= 0) continue;
+      var t = iv.start;
+      while (t.isBefore(iv.end)) {
+        final hourEnd = DateTime(t.year, t.month, t.day, t.hour + 1);
+        final sliceEnd = hourEnd.isBefore(iv.end) ? hourEnd : iv.end;
+        if (dayLabelOf(t) == c.selectedDay) {
+          sums[t.hour] =
+              (sums[t.hour] ?? 0) +
+              iv.steps * sliceEnd.difference(t).inMilliseconds / ms;
+          if (last == null || sliceEnd.isAfter(last)) last = sliceEnd;
+        }
+        t = sliceEnd;
+      }
     }
-    // Hours before the last counted interval without a count are zero steps
-    // (the band counts on-chip); hours after it are not known yet.
-    final lastHour = last == null
-        ? -1
-        : (last.minute == 0 && last.second == 0 ? last.hour - 1 : last.hour);
-    for (var h = 0; h <= lastHour && h < 24; h++) {
-      hourly[h] ??= 0;
-    }
+    final hourly = [for (final v in sums) v?.round()];
     return OBStepsCard(
       total: total,
       note: last != null && isToday
           ? 'Zähler im Band · bis ${_clock(last)}'
           : 'Zähler im Band',
-      hourly: total == null
-          ? const []
-          : hourly.sublist(0, (lastHour + 1).clamp(0, 24)),
+      hourly: total == null ? const [] : hourly,
       goalLabel: null,
     );
   }

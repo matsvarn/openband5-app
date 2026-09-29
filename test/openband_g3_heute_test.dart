@@ -15,6 +15,7 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
 import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -41,6 +42,19 @@ class _Repo extends SyntheticOpenBandRepository {
       empty ? OpenBandDay(day: day, synthetic: true) : super.readDay(day);
   @override
   Future<List<G3Activity>> readActivities(String day) async => empty ? const [] : super.readActivities(day);
+}
+
+/// A day that stores only the given step spans.
+class _StepsRepo extends _Repo {
+  _StepsRepo(this.spans) : super(SyntheticScenario.g3Sample);
+  final List<StepInterval> spans;
+  @override
+  Future<OpenBandDay> readDay(String day) async => OpenBandDay(
+    day: day,
+    steps: DayMetric(spans.fold<double>(0, (a, s) => a + s.steps)),
+    stepIntervals: spans,
+    synthetic: true,
+  );
 }
 
 class _Harness {
@@ -395,6 +409,30 @@ void main() {
     await h.controller.selectDay('2026-03-29');
     await tester.pumpAndSettle();
     expect(find.text('29. März · gestern'), findsOneWidget);
+  });
+
+  testWidgets('steps: stored spans only, split across hours, no zero fill', (tester) async {
+    DateTime at(int h, [int m = 0]) => DateTime(2026, 9, 29, h, m);
+    await _pump(
+      tester,
+      _Harness(
+        _StepsRepo([
+          StepInterval(at(8), at(9), 600),
+          StepInterval(at(9, 30), at(10, 30), 400), // crosses 10:00
+          StepInterval(at(12), at(13), 0), // a stored zero
+        ]),
+        _connected,
+      ),
+      size: const Size(393, 3000),
+    );
+    final hourly = tester.widget<OBStepsCard>(find.byType(OBStepsCard)).hourly;
+    expect(hourly[8], 600);
+    expect(hourly[9], 200);
+    expect(hourly[10], 200);
+    expect(hourly[12], 0);
+    for (final h in [0, 7, 11, 13, 23]) {
+      expect(h < hourly.length ? hourly[h] : null, isNull, reason: 'no span stored for $h:00');
+    }
   });
 
   testWidgets('the lead opens its detail', (tester) async {
