@@ -50,6 +50,9 @@ Widget trainingSportIcon(
   double size = 24,
   required Color color,
 }) {
+  if (sport == 'yoga') {
+    return Icon(LucideIcons.flower2, size: size, color: color);
+  }
   final name = trainingSportIconName(sport);
   return name.isEmpty
       ? Icon(LucideIcons.activity, size: size, color: color)

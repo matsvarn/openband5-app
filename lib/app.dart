@@ -805,7 +805,9 @@ class _ShellState extends State<_Shell> {
                   onManual: () async {
                     final saved = await Navigator.of(c).push<G3ManualSaved>(
                       MaterialPageRoute<G3ManualSaved>(
-                        builder: (_) => const G3ManualFlow(),
+                        builder: (_) => G3ManualFlow(
+                          recentRepository: _day.repository,
+                        ),
                       ),
                     );
                     await _day.refresh();

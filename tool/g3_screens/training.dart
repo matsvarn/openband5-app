@@ -237,6 +237,7 @@ class _TrainingFrameState extends State<_TrainingFrame> {
         return _wrap(
           context,
           G3ManualFlow(
+            recentRepository: repo,
             now: () => DateTime(2026, 9, 29, 9, 41),
             initialStep: name.contains('pruefen') || overlap
                 ? 2

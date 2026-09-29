@@ -6,6 +6,7 @@ import '../../../compute/manual_session.dart';
 import '../../../health/health_export.dart';
 import '../../../ui2/screens/home_screen.dart' show repoOf;
 import '../../../ui2/screens/log_workout.dart' show appOf;
+import '../../domain.dart';
 import '../chrome.dart' show OBActionPrimary;
 import '../g3_theme.dart';
 import '../training_parts.dart';
@@ -20,12 +21,14 @@ class G3ManualSaved {
 
 class G3ManualFlow extends StatefulWidget {
   final DateTime Function() now;
+  final OpenBandRepository? recentRepository;
   final int initialStep;
   final DateTime? initialStart, initialEnd;
   final List<SessionSpan>? initialSpans;
   const G3ManualFlow({
     super.key,
     this.now = DateTime.now,
+    this.recentRepository,
     this.initialStep = 0,
     this.initialStart,
     this.initialEnd,
@@ -59,6 +62,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
   String sport = 'yoga';
   late DateTime start, end;
   late List<SessionSpan> spans = widget.initialSpans ?? const [];
+  List<String> recentSports = const [];
   bool saving = false;
   String? error;
 
@@ -68,6 +72,34 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
     final now = widget.now();
     end = widget.initialEnd ?? DateTime(now.year, now.month, now.day, now.hour);
     start = widget.initialStart ?? end.subtract(const Duration(minutes: 40));
+    _readRecentSports();
+  }
+
+  Future<void> _readRecentSports() async {
+    final repository = widget.recentRepository;
+    if (repository == null) return;
+    try {
+      final days = g3DaysEnding(
+        DateFormat('yyyy-MM-dd').format(widget.now()),
+        7,
+      );
+      final activities =
+          (await Future.wait([
+              for (final day in days) repository.readActivities(day),
+            ])).expand((day) => day).toList()
+            ..sort((a, b) => b.start.compareTo(a.start));
+      final seen = <String>{};
+      final recent = <String>[];
+      for (final activity in activities) {
+        if (sports.contains(activity.sport) && seen.add(activity.sport)) {
+          recent.add(activity.sport);
+          if (recent.length == 4) break;
+        }
+      }
+      if (mounted) setState(() => recentSports = recent);
+    } catch (_) {
+      // Recent sports are optional; the full sport catalogue remains available.
+    }
   }
 
   @override
@@ -247,13 +279,20 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
                 child: ListView(
                   children: [
                     if (step == 0) ...[
-                      Text('ZULETZT', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      _sports(context, sports.take(4).toList()),
-                      const SizedBox(height: 24),
+                      if (recentSports.isNotEmpty) ...[
+                        Text('ZULETZT', style: g.caps(color: g.muted)),
+                        const SizedBox(height: 8),
+                        _sports(context, recentSports),
+                        const SizedBox(height: 24),
+                      ],
                       Text('ALLE SPORTARTEN', style: g.caps(color: g.muted)),
                       const SizedBox(height: 8),
-                      _sports(context, sports),
+                      _sports(
+                        context,
+                        sports
+                            .where((value) => !recentSports.contains(value))
+                            .toList(),
+                      ),
                     ] else if (step == 1) ...[
                       Text('ZEITRAUM', style: g.caps(color: g.muted)),
                       const SizedBox(height: 8),
