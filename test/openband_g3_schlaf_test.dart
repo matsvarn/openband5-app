@@ -4,15 +4,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
+import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
+import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
 
 void main() {
   setUpAll(() async {
+    await initializeDateFormatting('de_DE');
     for (final (family, path) in [
       ('Inter', 'assets/fonts/Inter/Inter.ttf'),
       ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
@@ -228,4 +232,57 @@ void main() {
       );
     }
   });
+
+  testWidgets(
+    'correction editor names the recorded window',
+    tags: const ['golden'],
+    (tester) async {
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final repo = SyntheticOpenBandRepository.fromMaps(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        scenario: SyntheticScenario.g3Sample,
+      );
+      final controller = OpenBandController(
+        repository: repo,
+        initialDay: '2026-09-29',
+        now: () => DateTime(2026, 9, 29, 9, 41),
+      );
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: RepaintBoundary(
+            key: const ValueKey('correction'),
+            child: SleepEditor(controller: controller, g3: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Band hat aufgezeichnet 23:10–06:54'),
+        findsOneWidget,
+      );
+      await expectLater(
+        find.byKey(const ValueKey('correction')),
+        matchesGoldenFile('openband_goldens/g3-schlaf-correction-edit.png'),
+      );
+    },
+  );
 }

@@ -13,6 +13,7 @@ import '../../sleep_editor.dart';
 import '../../tab_bar.dart';
 import '../../today_note.dart';
 import '../../../notify/notification_center.dart';
+import '../../../ui2/app_shell.dart' show pushFullScreen;
 import '../chrome.dart' as chrome;
 import '../day.dart' as day_parts;
 import '../g3_theme.dart';
@@ -210,6 +211,14 @@ class _G3SleepScreenState extends State<G3SleepScreen>
   void _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
+  void _editSleep() => unawaited(
+    pushFullScreen<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => SleepEditor(controller: controller, g3: true),
+      ),
+    ),
+  );
   void _goal() =>
       G3SleepGoalSheet.show(
         context,
@@ -379,9 +388,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                         reason:
                             'Trag Beginn und Ende ein. Die Nacht wird dann aus den Banddaten ausgewertet.',
                         action: 'Schlafzeiten eintragen',
-                        onAction: () => _push(
-                          SleepEditor(controller: controller, g3: true),
-                        ),
+                        onAction: _editSleep,
                       ),
                     ),
                   ],
@@ -408,8 +415,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       icon: LucideIcons.pencil,
                       title: 'Schlafzeiten ändern',
                       subtitle: 'Wenn Beginn oder Ende nicht stimmen',
-                      onTap: () =>
-                          _push(SleepEditor(controller: controller, g3: true)),
+                      onTap: _editSleep,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -663,6 +669,10 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         }
       }
     }
+    final gapCaption = [
+      for (final (start, end) in gaps)
+        '${obSleepClock(night.onset?.add(Duration(minutes: start.round())))}–${obSleepClock(night.onset?.add(Duration(minutes: end.round())))} ohne Daten',
+    ].join(' · ');
     return chrome.OBPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -747,7 +757,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
             if (gaps.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
-                '${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$1.round())))}–${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$2.round())))} ohne Daten · ${gaps.length == 1 ? 'nicht aufgefüllt' : '${gaps.length} Lücken insgesamt · nicht aufgefüllt'}',
+                '$gapCaption · nicht aufgefüllt',
                 textAlign: TextAlign.center,
                 style: g.t(12, 16, color: g.ink2),
               ),
@@ -1139,7 +1149,8 @@ class _G3SleepRegularityState extends State<G3SleepRegularity> {
           children: [
             OBSriLead(
               value: plus?.regularity.value,
-              gate: plus?.regularity.gate ??
+              gate:
+                  plus?.regularity.gate ??
                   (snap.hasError ? 'Nicht verfügbar' : null),
             ),
             const SizedBox(height: 12),
@@ -1524,6 +1535,7 @@ class _G3SleepTonightState extends State<G3SleepTonight>
               OBPlanBreakdown(
                 baseline: value?.baselineOsdMinutes,
                 debt: value?.appliedDebtMinutes,
+                needClamp: value?.needClamp,
                 bonus: value?.strainBonusMinutes,
                 napCredit: value?.napCreditMinutes,
                 napsIncomplete: value?.napsJudged == false,

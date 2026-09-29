@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../domain.dart' show NightSignalReading, NightSignalSeries;
+import '../domain.dart'
+    show G3SleepNeedClamp, NightSignalReading, NightSignalSeries;
 import '../theme.dart' show OBChevron;
 import 'chrome.dart' show OBPanel, OBPillButton;
 import 'g3_theme.dart';
@@ -905,6 +906,7 @@ class OBPlanBreakdown extends StatelessWidget {
     super.key,
     this.baseline,
     this.debt,
+    this.needClamp,
     this.bonus,
     this.napCredit,
     this.napsIncomplete = false,
@@ -915,6 +917,7 @@ class OBPlanBreakdown extends StatelessWidget {
     this.bedtime,
   });
   final double? baseline, debt, bonus, napCredit, need, efficiency;
+  final G3SleepNeedClamp? needClamp;
   final bool napsIncomplete;
   final bool strainOpen;
   final DateTime? wake, bedtime;
@@ -976,6 +979,15 @@ class OBPlanBreakdown extends StatelessWidget {
                 ? '—'
                 : '− ${obSleepDuration(napCredit)}',
           ),
+          if (needClamp != null) ...[
+            Divider(height: 1, color: g.line),
+            row(
+              needClamp!.limitMinutes == 360
+                  ? 'Begrenzt auf 6h00'
+                  : 'Obergrenze 11h00',
+              '${needClamp!.adjustmentMinutes >= 0 ? '+' : '−'} ${obSleepDuration(needClamp!.adjustmentMinutes.abs())}',
+            ),
+          ],
           Divider(height: 2, thickness: 2, color: g.ink),
           row('Geschätzter Bedarf', obSleepDuration(need), strong: true),
           Divider(height: 1, color: g.line),
