@@ -16,11 +16,15 @@ class SleepEditor extends StatefulWidget {
   final OpenBandController controller;
   final VoidCallback? onReturnToOverview;
   final bool g3;
+  final SleepCorrection? initialReceipt;
+  final String? initialSaveError;
   const SleepEditor({
     super.key,
     required this.controller,
     this.onReturnToOverview,
     this.g3 = false,
+    this.initialReceipt,
+    this.initialSaveError,
   });
   @override
   State<SleepEditor> createState() => _SleepEditorState();
@@ -130,6 +134,7 @@ class _SleepEditorState extends State<SleepEditor> {
   @override
   void initState() {
     super.initState();
+    receipt = widget.initialReceipt;
     _load();
   }
 
@@ -157,7 +162,9 @@ class _SleepEditorState extends State<SleepEditor> {
             );
         startText.text = obTime(draft!.onset);
         endText.text = obTime(draft!.wake);
-        changed = stored != null;
+        changed = stored != null || widget.initialSaveError != null;
+        saveFailed = widget.initialSaveError != null;
+        error = widget.initialSaveError;
         loading = false;
       });
     } catch (_) {
