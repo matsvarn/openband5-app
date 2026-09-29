@@ -553,16 +553,16 @@ class NotificationCenter {
   /// The Für-heute bedtime reminder: opt-in, one-shot, armed only by the
   /// user's Erinnern tap for the time the note shows. A user who asks for a
   /// reminder at a time they chose is exempt from quiet hours, like the alarm.
-  /// Returns false, without arming, when [at] has passed or notifications are
-  /// not allowed; the caller says so instead of showing "erinnert".
-  Future<bool> scheduleBedtimeReminder({
+  /// Anything but [BedtimeReminderResult.scheduled] armed nothing; the caller
+  /// says why instead of showing "erinnert".
+  Future<BedtimeReminderResult> scheduleBedtimeReminder({
     required DateTime at,
     required String body,
   }) async {
-    if (!at.isAfter(DateTime.now())) return false;
+    if (!at.isAfter(DateTime.now())) return BedtimeReminderResult.passed;
     final svc = NotificationService.instance;
-    if (!await svc.ensurePermission()) return false;
-    await svc.scheduleOnce(
+    if (!await svc.ensurePermission()) return BedtimeReminderResult.denied;
+    final scheduled = await svc.scheduleOnce(
       id: NotificationService.idBedtimeNote,
       category: NotifCategory.reminders,
       title: 'Zeit fürs Bett',
@@ -570,7 +570,9 @@ class NotificationCenter {
       at: at,
       route: '/sleep',
     );
-    return true;
+    return scheduled
+        ? BedtimeReminderResult.scheduled
+        : BedtimeReminderResult.failed;
   }
 
   Future<void> cancelBedtimeReminder() =>
@@ -922,4 +924,18 @@ class NotificationCenter {
       );
     }
   }
+}
+
+/// What [NotificationCenter.scheduleBedtimeReminder] did: armed, or why not.
+enum BedtimeReminderResult {
+  scheduled,
+
+  /// The reminder time is no longer ahead.
+  passed,
+
+  /// Notifications are not allowed for the app.
+  denied,
+
+  /// Allowed, but the OS did not take the one-shot.
+  failed,
 }

@@ -198,16 +198,6 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
   };
 }
 
-class _NoReminder implements HeuteReminder {
-  const _NoReminder();
-  @override
-  Future<DateTime?> armedAt() async => null;
-  @override
-  Future<bool> arm(DateTime at, String body) async => false;
-  @override
-  Future<void> cancel() async {}
-}
-
 class _HeuteFrame extends StatefulWidget {
   final OpenBandRepository repository;
   final String day;
@@ -232,6 +222,7 @@ class _HeuteFrameState extends State<_HeuteFrame> {
     band: widget.band,
     now: widget.now,
   )..refresh();
+  final reminder = MemoryHeuteReminder();
 
   @override
   void dispose() {
@@ -247,7 +238,7 @@ class _HeuteFrameState extends State<_HeuteFrame> {
         ? OpenBandHeute(
             controller: controller,
             initialAnchor: widget.anchor,
-            reminder: const _NoReminder(),
+            reminder: reminder,
             onProfile: () {},
             onBand: () {},
             onConnect: () {},
