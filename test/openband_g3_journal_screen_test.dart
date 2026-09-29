@@ -29,6 +29,30 @@ SyntheticOpenBandRepository _repo() => SyntheticOpenBandRepository.fromMaps(
       as Map,
 )..failCaffeineSleepPattern = true;
 
+class _ReadFailsAfterWrite extends SyntheticOpenBandRepository {
+  _ReadFailsAfterWrite()
+    : super.fromMaps(
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map,
+      );
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    await super.patchJournalDay(patch);
+    failJournalRead = true;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -149,6 +173,34 @@ void main() {
       0,
     );
   });
+
+  testWidgets(
+    'successful write with failed refresh offers reload, not another save',
+    (tester) async {
+    repo = _ReadFailsAfterWrite()..failCaffeineSleepPattern = true;
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-15',
+      now: () => DateTime(2026, 9, 15),
+    );
+      await mount(tester);
+      await tester.tap(find.text('Nein').first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Antwort gespeichert.'), findsOneWidget);
+      expect(find.text('Neu laden'), findsOneWidget);
+      expect(find.text('Erneut speichern'), findsNothing);
+      repo.failJournalRead = false;
+      await tester.tap(find.text('Neu laden'));
+      await tester.pumpAndSettle();
+      expect(
+        (await repo.readJournalDay(
+          '2026-09-15',
+        )).metrics['alcohol_evening']?.value,
+        0,
+      );
+    },
+  );
 
   testWidgets(
     'a saved custom question joins the check-in and keeps its own field',

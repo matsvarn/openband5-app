@@ -226,9 +226,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         : '—';
   }
 
-  Future<void> _save(_Question q, Object? value) async {
+  Future<bool> _save(_Question q, Object? value) async {
     final base = _today;
-    if (base == null || _saving) return;
+    if (base == null || _saving) return false;
     setState(() {
       _draft = value;
       _saveError = null;
@@ -246,10 +246,21 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               },
             );
       await widget.controller.repository.patchJournalDay(patch);
-      final updated = await widget.controller.repository.readJournalDay(
-        base.day,
-      );
-      if (!mounted || widget.controller.selectedDay != base.day) return;
+      late final JournalDaySnapshot updated;
+      try {
+        updated = await widget.controller.repository.readJournalDay(base.day);
+      } catch (_) {
+        if (mounted && widget.controller.selectedDay == base.day) {
+          setState(() {
+            _saving = false;
+            _draft = null;
+            _saveError =
+                'Antwort gespeichert. Ansicht konnte nicht aktualisiert werden.';
+          });
+        }
+        return true;
+      }
+      if (!mounted || widget.controller.selectedDay != base.day) return true;
       setState(() {
         _today = updated;
         _saving = false;
@@ -270,6 +281,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           /* Keep the old pattern result until a read succeeds. */
         }
       }
+      return true;
     } on JournalConflict {
       if (mounted) {
         setState(() {
@@ -278,6 +290,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               'Antwort inzwischen geändert. Neu laden und erneut wählen.';
         });
       }
+      return false;
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -286,6 +299,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               'Speichern fehlgeschlagen. Deine Auswahl bleibt erhalten.';
         });
       }
+      return false;
     }
   }
 
@@ -387,8 +401,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             : snap.metrics[q.key]?.value,
         field: snap.fields.where((f) => f.key == q.key).firstOrNull,
         onSave: (value) async {
-          await _save(q, value);
-          return _saveError == null;
+          return _save(q, value);
         },
       ),
     );
@@ -487,7 +500,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _readError != null
-                ? OBInlineError(message: _readError!, onRetry: _load)
+                ? OBInlineError(
+                    message: _readError!,
+                    onRetry: _load,
+                    retryLabel: 'Neu laden',
+                  )
                 : snap != null && count == questions.length
                 ? OBCheckInDone(total: questions.length)
                 : OBCheckIn(
@@ -497,8 +514,13 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     answer: _answer(current),
                     onLater: _next,
                     error: _editing ? null : _saveError,
-                    onRetry: _editing || _saveError == null || _draft == null
+                    retryLabel: _draft == null
+                        ? 'Neu laden'
+                        : 'Erneut speichern',
+                    onRetry: _editing || _saveError == null
                         ? null
+                        : _draft == null
+                        ? _load
                         : () => _save(current, _draft),
                   ),
           ),
