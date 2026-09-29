@@ -32,7 +32,7 @@ class OBSetupHeader extends StatelessWidget {
               onTap: onBack,
               borderRadius: BorderRadius.circular(20),
               child: Container(
-                constraints: const BoxConstraints(minHeight: 40),
+                constraints: const BoxConstraints(minHeight: 44),
                 decoration: g.raised(radius: 20),
                 padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
                 child: Row(
@@ -56,14 +56,17 @@ class OBSetupHeader extends StatelessWidget {
               ),
             ),
           );
-    final info = InkWell(
-      onTap: onInfo,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: g.raised(radius: 20),
-        child: Icon(LucideIcons.info, size: 18, color: g.ink),
+    final info = Tooltip(
+      message: 'Information',
+      child: InkWell(
+        onTap: onInfo,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: g.raised(radius: 22),
+          child: Icon(LucideIcons.info, size: 18, color: g.ink),
+        ),
       ),
     );
     final center = Column(
@@ -203,15 +206,29 @@ class OBStepProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(12) > 18;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: Text('EINRICHTUNG', style: g.caps())),
-            Text('Schritt $step von 3', style: g.t(12, 16, color: g.muted)),
-          ],
-        ),
+        if (large)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('EINRICHTUNG', style: g.caps()),
+              Text(
+                'Schritt $step von 3',
+                textAlign: TextAlign.end,
+                style: g.t(12, 16, color: g.muted),
+              ),
+            ],
+          )
+        else
+          Row(
+            children: [
+              Expanded(child: Text('EINRICHTUNG', style: g.caps())),
+              Text('Schritt $step von 3', style: g.t(12, 16, color: g.muted)),
+            ],
+          ),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -250,6 +267,7 @@ class OBFrontierCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final large = MediaQuery.textScalerOf(context).scale(13) > 19;
     final stored = storedAt;
     final sameDay =
         stored != null &&
@@ -278,13 +296,22 @@ class OBFrontierCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text('AUF DEM IPHONE', style: g.caps())),
-              if (rightLabel != null)
+          if (large && rightLabel != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('AUF DEM IPHONE', style: g.caps()),
                 Text(rightLabel!, style: g.t(13, 18, color: g.muted)),
-            ],
-          ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(child: Text('AUF DEM IPHONE', style: g.caps())),
+                if (rightLabel != null)
+                  Text(rightLabel!, style: g.t(13, 18, color: g.muted)),
+              ],
+            ),
           const SizedBox(height: 8),
           Text(
             stored == null ? '—' : 'bis $storedDay${obTime(stored)}',
