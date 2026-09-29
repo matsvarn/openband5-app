@@ -12,6 +12,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
@@ -24,9 +25,15 @@ DateTime _now() => DateTime(2026, 9, 29, 9, 41);
 
 /// Design repository, optionally without data for today (stale / never).
 class _Repo extends SyntheticOpenBandRepository {
-  _Repo(SyntheticScenario s, {this.empty = false})
+  _Repo(SyntheticScenario s, {this.empty = false, this.noBaseline = false})
     : super.fromMaps(_json('day-summary.json'), _json('sleep-detail.json'), scenario: s);
   final bool empty;
+
+  /// Every personal range in phase none (no basis will be formed yet).
+  final bool noBaseline;
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      noBaseline ? const G3Baseline(BaselineStatus(BaselinePhase.none)) : super.readPersonalRange(metric, day);
   @override
   Future<OpenBandDay> readDay(String day) async =>
       empty ? OpenBandDay(day: day, synthetic: true) : super.readDay(day);
@@ -90,6 +97,8 @@ bool _hasText(WidgetTester tester, bool Function(String) test) => tester
     .widgetList<Text>(find.byType(Text))
     .any((t) => test(t.data ?? t.textSpan?.toPlainText() ?? ''));
 
+Finder _inBody(String text) => find.descendant(of: find.byType(OBBodyRow), matching: find.text(text));
+
 void main() {
   setUpAll(() async {
     await initializeDateFormatting('de_DE');
@@ -129,6 +138,20 @@ void main() {
     expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
     expect(find.text('Erholung: noch keine Werte'), findsOneWidget);
+    // HRV 48 without a basis: no scale invented from the value (36…60).
+    expect(_hasText(tester, (s) => s == '48 ms'), isTrue);
+    expect(find.text('36'), findsNothing);
+    expect(find.text('60'), findsNothing);
+    expect(_inBody('Basis: noch 3 Nächte'), findsNWidgets(3), reason: 'HRV, Ruhepuls, Atemfrequenz');
+  });
+
+  testWidgets('no basis at all: body values without a scale, "kein Normalbereich"', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample, noBaseline: true), _connected), size: const Size(393, 3000));
+    expect(_hasText(tester, (s) => s == '48 ms'), isTrue);
+    expect(_inBody('kein Normalbereich'), findsNWidgets(3));
+    for (final tick in ['36', '60', '38', '52']) {
+      expect(find.text(tick), findsNothing, reason: 'no tick $tick without a basis');
+    }
   });
 
   testWidgets('never connected: no value, one real connect action', (tester) async {
