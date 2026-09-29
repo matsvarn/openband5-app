@@ -15,6 +15,7 @@ import 'openband/release_scope.dart';
 import 'openband/g3/screens/heute.dart';
 import 'openband/g3/screens/heute_routes.dart';
 import 'openband/screens.dart';
+import 'openband/g3/screens/sleep.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
 import 'openband/template_editor.dart';
@@ -739,7 +740,7 @@ class _ShellState extends State<_Shell> {
           onOpenSleep: () => _go(ShellDomain.sleep),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
-        ShellDomain.sleep => OpenBandSleep(controller: _day, asTab: true),
+        ShellDomain.sleep => G3SleepScreen(controller: _day, asTab: true),
         ShellDomain.workout => OpenBandTraining(
           controller: _day,
           releaseReduced: reduced,

@@ -18,6 +18,28 @@
     "sourceCheck": "tool/check_design_manifest.py verifies that implemented file/widget references exist in source. It does not verify routing or visual acceptance."
   },
   "screens": {
+    "61LO-0": "G3 Schlaf · Letzte Nacht · Hell",
+    "61T3-0": "G3 Schlaf · Letzte Nacht · Dunkel",
+    "6QVP-0": "G3 Schlaf · gescrollt",
+    "65KH-0": "G3 Schlaf · Teilnacht mit Lücke",
+    "65PO-0": "G3 Schlaf · Keine Nacht erkannt",
+    "6RDK-0": "G3 Schlaf · Rhythmus im Aufbau",
+    "6RMI-0": "G3 Schlaf · Kein Schlafziel",
+    "642T-0": "G3 Schlaf · Korrigierte Nacht",
+    "648H-0": "G3 Schlaf · Nachtverlauf Puls · Hell",
+    "64CJ-0": "G3 Schlaf · Nachtverlauf Puls · Dunkel",
+    "64GL-0": "G3 Schlaf · Regelmäßigkeit",
+    "6RY7-0": "G3 Schlaf · Schlafschuld",
+    "6SB5-0": "G3 Schlaf · Heute Nacht",
+    "6SEZ-0": "G3 Schlaf · Erinnerung gesetzt",
+    "64YB-0": "G3 Schlaf · Schlafziel",
+    "6532-0": "G3 Schlaf · Schlafzeiten ändern · Entwurf",
+    "655C-0": "G3 Schlaf · Schlafzeiten ändern · Auswertung",
+    "657S-0": "G3 Schlaf · Schlafzeiten ändern · Speicherfehler",
+    "678D-0": "G3 Schlaf · Nickerchen",
+    "65EF-0": "G3 Schlaf · Nickerchen · keine",
+    "67CJ-0": "G3 Schlaf · Nickerchen eintragen",
+    "5U9K-0": "G3 Schlaf · neue Bausteine",
     "3G8S-0": "A02 Schlaf · Nacht",
     "3GQP-0": "Release Profil · Hell (lib/ui2/profile/profile.dart)",
     "3I5L-0": "A05 Gesundheit · HRV · Hell",
@@ -2283,6 +2305,153 @@
         "6LMC-0"
       ],
       "notes": "G3 band and profile presentation; missing input remains unavailable."
+    },
+    {
+      "name": "OBLeadMetric.sleep",
+      "variant": "sleep",
+      "design": "G3",
+      "paperNode": "5U9X-0",
+      "paperNodeDark": "5UOG-0",
+      "usedIn": ["61LO-0", "61T3-0", "65KH-0", "6QVP-0"],
+      "widget": "OBSleepLead",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBLeadMetric.sleepNoGoal",
+      "variant": "sleepNoGoal",
+      "design": "G3",
+      "paperNode": "65SM-0",
+      "paperNodeDark": "65TB-0",
+      "usedIn": ["6RMI-0"],
+      "widget": "OBSleepLead",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBLeadMetric.bedtime",
+      "variant": "bedtime",
+      "design": "G3",
+      "paperNode": "6ONJ-0",
+      "paperNodeDark": "6OOG-0",
+      "usedIn": ["6SB5-0", "6SEZ-0"],
+      "implementationStatus": "paper-only",
+      "notes": "The detail currently composes a simple lead in g3/screens/sleep.dart; the proposed bedtime scale remains open."
+    },
+    {
+      "name": "OBPlanBreakdown",
+      "design": "G3",
+      "paperNode": "6OR0-0",
+      "paperNodeDark": "6OTE-0",
+      "usedIn": ["6SB5-0", "6SEZ-0"],
+      "widget": "OBPlanBreakdown",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSleepWindows.default",
+      "variant": "default",
+      "design": "G3",
+      "paperNode": "5UCX-0",
+      "paperNodeDark": "5URG-0",
+      "usedIn": ["6QVP-0", "64GL-0"],
+      "widget": "OBSleepWindows",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSleepWindows.building",
+      "variant": "building",
+      "design": "G3",
+      "paperNode": "6OW5-0",
+      "paperNodeDark": "6OYH-0",
+      "usedIn": ["6RDK-0"],
+      "widget": "OBSleepWindows",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSocialJetlag.default",
+      "variant": "default",
+      "design": "G3",
+      "paperNode": "5UFM-0",
+      "paperNodeDark": "5UU5-0",
+      "usedIn": ["6QVP-0", "64GL-0"],
+      "widget": "OBSocialJetlag",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSocialJetlag.building",
+      "variant": "building",
+      "design": "G3",
+      "paperNode": "5UGA-0",
+      "paperNodeDark": "5UUT-0",
+      "usedIn": ["6RDK-0"],
+      "widget": "OBSocialJetlag",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSleepDebt.default",
+      "variant": "default",
+      "design": "G3",
+      "paperNode": "6PHZ-0",
+      "paperNodeDark": "6PJJ-0",
+      "usedIn": ["6QVP-0", "6RY7-0"],
+      "widget": "OBSleepDebt",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBSleepDebt.building",
+      "variant": "building",
+      "design": "G3",
+      "paperNode": "6P6F-0",
+      "paperNodeDark": "6P87-0",
+      "usedIn": ["6RDK-0"],
+      "widget": "OBSleepDebt",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBNightTrace",
+      "design": "G3",
+      "paperNode": "5UKK-0",
+      "paperNodeDark": "5UZ3-0",
+      "usedIn": ["648H-0", "64CJ-0"],
+      "implementationStatus": "paper-only",
+      "notes": "Nachtverlauf still uses the retained G2 signal chart."
+    },
+    {
+      "name": "OBInlineNotice.edit",
+      "variant": "edit",
+      "design": "G3",
+      "paperNode": "5UM0-0",
+      "paperNodeDark": "5V0J-0",
+      "usedIn": ["642T-0"],
+      "widget": "OBInlineNotice",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBInlineNotice.reminder",
+      "variant": "reminder",
+      "design": "G3",
+      "paperNode": "6P9J-0",
+      "paperNodeDark": "6P9Z-0",
+      "usedIn": ["6SEZ-0"],
+      "implementationStatus": "paper-only",
+      "notes": "Needs a cancellable scheduled bedtime notification path."
+    },
+    {
+      "name": "OBInlineNotice.busy",
+      "variant": "busy",
+      "design": "G3",
+      "paperNode": "5UMM-0",
+      "paperNodeDark": "5V15-0",
+      "usedIn": ["655C-0"],
+      "widget": "OBInlineNotice",
+      "file": "g3/sleep_parts.dart"
+    },
+    {
+      "name": "OBTimeWindowEditor",
+      "design": "G3",
+      "paperNode": "5UMY-0",
+      "paperNodeDark": "5V1H-0",
+      "usedIn": ["6532-0", "655C-0", "657S-0"],
+      "implementationStatus": "paper-only",
+      "notes": "The retained correction editor is still G2 styled."
     }
   ],
   "openBlocks": [],
