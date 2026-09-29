@@ -638,6 +638,7 @@ class MoreSettingsView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             Padding(
@@ -649,7 +650,12 @@ class MoreSettingsView extends StatelessWidget {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
                 children: [
                   // No "Edit profile" here. It lives in one place — Quick access
                   // on the Profile screen — because two doors to one form is how
@@ -1176,6 +1182,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             Padding(
@@ -1209,7 +1216,12 @@ class _EditProfileViewState extends State<EditProfileView> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
                 children: [
                   _text(
                     c,
@@ -1436,6 +1448,7 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             Padding(
@@ -1444,7 +1457,12 @@ class _AutomationSettingsState extends State<AutomationSettings> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
                 children: [
                   Section(
                     l?.settingsSyncFinishesSectionTitle ??

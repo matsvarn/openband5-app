@@ -278,6 +278,7 @@ class PairSensorView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -286,7 +287,12 @@ class PairSensorView extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+              padding: EdgeInsets.fromLTRB(
+                S.x4,
+                0,
+                S.x4,
+                tabRouteBottomInset(c, S.x10),
+              ),
               children: [
                 if (paired != null) ..._pairedSection(c, paired!),
                 Section(

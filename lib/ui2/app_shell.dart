@@ -16,6 +16,16 @@ Future<T?> pushInTab<T>(BuildContext context, Route<T> route) =>
 Future<T?> pushFullScreen<T>(BuildContext context, Route<T> route) =>
     Navigator.of(context, rootNavigator: true).push(route);
 
+/// Tab routes scroll behind the floating bar. Explicit ListView padding does
+/// not read MediaQuery padding, so give their last item room to clear the bar.
+bool hasFloatingTabBar(BuildContext context) =>
+    context.findAncestorWidgetOfExactType<AppShell>()?.releaseStyle == true;
+
+double tabRouteBottomInset(BuildContext context, double ordinaryInset) =>
+    hasFloatingTabBar(context) && ordinaryInset < kOBTabBarContentInset
+    ? kOBTabBarContentInset
+    : ordinaryInset;
+
 enum ShellDomain {
   home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),

@@ -321,6 +321,7 @@ class _DataScreenState extends State<DataScreen> {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             Padding(
@@ -329,7 +330,12 @@ class _DataScreenState extends State<DataScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
                 children: [
                   // Home shows this too, on the launch it happened. It belongs
                   // here as well because this is the screen someone opens when
@@ -589,6 +595,7 @@ class DataScreenView extends StatelessWidget {
       key: const ValueKey('data-screen'),
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
             chrome.OBPageHeader.detail(
@@ -630,7 +637,12 @@ class DataScreenView extends StatelessWidget {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  tabRouteBottomInset(c, 40),
+                ),
                 children: [
                   if (rebuilt != null) ...[
                     rebuilt!,
