@@ -5,14 +5,23 @@
   python3 tool/g3_review.py refs OBLeadMetric  # only names containing the filter
   python3 tool/g3_review.py                    # diff every registered frame, light and dark
   python3 tool/g3_review.py OBChip --dark      # names containing "OBChip", dark only
+  python3 tool/g3_review.py --real heute       # render screens from the newest pulled phone DB
+  python3 tool/g3_review.py --real PATH --day 2026-09-28
+
+--real renders the registered SCREENS (not components) from a COPY of a database
+pulled with tool/pull_device_db.sh (newest by default, or --real PATH to its
+Documents folder), for the latest stored day unless --day is given. Real data is
+private: the PNGs go to OpenBand5Lab/ui-review-real/<stamp>/, never to the
+repository, and nothing is compared with Paper. Screen builders follow the
+contract at the top of tool/g3_review_test.dart.
 
 The registry is docs/openband5/design/paper-g3/frames.json:
 
   components  Bausteine · G3 nodes, {"light": id, "dark": id, "background": "page"|"canvas"}.
   screens     G3 screen artboards by Paper id, {"page": pageId, "node": id, "mode": "light"|"dark"}.
 
-A later worker registers a screen by adding it to "screens" and a builder of
-the same name to `g3ScreenBuilders` in tool/g3_review_test.dart, then runs
+A screen is registered in docs/openband5/design/paper-g3/screens/<area>.json
+with a builder of the same name in tool/g3_screens/<area>.dart, then one runs
 `refs` and the diff. References land in docs/openband5/design/paper-g3/{light,dark}/
 as <name>.png (2x). Reports go to build/g3-review/<mode>/<name>.png as
 [Paper | app | onion | diff]; the score is the share of differing pixels
@@ -28,6 +37,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,13 +107,30 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--light', action='store_true')
     mode.add_argument('--dark', action='store_true')
+    parser.add_argument('--real', nargs='?', const='newest', metavar='DOCUMENTS',
+                        help='Render screens from a pulled phone DB (newest pull, or this Documents folder).')
+    parser.add_argument('--day', help='With --real: the day to render (YYYY-MM-DD).')
     args = parser.parse_args()
+    if args.real and args.real != 'newest' and not Path(args.real).expanduser().exists():
+        # `--real heute`: the first name is a filter, not a folder.
+        args.names.insert(0, args.real)
+        args.real = 'newest'
     if args.names[:1] == ['refs']:
         export_refs(args.names[1:])
         return
     g2_review.extract_fonts()
     env = dict(os.environ, G2_FONTS=str(g2_review.FONTS), G3_NAMES=','.join(args.names),
                G3_MODES='light' if args.light else 'dark' if args.dark else 'light,dark')
+    out = ROOT / 'build/g3-review'
+    if args.real:
+        docs = g2_review.newest_pull() if args.real == 'newest' else Path(args.real).expanduser()
+        if not (docs / 'openstrap.db').exists():
+            raise SystemExit(f'No openstrap.db in {docs}')
+        out = g2_review.LAB / 'ui-review-real' / time.strftime('%Y%m%d-%H%M%S')
+        env.update(G3_REAL_DOCS=str(docs), G3_OUT=str(out))
+        if args.day:
+            env['G3_REAL_DAY'] = args.day
+        print(f'real data: {docs}')
     result = subprocess.run(
         [str(g2_review.FLUTTER), 'test', '--no-pub', 'tool/g3_review_test.dart'],
         cwd=ROOT, env=env, text=True, capture_output=True,
@@ -114,7 +141,7 @@ def main():
     if result.returncode != 0 or not scores:
         print(result.stdout[-4000:], result.stderr[-2000:])
         raise SystemExit(result.returncode or 1)
-    print(f'-> {ROOT / "build/g3-review"}')
+    print(f'-> {out}')
 
 
 if __name__ == '__main__':
