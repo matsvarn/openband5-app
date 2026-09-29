@@ -36,6 +36,7 @@ class AppShell extends StatefulWidget {
   /// Null uses every development domain. A single development domain hides
   /// the legacy bar.
   final List<ShellDomain>? domains;
+
   /// G3 floating control over every tab route; development keeps its old bar.
   final bool releaseStyle;
   final ValueChanged<ShellDomain>? onSelect;
@@ -71,6 +72,7 @@ class AppShellState extends State<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() {});
     });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   @override
@@ -104,6 +106,7 @@ class AppShellState extends State<AppShell> {
         MaterialPageRoute<void>(builder: (_) => screen),
       );
     }
+
     if (_current == domain) {
       push();
     } else {
@@ -115,7 +118,7 @@ class AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final atRoot = _observers[_current]!.depth <= 1;
+    final atRoot = !_observers[_current]!.coversRoot;
     final tabBottom = obTabBarBottom(context);
     return PopScope(
       canPop: atRoot,
@@ -140,19 +143,22 @@ class AppShellState extends State<AppShell> {
                             if (_built.contains(domain))
                               Padding(
                                 padding: EdgeInsets.only(
-                                  bottom: widget.releaseStyle &&
-                                          _observers[domain]!.depth > 1
+                                  bottom:
+                                      widget.releaseStyle &&
+                                          _observers[domain]!.coversRoot
                                       ? tabBottom +
-                                          kOBTabBarHeight +
-                                          kOBTabBarBannerGap
+                                            kOBTabBarHeight +
+                                            kOBTabBarBannerGap
                                       : 0,
                                 ),
                                 child: Navigator(
                                   key: _keys[domain],
                                   observers: [_observers[domain]!],
-                                  onGenerateRoute: (_) => MaterialPageRoute<void>(
-                                    builder: (c) => widget.builder(c, domain),
-                                  ),
+                                  onGenerateRoute: (_) =>
+                                      MaterialPageRoute<void>(
+                                        builder: (c) =>
+                                            widget.builder(c, domain),
+                                      ),
                                 ),
                               )
                             else
@@ -259,6 +265,8 @@ class AppShellState extends State<AppShell> {
 class _TabObserver extends NavigatorObserver {
   final VoidCallback changed;
   int depth = 0;
+  final _exitingRoutes = <Route<dynamic>>{};
+  bool get coversRoot => depth > 1 || _exitingRoutes.isNotEmpty;
   _TabObserver(this.changed);
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -269,6 +277,13 @@ class _TabObserver extends NavigatorObserver {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    if (previousRoute != null && route is TransitionRoute<dynamic>) {
+      _exitingRoutes.add(route);
+      route.completed.then((_) {
+        _exitingRoutes.remove(route);
+        changed();
+      });
+    }
     changed();
   }
 

@@ -20,6 +20,7 @@ Widget _shell(
     domains: kOpenBandReleaseDomains,
     builder: (context, domain) => Scaffold(
       body: Column(
+        key: ValueKey('tab-root-layout-${domain.name}'),
         children: [
           Text('Root ${domain.name}'),
           TextButton(
@@ -53,10 +54,8 @@ Widget _shell(
             child: const Text('Open full-screen flow'),
           ),
           TextButton(
-            onPressed: () => showOpenBandJournalInfo(
-              context,
-              title: 'Root sheet',
-            ),
+            onPressed: () =>
+                showOpenBandJournalInfo(context, title: 'Root sheet'),
             child: const Text('Open sheet'),
           ),
         ],
@@ -106,13 +105,38 @@ void main() {
     await tester.tap(find.text('Open home detail'));
     await tester.pumpAndSettle();
     final lastAction = find.text('Last home action');
-    await tester.scrollUntilVisible(lastAction, 400,
-        scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(
+      lastAction,
+      400,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     expect(
       tester.getRect(lastAction).bottom,
       lessThan(tester.getRect(find.byType(OBTabBar)).top),
     );
+  });
+
+  testWidgets('covered tab root keeps its inset during detail pop animation', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
+    await tester.tap(find.text('Open home detail'));
+    await tester.pumpAndSettle();
+    final root = find.byKey(
+      const ValueKey('tab-root-layout-home'),
+      skipOffstage: false,
+    );
+    final beforePop = tester.getSize(root);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.text('Detail home'), findsOneWidget);
+    expect(tester.getSize(root), beforePop);
+
+    await tester.pumpAndSettle();
+    expect(tester.getSize(root).height, greaterThan(beforePop.height));
   });
 
   testWidgets('kept notification detail opens inside its owning tab', (
