@@ -420,7 +420,7 @@ class OBPatternCard extends StatelessWidget {
   });
   final String title, detail;
   final int? have;
-  final int need;
+  final int? need;
   final String? footer;
   @override
   Widget build(BuildContext context) {
@@ -437,14 +437,14 @@ class OBPatternCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(detail, style: g.t(14, 19, color: g.ink2)),
           const SizedBox(height: 20),
-          if (have != null)
-            OBPatternProgress(have: have!.clamp(0, need), need: need),
+          if (have != null && need != null)
+            OBPatternProgress(have: have!.clamp(0, need!), need: need!),
           const SizedBox(height: 12),
           Text(
             footer ??
-                (have == null
+                (have == null || need == null
                     ? '—'
-                    : '$have von $need Tagen · noch ${(need - have!).clamp(0, need)}'),
+                    : '$have von $need Paaren · noch ${(need! - have!).clamp(0, need!)}'),
             style: g.t(13, 17, weight: FontWeight.w700),
           ),
         ],
