@@ -434,11 +434,15 @@ class G3CheckInQuestion {
   const G3CheckInQuestion({
     required this.key,
     required this.label,
+    required this.targetDay,
     required this.kind,
     required this.answer,
     this.field,
   });
   final String key, label;
+
+  /// Local journal day that owns this answer, which can precede check-in day.
+  final String targetDay;
   final G3CheckInKind kind;
   final G3CheckInAnswer? answer;
 
@@ -461,13 +465,27 @@ const kG3CheckInKeys = ['alcohol_evening', 'caffeine_late', 'mood'];
 const kG3CheckInNoteKey = 'journal_note';
 const kG3CheckInQuantityKey = 'alcohol_units';
 
-G3CheckIn g3CheckInFromSnapshot(JournalDaySnapshot snapshot) {
-  final byKey = {for (final field in snapshot.fields) field.key: field};
+/// Evening alcohol, late caffeine and the retrospective note describe the
+/// day before this check-in. Mood describes today. Unknown/custom keys stay on
+/// the selected day because JournalFieldSpec stores no day-lag metadata.
+String g3CheckInTargetDay(String selectedDay, String key) => switch (key) {
+  'alcohol_evening' || 'alcohol_units' || 'caffeine_late' || 'journal_note' =>
+    g3DaysEnding(selectedDay, 2).first,
+  _ => selectedDay,
+};
+
+G3CheckIn g3CheckInFromSnapshots(
+  JournalDaySnapshot selected,
+  JournalDaySnapshot previous,
+) {
+  final byKey = {for (final field in selected.fields) field.key: field};
   final questions = <G3CheckInQuestion>[];
   for (final key in kG3CheckInKeys) {
     final field = byKey[key];
     if (field == null || field.hidden) continue;
-    final raw = snapshot.metrics[key]?.value;
+    final targetDay = g3CheckInTargetDay(selected.day, key);
+    final source = targetDay == previous.day ? previous : selected;
+    final raw = source.metrics[key]?.value;
     final (kind, answer) = switch (field.kind) {
       JournalFieldKind.yesNo => (
         G3CheckInKind.yesNo,
@@ -491,6 +509,7 @@ G3CheckIn g3CheckInFromSnapshot(JournalDaySnapshot snapshot) {
       G3CheckInQuestion(
         key: key,
         label: field.label,
+        targetDay: targetDay,
         kind: kind,
         answer: answer,
         field: field,
@@ -501,11 +520,12 @@ G3CheckIn g3CheckInFromSnapshot(JournalDaySnapshot snapshot) {
     G3CheckInQuestion(
       key: kG3CheckInNoteKey,
       label: 'Notiz',
+      targetDay: g3CheckInTargetDay(selected.day, kG3CheckInNoteKey),
       kind: G3CheckInKind.freeNote,
-      answer: snapshot.note.isEmpty ? null : G3FreeNoteAnswer(snapshot.note),
+      answer: previous.note.isEmpty ? null : G3FreeNoteAnswer(previous.note),
     ),
   );
-  return G3CheckIn(snapshot.day, questions);
+  return G3CheckIn(selected.day, questions);
 }
 
 JournalDayPatch g3CheckInPatch(
@@ -547,16 +567,31 @@ JournalDayPatch g3CheckInPatch(
   );
 }
 
+/// The producer's paired-day and per-side floors. Other refusals keep null.
+enum G3PatternRefusalGate { paired, side }
+
 class G3JournalPattern {
   const G3JournalPattern(this.pattern);
   final CaffeineSleepPattern pattern;
   int? get yesNights => pattern.yesNights;
   int? get noNights => pattern.noNights;
   String? get refusalNote => pattern.note;
+  int get pairedMinimum => CaffeineSleepPattern.minPairedNights;
+  int get perSideMinimum => CaffeineSleepPattern.minPerSideNights;
+  G3PatternRefusalGate? get refusalGate {
+    if (pattern.kind != CaffeineSleepPatternKind.insufficient) return null;
+    if (pattern.pairedN < pairedMinimum) return G3PatternRefusalGate.paired;
+    final yes = yesNights;
+    final no = noNights;
+    if (yes != null && no != null &&
+        (yes < perSideMinimum || no < perSideMinimum)) {
+      return G3PatternRefusalGate.side;
+    }
+    return null;
+  }
   int? get remaining =>
-      pattern.kind == CaffeineSleepPatternKind.insufficient &&
-          pattern.pairedN < CaffeineSleepPattern.minPairedNights
-      ? CaffeineSleepPattern.minPairedNights - pattern.pairedN
+      refusalGate == G3PatternRefusalGate.paired
+      ? pairedMinimum - pattern.pairedN
       : null;
 }
 

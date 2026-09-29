@@ -133,12 +133,36 @@ void main() {
     expect(paired.yesNights, 3);
     expect(paired.noNights, 2);
     expect(paired.refusalNote, 'min_n');
+    expect(paired.pairedMinimum, 8);
+    expect(paired.perSideMinimum, 3);
+    expect(paired.refusalGate, G3PatternRefusalGate.paired);
     expect(paired.remaining, 3);
     final side = G3JournalPattern(pattern(8, 6, 2, 'min_per_side'));
     expect(side.refusalNote, 'min_per_side');
     expect(side.yesNights, 6);
     expect(side.noNights, 2);
+    expect(side.refusalGate, G3PatternRefusalGate.side);
     expect(side.remaining, isNull);
+    expect(
+      G3JournalPattern(pattern(8, 3, 5, 'other')).refusalGate,
+      isNull,
+    );
+  });
+
+  test('insufficient pattern split counts only supplied lag-1 pairs', () async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    repo.seedCaffeineSleepPattern(
+      day,
+      seed: SyntheticCaffeineSleepSeed.insufficient,
+    );
+    // This answer has no following wake day in the requested window.
+    await repo.writeJournal(day, CaffeineSleepPattern.field, 1);
+    final result = await repo.readJournalPattern(day, 30);
+    expect(result.pattern.pairedN, 5);
+    expect(result.yesNights, 3);
+    expect(result.noNights, 2);
+    expect(result.refusalGate, G3PatternRefusalGate.paired);
+    expect(result.remaining, 3);
   });
 
   test('building fixture withholds score and normal bands', () async {
@@ -260,6 +284,12 @@ void main() {
         G3CheckInKind.rating,
         G3CheckInKind.freeNote,
       ]);
+      expect(checkIn.questions.map((q) => q.targetDay), [
+        '2026-09-28',
+        '2026-09-28',
+        day,
+        '2026-09-28',
+      ]);
       expect((checkIn.questions[2].answer as G3RatingAnswer).value, 4);
       await repo.answerCheckIn(
         day,
@@ -274,7 +304,8 @@ void main() {
         'journal_note',
         const G3FreeNoteAnswer('Gut geschlafen'),
       );
-      expect((await repo.readJournalDay(day)).note, 'Gut geschlafen');
+      expect((await repo.readJournalDay('2026-09-28')).note, 'Gut geschlafen');
+      expect((await repo.readJournalDay(day)).note, isEmpty);
       await expectLater(
         repo.answerCheckIn(day, 'mood', const G3YesNoAnswer(true)),
         throwsArgumentError,

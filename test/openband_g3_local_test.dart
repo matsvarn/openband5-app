@@ -381,6 +381,12 @@ void main() {
       expect(checkIn.total, 4);
       expect(checkIn.answered, 0);
       expect((await repo.readJournalDay(day)).metrics['alcohol_units'], isNull);
+      expect(checkIn.questions.map((q) => q.targetDay), [
+        '2026-09-26',
+        '2026-09-26',
+        day,
+        '2026-09-26',
+      ]);
       expect(checkIn.questions.map((q) => q.kind), [
         G3CheckInKind.yesNo,
         G3CheckInKind.yesNo,
@@ -394,7 +400,9 @@ void main() {
       );
       await repo.answerCheckIn(day, 'alcohol_units', const G3QuantityAnswer(0));
       expect(
-        (await repo.readJournalDay(day)).metrics['alcohol_units']?.value,
+        (await repo.readJournalDay('2026-09-26'))
+            .metrics['alcohol_units']
+            ?.value,
         0,
       );
       await repo.answerCheckIn(day, 'mood', const G3RatingAnswer(4));
@@ -723,6 +731,63 @@ void main() {
     plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
     expect(plus.baselineOsdMinutes, 420);
     expect(plus.appliedDebtMinutes, 0);
+  });
+
+  test('check-in reads and writes yesterday’s caffeine on its journal day', () async {
+    const selected = '2026-03-30';
+    const previous = '2026-03-29';
+    await LocalDb.upsertJournalMetric(previous, 'caffeine_late', 1);
+    await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 0);
+
+    var checkIn = await repo.readCheckIn(selected);
+    expect((checkIn.questions[1].answer as G3YesNoAnswer).value, isTrue);
+    expect(checkIn.questions.map((q) => q.targetDay), [
+      previous,
+      previous,
+      selected,
+      previous,
+    ]);
+    expect(g3CheckInTargetDay('2026-03-30', 'custom_meditation'), selected);
+
+    await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 1);
+    await repo.answerCheckIn(
+      selected,
+      'caffeine_late',
+      const G3YesNoAnswer(false),
+    );
+    expect(
+      (await repo.readJournalDay(previous)).metrics['caffeine_late']?.value,
+      0,
+    );
+    expect(
+      (await repo.readJournalDay(selected)).metrics['caffeine_late']?.value,
+      1,
+    );
+    await repo.answerCheckIn(
+      selected,
+      'alcohol_evening',
+      const G3YesNoAnswer(true),
+    );
+    expect(
+      (await repo.readJournalDay(previous)).metrics['alcohol_evening']?.value,
+      1,
+    );
+    await repo.answerCheckIn(selected, 'alcohol_units', const G3QuantityAnswer(0));
+    expect(
+      (await repo.readJournalDay(previous)).metrics['alcohol_units']?.value,
+      0,
+    );
+    await repo.answerCheckIn(selected, 'mood', const G3RatingAnswer(4));
+    expect((await repo.readJournalDay(selected)).metrics['mood']?.value, 4);
+    await repo.answerCheckIn(
+      selected,
+      'journal_note',
+      const G3FreeNoteAnswer('Ruhig'),
+    );
+    expect((await repo.readJournalDay(previous)).note, 'Ruhig');
+    expect((await repo.readJournalDay(selected)).note, isEmpty);
+    checkIn = await repo.readCheckIn(selected);
+    expect(checkIn.answered, 4);
   });
 
   test('open live session keeps unknown end and duration absent', () async {

@@ -751,7 +751,12 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<G3CheckIn> readCheckIn(String day) async {
-    return g3CheckInFromSnapshot(await readJournalDay(day));
+    final previous = g3DaysEnding(day, 2).first;
+    final snapshots = await Future.wait([
+      readJournalDay(day),
+      readJournalDay(previous),
+    ]);
+    return g3CheckInFromSnapshots(snapshots[0], snapshots[1]);
   }
 
   @override
@@ -760,7 +765,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
     String key,
     G3CheckInAnswer answer,
   ) async {
-    final snapshot = await readJournalDay(day);
+    final snapshot = await readJournalDay(g3CheckInTargetDay(day, key));
     await patchJournalDay(g3CheckInPatch(snapshot, key, answer));
   }
 
@@ -2517,17 +2522,19 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       throw ArgumentError.value(nights, 'nights', 'Expected at least 1 night.');
     }
     final days = openBandDaysEnding(endDay, nights + 1);
-    final journal = [
-      for (final d in days)
-        if (_journal[d]?.metrics[CaffeineSleepPattern.field]?.value
-            case final v? when v == 0.0 || v == 1.0)
-          {
-            'date': d,
-            'values': {CaffeineSleepPattern.field: v},
-          },
-    ];
     final outcomes = [
       for (final d in days) _solIneligible.containsKey(d) ? null : _solMin[d],
+    ];
+    // The exact lag-1 pairs sent to analytics also supply refusal side counts.
+    final journal = [
+      for (var i = 0; i + 1 < days.length; i++)
+        if (outcomes[i + 1] != null)
+        if (_journal[days[i]]?.metrics[CaffeineSleepPattern.field]?.value
+            case final v? when v == 0.0 || v == 1.0)
+          {
+            'date': days[i],
+            'values': {CaffeineSleepPattern.field: v},
+          },
     ];
     final availableOutcomes = [
       for (var i = 1; i < outcomes.length; i++)
@@ -2556,17 +2563,10 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         'sol': outcomes,
       }),
     );
-    final answerByDay = {
-      for (final row in journal)
-        row['date'] as String:
-            ((row['values'] as Map)[CaffeineSleepPattern.field] as num)
-                .toDouble(),
-    };
     var yesNights = 0;
     var noNights = 0;
-    for (var i = 0; i + 1 < days.length; i++) {
-      if (outcomes[i + 1] == null) continue;
-      final answer = answerByDay[days[i]];
+    for (final row in journal) {
+      final answer = (row['values'] as Map)[CaffeineSleepPattern.field];
       if (answer == 1.0) yesNights++;
       if (answer == 0.0) noNights++;
     }
