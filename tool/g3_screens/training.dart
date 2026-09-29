@@ -371,11 +371,7 @@ class _TrainingFrameState extends State<_TrainingFrame> {
                       ? const [0, 4, 19, 16, 3]
                       : base.zoneMinutes,
                   zoneBasis: reserve
-                      ? const G3ZoneBasis(
-                          method: 'karvonen',
-                          maxHr: 191,
-                          maxHrSource: G3MaxHrSource.measured,
-                        )
+                      ? const G3ZoneBasis(G3ZoneBasisKind.heartRateReserve, 191)
                       : base.zoneBasis,
                   hrTrace: manual
                       ? const []

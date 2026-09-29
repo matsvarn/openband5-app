@@ -6351,10 +6351,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _log('Live session started. Goal: ${targetKcal.round()} kcal');
     // Light up the lock screen / Dynamic Island (iOS).
-    LiveActivity.start(
-      startedAt: start,
-      sport: type,
-    );
+    LiveActivity.start(startedAt: start, sport: type);
     _lastLaPush = DateTime.fromMillisecondsSinceEpoch(0);
     // GPS route: only for run/ride/walk, and only if the user grants location.
     unawaited(_maybeStartRouteTracking(id, type));
@@ -6716,6 +6713,20 @@ class AppState extends ChangeNotifier {
       'zone_min_json': jsonEncode(
         zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
       ),
+      if (zoneMin.any((v) => v > 0) && w.zoneSet != null)
+        // A basis-only trace leaves 'hr' absent, so the read path still uses
+        // retained 1 Hz samples and a later fuller trace can replace this.
+        'trace_json': jsonEncode({
+          'zone_bands': [
+            for (final band in w.zoneSet!.zones)
+              {
+                'zone': band.number,
+                'lo': band.lower.round(),
+                'hi': band.upper.round(),
+                'source': w.zoneSet!.source,
+              },
+          ],
+        }),
       if (wSteps != null && wSteps > 0) 'steps': wSteps,
       'cadence_spm': ?wCadence,
       'source': 'manual',

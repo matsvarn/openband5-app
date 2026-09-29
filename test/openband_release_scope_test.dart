@@ -36,6 +36,9 @@ import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/openband/training.dart';
+import 'package:openstrap_edge/openband/templates.dart';
+import 'package:openstrap_edge/openband/exercise_picker.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -1243,6 +1246,44 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('development Training reaches templates and exercise library', (
+    tester,
+  ) async {
+    phone(tester);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(repository: repository, showControls: false),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Training'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandTraining), findsOneWidget);
+    expect(find.text('Übungsbibliothek'), findsOneWidget);
+    await tester.tap(find.byTooltip('Vorlagen'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandTemplates), findsOneWidget);
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Übungsbibliothek'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandExercisePicker), findsOneWidget);
+
+    await tester.pumpWidget(
+      OpenBandGallery(
+        key: UniqueKey(),
+        repository: repository,
+        showControls: false,
+        releaseReduced: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3TrainingScreen), findsOneWidget);
+    expect(find.byType(OpenBandTraining), findsNothing);
+    expect(find.text('Übungsbibliothek'), findsNothing);
+  });
 
   testWidgets(
     'development Journal reaches nutrition; release Journal does not',

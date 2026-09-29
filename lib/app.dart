@@ -18,6 +18,10 @@ import 'openband/screens.dart';
 import 'openband/g3/screens/sleep.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
+import 'openband/template_editor.dart';
+import 'openband/training.dart';
+import 'openband/templates.dart';
+import 'openband/exercise_picker.dart';
 import 'openband/g3/screens/training_screen.dart';
 import 'openband/g3/screens/training_live.dart';
 import 'openband/g3/screens/training_manual.dart';
@@ -740,49 +744,108 @@ class _ShellState extends State<_Shell> {
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
         ShellDomain.sleep => G3SleepScreen(controller: _day, asTab: true),
-        ShellDomain.workout => G3TrainingScreen(
-          controller: _day,
-          onStart: (type) => _startActivity(c, type),
-          onManual: () async {
-            final saved = await Navigator.of(c).push<G3ManualSaved>(
-              MaterialPageRoute<G3ManualSaved>(
-                builder: (_) => const G3ManualFlow(),
-              ),
-            );
-            await _day.refresh();
-            if (saved != null && c.mounted) {
-              ScaffoldMessenger.of(c).showSnackBar(
-                SnackBar(
-                  content: Text('${trainingSport(saved.sport)} nachgetragen'),
-                  action: SnackBarAction(
-                    label: 'Ansehen',
-                    onPressed: () async {
-                      final all = await _day.repository.readActivities(
-                        dayLabelOf(saved.start),
-                      );
-                      if (!c.mounted) return;
-                      final activity = all
-                          .where((a) => a.id == saved.id)
-                          .firstOrNull;
-                      if (activity != null) {
-                        await Navigator.of(c).push(
-                          g3ActivityResultRoute(
-                            repository: _day.repository,
-                            activity: activity,
+        ShellDomain.workout =>
+          !reduced
+              ? Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => pushFullScreen(
+                          c,
+                          MaterialPageRoute<void>(
+                            builder: (_) => OpenBandExercisePicker(
+                              repository: _day.repository,
+                            ),
                           ),
-                        );
-                      }
-                    },
+                        ),
+                        child: const Text('Übungsbibliothek'),
+                      ),
+                    ),
+                    Expanded(
+                      child: OpenBandTraining(
+                        controller: _day,
+                        onStart: (type) => unawaited(_startActivity(c, type)),
+                        onStartTemplate: (template) =>
+                            _openStrength(c, template),
+                        onEditTemplate: (template) =>
+                            _openTemplateEditor(c, template),
+                        onOpenTemplates: () => unawaited(
+                          pushFullScreen(
+                            c,
+                            MaterialPageRoute<void>(
+                              builder: (_) => OpenBandTemplates(
+                                repository: _day.repository,
+                                onStartTemplate: (template) =>
+                                    _openStrength(c, template),
+                                onEditTemplate: (template) =>
+                                    _openTemplateEditor(c, template),
+                              ),
+                            ),
+                          ),
+                        ),
+                        onOpen: (session) => unawaited(
+                          pushFullScreen(
+                            c,
+                            MaterialPageRoute<void>(
+                              builder: (_) => OpenBandSession(
+                                repository: _day.repository,
+                                session: session,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : G3TrainingScreen(
+                  controller: _day,
+                  onStart: (type) => _startActivity(c, type),
+                  onManual: () async {
+                    final saved = await Navigator.of(c).push<G3ManualSaved>(
+                      MaterialPageRoute<G3ManualSaved>(
+                        builder: (_) => const G3ManualFlow(),
+                      ),
+                    );
+                    await _day.refresh();
+                    if (saved != null && c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${trainingSport(saved.sport)} nachgetragen',
+                          ),
+                          action: SnackBarAction(
+                            label: 'Ansehen',
+                            onPressed: () async {
+                              final all = await _day.repository.readActivities(
+                                dayLabelOf(saved.start),
+                              );
+                              if (!c.mounted) return;
+                              final activity = all
+                                  .where((a) => a.id == saved.id)
+                                  .firstOrNull;
+                              if (activity != null) {
+                                await Navigator.of(c).push(
+                                  g3ActivityResultRoute(
+                                    repository: _day.repository,
+                                    activity: activity,
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  onProfile: () => pushInTab(
+                    c,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfileHome(),
+                    ),
                   ),
                 ),
-              );
-            }
-          },
-          onProfile: () => pushInTab(
-            c,
-            MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
-          ),
-        ),
         ShellDomain.wellness =>
           reduced
               ? G3JournalScreen(
@@ -842,7 +905,8 @@ class _ShellState extends State<_Shell> {
   }
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return pushFullScreen(c,
+    return pushFullScreen(
+      c,
       MaterialPageRoute<void>(
         builder: (_) => OpenBandStrengthLive(
           repository: _day.repository,
@@ -868,7 +932,8 @@ class _ShellState extends State<_Shell> {
     final app = _app;
     if (app == null) return;
     if (activityByName(type)?.track == Track.sets) {
-      await pushFullScreen(c,
+      await pushFullScreen(
+        c,
         MaterialPageRoute<void>(
           builder: (_) =>
               const WorkoutScreen(releaseReduced: kOpenBandReleaseReduced),
@@ -1072,10 +1137,7 @@ Future<void> _pushG3Live(
 
 Future<void> _pushResumedLive(BuildContext context, Widget page) async {
   if (!context.mounted) return;
-  await pushFullScreen(
-    context,
-    MaterialPageRoute<void>(builder: (_) => page),
-  );
+  await pushFullScreen(context, MaterialPageRoute<void>(builder: (_) => page));
 }
 
 void showRetryableNotice(
