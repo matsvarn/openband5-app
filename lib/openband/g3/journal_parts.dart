@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'count_copy.dart';
 import 'g3_theme.dart';
 
 class OBCheckIn extends StatelessWidget {
@@ -664,7 +665,7 @@ class OBPatternCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'von $need Tag-Nacht-Paaren',
+                          'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
                           style: g.t(15, 19, weight: FontWeight.w700),
                         ),
                         Text(detail, style: g.t(13, 17, color: g.ink2)),
@@ -692,7 +693,7 @@ class OBPatternCard extends StatelessWidget {
               footer ??
                   (have == null || need == null
                       ? '—'
-                      : '$have von $need Paaren · noch ${(need! - have!).clamp(0, need!)}'),
+                      : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
               style: g.t(13, 17, weight: FontWeight.w700),
             ),
           ],
@@ -803,7 +804,7 @@ class OBPatternDotPlot extends StatelessWidget {
     final g = G3.of(context);
     return Semantics(
       label:
-          '${withAnswer.length} und ${withoutAnswer.length} beobachtete Nächte',
+          '${withAnswer.length} ${g3CountNoun(withAnswer.length, 'beobachtete Nacht', 'beobachtete Nächte')} mit Ja und ${withoutAnswer.length} ${g3CountNoun(withoutAnswer.length, 'beobachtete Nacht', 'beobachtete Nächte')} mit Nein',
       child: RepaintBoundary(
         child: SizedBox(
           height: 112,

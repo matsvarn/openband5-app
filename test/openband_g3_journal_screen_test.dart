@@ -11,7 +11,8 @@ import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
-import 'package:openstrap_edge/openband/g3/journal_parts.dart' show OBSwitch;
+import 'package:openstrap_edge/openband/g3/journal_parts.dart'
+    show OBPatternCard, OBPatternDotPlot, OBSwitch;
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -735,6 +736,44 @@ void main() {
     );
     expect(find.textContaining('von 3'), findsWidgets);
     expect(find.textContaining('ms'), findsNothing);
+  });
+
+  testWidgets('pattern counts use singular nouns for one pair and one night', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: Scaffold(
+          body: Column(
+            children: const [
+              OBPatternCard(
+                title: 'Noch zu wenige Nächte',
+                detail: 'Koffein nach 14 Uhr · folgende Nacht',
+                have: 0,
+                need: 1,
+              ),
+              OBPatternDotPlot(
+                withAnswer: [0.5],
+                withoutAnswer: [],
+                min: 0,
+                max: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('von 1 Tag-Nacht-Paar'), findsOneWidget);
+    expect(find.text('0 von 1 Paar · noch 1'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel(
+        '1 beobachtete Nacht mit Ja und 0 beobachtete Nächte mit Nein',
+      ),
+      findsOneWidget,
+    );
+    semantics.dispose();
   });
 
   testWidgets(
