@@ -200,33 +200,46 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
             children: [
               Row(
                 children: [
-                  TextButton.icon(
-                    onPressed: saving
-                        ? null
-                        : () {
-                            if (step > 0) {
-                              setState(() => step--);
-                            } else {
-                              Navigator.of(context).maybePop();
-                            }
-                          },
-                    icon: Icon(
-                      step > 0 ? LucideIcons.chevronLeft : LucideIcons.x,
+                  SizedBox(
+                    width: 48,
+                    child: IconButton(
+                      tooltip: step > 0 ? 'Zurück' : 'Abbrechen',
+                      onPressed: saving
+                          ? null
+                          : () {
+                              if (step > 0) {
+                                setState(() => step--);
+                              } else {
+                                Navigator.of(context).maybePop();
+                              }
+                            },
+                      icon: Icon(
+                        step > 0 ? LucideIcons.chevronLeft : LucideIcons.x,
+                      ),
                     ),
-                    label: Text(step > 0 ? 'Zurück' : 'Abbrechen'),
                   ),
                   Expanded(
                     child: Column(
                       children: [
-                        Text('NACHTRAGEN', style: g.caps(size: 17)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'NACHTRAGEN',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: g.caps(size: 17),
+                          ),
+                        ),
                         Text(
                           'Schritt ${step + 1} von 3',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: g.t(13, 17, color: g.muted),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 86),
+                  const SizedBox(width: 48),
                 ],
               ),
               const SizedBox(height: 22),
