@@ -121,7 +121,7 @@ void main() {
         );
         expect(app.isPaired, isTrue);
         expect(app.pairAttempts, failFirst ? 2 : 1);
-        await tester.tap(find.text('Continue to profile'));
+        await tester.tap(find.text('Continue'));
         await tester.pumpAndSettle();
         expect(find.byType(ProfileSetupScreen), findsOneWidget);
       },

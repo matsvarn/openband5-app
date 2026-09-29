@@ -4,15 +4,21 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
+import 'package:openstrap_edge/openband/g3/band_parts.dart';
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/screens.dart'
+    show bandStatusValuesHeading;
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart' show ImportOutcome;
+import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 
 void main() {
@@ -38,6 +44,8 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('de'),
+        supportedLocales: const [Locale('de'), Locale('en')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         theme: openBandTheme(Brightness.light),
         home: screen,
       ),
@@ -54,11 +62,8 @@ void main() {
         now: DateTime(2026, 9, 29, 9, 41),
       ),
     );
-    expect(
-      find.text('Abdeckung — · keine 24-Stunden-Aufzeichnung verfügbar'),
-      findsOneWidget,
-    );
-    expect(find.text('Band-Rückstand unbekannt'), findsOneWidget);
+    expect(find.text('Abdeckung noch nicht erfasst'), findsOneWidget);
+    expect(find.text('unbekannt'), findsOneWidget);
     expect(find.text('Firmware'), findsOneWidget);
     expect(find.text('0 Min.'), findsNothing);
     expect(find.textContaining('% übertragen'), findsNothing);
@@ -79,7 +84,7 @@ void main() {
     expect(find.text('Mitteilungen nicht erlaubt'), findsNothing);
     await pump(tester, profile(false));
     expect(find.text('Mitteilungen nicht erlaubt'), findsOneWidget);
-    await tester.tap(find.text('Mitteilungen nicht erlaubt'));
+    await tester.tap(find.text('Erlauben'));
     expect(opened, 1);
   });
 
@@ -96,20 +101,18 @@ void main() {
             latestStoredAt: DateTime(2026, 9, 29, 9, 28),
           ),
           now: DateTime(2026, 9, 29, 9, 41),
-          onDevices: () => opened++,
+          onDevices: () async {
+            opened++;
+          },
         ),
       );
       expect(find.text('Übertragung unterbrochen'), findsOneWidget);
+      expect(find.text('09:28'), findsOneWidget);
       expect(
         find.text('Bereits gespeicherte Abschnitte bleiben erhalten.'),
         findsOneWidget,
       );
-      await tester.scrollUntilVisible(
-        find.text('Band verwalten'),
-        120,
-        scrollable: find.byType(Scrollable).last,
-      );
-      await tester.tap(find.text('Band verwalten'));
+      await tester.tap(find.text('Verbinden'));
       expect(opened, 1);
       expect(tester.takeException(), isNull);
     },
@@ -138,10 +141,154 @@ void main() {
     expect(find.text('4'), findsOneWidget);
     expect(find.text('1'), findsNWidgets(3));
     expect(find.text('Nicht lesbar'), findsOneWidget);
-    expect(find.text('Abgelehnt, nichts geschätzt'), findsOneWidget);
+    expect(find.text('abgelehnt, nichts geschätzt'), findsOneWidget);
     await tester.tap(find.text('Fertig'));
     expect(closed, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('last good backup keeps its local day during a failed backup', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      DataScreenView(
+        cadence: BackupCadence.daily,
+        now: DateTime(2026, 9, 29, 9, 41),
+        lastBackupAt: DateTime(2026, 9, 28, 3),
+        note: 'Zu wenig freier Speicher auf dem iPhone.',
+        noteFailed: true,
+        backupFailed: true,
+        onBackupNow: () {},
+      ),
+    );
+    expect(find.text('03:00'), findsOneWidget);
+    expect(find.textContaining('gestern'), findsWidgets);
+    expect(find.textContaining('Zu wenig freier Speicher'), findsOneWidget);
+    expect(
+      find.textContaining('Die Sicherung von gestern 03:00 bleibt erhalten.'),
+      findsOneWidget,
+    );
+    expect(find.text('Sicherung fehlgeschlagen'), findsOneWidget);
+    expect(find.byKey(const ValueKey('data-backup-now')), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('data-last-backup'))).dy,
+      lessThan(tester.getTopLeft(find.text('Sicherung fehlgeschlagen')).dy),
+    );
+  });
+
+  for (final (outcome, title) in [
+    (const ImportOutcome(source: 'Sicherung', restoredRows: 3), 'Übernommen'),
+    (const ImportOutcome(source: 'Sicherung', unchangedRows: 3), 'Unverändert'),
+    (
+      const ImportOutcome(source: 'Sicherung', unreadableRows: 1),
+      'Nicht übernommen',
+    ),
+    (
+      const ImportOutcome(
+        source: 'Sicherung',
+        restoredRows: 3,
+        restoreConflicts: 1,
+      ),
+      'Teilweise übernommen',
+    ),
+  ]) {
+    testWidgets('restore title follows outcome: $title', (tester) async {
+      await pump(
+        tester,
+        Scaffold(
+          body: G3RestoreReceiptSheet(outcome: outcome, onClose: () {}),
+        ),
+      );
+      expect(find.byKey(const ValueKey('restore-title')), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('restore-title'))).data,
+        title,
+      );
+    });
+  }
+
+  testWidgets('frontier names the local day of an older stored sample', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      Scaffold(
+        body: OBFrontierCard(
+          storedAt: DateTime(2026, 9, 28, 9, 28),
+          now: DateTime(2026, 9, 29, 9, 41),
+        ),
+      ),
+    );
+    expect(find.text('bis gestern · 09:28'), findsOneWidget);
+  });
+
+  testWidgets('band detail follows live observations and clock', (
+    tester,
+  ) async {
+    final updates = ValueNotifier<int>(0);
+    addTearDown(updates.dispose);
+    var now = DateTime(2026, 9, 29, 9, 41);
+    BandSnapshot current = BandSnapshot(
+      connection: BandConnection.connected,
+      latestStoredAt: DateTime(2026, 9, 29, 9, 38),
+      batteryPercent: 64,
+    );
+    await pump(
+      tester,
+      G3BandScreen(
+        band: current,
+        now: now,
+        clock: () => now,
+        bandUpdates: updates,
+        readBand: () async => current,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Verbunden'), findsOneWidget);
+    now = DateTime(2026, 9, 30, 9, 41);
+    current = BandSnapshot(
+      connection: BandConnection.disconnected,
+      latestStoredAt: DateTime(2026, 9, 29, 9, 38),
+      batteryPercent: 64,
+    );
+    updates.value++;
+    await tester.pumpAndSettle();
+    expect(find.text('gestern'), findsOneWidget);
+    expect(find.text('zuletzt 64 %'), findsOneWidget);
+    expect(find.text('Nicht verbunden'), findsWidgets);
+  });
+
+  testWidgets('Bluetooth off and no-band-found stay distinct band details', (
+    tester,
+  ) async {
+    final stored = DateTime(2026, 9, 28, 23, 10);
+    final band = BandSnapshot(
+      connection: BandConnection.disconnected,
+      latestStoredAt: stored,
+    );
+    for (final (issue, title, action) in [
+      (
+        OBBandIssue.bluetoothOff,
+        'Bluetooth ist ausgeschaltet',
+        'Bluetooth einschalten',
+      ),
+      (OBBandIssue.notFound, 'Kein Band in Reichweite', 'Erneut suchen'),
+    ]) {
+      await pump(
+        tester,
+        G3BandScreen(
+          band: band,
+          now: DateTime(2026, 9, 29, 9, 41),
+          issue: issue,
+          onDevices: () async {},
+        ),
+      );
+      expect(find.text(title), findsOneWidget);
+      expect(find.text(action), findsOneWidget);
+      expect(find.text('BAND VERBINDEN'), findsNothing);
+      expect(find.text('—'), findsWidgets);
+    }
   });
 
   testWidgets('date sheet commits only a confirmed selection', (tester) async {
@@ -195,6 +342,12 @@ void main() {
     expect(controller.selectedDay, '2026-09-16');
   });
 
+  test('data status heading follows the selected local day', () {
+    final now = DateTime(2026, 9, 18, 9, 41);
+    expect(bandStatusValuesHeading('2026-09-15', now), 'WERTE FÜR 15.09.');
+    expect(bandStatusValuesHeading('2026-09-18', now), 'WERTE FÜR HEUTE');
+  });
+
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('band $brightness golden', (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -219,7 +372,7 @@ void main() {
               ),
               now: DateTime(2026, 9, 29, 9, 41),
               databaseSize: '4,2 GB',
-              onDevices: () {},
+              onDevices: () async {},
             ),
           ),
         ),

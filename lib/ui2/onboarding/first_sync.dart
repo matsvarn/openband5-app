@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/day_label.dart';
@@ -18,7 +19,7 @@ import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
 
-enum SetupStatusIcon { open, active, done }
+enum SetupStatusIcon { open, active, done, stopped }
 
 class FirstSyncScreen extends StatefulWidget {
   final VoidCallback onDone;
@@ -285,19 +286,11 @@ class FirstSyncView extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: _s(context, 'Erste Übertragung', 'First transfer'),
-                subtitle: _s(
-                  context,
-                  'Einrichtung · Schritt 2 von 3',
-                  'Setup · Step 2 of 3',
-                ),
-                onBack: onBack,
-                showBack: onBack != null || Navigator.canPop(context),
-                onInfo: () => _info(context),
-              ),
+            OBSetupHeader(
+              title: _s(context, 'Erste Übertragung', 'First transfer'),
+              backLabel: _s(context, 'Zurück', 'Back'),
+              onBack: onBack,
+              onInfo: () => _info(context),
             ),
             Expanded(
               child: ListView(
@@ -309,6 +302,33 @@ class FirstSyncView extends StatelessWidget {
                     _ReceivingCard(band: band!, now: now),
                     const SizedBox(height: 12),
                   ],
+                  if (band?.latestStoredAt != null &&
+                      band?.transfer != TransferState.receiving) ...[
+                    OBFrontierCard(
+                      storedAt: band!.latestStoredAt,
+                      now: now,
+                      rightLabel: band!.transfer == TransferState.interrupted
+                          ? _s(context, 'unterbrochen', 'interrupted')
+                          : _s(context, 'gespeichert', 'saved'),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (band?.transfer == TransferState.interrupted) ...[
+                    OBBandActionNotice(
+                      title: _s(
+                        context,
+                        'Übertragung unterbrochen',
+                        'Transfer interrupted',
+                      ),
+                      body:
+                          '${_s(context, 'Bis', 'Until')} ${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
+                      action: _s(context, 'Fortsetzen', 'Resume'),
+                      actionIcon: LucideIcons.refreshCw,
+                      onAction: onResume,
+                      onHelp: () => _info(context),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   OBSetupStatusCard(
                     band: band,
                     evaluation: evaluation,
@@ -316,19 +336,56 @@ class FirstSyncView extends StatelessWidget {
                   ),
                   if (band?.transfer == TransferState.receiving) ...[
                     const SizedBox(height: 14),
-                    Text(
-                      _s(
-                        context,
-                        'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen.',
-                        'Stored before confirmation: the band only deletes values safely saved on the iPhone.',
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            LucideIcons.lockKeyhole,
+                            size: 16,
+                            color: p.muted,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _s(
+                                context,
+                                'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen.',
+                                'Stored before confirmation: the band only deletes values safely saved on the iPhone.',
+                              ),
+                              style: p.text(13, color: p.muted),
+                            ),
+                          ),
+                        ],
                       ),
-                      textAlign: TextAlign.center,
-                      style: p.text(13, color: p.muted),
                     ),
                   ],
-                  if (band?.transfer == TransferState.interrupted ||
-                      resumeBusy ||
-                      resumeFailed) ...[
+                  if (band?.transfer == TransferState.idle &&
+                      evaluation?.state == SetupEvalState.complete) ...[
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(LucideIcons.info, size: 16, color: p.muted),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _s(
+                                context,
+                                'Schlaf und Erholung kommen nach der ersten Nacht mit Band. Erholung braucht 14 Nächte als Basis.',
+                                'Sleep and recovery arrive after the first night with the band. Recovery needs 14 nights of baseline.',
+                              ),
+                              style: p.text(13, color: p.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (resumeBusy || resumeFailed) ...[
                     const SizedBox(height: 12),
                     OBSyncState(
                       band: band ?? const BandSnapshot(),
@@ -383,25 +440,50 @@ class FirstSyncView extends StatelessWidget {
                       onRetry: onRetry,
                     ),
                   ],
-                  if (synthetic) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Synthetische Daten',
-                      textAlign: TextAlign.center,
-                      style: p
-                          .text(12, color: p.muted)
-                          .copyWith(height: 16 / 12),
-                    ),
-                  ],
                 ],
               ),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottom),
-              child: OBAction(
-                _s(context, 'Weiter zum Profil', 'Continue to profile'),
-                ink: true,
-                onPressed: onDone,
+              child: Column(
+                children: [
+                  OBAction(
+                    _s(context, 'Weiter', 'Continue'),
+                    secondary: band?.transfer == TransferState.interrupted,
+                    ink: band?.transfer != TransferState.interrupted,
+                    onPressed: onDone,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    band?.transfer == TransferState.interrupted
+                        ? _s(
+                            context,
+                            'Der Rest kommt beim nächsten Verbinden.',
+                            'The rest arrives on the next connection.',
+                          )
+                        : band?.transfer == TransferState.receiving
+                        ? _s(
+                            context,
+                            'App während der Übertragung offen lassen.',
+                            'Keep the app open during transfer.',
+                          )
+                        : _s(
+                            context,
+                            'Noch: Über dich. Danach Heute.',
+                            'Next: About you. Then Today.',
+                          ),
+                    textAlign: TextAlign.center,
+                    style: p.text(12, color: p.muted),
+                  ),
+                  if (synthetic) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      textAlign: TextAlign.center,
+                      style: p.label(size: 11).copyWith(color: p.muted),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -421,17 +503,14 @@ class _ReceivingCard extends StatelessWidget {
   Widget build(BuildContext context) => OBFrontierCard(
     storedAt: band.latestStoredAt,
     now: now,
+    rightLabel: _s(context, 'Erste Übertragung', 'First transfer'),
     caption: band.latestStoredAt == null
         ? _s(
             context,
             'Noch kein Wert gespeichert. App während der Übertragung offen lassen.',
             'No value saved yet. Keep the app open during transfer.',
           )
-        : _s(
-            context,
-            'Gespeichertes bleibt auch nach einer Unterbrechung erhalten.',
-            'Saved data remains after an interruption.',
-          ),
+        : null,
   );
 }
 
@@ -492,7 +571,10 @@ class OBSetupStatusCard extends StatelessWidget {
       _s(context, 'Verbunden', 'Connected'),
     ),
     BandConnection.connecting => (SetupStatusIcon.active, '—'),
-    BandConnection.disconnected => (SetupStatusIcon.open, '—'),
+    BandConnection.disconnected => (
+      SetupStatusIcon.stopped,
+      _s(context, 'Getrennt', 'Disconnected'),
+    ),
   };
 }
 
@@ -505,7 +587,10 @@ class OBSetupStatusCard extends StatelessWidget {
   final frontier = _frontier(context, band.latestStoredAt, now);
   return switch (band.transfer) {
     TransferState.receiving => (SetupStatusIcon.active, frontier),
-    TransferState.interrupted => (SetupStatusIcon.open, frontier),
+    TransferState.interrupted => (
+      band.latestStoredAt == null ? SetupStatusIcon.open : SetupStatusIcon.done,
+      frontier,
+    ),
     TransferState.idle => (
       band.latestStoredAt == null ? SetupStatusIcon.open : SetupStatusIcon.done,
       frontier,
@@ -572,36 +657,48 @@ class _StatusRow extends StatelessWidget {
     final p = OB.of(context);
     final open = icon == SetupStatusIcon.open;
     final mark = switch (icon) {
-      SetupStatusIcon.done => Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          color: p.ink,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: p.ink.withValues(alpha: .1), blurRadius: 6),
-          ],
-        ),
-      ),
+      SetupStatusIcon.done =>
+        label == _s(context, 'Verbindung', 'Connection')
+            ? OBLed(on: true, size: 9)
+            : Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+                child: Icon(LucideIcons.check, size: 13, color: p.card),
+              ),
       SetupStatusIcon.active => Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: p.ink, width: 2),
+        ),
+        child: Icon(LucideIcons.refreshCw, size: 12, color: p.ink),
       ),
       SetupStatusIcon.open => Container(
-        width: 10,
-        height: 10,
+        width: 20,
+        height: 20,
         decoration: BoxDecoration(
-          color: p.muted.withValues(alpha: .28),
           shape: BoxShape.circle,
+          border: Border.all(color: p.gap, width: 1.5),
         ),
+      ),
+      SetupStatusIcon.stopped => Icon(
+        LucideIcons.bluetoothOff,
+        size: 17,
+        color: p.ink,
       ),
     };
     final labelStyle = p
         .text(15, weight: FontWeight.w500, color: open ? p.muted : p.ink)
         .copyWith(height: 20 / 15);
     final valueStyle = p
-        .text(15, weight: FontWeight.w600, display: true, color: p.muted)
+        .text(
+          15,
+          weight: FontWeight.w700,
+          display: true,
+          color: open ? p.gap : p.ink,
+        )
         .copyWith(height: 20 / 15);
     final stack = _stackStatusRows(context);
     final shown = value;

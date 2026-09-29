@@ -416,18 +416,18 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('64 %'));
     await tester.pumpAndSettle();
-    expect(find.text('letzter Wert vor 1 h 59'), findsOneWidget);
+    expect(find.text('letzter Wert vor 1 h 59 Min.'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(BottomSheet),
         matching: find.byType(OBScale),
       ),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('64 % · gemessen 07:42'), findsOneWidget);
-    expect(find.text('15.09 · 07:42'), findsOneWidget);
-    expect(find.text('Auf dem iPhone gespeichert'), findsOneWidget);
-    expect(find.text('—'), findsOneWidget);
+    expect(find.text('Akku 64 % · gemessen 07:42'), findsOneWidget);
+    expect(find.text('bis 07:42'), findsWidgets);
+    expect(find.text('Auf dem iPhone gespeichert'), findsNothing);
+    expect(find.text('Abdeckung'), findsOneWidget);
   });
   testWidgets(
     'accessible values and tap targets include unobserved intervals',

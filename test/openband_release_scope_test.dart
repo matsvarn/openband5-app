@@ -21,6 +21,7 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBToggle;
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -750,11 +751,11 @@ void main() {
       ),
     );
 
-    final values = [find.text('07:42'), find.text('—'), find.text('4,2 GB')];
+    final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
     final labels = [
       find.text('Daten bis'),
-      find.text('Letzter Bandwert'),
-      find.text('Datenbankdatei'),
+      find.text('Akku'),
+      find.text('Datenbank'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
@@ -785,7 +786,7 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('Bandstatus nicht verfügbar'), findsOneWidget);
+    expect(find.text('Status unbekannt'), findsOneWidget);
     expect(find.text('Kein Band verbunden'), findsNothing);
   });
 
@@ -815,9 +816,9 @@ void main() {
         ),
       );
 
-      expect(find.text('Bandstatus nicht verfügbar'), findsOneWidget);
+      expect(find.text('Status unbekannt'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
-      expect(find.text('64 %'), findsOneWidget);
+      expect(find.text('zuletzt 64 %'), findsOneWidget);
       expect(find.text('07:42'), findsOneWidget);
     },
   );
@@ -848,21 +849,22 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(tester.widget<OBToggle>(find.byType(OBToggle)).value, isTrue);
     expect(find.text('Von eurem Telefon'), findsNothing);
     expect(find.byKey(const ValueKey('data-action-receipt')), findsOneWidget);
-    for (final key in const [
+    for (final (index, key) in const [
+      'data-backup-now',
+      'data-backup-cadence',
       'data-export-database',
       'data-export-encrypted',
       'data-export-csv',
-      'data-backup-cadence',
-      'data-backup-now',
       'data-import-file',
       'data-reanalyze',
-    ]) {
+    ].indexed) {
       await tester.ensureVisible(find.byKey(ValueKey(key)));
       await tester.tap(find.byKey(ValueKey(key)));
       await tester.pump();
+      expect(hits, index + 1, reason: key);
     }
     expect(hits, 7);
     expect(tester.takeException(), isNull);
@@ -882,7 +884,7 @@ void main() {
           home: DataScreenView(cadence: cadence, onAutomatic: requests.add),
         ),
       );
-      await tester.tap(find.byType(Switch));
+      await tester.tap(find.byType(OBToggle));
       await tester.pump();
     }
     expect(requests, [true, false]);

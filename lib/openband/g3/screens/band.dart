@@ -1,65 +1,212 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../domain.dart';
 import '../../theme.dart' show obTime;
 import '../band_parts.dart';
+import '../chrome.dart' as chrome;
 import '../g3_theme.dart';
 
-/// Band facts that the current read model can actually establish.
-class G3BandScreen extends StatelessWidget {
+/// A read-only view of the latest band observation. Production injects the
+/// existing AppState notifier and repository read; no BLE work happens here.
+class G3BandScreen extends StatefulWidget {
   final BandSnapshot? band;
   final DateTime now;
+  final DateTime Function()? clock;
+  final Listenable? bandUpdates;
+  final Future<BandSnapshot> Function()? readBand;
   final String? databaseSize;
-  final VoidCallback? onDevices;
+  final Future<void> Function()? onDevices;
+  final VoidCallback? onStatus;
   final VoidCallback? onBack;
+  final OBBandIssue? issue;
+  final OBBandIssue? Function()? readIssue;
+  final bool synthetic;
 
   const G3BandScreen({
     super.key,
     required this.band,
     required this.now,
+    this.clock,
+    this.bandUpdates,
+    this.readBand,
     this.databaseSize,
     this.onDevices,
+    this.onStatus,
     this.onBack,
+    this.issue,
+    this.readIssue,
+    this.synthetic = false,
   });
+
+  @override
+  State<G3BandScreen> createState() => _G3BandScreenState();
+}
+
+class _G3BandScreenState extends State<G3BandScreen> {
+  BandSnapshot? _band;
+  OBBandIssue? _issue;
+  late DateTime _now;
+  Timer? _clockTick;
+  int _readVersion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _band = widget.band;
+    _issue = widget.readIssue?.call() ?? widget.issue;
+    _now = widget.now;
+    widget.bandUpdates?.addListener(_refreshBand);
+    if (widget.clock != null) {
+      _now = widget.clock!();
+      _clockTick = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (mounted) setState(() => _now = widget.clock!());
+      });
+    }
+    unawaited(_refreshBand());
+  }
+
+  @override
+  void didUpdateWidget(G3BandScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bandUpdates != widget.bandUpdates) {
+      oldWidget.bandUpdates?.removeListener(_refreshBand);
+      widget.bandUpdates?.addListener(_refreshBand);
+    }
+    if (oldWidget.band != widget.band) _band = widget.band;
+    if (oldWidget.issue != widget.issue ||
+        oldWidget.readIssue != widget.readIssue) {
+      _issue = widget.readIssue?.call() ?? widget.issue;
+    }
+    if (oldWidget.clock != widget.clock) {
+      _clockTick?.cancel();
+      _clockTick = widget.clock == null
+          ? null
+          : Timer.periodic(const Duration(minutes: 1), (_) {
+              if (mounted) setState(() => _now = widget.clock!());
+            });
+    }
+  }
+
+  Future<void> _refreshBand() async {
+    final issue = widget.readIssue?.call();
+    if (mounted && widget.readIssue != null && issue != _issue) {
+      setState(() => _issue = issue);
+    }
+    final read = widget.readBand;
+    if (read == null) return;
+    final version = ++_readVersion;
+    try {
+      final observed = await read();
+      if (mounted && version == _readVersion) {
+        setState(() {
+          _band = observed;
+          _now = widget.clock?.call() ?? _now;
+        });
+      }
+    } catch (_) {
+      // A failed read leaves the previous observation visible, with its time.
+    }
+  }
+
+  Future<void> _openDevices() async {
+    await widget.onDevices?.call();
+    if (mounted) await _refreshBand();
+  }
+
+  void _help() {
+    final issue = _issue;
+    final title = switch (issue) {
+      OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
+      OBBandIssue.notFound => 'Kein Band in Reichweite',
+      null => 'Band nicht verbunden',
+    };
+    final text = switch (issue) {
+      OBBandIssue.bluetoothOff =>
+        'Bluetooth in den iPhone-Einstellungen einschalten und zur App zurückkehren.',
+      OBBandIssue.notFound =>
+        'Band tragen oder laden, WHOOP-App schließen und das Band nah ans iPhone halten.',
+      null =>
+        'Band näher ans iPhone bringen und die Verbindung erneut versuchen.',
+    };
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: G3.of(c).t(20, 24, weight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Text(text, style: G3.of(c).t(14, 20)),
+              const SizedBox(height: 18),
+              chrome.OBActionSecondary(
+                'Schließen',
+                onPressed: () => Navigator.pop(c),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    ++_readVersion;
+    _clockTick?.cancel();
+    widget.bandUpdates?.removeListener(_refreshBand);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    final b = band;
+    final b = _band;
+    final issue = _issue;
+    final disconnected =
+        issue != null || b?.connection == BandConnection.disconnected;
+    final stored = b?.latestStoredAt;
+    final issueTitle = switch (issue) {
+      OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
+      OBBandIssue.notFound => 'Kein Band in Reichweite',
+      null => 'Nicht verbunden',
+    };
+    final issueBody = switch (issue) {
+      OBBandIssue.bluetoothOff =>
+        'Ohne Bluetooth erreicht das iPhone das Band nicht. Gespeichertes bleibt erhalten.',
+      OBBandIssue.notFound =>
+        'Band tragen oder laden, WHOOP-App schließen und das Band nah ans iPhone halten.',
+      null =>
+        stored == null
+            ? 'Band näher ans iPhone bringen. Noch kein bestätigter Datenstand liegt vor.'
+            : 'Band näher ans iPhone bringen. Was seit ${obTime(stored)} gemessen wurde, kommt beim Verbinden.',
+    };
+    final action = switch (issue) {
+      OBBandIssue.bluetoothOff => 'Bluetooth einschalten',
+      OBBandIssue.notFound => 'Erneut suchen',
+      null => 'Verbinden',
+    };
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
-              child: Row(
-                children: [
-                  TextButton.icon(
-                    onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-                    icon: const Icon(LucideIcons.chevronLeft),
-                    label: const Text('Heute'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: g.ink,
-                      minimumSize: const Size(44, 44),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text('BAND', style: g.caps()),
-                        Text('WHOOP 5.0', style: g.t(13, 18, color: g.muted)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 70),
-                ],
-              ),
+            chrome.OBPageHeader.detail(
+              title: 'BAND',
+              subtitle: 'WHOOP 5.0',
+              backLabel: 'Profil',
+              onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
+              onTrailing: widget.onStatus,
+              trailingLabel: 'Datenstand',
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
                 children: [
                   if (b == null)
                     OBSettingsGroup(
@@ -67,63 +214,115 @@ class G3BandScreen extends StatelessWidget {
                         OBSettingsRow(
                           label: 'Bandstatus —',
                           detail: 'Noch kein Bandstatus geladen.',
-                          onTap: onDevices,
+                          onTap: widget.onDevices == null ? null : _openDevices,
                         ),
                       ],
                     )
                   else
-                    OBBandHero(band: b, now: now),
+                    OBBandHero(
+                      band: b,
+                      now: _now,
+                      onStatus: widget.onStatus,
+                      issue: issue,
+                    ),
+                  if (b != null && disconnected) ...[
+                    const SizedBox(height: 12),
+                    OBBandActionNotice(
+                      title: issueTitle,
+                      body: issueBody,
+                      action: action,
+                      actionIcon: issue == OBBandIssue.notFound
+                          ? LucideIcons.refreshCw
+                          : null,
+                      onAction: widget.onDevices == null ? null : _openDevices,
+                      onHelp: _help,
+                    ),
+                  ],
                   if (b?.transfer == TransferState.receiving ||
                       b?.transfer == TransferState.interrupted) ...[
                     const SizedBox(height: 12),
-                    OBSettingsGroup(
-                      children: [
-                        OBSettingsRow(
-                          label: b!.transfer == TransferState.receiving
-                              ? 'Übertragung läuft'
-                              : 'Übertragung unterbrochen',
-                          detail: b.transfer == TransferState.receiving
-                              ? 'Gespeichertes bleibt auf dem iPhone. Keine Fortschrittsangabe verfügbar.'
-                              : 'Bereits gespeicherte Abschnitte bleiben erhalten.',
-                          onTap: onDevices,
+                    if (b!.transfer == TransferState.receiving)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              LucideIcons.lockKeyhole,
+                              size: 16,
+                              color: g.muted,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen. App währenddessen offen lassen.',
+                                style: g.t(13, 19, color: g.ink2),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  Text('GERÄT', style: g.caps(color: g.muted)),
-                  const SizedBox(height: 8),
-                  OBSettingsGroup(
-                    children: [
-                      const OBSettingsRow(label: 'Modell', value: 'WHOOP 5.0'),
-                      const OBSettingsRow(label: 'Firmware', value: '—'),
-                      OBSettingsRow(
-                        label: 'Datenbankdatei',
-                        value: databaseSize ?? '—',
+                      )
+                    else
+                      OBSettingsGroup(
+                        children: [
+                          OBSettingsRow(
+                            label: 'Übertragung unterbrochen',
+                            detail:
+                                'Bereits gespeicherte Abschnitte bleiben erhalten.',
+                            onTap: widget.onDevices == null
+                                ? null
+                                : _openDevices,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  if (onDevices != null) ...[
-                    Text('AM BAND', style: g.caps(color: g.muted)),
+                  ],
+                  if (!disconnected) ...[
+                    const SizedBox(height: 24),
+                    Text('GERÄT', style: g.caps(color: g.muted)),
                     const SizedBox(height: 8),
                     OBSettingsGroup(
                       children: [
+                        const OBSettingsRow(
+                          label: 'Modell',
+                          value: 'WHOOP 5.0',
+                        ),
+                        const OBSettingsRow(label: 'Firmware', value: '—'),
                         OBSettingsRow(
-                          label: 'Band verwalten',
-                          detail: 'Alarm, Akkumeldung und Kopplung',
-                          onTap: onDevices,
+                          label: 'Datenbankdatei',
+                          value: widget.databaseSize ?? '—',
                         ),
                       ],
                     ),
+                    if (widget.onDevices != null) ...[
+                      const SizedBox(height: 24),
+                      Text('AM BAND', style: g.caps(color: g.muted)),
+                      const SizedBox(height: 8),
+                      OBSettingsGroup(
+                        children: [
+                          OBSettingsRow(
+                            label: 'Band verwalten',
+                            detail: 'Alarm, Akkumeldung und Kopplung',
+                            onTap: _openDevices,
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                   if (b != null) ...[
                     const SizedBox(height: 22),
                     Center(
                       child: Text(
-                        'Letzter gespeicherter Wert ${obTime(b.latestStoredAt)} · Empfang ${obTime(b.receivedAt)}',
+                        'Letzter Bandwert ${obTime(b.latestStoredAt)} · Übertragung ${obTime(b.receivedAt)}',
                         textAlign: TextAlign.center,
                         style: g.t(12, 17, color: g.muted),
+                      ),
+                    ),
+                  ],
+                  if (widget.synthetic) ...[
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        'SYNTHETISCHE DATEN',
+                        style: g.caps(color: g.muted, size: 11),
                       ),
                     ),
                   ],
