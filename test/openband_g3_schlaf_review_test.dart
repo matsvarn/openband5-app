@@ -885,10 +885,38 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SleepEditor), findsOneWidget);
       expect(find.byType(OBTabBar), findsNothing);
+      expect(find.text('Nacht zu Di 29.09'), findsOneWidget);
+      expect(find.text('7h44'), findsOneWidget);
+      expect(find.text('Band hat aufgezeichnet 23:10–06:54'), findsOneWidget);
+      expect(find.textContaining('vorher'), findsNothing);
+      final bar = find.byKey(const ValueKey('sleep-window-bar'));
+      final left = tester.getTopLeft(bar).dx;
+      final width = tester.getSize(bar).width;
+      for (final (hour, label, fraction) in [
+        (20, '20:00', 0.0),
+        (0, '00:00', 4 / 14),
+        (4, '04:00', 8 / 14),
+        (8, '08:00', 12 / 14),
+        (10, '10:00', 1.0),
+      ]) {
+        final x = left + width * fraction;
+        expect(
+          tester.getCenter(find.byKey(ValueKey('sleep-window-tick-$hour'))).dx,
+          closeTo(x, 1.5),
+        );
+        expect(tester.getCenter(find.text(label)).dx, closeTo(x, 1.5));
+      }
+      await tester.tap(find.text('+ 5').first);
+      await tester.pumpAndSettle();
+      expect(find.text('7h39 · vorher 7h44'), findsOneWidget);
       expect(
-        find.text('Band hat aufgezeichnet 23:10–06:54 · vorher 23:10'),
+        find.text('Band hat aufgezeichnet 23:10–06:54 · vorher 23:10–06:54'),
         findsOneWidget,
       );
+      await tester.tap(find.text('− 5').first);
+      await tester.pumpAndSettle();
+      expect(find.text('7h44'), findsOneWidget);
+      expect(find.textContaining('vorher'), findsNothing);
     },
   );
 
@@ -913,10 +941,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.text('Band hat aufgezeichnet — · vorher 23:10'),
-      findsOneWidget,
-    );
+    expect(find.text('Band hat aufgezeichnet —'), findsOneWidget);
+    expect(find.textContaining('vorher'), findsNothing);
   });
 
   test('nap calculation failure keeps the committed revision', () async {
