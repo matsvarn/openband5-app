@@ -20,7 +20,7 @@ enum G3Widget {
 
   static func status(_ s: SW.Snapshot, _ date: Date) -> State {
     if s.neverConnected { return .never }
-    if !s.g3HasSnapshot {
+    if !s.g3SnapshotPresent {
       let hasLegacyValue = s.recoveryValue >= 0 || s.sleepMinutes >= 0 ||
         s.strainValue >= 0 || s.batteryPercent >= 0
       if !hasLegacyValue { return .never }
@@ -28,15 +28,22 @@ enum G3Widget {
       return Calendar.current.isDate(Date(timeIntervalSince1970: Double(s.updatedAt)),
                                      inSameDayAs: date) ? .current : .stale
     }
+    if !s.g3HasSnapshot {
+      guard s.sampleAt > 0 else {
+        return s.recoveryValue >= 0 || s.sleepMinutes >= 0 ||
+          s.strainValue >= 0 || s.batteryPercent >= 0 ? .missing : .never
+      }
+      return SW.stale(s, at: date) ? .stale : .empty
+    }
     if s.sampleAt > 0 && SW.stale(s, at: date) { return .stale }
     if s.sampleAt <= 0 { return .missing }
     if s.recoveryValue < 0, s.baselineHave >= 0, s.baselineNeed > 0 { return .building }
     return .current
   }
-  enum State: Equatable { case current, stale, building, never, missing }
+  enum State: Equatable { case current, stale, building, empty, never, missing }
 
   static func until(_ s: SW.Snapshot, _ date: Date) -> String {
-    if !s.g3HasSnapshot {
+    if !s.g3SnapshotPresent {
       guard s.updatedAt > 0 else { return "Aktualität unklar" }
       let updated = Date(timeIntervalSince1970: Double(s.updatedAt))
       let clock = updated.formatted(date: .omitted, time: .shortened)
@@ -58,7 +65,7 @@ enum G3Widget {
     return "Daten bis \(sample.formatted(.dateTime.day().month(.twoDigits))) · \(clock)"
   }
   static func staleLabel(_ s: SW.Snapshot, _ date: Date) -> String {
-    let stamp = s.g3HasSnapshot ? s.sampleAt : s.updatedAt
+    let stamp = s.g3SnapshotPresent ? s.sampleAt : s.updatedAt
     guard stamp > 0 else { return "veraltet" }
     let sample = Date(timeIntervalSince1970: Double(stamp))
     if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: date),
@@ -165,7 +172,8 @@ struct G3Recovery: View {
   private var under: Bool { verdict == -1 }
   private var above: Bool { verdict == 1 }
   private var lead: String {
-    state == .never || state == .missing || state == .building || snap.recoveryValue < 0
+    state == .never || state == .missing || state == .building || state == .empty ||
+      (snap.g3SnapshotPresent && !snap.g3HasSnapshot) || snap.recoveryValue < 0
       ? "—" : String(snap.recoveryValue)
   }
   private var leadColor: Color {
@@ -178,10 +186,18 @@ struct G3Recovery: View {
   private var spoken: String {
     if state == .never { return "Erholung, noch kein Band" }
     if state == .missing { return "Erholung, Aktualität unklar" }
+    if state == .empty {
+      return "Erholung nicht verfügbar, heute keine Werte, \(G3Widget.until(snap, date))"
+    }
     if state == .building {
       return "Erholung, Basis \(snap.baselineHave) von \(snap.baselineNeed), noch \(max(0, snap.baselineNeed - snap.baselineHave))"
     }
-    if state == .stale { return "Erholung \(lead), \(G3Widget.staleLabel(snap, date)), heute Nacht fehlt" }
+    if state == .stale {
+      if snap.g3SnapshotPresent && !snap.g3HasSnapshot {
+        return "Erholung nicht verfügbar, \(G3Widget.until(snap, date))"
+      }
+      return "Erholung \(lead), \(G3Widget.staleLabel(snap, date)), heute Nacht fehlt"
+    }
     let relation = under ? "unter deinem Bereich" : above ? "über deinem Bereich" :
       verdict == 0 ? "normal \(Int(snap.recoveryLow.rounded())) bis \(Int(snap.recoveryHigh.rounded()))" :
       "persönlicher Bereich nicht verfügbar"
@@ -207,10 +223,13 @@ struct G3Recovery: View {
       } else if state == .never {
         Text("Zum Verbinden tippen").font(.system(size: 11, weight: .medium))
       } else if state == .stale {
-        Text("\(G3Widget.staleLabel(snap, date)) · heute: Nacht fehlt")
+        Text(snap.g3SnapshotPresent && !snap.g3HasSnapshot ? "heute keine Werte" :
+             "\(G3Widget.staleLabel(snap, date)) · heute: Nacht fehlt")
           .font(.system(size: 11, weight: .medium)).lineLimit(2)
       } else if state == .missing {
         Text("Aktualität unklar").font(.system(size: 11, weight: .medium))
+      } else if state == .empty {
+        Text("Heute keine Werte").font(.system(size: 11, weight: .medium))
       } else if verdict != nil {
         Text(under ? "unter deinem Bereich" : above ? "über deinem Bereich" :
              "normal \(Int(snap.recoveryLow.rounded()))–\(Int(snap.recoveryHigh.rounded()))")
@@ -306,6 +325,7 @@ struct G3SleepSmall: View {
       Text(state == .stale ? "\(G3Widget.staleLabel(snap, date)) · Nacht fehlt" :
            state == .never ? "Zum Verbinden tippen" :
            state == .missing ? "Aktualität unklar" :
+           state == .empty ? "Heute keine Werte" :
            !snap.g3HasSnapshot ? "Ziel nicht verfügbar" :
            snap.sleepGoalMinutes > 0 ? "Ziel \(G3Widget.time(snap.sleepGoalMinutes))" : "Ziel fehlt")
         .font(.system(size: 11, weight: .medium)).lineLimit(2)
@@ -365,7 +385,8 @@ struct G3RecoveryCircular: View {
                           above ? "Erholung \(snap.recoveryValue), über deinem Bereich" :
                           state == .building ? "Erholung, Basis \(snap.baselineHave) von \(snap.baselineNeed)" :
                           state == .current && snap.recoveryValue >= 0 ? "Erholung \(snap.recoveryValue)" :
-                          state == .stale && snap.recoveryValue >= 0
+                          state == .stale && snap.recoveryValue >= 0 &&
+                            (!snap.g3SnapshotPresent || snap.g3HasSnapshot)
                             ? "Erholung \(snap.recoveryValue), \(G3Widget.staleLabel(snap, date))" :
                           "Erholung nicht verfügbar")
   }
@@ -391,12 +412,19 @@ struct G3RecoveryRectangular: View {
         Text("Noch kein Band").font(.system(size: 12, weight: .bold))
         Text("Zum Verbinden tippen").font(.system(size: 11))
       } else if state == .stale {
-        Text("Erholung \(snap.recoveryValue >= 0 ? String(snap.recoveryValue) : "—") · \(G3Widget.staleLabel(snap, date))")
+        let value = snap.g3SnapshotPresent && !snap.g3HasSnapshot ? "—" :
+          snap.recoveryValue >= 0 ? String(snap.recoveryValue) : "—"
+        Text("Erholung \(value) · \(G3Widget.staleLabel(snap, date))")
           .font(.system(size: 12, weight: .bold))
-        Text("heute: Nacht fehlt").font(.system(size: 11))
+        Text(snap.g3SnapshotPresent && !snap.g3HasSnapshot
+             ? G3Widget.until(snap, date) : "heute: Nacht fehlt")
+          .font(.system(size: 11))
       } else if state == .missing {
         Text("Erholung —").font(.system(size: 12, weight: .bold))
         Text("Aktualität unklar").font(.system(size: 11))
+      } else if state == .empty {
+        Text("Erholung —").font(.system(size: 12, weight: .bold))
+        Text(G3Widget.until(snap, date)).font(.system(size: 11))
       } else {
         let verdict = G3Widget.recoveryVerdict(snap)
         let under = verdict == -1

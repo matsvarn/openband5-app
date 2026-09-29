@@ -123,6 +123,7 @@ enum SW {
   struct Snapshot {
     let hasData: Bool
     let updatedAt: Int          // epoch sec of the last push, 0 = unknown
+    let g3SnapshotPresent: Bool
     let g3HasSnapshot: Bool
     let neverConnected: Bool
     let sampleAt: Int
@@ -151,7 +152,7 @@ enum SW {
 
     static let placeholder = Snapshot(
       hasData: true, updatedAt: Int(Date().timeIntervalSince1970),
-      g3HasSnapshot: true, neverConnected: false,
+      g3SnapshotPresent: true, g3HasSnapshot: true, neverConnected: false,
       sampleAt: Int(Date().timeIntervalSince1970), recoveryValue: 74,
       recoveryLow: 58, recoveryHigh: 80, recoveryMedian: 68,
       baselineHave: -1, baselineNeed: -1,
@@ -177,11 +178,13 @@ enum SW {
 
   static func read() -> Snapshot {
     let d = UserDefaults(suiteName: appGroup)
+    let g3SnapshotFlag = d?.object(forKey: "g3_has_snapshot")
     func i(_ k: String) -> Int { d?.object(forKey: k) as? Int ?? -1 }
     return Snapshot(
       hasData: d?.bool(forKey: "has_data") ?? false,
       updatedAt: d?.object(forKey: "updated_at") as? Int ?? 0,
-      g3HasSnapshot: d?.bool(forKey: "g3_has_snapshot") ?? false,
+      g3SnapshotPresent: g3SnapshotFlag != nil,
+      g3HasSnapshot: g3SnapshotFlag as? Bool ?? false,
       neverConnected: d?.bool(forKey: "g3_never_connected") ?? false,
       sampleAt: i("g3_sample_at"), recoveryValue: i("readiness"),
       recoveryLow: d?.object(forKey: "g3_recovery_low") as? Double ?? -1,
