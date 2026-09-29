@@ -1,6 +1,6 @@
 # Designbrücke · Paper → Flutter
 
-Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**). Die aktuelle Richtung ist **G3 · Tagesblatt** (Seiten `Bausteine · G3` und `G3 · …`); sie baut auf **G2 · Gerät**, Alternative A mit Messleisten, auf den Seiten **G2 · Gerät · Screens** und **G2 · Gerät · Dunkel**. **Release · Alpin 3** und **Bausteine · Release · Alpin 3** halten die vorherige Release-Stufe fest. Designphase 2 bleibt eingefroren.
+Quelle: Paper-Datei `01M2TRX5GZKAXKTSXK7D34E8AY` (**OpenBand 5 · Designphase 3**). Die aktuelle Richtung ist **G3 · Tagesblatt** (Seiten `Bausteine · G3` und `G3 · …`); sie baut auf **G2 · Gerät** auf (Alternative A mit Messleisten, Seiten **G2 · Gerät · Screens** und **G2 · Gerät · Dunkel**). **Release · Alpin 3** und **Bausteine · Release · Alpin 3** halten die vorherige Release-Stufe fest. Designphase 2 bleibt eingefroren.
 
 ## Dateien
 
