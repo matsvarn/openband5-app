@@ -536,6 +536,86 @@ void main() {
     );
   });
 
+  testWidgets('closing another edit keeps the open caffeine retry', (
+    tester,
+  ) async {
+    repo.seedJournalEditor(
+      day: '2026-09-14',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    repo.failJournalPatch = true;
+    await mount(tester);
+    await tester.tap(find.text('Ja').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Erneut speichern'), findsOneWidget);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Schließen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Erneut speichern'), findsOneWidget);
+    expect(
+      find.textContaining('Deine Auswahl bleibt erhalten'),
+      findsOneWidget,
+    );
+    repo.failJournalPatch = false;
+    await tester.tap(find.text('Erneut speichern'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay('2026-09-14')).metrics['caffeine_late']?.value,
+      1,
+    );
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-14',
+      )).metrics['alcohol_evening']?.value,
+      0,
+    );
+  });
+
+  testWidgets('a saved edit keeps its refresh failure after the sheet closes', (
+    tester,
+  ) async {
+    final failingRepo = _ReadFailsAfterWrite()..failCaffeineSleepPattern = true;
+    failingRepo.seedJournalEditor(
+      day: '2026-09-14',
+      metrics: {'alcohol_evening': const JournalMetricValue(0)},
+    );
+    repo = failingRepo;
+    controller.dispose();
+    controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-15',
+      now: () => DateTime(2026, 9, 15),
+    );
+    await mount(tester);
+    await tester.tap(find.byTooltip('Alkohol ändern'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ja').last);
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3JournalAnswerSheet), findsNothing);
+    expect(
+      find.text(
+        'Antwort gespeichert. Ansicht konnte nicht aktualisiert werden.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Neu laden'), findsOneWidget);
+    failingRepo.failJournalRead = false;
+    await tester.tap(find.text('Neu laden'));
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-14',
+      )).metrics['alcohol_evening']?.value,
+      1,
+    );
+    expect(
+      (await repo.readJournalDay('2026-09-14')).metrics['caffeine_late'],
+      isNull,
+    );
+  });
+
   testWidgets('a failed delete retries null and leaves the question open', (
     tester,
   ) async {
