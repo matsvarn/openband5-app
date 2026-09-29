@@ -20,6 +20,8 @@ import 'openband/template_editor.dart';
 import 'openband/templates.dart';
 import 'openband/session.dart';
 import 'openband/release_scope.dart';
+import 'openband/g3/screens/heute.dart';
+import 'openband/g3/screens/heute_routes.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'notify/notification_prefs.dart';
@@ -89,6 +91,7 @@ class OpenBandGallery extends StatefulWidget {
 }
 
 class _OpenBandGalleryState extends State<OpenBandGallery> {
+  final _heuteReminder = MemoryHeuteReminder();
   late final controller = OpenBandController(
     repository: widget.repository,
     initialDay: '2026-09-15',
@@ -190,27 +193,19 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       if (domain == ShellDomain.health) controller.refresh();
     },
     builder: (c, domain) => switch (domain) {
-      ShellDomain.home => OpenBandOverview(
+      ShellDomain.home => OpenBandHeute(
         controller: controller,
-        reduced: widget.releaseReduced,
+        reminder: _heuteReminder,
         onProfile: widget.releaseReduced
             ? () => _openSyntheticProfile(c)
             : () => _options(context),
-        onNutrition: widget.releaseReduced
-            ? null
-            : () => Navigator.of(c).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OpenBandNutritionRoute(
-                    controller: controller,
-                    onBarcode: _syntheticBarcode,
-                  ),
-                ),
-              ),
-        onSync: () {
-          widget.repository.scenario = SyntheticScenario.complete;
+        onBand: () => _options(context),
+        onConnect: () {
+          widget.repository.scenario = SyntheticScenario.g3Sample;
           controller.updateBand(widget.repository.band);
           controller.refresh();
         },
+        onOpenMetric: (m) => openHeuteMetric(c, controller, m),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.sleep => OpenBandSleep(controller: controller, asTab: true),

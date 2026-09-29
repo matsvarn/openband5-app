@@ -1075,7 +1075,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Profil'));
+    await tester.tap(find.bySemanticsLabel('Profil'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
     expect(find.byType(OBTabBar), findsOneWidget);
@@ -1119,17 +1119,12 @@ void main() {
         OpenBandGallery(repository: repository, showControls: false),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Heute'), findsOneWidget);
+      // Heute is the G3 screen in both builds (tab label and page title).
+      expect(find.text('Heute'), findsWidgets);
       expect(find.text('Gesundheit'), findsOneWidget);
       expect(find.text('Training'), findsOneWidget);
       expect(find.text('Journal'), findsOneWidget);
       expect(find.text('Schlaf'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('Wasser'),
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
-      expect(find.text('Wasser'), findsWidgets);
 
       await tester.pumpWidget(
         OpenBandGallery(
@@ -1142,7 +1137,7 @@ void main() {
       expect(find.text('Training'), findsOneWidget);
       expect(find.text('Journal'), findsOneWidget);
       expect(find.text('Wasser'), findsNothing);
-      expect(find.text('Alle Messwerte'), findsOneWidget);
+      expect(find.text('ERHOLUNG'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Vorlagen'), findsNothing);
