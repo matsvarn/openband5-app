@@ -600,53 +600,55 @@ class OBTrendChart extends StatelessWidget {
           const SizedBox(height: 0),
           SizedBox(
             height: 152,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  left: 0,
-                  top: 1,
-                  width: 325,
-                  height: h,
-                  child: RepaintBoundary(
-                    child: CustomPaint(painter: _TrendPainter(this, g)),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 0,
+                    top: 1,
+                    width: constraints.maxWidth,
+                    height: h,
+                    child: RepaintBoundary(
+                      child: CustomPaint(painter: _TrendPainter(this, g)),
+                    ),
                   ),
-                ),
-                if (band case (final lo, final hi))
-                  if (bandLabels case (final l, final u)) ...[
-                    Positioned(
-                      left: 329,
-                      top: y(hi) - 7,
-                      child: Text(
-                        u,
-                        style: g.t(
-                          11,
-                          14,
-                          weight: FontWeight.w500,
-                          color: g.ink2,
+                  if (band case (final lo, final hi))
+                    if (bandLabels case (final l, final u)) ...[
+                      Positioned(
+                        left: constraints.maxWidth + 4,
+                        top: y(hi) - 7,
+                        child: Text(
+                          u,
+                          style: g.t(
+                            11,
+                            14,
+                            weight: FontWeight.w500,
+                            color: g.ink2,
+                          ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      left: 329,
-                      top: y(lo) - 5,
-                      child: Text(
-                        l,
-                        style: g.t(
-                          11,
-                          14,
-                          weight: FontWeight.w500,
-                          color: g.ink2,
+                      Positioned(
+                        left: constraints.maxWidth + 4,
+                        top: y(lo) - 5,
+                        child: Text(
+                          l,
+                          style: g.t(
+                            11,
+                            14,
+                            weight: FontWeight.w500,
+                            color: g.ink2,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-              ],
+                    ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
           SizedBox(
-            width: 325,
+            width: double.infinity,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
