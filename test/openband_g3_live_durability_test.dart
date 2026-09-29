@@ -74,7 +74,7 @@ void main() {
         ..connection = 'connected'
         ..liveHr = 141
         ..liveHrAt = DateTime.now().millisecondsSinceEpoch;
-      app.debugFeedEngineState('ring-A', reading);
+      app.debugFeedEngineState(LocalDb.kPrimaryDeviceId, reading);
       app.debugTickWorkout();
       final before = [...app.activeWorkout!.zoneSeconds];
       final coveredBefore = app.activeWorkout!.hrCoveredSec;
@@ -112,11 +112,11 @@ void main() {
             .setMockMethodCallHandler(channel, null);
       });
       await app.startWorkout(workoutId: 'activity-pause', type: 'cycling');
-      final reading = DeviceState()
+      final reading = app.device
         ..connection = 'connected'
         ..liveHr = 141
         ..liveHrAt = DateTime.now().millisecondsSinceEpoch;
-      app.debugFeedEngineState('ring-A', reading);
+      app.debugFeedEngineState(LocalDb.kPrimaryDeviceId, reading);
       app.debugTickWorkout();
       await app.setWorkoutPaused(true);
       final paused = updates.last;
@@ -143,9 +143,13 @@ void main() {
       expect(updates.last['zone'], isNull);
       expect(workout.hrCoveredSec, covered);
       expect(workout.zoneSeconds, zones);
+      reading.liveHrAt = DateTime.now().millisecondsSinceEpoch;
+      app.debugFeedEngineState(LocalDb.kPrimaryDeviceId, reading);
       await app.setWorkoutPaused(false);
       expect(updates.last['paused'], false);
       expect(updates.last['elapsedSeconds'], isA<int>());
+      expect(updates.last['signal'], 'live');
+      expect(updates.last['hr'], 141);
     },
   );
 
@@ -203,6 +207,23 @@ void main() {
     expect(row?['status'], 'done');
     expect(row?['duration_min'], 0);
     expect((row?['paused_sec'] as num).toInt(), greaterThanOrEqualTo(140));
+  });
+
+  test('live finish banks the same zone source as its zone minutes', () async {
+    app.user = {'birth_date': '1990-01-01'};
+    await app.startWorkout(workoutId: 'basis-live', type: 'cycling');
+    final workout = app.activeWorkout!;
+    expect(workout.zoneSet?.source, 'tanaka');
+    workout.zoneSeconds[2] = 60;
+    await app.stopWorkout();
+    final row = (await LocalDb.session('basis-live'))!;
+    expect(jsonDecode(row['zone_min_json'] as String), isNotEmpty);
+    final trace = jsonDecode(row['trace_json'] as String) as Map;
+    expect((trace['zone_bands'] as List).last['source'], 'tanaka');
+    expect(
+      (trace['zone_bands'] as List).last['hi'],
+      workout.zoneSet!.zones.last.upper.round(),
+    );
   });
 
   test('discard tears down a live workout without a done row', () async {

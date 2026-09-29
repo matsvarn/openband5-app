@@ -2786,19 +2786,21 @@ class LocalRepositoryImpl extends LocalRepository {
     // trace all band on the SAME ceiling this write did — `putSession` is
     // INSERT-OR-REPLACE, so omitting it would blank an edit's existing stamp.
     row['device_family'] = deviceFamily;
+    // Freeze the same band's basis as zone_min for every scored manual write,
+    // including Nachtragen and retimes. Confirmation already used this trace.
+    if (hrBpm.isNotEmpty) {
+      final trace = _sessionTrace(
+        hrTs,
+        hrBpm,
+        startTs,
+        endTs,
+        deviceFamily,
+        zoneAnchors,
+      );
+      row['trace_json'] = _encodeTrace(trace);
+      row['trace_samples'] = hrBpm.length;
+    }
     if (confirmedSuggestionId != null) {
-      if (hrBpm.isNotEmpty) {
-        final trace = _sessionTrace(
-          hrTs,
-          hrBpm,
-          startTs,
-          endTs,
-          deviceFamily,
-          zoneAnchors,
-        );
-        row['trace_json'] = _encodeTrace(trace);
-        row['trace_samples'] = hrBpm.length;
-      }
       final derived = await LocalDb.dayResult(
         dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000)),
       );

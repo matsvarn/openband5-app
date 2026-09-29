@@ -21,7 +21,7 @@ String trainingSport(String sport) => switch (sport) {
   'martial_arts' => 'Kampfsport',
   'swimming' => 'Schwimmen',
   'yoga' => 'Yoga',
-  'strength' || 'weightlifting' => 'Kraft',
+  'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
   _ => sport == 'other' ? 'Sonstiges' : 'Training',
 };
 

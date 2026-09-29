@@ -114,11 +114,7 @@ void main() {
       start: start,
       end: start.add(const Duration(minutes: 30)),
       zoneMinutes: const [2, 4, 6, 8, 10],
-      zoneBasis: const G3ZoneBasis(
-        method: 'tanaka',
-        maxHr: 186,
-        maxHrSource: G3MaxHrSource.estimated,
-      ),
+      zoneBasis: const G3ZoneBasis(G3ZoneBasisKind.hfmaxEstimated, 186),
     );
     await tester.pumpWidget(
       _app(G3ActivityScreen(repository: repo, activity: activity)),
@@ -140,11 +136,7 @@ void main() {
       start: start,
       end: start.add(const Duration(minutes: 30)),
       zoneMinutes: const [1, 2, 3, 4, 5],
-      zoneBasis: const G3ZoneBasis(
-        method: 'karvonen',
-        maxHr: 191,
-        maxHrSource: G3MaxHrSource.measured,
-      ),
+      zoneBasis: const G3ZoneBasis(G3ZoneBasisKind.heartRateReserve, 191),
     );
     await tester.pumpWidget(
       _app(G3ActivityScreen(repository: repo, activity: activity)),
@@ -158,6 +150,55 @@ void main() {
     );
     expect(find.textContaining('HFmax 191'), findsNothing);
     expect(find.textContaining('70–80 %'), findsNothing);
+  });
+
+  testWidgets('observed HFmax names the measured stored ceiling', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final start = DateTime(2026, 9, 29, 8);
+    final activity = G3Activity(
+      id: 'observed-basis',
+      sport: 'cycling',
+      source: G3ActivitySource.manual,
+      confirmed: true,
+      start: start,
+      end: start.add(const Duration(minutes: 30)),
+      zoneMinutes: const [1, 2, 3, 4, 5],
+      zoneBasis: const G3ZoneBasis(G3ZoneBasisKind.hfmaxObserved, 191),
+    );
+    await tester.pumpWidget(
+      _app(G3ActivityScreen(repository: repo, activity: activity)),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.textContaining('HFmax 191'));
+    expect(find.text('% HFmax'), findsOneWidget);
+    expect(find.text('HFmax 191 · gemessen'), findsOneWidget);
+  });
+
+  testWidgets('Kraft quick start uses the sets catalogue sport key', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    String? started;
+    await tester.pumpWidget(
+      _app(
+        G3TrainingScreen(controller: controller, onStart: (s) => started = s),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Training starten'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Kraft'));
+    await tester.pumpAndSettle();
+    expect(started, 'weight_training');
   });
 
   testWidgets('unknown basis keeps minutes and suppresses percentages', (

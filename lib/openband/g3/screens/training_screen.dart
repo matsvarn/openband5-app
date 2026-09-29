@@ -184,7 +184,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
           'cycling',
           'walking',
           'hiking',
-          'strength',
+          'weight_training',
           'swimming',
           'yoga',
           'tennis',
@@ -930,7 +930,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
             'cycling',
             'hiking',
             'intervals',
-            'strength',
+            'weight_training',
             'yoga',
             'stretching',
             'swimming',
@@ -1144,8 +1144,10 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
     final confirmed = a.confirmed || a.source != G3ActivitySource.auto;
     final zones = confirmed && a.zoneMinutes != null;
     final basis = a.zoneBasis;
-    final hfmax = basis?.method == 'tanaka' || basis?.method == 'observed';
-    final reserve = basis?.method == 'karvonen';
+    final hfmax =
+        basis?.kind == G3ZoneBasisKind.hfmaxEstimated ||
+        basis?.kind == G3ZoneBasisKind.hfmaxObserved;
+    final reserve = basis?.kind == G3ZoneBasisKind.heartRateReserve;
     final minutes = a.hrTrace
         .where((p) => p.meanBpm != null)
         .map((p) => (p.at.difference(a.start).inSeconds / 60, p.meanBpm!))
@@ -1346,8 +1348,8 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                           ? 'Keine %-Angabe ohne bekannte Grundlage'
                           : reserve
                           ? 'Pulsreserve (Karvonen) · aus deinen Zonen'
-                          : hfmax && basis.maxHr != null
-                          ? 'HFmax ${basis.maxHr!.round()} · ${_basisLabel(basis)}'
+                          : hfmax
+                          ? 'HFmax ${basis.maxHr.round()} · ${_basisLabel(basis)}'
                           : 'Keine %-Angabe ohne bekannte Grundlage',
                       onBasis: () => showModalBottomSheet<void>(
                         context: context,
@@ -1439,11 +1441,10 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
   }
 }
 
-String _basisLabel(G3ZoneBasis basis) => switch (basis.maxHrSource) {
-  G3MaxHrSource.estimated => 'geschätzt aus Alter',
-  G3MaxHrSource.measured => 'gemessen',
-  G3MaxHrSource.userSet => 'selbst festgelegt',
-  null => 'Grundlage offen',
+String _basisLabel(G3ZoneBasis basis) => switch (basis.kind) {
+  G3ZoneBasisKind.hfmaxEstimated => 'geschätzt aus Alter',
+  G3ZoneBasisKind.hfmaxObserved => 'gemessen',
+  G3ZoneBasisKind.heartRateReserve => 'Pulsreserve',
 };
 
 /// Signal strip lengths come from the same real gaps that break the trace.

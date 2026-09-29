@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/health/health_export.dart';
 import 'package:openstrap_edge/openband/domain.dart';
@@ -107,6 +108,44 @@ void main() {
         (await repo.readPersonalRange(G3Metric.skinTempZ, day)).range,
         isNull,
       );
+    },
+  );
+
+  test(
+    'Nachtragen freezes the scored Karvonen basis with zone minutes',
+    () async {
+      app.user = {'birth_date': '1990-01-01'};
+      final start = DateTime(2026, 9, 27, 7).millisecondsSinceEpoch ~/ 1000;
+      for (var offset = 1; offset <= 28; offset++) {
+        await LocalDb.putMetricSeriesValue(
+          dayLabelOf(DateTime(2026, 9, 27).subtract(Duration(days: offset))),
+          'rhr',
+          50,
+        );
+      }
+      await LocalDb.putMetricSeriesValue('2026-09-26', 'hr_ceiling_bpm', 196);
+      final db = await LocalDb.instance;
+      for (var second = 0; second < 120; second++) {
+        await db.insert('decoded_onehz', {
+          'device_id': '',
+          'ts_ms': (start + second) * 1000,
+          'rec_ts': start + second,
+          'counter': second + 1,
+          'hr': 150,
+          'signal_quality_logvar': -5.0,
+        });
+      }
+      final saved = await app.repo!.logManualWorkout(
+        startTs: start,
+        endTs: start + 120,
+        type: 'cycling',
+      );
+      final row = (await LocalDb.session(saved['workout_id'] as String))!;
+      expect(jsonDecode(row['zone_min_json'] as String), isNotEmpty);
+      final trace = jsonDecode(row['trace_json'] as String) as Map;
+      expect((trace['zone_bands'] as List).last['source'], 'karvonen');
+      final activity = (await repo.readActivities(day)).single;
+      expect(activity.zoneBasis!.kind, G3ZoneBasisKind.heartRateReserve);
     },
   );
 

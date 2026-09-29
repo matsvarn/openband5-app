@@ -43,7 +43,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
     'hiking',
     'tennis',
     'walking',
-    'strength',
+    'weight_training',
     'swimming',
     'yoga',
     'intervals',
