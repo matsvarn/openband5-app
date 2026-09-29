@@ -422,6 +422,43 @@ void main() {
       },
     );
 
+    testWidgets(
+      'sync line: the chevron stays on its text; the synthetic tag yields',
+      (tester) async {
+        await tester.pumpWidget(
+          _app(
+            Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 300,
+                child: OBSyncState(
+                  kind: OBSyncKind.live,
+                  text: 'Daten bis 09:38 · Nacht lückenlos',
+                  synthetic: true,
+                  onTap: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        // Inline in the status text, so both wrap as one unit.
+        expect(
+          find.descendant(
+            of: find.byType(RichText),
+            matching: find.byType(OBChevron),
+          ),
+          findsOneWidget,
+        );
+        final status = tester.getRect(
+          find.textContaining('Daten bis', findRichText: true),
+        );
+        final chevron = tester.getRect(find.byType(OBChevron));
+        final tag = tester.getRect(find.text('SYNTHETISCHE DATEN'));
+        expect(chevron.left - status.left, lessThan(status.width));
+        expect(tag.top, greaterThanOrEqualTo(status.bottom - 1));
+      },
+    );
+
     testWidgets('skin temperature is a unitless deviation, never °C', (
       tester,
     ) async {

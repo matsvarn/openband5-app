@@ -392,12 +392,17 @@ class OBSyncState extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
             padding: const EdgeInsets.only(left: 24, right: 22, top: 8),
+            // The chevron is part of the text so both wrap as one unit; the
+            // synthetic tag (gallery/synthetic only) yields to its own line.
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (kind == OBSyncKind.stale) ...[
+                  // Centred on the first 16 pt text line.
                   Container(
                     width: 7,
                     height: 7,
+                    margin: const EdgeInsets.only(top: 4.5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: g.muted, width: 1.5),
@@ -406,38 +411,47 @@ class OBSyncState extends StatelessWidget {
                   const SizedBox(width: 6),
                 ],
                 Expanded(
-                  child: Row(
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 2,
                     children: [
-                      Flexible(
-                        child: Text(
-                          text,
-                          style: g.t(
-                            12,
-                            16,
-                            weight: strong ? FontWeight.w700 : FontWeight.w500,
-                            color: strong ? g.ink : g.muted,
-                          ),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: text),
+                            if (onTap != null)
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.middle,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 6),
+                                  child: OBChevron(size: 12, color: g.muted),
+                                ),
+                              ),
+                          ],
+                        ),
+                        style: g.t(
+                          12,
+                          16,
+                          weight: strong ? FontWeight.w700 : FontWeight.w500,
+                          color: strong ? g.ink : g.muted,
                         ),
                       ),
-                      if (onTap != null) ...[
-                        const SizedBox(width: 6),
-                        OBChevron(size: 12, color: g.muted),
-                      ],
+                      if (synthetic)
+                        Text(
+                          'SYNTHETISCHE DATEN',
+                          style: g.t(
+                            10,
+                            14,
+                            weight: FontWeight.w500,
+                            color: g.muted,
+                            tracking: .1,
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                if (synthetic)
-                  Text(
-                    'SYNTHETISCHE DATEN',
-                    style: g.t(
-                      10,
-                      14,
-                      weight: FontWeight.w500,
-                      color: g.muted,
-                      tracking: .1,
-                    ),
-                  ),
               ],
             ),
           ),
