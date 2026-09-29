@@ -291,7 +291,8 @@ struct OpenStrapBatteryEntryView: View {
     case .accessoryRectangular: BatteryRectangularView(e: entry)
     case .accessoryInline:
       let snap = SW.read()
-      G3BatteryInline(snap: snap, date: entry.date, percent: entry.pct)
+      G3BatteryInline(snap: snap, date: entry.date,
+                      percent: G3Widget.battery(snap, entry.date) == "—" ? -1 : entry.pct)
     default: BatterySmallView(e: entry)
     }
   }

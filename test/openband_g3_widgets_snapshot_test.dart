@@ -183,4 +183,18 @@ void main() {
       expect(written['has_data'], false);
     },
   );
+
+  test('publishes an explicit empty G3 day with the stored sample', () async {
+    await WidgetService.push(TodayData.fromJson({'daily': const {}}));
+    expect(written.containsKey('g3_has_snapshot'), isTrue);
+    expect(written['g3_has_snapshot'], false);
+    expect(written['g3_sample_at'], sampleAt);
+    expect(written['g3_never_connected'], false);
+    expect(written['has_data'], false);
+    expect(written['readiness'], -1);
+    expect(written['sleep_min'], -1);
+    expect(written['strain'], -1.0);
+    expect(written['g3_recovery_low'], -1.0);
+    expect(written['g3_sleep_goal_min'], -1);
+  });
 }
