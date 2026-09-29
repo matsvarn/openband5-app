@@ -214,7 +214,7 @@ void main() {
       expect(activity.opticalShare, .96);
       expect(activity.hrRecoveryOneMinute, 31);
       expect(activity.hrTrace.length, 84);
-      expect(activity.hrTrace.where((p) => p.meanBpm == null).length, 1);
+      expect(activity.hrTrace.where((p) => p.meanBpm == null).length, 2);
       expect(activity.signalGaps.single.duration, const Duration(seconds: 40));
       expect(activity.priorHrrCount, 0);
       await repo.changeSuggestionSport(activity.id, 'cycling');

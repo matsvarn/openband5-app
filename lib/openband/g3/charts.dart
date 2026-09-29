@@ -600,18 +600,34 @@ class OBTrendChart extends StatelessWidget {
         children: [
           Transform.translate(
             offset: const Offset(0, -7),
-            child: Row(
-              children: [
-                Expanded(child: Text(title, style: g.caps())),
-                OBSegmented(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 300;
+                final selector = OBSegmented(
                   items: const ['7 T', '30 T', '90 T'],
                   selected: period.index,
-                  horizontalPadding: 11.5,
+                  horizontalPadding: narrow ? 4 : 11.5,
+                  expand: narrow,
                   onChanged: onPeriod == null
                       ? null
                       : (i) => onPeriod!(OBTrendPeriod.values[i]),
-                ),
-              ],
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(title, style: g.caps()),
+                      selector,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: Text(title, style: g.caps())),
+                    selector,
+                  ],
+                );
+              },
             ),
           ),
           const SizedBox(height: 0),
@@ -670,15 +686,20 @@ class OBTrendChart extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 for (final t in xLabels)
-                  Text(
-                    t,
-                    style: g.t(
-                      12,
-                      16,
-                      weight: t.toLowerCase() == 'heute'
-                          ? FontWeight.w700
-                          : FontWeight.w400,
-                      color: t.toLowerCase() == 'heute' ? g.ink : g.muted,
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        t,
+                        style: g.t(
+                          12,
+                          16,
+                          weight: t.toLowerCase() == 'heute'
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                          color: t.toLowerCase() == 'heute' ? g.ink : g.muted,
+                        ),
+                      ),
                     ),
                   ),
               ],
