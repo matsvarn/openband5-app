@@ -11,13 +11,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../data/day_label.dart';
-import '../../../data/journal_fields.dart' show JournalMetricValue;
 import '../../../notify/notification_center.dart';
 import '../../../state/prefs.dart';
 import '../../controller.dart';
 import '../../day_picker.dart';
 import '../../domain.dart';
-import '../../journal_fields.dart' show journalFieldTitle;
+import '../../journal_fields.dart'
+    show journalFieldTitle, journalFieldUnitLabel;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../today_note.dart';
 import '../../training.dart' show OBSportIcon, obSport;
@@ -136,6 +136,9 @@ class _HeuteData {
   final G3CheckIn? checkIn;
   final Map<G3Metric, G3WeekStrip> week;
   final DateTime? reminderAt;
+
+  /// A past day's last stored band sample; today uses the band snapshot.
+  final DateTime? lastSample;
   const _HeuteData({
     this.ranges = const {},
     this.sleepGoal,
@@ -144,6 +147,7 @@ class _HeuteData {
     this.checkIn,
     this.week = const {},
     this.reminderAt,
+    this.lastSample,
   });
 }
 
@@ -198,6 +202,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   int _load = 0;
   _Week? _week;
   bool _checkInLater = false;
+
+  /// The count and note being entered in the check-in, before Speichern.
+  int? _count;
+  final _noteText = TextEditingController();
   bool _remindBusy = false;
   bool _compact = false;
   bool _anchored = false;
@@ -239,6 +247,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     WidgetsBinding.instance.removeObserver(this);
     c.removeListener(_changed);
     _scroll.dispose();
+    _noteText.dispose();
     super.dispose();
   }
 
@@ -316,6 +325,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final activities =
         await _try(() => repo.readActivities(day)) ?? const <G3Activity>[];
     final checkIn = today ? await _try(() => repo.readCheckIn(day)) : null;
+    final lastSample = today
+        ? null
+        : await _try(() => repo.readLastBandSampleAt(day));
     final week = <G3Metric, G3WeekStrip>{};
     for (final m in [
       G3Metric.recovery,
@@ -338,6 +350,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         activities: activities,
         checkIn: checkIn,
         week: week,
+        lastSample: lastSample,
         reminderAt: gen != _reminderGen
             ? _data.reminderAt
             : armed?.day == day
@@ -417,7 +430,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         band.connection != BandConnection.connected &&
         (day == null || noData);
     final disconnected = band.connection != BandConnection.connected;
-    final stored = band.latestStoredAt;
+    // "Daten bis" and "Letzter Bandwert" are one instant: the band's latest
+    // stored sample today, the day's last stored sample on a past day.
+    final stored = isToday ? band.latestStoredAt : _data.lastSample;
     final stale =
         isToday &&
         !never &&
@@ -434,7 +449,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           child: _dateStrip(context, today),
         ),
       ],
-      _sync(isToday, never, stale, gap, day, synthetic, now),
+      _sync(isToday, never, stale, gap, day, synthetic, now, stored),
       if (c.loadError != null) ...[
         const SizedBox(height: 12),
         _pad(
@@ -651,12 +666,17 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     OpenBandDay? day,
     bool synthetic,
     DateTime now,
+    DateTime? stored,
   ) {
-    final stored = c.band.latestStoredAt;
     final (OBSyncKind kind, String text) = never
         ? (OBSyncKind.never, 'Noch kein Band verbunden')
         : !isToday
-        ? (OBSyncKind.past, 'Gespeicherter Tag')
+        ? (
+            OBSyncKind.past,
+            stored == null
+                ? 'Gespeicherter Tag'
+                : 'Gespeicherter Tag · Daten bis ${_clock(stored)}',
+          )
         : stale
         ? (
             OBSyncKind.stale,
@@ -860,6 +880,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       sleepNeedMinutes: plus?.needMinutes,
       suggestedBedtime: plus?.bedtime,
       suggestedWake: plus?.wake,
+      sleepUnobservedMinutes: day.sleep.unobservedMinutes,
     );
   }
 
@@ -955,6 +976,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     checkIn: checkIn ?? _data.checkIn,
     week: _data.week,
     reminderAt: reminderAt,
+    lastSample: _data.lastSample,
   );
 
   // ---------------------------------------------------------------------
@@ -1174,7 +1196,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   List<Widget>? _checkIn() {
     final ci = _data.checkIn;
     if (ci == null || ci.total == 0) return null;
-    final open = ci.questions.where((q) => q.value == null).toList();
+    final open = ci.questions.where((q) => q.answer == null).toList();
     if (open.isEmpty) return null;
     final Widget card;
     if (_checkInLater) {
@@ -1185,35 +1207,101 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       );
     } else {
       final q = open.first;
-      final done = ci.questions.where((x) => x.value != null).toList();
-      final last = done.isEmpty ? null : done.last;
-      final copy = heuteRatingCopy(q.field.key);
-      card = OBCheckInRating(
+      // The answer shown above the question: the nearest answered one before
+      // it, else the last answered one.
+      final at = ci.questions.indexOf(q);
+      final before = ci.questions.take(at).where((x) => x.answer != null);
+      final after = ci.questions.skip(at).where((x) => x.answer != null);
+      final last = before.isNotEmpty
+          ? before.last
+          : after.isEmpty
+          ? null
+          : after.last;
+      final question = heuteCheckInQuestion(q.key, _checkInTitle(q));
+      OBCheckInAsk ask(Widget answer) => OBCheckInAsk(
         progress: '${ci.answered + 1} von ${ci.total}',
-        question: copy.question,
-        low: copy.low,
-        high: copy.high,
-        max: q.field.max.round(),
-        answered: last == null
-            ? null
-            : '${journalFieldTitle(last.field)}: ${last.value!.value.round()} von ${last.field.max.round()}',
+        question: question,
+        target: _targetLabel(ci.day, q.targetDay),
+        answered: last == null ? null : _answerText(last),
         onChange: last == null ? null : widget.onJournal,
-        onRate: (v) => _answer(q.field.key, v),
         onLater: () => setState(() => _checkInLater = true),
+        answer: answer,
       );
+      final field = q.field;
+      card = switch (q.kind) {
+        G3CheckInKind.yesNo => ask(
+          OBYesNoKeys(
+            onYes: () => _answer(q, const G3YesNoAnswer(true)),
+            onNo: () => _answer(q, const G3YesNoAnswer(false)),
+          ),
+        ),
+        G3CheckInKind.rating => ask(
+          OBRatingKeys(
+            question: question,
+            low: heuteRatingCopy(q.key).low,
+            high: heuteRatingCopy(q.key).high,
+            max: (field?.max ?? 5).round(),
+            onRate: (v) => _answer(q, G3RatingAnswer(v)),
+          ),
+        ),
+        G3CheckInKind.quantity => ask(
+          OBCountAnswer(
+            value: _count,
+            max: (field?.max ?? 20).round(),
+            unit: field == null ? '' : journalFieldUnitLabel(field),
+            onChanged: (v) => setState(() => _count = v),
+            onSave: () => _answer(q, G3QuantityAnswer(_count!.toDouble())),
+          ),
+        ),
+        G3CheckInKind.freeNote => ask(
+          OBNoteAnswer(
+            controller: _noteText,
+            onSave: () => _answer(q, G3FreeNoteAnswer(_noteText.text.trim())),
+          ),
+        ),
+      };
     }
     return [const SizedBox(height: 12), _pad(card)];
   }
 
-  Future<void> _answer(String key, int value) async {
+  static String _checkInTitle(G3CheckInQuestion q) =>
+      q.field == null ? q.label : journalFieldTitle(q.field!);
+
+  /// The day an answer belongs to when it is not the selected day.
+  static String? _targetLabel(String selected, String target) {
+    if (target == selected) return null;
+    if (target == g3DaysEnding(selected, 2).first) return 'zu gestern';
+    return 'zu ${DateFormat('d.M.').format(DateTime.parse(target))}';
+  }
+
+  static String _answerText(G3CheckInQuestion q) {
+    final field = q.field;
+    final value = switch (q.answer) {
+      G3YesNoAnswer(:final value) => value ? 'Ja' : 'Nein',
+      G3RatingAnswer(:final value) => '$value von ${(field?.max ?? 5).round()}',
+      G3QuantityAnswer(:final value) =>
+        value == 0
+            ? 'Keins'
+            : '${g3Number(value)} ${field == null ? '' : journalFieldUnitLabel(field)}'
+                  .trim(),
+      G3FreeNoteAnswer() => 'gespeichert',
+      null => '—',
+    };
+    return '${_checkInTitle(q)}: $value';
+  }
+
+  /// Writes through the data layer to the question's own day, then rereads.
+  Future<void> _answer(G3CheckInQuestion q, G3CheckInAnswer answer) async {
     final day = c.selectedDay;
     try {
-      await repo.answerCheckIn(day, key, JournalMetricValue(value.toDouble()));
+      await repo.answerCheckIn(day, q.key, answer);
       final fresh = await repo.readCheckIn(day);
       if (!mounted || c.selectedDay != day) return;
-      setState(
-        () => _data = _copy(reminderAt: _data.reminderAt, checkIn: fresh),
-      );
+      setState(() {
+        _count = null;
+        _noteText.clear();
+        _data = _copy(reminderAt: _data.reminderAt, checkIn: fresh);
+      });
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(

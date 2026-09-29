@@ -158,6 +158,13 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
     return super.readPersonalRange(metric, day);
   }
 
+  /// Paper's past day ends its data at 23:58.
+  @override
+  Future<DateTime?> readLastBandSampleAt(String day) async =>
+      state == _State.past && day == '2026-09-27'
+      ? _at(27, 23, 58)
+      : super.readLastBandSampleAt(day);
+
   /// Paper shows the 7h45 goal on every day; the design repository stores
   /// it from the design day only.
   @override
@@ -192,7 +199,7 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
     _ => BandSnapshot(
       connection: BandConnection.connected,
       batteryPercent: 64,
-      latestStoredAt: _at(29, 9, 37),
+      latestStoredAt: _at(29, 9, 38),
       receivedAt: _at(29, 9, 38),
     ),
   };

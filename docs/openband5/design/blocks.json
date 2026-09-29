@@ -2019,16 +2019,16 @@
       "file": "g3/charts.dart"
     },
     {
-      "name": "OBCheckInRating",
+      "name": "OBCheckInAsk",
       "design": "G3",
-      "paperNode": "none:OBCheckInRating",
-      "widget": "OBCheckInRating",
+      "paperNode": "none:OBCheckInAsk",
+      "widget": "OBCheckInAsk",
       "file": "g3/heute_parts.dart",
       "usedIn": [
         "5OST-0",
         "5Q4B-0"
       ],
-      "notes": "Heute check-in for the four stored 1–5 ratings (kG3CheckInKeys). Paper's OBCheckIn asks yes/no questions, so this has no Paper node yet; requested as a Baustein variant on Bausteine · G3."
+      "notes": "Heute check-in for the typed G3 questions: yes/no (OBYesNoKeys), 1–5 rating (OBRatingKeys), count with explicit Keins (OBCountAnswer) and note (OBNoteAnswer), with a 'zu gestern' line when the answer belongs to the previous day. Paper's OBCheckIn has no slot for the answer's day, so this has no Paper node; requested as a Baustein variant on Bausteine · G3. Count and note controls swap to the Journal's parts at integration."
     }
   ],
   "openBlocks": [],
