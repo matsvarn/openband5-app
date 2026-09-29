@@ -469,7 +469,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           const SizedBox(height: 12),
           _pad(_night(day, gap)),
         ],
-        ..._activity(isToday),
+        // Stale: today's activities may not have arrived; stored rows show,
+        // an empty card would claim there were none.
+        if (!stale || _data.activities.isNotEmpty) ..._activity(isToday),
         if (isToday && !stale) ...?_checkIn(),
         if (!stale) ...[
           ..._weekSection(isToday),
