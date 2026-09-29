@@ -75,9 +75,15 @@ class OBHrTrace extends StatelessWidget {
     const w = 291.0, h = 150.0;
     double x(double t) => t / duration * w;
     double y(double v) => h * (max - v) / (max - min);
-    final peakAt = samples.isEmpty
+    final usable = samples.where(
+      (s) =>
+          s.$1.isFinite &&
+          s.$2.isFinite &&
+          !gaps.any((gap) => s.$1 > gap.$1 && s.$1 < gap.$2),
+    );
+    final peakAt = usable.isEmpty
         ? null
-        : samples.reduce((a, b) => b.$2 > a.$2 ? b : a);
+        : usable.reduce((a, b) => b.$2 > a.$2 ? b : a);
     Widget stat(String k, String? v) => Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
@@ -185,7 +191,7 @@ class OBHrTrace extends StatelessWidget {
                     left: x(peakAt.$1) + 7,
                     top: y(peakAt.$2) - 3,
                     child: Text(
-                      peak!,
+                      g3Number(peakAt.$2),
                       style: g.t(11, 14, weight: FontWeight.w700),
                     ),
                   ),
@@ -328,6 +334,10 @@ class _HrPainter extends CustomPainter {
     final path = Path();
     var open = false;
     for (final (t, v) in samples) {
+      if (!t.isFinite || !v.isFinite) {
+        open = false;
+        continue;
+      }
       final inGap = gaps.any((gp) => t > gp.$1 && t < gp.$2);
       if (inGap) {
         open = false;
@@ -476,24 +486,32 @@ class OBZoneRows extends StatelessWidget {
                 Expanded(
                   child: Text(source, style: g.t(12, 16, color: g.muted)),
                 ),
-                Semantics(
-                  button: true,
-                  label: 'Grundlage der Zonen',
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    onTap: onBasis,
-                    child: Row(
-                      children: [
-                        Text(
-                          'Grundlage',
-                          style: g.t(13, 16, weight: FontWeight.w700),
+                if (onBasis != null)
+                  Semantics(
+                    button: true,
+                    label: 'Grundlage der Zonen',
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: onBasis,
+                      child: SizedBox(
+                        height: 44,
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Grundlage',
+                                style: g.t(13, 16, weight: FontWeight.w700),
+                              ),
+                              const SizedBox(width: 2),
+                              OBChevron(size: 12, color: g.muted),
+                            ],
+                          ),
                         ),
-                        const SizedBox(width: 2),
-                        OBChevron(size: 12, color: g.muted),
-                      ],
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -522,7 +540,7 @@ class OBTrendChart extends StatelessWidget {
   final (String, String)? bandLabels;
   final double? zero;
 
-  /// Sparse entries (weight): points joined across empty days, no gap boxes.
+  /// Sparse entries (weight): separate points across empty days, no gap boxes.
   final bool sparse;
   final List<String> xLabels;
   final String? footLeft, footRight;
@@ -568,7 +586,7 @@ class OBTrendChart extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 0),
           SizedBox(
             height: 152,
             child: Stack(
@@ -669,6 +687,11 @@ class _TrendPainter extends CustomPainter {
   final G3 g;
   _TrendPainter(this.c, this.g);
 
+  double? _value(int i) {
+    final v = c.values[i];
+    return v?.isFinite == true ? v : null;
+  }
+
   Color? _mark(int i) => switch (c.marks == null || i >= c.marks!.length
       ? OBTrendMark.none
       : c.marks![i]) {
@@ -704,7 +727,7 @@ class _TrendPainter extends CustomPainter {
       final cw = w / n;
       for (var i = 0; i < n; i++) {
         final cx = cw * i + cw / 2;
-        final v = c.values[i];
+        final v = _value(i);
         if (v == null) {
           _dash(
             canvas,
@@ -733,12 +756,12 @@ class _TrendPainter extends CustomPainter {
     if (!c.sparse) {
       var i = 0;
       while (i < n) {
-        if (c.values[i] != null) {
+        if (_value(i) != null) {
           i++;
           continue;
         }
         var j = i;
-        while (j < n && c.values[j] == null) {
+        while (j < n && _value(j) == null) {
           j++;
         }
         final x0 = ((i - .5) * step).clamp(0.0, w),
@@ -770,9 +793,9 @@ class _TrendPainter extends CustomPainter {
     final path = Path();
     var open = false;
     for (var i = 0; i < n; i++) {
-      final v = c.values[i];
+      final v = _value(i);
       if (v == null) {
-        if (!c.sparse) open = false;
+        open = false;
         continue;
       }
       if (open) {
@@ -784,7 +807,7 @@ class _TrendPainter extends CustomPainter {
     }
     canvas.drawPath(path, line);
     for (var i = 0; i < n; i++) {
-      final v = c.values[i];
+      final v = _value(i);
       if (v == null) continue;
       final o = Offset(i * step, y(v));
       final mark = _mark(i);
@@ -812,11 +835,11 @@ class _TrendPainter extends CustomPainter {
           );
       }
     }
-    if (c.values.last case final last?) {
+    if (_value(n - 1) case final last?) {
       final o = Offset(w, y(last));
       canvas
         ..drawCircle(o, 5.5, Paint()..color = g.canvas)
-        ..drawCircle(o, 4.5, Paint()..color = g.ink);
+        ..drawCircle(o, 4.5, Paint()..color = (_mark(n - 1) ?? g.ink));
     }
   }
 

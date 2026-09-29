@@ -26,7 +26,8 @@ class _Hit extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
+    container: true,
+    button: onTap != null,
     enabled: onTap != null,
     label: label,
     excludeSemantics: true,
@@ -384,53 +385,58 @@ class OBSyncState extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 24, right: 22, top: 8),
-          child: Row(
-            children: [
-              if (kind == OBSyncKind.stale) ...[
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: g.muted, width: 1.5),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 24, right: 22, top: 8),
+            child: Row(
+              children: [
+                if (kind == OBSyncKind.stale) ...[
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: g.muted, width: 1.5),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        text,
-                        style: g.t(
-                          12,
-                          16,
-                          weight: strong ? FontWeight.w700 : FontWeight.w500,
-                          color: strong ? g.ink : g.muted,
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          text,
+                          style: g.t(
+                            12,
+                            16,
+                            weight: strong ? FontWeight.w700 : FontWeight.w500,
+                            color: strong ? g.ink : g.muted,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    OBChevron(size: 12, color: g.muted),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (synthetic)
-                Text(
-                  'SYNTHETISCHE DATEN',
-                  style: g.t(
-                    10,
-                    14,
-                    weight: FontWeight.w500,
-                    color: g.muted,
-                    tracking: .1,
+                      if (onTap != null) ...[
+                        const SizedBox(width: 6),
+                        OBChevron(size: 12, color: g.muted),
+                      ],
+                    ],
                   ),
                 ),
-            ],
+                const SizedBox(width: 8),
+                if (synthetic)
+                  Text(
+                    'SYNTHETISCHE DATEN',
+                    style: g.t(
+                      10,
+                      14,
+                      weight: FontWeight.w500,
+                      color: g.muted,
+                      tracking: .1,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -467,28 +473,25 @@ class OBSectionHeader extends StatelessWidget {
               child: Text(text, style: g.caps(color: g.muted)),
             ),
           ),
-          if (action != null)
-            Semantics(
-              button: true,
-              label: action,
-              excludeSemantics: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+          if (action != null && onAction != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: _Hit(
+                label: action!,
                 onTap: onAction,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 18, bottom: 8, left: 8),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.plus, size: 14, color: g.ink),
-                      const SizedBox(width: 2),
-                      Text(
-                        action!,
-                        style: g.t(13, 16, weight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
+                child: Row(
+                  children: [
+                    Icon(LucideIcons.plus, size: 14, color: g.ink),
+                    const SizedBox(width: 2),
+                    Text(action!, style: g.t(13, 16, weight: FontWeight.w700)),
+                  ],
                 ),
               ),
+            )
+          else if (action != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(action!, style: g.t(13, 16, color: g.muted)),
             )
           else if (trailing != null)
             Padding(padding: const EdgeInsets.only(bottom: 4), child: trailing),
@@ -702,6 +705,7 @@ class _KeyButton extends StatelessWidget {
       ),
     );
     return Semantics(
+      container: true,
       button: true,
       enabled: onPressed != null,
       label: label,
@@ -825,24 +829,44 @@ class OBSegmented extends StatelessWidget {
       final tap = Semantics(
         button: true,
         selected: on,
-        enabled: !off,
+        enabled: !off && onChanged != null,
         label: off ? '${items[i]}, noch keine Werte' : items[i],
         excludeSemantics: true,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: off || onChanged == null ? null : () => onChanged!(i),
-          child: child,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Align(
+              alignment: Alignment.topCenter,
+              widthFactor: 1,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: child,
+              ),
+            ),
+          ),
         ),
       );
       return expand ? Expanded(child: tap) : tap;
     }
 
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: g.pressed(radius: 15),
-      child: Row(
-        mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-        children: [for (var i = 0; i < items.length; i++) seg(i)],
+    return SizedBox(
+      height: 44,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 30,
+            child: DecoratedBox(decoration: g.pressed(radius: 15)),
+          ),
+          Row(
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            children: [for (var i = 0; i < items.length; i++) seg(i)],
+          ),
+        ],
       ),
     );
   }
@@ -1164,7 +1188,7 @@ class OBDateStrip extends StatelessWidget {
           ],
           _Hit(
             label: 'Kalender',
-            width: 38,
+            width: 44,
             onTap: onCalendar,
             child: Icon(LucideIcons.calendar, size: 18, color: g.ink),
           ),
@@ -1250,11 +1274,9 @@ class OBFormField extends StatelessWidget {
                 style: g.t(13, 16, weight: FontWeight.w500, color: g.ink2),
               ),
             ),
-            Semantics(
-              button: true,
-              label: 'Zeit ändern',
-              excludeSemantics: true,
-              child: GestureDetector(
+            if (onTime != null)
+              _Hit(
+                label: 'Zeit ändern',
                 onTap: onTime,
                 child: Row(
                   children: [
@@ -1266,8 +1288,9 @@ class OBFormField extends StatelessWidget {
                     OBChevron(size: 12, color: g.muted),
                   ],
                 ),
-              ),
-            ),
+              )
+            else
+              Text('Zeit ändern', style: g.t(13, 16, color: g.muted)),
           ],
         ),
       ],

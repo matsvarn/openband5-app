@@ -170,7 +170,7 @@ class G3 {
 /// German number: 7,5 · −31 · +0,4. Presentation only; never rounds a
 /// missing value to zero — callers pass null and get "—".
 String g3Number(double? v, {int digits = 0, bool signed = false}) {
-  if (v == null) return '—';
+  if (v == null || !v.isFinite) return '—';
   final s = v.abs().toStringAsFixed(digits).replaceAll('.', ',');
   if (v < 0 && s.replaceAll(RegExp('[0,]'), '').isNotEmpty) return '−$s';
   return signed && v > 0 ? '+$s' : s;
