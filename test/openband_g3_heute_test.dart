@@ -158,6 +158,8 @@ void main() {
     expect(find.text('für 8h05 Schlafbedarf bis 06:54'), findsOneWidget);
     expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
     expect(find.text('Daten bis 09:37 · Nacht lückenlos'), findsOneWidget);
+    // One instant for both: the footer's last band value is latestStoredAt.
+    expect(find.text('Letzter Bandwert 09:37 · Übertragung 09:38'), findsOneWidget);
     // The design day stores no stage timeline: totals only, no empty lanes.
     expect(find.text('ohne Verlauf'), findsOneWidget);
     expect(_hasText(tester, (s) => s.contains('°C')), isFalse);
