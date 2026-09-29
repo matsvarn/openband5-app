@@ -67,6 +67,12 @@ void main() {
         await reminder.reconcile(today: '2026-09-29', planLoaded: true),
         isTrue,
       );
+      reminder.result = BedtimeReminderResult.denied;
+      expect(
+        await reminder.arm(at, '2026-09-29', 'Bettzeit'),
+        BedtimeReminderResult.denied,
+      );
+      expect(reminder.current, isNull);
     },
   );
 
