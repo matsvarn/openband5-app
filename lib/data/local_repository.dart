@@ -237,6 +237,13 @@ abstract class LocalRepository {
     required String type,
   }) => throw UnimplementedError('re-layer: logManualWorkout');
 
+  /// Score a suggestion through the manual-session writer and atomically
+  /// persist its auto session and dismissal. Repeats return the same workout.
+  Future<Map<String, dynamic>> confirmWorkoutSuggestion(
+    String suggestionId, {
+    String? sport,
+  }) => throw UnimplementedError('re-layer: confirmWorkoutSuggestion');
+
   /// Retime an existing session and re-score it over the new window. Used to
   /// widen an auto-detected fragment to the real session. Returns
   /// `{workout_id, unscored, hr_samples}`. Throws [StateError] when the id is

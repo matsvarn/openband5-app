@@ -440,25 +440,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<String> confirmSuggestion(String id, {String? sport}) async {
-    final suggestion = await _activeSuggestion(id);
     final writer = app.repo;
     if (writer == null) throw StateError('Workout writer is unavailable.');
-    final start = (suggestion['start_ts'] as num).toInt();
-    final end = (suggestion['end_ts'] as num).toInt();
-    final saved = await writer.logManualWorkout(
-      startTs: start,
-      endTs: end,
-      type: sport ?? (suggestion['sport'] as String?) ?? 'other',
-    );
+    final saved = await writer.confirmWorkoutSuggestion(id, sport: sport);
     final sessionId = saved['workout_id'] as String;
-    final db = await LocalDb.instance;
-    await db.update(
-      'sessions',
-      {'source': 'auto'},
-      where: 'id = ?',
-      whereArgs: [sessionId],
-    );
-    await LocalDb.dismissWorkoutSuggestion(id);
     await HealthExporter.exportWorkoutId(sessionId);
     return sessionId;
   }
