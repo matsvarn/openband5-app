@@ -271,10 +271,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         _today = data.first;
         _history = data.skip(1).toList();
         _loading = false;
-        final next = _questionsFor(
-          data.first,
-        ).indexWhere((q) => !_answered(data.first, q));
-        _position = next < 0 ? 0 : next;
+        _position = _nextUnanswered(data.first, _questionsFor(data.first), -1);
       });
       unawaited(_loadPattern(day, id));
     } catch (_) {
@@ -320,6 +317,18 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       : q.kind == _Answer.note
       ? snap.note.trim().isNotEmpty
       : snap.metrics[q.key] != null;
+
+  int _nextUnanswered(
+    JournalDaySnapshot snap,
+    List<_Question> questions,
+    int after,
+  ) {
+    for (var step = 1; step <= questions.length; step++) {
+      final index = (after + step) % questions.length;
+      if (!_answered(snap, questions[index])) return index;
+    }
+    return 0;
+  }
 
   Object? _inputValue(JournalDaySnapshot snap, _Question q) {
     if (q.checkIn?.answer case G3YesNoAnswer answer) {
@@ -448,12 +457,13 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         _saveErrors.remove(q.key);
         _refreshError = null;
         if (wasCurrent) {
-          _position = (_position + 1) % _questionsFor(updated).length;
-        } else {
-          final next = _questionsFor(
+          _position = _nextUnanswered(
             updated,
-          ).indexWhere((candidate) => !_answered(updated, candidate));
-          _position = next < 0 ? 0 : next;
+            _questionsFor(updated),
+            _position,
+          );
+        } else {
+          _position = _nextUnanswered(updated, _questionsFor(updated), -1);
         }
       });
       if (q.key == 'caffeine_late') {
@@ -499,10 +509,11 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   }
 
   void _next() {
-    final questions = _questionsFor(_today);
+    final snap = _today!;
+    final questions = _questionsFor(snap);
     final key = questions[_position].key;
     setState(() {
-      _position = (_position + 1) % questions.length;
+      _position = _nextUnanswered(snap, questions, _position);
       _drafts.remove(key);
       _saveErrors.remove(key);
       _refreshError = null;
@@ -779,7 +790,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                         )
                       : OBCheckIn(
                           title: current.prompt,
-                          index: _position + 1,
+                          index: count + 1,
                           total: questions.length,
                           answer: _answer(current),
                           onLater: _next,
