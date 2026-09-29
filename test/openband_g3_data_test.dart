@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 
@@ -38,6 +37,30 @@ void main() {
     expect(today.sleep.bedMinutes, 464);
     expect(today.sleep.onset, DateTime(2026, 9, 28, 23, 10));
     expect(today.sleep.wake, DateTime(2026, 9, 29, 6, 54));
+    expect(today.sleep.segments.first.start, today.sleep.onset);
+    expect(today.sleep.segments.last.end, today.sleep.wake);
+    expect(
+      today.sleep.segments.map((s) => s.start).skip(1),
+      today.sleep.segments
+          .map((s) => s.end)
+          .take(today.sleep.segments.length - 1),
+    );
+    for (final (stage, minutes) in [
+      (NightStage.deep, 68),
+      (NightStage.light, 247),
+      (NightStage.rem, 123),
+      (NightStage.awake, 26),
+    ]) {
+      expect(
+        today.sleep.segments
+            .where((s) => s.stage == stage)
+            .fold<int>(
+              0,
+              (sum, s) => sum + s.end.difference(s.start).inMinutes,
+            ),
+        minutes,
+      );
+    }
     expect(today.strain.value, 9.4);
     expect(today.hrv.value, 48);
     expect(today.restingHr.value, 54);
@@ -50,6 +73,8 @@ void main() {
     );
     expect(today.steps.value, 6480);
     expect(today.stepIntervals.map((s) => s.steps), [820, 4630, 1030]);
+    expect(today.stepIntervals.map((s) => s.start.hour), [7, 8, 9]);
+    expect(today.stepIntervals.last.end, DateTime(2026, 9, 29, 9, 38));
     expect(today.calculatedAt, DateTime(2026, 9, 29, 9, 38));
 
     final range = await repo.readPersonalRange(G3Metric.recovery, day);
@@ -167,7 +192,7 @@ void main() {
       expect(await repo.confirmSuggestion(activity.id), activity.id);
       activity = (await repo.readActivities(day)).single;
       expect(activity.confirmed, isTrue);
-      expect(activity.zoneMinutes, [6, 14, 15, 6, 1]);
+      expect(activity.zoneMinutes, [0, 4, 19, 16, 3]);
       expect(activity.zoneBasis!.kind, G3ZoneBasisKind.hfmaxEstimated);
       expect(activity.zoneBasis!.maxHr, 186);
       expect(activity.sport, 'cycling');
@@ -207,11 +232,35 @@ void main() {
       );
       var checkIn = await repo.readCheckIn(day);
       expect([checkIn.answered, checkIn.total], [1, 4]);
-      await repo.answerCheckIn(day, 'energy', const JournalMetricValue(3));
+      expect(checkIn.questions.map((q) => q.key), [
+        'alcohol_evening',
+        'caffeine_late',
+        'mood',
+        'journal_note',
+      ]);
+      expect(checkIn.questions.map((q) => q.kind), [
+        G3CheckInKind.yesNo,
+        G3CheckInKind.yesNo,
+        G3CheckInKind.rating,
+        G3CheckInKind.freeNote,
+      ]);
+      expect((checkIn.questions[2].answer as G3RatingAnswer).value, 4);
+      await repo.answerCheckIn(
+        day,
+        'alcohol_evening',
+        const G3YesNoAnswer(false),
+      );
       checkIn = await repo.readCheckIn(day);
       expect(checkIn.answered, 2);
+      expect((checkIn.questions.first.answer as G3YesNoAnswer).value, isFalse);
+      await repo.answerCheckIn(
+        day,
+        'journal_note',
+        const G3FreeNoteAnswer('Gut geschlafen'),
+      );
+      expect((await repo.readJournalDay(day)).note, 'Gut geschlafen');
       await expectLater(
-        repo.answerCheckIn(day, 'weight_kg', const JournalMetricValue(78)),
+        repo.answerCheckIn(day, 'mood', const G3YesNoAnswer(true)),
         throwsArgumentError,
       );
       final weight = await repo.readG3Weight(day, 7);
@@ -219,6 +268,11 @@ void main() {
       expect(weight.sources, isEmpty);
       final pattern = await repo.readJournalPattern(day, 7);
       expect(pattern.remaining, isNull);
+      expect(
+        await repo.readLastBandSampleAt(day),
+        DateTime(2026, 9, 29, 9, 38),
+      );
+      expect(await repo.readLastBandSampleAt('2026-09-28'), isNull);
     },
   );
 

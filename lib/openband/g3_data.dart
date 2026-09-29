@@ -252,18 +252,148 @@ class G3SleepPlus {
   final double? typicalEfficiency;
 }
 
+enum G3CheckInKind { yesNo, quantity, rating, freeNote }
+
+sealed class G3CheckInAnswer {
+  const G3CheckInAnswer();
+}
+
+class G3YesNoAnswer extends G3CheckInAnswer {
+  const G3YesNoAnswer(this.value);
+  final bool value;
+}
+
+/// Numeric journal dose or duration. Zero is an explicit answer, not absence.
+class G3QuantityAnswer extends G3CheckInAnswer {
+  const G3QuantityAnswer(this.value);
+  final double value;
+}
+
+class G3RatingAnswer extends G3CheckInAnswer {
+  const G3RatingAnswer(this.value);
+  final int value;
+}
+
+class G3FreeNoteAnswer extends G3CheckInAnswer {
+  const G3FreeNoteAnswer(this.value);
+  final String value;
+}
+
 class G3CheckInQuestion {
-  const G3CheckInQuestion(this.field, this.value);
-  final JournalFieldSpec field;
-  final JournalMetricValue? value;
+  const G3CheckInQuestion({
+    required this.key,
+    required this.label,
+    required this.kind,
+    required this.answer,
+    this.field,
+  });
+  final String key, label;
+  final G3CheckInKind kind;
+  final G3CheckInAnswer? answer;
+
+  /// Null only for the existing free-text journal note, which has no metric
+  /// field definition.
+  final JournalFieldSpec? field;
 }
 
 class G3CheckIn {
   const G3CheckIn(this.day, this.questions);
   final String day;
   final List<G3CheckInQuestion> questions;
-  int get answered => questions.where((q) => q.value != null).length;
+  int get answered => questions.where((q) => q.answer != null).length;
   int get total => questions.length;
+}
+
+/// Paper's count question has no matching journal field. The real late-
+/// caffeine field is yes/no; `alcohol_units` is the available count-like dose.
+const kG3CheckInKeys = ['alcohol_evening', 'caffeine_late', 'mood'];
+const kG3CheckInNoteKey = 'journal_note';
+const kG3CheckInQuantityKey = 'alcohol_units';
+
+G3CheckIn g3CheckInFromSnapshot(JournalDaySnapshot snapshot) {
+  final byKey = {for (final field in snapshot.fields) field.key: field};
+  final questions = <G3CheckInQuestion>[];
+  for (final key in kG3CheckInKeys) {
+    final field = byKey[key];
+    if (field == null || field.hidden) continue;
+    final raw = snapshot.metrics[key]?.value;
+    final (kind, answer) = switch (field.kind) {
+      JournalFieldKind.yesNo => (
+        G3CheckInKind.yesNo,
+        raw == 0 || raw == 1 ? G3YesNoAnswer(raw == 1) : null,
+      ),
+      JournalFieldKind.rating => (
+        G3CheckInKind.rating,
+        raw != null &&
+                raw >= 1 &&
+                raw <= field.max &&
+                raw == raw.roundToDouble()
+            ? G3RatingAnswer(raw.toInt())
+            : null,
+      ),
+      JournalFieldKind.dose || JournalFieldKind.duration => (
+        G3CheckInKind.quantity,
+        raw != null && raw.isFinite ? G3QuantityAnswer(raw) : null,
+      ),
+    };
+    questions.add(
+      G3CheckInQuestion(
+        key: key,
+        label: field.label,
+        kind: kind,
+        answer: answer,
+        field: field,
+      ),
+    );
+  }
+  questions.add(
+    G3CheckInQuestion(
+      key: kG3CheckInNoteKey,
+      label: 'Notiz',
+      kind: G3CheckInKind.freeNote,
+      answer: snapshot.note.isEmpty ? null : G3FreeNoteAnswer(snapshot.note),
+    ),
+  );
+  return G3CheckIn(snapshot.day, questions);
+}
+
+JournalDayPatch g3CheckInPatch(
+  JournalDaySnapshot snapshot,
+  String key,
+  G3CheckInAnswer answer,
+) {
+  if (key == kG3CheckInNoteKey) {
+    if (answer is! G3FreeNoteAnswer) {
+      throw ArgumentError.value(answer, 'answer');
+    }
+    return JournalDayPatch.fromBase(snapshot, note: answer.value);
+  }
+  if (!kG3CheckInKeys.contains(key) && key != kG3CheckInQuantityKey) {
+    throw ArgumentError.value(key, 'key');
+  }
+  JournalFieldSpec? field;
+  for (final candidate in snapshot.fields) {
+    if (candidate.key == key && !candidate.hidden) {
+      field = candidate;
+      break;
+    }
+  }
+  if (field == null) throw ArgumentError.value(key, 'key');
+  if (answer is G3RatingAnswer &&
+      (answer.value < 1 || answer.value > field.max)) {
+    throw ArgumentError.value(answer.value, 'answer');
+  }
+  final value = switch ((field.kind, answer)) {
+    (JournalFieldKind.yesNo, G3YesNoAnswer a) => a.value ? 1.0 : 0.0,
+    (JournalFieldKind.rating, G3RatingAnswer a) => a.value.toDouble(),
+    (JournalFieldKind.dose || JournalFieldKind.duration, G3QuantityAnswer a) =>
+      a.value,
+    _ => throw ArgumentError.value(answer, 'answer'),
+  };
+  return JournalDayPatch.fromBase(
+    snapshot,
+    metrics: {key: JournalMetricValue(value)},
+  );
 }
 
 class G3JournalPattern {
@@ -280,9 +410,6 @@ class G3JournalPattern {
 }
 
 enum G3WeightSource { manual, imported }
-
-/// The four short daily ratings in the G3 check-in; definitions own their copy.
-const kG3CheckInKeys = {'mood', 'sleep_quality', 'energy', 'stress'};
 
 class G3Weight {
   const G3Weight(this.history, this.sources, {this.imported = const []});

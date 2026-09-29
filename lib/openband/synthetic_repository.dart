@@ -392,6 +392,32 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   DateTime _g3At(int hour, int minute) => DateTime(2026, 9, 29, hour, minute);
 
+  List<NightSegment> _g3SleepSegments() {
+    const stages = <(NightStage, int)>[
+      (NightStage.light, 25),
+      (NightStage.deep, 35),
+      (NightStage.light, 55),
+      (NightStage.rem, 25),
+      (NightStage.awake, 5),
+      (NightStage.light, 45),
+      (NightStage.deep, 33),
+      (NightStage.light, 50),
+      (NightStage.rem, 45),
+      (NightStage.awake, 8),
+      (NightStage.light, 72),
+      (NightStage.rem, 53),
+      (NightStage.awake, 13),
+    ];
+    final segments = <NightSegment>[];
+    var start = DateTime(2026, 9, 28, 23, 10);
+    for (final (stage, minutes) in stages) {
+      final end = start.add(Duration(minutes: minutes));
+      segments.add(NightSegment(start, end, stage));
+      start = end;
+    }
+    return segments;
+  }
+
   OpenBandDay _g3DayFixture() => OpenBandDay(
     day: _g3Day,
     sleep: SleepNight(
@@ -403,6 +429,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
       deepMinutes: 68,
       lightMinutes: 247,
       remMinutes: 123,
+      segments: _g3SleepSegments(),
     ),
     recovery: _g3Building
         ? const DayMetric.missing()
@@ -424,9 +451,9 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
         : const DayMetric(0.4, unit: NightScalarUnit.sd),
     steps: const DayMetric(6480),
     stepIntervals: [
-      StepInterval(_g3At(6, 0), _g3At(7, 0), 820),
-      StepInterval(_g3At(7, 0), _g3At(8, 0), 4630),
-      StepInterval(_g3At(8, 0), _g3At(9, 38), 1030),
+      StepInterval(_g3At(7, 0), _g3At(8, 0), 820),
+      StepInterval(_g3At(8, 0), _g3At(9, 0), 4630),
+      StepInterval(_g3At(9, 0), _g3At(9, 38), 1030),
     ],
     calculatedAt: _g3At(9, 38),
     synthetic: true,
@@ -595,7 +622,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
           strain: 6.1,
           avgHr: 148,
           maxHr: 176,
-          zoneMinutes: _g3SuggestionConfirmed ? const [6, 14, 15, 6, 1] : null,
+          zoneMinutes: _g3SuggestionConfirmed ? const [0, 4, 19, 16, 3] : null,
           zoneBasis: _g3SuggestionConfirmed
               ? const G3ZoneBasis(G3ZoneBasisKind.hfmaxEstimated, 186)
               : null,
@@ -699,30 +726,22 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<G3CheckIn> readCheckIn(String day) async {
-    final snapshot = await readJournalDay(day);
-    return G3CheckIn(day, [
-      for (final field in snapshot.fields)
-        if (!field.hidden && kG3CheckInKeys.contains(field.key))
-          G3CheckInQuestion(field, snapshot.metrics[field.key]),
-    ]);
+    return g3CheckInFromSnapshot(await readJournalDay(day));
   }
 
   @override
   Future<void> answerCheckIn(
     String day,
     String key,
-    JournalMetricValue value,
+    G3CheckInAnswer answer,
   ) async {
     final snapshot = await readJournalDay(day);
-    if (!snapshot.fields.any(
-      (f) => f.key == key && !f.hidden && kG3CheckInKeys.contains(f.key),
-    )) {
-      throw ArgumentError.value(key, 'key');
-    }
-    await patchJournalDay(
-      JournalDayPatch.fromBase(snapshot, metrics: {key: value}),
-    );
+    await patchJournalDay(g3CheckInPatch(snapshot, key, answer));
   }
+
+  @override
+  Future<DateTime?> readLastBandSampleAt(String day) async =>
+      _g3 && day == _g3Day ? _g3At(9, 38) : null;
 
   @override
   Future<G3JournalPattern> readJournalPattern(
