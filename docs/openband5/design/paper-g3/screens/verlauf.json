@@ -1,1 +1,12 @@
-{}
+{
+  "verlauf-erholung-30-tage-hell": {"page": "p-18-0", "node": "5R5F-0", "mode": "light"},
+  "verlauf-erholung-30-tage-dunkel": {"page": "p-18-0", "node": "5RBJ-0", "mode": "dark"},
+  "verlauf-hrv-hell": {"page": "p-18-0", "node": "5RHN-0", "mode": "light"},
+  "verlauf-atemfrequenz-weniger-als-7-werte-hell": {"page": "p-18-0", "node": "5ROH-0", "mode": "light"},
+  "verlauf-ruhepuls-90-tage-mit-luecken-hell": {"page": "p-18-0", "node": "5RSK-0", "mode": "light"},
+  "verlauf-hauttemperatur-abweichung-hell": {"page": "p-18-0", "node": "5RXG-0", "mode": "light"},
+  "verlauf-gewicht-hell": {"page": "p-18-0", "node": "5S2V-0", "mode": "light"},
+  "verlauf-gewicht-eintrag-hell": {"page": "p-18-0", "node": "5S8B-0", "mode": "light"},
+  "verlauf-alle-messwerte-hell": {"page": "p-1A-0", "node": "6URK-0", "mode": "light"},
+  "verlauf-alle-messwerte-dunkel": {"page": "p-1A-0", "node": "6UW9-0", "mode": "dark"}
+}

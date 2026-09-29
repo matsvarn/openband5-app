@@ -72,7 +72,9 @@
     "5RSK-0": "G3 Verlauf · Ruhepuls 90 T mit Lücken · Hell",
     "5RXG-0": "G3 Verlauf · Hauttemperatur-Abweichung · Hell",
     "5S2V-0": "G3 Verlauf · Gewicht · Hell",
-    "5S8B-0": "G3 Verlauf · Gewicht · Eintrag · Hell"
+    "5S8B-0": "G3 Verlauf · Gewicht · Eintrag · Hell",
+    "6URK-0": "G3 Alle Messwerte · Hell",
+    "6UW9-0": "G3 Alle Messwerte · Dunkel"
   },
   "blocks": [
     {
@@ -993,7 +995,9 @@
       "paperNode": "5MOF-0",
       "paperNodeDark": "5MR6-0",
       "usedIn": [
-        "5Q4B-0"
+        "5Q4B-0",
+        "6URK-0",
+        "6UW9-0"
       ],
       "widget": "OBBodyRow",
       "file": "g3/metrics.dart",
@@ -1006,7 +1010,9 @@
       "paperNodeDark": "5WUD-0",
       "usedIn": [
         "5OST-0",
-        "5Q4B-0"
+        "5Q4B-0",
+        "6URK-0",
+        "6UW9-0"
       ],
       "widget": "OBBodyRow",
       "file": "g3/metrics.dart",
@@ -1039,8 +1045,8 @@
       "paperNodeDark": "5MQ7-0",
       "usedIn": [
         "5OST-0",
-        "5R5F-0",
-        "5RBJ-0"
+        "6URK-0",
+        "6UW9-0"
       ],
       "widget": "OBBodyRow",
       "file": "g3/metrics.dart",
@@ -1230,7 +1236,9 @@
       "paperNode": "5O9Z-0",
       "paperNodeDark": "5OGZ-0",
       "usedIn": [
-        "5RHN-0"
+        "5RHN-0",
+        "5R5F-0",
+        "5RBJ-0"
       ],
       "widget": "OBDayValueRow",
       "file": "g3/metrics.dart",
@@ -1242,7 +1250,10 @@
       "paperNode": "5OAA-0",
       "paperNodeDark": "5OHA-0",
       "usedIn": [
-        "5RSK-0"
+        "5RSK-0",
+        "5R5F-0",
+        "5RBJ-0",
+        "5RHN-0"
       ],
       "widget": "OBDayValueRow",
       "file": "g3/metrics.dart",
@@ -1291,7 +1302,10 @@
         "5ROH-0",
         "5RSK-0",
         "5RXG-0",
-        "5S2V-0"
+        "5S2V-0",
+        "6URK-0",
+        "6UW9-0",
+        "5S8B-0"
       ],
       "widget": "OBFooterStamp",
       "file": "g3/chrome.dart"
@@ -1430,7 +1444,12 @@
       "design": "G3",
       "paperNode": "5MTK-0",
       "paperNodeDark": "5MV2-0",
-      "usedIn": [],
+      "usedIn": [
+        "6URK-0",
+        "6UW9-0",
+        "5S2V-0",
+        "5S8B-0"
+      ],
       "widget": "OBListRow",
       "file": "g3/chrome.dart",
       "variant": "value given"
@@ -1441,7 +1460,10 @@
       "paperNode": "5MTZ-0",
       "paperNodeDark": "5MVH-0",
       "usedIn": [
-        "5S2V-0"
+        "5S2V-0",
+        "6URK-0",
+        "6UW9-0",
+        "5S8B-0"
       ],
       "widget": "OBListRow",
       "file": "g3/chrome.dart",
@@ -1760,7 +1782,8 @@
       "usedIn": [
         "5R5F-0",
         "5RBJ-0",
-        "5RHN-0"
+        "5RHN-0",
+        "5RSK-0"
       ],
       "widget": "OBStatRow",
       "file": "g3/metrics.dart"
@@ -1969,7 +1992,8 @@
       "paperNodeDark": "5NPX-0",
       "usedIn": [
         "5RSK-0",
-        "5S2V-0"
+        "5S2V-0",
+        "5S8B-0"
       ],
       "widget": "OBTrendChart",
       "file": "g3/charts.dart",
