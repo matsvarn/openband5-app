@@ -103,6 +103,7 @@ class _Harness {
   DateTime clock = DateTime(2026, 9, 29, 9, 41);
   late final controller = OpenBandController(repository: repo, initialDay: _day, band: band, now: () => clock);
   int connects = 0;
+  final journalDays = <String>[];
   final opened = <G3Metric>[];
 }
 
@@ -137,6 +138,7 @@ Future<_Harness> _pump(
           reminder: h.reminder,
           onConnect: () => h.connects++,
           onOpenMetric: h.opened.add,
+          onJournalDay: h.journalDays.add,
           onAddActivity: () {},
         ),
       ),
@@ -413,6 +415,20 @@ void main() {
     expect(find.text('2 offen'), findsOneWidget);
   });
 
+  testWidgets('check-in: Ändern opens the journal on the answer\'s own day', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    // Mood belongs to today.
+    expect(find.text('Stimmung: 4 von 5'), findsOneWidget);
+    await tester.tap(find.text('Ändern'));
+    expect(h.journalDays, [_day]);
+    // Alcohol in the evening belongs to yesterday: edit 28.09, not today.
+    await tester.tap(find.text('Nein'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alkohol am Abend: Nein'), findsOneWidget);
+    await tester.tap(find.text('Ändern'));
+    expect(h.journalDays, [_day, '2026-09-28']);
+  });
+
   testWidgets('check-in: the note is saved to yesterday and completes the card', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     await tester.tap(find.text('Ja'));
@@ -476,7 +492,7 @@ void main() {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     await tester.tap(find.textContaining('07:58–08:40'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ändern'));
+    await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Ändern')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Rad'));
     await tester.pumpAndSettle();
