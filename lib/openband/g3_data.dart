@@ -67,6 +67,7 @@ class BandCoverage {
 
   final DateTime start;
   final DateTime end;
+
   /// Null when there is no retained 1 Hz substrate in this window.
   final int? recordedSeconds;
   final double? coveragePercent;
@@ -323,11 +324,46 @@ class G3SleepDebt {
   final String? refusalNote;
 }
 
+/// Decomposition banked by the crossday SRI producer, not a bedtime spread.
+class G3SriPair {
+  const G3SriPair({
+    required this.previousDay,
+    required this.day,
+    required this.sri,
+    this.agreement,
+    this.cases,
+  });
+  final String previousDay, day;
+  final double sri;
+  final int? agreement, cases;
+}
+
+class G3RegularityDetail {
+  const G3RegularityDetail({this.days, this.pairs});
+  final int? days;
+
+  /// Null when pairs were not stored; empty when the producer stored none.
+  final List<G3SriPair>? pairs;
+}
+
+class G3SocialJetlagDetail {
+  const G3SocialJetlagDetail({
+    this.midSleepWorkHours,
+    this.midSleepFreeHours,
+    this.workNights,
+    this.freeNights,
+  });
+  final double? midSleepWorkHours, midSleepFreeHours;
+  final int? workNights, freeNights;
+}
+
 class G3SleepPlus {
   const G3SleepPlus({
     required this.regularity,
     required this.socialJetlag,
     required this.sleepDebt,
+    this.regularityDetail,
+    this.socialJetlagDetail,
     required this.bedtime,
     required this.wake,
     this.needMinutes,
@@ -339,6 +375,8 @@ class G3SleepPlus {
   });
   final G3AvailableValue regularity, socialJetlag;
   final G3SleepDebt sleepDebt;
+  final G3RegularityDetail? regularityDetail;
+  final G3SocialJetlagDetail? socialJetlagDetail;
   final DateTime? bedtime, wake;
   final double? needMinutes, goalMinutes, strainBonusMinutes, napCreditMinutes;
   final bool? napsIncomplete;
