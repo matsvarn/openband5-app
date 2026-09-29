@@ -275,6 +275,9 @@ class _PaperRepo extends SyntheticOpenBandRepository {
         building ? null : 1 + 40 / 60,
         gate: building ? 'Braucht freie und Arbeitstage.' : null,
       ),
+      socialJetlagDetail: building
+          ? null
+          : const G3SocialJetlagDetail(signedHours: 1 + 40 / 60),
       sleepDebt: building
           ? const G3SleepDebt(
               habitualMedianHours: 7 + 25 / 60,
@@ -291,10 +294,11 @@ class _PaperRepo extends SyntheticOpenBandRepository {
       wake: building ? null : at(30, 6, 54),
       needMinutes: building ? null : 484,
       goalMinutes: noGoal ? null : 465,
+      baselineOsdMinutes: building ? null : 451,
+      appliedDebtMinutes: building ? null : 13,
       strainBonusMinutes: building ? null : 20,
       napCreditMinutes: null,
-      napsIncomplete: !building,
-      typicalEfficiency: building ? null : .94,
+      napsJudged: building ? null : false,
     );
   }
 

@@ -443,9 +443,10 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                           const SizedBox(height: 10),
                           _inset(
                             OBSocialJetlag(
-                              minutes: plus?.socialJetlag.value == null
+                              minutes:
+                                  plus?.socialJetlagDetail?.signedHours == null
                                   ? null
-                                  : plus!.socialJetlag.value! * 60,
+                                  : plus!.socialJetlagDetail!.signedHours! * 60,
                               gate: plus?.socialJetlag.gate,
                               onTap: () => _push(
                                 G3SleepRegularity(
@@ -746,7 +747,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
             if (gaps.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
-                '${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$1.round())))}–${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$2.round())))} ohne Daten · nicht aufgefüllt',
+                '${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$1.round())))}–${obSleepClock(night.onset?.add(Duration(minutes: gaps.first.$2.round())))} ohne Daten · ${gaps.length == 1 ? 'nicht aufgefüllt' : '${gaps.length} Lücken insgesamt · nicht aufgefüllt'}',
                 textAlign: TextAlign.center,
                 style: g.t(12, 16, color: g.ink2),
               ),
@@ -1138,7 +1139,8 @@ class _G3SleepRegularityState extends State<G3SleepRegularity> {
           children: [
             OBSriLead(
               value: plus?.regularity.value,
-              gate: plus?.regularity.gate,
+              gate: plus?.regularity.gate ??
+                  (snap.hasError ? 'Nicht verfügbar' : null),
             ),
             const SizedBox(height: 12),
             FutureBuilder<List<OBSleepWindow>>(
@@ -1154,9 +1156,9 @@ class _G3SleepRegularityState extends State<G3SleepRegularity> {
             ),
             const SizedBox(height: 12),
             OBSocialJetlag(
-              minutes: plus?.socialJetlag.value == null
+              minutes: plus?.socialJetlagDetail?.signedHours == null
                   ? null
-                  : plus!.socialJetlag.value! * 60,
+                  : plus!.socialJetlagDetail!.signedHours! * 60,
               gate: plus?.socialJetlag.gate,
             ),
             const SizedBox(height: 12),
@@ -1350,6 +1352,11 @@ class G3SleepTonight extends StatefulWidget {
 
 class _G3SleepTonightState extends State<G3SleepTonight>
     with WidgetsBindingObserver {
+  DateTime get _followingDay {
+    final day = DateTime.parse(widget.day);
+    return DateTime(day.year, day.month, day.day + 1);
+  }
+
   late final SleepBedtimeReminder reminder =
       widget.reminder ?? NotificationSleepBedtimeReminder();
   int _reminderGen = 0;
@@ -1467,7 +1474,7 @@ class _G3SleepTonightState extends State<G3SleepTonight>
   Widget build(BuildContext context) => _SleepDetail(
     title: 'HEUTE NACHT',
     subtitle:
-        '${DateFormat('EE', 'de_DE').format(DateTime.parse(widget.day)).replaceAll('.', '')} → ${DateFormat('EE dd.MM', 'de_DE').format(DateTime.parse(widget.day).add(const Duration(days: 1))).replaceFirst('.', '')}',
+        '${DateFormat('EE', 'de_DE').format(DateTime.parse(widget.day)).replaceAll('.', '')} → ${DateFormat('EE dd.MM', 'de_DE').format(_followingDay).replaceFirst('.', '')}',
     child: FutureBuilder<G3SleepPlus>(
       future: plus,
       builder: (context, snap) {
@@ -1515,9 +1522,11 @@ class _G3SleepTonightState extends State<G3SleepTonight>
               )
             else
               OBPlanBreakdown(
+                baseline: value?.baselineOsdMinutes,
+                debt: value?.appliedDebtMinutes,
                 bonus: value?.strainBonusMinutes,
                 napCredit: value?.napCreditMinutes,
-                napsIncomplete: value?.napsIncomplete == true,
+                napsIncomplete: value?.napsJudged == false,
                 strainOpen: widget.day == todayLabel(widget.now()),
                 need: value?.needMinutes,
                 efficiency: value?.typicalEfficiency,

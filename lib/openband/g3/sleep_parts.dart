@@ -465,25 +465,22 @@ class OBSriLead extends StatelessWidget {
         children: [
           G3LabelRow(
             'SRI',
-            note: value == null ? 'im Aufbau' : 'aus 7 Nächten',
+            note: value == null
+                ? gate == null
+                      ? 'nicht für diesen Tag'
+                      : 'im Aufbau'
+                : 'aus 7 Nächten',
           ),
           const SizedBox(height: 7),
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.end,
-            spacing: 8,
-            children: [
-              Text(
-                value == null ? '—' : value!.round().toString(),
-                style: g.t(72, 76, weight: FontWeight.w700),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text('von 100', style: g.t(14, 19, color: g.ink2)),
-              ),
-            ],
+          Text(
+            value == null ? '—' : value!.round().toString(),
+            style: g.t(72, 76, weight: FontWeight.w700),
           ),
           Text(
-            gate ?? 'SRI reicht von −100 bis 100 · 100 = jeden Tag gleich',
+            gate ??
+                (value == null
+                    ? 'Für diesen Tag keine Auswertung gespeichert.'
+                    : 'SRI reicht von −100 bis 100 · 100 = jeden Tag gleich'),
             style: g.t(13, 18, color: g.ink2),
           ),
           const SizedBox(height: 16),
@@ -673,7 +670,10 @@ class OBSocialJetlag extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow('SOZIALE ZEITVERSCHIEBUNG', note: '7 Nächte'),
+          G3LabelRow(
+            'SOZIALE ZEITVERSCHIEBUNG',
+            note: minutes == null ? null : '7 Nächte',
+          ),
           const SizedBox(height: 6),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
@@ -689,7 +689,9 @@ class OBSocialJetlag extends StatelessWidget {
                   child: Text(
                     minutes! < 0
                         ? 'früher an freien Tagen'
-                        : 'später an freien Tagen',
+                        : minutes! > 0
+                        ? 'später an freien Tagen'
+                        : 'gleich an freien Tagen',
                     style: g.t(12, 16, color: g.ink2),
                   ),
                 ),
@@ -727,7 +729,7 @@ class OBSleepDebtLead extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow('SCHLAFSCHULD', note: '3 Wochen'),
+          G3LabelRow('SCHLAFSCHULD', note: minutes == null ? null : '3 Wochen'),
           const SizedBox(height: 8),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
