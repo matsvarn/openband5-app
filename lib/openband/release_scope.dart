@@ -2,7 +2,7 @@ import '../notify/tap_router.dart';
 import '../state/prefs.dart';
 import '../ui2/app_shell.dart';
 
-/// Reduced first-release surface.
+/// G3 production surface.
 ///
 /// Default on for production and profile builds. An explicit development
 /// build passes `--dart-define=OB_RELEASE=false` and keeps the full app.
@@ -13,28 +13,34 @@ const bool kOpenBandReleaseReduced = bool.fromEnvironment(
   defaultValue: true,
 );
 
-/// Saved shell tab. A reduced launch shows Home and leaves the stored
-/// name alone, so a later full build still restores Training or Journal.
+/// Saved shell tab. Old names remain readable after a release upgrade.
 const String kOpenBandTabPref = 'ui.openband.tab';
 
-/// The release shell. One home domain, no bottom bar.
+/// The four destinations in the production shell.
 const List<ShellDomain> kOpenBandReleaseDomains = <ShellDomain>[
   ShellDomain.home,
+  ShellDomain.sleep,
+  ShellDomain.workout,
+  ShellDomain.wellness,
 ];
 
-/// Routes that still open a retained screen, or land on Home without
-/// pushing one. `/today` is the alarm-fired and stale-sync reminder,
-/// `/heart` is the health exception, and [kRouteWorkoutIdle] is the active
-/// session. The detected-workout review stays parked.
+/// Known notification and tab routes in the G3 release. Unknown paths fail
+/// closed, including stale payloads from a development build.
 bool openBandReleaseKeepsRoute(String route) => switch (routePath(route)) {
+  '/today' ||
+  '/sleep' ||
+  '/heart' ||
+  '/body' ||
+  '/workouts' ||
   kRouteProfile ||
   kRouteAlarm ||
   kRouteMovement ||
   kRouteRecovery ||
   kRouteSteps ||
-  '/today' ||
-  '/heart' ||
-  kRouteWorkoutIdle => true,
+  kRouteWorkoutIdle ||
+  kRouteWorkoutSuggestion ||
+  kRouteJournalCompose ||
+  kRouteRecap => true,
   _ => false,
 };
 
@@ -65,17 +71,17 @@ ShellDomain shellDomainForRestore({
   }
   if (!named) {
     saved = switch (legacyTab) {
-      1 => ShellDomain.health,
-      2 || 4 => ShellDomain.wellness,
-      3 => ShellDomain.workout,
+      1 => ShellDomain.sleep,
+      2 || 3 => ShellDomain.health,
+      4 => ShellDomain.workout,
       _ => ShellDomain.home,
     };
   }
-  if (reduced) return ShellDomain.home;
+  if (reduced && saved == ShellDomain.health) return ShellDomain.home;
   return saved;
 }
 
 void persistOpenBandTab({required bool reduced, required String name}) {
-  if (reduced) return;
+  if (reduced && !kOpenBandReleaseDomains.any((d) => d.name == name)) return;
   Prefs.setString(kOpenBandTabPref, name);
 }

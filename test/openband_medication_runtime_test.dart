@@ -224,7 +224,7 @@ void main() {
       expect(maxDepth, 1);
     });
 
-    test('reduced release cancels parked ids and does not rearm them', () async {
+    test('G3 release cancels parked ids and rearms retained reminders', () async {
       var armed = 0;
       svc.debugZonedSchedule = () async {
         armed++;
@@ -273,7 +273,7 @@ void main() {
       expect(cancelled, contains(NotificationService.idMorningBrief));
       expect(cancelled, contains(NotificationService.idEveningBrief));
       expect(cancelled, contains(NotificationService.idJournalLog));
-      expect(armed, 0);
+      expect(armed, 2); // Weekly recap and Journal check-in are in wave 1.
     });
   });
 

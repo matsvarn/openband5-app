@@ -13,18 +13,21 @@ import 'cycle.dart';
 import 'medication.dart';
 import 'nutrition.dart';
 import 'theme.dart';
+import 'tab_bar.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 
 const _kPatternNights = 30;
 
 class OpenBandJournal extends StatefulWidget {
   final OpenBandController controller;
+  final bool releaseReduced;
   final FutureOr<void> Function(String day)? onEdit;
   final FutureOr<void> Function()? onNutrition;
   final FutureOr<void> Function()? onCycle;
   const OpenBandJournal({
     super.key,
     required this.controller,
+    this.releaseReduced = false,
     this.onEdit,
     this.onNutrition,
     this.onCycle,
@@ -95,7 +98,7 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
     }
     if (!identical(_cycleSeenDay, _c.day)) {
       _cycleSeenDay = _c.day;
-      unawaited(_loadCycle(day, ++_cycleSeq));
+      if (!widget.releaseReduced) unawaited(_loadCycle(day, ++_cycleSeq));
     }
   }
 
@@ -107,6 +110,11 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
     bool pattern = true,
     bool cycle = true,
   }) {
+    if (widget.releaseReduced) {
+      meals = false;
+      targets = false;
+      cycle = false;
+    }
     final dayChanged = _loadedDay != day;
     _loadedDay = day;
     final tasks = <Future<void>>[];
@@ -398,55 +406,70 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
         color: p.canvas,
         child: ListView(
           key: const PageStorageKey('openband.journal'),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            4,
+            16,
+            widget.releaseReduced ? kOBTabBarContentInset : 24,
+          ),
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Journal',
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
-                      style: p
-                          .text(30, weight: FontWeight.w800, display: true)
-                          .copyWith(height: 34 / 30),
+            if (widget.releaseReduced)
+              OBPageHeader(
+                title: 'Journal',
+                subtitle: '',
+                showBack: false,
+                onInfo: widget.onEdit == null ? null : _openEditor,
+                infoIcon: LucideIcons.slidersHorizontal,
+                infoLabel: 'Journal bearbeiten',
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Journal',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                        style: p
+                            .text(30, weight: FontWeight.w800, display: true)
+                            .copyWith(height: 34 / 30),
+                      ),
                     ),
-                  ),
-                  if (widget.onEdit != null)
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: IconButton(
-                        key: const ValueKey('journal-edit'),
-                        tooltip: 'Journal bearbeiten',
-                        onPressed: _saving ? null : _openEditor,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 44,
-                          height: 44,
-                        ),
-                        icon: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: p.card,
-                            shape: BoxShape.circle,
+                    if (widget.onEdit != null)
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: IconButton(
+                          key: const ValueKey('journal-edit'),
+                          tooltip: 'Journal bearbeiten',
+                          onPressed: _saving ? null : _openEditor,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 44,
+                            height: 44,
                           ),
-                          child: Icon(
-                            LucideIcons.slidersHorizontal,
-                            size: 20,
-                            color: p.ink,
+                          icon: Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: p.card,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              LucideIcons.slidersHorizontal,
+                              size: 20,
+                              color: p.ink,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 14),
             OBCheckinCard(
               mood: _mood(),
@@ -481,15 +504,16 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
               retryLabel: _conflict ? 'Neu laden' : null,
             ),
             const SizedBox(height: 10),
-            _HubNutrition(
-              meals: _meals,
-              mealsError: _mealsError,
-              targets: _targets,
-              targetsError: _targetsError,
-              onTap: widget.onNutrition == null ? null : _openNutrition,
-              onRetry: () =>
-                  _reload(_c.selectedDay, journal: false, pattern: false),
-            ),
+            if (!widget.releaseReduced)
+              _HubNutrition(
+                meals: _meals,
+                mealsError: _mealsError,
+                targets: _targets,
+                targetsError: _targetsError,
+                onTap: widget.onNutrition == null ? null : _openNutrition,
+                onRetry: () =>
+                    _reload(_c.selectedDay, journal: false, pattern: false),
+              ),
             const SizedBox(height: 10),
             _HubPattern(
               future: _pattern,
@@ -501,24 +525,7 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                 targets: false,
               ),
             ),
-            const SizedBox(height: 10),
-            OBCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              child: SetRow(
-                LucideIcons.pill,
-                OB.of(context).muted,
-                'Medikamente',
-                key: const ValueKey('medication-journal'),
-                onTap: () => OpenBandMedications.push(
-                  context,
-                  repository: _c.repository,
-                  day: _c.selectedDay,
-                  now: _c.now,
-                  synthetic: _c.day?.synthetic == true,
-                ),
-              ),
-            ),
-            if (_cycleEnabled == true || _cycleReadError) ...[
+            if (!widget.releaseReduced) ...[
               const SizedBox(height: 10),
               OBCard(
                 padding: const EdgeInsets.symmetric(
@@ -526,17 +533,39 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
                   vertical: 4,
                 ),
                 child: SetRow(
-                  LucideIcons.droplet,
+                  LucideIcons.pill,
                   OB.of(context).muted,
-                  'Zyklus',
-                  key: const ValueKey('cycle-journal'),
-                  value: _cycleReadError ? '—' : '',
-                  sub: _cycleReadError ? 'Daten nicht geladen' : '',
-                  onTap: _cycleReadError
-                      ? () => _loadCycle(_c.selectedDay, ++_cycleSeq)
-                      : _openCycle,
+                  'Medikamente',
+                  key: const ValueKey('medication-journal'),
+                  onTap: () => OpenBandMedications.push(
+                    context,
+                    repository: _c.repository,
+                    day: _c.selectedDay,
+                    now: _c.now,
+                    synthetic: _c.day?.synthetic == true,
+                  ),
                 ),
               ),
+              if (_cycleEnabled == true || _cycleReadError) ...[
+                const SizedBox(height: 10),
+                OBCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
+                  ),
+                  child: SetRow(
+                    LucideIcons.droplet,
+                    OB.of(context).muted,
+                    'Zyklus',
+                    key: const ValueKey('cycle-journal'),
+                    value: _cycleReadError ? '—' : '',
+                    sub: _cycleReadError ? 'Daten nicht geladen' : '',
+                    onTap: _cycleReadError
+                        ? () => _loadCycle(_c.selectedDay, ++_cycleSeq)
+                        : _openCycle,
+                  ),
+                ),
+              ],
             ],
           ],
         ),

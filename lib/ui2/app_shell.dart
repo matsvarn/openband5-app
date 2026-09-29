@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../openband/theme.dart';
+import '../openband/tab_bar.dart';
 import 'theme.dart' show C;
 import 'grammar.dart' show Pressable;
 
 enum ShellDomain {
-  home('Übersicht', LucideIcons.house, C.domHome),
+  home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),
   workout('Training', LucideIcons.dumbbell, C.domMove),
-  wellness('Journal', LucideIcons.notebookPen, C.domMind);
+  wellness('Journal', LucideIcons.notebookPen, C.domMind),
+  sleep('Schlaf', LucideIcons.moon, C.domHealth);
 
   const ShellDomain(this.label, this.icon, this.accent);
   final String label;
@@ -21,8 +23,10 @@ class AppShell extends StatefulWidget {
   final Widget Function(BuildContext, ShellDomain) builder;
   final ShellDomain initial;
 
-  /// Null keeps the four-tab shell. A single domain hides the bar.
+  /// Null uses every development domain. A single domain hides the bar.
   final List<ShellDomain>? domains;
+  /// G3 floating control over root content; development keeps its old bar.
+  final bool releaseStyle;
   final ValueChanged<ShellDomain>? onSelect;
   final Widget? banner;
   const AppShell({
@@ -30,6 +34,7 @@ class AppShell extends StatefulWidget {
     required this.builder,
     this.initial = ShellDomain.home,
     this.domains,
+    this.releaseStyle = false,
     this.onSelect,
     this.banner,
   });
@@ -90,6 +95,7 @@ class AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final p = OB.of(context);
     final atRoot = _observers[_current]!.depth <= 1;
+    final tabBottom = obTabBarBottom(context);
     return PopScope(
       canPop: atRoot,
       onPopInvokedWithResult: (didPop, result) {
@@ -101,31 +107,55 @@ class AppShellState extends State<AppShell> {
           backgroundColor: p.canvas,
           body: SafeArea(
             bottom: false,
-            child: Column(
+            child: Stack(
               children: [
-                Expanded(
-                  child: IndexedStack(
-                    index: _current.index,
-                    children: [
-                      for (final domain in ShellDomain.values)
-                        if (_built.contains(domain))
-                          Navigator(
-                            key: _keys[domain],
-                            observers: [_observers[domain]!],
-                            onGenerateRoute: (_) => MaterialPageRoute<void>(
-                              builder: (c) => widget.builder(c, domain),
-                            ),
-                          )
-                        else
-                          const SizedBox.shrink(),
-                    ],
-                  ),
+                Column(
+                  children: [
+                    Expanded(
+                      child: IndexedStack(
+                        index: _current.index,
+                        children: [
+                          for (final domain in ShellDomain.values)
+                            if (_built.contains(domain))
+                              Navigator(
+                                key: _keys[domain],
+                                observers: [_observers[domain]!],
+                                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                                  builder: (c) => widget.builder(c, domain),
+                                ),
+                              )
+                            else
+                              const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                    if (widget.banner != null && atRoot && !widget.releaseStyle)
+                      widget.banner!,
+                  ],
                 ),
-                if (widget.banner != null && atRoot) widget.banner!,
+                if (widget.releaseStyle && atRoot && widget.banner != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: tabBottom + kOBTabBarHeight + kOBTabBarBannerGap,
+                    child: widget.banner!,
+                  ),
+                if (widget.releaseStyle && atRoot)
+                  Positioned(
+                    left: kOBTabBarHorizontalInset,
+                    right: kOBTabBarHorizontalInset,
+                    bottom: tabBottom,
+                    child: OBTabBar(
+                      domains: _domains,
+                      selected: _current,
+                      onSelect: select,
+                    ),
+                  ),
               ],
             ),
           ),
-          bottomNavigationBar: !atRoot || _domains.length < 2
+          bottomNavigationBar:
+              widget.releaseStyle || !atRoot || _domains.length < 2
               ? null
               : Container(
                   decoration: BoxDecoration(

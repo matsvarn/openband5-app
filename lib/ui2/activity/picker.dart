@@ -30,6 +30,7 @@ class ActivityPicker extends StatefulWidget {
 
   /// Where a chosen activity goes. Defaults to [ActivitySetup].
   final void Function(BuildContext c, Activity a)? onPick;
+  final bool releaseReduced;
 
   const ActivityPicker({
     super.key,
@@ -37,6 +38,7 @@ class ActivityPicker extends StatefulWidget {
     this.host = ActivityHost.none,
     this.recent = const [],
     this.onPick,
+    this.releaseReduced = false,
   });
 
   @override
@@ -55,6 +57,7 @@ class _ActivityPickerState extends State<ActivityPicker> {
   int closing = -1;
 
   void _pick(BuildContext c, Activity a) {
+    if (widget.releaseReduced && a.track == Track.sets) return;
     if (widget.onPick != null) return widget.onPick!(c, a);
     Navigator.of(c).push(MaterialPageRoute(
         builder: (_) =>
@@ -67,9 +70,17 @@ class _ActivityPickerState extends State<ActivityPicker> {
     final l = AppLocalizations.of(c);
     final searching = q.trim().isNotEmpty;
     final needle = q.trim().toLowerCase();
+    final available = widget.releaseReduced
+        ? allActivities.where((a) => a.track != Track.sets).toList()
+        : allActivities;
+    final groups = widget.releaseReduced
+        ? [for (final g in activityLibrary)
+            ActGroup(g.name, g.icon,
+                g.items.where((a) => a.track != Track.sets).toList())]
+        : activityLibrary;
     final results = searching
         ? [
-            for (final a in allActivities)
+            for (final a in available)
               if (a.name.toLowerCase().contains(needle)) a,
           ]
         : const <Activity>[];
@@ -106,8 +117,8 @@ class _ActivityPickerState extends State<ActivityPicker> {
                       cursorColor: p.on(C.purple),
                       decoration: InputDecoration.collapsed(
                           hintText: l?.activityPickerSearchHint(
-                                  allActivities.length) ??
-                              'Search ${allActivities.length} activities',
+                                  available.length) ??
+                              'Search ${available.length} activities',
                           hintStyle: F.body.copyWith(color: p.ink3)),
                     ),
                   ),
@@ -160,19 +171,22 @@ class _ActivityPickerState extends State<ActivityPicker> {
                     final row = widget.recent.isEmpty
                         ? quickStart
                         : widget.recent;
+                    final shown = widget.releaseReduced
+                        ? row.where((a) => a.track != Track.sets).toList()
+                        : row;
                     return SizedBox(
                       height: 96,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        itemCount: row.length,
+                        itemCount: shown.length,
                         separatorBuilder: (_, _) => const SizedBox(width: S.x3),
                         itemBuilder: (_, i) =>
-                            _Quick(row[i], () => _pick(c, row[i])),
+                            _Quick(shown[i], () => _pick(c, shown[i])),
                       ),
                     );
                   }),
                   const SizedBox(height: S.x5),
-                  for (var gi = 0; gi < activityLibrary.length; gi++) ...[
+                  for (var gi = 0; gi < groups.length; gi++) ...[
                     Pressable(
                       onTap: () => setState(() {
                         closing = group;
@@ -182,13 +196,13 @@ class _ActivityPickerState extends State<ActivityPicker> {
                         padding:
                             const EdgeInsets.symmetric(vertical: S.x3),
                         child: Row(children: [
-                          Icon(activityLibrary[gi].icon,
+                          Icon(groups[gi].icon,
                               size: 18, color: p.ink2),
                           const SizedBox(width: S.x3),
                           Expanded(
-                              child: Text(activityLibrary[gi].name,
+                              child: Text(groups[gi].name,
                                   style: F.head.copyWith(color: p.ink))),
-                          Text('${activityLibrary[gi].items.length}',
+                          Text('${groups[gi].items.length}',
                               style: F.cap.copyWith(color: p.ink3)),
                           const SizedBox(width: S.x2),
                           AnimatedRotation(
@@ -211,14 +225,14 @@ class _ActivityPickerState extends State<ActivityPicker> {
                                   horizontal: S.x4),
                               child: Column(children: [
                                 for (var i = 0;
-                                    i < activityLibrary[gi].items.length;
+                                    i < groups[gi].items.length;
                                     i++) ...[
-                                  ActivityRow(activityLibrary[gi].items[i],
+                                  ActivityRow(groups[gi].items[i],
                                       weightKg: widget.weightKg,
                                       onTap: () => _pick(
-                                          c, activityLibrary[gi].items[i])),
+                                          c, groups[gi].items[i])),
                                   if (i <
-                                      activityLibrary[gi].items.length - 1)
+                                      groups[gi].items.length - 1)
                                     Divider(color: p.line, height: 1),
                                 ],
                               ]),

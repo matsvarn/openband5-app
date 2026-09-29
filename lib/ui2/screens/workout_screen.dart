@@ -44,7 +44,8 @@ import 'log_workout.dart';
 import 'start_card.dart';
 
 class WorkoutScreen extends StatefulWidget {
-  const WorkoutScreen({super.key});
+  final bool releaseReduced;
+  const WorkoutScreen({super.key, this.releaseReduced = false});
 
   @override
   State<WorkoutScreen> createState() => _WorkoutScreenState();
@@ -82,6 +83,13 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       builder: (c, snap) {
         final loc = AppLocalizations.of(c);
         final d = snap.data ?? const _WorkoutData.empty();
+        if (widget.releaseReduced) {
+          return ActivityPicker(
+              weightKg: d.weightKg,
+              host: _host(d),
+              recent: d.recent,
+              releaseReduced: true);
+        }
         // THE LIST DROPS ITS SIDE PADDING and hands it to each child instead,
         // so the hero card can be the one child that does not get it and runs
         // edge to edge. Two earlier attempts had the CARD escape its parent —
