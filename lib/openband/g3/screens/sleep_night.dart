@@ -226,11 +226,11 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             recorded.isEmpty
                                 ? 'keine Daten'
                                 : series != null &&
-                                    window != null &&
-                                    nightSignalHasUncoveredInterval(
-                                      series,
-                                      window,
-                                    )
+                                      window != null &&
+                                      nightSignalHasUncoveredInterval(
+                                        series,
+                                        window,
+                                      )
                                 ? 'teilweise'
                                 : 'gespeichert',
                             style: g.t(12, 16, color: g.muted),
@@ -328,7 +328,11 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
           children: [
             for (final label in [from, range.low, range.high, to])
               Text(
-                label.toStringAsFixed(0),
+                label
+                    .toStringAsFixed(
+                      _kind == NightSignalKind.respiration ? 1 : 0,
+                    )
+                    .replaceAll('.', ','),
                 style: g.t(11, 15, color: g.muted),
               ),
           ],

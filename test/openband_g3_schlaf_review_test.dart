@@ -99,6 +99,30 @@ class _NoFreeNightRepo extends _PlanWithoutGoalRepo {
       );
 }
 
+class _RespirationRangeRepo extends _PlanWithoutGoalRepo {
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      metric == G3Metric.respRate
+      ? const G3Baseline(
+          BaselineStatus(BaselinePhase.trusted),
+          range: PersonalRange(14.2, 16.6, 15.4),
+        )
+      : super.readPersonalRange(metric, day);
+}
+
+class _SignedJetlagRepo extends _PlanWithoutGoalRepo {
+  @override
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async =>
+      const G3SleepPlus(
+        regularity: G3AvailableValue(78),
+        socialJetlag: G3AvailableValue(1.5),
+        socialJetlagDetail: G3SocialJetlagDetail(signedHours: -1.5),
+        sleepDebt: G3SleepDebt(),
+        bedtime: null,
+        wake: null,
+      );
+}
+
 Future<void> _root(WidgetTester tester, SleepNight night) async {
   final repo = _ClosedNightRepo(night);
   final controller = OpenBandController(
@@ -189,7 +213,40 @@ void main() {
     expect(find.text('22:20'), findsWidgets);
     expect(find.textContaining('erinnern'), findsOneWidget);
     expect(find.text('Eigenes Schlafziel'), findsNothing);
+    expect(find.text('7h35'), findsOneWidget);
+    expect(find.text('10 Min.'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tonight leaves efficiency absent without a stored divisor', (
+    tester,
+  ) async {
+    await _card(
+      tester,
+      const OBPlanBreakdown(baseline: 451, debt: 13, need: 484),
+    );
+    expect(find.text('7h31'), findsOneWidget);
+    expect(find.text('13 Min.'), findsOneWidget);
+    expect(find.text('÷ übliche Schlafeffizienz'), findsOneWidget);
+    expect(find.text('8h35 im Bett'), findsNothing);
+  });
+
+  testWidgets('tonight subtitle uses the next civil day at DST end', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepTonight(
+          repository: _NoFreeNightRepo(),
+          day: '2026-10-25',
+          now: () => DateTime(2026, 10, 25, 10),
+          reminder: MemorySleepBedtimeReminder(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('So → Mo 26.10'), findsOneWidget);
   });
 
   testWidgets('no free night refuses need and bedtime without a reminder', (
@@ -225,6 +282,56 @@ void main() {
     expect(find.text('aus 7 Nächten'), findsNothing);
   });
 
+  testWidgets('ungated missing SRI says this day has no evaluation', (
+    tester,
+  ) async {
+    await _card(tester, const OBSriLead());
+    expect(
+      find.text('Für diesen Tag keine Auswertung gespeichert.'),
+      findsOneWidget,
+    );
+    expect(find.text('im Aufbau'), findsNothing);
+    expect(find.text('von 100'), findsNothing);
+  });
+
+  testWidgets('regularity detail preserves the ungated missing state', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepRegularity(
+          repository: _NoFreeNightRepo(),
+          day: '2026-09-29',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Für diesen Tag keine Auswertung gespeichert.'),
+      findsWidgets,
+    );
+    expect(find.text('im Aufbau'), findsNothing);
+  });
+
+  testWidgets('regularity detail uses stored jetlag sign, not absolute hours', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepRegularity(
+          repository: _SignedJetlagRepo(),
+          day: '2026-09-29',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('früher an freien Tagen'));
+    expect(find.text('früher an freien Tagen'), findsOneWidget);
+    expect(find.text('später an freien Tagen'), findsNothing);
+  });
+
   testWidgets('debt refusal stays distinct from another-day artifact', (
     tester,
   ) async {
@@ -247,8 +354,20 @@ void main() {
       expect(find.text('früher an freien Tagen'), findsOneWidget);
       await _card(tester, const OBSocialJetlag(minutes: 100));
       expect(find.text('später an freien Tagen'), findsOneWidget);
+      await _card(tester, const OBSocialJetlag(minutes: 0));
+      expect(find.text('gleich an freien Tagen'), findsOneWidget);
+      expect(find.text('später an freien Tagen'), findsNothing);
     },
   );
+
+  testWidgets('missing window summaries omit their period captions', (
+    tester,
+  ) async {
+    await _card(tester, const OBSocialJetlag());
+    expect(find.text('7 Nächte'), findsNothing);
+    await _card(tester, const OBSleepDebtLead());
+    expect(find.text('3 Wochen'), findsNothing);
+  });
 
   testWidgets('sleep debt formats positive, negative and zero', (tester) async {
     await _card(tester, const OBSleepDebtLead(minutes: -47));
@@ -356,6 +475,24 @@ void main() {
     expect(find.text('−100'), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
     expect(find.text('100'), findsOneWidget);
+    expect(find.text('von 100'), findsNothing);
+  });
+
+  testWidgets('respiration range ticks keep one decimal', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepNightSignals(
+          repository: _RespirationRangeRepo(),
+          day: '2026-09-29',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Atmung'));
+    await tester.pumpAndSettle();
+    expect(find.text('14,2'), findsOneWidget);
+    expect(find.text('16,6'), findsOneWidget);
   });
 
   testWidgets('debt values beyond the fixed axis are named, not pinned', (
@@ -412,6 +549,41 @@ void main() {
     expect(find.textContaining('00:00–01:00 ohne Daten'), findsOneWidget);
     expect(find.text('1h00'), findsOneWidget);
     expect(find.text('2h00'), findsOneWidget);
+  });
+
+  testWidgets('multiple night gaps name their count', (tester) async {
+    final start = DateTime(2026, 9, 28, 23);
+    final night = SleepNight(
+      onset: start,
+      wake: start.add(const Duration(hours: 4)),
+      duration: const DayMetric(120),
+      bedMinutes: 240,
+      unobservedMinutes: 120,
+      segments: [
+        NightSegment(
+          start,
+          start.add(const Duration(hours: 1)),
+          NightStage.deep,
+        ),
+        NightSegment(
+          start.add(const Duration(hours: 1)),
+          start.add(const Duration(hours: 2)),
+          null,
+        ),
+        NightSegment(
+          start.add(const Duration(hours: 2)),
+          start.add(const Duration(hours: 3)),
+          NightStage.light,
+        ),
+        NightSegment(
+          start.add(const Duration(hours: 3)),
+          start.add(const Duration(hours: 4)),
+          null,
+        ),
+      ],
+    );
+    await _root(tester, night);
+    expect(find.textContaining('2 Lücken insgesamt'), findsOneWidget);
   });
 
   test('stale reminder reconcile cannot cancel a newly armed slot', () async {
