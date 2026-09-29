@@ -122,6 +122,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('Journal remains usable at 320 pt with larger text', (
+    tester,
+  ) async {
+    await mount(tester);
+    tester.view.physicalSize = const Size(320, 852);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+  });
+
   testWidgets(
     'missing answers stay open and a saved answer advances the check-in',
     (tester) async {
@@ -177,13 +189,13 @@ void main() {
   testWidgets(
     'successful write with failed refresh offers reload, not another save',
     (tester) async {
-    repo = _ReadFailsAfterWrite()..failCaffeineSleepPattern = true;
-    controller.dispose();
-    controller = OpenBandController(
-      repository: repo,
-      initialDay: '2026-09-15',
-      now: () => DateTime(2026, 9, 15),
-    );
+      repo = _ReadFailsAfterWrite()..failCaffeineSleepPattern = true;
+      controller.dispose();
+      controller = OpenBandController(
+        repository: repo,
+        initialDay: '2026-09-15',
+        now: () => DateTime(2026, 9, 15),
+      );
       await mount(tester);
       await tester.tap(find.text('Nein').first);
       await tester.pumpAndSettle();
