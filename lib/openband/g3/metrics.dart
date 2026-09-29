@@ -47,14 +47,17 @@ class G3Scale extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    final labelTop = top + trackHeight + 11;
+    const inset = 4.5; // half the 5 pt pointer plus its 2 pt halo
+    final trackTop = top + 2;
+    final labelTop = trackTop + trackHeight + 11;
     final labelHeight = MediaQuery.textScalerOf(
       context,
     ).scale(16).ceilToDouble();
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
-        double x(double v) => ((v - min) / (max - min)).clamp(0.0, 1.0) * w;
+        double x(double v) =>
+            inset + ((v - min) / (max - min)).clamp(0.0, 1.0) * (w - 2 * inset);
         final v = value?.isFinite == true ? value : null;
         return SizedBox(
           height: ticks.isEmpty
@@ -64,9 +67,9 @@ class G3Scale extends StatelessWidget {
             clipBehavior: Clip.hardEdge,
             children: [
               Positioned(
-                left: 0,
-                right: 0,
-                top: top,
+                left: inset,
+                right: inset,
+                top: trackTop,
                 height: trackHeight,
                 child: DecoratedBox(
                   decoration: g.pressed(
@@ -80,7 +83,7 @@ class G3Scale extends StatelessWidget {
                   Positioned(
                     left: x(lo),
                     width: x(hi) - x(lo),
-                    top: top,
+                    top: trackTop,
                     height: trackHeight,
                     child: ColoredBox(color: g.band),
                   ),
@@ -88,14 +91,14 @@ class G3Scale extends StatelessWidget {
                 Positioned(
                   left: x(median!) - .75,
                   width: 1.5,
-                  top: top,
+                  top: trackTop,
                   height: trackHeight,
                   child: ColoredBox(color: g.canvas),
                 ),
               if (v != null)
                 Positioned(
                   left: x(v) - 2.5,
-                  top: top + trackHeight / 2 - pointerHeight / 2,
+                  top: trackTop + trackHeight / 2 - pointerHeight / 2,
                   width: 5,
                   height: pointerHeight,
                   child: DecoratedBox(
@@ -109,8 +112,10 @@ class G3Scale extends StatelessWidget {
               for (final t in ticks)
                 if (t.at.isFinite)
                   Positioned(
-                    left: t.at == min ? 0 : (t.at == max ? null : x(t.at) - 8),
-                    right: t.at == max ? 0 : null,
+                    left: t.at == min
+                        ? inset
+                        : (t.at == max ? null : x(t.at) - 8),
+                    right: t.at == max ? inset : null,
                     top: labelTop,
                     width: t.at == min || t.at == max
                         ? w / 2
@@ -464,7 +469,7 @@ class OBLeadMetric extends StatelessWidget {
           ],
         ),
         if (s != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           G3Scale(
             min: s.min,
             max: s.max,
@@ -587,10 +592,17 @@ class OBSecondaryMetric extends StatelessWidget {
                 final goalWidth = goalText == null
                     ? 0.0
                     : labelWidth(goalText, goalStyle).clamp(0.0, goalSpace);
-                final goalLeft = goalAt?.isFinite == true
+                final goalMinLeft = startWidth + 4;
+                final goalMaxLeft = w - endWidth - 4 - goalWidth;
+                final showGoal =
+                    goalText != null &&
+                    goalAt?.isFinite == true &&
+                    goalWidth > 0 &&
+                    goalMinLeft <= goalMaxLeft;
+                final goalLeft = showGoal
                     ? (w * goalAt!.clamp(0.0, 1.0) - goalWidth / 2).clamp(
-                        startWidth + 4,
-                        w - endWidth - 4 - goalWidth,
+                        goalMinLeft,
+                        goalMaxLeft,
                       )
                     : 0.0;
                 return Column(
@@ -657,9 +669,7 @@ class OBSecondaryMetric extends StatelessWidget {
                               style: mutedStyle,
                             ),
                           ),
-                          if (goalText != null &&
-                              goalAt?.isFinite == true &&
-                              goalWidth > 0)
+                          if (showGoal)
                             Positioned(
                               left: goalLeft,
                               width: goalWidth,

@@ -11,6 +11,23 @@ import 'day.dart';
 import 'g3_theme.dart';
 import 'metrics.dart';
 
+void _noop() {}
+
+// Paper crops these controls to their 30 pt painted track; the widget keeps
+// its full 44 pt touch height in production.
+Widget _paperSegmented(OBSegmented child) => Transform.translate(
+  offset: const Offset(0, -7),
+  child: SizedBox(
+    height: 30,
+    child: OverflowBox(
+      alignment: Alignment.topLeft,
+      minHeight: 44,
+      maxHeight: 44,
+      child: child,
+    ),
+  ),
+);
+
 const _erholung = G3Scale(
   min: 0,
   max: 100,
@@ -468,26 +485,31 @@ final Map<String, Widget Function()> g3Specimens = {
     kind: OBSyncKind.live,
     text: 'Daten bis 09:38 · Nacht lückenlos',
     synthetic: true,
+    onTap: _noop,
   ),
   'OBSyncState.partial': () => const OBSyncState(
     kind: OBSyncKind.partial,
     text: 'Daten bis 09:38 · Nacht mit Lücke',
     synthetic: true,
+    onTap: _noop,
   ),
   'OBSyncState.stale': () => const OBSyncState(
     kind: OBSyncKind.stale,
     text: 'Getrennt · Daten bis gestern 23:10',
     synthetic: true,
+    onTap: _noop,
   ),
   'OBSyncState.never': () => const OBSyncState(
     kind: OBSyncKind.never,
     text: 'Noch kein Band verbunden',
     synthetic: true,
+    onTap: _noop,
   ),
   'OBSyncState.past': () => const OBSyncState(
     kind: OBSyncKind.past,
     text: 'Gespeicherter Tag · Daten bis 23:58',
     synthetic: true,
+    onTap: _noop,
   ),
   'OBPanel.hero': () => OBPanel(
     hero: true,
@@ -558,17 +580,19 @@ final Map<String, Widget Function()> g3Specimens = {
     progress: '2 von 4',
     answered: 'Alkohol gestern: Nein',
     question: 'Koffein nach 14 Uhr?',
+    onChange: _noop,
   ),
   'OBCheckIn.later': () =>
       const OBCheckIn(state: OBCheckInState.later, progress: '4 offen'),
-  'OBSegmented.week': () => const OBSegmented(
-    items: ['Erholung', 'Schlaf', 'Belastung'],
-    selected: 0,
+  'OBSegmented.week': () => _paperSegmented(
+    const OBSegmented(items: ['Erholung', 'Schlaf', 'Belastung'], selected: 0),
   ),
-  'OBSegmented.week.sleep': () => const OBSegmented(
-    items: ['Erholung', 'Schlaf', 'Belastung'],
-    selected: 1,
-    disabled: {0},
+  'OBSegmented.week.sleep': () => _paperSegmented(
+    const OBSegmented(
+      items: ['Erholung', 'Schlaf', 'Belastung'],
+      selected: 1,
+      disabled: {0},
+    ),
   ),
   'OBWeekBars.recovery': () => OBWeekBars(
     max: 111,
@@ -675,8 +699,14 @@ final Map<String, Widget Function()> g3Specimens = {
     ],
   ),
   'OBNightCard.missing': () => const OBNightCard(state: OBNightState.missing),
-  'OBSectionHeader': () =>
-      const OBSectionHeader('AKTIVITÄT', action: 'Eintragen'),
+  'OBSectionHeader': () => Transform.translate(
+    offset: const Offset(-.5, -1),
+    child: const OBSectionHeader(
+      'AKTIVITÄT',
+      action: 'Eintragen',
+      onAction: _noop,
+    ),
+  ),
   'OBSectionHeader.plain': () => const OBSectionHeader('WOCHE'),
   'OBListRow.default': () => const OBListRow(
     icon: LucideIcons.route,
@@ -692,10 +722,12 @@ final Map<String, Widget Function()> g3Specimens = {
   'OBActionPrimary': () => const OBActionPrimary('Speichern'),
   'OBActionSecondary': () => const OBActionSecondary('Abbrechen'),
   'OBPillButton': () => const OBPillButton('Ziel festlegen'),
-  'OBSegmented': () =>
-      const OBSegmented(items: ['Manuell', 'Apple Health'], selected: 0),
-  'OBSegmented.range': () =>
-      const OBSegmented(items: ['7 T', '30 T', '90 T'], selected: 0),
+  'OBSegmented': () => _paperSegmented(
+    const OBSegmented(items: ['Manuell', 'Apple Health'], selected: 0),
+  ),
+  'OBSegmented.range': () => _paperSegmented(
+    const OBSegmented(items: ['7 T', '30 T', '90 T'], selected: 0),
+  ),
   'OBSheet': () => OBSheet(
     title: 'Titel des Sheets',
     subtitle: 'Ein Satz, was hier entschieden wird.',
@@ -746,6 +778,7 @@ final Map<String, Widget Function()> g3Specimens = {
       OBZone(1, '50–60 %', 0),
     ],
     source: 'HFmax 186 · geschätzt aus Alter',
+    onBasis: _noop,
   ),
   'OBTrendChart.d7': () => OBTrendChart(
     title: 'ERHOLUNG',
@@ -817,5 +850,6 @@ final Map<String, Widget Function()> g3Specimens = {
     controller: TextEditingController(text: '78,4'),
     unit: 'kg',
     when: 'Di 29.09 · 07:05',
+    onTime: _noop,
   ),
 };

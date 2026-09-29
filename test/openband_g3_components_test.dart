@@ -496,6 +496,39 @@ void main() {
     });
   });
 
+  testWidgets('canonical specimens keep their Paper actions', (tester) async {
+    for (final (name, label) in [
+      ('OBSectionHeader', 'Eintragen'),
+      ('OBZoneRows', 'Grundlage der Zonen'),
+      ('OBFormField.number', 'Zeit ändern'),
+      ('OBCheckIn.answered', 'Antwort ändern'),
+    ]) {
+      await tester.pumpWidget(
+        _app(SizedBox(width: 361, child: g3Specimens[name]!())),
+      );
+      expect(find.bySemanticsLabel(label), findsOneWidget, reason: name);
+    }
+    for (final name in [
+      'OBSyncState.live',
+      'OBSyncState.partial',
+      'OBSyncState.stale',
+      'OBSyncState.never',
+      'OBSyncState.past',
+    ]) {
+      await tester.pumpWidget(
+        _app(SizedBox(width: 361, child: g3Specimens[name]!())),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(OBSyncState),
+          matching: find.byType(OBChevron),
+        ),
+        findsOneWidget,
+        reason: name,
+      );
+    }
+  });
+
   group('chart paint', () {
     testWidgets('30-day worse endpoint keeps its mark colour', (tester) async {
       await tester.pumpWidget(
@@ -599,6 +632,122 @@ void main() {
   });
 
   group('targets and semantics', () {
+    testWidgets('segmented track and section action share their title centre', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          Column(
+            children: [
+              const SizedBox(
+                width: 361,
+                child: OBTrendChart(
+                  title: 'TREND',
+                  period: OBTrendPeriod.d30,
+                  values: [40, 60],
+                  min: 0,
+                  max: 100,
+                ),
+              ),
+              SizedBox(
+                width: 361,
+                child: OBSectionHeader(
+                  'AKTIVITÄT',
+                  action: 'Eintragen',
+                  onAction: () {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      final segment = find.byType(OBSegmented);
+      final track = tester.widget<Positioned>(
+        find.descendant(
+          of: segment,
+          matching: find.byWidgetPredicate(
+            (w) => w is Positioned && w.height == 30,
+          ),
+        ),
+      );
+      final segmentCenter = tester.getTopLeft(segment).dy + track.top! + 15;
+      expect(
+        segmentCenter,
+        closeTo(tester.getRect(find.text('TREND')).center.dy, 1),
+      );
+      expect(
+        tester.getRect(find.text('Eintragen')).center.dy,
+        closeTo(tester.getRect(find.text('AKTIVITÄT')).center.dy, 1),
+      );
+      expect(
+        tester.getSize(find.bySemanticsLabel('Eintragen')).height,
+        greaterThanOrEqualTo(44),
+      );
+    });
+
+    testWidgets('long scale endpoints omit an unplaceable goal caption', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 148,
+              child: OBSecondaryMetric(
+                label: 'SCHLAF',
+                value: '7h',
+                start: 'Startwert über mehrere Monate',
+                end: 'Endwert über mehrere Monate',
+                goal: (.5, 'Ziel 7h45'),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.getSize(find.byType(OBSecondaryMetric)).width, 148);
+      expect(tester.takeException(), isNull);
+      expect(find.text('Ziel 7h45'), findsNothing);
+      expect(find.text('Startwert über mehrere Monate'), findsOneWidget);
+      expect(find.text('Endwert über mehrere Monate'), findsOneWidget);
+    });
+
+    testWidgets(
+      'scale endpoint pointers retain their 2 pt halo inside the clip',
+      (tester) async {
+        for (final value in [0.0, 100.0]) {
+          await tester.pumpWidget(
+            _app(
+              Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 128,
+                  child: G3Scale(
+                    min: 0,
+                    max: 100,
+                    value: value,
+                    ticks: const [G3Tick(0, '0'), G3Tick(100, '100')],
+                  ),
+                ),
+              ),
+            ),
+          );
+          final size = tester.getSize(find.byType(G3Scale));
+          final pointer = tester.widget<Positioned>(
+            find.descendant(
+              of: find.byType(G3Scale),
+              matching: find.byWidgetPredicate(
+                (w) => w is Positioned && w.width == 5 && w.height == 24,
+              ),
+            ),
+          );
+          expect(pointer.left! - 2, greaterThanOrEqualTo(0));
+          expect(pointer.left! + 5 + 2, lessThanOrEqualTo(size.width));
+          expect(pointer.top! - 2, greaterThanOrEqualTo(0));
+          expect(pointer.top! + 24 + 2, lessThanOrEqualTo(size.height));
+        }
+      },
+    );
     testWidgets('error message and retry are separate semantics nodes', (
       tester,
     ) async {
@@ -738,6 +887,20 @@ void main() {
       );
     });
 
+    testWidgets('a single short segment keeps a 44 pt target', (tester) async {
+      await tester.pumpWidget(
+        _app(OBSegmented(items: const ['A'], selected: 0, onChanged: (_) {})),
+      );
+      expect(
+        tester.getSize(find.bySemanticsLabel('A')).width,
+        greaterThanOrEqualTo(44),
+      );
+      expect(
+        tester.getSize(find.byType(OBSegmented)).width,
+        greaterThanOrEqualTo(44),
+      );
+    });
+
     testWidgets('answered check-in change has a 44 pt target', (tester) async {
       await tester.pumpWidget(
         _app(
@@ -810,14 +973,17 @@ void main() {
       Future<double> left(double fraction) async {
         await tester.pumpWidget(
           _app(
-            SizedBox(
-              width: 361,
-              child: OBSecondaryMetric(
-                label: 'SCHLAF',
-                value: '7h',
-                goal: (fraction, 'Ziel 8h'),
-                start: '0h',
-                end: '10h',
+            Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 361,
+                child: OBSecondaryMetric(
+                  label: 'SCHLAF',
+                  value: '7h',
+                  goal: (fraction, 'Ziel 8h'),
+                  start: '0h',
+                  end: '10h',
+                ),
               ),
             ),
           ),

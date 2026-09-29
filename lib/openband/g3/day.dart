@@ -449,79 +449,88 @@ class OBCheckIn extends StatelessWidget {
         state == OBCheckInState.later ? 9 : 12,
       ),
       decoration: g.pressed(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(LucideIcons.notebookPen, size: 16, color: g.ink),
-              const SizedBox(width: 8),
-              Text('CHECK-IN', style: g.caps()),
-              const Spacer(),
-              Text(
-                progress,
-                style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
-              ),
-            ],
-          ),
-          SizedBox(height: state == OBCheckInState.later ? 7 : 12),
-          if (state == OBCheckInState.later)
-            Row(
-              children: [
-                Expanded(
-                  child: Text(laterText, style: g.t(13, 17, color: g.ink2)),
-                ),
-                const SizedBox(width: 10),
-                OBActionSecondary('Jetzt', onPressed: onResume, height: 34),
-              ],
-            )
-          else ...[
-            if (state == OBCheckInState.answered && answered != null) ...[
               Row(
                 children: [
-                  Icon(LucideIcons.check, size: 16, color: g.ink),
+                  Icon(LucideIcons.notebookPen, size: 16, color: g.ink),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      answered!,
-                      style: g.t(
-                        14,
-                        18,
-                        weight: FontWeight.w500,
-                        color: g.ink2,
-                      ),
-                    ),
+                  Text('CHECK-IN', style: g.caps()),
+                  const Spacer(),
+                  Text(
+                    progress,
+                    style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
                   ),
-                  if (onChange != null)
-                    Semantics(
-                      button: true,
-                      label: 'Antwort ändern',
-                      excludeSemantics: true,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: onChange,
-                        child: SizedBox(
-                          height: 44,
-                          child: Center(
-                            child: Text(
-                              'Ändern',
-                              style: g.t(13, 16, weight: FontWeight.w700),
-                            ),
+                ],
+              ),
+              SizedBox(height: state == OBCheckInState.later ? 7 : 12),
+              if (state == OBCheckInState.later)
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(laterText, style: g.t(13, 17, color: g.ink2)),
+                    ),
+                    const SizedBox(width: 10),
+                    OBActionSecondary('Jetzt', onPressed: onResume, height: 34),
+                  ],
+                )
+              else ...[
+                if (state == OBCheckInState.answered && answered != null) ...[
+                  Row(
+                    children: [
+                      Icon(LucideIcons.check, size: 16, color: g.ink),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          answered!,
+                          style: g.t(
+                            14,
+                            18,
+                            weight: FontWeight.w500,
+                            color: g.ink2,
                           ),
                         ),
                       ),
-                    ),
+                      if (onChange != null)
+                        ExcludeSemantics(
+                          child: Text(
+                            'Ändern',
+                            style: g.t(13, 16, weight: FontWeight.w700),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                 ],
-              ),
-              const SizedBox(height: 12),
+                Text(
+                  question ?? '',
+                  style: g.t(19, 24, weight: FontWeight.w700, tracking: -.015),
+                ),
+                const SizedBox(height: 10),
+                buttons(),
+              ],
             ],
-            Text(
-              question ?? '',
-              style: g.t(19, 24, weight: FontWeight.w700, tracking: -.015),
+          ),
+          if (state == OBCheckInState.answered &&
+              answered != null &&
+              onChange != null)
+            Positioned(
+              top: 15,
+              right: 0,
+              width: 60,
+              height: 44,
+              child: Semantics(
+                button: true,
+                label: 'Antwort ändern',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onChange,
+                ),
+              ),
             ),
-            const SizedBox(height: 10),
-            buttons(),
-          ],
         ],
       ),
     );
