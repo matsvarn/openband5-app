@@ -43,6 +43,7 @@ import 'ui2/onboarding/welcome.dart' show ImportOutcome;
 import 'ui2/profile/alarm.dart';
 import 'ui2/profile/data.dart';
 import 'ui2/profile/profile.dart';
+import 'ui2/profile/settings.dart' show MoreSettingsView;
 
 /// Separate entry point: no AppState, Bluetooth, real database or user profile.
 Future<void> main() async {
@@ -400,6 +401,20 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
             ),
           ),
           onData: () => _openSyntheticData(profileContext),
+          onNotifications: () => Navigator.of(profileContext).push(
+            MaterialPageRoute<void>(
+              builder: (_) => NotificationSettingsView(
+                synthetic: true,
+                prefs: openBandPaperNotificationPrefs,
+                onChanged: (_) async {},
+              ),
+            ),
+          ),
+          onSettings: () => Navigator.of(profileContext).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MoreSettingsView(releaseReduced: true),
+            ),
+          ),
         ),
       ),
     );

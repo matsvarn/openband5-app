@@ -249,9 +249,9 @@ Future<void> _pickLanguage(BuildContext c) async {
   );
 }
 
-/// Human-readable byte size. No dependency for four lines of arithmetic.
-String formatBytes(int b) {
-  if (b < 1024) return '$b B';
+/// Human-readable byte size for profile and band storage.
+String formatBytes(int b, {bool de = false}) {
+  if (b < 1024) return '${de ? obNumber(b) : b} B';
   const units = ['KB', 'MB', 'GB', 'TB'];
   var v = b / 1024;
   var i = 0;
@@ -259,7 +259,14 @@ String formatBytes(int b) {
     v /= 1024;
     i++;
   }
-  return '${v < 10 ? v.toStringAsFixed(1) : v.round()} ${units[i]}';
+  final amount = v < 10
+      ? de
+            ? obNumber(v, digits: 1)
+            : v.toStringAsFixed(1)
+      : de
+      ? obNumber(v.round())
+      : '${v.round()}';
+  return '$amount ${units[i]}';
 }
 
 // ══════════════════ 1 · PROFILE HOME ══════════════════
@@ -405,7 +412,7 @@ class _ProfileHomeState extends State<ProfileHome> {
           onStatus: () => _showBandStatus(c),
           databaseSize: snap.data?.storageBytes == null
               ? null
-              : formatBytes(snap.data!.storageBytes!),
+              : formatBytes(snap.data!.storageBytes!, de: true),
           onDevices: () => goto(c, const MyDevices()),
           onReconnect: () => c.read<AppState>().syncNow(),
         ),
@@ -586,7 +593,12 @@ class ProfileHomeView extends StatelessWidget {
                           l?.profileStorage ?? 'Storage',
                           value: s?.storageBytes == null
                               ? ''
-                              : formatBytes(s!.storageBytes!),
+                              : formatBytes(
+                                  s!.storageBytes!,
+                                  de:
+                                      Localizations.localeOf(c).languageCode ==
+                                      'de',
+                                ),
                           chevron: false,
                         ),
                       SetRow(
@@ -870,7 +882,7 @@ class ProfileHomeView extends StatelessWidget {
                       label: 'Daten & Sicherung',
                       detail: s?.storageBytes == null
                           ? 'Datenbankdatei —'
-                          : 'Datenbankdatei ${formatBytes(s!.storageBytes!)}',
+                          : 'Datenbankdatei ${formatBytes(s!.storageBytes!, de: true)}',
                       onTap: onData,
                     ),
                   ]),
@@ -921,7 +933,7 @@ class ProfileHomeView extends StatelessWidget {
         : bandConnectionLabel(b.connection);
     final archive = s?.storageBytes == null
         ? '—'
-        : formatBytes(s!.storageBytes!).replaceFirst('.', ',');
+        : formatBytes(s!.storageBytes!, de: true);
     final storedBattery = diagnostics?.battery;
     final batteryAt = storedBattery?.observedAt;
     final batteryTime = batteryAt == null
@@ -1174,8 +1186,9 @@ class ProfileHomeView extends StatelessWidget {
     }
     final connected = b.connection == BandConnection.connected;
     final statusUnavailable = s.bandReadFailed;
-    var archive = s.storageBytes == null ? '—' : formatBytes(s.storageBytes!);
-    if (releaseReduced && de) archive = archive.replaceFirst('.', ',');
+    final archive = s.storageBytes == null
+        ? '—'
+        : formatBytes(s.storageBytes!, de: de);
     if (releaseReduced) {
       return _reducedBandCard(
         c,
