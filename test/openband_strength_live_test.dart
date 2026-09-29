@@ -7,12 +7,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/app.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/ui2/activity/live.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 import 'package:provider/provider.dart';
 
@@ -1167,7 +1167,7 @@ void main() {
     );
   });
 
-  testWidgets('failed snapshot retry opens legacy live, not Alpin', (
+  testWidgets('failed snapshot retry keeps legacy strength finishable', (
     tester,
   ) async {
     repo.legacyActiveStrength = true;
@@ -1190,7 +1190,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(OpenBandStrengthLive), findsNothing);
-    expect(find.byType(LiveStrength), findsOneWidget);
+    expect(find.byType(G3LiveRun), findsOneWidget);
+    expect(find.text('Beenden'), findsOneWidget);
     expect(repo.strengthStartCount, 0);
     expect(await repo.readActiveStrengthSession(), isA<LegacyActiveStrength>());
   });
@@ -1214,7 +1215,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(OpenBandStrengthLive), findsNothing);
     expect(find.text('Einheit nicht geladen'), findsNothing);
-    expect(find.byType(LiveMeasured), findsOneWidget);
+    expect(find.byType(G3LiveRun), findsOneWidget);
+    expect(find.text('Beenden'), findsOneWidget);
     expect(repo.failStrengthReadRemaining, 1);
     expect(repo.strengthStartCount, 0);
   });
@@ -1373,84 +1375,88 @@ void main() {
     }
   }, tags: const ['golden']);
 
-  testWidgets('mixed-unit active value and unit stay legible in Paper states', (
-    tester,
-  ) async {
-    final definition = _customDefinition(
-      repetitionBasis: ExerciseRepetitionBasis.total,
-    );
-    OriginalLoadInput original(double value, ExerciseLoadUnit unit) =>
-        OriginalLoadInput(
-          value: value,
-          unit: unit,
-          basis: ExerciseLoadBasis.perDevice,
-          deviceCount: 2,
-          repetitionBasis: ExerciseRepetitionBasis.total,
+  testWidgets(
+    'mixed-unit active value and unit stay legible in Paper states',
+    (tester) async {
+      final definition = _customDefinition(
+        repetitionBasis: ExerciseRepetitionBasis.total,
+      );
+      OriginalLoadInput original(double value, ExerciseLoadUnit unit) =>
+          OriginalLoadInput(
+            value: value,
+            unit: unit,
+            basis: ExerciseLoadBasis.perDevice,
+            deviceCount: 2,
+            repetitionBasis: ExerciseRepetitionBasis.total,
+          );
+      final kg = original(10, ExerciseLoadUnit.kg);
+      final lb = original(22, ExerciseLoadUnit.lb);
+      final template = _template(
+        name: 'Kurztraining',
+        exercises: [
+          PlannedExercise(
+            id: 'ex-custom',
+            exerciseKey: definition.id,
+            name: 'Kurzhantel-Curl',
+            definition: definition,
+            sets: [
+              PlannedSet(id: 'mixed-kg', reps: 8, loadKg: 20, load: kg),
+              PlannedSet(
+                id: 'mixed-lb',
+                reps: 8,
+                loadKg: 44 * kKilogramsPerPound,
+                load: lb,
+              ),
+            ],
+          ),
+        ],
+      );
+      for (final state in [
+        ('light', Brightness.light),
+        ('dark', Brightness.dark),
+      ]) {
+        repo = _repo();
+        repo.strengthNow = () => now;
+        final sessionId = await repo.startStrengthSession(template);
+        await repo.recordSet(
+          sessionId,
+          RecordedSet(
+            exerciseKey: definition.id,
+            setIndex: 1,
+            reps: 8,
+            loadKg: 20,
+            at: now,
+            plannedSetId: 'mixed-kg',
+            exerciseId: 'ex-custom',
+            load: kg,
+            definition: definition,
+          ),
         );
-    final kg = original(10, ExerciseLoadUnit.kg);
-    final lb = original(22, ExerciseLoadUnit.lb);
-    final template = _template(
-      name: 'Kurztraining',
-      exercises: [
-        PlannedExercise(
-          id: 'ex-custom',
-          exerciseKey: definition.id,
-          name: 'Kurzhantel-Curl',
-          definition: definition,
-          sets: [
-            PlannedSet(id: 'mixed-kg', reps: 8, loadKg: 20, load: kg),
-            PlannedSet(
-              id: 'mixed-lb',
-              reps: 8,
-              loadKg: 44 * kKilogramsPerPound,
-              load: lb,
-            ),
-          ],
-        ),
-      ],
-    );
-    for (final state in [
-      ('light', Brightness.light),
-      ('dark', Brightness.dark),
-    ]) {
-      repo = _repo();
-      repo.strengthNow = () => now;
-      final sessionId = await repo.startStrengthSession(template);
-      await repo.recordSet(
-        sessionId,
-        RecordedSet(
-          exerciseKey: definition.id,
-          setIndex: 1,
-          reps: 8,
-          loadKg: 20,
-          at: now,
-          plannedSetId: 'mixed-kg',
-          exerciseId: 'ex-custom',
-          load: kg,
-          definition: definition,
-        ),
-      );
-      await mount(
-        tester,
-        resume: true,
-        brightness: state.$2,
-        width: 393,
-        dpr: 1,
-      );
-      final loadField = tester.widget<TextField>(find.byType(TextField).first);
-      expect(loadField.controller?.text, '22');
-      expect(loadField.decoration?.suffixText, ' lb');
-      expect(loadField.decoration?.suffixStyle?.fontSize, 16);
-      expect(loadField.decoration?.suffixStyle?.fontWeight, FontWeight.w700);
-      expect(loadField.decoration?.contentPadding, const EdgeInsets.all(8));
-      await expectLater(
-        find.byType(MaterialApp),
-        matchesGoldenFile(
-          'openband_goldens/custom-load-mixed-units-${state.$1}.png',
-        ),
-      );
-    }
-  }, tags: const ['golden']);
+        await mount(
+          tester,
+          resume: true,
+          brightness: state.$2,
+          width: 393,
+          dpr: 1,
+        );
+        final loadField = tester.widget<TextField>(
+          find.byType(TextField).first,
+        );
+        expect(loadField.controller?.text, '22');
+        expect(loadField.decoration?.suffixText, ' lb');
+        expect(loadField.decoration?.suffixStyle?.fontSize, 16);
+        expect(loadField.decoration?.suffixStyle?.fontWeight, FontWeight.w700);
+        expect(loadField.decoration?.contentPadding, const EdgeInsets.all(8));
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile(
+            'openband_goldens/custom-load-mixed-units-${state.$1}.png',
+          ),
+        );
+      }
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('paper live light is a clean snapshot at 375@2x', (tester) async {
     now = DateTime(2026, 9, 15, 18, 32, 14);
@@ -1651,48 +1657,50 @@ void main() {
     );
   }, tags: const ['golden']);
 
-  testWidgets('375-wide TextScaler 2 keeps rest and keyboard row visible', (
-    tester,
-  ) async {
-    now = DateTime(2026, 9, 15, 18, 32, 14);
-    await mountPaper(tester, scale: 2);
-    expect(find.text('Pause'), findsOneWidget);
-    expect(find.text('+30 s').hitTestable(), findsOneWidget);
-    expect(find.byType(TextField), findsWidgets);
-    expect(find.text('SATZ'), findsNothing);
-    expect(find.text('ZULETZT'), findsNothing);
-    expect(find.text('KG'), findsNothing);
-    expect(find.text('WDH'), findsNothing);
-    expect(find.text('Satz 3'), findsWidgets);
-    expect(find.text('Zuletzt 60 × 7'), findsOneWidget);
-    expect(find.text('kg'), findsWidgets);
-    expect(find.text('Wdh.'), findsWidgets);
-    expect(find.byType(FittedBox), findsNothing);
-    expect(
-      tester.getSize(find.text('Satz 3').first).height,
-      greaterThanOrEqualTo(30),
-    );
-    expect(
-      tester.getSize(find.text('Zuletzt 60 × 7')).height,
-      greaterThanOrEqualTo(26),
-    );
-    final restH = tester.getSize(find.byType(OBRestTimer)).height;
-    final list = tester.widget<ListView>(find.byType(ListView));
-    expect((list.padding! as EdgeInsets).bottom, greaterThanOrEqualTo(restH));
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/strength-live-2x.png'),
-    );
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pump();
-    final active = find.byType(TextField).first;
-    await tester.ensureVisible(active);
-    await tester.pump();
-    expect(active.hitTestable(), findsOneWidget);
-    expect(find.text('+30 s').hitTestable(), findsOneWidget);
-    expect(find.text('Weiter').hitTestable(), findsOneWidget);
-  }, tags: const ['golden']);
+  testWidgets(
+    '375-wide TextScaler 2 keeps rest and keyboard row visible',
+    (tester) async {
+      now = DateTime(2026, 9, 15, 18, 32, 14);
+      await mountPaper(tester, scale: 2);
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('+30 s').hitTestable(), findsOneWidget);
+      expect(find.byType(TextField), findsWidgets);
+      expect(find.text('SATZ'), findsNothing);
+      expect(find.text('ZULETZT'), findsNothing);
+      expect(find.text('KG'), findsNothing);
+      expect(find.text('WDH'), findsNothing);
+      expect(find.text('Satz 3'), findsWidgets);
+      expect(find.text('Zuletzt 60 × 7'), findsOneWidget);
+      expect(find.text('kg'), findsWidgets);
+      expect(find.text('Wdh.'), findsWidgets);
+      expect(find.byType(FittedBox), findsNothing);
+      expect(
+        tester.getSize(find.text('Satz 3').first).height,
+        greaterThanOrEqualTo(30),
+      );
+      expect(
+        tester.getSize(find.text('Zuletzt 60 × 7')).height,
+        greaterThanOrEqualTo(26),
+      );
+      final restH = tester.getSize(find.byType(OBRestTimer)).height;
+      final list = tester.widget<ListView>(find.byType(ListView));
+      expect((list.padding! as EdgeInsets).bottom, greaterThanOrEqualTo(restH));
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/strength-live-2x.png'),
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pump();
+      final active = find.byType(TextField).first;
+      await tester.ensureVisible(active);
+      await tester.pump();
+      expect(active.hitTestable(), findsOneWidget);
+      expect(find.text('+30 s').hitTestable(), findsOneWidget);
+      expect(find.text('Weiter').hitTestable(), findsOneWidget);
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('large text skipped row keeps Satz, Zuletzt and status', (
     tester,

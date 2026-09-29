@@ -75,15 +75,7 @@ class OBHrTrace extends StatelessWidget {
     const w = 291.0, h = 150.0;
     double x(double t) => t / duration * w;
     double y(double v) => h * (max - v) / (max - min);
-    final usable = samples.where(
-      (s) =>
-          s.$1.isFinite &&
-          s.$2.isFinite &&
-          !gaps.any((gap) => s.$1 > gap.$1 && s.$1 < gap.$2),
-    );
-    final peakAt = usable.isEmpty
-        ? null
-        : usable.reduce((a, b) => b.$2 > a.$2 ? b : a);
+    final peakAt = hrTraceVisiblePeak(samples, gaps);
     Widget stat(String k, String? v) => Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
@@ -276,6 +268,41 @@ class OBHrTrace extends StatelessWidget {
   }
 }
 
+(double, double)? hrTraceVisiblePeak(
+  List<(double, double)> samples,
+  List<(double, double)> gaps,
+) {
+  final visible = samples.where(
+    (p) => !gaps.any((gap) => p.$1 > gap.$1 && p.$1 < gap.$2),
+  );
+  if (visible.isEmpty) return null;
+  return visible.reduce((a, b) => b.$2 > a.$2 ? b : a);
+}
+
+/// A gap separates adjacent plotted samples even when it contains no sample.
+List<List<(double, double)>> hrTraceStrokeRuns(
+  List<(double, double)> samples,
+  List<(double, double)> gaps,
+) {
+  final runs = <List<(double, double)>>[];
+  var run = <(double, double)>[];
+  for (final sample in samples) {
+    final t = sample.$1;
+    if (gaps.any((gap) => t > gap.$1 && t < gap.$2)) {
+      run = <(double, double)>[];
+      continue;
+    }
+    if (run.isNotEmpty &&
+        gaps.any((gap) => run.last.$1 <= gap.$1 && t >= gap.$2)) {
+      run = <(double, double)>[];
+    }
+    if (run.isEmpty) runs.add(run);
+    run.add(sample);
+    if (gaps.any((gap) => t == gap.$1)) run = <(double, double)>[];
+  }
+  return runs;
+}
+
 class _HrPainter extends CustomPainter {
   final List<(double, double)> samples;
   final double duration;
@@ -332,24 +359,14 @@ class _HrPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round
       ..strokeCap = StrokeCap.round;
     final path = Path();
-    var open = false;
-    for (final (t, v) in samples) {
-      if (!t.isFinite || !v.isFinite) {
-        open = false;
-        continue;
+    for (final run in hrTraceStrokeRuns(samples, gaps)) {
+      for (final (index, sample) in run.indexed) {
+        if (index == 0) {
+          path.moveTo(x(sample.$1), y(sample.$2));
+        } else {
+          path.lineTo(x(sample.$1), y(sample.$2));
+        }
       }
-      final inGap = gaps.any((gp) => t > gp.$1 && t < gp.$2);
-      if (inGap) {
-        open = false;
-        continue;
-      }
-      if (open) {
-        path.lineTo(x(t), y(v));
-      } else {
-        path.moveTo(x(t), y(v));
-        open = true;
-      }
-      if (gaps.any((gp) => t == gp.$1)) open = false;
     }
     canvas.drawPath(path, line);
     if (peak case (final t, final v)) {

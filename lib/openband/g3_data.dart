@@ -267,6 +267,7 @@ class G3Activity {
     required this.confirmed,
     required this.start,
     required this.end,
+    this.storedDuration,
     this.strain,
     this.avgHr,
     this.maxHr,
@@ -283,7 +284,8 @@ class G3Activity {
   final bool confirmed;
   final DateTime start;
   final DateTime? end;
-  Duration? get duration => end?.difference(start);
+  final Duration? storedDuration;
+  Duration? get duration => storedDuration ?? end?.difference(start);
   final double? strain, avgHr, maxHr;
 
   /// Null for suggestions. Confirmed sessions are scored by the existing
@@ -299,9 +301,18 @@ class G3Activity {
 }
 
 class G3WeeklyLoad {
-  const G3WeeklyLoad(this.days, {this.ctl, this.atl});
+  const G3WeeklyLoad(
+    this.days, {
+    this.ctl,
+    this.atl,
+    this.refusalNote,
+    this.daysHave,
+    this.daysNeed,
+  });
   final List<MetricPoint> days;
   final double? ctl, atl;
+  final String? refusalNote;
+  final int? daysHave, daysNeed;
 }
 
 class G3AvailableValue {

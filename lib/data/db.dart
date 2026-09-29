@@ -6646,6 +6646,8 @@ class LocalDb {
         strain REAL,
         max_hr INTEGER,
         duration_min INTEGER,
+        paused_sec INTEGER NOT NULL DEFAULT 0,
+        paused_at_ms INTEGER,
         hr_covered_sec INTEGER,
         zone_min_json TEXT,
         steps INTEGER,
@@ -6804,6 +6806,8 @@ class LocalDb {
 
   static Future<void> _ensureSessionSchema(Database db) async {
     await _addColumnIfMissing(db, 'sessions', 'steps', 'INTEGER');
+    await _addColumnIfMissing(db, 'sessions', 'paused_sec', 'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'sessions', 'paused_at_ms', 'INTEGER');
     await _addColumnIfMissing(db, 'sessions', 'hrr_bpm', 'REAL');
     // Mean HR over the session window. Stored rather than recomputed because
     // the 1 Hz substrate it comes from is pruned after 3 days: without a column
@@ -15349,6 +15353,21 @@ class LocalDb {
       'sessions',
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Bank a live workout pause without replacing other session columns.
+  static Future<int> setLiveSessionPause(
+    String id, {
+    required int pausedSec,
+    required int? pausedAtMs,
+  }) async {
+    final db = await instance;
+    return db.update(
+      'sessions',
+      {'paused_sec': pausedSec, 'paused_at_ms': pausedAtMs},
+      where: "id = ? AND status = 'live'",
+      whereArgs: [id],
     );
   }
 
