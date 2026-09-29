@@ -90,8 +90,11 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/pairing-dark.png'),
     );
-    expect(tester.getSize(find.byTooltip('Zurück')).height, 44);
+    expect(find.byTooltip('Zurück'), findsNothing);
     expect(tester.getSize(find.byTooltip('Information')).height, 44);
+    expect(find.text('WHOOP-App schließen'), findsOneWidget);
+    expect(find.text('Verbinden'), findsOneWidget);
+    expect(find.text('Später verbinden'), findsOneWidget);
   }, tags: const ['golden']);
 
   testWidgets('mini at 2x scrolls without squeezing actions', (tester) async {

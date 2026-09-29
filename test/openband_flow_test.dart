@@ -388,7 +388,10 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/date-selection.png'),
       );
-      await tester.tap(find.byTooltip('Abbrechen'));
+      await tester.drag(find.byType(ListView).last, const Offset(0, -220));
+      await tester.pumpAndSettle();
+      expect(find.text('7h02'), findsOneWidget);
+      await tester.tap(find.byTooltip('Schließen'));
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-15');
       await tester.tap(find.text(obDayTitle('2026-09-15')));

@@ -703,7 +703,7 @@ class _StatusRow extends StatelessWidget {
           15,
           weight: FontWeight.w700,
           display: true,
-          color: open ? p.gap : p.ink,
+          color: open ? (value == '—' ? p.gap : p.muted) : p.ink,
         )
         .copyWith(height: 20 / 15);
     final stack = _stackStatusRows(context);

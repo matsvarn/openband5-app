@@ -9,6 +9,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBActionPrimary;
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -497,10 +498,12 @@ void main() {
       matchesGoldenFile('openband_goldens/first-sync-interrupted-dark.png'),
     );
     expect(
-      tester.getSize(find.widgetWithText(TextButton, 'Fortsetzen')).height,
+      tester.getSize(find.widgetWithText(OBActionPrimary, 'Fortsetzen')).height,
       greaterThanOrEqualTo(44),
     );
-    expect(find.text('bis 02:10'), findsOneWidget);
+    expect(find.text('bis 02:10'), findsWidgets);
+    expect(find.text('Übertragung unterbrochen'), findsOneWidget);
+    expect(find.textContaining('liegt sicher auf dem iPhone'), findsOneWidget);
   }, tags: const ['golden']);
 
   testWidgets('Paper first-sync frames', (tester) async {
@@ -523,6 +526,8 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/first-sync-complete.png'),
     );
+    expect(find.text('Auswertung heute'), findsOneWidget);
+    expect(find.textContaining('14 Nächte als Basis'), findsOneWidget);
     await pumpPaper(
       tester,
       brightness: Brightness.dark,
@@ -532,17 +537,26 @@ void main() {
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/first-sync-partial-dark.png'),
     );
+    expect(find.text('Teilweise'), findsOneWidget);
     await pumpPaper(tester, evalError: true);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/first-sync-read-error.png'),
     );
+    expect(find.text('Auswertung nicht geladen'), findsOneWidget);
+    expect(find.text('Erneut'), findsOneWidget);
     await pumpPaper(tester, width: 375, height: 812, scale: 2);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/first-sync-375-2x.png'),
     );
     expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.text('Auswertung heute'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pump();
     expect(find.text('Auswertung heute'), findsOneWidget);
     expect(tester.getSize(find.byTooltip('Information')).height, 44);
     expect(find.byTooltip('Zurück'), findsNothing);
