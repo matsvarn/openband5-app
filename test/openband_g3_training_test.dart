@@ -579,7 +579,30 @@ void main() {
       ),
     );
     expect(find.text('Noch keine Trainingslast'), findsOneWidget);
-    expect(find.text('11 von 14 Tagen · noch 3'), findsOneWidget);
+    expect(find.text('11 von 14 Tagen · noch 3 Tage'), findsOneWidget);
+  });
+
+  testWidgets('stored load refusal uses Tag when one day is needed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        const Center(
+          child: SizedBox(
+            width: 350,
+            child: OBTrainingLoad(
+              load: G3WeeklyLoad(
+                [],
+                refusalNote: 'need_baseline:have=0,need=1',
+                daysHave: 0,
+                daysNeed: 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('0 von 1 Tag · noch 1 Tag'), findsOneWidget);
   });
 
   testWidgets('ready training load has no invented comparison bars', (

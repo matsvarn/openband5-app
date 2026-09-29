@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart';
 import '../training.dart' show OBSportIcon;
+import 'count_copy.dart';
 import 'g3_theme.dart';
 import 'metrics.dart' show G3Scale, G3Tick;
 
@@ -218,7 +219,7 @@ class OBTrainingLoad extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               Text(
-                '$have von $need Tagen · noch ${(need - have).clamp(0, need)}',
+                '$have von $need ${g3CountNoun(need, 'Tag', 'Tagen')} · noch ${(need - have).clamp(0, need)} ${g3CountNoun((need - have).clamp(0, need), 'Tag', 'Tage')}',
                 style: g.t(12, 16, color: g.ink2),
               ),
             ],
