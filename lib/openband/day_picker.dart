@@ -22,7 +22,7 @@ Future<void> chooseOpenBandDay(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
     builder: (_) =>
-        FractionallySizedBox(heightFactor: .96, child: _DayPicker(controller)),
+        FractionallySizedBox(heightFactor: 1, child: _DayPicker(controller)),
   );
   if (selected != null) await controller.selectDay(selected);
 }
@@ -175,7 +175,7 @@ class _DayPickerState extends State<_DayPicker> {
             ),
             Expanded(
               child: ListView(
-                padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 16),
+                padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 32),
                 children: [
                   OBCard(
                     padding: EdgeInsets.fromLTRB(

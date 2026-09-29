@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/notify/fired_keys.dart';
@@ -20,7 +21,8 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBToggle;
+import 'package:openstrap_edge/openband/g3/band_parts.dart'
+    show OBSettingsRow, OBToggle;
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -1085,6 +1087,31 @@ void main() {
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
     expect(find.byType(OBTabBar), findsOneWidget);
     expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
+    expect(find.text('Datenbankdatei 4,2 GB'), findsOneWidget);
+    expect(find.text('Datenbankdatei 4.2 GB'), findsNothing);
+
+    for (final label in ['Mitteilungen', 'Einstellungen']) {
+      final row = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(OBSettingsRow),
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(LucideIcons.chevronRight),
+        ),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      final route = label == 'Mitteilungen'
+          ? find.byType(NotificationSettingsView)
+          : find.byType(MoreSettingsView);
+      expect(route, findsOneWidget);
+      Navigator.of(tester.element(route)).pop();
+      await tester.pumpAndSettle();
+    }
 
     await tester.tap(find.byKey(const ValueKey('profile-data')));
     await tester.pumpAndSettle();

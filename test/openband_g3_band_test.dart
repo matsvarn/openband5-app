@@ -807,6 +807,8 @@ void main() {
           now: () => DateTime.parse('$day 09:41:00'),
         );
         addTearDown(controller.dispose);
+        await controller.refresh();
+        expect(controller.day?.synthetic, isTrue);
         await tester.pumpWidget(
           MaterialApp(
             locale: const Locale('de'),
@@ -840,7 +842,7 @@ void main() {
         );
         expect(
           card.bottom,
-          lessThanOrEqualTo(viewport.bottom),
+          lessThanOrEqualTo(viewport.bottom - 24),
           reason: '$size $day',
         );
         expect(
@@ -907,6 +909,7 @@ void main() {
       now: () => DateTime(2026, 8, 31, 9, 41),
     );
     addTearDown(controller.dispose);
+    await controller.refresh();
     await tester.pumpWidget(
       MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -957,6 +960,7 @@ void main() {
       now: () => DateTime(2026, 9, 29, 9, 41),
     );
     addTearDown(controller.dispose);
+    await controller.refresh();
     await tester.pumpWidget(
       MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -1244,6 +1248,45 @@ void main() {
     await expectLater(
       find.byType(Overlay).first,
       matchesGoldenFile('openband_goldens/g3-data-status-large-bottom.png'),
+    );
+  }, tags: const ['golden']);
+
+  testWidgets('profile mini German size and navigation golden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.padding = const FakeViewPadding(top: 47, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 47, bottom: 34);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        theme: openBandTheme(Brightness.light),
+        home: RepaintBoundary(
+          key: const ValueKey('capture'),
+          child: ProfileHomeView(
+            releaseReduced: true,
+            stats: const ProfileStats(
+              name: 'Mats',
+              sources: 1,
+              storageBytes: 4509715661,
+            ),
+            band: const BandSnapshot(connection: BandConnection.connected),
+            bandName: 'WHOOP 5.0',
+            languageLabel: 'Deutsch',
+            now: DateTime(2026, 9, 29, 9, 41),
+            onBand: () {},
+            onNotifications: () {},
+            onData: () {},
+            onSettings: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/g3-profile-mini.png'),
     );
   }, tags: const ['golden']);
 
