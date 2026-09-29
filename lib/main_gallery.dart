@@ -16,11 +16,7 @@ import 'openband/domain.dart';
 import 'openband/g3/screens/band.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
-import 'openband/strength_live.dart';
 import 'openband/exercise_picker.dart';
-import 'openband/template_editor.dart';
-import 'openband/templates.dart';
-import 'openband/session.dart';
 import 'openband/release_scope.dart';
 import 'openband/g3/screens/heute.dart';
 import 'openband/g3/screens/heute_routes.dart';
@@ -34,7 +30,8 @@ import 'openband/theme.dart';
 import 'openband/units.dart';
 import 'state/units_controller.dart';
 import 'theme/theme_controller.dart';
-import 'openband/training.dart';
+import 'openband/g3/screens/training_screen.dart';
+import 'openband/g3/screens/training_live.dart';
 import 'compute/derivation_engine.dart' show kAlgoVersion;
 import 'data/auto_backup.dart' show BackupCadence;
 import 'state/alarm_schedule.dart';
@@ -232,9 +229,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.sleep => G3SleepScreen(controller: controller, asTab: true),
-      ShellDomain.workout => OpenBandTraining(
+      ShellDomain.workout => G3TrainingScreen(
         controller: controller,
-        releaseReduced: widget.releaseReduced,
         onStart: (type) {
           if (type != 'running') return;
           final run = ValueNotifier(
@@ -248,8 +244,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           );
           pushFullScreen(c,
             MaterialPageRoute<void>(
-              builder: (_) => OpenBandRunLive(
+              builder: (_) => G3LiveRun(
                 run: run,
+                sport: 'running',
                 onPause: () => run.value = LiveRun(
                   elapsedSec: run.value.elapsedSec,
                   pausedSec: run.value.pausedSec,
@@ -267,33 +264,13 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                   zone: run.value.zone,
                   gps: true,
                 ),
-                onLap: () {},
-                onFinish: () => Navigator.of(c, rootNavigator: true).maybePop(),
+                onFinish: () async {
+                  Navigator.of(c, rootNavigator: true).maybePop();
+                },
               ),
             ),
           );
         },
-        onOpenTemplates: () async {
-          await Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandTemplates(
-                repository: widget.repository,
-                synthetic: true,
-                onStartTemplate: (t) => _openStrength(c, t),
-                onEditTemplate: (t) => _openTemplateEditor(c, t),
-              ),
-            ),
-          );
-          controller.refresh();
-        },
-        onStartTemplate: (t) => _openStrength(c, t),
-        onEditTemplate: (t) => _openTemplateEditor(c, t),
-        onOpen: (s) => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                OpenBandSession(repository: widget.repository, session: s),
-          ),
-        ),
       ),
       ShellDomain.wellness =>
         widget.releaseReduced

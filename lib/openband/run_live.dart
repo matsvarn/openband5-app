@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../gps/route_models.dart';
 import '../gps/route_tracker.dart';
@@ -19,6 +20,11 @@ class LiveRun {
   final int elapsedSec, pausedSec, laps;
   final double? distanceM;
   final int? heartRate, zone;
+  final double? strain;
+  final ana.HeartRateZoneSet? zoneSet;
+  final int? maxHrSeen;
+  final int? averageHr;
+  final DateTime? startedAt;
   final bool paused, gps;
   const LiveRun({
     required this.elapsedSec,
@@ -27,6 +33,11 @@ class LiveRun {
     this.distanceM,
     this.heartRate,
     this.zone,
+    this.strain,
+    this.zoneSet,
+    this.maxHrSeen,
+    this.averageHr,
+    this.startedAt,
     this.paused = false,
     this.gps = false,
   });

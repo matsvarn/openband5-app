@@ -1,1 +1,167 @@
-{}
+{
+  "training-wurzel-hell": {
+    "page": "p-1B-0",
+    "node": "6XO2-0",
+    "mode": "light"
+  },
+  "training-wurzel-dunkel": {
+    "page": "p-1B-0",
+    "node": "6XSB-0",
+    "mode": "dark"
+  },
+  "training-wurzel-gescrollt-hell": {
+    "page": "p-1B-0",
+    "node": "6XWK-0",
+    "mode": "light"
+  },
+  "training-noch-keine-aktivitaet-hell": {
+    "page": "p-1B-0",
+    "node": "6WO5-0",
+    "mode": "light"
+  },
+  "training-trainingslast-im-aufbau-hell": {
+    "page": "p-1B-0",
+    "node": "6Y4C-0",
+    "mode": "light"
+  },
+  "training-lauf-ergebnis-hell": {
+    "page": "p-1B-0",
+    "node": "6HVO-0",
+    "mode": "light"
+  },
+  "training-lauf-ergebnis-dunkel": {
+    "page": "p-1B-0",
+    "node": "6I33-0",
+    "mode": "dark"
+  },
+  "training-tennis-zonen-abgelehnt-hell": {
+    "page": "p-1B-0",
+    "node": "6IAI-0",
+    "mode": "light"
+  },
+  "training-rad-ohne-pulserholung-gescrollt-hell": {
+    "page": "p-1B-0",
+    "node": "6IKV-0",
+    "mode": "light"
+  },
+  "training-schwimmen-nachgetragen-ohne-bandpuls-hell": {
+    "page": "p-1B-0",
+    "node": "6IUV-0",
+    "mode": "light"
+  },
+  "training-sportart-aendern-sheet-hell": {
+    "page": "p-1B-0",
+    "node": "6LVI-0",
+    "mode": "light"
+  },
+  "training-sportart-geaendert-rad-bestaetigt-hell": {
+    "page": "p-1B-0",
+    "node": "6M5Z-0",
+    "mode": "light"
+  },
+  "training-kein-training-bestaetigen-hell": {
+    "page": "p-1B-0",
+    "node": "6MDH-0",
+    "mode": "light"
+  },
+  "training-nachtragen-sportart-hell": {
+    "page": "p-1B-0",
+    "node": "6MI3-0",
+    "mode": "light"
+  },
+  "training-nachtragen-zeitraum-hell": {
+    "page": "p-1B-0",
+    "node": "6MPB-0",
+    "mode": "light"
+  },
+  "training-nachtragen-pruefen-hell": {
+    "page": "p-1B-0",
+    "node": "6MSM-0",
+    "mode": "light"
+  },
+  "training-nachtragen-gespeichert-hell": {
+    "page": "p-1B-0",
+    "node": "6MVY-0",
+    "mode": "light"
+  },
+  "training-nachtragen-ueberschneidung-hell": {
+    "page": "p-1B-0",
+    "node": "6N12-0",
+    "mode": "light"
+  },
+  "training-live-laeuft-hell": {
+    "page": "p-1B-0",
+    "node": "6N3N-0",
+    "mode": "light"
+  },
+  "training-live-laeuft-dunkel": {
+    "page": "p-1B-0",
+    "node": "6N60-0",
+    "mode": "dark"
+  },
+  "training-live-pausiert-hell": {
+    "page": "p-1B-0",
+    "node": "6N8D-0",
+    "mode": "light"
+  },
+  "training-live-signal-schwach-hell": {
+    "page": "p-1B-0",
+    "node": "6NAP-0",
+    "mode": "light"
+  },
+  "training-live-beenden-hell": {
+    "page": "p-1B-0",
+    "node": "6OTD-0",
+    "mode": "light"
+  },
+  "training-live-wird-gespeichert-hell": {
+    "page": "p-1B-0",
+    "node": "6P2E-0",
+    "mode": "light"
+  },
+  "training-live-gespeichert-hell": {
+    "page": "p-1B-0",
+    "node": "6PD7-0",
+    "mode": "light"
+  },
+  "training-live-speichern-fehlgeschlagen-hell": {
+    "page": "p-1B-0",
+    "node": "6NNE-0",
+    "mode": "light"
+  },
+  "training-einheit-wiedergefunden-hell": {
+    "page": "p-1B-0",
+    "node": "6XK8-0",
+    "mode": "light"
+  },
+  "training-laeuft-leiste-auf-heute-hell": {
+    "page": "p-1B-0",
+    "node": "6NT9-0",
+    "mode": "light"
+  },
+  "training-live-kraft-laeuft-hell": {
+    "page": "p-1B-0",
+    "node": "6NYL-0",
+    "mode": "light"
+  },
+  "training-belastung-30-tage-hell": {
+    "page": "p-1B-0",
+    "node": "6YA6-0",
+    "mode": "light"
+  },
+  "training-belastung-30-tage-dunkel": {
+    "page": "p-1B-0",
+    "node": "6YI0-0",
+    "mode": "dark"
+  },
+  "training-belastung-7-tage-hell": {
+    "page": "p-1B-0",
+    "node": "6YPU-0",
+    "mode": "light"
+  },
+  "training-rad-zonen-pulsreserve-gescrollt-hell": {
+    "page": "p-1B-0",
+    "node": "70X8-0",
+    "mode": "light"
+  }
+}
