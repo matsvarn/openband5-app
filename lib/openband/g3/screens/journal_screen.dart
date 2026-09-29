@@ -890,20 +890,41 @@ class G3JournalPatternScreen extends StatelessWidget {
                       style: g.t(13, 17, color: g.ink2),
                     ),
                   ] else ...[
-                    Text(
-                      '—',
-                      style: g.t(64, 72, color: g.gap, weight: FontWeight.w700),
-                    ),
-                    Text(
-                      ready ? 'Kein klares Muster' : 'Noch kein Muster',
-                      style: g.t(17, 21, weight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      ready
-                          ? 'Der Vergleich zeigt keinen ausreichend klaren Zusammenhang.'
-                          : 'Ein Vergleich braucht ${pattern.pairedMinimum} Tag-Nacht-Paare${perSideMinimum == null ? '' : ', davon je $perSideMinimum mit Ja und mit Nein'}.',
-                      style: g.t(13, 17, color: g.ink2),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 88,
+                          child: Text(
+                            '—',
+                            style: g.t(
+                              64,
+                              72,
+                              color: g.gap,
+                              weight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                ready
+                                    ? 'Kein klares Muster'
+                                    : 'Noch kein Muster',
+                                style: g.t(17, 21, weight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                ready
+                                    ? 'Der Vergleich zeigt keinen ausreichend klaren Zusammenhang.'
+                                    : 'Ein Vergleich braucht ${pattern.pairedMinimum} Tag-Nacht-Paare${perSideMinimum == null ? '' : ', davon je $perSideMinimum mit Ja und mit Nein'}.',
+                                style: g.t(13, 17, color: g.ink2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                   if (!ready) ...[
