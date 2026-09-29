@@ -2020,8 +2020,9 @@ Future<void> showBandStatus(
               ? '24 h: ${coverage!.recordedSeconds} Sek. aufgezeichnet · Anteil unbekannt'
               : null;
           final wristOff = coverage?.wristOffIntervals;
+          final largeText = MediaQuery.textScalerOf(c).scale(15) > 22;
           return SizedBox(
-            height: MediaQuery.sizeOf(c).height * .88,
+            height: MediaQuery.sizeOf(c).height * (largeText ? .96 : .88),
             child: SafeArea(
               child: Column(
                 children: [
@@ -2093,6 +2094,7 @@ Future<void> showBandStatus(
                           children: [
                             OBSettingsRow(
                               label: 'Verbindung',
+                              stackAtLargeText: true,
                               detail: batteryPercent == null
                                   ? 'Akku —'
                                   : 'Akku $batteryPercent %${batteryObservedAt == null ? '' : ' · gemessen ${obTime(batteryObservedAt)}'}',
@@ -2100,15 +2102,17 @@ Future<void> showBandStatus(
                             ),
                             OBSettingsRow(
                               label: 'Aktualität',
+                              stackAtLargeText: true,
                               detail: b.receivedAt == null
                                   ? 'Noch kein Empfang'
                                   : '${_relativeTime(b.receivedAt!, controller.now())} übertragen',
                               value: stored == null
                                   ? '—'
-                                  : 'bis ${obTime(stored)}',
+                                  : 'bis ${bandFrontierDayPrefix(stored, controller.now())}${obTime(stored)}',
                             ),
                             OBSettingsRow(
                               label: 'Abdeckung',
+                              stackAtLargeText: true,
                               detail: [
                                 sleepDetail,
                                 ?coverageDetail,
@@ -2124,6 +2128,7 @@ Future<void> showBandStatus(
                             ),
                             OBSettingsRow(
                               label: 'Auswertung',
+                              stackAtLargeText: true,
                               detail: day?.calculatedAt == null
                                   ? null
                                   : obTime(day!.calculatedAt),
@@ -2155,10 +2160,26 @@ Future<void> showBandStatus(
                             runSpacing: 6,
                             children: [
                               for (final item in ready)
-                                OBChip(
-                                  OBChipKind.tag,
-                                  '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
-                                ),
+                                if (largeText)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 9,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: g.chip,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
+                                      style: g.t(11, 16, color: g.ink2),
+                                    ),
+                                  )
+                                else
+                                  OBChip(
+                                    OBChipKind.tag,
+                                    '${item.$1} · ${item.$2.value != null && item.$2.readiness == MetricReadiness.available ? 'bereit' : '—'}',
+                                  ),
                             ],
                           ),
                         ],
@@ -2173,6 +2194,7 @@ Future<void> showBandStatus(
                           g3chrome.OBActionPrimary(
                             'Übertragung fortsetzen',
                             expand: true,
+                            height: largeText ? 88 : 48,
                             onPressed: () {
                               Navigator.pop(c);
                               onSync();
@@ -2184,12 +2206,14 @@ Future<void> showBandStatus(
                           g3chrome.OBActionPrimary(
                             'Schließen',
                             expand: true,
+                            height: largeText ? 64 : 48,
                             onPressed: () => Navigator.pop(c),
                           )
                         else
                           g3chrome.OBActionSecondary(
                             'Schließen',
                             expand: true,
+                            height: largeText ? 64 : 48,
                             onPressed: () => Navigator.pop(c),
                           ),
                         if (day?.synthetic == true) ...[

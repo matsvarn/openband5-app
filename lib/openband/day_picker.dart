@@ -21,8 +21,10 @@ Future<void> chooseOpenBandDay(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
-    builder: (_) =>
-        FractionallySizedBox(heightFactor: .83, child: _DayPicker(controller)),
+    builder: (c) => FractionallySizedBox(
+      heightFactor: MediaQuery.textScalerOf(c).scale(15) > 22 ? .96 : .83,
+      child: _DayPicker(controller),
+    ),
   );
   if (selected != null) await controller.selectDay(selected);
 }
@@ -88,6 +90,7 @@ class _DayPickerState extends State<_DayPicker> {
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = dayLabelOf(selected);
     final previous = DateTime(selected.year, selected.month, selected.day - 1);
+    final largeText = MediaQuery.textScalerOf(context).scale(15) > 22;
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
@@ -98,7 +101,7 @@ class _DayPickerState extends State<_DayPicker> {
               child: Container(
                 width: 36,
                 height: 5,
-                margin: const EdgeInsets.only(top: 10, bottom: 16),
+                margin: EdgeInsets.only(top: 10, bottom: largeText ? 8 : 16),
                 decoration: BoxDecoration(
                   color: p.muted.withValues(alpha: .5),
                   borderRadius: BorderRadius.circular(4),
@@ -137,7 +140,7 @@ class _DayPickerState extends State<_DayPicker> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, largeText ? 4 : 12),
               child: Row(
                 children: [
                   Expanded(
@@ -156,10 +159,15 @@ class _DayPickerState extends State<_DayPicker> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 16),
                 children: [
                   OBCard(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      largeText ? 8 : 14,
+                      16,
+                      largeText ? 8 : 16,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -167,25 +175,32 @@ class _DayPickerState extends State<_DayPicker> {
                           future: days,
                           builder: (c, snapshot) => Column(
                             children: [
-                              OBCalendar(
-                                month: month,
-                                selected: selected,
-                                now: now,
-                                allowFuture: false,
-                                showAvailability: true,
-                                instrumentHeader: true,
-                                nights: snapshot.data ?? const {},
-                                onSelect: _select,
-                                onPrevMonth: () => setState(
-                                  () => month = DateTime(
-                                    month.year,
-                                    month.month - 1,
-                                  ),
+                              MediaQuery(
+                                data: MediaQuery.of(context).copyWith(
+                                  textScaler: largeText
+                                      ? const TextScaler.linear(1.5)
+                                      : MediaQuery.textScalerOf(context),
                                 ),
-                                onNextMonth: () => setState(
-                                  () => month = DateTime(
-                                    month.year,
-                                    month.month + 1,
+                                child: OBCalendar(
+                                  month: month,
+                                  selected: selected,
+                                  now: now,
+                                  allowFuture: false,
+                                  showAvailability: true,
+                                  instrumentHeader: true,
+                                  nights: snapshot.data ?? const {},
+                                  onSelect: _select,
+                                  onPrevMonth: () => setState(
+                                    () => month = DateTime(
+                                      month.year,
+                                      month.month - 1,
+                                    ),
+                                  ),
+                                  onNextMonth: () => setState(
+                                    () => month = DateTime(
+                                      month.year,
+                                      month.month + 1,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -294,29 +309,47 @@ class _DayPickerState extends State<_DayPicker> {
                 16,
                 10,
                 16,
-                MediaQuery.paddingOf(context).bottom,
+                MediaQuery.paddingOf(context).bottom + 16,
               ),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OBAction(
+                  if (largeText)
+                    Column(
+                      children: [
+                        OBAction(
                           'Zu heute',
                           secondary: true,
                           onPressed: () =>
                               Navigator.pop(context, dayLabelOf(today)),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OBAction(
+                        const SizedBox(height: 10),
+                        OBAction(
                           '${obDate(selectedDay)} ansehen',
                           onPressed: () => Navigator.pop(context, selectedDay),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OBAction(
+                            'Zu heute',
+                            secondary: true,
+                            onPressed: () =>
+                                Navigator.pop(context, dayLabelOf(today)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OBAction(
+                            '${obDate(selectedDay)} ansehen',
+                            onPressed: () =>
+                                Navigator.pop(context, selectedDay),
+                          ),
+                        ),
+                      ],
+                    ),
                   if (widget.controller.day?.synthetic == true) ...[
                     const SizedBox(height: 12),
                     Text(

@@ -659,8 +659,6 @@ void main() {
       await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
-      await tester.pumpAndSettle();
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
       final previousDay = find.widgetWithText(
@@ -673,8 +671,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-14');
       await tester.tap(find.text(obDayTitle('2026-09-14')));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView).last, const Offset(0, -300));
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();
