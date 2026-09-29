@@ -949,12 +949,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
               OBTrendChart(
                 title: 'GEWICHT · KG',
                 period: _period,
-                values: [
-                  for (final (index, value) in history.trend.indexed) ...[
-                    if (index > 0) null,
-                    value,
-                  ],
-                ],
+                values: history.trend,
                 sparse: true,
                 min: lo,
                 max: hi,

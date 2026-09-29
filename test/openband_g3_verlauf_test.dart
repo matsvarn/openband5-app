@@ -500,12 +500,35 @@ void main() {
     await tester.pumpAndSettle();
     final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
     expect(chart.sparse, isTrue);
+    expect(chart.values, hasLength(90));
     expect(chart.values.whereType<double>(), hasLength(5));
     for (var i = 1; i < chart.values.length; i++) {
       expect(chart.values[i] != null && chart.values[i - 1] != null, isFalse);
     }
     await tester.scrollUntilVisible(find.text('77,0 kg'), 200);
     expect(find.text('77,0 kg'), findsOneWidget);
+  });
+
+  testWidgets('seven consecutive weights occupy seven day slots', (
+    tester,
+  ) async {
+    final days = g3DaysEnding(_day, 7);
+    final rows = [
+      for (final (index, day) in days.indexed)
+        WeightStoredRow(date: day, value: 77 + index / 10),
+    ];
+    await tester.pumpWidget(
+      _app(
+        G3WeightDetail(repository: _WeightRowsRepository(rows), endDay: _day),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('7 T'));
+    await tester.pumpAndSettle();
+    final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
+    expect(chart.period, OBTrendPeriod.d7);
+    expect(chart.values, hasLength(7));
+    expect(chart.values, everyElement(isNotNull));
   });
 
   testWidgets(
