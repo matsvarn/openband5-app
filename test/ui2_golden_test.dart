@@ -29,6 +29,8 @@ import 'package:flutter_test/flutter_test.dart';
 // the screen a developer opens on a phone cannot describe two different
 // design systems — and so a component added to one is added to both.
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
+import 'package:openstrap_edge/openband/release_scope.dart';
+import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 /// The golden is the component, not the page: capturing this boundary means a
@@ -157,7 +159,7 @@ void main() {
     }
   }
 
-  testWidgets('the shell has five destinations and cannot grow a sixth',
+  testWidgets('development shell retains all five domains',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildTheme(Brightness.light),
@@ -165,10 +167,38 @@ void main() {
         builder: (c, d) => Center(child: Text(d.label)),
       ),
     ));
-    expect(ShellDomain.values, hasLength(4));
+    expect(ShellDomain.values, [
+      ShellDomain.home,
+      ShellDomain.health,
+      ShellDomain.workout,
+      ShellDomain.wellness,
+      ShellDomain.sleep,
+    ]);
     for (final d in ShellDomain.values) {
       expect(find.text(d.label), findsWidgets, reason: '${d.label} tab missing');
     }
+  });
+
+  testWidgets('release shell shows Heute, Schlaf, Training and Journal',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: openBandTheme(Brightness.light),
+      home: AppShell(
+        domains: kOpenBandReleaseDomains,
+        releaseStyle: true,
+        builder: (c, d) => Center(child: Text(d.label)),
+      ),
+    ));
+    expect(kOpenBandReleaseDomains, [
+      ShellDomain.home,
+      ShellDomain.sleep,
+      ShellDomain.workout,
+      ShellDomain.wellness,
+    ]);
+    for (final d in kOpenBandReleaseDomains) {
+      expect(find.byKey(ValueKey('ob-tab-${d.name}')), findsOneWidget);
+    }
+    expect(find.byKey(const ValueKey('ob-tab-health')), findsNothing);
   });
 
   testWidgets('every tap target in the shell clears 44 pt', (tester) async {
