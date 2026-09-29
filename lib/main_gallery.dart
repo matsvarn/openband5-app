@@ -13,6 +13,7 @@ import 'openband/g3/screens/journal_screen.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/domain.dart';
+import 'openband/g3/screens/band.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/strength_live.dart';
@@ -389,6 +390,15 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           band: widget.repository.band,
           bandName: 'WHOOP 5.0',
           languageLabel: 'Deutsch',
+          onBand: () => Navigator.of(profileContext).push(
+            MaterialPageRoute<void>(
+              builder: (_) => G3BandScreen(
+                band: widget.repository.band,
+                now: DateTime(2026, 9, 18, 9, 41),
+                databaseSize: '4,2 GB',
+              ),
+            ),
+          ),
           onData: () => _openSyntheticData(profileContext),
         ),
       ),

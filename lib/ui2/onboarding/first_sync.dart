@@ -11,12 +11,12 @@ import 'package:provider/provider.dart';
 
 import '../../data/day_label.dart';
 import '../../openband/domain.dart';
+import '../../openband/g3/band_parts.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
 import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
-import '../theme.dart' show R;
 
 enum SetupStatusIcon { open, active, done }
 
@@ -303,24 +303,7 @@ class FirstSyncView extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 children: [
-                  Row(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        Expanded(
-                          child: Container(
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: i < 2
-                                  ? p.ink
-                                  : p.muted.withValues(alpha: .24),
-                              borderRadius: R.rPill,
-                            ),
-                          ),
-                        ),
-                        if (i < 2) const SizedBox(width: 6),
-                      ],
-                    ],
-                  ),
+                  const OBStepProgress(step: 2),
                   const SizedBox(height: 18),
                   if (band?.transfer == TransferState.receiving) ...[
                     _ReceivingCard(band: band!, now: now),
@@ -435,44 +418,21 @@ class _ReceivingCard extends StatelessWidget {
   const _ReceivingCard({required this.band, required this.now});
 
   @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final hasStoredValue = band.latestStoredAt != null;
-    return OBCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _s(context, 'AUF DEM IPHONE', 'ON THE IPHONE'),
-            style: p
-                .text(12, weight: FontWeight.w700, color: p.muted)
-                .copyWith(letterSpacing: 2),
+  Widget build(BuildContext context) => OBFrontierCard(
+    storedAt: band.latestStoredAt,
+    now: now,
+    caption: band.latestStoredAt == null
+        ? _s(
+            context,
+            'Noch kein Wert gespeichert. App während der Übertragung offen lassen.',
+            'No value saved yet. Keep the app open during transfer.',
+          )
+        : _s(
+            context,
+            'Gespeichertes bleibt auch nach einer Unterbrechung erhalten.',
+            'Saved data remains after an interruption.',
           ),
-          const SizedBox(height: 4),
-          Text(
-            _frontier(context, band.latestStoredAt, now),
-            style: p.text(40, weight: FontWeight.w700, display: true),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasStoredValue
-                ? _s(
-                    context,
-                    'Band sendet gespeicherte Werte. App währenddessen offen lassen.',
-                    'The band is sending stored values. Keep the app open.',
-                  )
-                : _s(
-                    context,
-                    'Noch kein Wert auf dem iPhone gespeichert. App während der Übertragung offen lassen.',
-                    'No value saved on the iPhone yet. Keep the app open during transfer.',
-                  ),
-            style: p.text(14, color: p.muted),
-          ),
-        ],
-      ),
-    );
-  }
+  );
 }
 
 class OBSetupStatusCard extends StatelessWidget {
@@ -616,10 +576,10 @@ class _StatusRow extends StatelessWidget {
         width: 10,
         height: 10,
         decoration: BoxDecoration(
-          color: p.led,
+          color: p.ink,
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(color: p.led.withValues(alpha: .2), blurRadius: 6),
+            BoxShadow(color: p.ink.withValues(alpha: .1), blurRadius: 6),
           ],
         ),
       ),

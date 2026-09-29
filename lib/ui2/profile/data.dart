@@ -27,6 +27,8 @@ import '../../data/db.dart';
 import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/release_scope.dart';
+import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/screens/band_restore.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
 import '../activity/share.dart' show shareOrigin;
@@ -230,7 +232,16 @@ class _DataScreenState extends State<DataScreen> {
         return askBackupPassphrase(context);
       },
     );
-    if (mounted) setState(() => _outcome = outcome);
+    if (mounted) {
+      setState(() => _outcome = outcome);
+      if (widget.releaseReduced &&
+          (outcome.restoredRows > 0 ||
+              outcome.unchangedRows > 0 ||
+              outcome.restoreConflicts > 0 ||
+              outcome.unreadableRows > 0)) {
+        await showG3RestoreReceipt(context, outcome);
+      }
+    }
     return ('', false);
   }
 
@@ -555,20 +566,41 @@ class DataScreenView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final de = Localizations.localeOf(c).languageCode == 'de';
     return Scaffold(
       key: const ValueKey('data-screen'),
-      backgroundColor: p.canvas,
+      backgroundColor: g.page,
       body: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: de ? 'Daten & Sicherung' : 'Data & backup',
-                subtitle: '',
-                backText: de ? 'Profil' : 'Profile',
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(c).maybePop(),
+                    icon: const Icon(LucideIcons.chevronLeft),
+                    label: Text(de ? 'Profil' : 'Profile'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: g.ink,
+                      minimumSize: const Size(44, 44),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          de ? 'DATEN & SICHERUNG' : 'DATA & BACKUP',
+                          style: g.caps(),
+                        ),
+                        Text('OpenBand 5', style: g.t(13, 18, color: g.muted)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 70),
+                ],
               ),
             ),
             Expanded(
@@ -579,6 +611,67 @@ class DataScreenView extends StatelessWidget {
                     rebuilt!,
                     const SizedBox(height: 12),
                   ],
+                  if (note != null && note!.isNotEmpty) ...[
+                    StatusCard(
+                      noteFailed
+                          ? (l?.dataThatDidNotWork ??
+                                (de
+                                    ? 'Das hat nicht geklappt'
+                                    : 'That did not work'))
+                          : (l?.actionDone ?? (de ? 'Erledigt' : 'Done')),
+                      note!,
+                      key: const ValueKey('data-action-receipt'),
+                      icon: noteFailed
+                          ? LucideIcons.triangleAlert
+                          : LucideIcons.check,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Container(
+                    decoration: g.raised(),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                de ? 'LETZTE SICHERUNG' : 'LAST BACKUP',
+                                style: g.caps(),
+                              ),
+                            ),
+                            Text(
+                              '$kBackupsKept lokale Kopien',
+                              style: g.t(12, 17, color: g.muted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          lastBackupAt == null
+                              ? '—'
+                              : _stamp(lastBackupAt!).split(' ').last,
+                          key: const ValueKey('data-last-backup'),
+                          style: g.t(64, 70, weight: FontWeight.w700),
+                        ),
+                        Text(
+                          lastBackupAt == null
+                              ? 'Noch keine Sicherung'
+                              : 'Zuletzt erfolgreich gespeichert',
+                          style: g.t(13, 18, color: g.muted),
+                        ),
+                        const SizedBox(height: 18),
+                        OBAction(
+                          de
+                              ? 'Sicherung jetzt erstellen'
+                              : 'Create backup now',
+                          ink: true,
+                          onPressed: onBackupNow,
+                        ),
+                      ],
+                    ),
+                  ),
                   _sectionLabel(p, de ? 'Sicherung' : 'Backup'),
                   OBCard(
                     child: Column(
@@ -631,15 +724,6 @@ class DataScreenView extends StatelessWidget {
                         Divider(color: p.line, height: 1),
                         _paperRow(
                           p,
-                          de ? 'Letzte Sicherung' : 'Last backup',
-                          value: lastBackupAt == null
-                              ? '—'
-                              : _stamp(lastBackupAt!),
-                          key: const ValueKey('data-last-backup'),
-                        ),
-                        Divider(color: p.line, height: 1),
-                        _paperRow(
-                          p,
                           de
                               ? 'Sicherung jetzt erstellen'
                               : 'Create backup now',
@@ -682,51 +766,37 @@ class DataScreenView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  _sectionLabel(p, de ? 'Werkzeuge' : 'Tools'),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _toolCard(
+                  _sectionLabel(p, de ? 'Wiederherstellen' : 'Restore'),
+                  OBCard(
+                    child: Column(
+                      children: [
+                        _paperRow(
                           p,
-                          LucideIcons.upload,
                           de ? 'Datei importieren' : 'Import file',
+                          sub: de
+                              ? 'Sicherung oder Export zurückholen'
+                              : 'Restore a backup or export',
                           key: const ValueKey('data-import-file'),
                           onTap: onImport,
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _toolCard(
+                        Divider(color: p.line, height: 1),
+                        _paperRow(
                           p,
-                          LucideIcons.refreshCcw,
                           de ? 'Neu berechnen' : 'Recalculate',
+                          sub: de
+                              ? 'Alle Tage neu auswerten'
+                              : 'Recalculate all days',
                           key: const ValueKey('data-reanalyze'),
                           onTap: reanalyzing ? null : onReanalyze,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   if (reanalyzeProgress != null)
                     Text(reanalyzeProgress!, style: p.text(12, color: p.muted)),
                   if (busy) ...[
                     const SizedBox(height: 20),
                     Center(child: CircularProgressIndicator(color: p.action)),
-                  ],
-                  if (note != null && note!.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    StatusCard(
-                      noteFailed
-                          ? (l?.dataThatDidNotWork ??
-                                (de
-                                    ? 'Das hat nicht geklappt'
-                                    : 'That did not work'))
-                          : (l?.actionDone ?? (de ? 'Erledigt' : 'Done')),
-                      note!,
-                      key: const ValueKey('data-action-receipt'),
-                      icon: noteFailed
-                          ? LucideIcons.triangleAlert
-                          : LucideIcons.check,
-                    ),
                   ],
                   if (importRollupError != null) ...[
                     const SizedBox(height: 12),
@@ -745,6 +815,12 @@ class DataScreenView extends StatelessWidget {
                     const SizedBox(height: 12),
                     ImportReport(outcome!),
                   ],
+                  const SizedBox(height: 28),
+                  Text(
+                    'Nichts verlässt das iPhone ohne deinen Export.',
+                    textAlign: TextAlign.center,
+                    style: g.t(12, 17, color: g.muted),
+                  ),
                 ],
               ),
             ),
@@ -792,31 +868,6 @@ class DataScreenView extends StatelessWidget {
               const SizedBox(width: 10),
               Text('›', style: p.text(17, color: p.gap)),
             ],
-          ],
-        ),
-      ),
-    ),
-  );
-
-  Widget _toolCard(
-    OB p,
-    IconData icon,
-    String title, {
-    Key? key,
-    VoidCallback? onTap,
-  }) => Pressable(
-    key: key,
-    onTap: onTap,
-    child: OBCard(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: p.ink),
-            const SizedBox(height: 12),
-            Text(title, style: p.text(15, weight: FontWeight.w600)),
           ],
         ),
       ),

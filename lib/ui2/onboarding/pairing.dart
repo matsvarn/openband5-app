@@ -12,6 +12,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../openband/g3/band_parts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -251,24 +252,7 @@ class PairingView extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                 children: [
                   if (onSkip != null) ...[
-                    Row(
-                      children: [
-                        for (var i = 0; i < 3; i++) ...[
-                          Expanded(
-                            child: Container(
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: i == 0
-                                    ? p.ink
-                                    : p.muted.withValues(alpha: .24),
-                                borderRadius: R.rPill,
-                              ),
-                            ),
-                          ),
-                          if (i < 2) const SizedBox(width: 6),
-                        ],
-                      ],
-                    ),
+                    const OBStepProgress(step: 1),
                     const SizedBox(height: 18),
                   ],
                   OBCard(
