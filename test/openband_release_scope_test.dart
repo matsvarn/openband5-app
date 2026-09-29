@@ -129,7 +129,9 @@ void main() {
       releaseScreenForRoute(kRouteWorkoutSuggestion, reduced: true),
       isNotNull,
     );
-    expect(releaseScreenForRoute(kRouteRecap, reduced: true), isNotNull);
+    expect(releaseScreenForRoute(kRouteRecap, reduced: true), isNull);
+    expect(releaseDomainForRoute(kRouteRecap, reduced: true), ShellDomain.home);
+    expect(releaseScreenForRoute(kRouteRecap, reduced: false), isNotNull);
     expect(releaseScreenForRoute('/nope', reduced: true), isNull);
     expect(releaseDomainForTab(4, reduced: true), ShellDomain.workout);
     expect(releaseDomainForTab(1, reduced: true), ShellDomain.sleep);
@@ -206,7 +208,7 @@ void main() {
       kRouteWorkoutIdle: true,
       kRouteMeds: false,
       kRouteProfile: true,
-      kRouteRecap: true,
+      kRouteRecap: false,
       kRouteAlarm: true,
       '/today': true,
       '/sleep': true,
@@ -273,16 +275,19 @@ void main() {
         ),
       ),
     );
-    final target = resolveTapRoute(kRouteWater);
-    final domain = releaseDomainForRoute(target.screen!, reduced: true);
-    key.currentState!.select(domain);
-    final screen = releaseScreenForRoute(target.screen!, reduced: true);
-    if (screen != null) key.currentState!.open(domain, screen);
-    await tester.pumpAndSettle();
-    expect(find.text('Root home'), findsOneWidget);
-    expect(find.text('Root wellness'), findsNothing);
-    expect(find.byKey(const ValueKey('ob-tab-home')), findsOneWidget);
-    expect(screen, isNull);
+    for (final route in [kRouteWater, kRouteRecap]) {
+      key.currentState!.select(ShellDomain.wellness);
+      final target = resolveTapRoute(route);
+      final domain = releaseDomainForRoute(target.screen!, reduced: true);
+      key.currentState!.select(domain);
+      final screen = releaseScreenForRoute(target.screen!, reduced: true);
+      if (screen != null) key.currentState!.open(domain, screen);
+      await tester.pumpAndSettle();
+      expect(find.text('Root home'), findsOneWidget, reason: route);
+      expect(find.text('Root wellness'), findsNothing, reason: route);
+      expect(find.byKey(const ValueKey('ob-tab-home')), findsOneWidget);
+      expect(screen, isNull, reason: route);
+    }
   });
 
   testWidgets('release sport picker omits the exercise library path', (
@@ -301,10 +306,12 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Cycling');
     await tester.pumpAndSettle();
     expect(find.widgetWithText(ActivityRow, 'Cycling'), findsOneWidget);
-    await tester.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: ActivityPicker(key: UniqueKey()),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: ActivityPicker(key: UniqueKey()),
+      ),
+    );
     expect(find.text('Weight training'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1013,7 +1020,7 @@ void main() {
     expect(find.byKey(const ValueKey('notif-water')), findsNothing);
     expect(find.byKey(const ValueKey('notif-meds')), findsNothing);
     expect(find.byKey(const ValueKey('notif-checkin')), findsOneWidget);
-    expect(find.byKey(const ValueKey('notif-weekly')), findsOneWidget);
+    expect(find.byKey(const ValueKey('notif-weekly')), findsNothing);
     expect(find.byKey(const ValueKey('notif-autodetect')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-steps')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-recovery')), findsOneWidget);

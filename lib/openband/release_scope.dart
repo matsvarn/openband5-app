@@ -39,8 +39,7 @@ bool openBandReleaseKeepsRoute(String route) => switch (routePath(route)) {
   kRouteSteps ||
   kRouteWorkoutIdle ||
   kRouteWorkoutSuggestion ||
-  kRouteJournalCompose ||
-  kRouteRecap => true,
+  kRouteJournalCompose => true,
   _ => false,
 };
 
