@@ -286,6 +286,9 @@ class OBLeadMetric extends StatelessWidget {
   final String? note;
   final OBLeadState state;
   final double? value;
+
+  /// Presentation for values such as durations and grouped counts.
+  final String? valueText;
   final int digits;
   final String? unit;
 
@@ -313,6 +316,7 @@ class OBLeadMetric extends StatelessWidget {
     required this.state,
     this.note,
     this.value,
+    this.valueText,
     this.digits = 0,
     this.unit,
     this.delta,
@@ -432,7 +436,9 @@ class OBLeadMetric extends StatelessWidget {
               TextSpan(
                 children: [
                   TextSpan(
-                    text: g3Number(value, digits: digits, signed: signed),
+                    text:
+                        valueText ??
+                        g3Number(value, digits: digits, signed: signed),
                     style: g.lead(decimal: digits > 0),
                   ),
                   if (unit != null)

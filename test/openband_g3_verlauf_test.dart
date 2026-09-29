@@ -7,8 +7,11 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
-import 'package:openstrap_edge/openband/g3/metrics.dart' show G3Scale;
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
+import 'package:openstrap_edge/openband/g3/metrics.dart'
+    show G3Scale, OBLeadMetric, OBLeadState;
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
@@ -113,6 +116,45 @@ class _UnknownWeightRepository extends SyntheticOpenBandRepository {
   );
 }
 
+class _ValuesRepository extends SyntheticOpenBandRepository {
+  _ValuesRepository(this.value, this.baseline, {this.presentDays = 1})
+    : super.fromMaps(
+        _fixture('day-summary.json'),
+        _fixture('sleep-detail.json'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+  final double value;
+  final G3Baseline baseline;
+  final int presentDays;
+
+  @override
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async =>
+      g3Trend(metric, [
+        for (final (index, day) in g3DaysEnding(endDay, days).indexed)
+          MetricPoint(day, index >= days - presentDays ? value : null),
+      ], baseline);
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
+      baseline;
+}
+
+class _WeightRowsRepository extends SyntheticOpenBandRepository {
+  _WeightRowsRepository(this.rows)
+    : super.fromMaps(
+        _fixture('day-summary.json'),
+        _fixture('sleep-detail.json'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+  final List<WeightStoredRow> rows;
+
+  @override
+  Future<G3Weight> readG3Weight(String endDay, int days) async => G3Weight(
+    buildWeightHistory(endDay: endDay, days: days, rows: rows),
+    {for (final row in rows) row.date as String: G3WeightSource.manual},
+  );
+}
+
 Widget _app(Widget child) =>
     MaterialApp(theme: openBandTheme(Brightness.light), home: child);
 
@@ -201,6 +243,134 @@ void main() {
     await tester.tap(find.text('7 T').first);
     await tester.pumpAndSettle();
     expect(find.text('7 von 7 Tagen mit Wert'), findsOneWidget);
+  });
+
+  testWidgets('sleep duration and steps format the lead value', (tester) async {
+    for (final (metric, value, text) in [
+      (G3Metric.sleepMinutes, 438.0, '7h18'),
+      (G3Metric.steps, 6480.0, '6.480'),
+    ]) {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            key: ValueKey(metric),
+            metric: metric,
+            repository: _repo(SyntheticScenario.g3Sample),
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(text), findsWidgets, reason: '$metric');
+      expect(find.text(value.toStringAsFixed(0)), findsNothing);
+    }
+  });
+
+  testWidgets('average labels the count of usable days', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _ValuesRepository(
+            48,
+            const G3Baseline(BaselineStatus(BaselinePhase.none)),
+            presentDays: 27,
+          ),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ø 27 von 30 Tagen'), findsOneWidget);
+    expect(find.text('Ø 30 Tage'), findsNothing);
+  });
+
+  testWidgets('out-of-range colour follows each metric direction', (
+    tester,
+  ) async {
+    for (final (metric, value, range, expected) in [
+      (G3Metric.rhr, 48.0, const PersonalRange(52, 58, 55), OBLeadState.better),
+      (G3Metric.rhr, 62.0, const PersonalRange(52, 58, 55), OBLeadState.worse),
+      (G3Metric.hrv, 62.0, const PersonalRange(38, 52, 45), OBLeadState.better),
+      (
+        G3Metric.recovery,
+        85.0,
+        const PersonalRange(58, 80, 68),
+        OBLeadState.better,
+      ),
+      (
+        G3Metric.respRate,
+        12.0,
+        const PersonalRange(14, 17, 15),
+        OBLeadState.worse,
+      ),
+      (
+        G3Metric.respRate,
+        19.0,
+        const PersonalRange(14, 17, 15),
+        OBLeadState.worse,
+      ),
+      (
+        G3Metric.skinTempZ,
+        1.6,
+        const PersonalRange(-0.5, 0.5, 0),
+        OBLeadState.plain,
+      ),
+    ]) {
+      final repo = _ValuesRepository(
+        value,
+        G3Baseline(const BaselineStatus(BaselinePhase.trusted), range: range),
+      );
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            key: ValueKey('$metric$value'),
+            metric: metric,
+            repository: repo,
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).state,
+        expected,
+        reason: '$metric $value',
+      );
+      final mark = tester
+          .widget<OBTrendChart>(find.byType(OBTrendChart))
+          .marks!
+          .last;
+      expect(mark, switch (expected) {
+        OBLeadState.better => OBTrendMark.better,
+        OBLeadState.worse => OBTrendMark.worse,
+        _ => OBTrendMark.none,
+      }, reason: '$metric $value');
+    }
+    for (final metric in [G3Metric.sleepMinutes, G3Metric.steps]) {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            key: ValueKey(metric),
+            metric: metric,
+            repository: _ValuesRepository(
+              100,
+              const G3Baseline(BaselineStatus(BaselinePhase.none)),
+            ),
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).state,
+        OBLeadState.plain,
+      );
+      expect(
+        tester.widget<OBTrendChart>(find.byType(OBTrendChart)).marks!.last,
+        OBTrendMark.none,
+      );
+    }
   });
 
   testWidgets('every body row opens its own trend', (tester) async {
@@ -299,6 +469,9 @@ void main() {
     expect(find.text('Noch kein Gewicht'), findsOneWidget);
     await tester.tap(find.text('Gewicht eintragen'));
     await tester.pumpAndSettle();
+    expect(find.byType(OBFormField), findsOneWidget);
+    expect(find.text('Manuell'), findsOneWidget);
+    expect(find.text('Zeit ändern'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '78,45');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
@@ -309,6 +482,67 @@ void main() {
     await tester.pumpAndSettle();
     expect((await repo.readG3Weight(_day, 7)).history.latest?.value, 78.4);
     expect(find.text('78,4 kg'), findsWidgets);
+  });
+
+  testWidgets('weight chart leaves gaps and lists every visible entry', (
+    tester,
+  ) async {
+    final days = g3DaysEnding(_day, 90);
+    final rows = [
+      for (var i = 0; i < 5; i++)
+        WeightStoredRow(date: days[81 + i * 2], value: 77 + i / 10),
+    ];
+    await tester.pumpWidget(
+      _app(
+        G3WeightDetail(repository: _WeightRowsRepository(rows), endDay: _day),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
+    expect(chart.sparse, isTrue);
+    expect(chart.values.whereType<double>(), hasLength(5));
+    for (var i = 1; i < chart.values.length; i++) {
+      expect(chart.values[i] != null && chart.values[i - 1] != null, isFalse);
+    }
+    await tester.scrollUntilVisible(find.text('77,0 kg'), 200);
+    expect(find.text('77,0 kg'), findsOneWidget);
+  });
+
+  testWidgets(
+    'older weight is dated without a zero-entry claim or hero scale',
+    (tester) async {
+      await tester.pumpWidget(
+        _app(
+          G3WeightDetail(
+            repository: _WeightRowsRepository([
+              const WeightStoredRow(date: '2026-06-01', value: 77),
+            ]),
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Eintrag vom'), findsOneWidget);
+      expect(find.textContaining('Keine Einträge im Zeitraum'), findsOneWidget);
+      expect(find.textContaining('0 Einträge'), findsNothing);
+      expect(find.byType(G3Scale), findsNothing);
+    },
+  );
+
+  testWidgets('weight detail keeps the Messwerte back label', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        G3AllMetrics(
+          repository: _repo(SyntheticScenario.g3Sample),
+          endDay: _day,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gewicht').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(G3WeightDetail), findsOneWidget);
+    expect(find.bySemanticsLabel('Zurück zu Messwerte'), findsOneWidget);
   });
 
   testWidgets('weight with unknown provenance cannot open the manual editor', (

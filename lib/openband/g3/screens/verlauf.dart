@@ -51,6 +51,7 @@ String _number(double? value, G3Metric metric) {
     final m = value.round();
     return '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}';
   }
+  if (metric == G3Metric.steps) return g3Count(value.round());
   final text = value.toStringAsFixed(_digits(metric)).replaceAll('.', ',');
   return metric == G3Metric.skinTempZ && value > 0 ? '+$text' : text;
 }
@@ -304,6 +305,10 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     ? metrics.OBLeadState.better
                     : metrics.OBLeadState.worse,
                 value: value,
+                valueText:
+                    metric == G3Metric.sleepMinutes || metric == G3Metric.steps
+                    ? _number(value, metric)
+                    : null,
                 digits: _digits(metric),
                 unit: _unit(metric).isEmpty ? null : _unit(metric),
                 signed: metric == G3Metric.skinTempZ,
@@ -602,12 +607,11 @@ class _Stats extends StatelessWidget {
         : values.where((v) => v < range!.low).length;
     final lo = values.isEmpty ? null : values.reduce(math.min);
     final hi = values.isEmpty ? null : values.reduce(math.max);
+    final averageLabel = values.length == points.length
+        ? 'Ø ${points.length} Tage'
+        : 'Ø ${values.length} von ${points.length} Tagen';
     return metrics.OBStatRow([
-      (
-        'Ø ${points.length} Tage',
-        average == null ? null : _number(average, metric),
-        null,
-      ),
+      (averageLabel, average == null ? null : _number(average, metric), null),
       ('Unter Bereich', under?.toString(), under == null ? null : 'Tage'),
       (
         'Spanne',
@@ -806,6 +810,7 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                       repository: widget.repository,
                       endDay: widget.endDay,
                       band: widget.band,
+                      backLabel: 'Messwerte',
                     ),
                   ),
                 ),
@@ -832,10 +837,12 @@ class G3WeightDetail extends StatefulWidget {
     required this.repository,
     required this.endDay,
     this.band,
+    this.backLabel = 'Heute',
   });
   final OpenBandRepository repository;
   final String endDay;
   final BandSnapshot? band;
+  final String backLabel;
   @override
   State<G3WeightDetail> createState() => _G3WeightDetailState();
 }
@@ -902,7 +909,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
             chrome.OBPageHeader.detail(
               title: 'GEWICHT',
               subtitle: _longDate(widget.endDay),
-              backLabel: 'Heute',
+              backLabel: widget.backLabel,
               onBack: () => Navigator.pop(context),
               onTrailing: () => _showWeightInfo(context),
             ),
@@ -931,16 +938,9 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 note: latest == null
                     ? 'kein Eintrag'
                     : _weightSourceLabel(_weight!.sources[latest.day]),
-                scale: latest == null
-                    ? null
-                    : metrics.G3Scale(
-                        min: lo,
-                        max: hi,
-                        ticks: [
-                          metrics.G3Tick(lo, lo.toStringAsFixed(0)),
-                          metrics.G3Tick(hi, hi.toStringAsFixed(0)),
-                        ],
-                      ),
+                caption: latest != null && latest.day != widget.endDay
+                    ? 'Eintrag vom ${_date(latest.day)}'
+                    : null,
                 title: 'Noch kein Gewicht',
                 reason: 'Trage dein Gewicht ein, um einen Verlauf zu sehen.',
                 onTap: () => _showWeightInfo(context),
@@ -949,7 +949,12 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
               OBTrendChart(
                 title: 'GEWICHT · KG',
                 period: _period,
-                values: [for (final v in history.trend) v],
+                values: [
+                  for (final (index, value) in history.trend.indexed) ...[
+                    if (index > 0) null,
+                    value,
+                  ],
+                ],
                 sparse: true,
                 min: lo,
                 max: hi,
@@ -961,8 +966,9 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                   ),
                   _endLabel(widget.endDay),
                 ],
-                footLeft:
-                    '${history.entries.length} Einträge · keine Tageswerte geschätzt',
+                footLeft: history.entries.isEmpty && latest != null
+                    ? 'Keine Einträge im Zeitraum · letzter Eintrag ${_date(latest.day)}'
+                    : '${history.entries.length} Einträge · keine Tageswerte geschätzt',
                 footRight: values.isEmpty
                     ? null
                     : '${_number(values.reduce(math.min), G3Metric.respRate)}–${_number(values.reduce(math.max), G3Metric.respRate)} kg',
@@ -985,7 +991,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 },
               ),
               const chrome.OBSectionHeader('EINTRÄGE'),
-              for (final entry in history.entries.take(3)) ...[
+              for (final entry in history.entries) ...[
                 chrome.OBListRow(
                   icon: LucideIcons.scale,
                   title: _date(entry.day),
@@ -1154,11 +1160,14 @@ class _WeightEntrySheetState extends State<_WeightEntrySheet> {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final timeLabel = _minute == null
+        ? 'ohne Uhrzeit'
+        : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}';
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: chrome.OBSheet(
         title: 'Gewicht eintragen',
-        subtitle: 'Bleibt auf diesem iPhone. Quelle: manuell.',
+        subtitle: 'Bleibt auf diesem iPhone. Quelle steht am Eintrag.',
         cancelLabel: 'Abbrechen',
         confirmLabel: _saving ? 'Speichert …' : 'Speichern',
         onCancel: _saving ? null : () => Navigator.pop(context),
@@ -1166,31 +1175,34 @@ class _WeightEntrySheetState extends State<_WeightEntrySheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('GEWICHT', style: g.caps(color: g.muted)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _input,
-              autofocus: false,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+            Semantics(
+              label: 'Quelle: Manuell',
+              excludeSemantics: true,
+              child: Container(
+                height: 34,
+                padding: const EdgeInsets.all(3),
+                decoration: g.pressed(radius: 17),
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
+                  decoration: g.raised(radius: 13),
+                  child: Text(
+                    'Manuell',
+                    style: g.t(12, 14, weight: FontWeight.w700),
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                hintText: '—',
-                labelText: 'Gewicht in Kilogramm',
-                suffixText: 'kg',
-                filled: true,
-                fillColor: g.inset,
-                border: InputBorder.none,
-              ),
-              style: g.t(44, 52, weight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
-            TextButton(
-              onPressed: _saving ? null : _chooseTime,
-              child: Text(
-                '${_date(widget.base.day)} · ${_minute == null ? 'ohne Uhrzeit' : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}'} · Zeit ändern',
-              ),
+            chrome.OBFormField.number(
+              label: 'GEWICHT',
+              controller: _input,
+              unit: 'kg',
+              when: '${_date(widget.base.day)} · $timeLabel',
+              onTime: _saving ? null : _chooseTime,
             ),
             if (_error != null)
               Text(_error!, style: g.t(13, 17, color: g.worseText)),
