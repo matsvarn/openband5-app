@@ -314,14 +314,20 @@ class FirstSyncView extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
                   if (band?.transfer == TransferState.interrupted) ...[
+                    // The frontier is optional until the first durable write.
                     OBBandActionNotice(
                       title: _s(
                         context,
                         'Übertragung unterbrochen',
                         'Transfer interrupted',
                       ),
-                      body:
-                          '${_s(context, 'Bis', 'Until')} ${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
+                      body: band!.latestStoredAt == null
+                          ? _s(
+                              context,
+                              'Die Übertragung stoppte, bevor ein Wert gespeichert wurde. Band nah ans iPhone halten und fortsetzen.',
+                              'The transfer stopped before a value was stored. Keep the band near the phone and resume.',
+                            )
+                          : '${_s(context, 'Bis', 'Until')} ${bandFrontierDayPrefix(band!.latestStoredAt!, now, de: Localizations.localeOf(context).languageCode == 'de')}${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
                       action: _s(context, 'Fortsetzen', 'Resume'),
                       actionIcon: LucideIcons.refreshCw,
                       onAction: onResume,

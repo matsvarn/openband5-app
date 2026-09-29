@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_edge/ble/ble_state.dart' show BandCondition;
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
@@ -101,7 +102,7 @@ void main() {
             latestStoredAt: DateTime(2026, 9, 29, 9, 28),
           ),
           now: DateTime(2026, 9, 29, 9, 41),
-          onDevices: () async {
+          onReconnect: () async {
             opened++;
           },
         ),
@@ -177,6 +178,30 @@ void main() {
     );
   });
 
+  testWidgets('backup hero does not infer whether the backup was automatic', (
+    tester,
+  ) async {
+    for (final locale in [const Locale('de'), const Locale('en')]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          supportedLocales: const [Locale('de'), Locale('en')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: DataScreenView(
+            cadence: BackupCadence.daily,
+            now: DateTime(2026, 9, 29, 9, 41),
+            lastBackupAt: DateTime(2026, 9, 28, 3),
+            onBackupNow: () {},
+          ),
+        ),
+      );
+      expect(find.text('03:00'), findsOneWidget);
+      expect(find.text('automatisch'), findsNothing);
+      expect(find.text('automatic'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   for (final (outcome, title) in [
     (const ImportOutcome(source: 'Sicherung', restoredRows: 3), 'Übernommen'),
     (const ImportOutcome(source: 'Sicherung', unchangedRows: 3), 'Unverändert'),
@@ -207,6 +232,20 @@ void main() {
       );
     });
   }
+
+  testWidgets('restore receipt omits empty reasons group', (tester) async {
+    await pump(
+      tester,
+      Scaffold(
+        body: G3RestoreReceiptSheet(
+          outcome: const ImportOutcome(source: 'Sicherung', restoredRows: 3),
+          onClose: () {},
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('restore-reasons')), findsNothing);
+    expect(find.text('Übernommen'), findsWidgets);
+  });
 
   testWidgets('frontier names the local day of an older stored sample', (
     tester,
@@ -259,7 +298,14 @@ void main() {
     expect(find.text('Nicht verbunden'), findsWidgets);
   });
 
-  testWidgets('Bluetooth off and no-band-found stay distinct band details', (
+  test('Band issue mapping does not mistake scanning for not found', () {
+    expect(bandIssueFor(BandCondition.bluetoothOff), OBBandIssue.bluetoothOff);
+    expect(bandIssueFor(BandCondition.scanning), isNull);
+    expect(bandIssueFor(BandCondition.connecting), isNull);
+    expect(bandIssueFor(BandCondition.disconnected), isNull);
+  });
+
+  testWidgets('Bluetooth off opens settings help without opening devices', (
     tester,
   ) async {
     final stored = DateTime(2026, 9, 28, 23, 10);
@@ -267,28 +313,66 @@ void main() {
       connection: BandConnection.disconnected,
       latestStoredAt: stored,
     );
-    for (final (issue, title, action) in [
-      (
-        OBBandIssue.bluetoothOff,
-        'Bluetooth ist ausgeschaltet',
-        'Bluetooth einschalten',
+    var devices = 0;
+    var reconnects = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: band,
+        now: DateTime(2026, 9, 29, 9, 41),
+        issue: OBBandIssue.bluetoothOff,
+        onDevices: () async => devices++,
+        onReconnect: () async => reconnects++,
       ),
-      (OBBandIssue.notFound, 'Kein Band in Reichweite', 'Erneut suchen'),
-    ]) {
-      await pump(
-        tester,
-        G3BandScreen(
-          band: band,
-          now: DateTime(2026, 9, 29, 9, 41),
-          issue: issue,
-          onDevices: () async {},
+    );
+    expect(find.text('Bluetooth ist ausgeschaltet'), findsOneWidget);
+    expect(find.text('Kein Band in Reichweite'), findsNothing);
+    await tester.tap(find.text('Bluetooth einschalten'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('iPhone-Einstellungen einschalten'),
+      findsOneWidget,
+    );
+    expect(devices, 0);
+    expect(reconnects, 0);
+  });
+
+  testWidgets('disconnected action invokes the real reconnect callback', (
+    tester,
+  ) async {
+    var reconnects = 0;
+    var devices = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        onReconnect: () async => reconnects++,
+        onDevices: () async => devices++,
+      ),
+    );
+    await tester.tap(find.text('Verbinden'));
+    await tester.pump();
+    expect(reconnects, 1);
+    expect(devices, 0);
+  });
+
+  testWidgets('connecting has its own status and no disconnected action', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(
+          connection: BandConnection.connecting,
+          transfer: TransferState.receiving,
         ),
-      );
-      expect(find.text(title), findsOneWidget);
-      expect(find.text(action), findsOneWidget);
-      expect(find.text('BAND VERBINDEN'), findsNothing);
-      expect(find.text('—'), findsWidgets);
-    }
+        now: DateTime(2026, 9, 29, 9, 41),
+      ),
+    );
+    expect(find.text('Verbindet …'), findsOneWidget);
+    expect(find.text('Nicht verbunden'), findsNothing);
+    expect(find.text('Verbinden'), findsNothing);
   });
 
   testWidgets('date sheet commits only a confirmed selection', (tester) async {

@@ -177,6 +177,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('interruption before the first stored value says so', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: const BandSnapshot(transfer: TransferState.interrupted),
+        ),
+      ),
+    );
+    expect(
+      find.textContaining('bevor ein Wert gespeichert wurde'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Bis —'), findsNothing);
+  });
+
+  testWidgets('interrupted frontier includes yesterday in its notice', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: BandSnapshot(
+            transfer: TransferState.interrupted,
+            latestStoredAt: DateTime(2026, 9, 14, 9, 28),
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('Bis gestern · 09:28'), findsOneWidget);
+    expect(find.text('bis gestern · 09:28'), findsOneWidget);
+  });
+
   testWidgets(
     'swallowed resume failure reads disconnected idle and remains retryable',
     (tester) async {

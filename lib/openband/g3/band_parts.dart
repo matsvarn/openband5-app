@@ -259,12 +259,13 @@ class OBFrontierCard extends StatelessWidget {
     final ageText = age >= 60
         ? '${age ~/ 60} h ${(age % 60).toString().padLeft(2, '0')}'
         : '$age Min.';
-    final yesterday = DateTime(now.year, now.month, now.day - 1);
-    final storedDay = stored == null || sameDay
+    final storedDay = stored == null
         ? ''
-        : dayLabelOf(stored) == dayLabelOf(yesterday)
-        ? 'gestern · '
-        : '${stored.day.toString().padLeft(2, '0')}.${stored.month.toString().padLeft(2, '0')}. · ';
+        : bandFrontierDayPrefix(
+            stored,
+            now,
+            de: Localizations.localeOf(context).languageCode == 'de',
+          );
     final marker = stored == null
         ? null
         : (1 -
@@ -352,7 +353,22 @@ class OBFrontierCard extends StatelessWidget {
   }
 }
 
-enum OBBandIssue { bluetoothOff, notFound }
+String bandFrontierDayPrefix(DateTime stored, DateTime now, {bool de = true}) {
+  if (dayLabelOf(stored) == todayLabel(now)) return '';
+  if (dayLabelOf(stored) ==
+      dayLabelOf(DateTime(now.year, now.month, now.day - 1))) {
+    return de ? 'gestern · ' : 'yesterday · ';
+  }
+  return '${stored.day.toString().padLeft(2, '0')}.${stored.month.toString().padLeft(2, '0')}. · ';
+}
+
+enum OBBandIssue { bluetoothOff }
+
+String bandConnectionLabel(BandConnection connection) => switch (connection) {
+  BandConnection.connected => 'Verbunden',
+  BandConnection.connecting => 'Verbindet …',
+  BandConnection.disconnected => 'Nicht verbunden',
+};
 
 class OBToggle extends StatelessWidget {
   final bool value;
@@ -511,9 +527,9 @@ class OBBandHero extends StatelessWidget {
         : 'vor ${age.inMinutes} Min.';
     final status = switch (issue) {
       OBBandIssue.bluetoothOff => 'Bluetooth aus',
-      OBBandIssue.notFound => 'Nicht gefunden',
-      null when band.transfer == TransferState.receiving => 'Band wird gelesen',
-      null => connected ? 'Verbunden' : 'Nicht verbunden',
+      null when connected && band.transfer == TransferState.receiving =>
+        'Band wird gelesen',
+      null => bandConnectionLabel(band.connection),
     };
     return Container(
       decoration: g.raised(),

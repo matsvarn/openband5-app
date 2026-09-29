@@ -130,36 +130,42 @@ class G3RestoreReceiptSheet extends StatelessWidget {
                 count('Abgelehnt', rejected, divided: true),
               ],
             ),
-            const SizedBox(height: 18),
-            OBSettingsGroup(
-              inset: true,
-              children: [
-                if (o.unchangedRows > 0)
-                  OBSettingsRow(
-                    label: 'Unverändert',
-                    detail: 'schon gleich auf dem iPhone',
-                    value: '${o.unchangedRows}',
-                  ),
-                if (o.restoreConflicts > 0)
-                  OBSettingsRow(
-                    label: 'Konflikt',
-                    detail: 'lokal behalten',
-                    value: '${o.restoreConflicts}',
-                  ),
-                if (o.unreadableRows > 0)
-                  OBSettingsRow(
-                    label: 'Nicht lesbar',
-                    detail: 'abgelehnt, nichts geschätzt',
-                    value: '${o.unreadableRows}',
-                  ),
-                if (o.pendingRecalculations > 0)
-                  OBSettingsRow(
-                    label: 'Neuberechnung',
-                    detail: 'ausstehend',
-                    value: '${o.pendingRecalculations}',
-                  ),
-              ],
-            ),
+            if (o.unchangedRows > 0 ||
+                o.restoreConflicts > 0 ||
+                o.unreadableRows > 0 ||
+                o.pendingRecalculations > 0) ...[
+              const SizedBox(height: 18),
+              OBSettingsGroup(
+                key: const ValueKey('restore-reasons'),
+                inset: true,
+                children: [
+                  if (o.unchangedRows > 0)
+                    OBSettingsRow(
+                      label: 'Unverändert',
+                      detail: 'schon gleich auf dem iPhone',
+                      value: '${o.unchangedRows}',
+                    ),
+                  if (o.restoreConflicts > 0)
+                    OBSettingsRow(
+                      label: 'Konflikt',
+                      detail: 'lokal behalten',
+                      value: '${o.restoreConflicts}',
+                    ),
+                  if (o.unreadableRows > 0)
+                    OBSettingsRow(
+                      label: 'Nicht lesbar',
+                      detail: 'abgelehnt, nichts geschätzt',
+                      value: '${o.unreadableRows}',
+                    ),
+                  if (o.pendingRecalculations > 0)
+                    OBSettingsRow(
+                      label: 'Neuberechnung',
+                      detail: 'ausstehend',
+                      value: '${o.pendingRecalculations}',
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               children: [
