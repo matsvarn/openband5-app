@@ -551,34 +551,31 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               left: 0,
               right: 0,
               top: 0,
-              child: ColoredBox(
-                color: g.page.withValues(alpha: .95),
-                child: OBPageHeader.compact(
-                  title: isToday
-                      ? 'Heute'
-                      : DateFormat(
-                          'EEEE',
-                          'de_DE',
-                        ).format(DateTime.parse(c.selectedDay)),
-                  subtitle: [
-                    DateFormat('E dd.MM', 'de_DE')
-                        .format(DateTime.parse(c.selectedDay))
-                        .replaceAll('.,', '')
-                        .replaceFirst('. ', ' '),
-                    if (synthetic) 'Synthetische Daten',
-                  ].join(' · '),
-                  band: OBBandCapsule(
-                    state: never
-                        ? OBBandState.none
-                        : disconnected
-                        ? OBBandState.off
-                        : OBBandState.live,
-                    battery: band.batteryPercent,
-                    small: true,
-                    onTap: never ? widget.onConnect : widget.onBand,
-                  ),
-                  onProfile: widget.onProfile,
+              child: OBPageHeader.compact(
+                title: isToday
+                    ? 'Heute'
+                    : DateFormat(
+                        'EEEE',
+                        'de_DE',
+                      ).format(DateTime.parse(c.selectedDay)),
+                subtitle: [
+                  DateFormat('E dd.MM', 'de_DE')
+                      .format(DateTime.parse(c.selectedDay))
+                      .replaceAll('.,', '')
+                      .replaceFirst('. ', ' '),
+                  if (synthetic) 'Synthetische Daten',
+                ].join(' · '),
+                band: OBBandCapsule(
+                  state: never
+                      ? OBBandState.none
+                      : disconnected
+                      ? OBBandState.off
+                      : OBBandState.live,
+                  battery: band.batteryPercent,
+                  small: true,
+                  onTap: never ? widget.onConnect : widget.onBand,
                 ),
+                onProfile: widget.onProfile,
               ),
             ),
         ],
