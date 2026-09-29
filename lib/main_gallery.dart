@@ -25,6 +25,7 @@ import 'openband/release_scope.dart';
 import 'openband/g3/screens/heute.dart';
 import 'openband/g3/screens/heute_routes.dart';
 import 'openband/screens.dart';
+import 'openband/g3/screens/sleep.dart';
 import 'openband/synthetic_repository.dart';
 import 'notify/notification_prefs.dart';
 import 'openband/appearance.dart';
@@ -230,7 +231,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         onOpenMetric: (m) => openHeuteMetric(c, controller, m),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
-      ShellDomain.sleep => OpenBandSleep(controller: controller, asTab: true),
+      ShellDomain.sleep => G3SleepScreen(controller: controller, asTab: true),
       ShellDomain.workout => OpenBandTraining(
         controller: controller,
         releaseReduced: widget.releaseReduced,

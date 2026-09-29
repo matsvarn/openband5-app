@@ -1,1 +1,24 @@
-{}
+{
+  "schlaf-letzte-nacht-hell": {"page": "p-19-0", "node": "61LO-0", "mode": "light"},
+  "schlaf-letzte-nacht-dunkel": {"page": "p-19-0", "node": "61T3-0", "mode": "dark"},
+  "schlaf-gescrollt-hell": {"page": "p-19-0", "node": "6QVP-0", "mode": "light"},
+  "schlaf-teilnacht-mit-luecke-hell": {"page": "p-19-0", "node": "65KH-0", "mode": "light"},
+  "schlaf-keine-nacht-erkannt-hell": {"page": "p-19-0", "node": "65PO-0", "mode": "light"},
+  "schlaf-rhythmus-im-aufbau-hell": {"page": "p-19-0", "node": "6RDK-0", "mode": "light"},
+  "schlaf-kein-schlafziel-hell": {"page": "p-19-0", "node": "6RMI-0", "mode": "light"},
+  "schlaf-korrigierte-nacht-hell": {"page": "p-19-0", "node": "642T-0", "mode": "light"},
+  "schlaf-nachtverlauf-puls-hell": {"page": "p-19-0", "node": "648H-0", "mode": "light"},
+  "schlaf-nachtverlauf-puls-dunkel": {"page": "p-19-0", "node": "64CJ-0", "mode": "dark"},
+  "schlaf-regelmaessigkeit-hell": {"page": "p-19-0", "node": "64GL-0", "mode": "light"},
+  "schlaf-schlafschuld-hell": {"page": "p-19-0", "node": "6RY7-0", "mode": "light"},
+  "schlaf-heute-nacht-hell": {"page": "p-19-0", "node": "6SB5-0", "mode": "light"},
+  "schlaf-heute-nacht-erinnerung-gesetzt-hell": {"page": "p-19-0", "node": "6SEZ-0", "mode": "light"},
+  "schlaf-schlafziel-hell": {"page": "p-19-0", "node": "64YB-0", "mode": "light"},
+  "schlaf-schlafzeiten-aendern-entwurf-hell": {"page": "p-19-0", "node": "6532-0", "mode": "light"},
+  "schlaf-schlafzeiten-aendern-wird-ausgewertet-hell": {"page": "p-19-0", "node": "655C-0", "mode": "light"},
+  "schlaf-schlafzeiten-aendern-speicherfehler-hell": {"page": "p-19-0", "node": "657S-0", "mode": "light"},
+  "schlaf-nickerchen-hell": {"page": "p-19-0", "node": "678D-0", "mode": "light"},
+  "schlaf-nickerchen-keine-hell": {"page": "p-19-0", "node": "65EF-0", "mode": "light"},
+  "schlaf-nickerchen-eintragen-hell": {"page": "p-19-0", "node": "67CJ-0", "mode": "light"},
+  "schlaf-neue-bausteine-vorschlag-schlaf": {"page": "p-19-0", "node": "5U9K-0", "mode": "light"}
+}
