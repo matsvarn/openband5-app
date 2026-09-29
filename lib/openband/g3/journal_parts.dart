@@ -527,15 +527,28 @@ class OBPatternGateRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final narrow = MediaQuery.sizeOf(context).width < 360;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           SizedBox(
-            width: 48,
-            child: Text(label, style: g.t(14, 18, weight: FontWeight.w700)),
+            width: narrow ? 90 : 145,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: g.t(14, 18, weight: FontWeight.w700)),
+                Text(
+                  label == 'Ja'
+                      ? 'Koffein nach 14 Uhr'
+                      : 'kein Koffein nach 14 Uhr',
+                  style: g.t(12, 16, color: g.muted),
+                ),
+              ],
+            ),
           ),
-          Expanded(
+          SizedBox(
+            width: narrow ? 66 : 96,
             child: count == null || minimum == null
                 ? Text('—', style: g.t(14, 18, color: g.muted))
                 : OBPatternProgress(
@@ -545,13 +558,16 @@ class OBPatternGateRow extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: 8),
-          Text(
-            count == null || minimum == null
-                ? '—'
-                : count! < minimum!
-                ? '$count von $minimum nötig'
-                : '$count vorhanden',
-            style: g.t(13, 17, color: g.ink2),
+          Expanded(
+            child: Text(
+              count == null || minimum == null
+                  ? '—'
+                  : count! < minimum!
+                  ? '$count von $minimum'
+                  : '$count · genug',
+              textAlign: TextAlign.end,
+              style: g.t(13, 17, color: g.ink2),
+            ),
           ),
         ],
       ),
