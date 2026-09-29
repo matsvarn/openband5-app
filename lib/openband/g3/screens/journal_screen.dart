@@ -44,31 +44,27 @@ const _questions = <_Question>[
   _Question('', 'Noch etwas zu gestern?', 'Notiz', _Answer.note),
 ];
 
-String _patternFooter(G3JournalPattern result, {int? perSideMinimum}) {
+String _patternFooter(G3JournalPattern result) {
   final p = result.pattern;
   if (p.kind == CaffeineSleepPatternKind.meaningful ||
       p.kind == CaffeineSleepPatternKind.nonmeaningful) {
     return '${p.pairedN} Tag-Nacht-Paare · Vergleich berechnet';
   }
-  if (p.pairedN < result.pairedMinimum) {
+  if (result.refusalGate == G3PatternRefusalGate.paired) {
     return '${p.pairedN} von ${result.pairedMinimum} Paaren · noch ${result.remaining}';
   }
-  final history = RegExp(
-    r'^need_history:have=(\d+),need=(\d+)$',
-  ).firstMatch(p.note ?? '');
-  if (history != null) {
-    return '${history.group(1)} von ${history.group(2)} Paaren für den Test';
-  }
-  if (perSideMinimum != null && p.yesNights != null && p.noNights != null) {
-    final yes = p.yesNights! < perSideMinimum
-        ? '${p.yesNights} von $perSideMinimum nötig'
+  if (result.refusalGate == G3PatternRefusalGate.side &&
+      result.yesNights != null &&
+      result.noNights != null) {
+    final yes = result.yesNights! < result.perSideMinimum
+        ? '${result.yesNights} von ${result.perSideMinimum} nötig'
         : '${p.yesNights} vorhanden';
-    final no = p.noNights! < perSideMinimum
-        ? '${p.noNights} von $perSideMinimum nötig'
+    final no = result.noNights! < result.perSideMinimum
+        ? '${result.noNights} von ${result.perSideMinimum} nötig'
         : '${p.noNights} vorhanden';
     return '${p.pairedN} Paare · Ja $yes · Nein $no';
   }
-  return '${p.pairedN} Paare · Ja ${p.yesNights ?? '—'} · Nein ${p.noNights ?? '—'}';
+  return '${p.pairedN} Paare · Ja ${result.yesNights ?? '—'} · Nein ${result.noNights ?? '—'}';
 }
 
 enum _Answer { yesNo, amount, scale, note }
@@ -76,9 +72,10 @@ enum _Answer { yesNo, amount, scale, note }
 enum JournalAnswerSaveResult { saved, failed, conflict }
 
 class _Question {
-  const _Question(this.key, this.prompt, this.title, this.kind);
+  const _Question(this.key, this.prompt, this.title, this.kind, {this.checkIn});
   final String key, prompt, title;
   final _Answer kind;
+  final G3CheckInQuestion? checkIn;
 }
 
 class G3JournalScreen extends StatefulWidget {
@@ -104,6 +101,7 @@ class G3JournalScreen extends StatefulWidget {
 class _G3JournalScreenState extends State<G3JournalScreen> {
   late final ScrollController _scrollController =
       widget.scrollController ?? ScrollController();
+  G3CheckIn? _checkIn;
   JournalDaySnapshot? _today;
   List<JournalDaySnapshot> _history = const [];
   G3JournalPattern? _pattern;
@@ -114,18 +112,65 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   int _serial = 0, _position = 0;
   Object? _draft;
 
-  List<_Question> _questionsFor(JournalDaySnapshot? snap) => [
-    ..._questions,
-    if (snap != null)
-      for (final f in snap.fields)
-        if (f.custom && !f.hidden)
-          _Question(f.key, f.label, f.label, switch (f.kind) {
-            JournalFieldKind.yesNo => _Answer.yesNo,
-            JournalFieldKind.rating => _Answer.scale,
-            JournalFieldKind.dose ||
-            JournalFieldKind.duration => _Answer.amount,
-          }),
-  ];
+  String _shortDay(String day) {
+    final date = DateTime.parse(day);
+    return '${DateFormat('EEE', 'de_DE').format(date).replaceAll('.', '')} ${DateFormat('dd.MM', 'de_DE').format(date)}';
+  }
+
+  _Question _typedQuestion(G3CheckInQuestion question, String openDay) {
+    final preset = question.key == kG3CheckInNoteKey
+        ? _questions.last
+        : _questions.where((q) => q.key == question.key).firstOrNull;
+    final title = preset?.title ?? question.label;
+    final today = openDay == dayLabelOf(widget.controller.now());
+    final prompt = today
+        ? preset?.prompt ?? question.label
+        : switch (question.key) {
+            'alcohol_evening' => 'Alkohol am ${_shortDay(question.targetDay)}?',
+            'caffeine_late' =>
+              'Koffein nach 14 Uhr am ${_shortDay(question.targetDay)}?',
+            'mood' =>
+              'Wie war deine Stimmung am ${_shortDay(question.targetDay)}?',
+            kG3CheckInNoteKey => 'Notiz zu ${_shortDay(question.targetDay)}?',
+            _ => '${question.label} · ${_shortDay(question.targetDay)}',
+          };
+    return _Question(question.key, prompt, title, switch (question.kind) {
+      G3CheckInKind.yesNo => _Answer.yesNo,
+      G3CheckInKind.quantity => _Answer.amount,
+      G3CheckInKind.rating => _Answer.scale,
+      G3CheckInKind.freeNote => _Answer.note,
+    }, checkIn: question);
+  }
+
+  List<_Question> _questionsFor(
+    JournalDaySnapshot? snap, {
+    bool history = false,
+  }) {
+    final openDay = widget.controller.selectedDay;
+    return [
+      if (history || _checkIn == null)
+        ..._questions
+      else
+        for (final question in _checkIn!.questions)
+          _typedQuestion(question, openDay),
+      if (snap != null)
+        for (final f in snap.fields)
+          if (f.custom && !f.hidden)
+            _Question(
+              f.key,
+              openDay == dayLabelOf(widget.controller.now()) || history
+                  ? f.label
+                  : '${f.label} · ${_shortDay(openDay)}',
+              f.label,
+              switch (f.kind) {
+                JournalFieldKind.yesNo => _Answer.yesNo,
+                JournalFieldKind.rating => _Answer.scale,
+                JournalFieldKind.dose ||
+                JournalFieldKind.duration => _Answer.amount,
+              },
+            ),
+    ];
+  }
 
   @override
   void initState() {
@@ -164,6 +209,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       _readError = null;
       _saveError = null;
       _saving = false;
+      _checkIn = null;
       _today = null;
       _pattern = null;
       _patternLoading = true;
@@ -177,12 +223,14 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       final days = [1, 2, 3, 4, 5]
           .map((n) => dayLabelOf(DateTime(date.year, date.month, date.day - n)))
           .toList();
+      final checkIn = await repo.readCheckIn(day);
       final data = await Future.wait([
         repo.readJournalDay(day),
         for (final d in days) repo.readJournalDay(d),
       ]);
       if (!mounted || id != _serial) return;
       setState(() {
+        _checkIn = checkIn;
         _today = data.first;
         _history = data.skip(1).toList();
         _loading = false;
@@ -230,14 +278,36 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     }
   }
 
-  bool _answered(JournalDaySnapshot snap, _Question q) => q.kind == _Answer.note
+  bool _answered(JournalDaySnapshot snap, _Question q) => q.checkIn != null
+      ? q.checkIn!.answer != null
+      : q.kind == _Answer.note
       ? snap.note.trim().isNotEmpty
       : snap.metrics[q.key] != null;
+
+  Object? _inputValue(JournalDaySnapshot snap, _Question q) {
+    if (q.checkIn?.answer case G3YesNoAnswer answer) {
+      return answer.value ? 1 : 0;
+    }
+    if (q.checkIn?.answer case G3QuantityAnswer answer) {
+      return answer.value;
+    }
+    if (q.checkIn?.answer case G3RatingAnswer answer) {
+      return answer.value;
+    }
+    if (q.checkIn?.answer case G3FreeNoteAnswer answer) {
+      return answer.value;
+    }
+    if (q.checkIn != null) return null;
+    return q.kind == _Answer.note ? snap.note : snap.metrics[q.key]?.value;
+  }
+
   String _value(JournalDaySnapshot snap, _Question q) {
     if (q.kind == _Answer.note) {
-      return snap.note.trim().isEmpty ? '—' : snap.note;
+      final note = _inputValue(snap, q) as String?;
+      return note == null || note.trim().isEmpty ? '—' : note;
     }
-    final v = snap.metrics[q.key]?.value;
+    final raw = _inputValue(snap, q);
+    final v = raw is num ? raw.toDouble() : null;
     if (v == null) return '—';
     if (q.kind == _Answer.yesNo) {
       return v == 1
@@ -248,7 +318,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     }
     if (q.kind == _Answer.amount) {
       if (v == 0) return 'Keins';
-      final field = snap.fields.where((f) => f.key == q.key).firstOrNull;
+      final field =
+          q.checkIn?.field ??
+          snap.fields.where((f) => f.key == q.key).firstOrNull;
       return field?.formatWithUnit(v) ?? '—';
     }
     return v == v.roundToDouble() && v >= 1 && v <= 5
@@ -260,6 +332,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final base = _today;
     if (base == null || _saving) return JournalAnswerSaveResult.failed;
     final saveSerial = _serial;
+    final targetDay = q.checkIn?.targetDay ?? base.day;
     final wasCurrent = !_editing && _questionsFor(base)[_position].key == q.key;
     setState(() {
       _draft = value;
@@ -267,25 +340,46 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       _saving = true;
     });
     try {
-      final patch = q.kind == _Answer.note
-          ? JournalDayPatch.fromBase(base, note: value as String? ?? '')
-          : JournalDayPatch.fromBase(
-              base,
-              metrics: {
-                q.key: value == null
-                    ? null
-                    : JournalMetricValue((value as num).toDouble()),
-              },
-            );
-      await widget.controller.repository.patchJournalDay(patch);
+      final repo = widget.controller.repository;
+      if (q.checkIn != null && value != null) {
+        final answer = switch (q.kind) {
+          _Answer.yesNo => G3YesNoAnswer(value == 1),
+          _Answer.amount => G3QuantityAnswer((value as num).toDouble()),
+          _Answer.scale => G3RatingAnswer((value as num).toInt()),
+          _Answer.note => G3FreeNoteAnswer(value as String),
+        };
+        await repo.answerCheckIn(base.day, q.key, answer);
+      } else {
+        // The typed API has no delete operation or custom-question key.
+        final target = targetDay == base.day
+            ? base
+            : await repo.readJournalDay(targetDay);
+        final patch = q.kind == _Answer.note
+            ? JournalDayPatch.fromBase(target, note: value as String? ?? '')
+            : JournalDayPatch.fromBase(
+                target,
+                metrics: {
+                  q.key: value == null
+                      ? null
+                      : JournalMetricValue((value as num).toDouble()),
+                },
+              );
+        await repo.patchJournalDay(patch);
+      }
       if (!mounted ||
           saveSerial != _serial ||
           widget.controller.selectedDay != base.day) {
         return JournalAnswerSaveResult.saved;
       }
       late final JournalDaySnapshot updated;
+      late final G3CheckIn updatedCheckIn;
+      JournalDaySnapshot? updatedTarget;
       try {
-        updated = await widget.controller.repository.readJournalDay(base.day);
+        updatedCheckIn = await repo.readCheckIn(base.day);
+        updated = await repo.readJournalDay(base.day);
+        if (targetDay != base.day) {
+          updatedTarget = await repo.readJournalDay(targetDay);
+        }
       } catch (_) {
         if (mounted && widget.controller.selectedDay == base.day) {
           setState(() {
@@ -303,7 +397,14 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         return JournalAnswerSaveResult.saved;
       }
       setState(() {
+        _checkIn = updatedCheckIn;
         _today = updated;
+        if (updatedTarget != null) {
+          _history = [
+            for (final row in _history)
+              if (row.day == targetDay) updatedTarget else row,
+          ];
+        }
         _saving = false;
         _draft = null;
         _saveError = null;
@@ -408,11 +509,15 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
           ],
         );
       case _Answer.amount:
-        final field = _today?.fields.where((f) => f.key == q.key).firstOrNull;
+        final field =
+            q.checkIn?.field ??
+            _today?.fields.where((f) => f.key == q.key).firstOrNull;
         final step = field?.step ?? 1;
         final value = _draft is num
             ? (_draft as num).toDouble()
-            : _today?.metrics[q.key]?.value;
+            : _today == null
+            ? null
+            : _inputValue(_today!, q) as num?;
         final current = value == null ? null : (value / step).round();
         return Column(
           children: [
@@ -455,10 +560,10 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       builder: (_) => G3JournalAnswerSheet._(
         question: q,
         previous: _value(snap, q),
-        initial: q.kind == _Answer.note
-            ? snap.note
-            : snap.metrics[q.key]?.value,
-        field: snap.fields.where((f) => f.key == q.key).firstOrNull,
+        initial: _inputValue(snap, q),
+        field:
+            q.checkIn?.field ??
+            snap.fields.where((f) => f.key == q.key).firstOrNull,
         onSave: (value) async {
           return _save(q, value);
         },
@@ -469,7 +574,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   }
 
   List<String> _historyChips(JournalDaySnapshot day) => [
-    for (final q in _questionsFor(day))
+    for (final q in _questionsFor(day, history: true))
       if (_answered(day, q))
         q.kind == _Answer.note
             ? 'Notiz'
@@ -490,7 +595,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       chips: chips,
       count: chips.isEmpty
           ? null
-          : '${chips.length} von ${_questionsFor(row).length}',
+          : '${chips.length} von ${_questionsFor(row, history: true).length}',
       onTap: () async {
         await widget.onEdit?.call(row.day);
         if (mounted) _load();
@@ -511,6 +616,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final pattern = _pattern;
     final band = widget.controller.band;
     final storedAt = band.latestStoredAt;
+    final openDayIsToday = day == dayLabelOf(widget.controller.now());
+    final sectionDay = openDayIsToday ? 'HEUTE' : _shortDay(day).toUpperCase();
     final compactDate = DateFormat(
       'EEE dd.MM',
       'de_DE',
@@ -580,7 +687,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                   synthetic: widget.controller.day?.synthetic == true,
                 ),
                 OBSectionHeader(
-                  'HEUTE',
+                  sectionDay,
                   trailing: TextButton(
                     onPressed: _openCustomize,
                     child: Text(
@@ -602,6 +709,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                       : snap != null && count == questions.length
                       ? OBCheckInDone(
                           total: questions.length,
+                          title: openDayIsToday
+                              ? 'Für heute erledigt'
+                              : 'Für diesen Tag erledigt',
                           answers: [
                             for (final q in questions)
                               q.kind == _Answer.note
@@ -631,7 +741,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                         ),
                 ),
                 OBSectionHeader(
-                  'HEUTE BEANTWORTET',
+                  '$sectionDay BEANTWORTET',
                   trailing: Text(
                     '$count von ${questions.length}',
                     style: g.t(13, 17, color: g.ink2),
@@ -660,20 +770,37 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                     title: q.title,
                                     value: _value(snap, q),
                                     subtitle: q.kind == _Answer.note
-                                        ? 'zu gestern'
+                                        ? openDayIsToday
+                                              ? 'zu gestern'
+                                              : _shortDay(
+                                                  q.checkIn?.targetDay ?? day,
+                                                )
                                         : q.key == 'alcohol_evening'
-                                        ? 'gestern Abend'
+                                        ? openDayIsToday
+                                              ? 'gestern Abend'
+                                              : _shortDay(
+                                                  q.checkIn?.targetDay ?? day,
+                                                )
                                         : q.key == 'caffeine_late'
-                                        ? 'gestern'
-                                        : 'heute',
+                                        ? openDayIsToday
+                                              ? 'gestern'
+                                              : _shortDay(
+                                                  q.checkIn?.targetDay ?? day,
+                                                )
+                                        : openDayIsToday
+                                        ? 'heute'
+                                        : _shortDay(
+                                            q.checkIn?.targetDay ?? day,
+                                          ),
                                     icon: q.kind == _Answer.note
                                         ? LucideIcons.stickyNote
                                         : q.kind == _Answer.scale
                                         ? LucideIcons.smile
                                         : journalFieldIcon(
-                                            snap.fields.firstWhere(
-                                              (f) => f.key == q.key,
-                                            ),
+                                            q.checkIn?.field ??
+                                                snap.fields.firstWhere(
+                                                  (f) => f.key == q.key,
+                                                ),
                                           ),
                                     onEdit: () => _edit(q),
                                   ),
@@ -871,13 +998,8 @@ class _NoteAnswerState extends State<_NoteAnswer> {
 }
 
 class G3JournalPatternScreen extends StatelessWidget {
-  const G3JournalPatternScreen({
-    super.key,
-    required this.pattern,
-    this.perSideMinimum,
-  });
+  const G3JournalPatternScreen({super.key, required this.pattern});
   final G3JournalPattern pattern;
-  final int? perSideMinimum;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -980,7 +1102,14 @@ class G3JournalPatternScreen extends StatelessWidget {
                               Text(
                                 ready
                                     ? 'Der Vergleich zeigt keinen ausreichend klaren Zusammenhang.'
-                                    : 'Ein Vergleich braucht ${pattern.pairedMinimum} Tag-Nacht-Paare${perSideMinimum == null ? '' : ', davon je $perSideMinimum mit Ja und mit Nein'}.',
+                                    : switch (pattern.refusalGate) {
+                                        G3PatternRefusalGate.paired =>
+                                          'Für den Vergleich fehlen Tag-Nacht-Paare: ${p.pairedN} von ${pattern.pairedMinimum} vorhanden.',
+                                        G3PatternRefusalGate.side =>
+                                          'Für den Vergleich braucht es je ${pattern.perSideMinimum} Nächte mit Ja und Nein.',
+                                        null =>
+                                          'Ein Vergleich ist noch nicht möglich.',
+                                      },
                                 style: g.t(13, 17, color: g.ink2),
                               ),
                             ],
@@ -997,20 +1126,20 @@ class G3JournalPatternScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      _patternFooter(pattern, perSideMinimum: perSideMinimum),
+                      _patternFooter(pattern),
                       style: g.t(13, 17, weight: FontWeight.w700),
                     ),
                     const SizedBox(height: 12),
                     Divider(color: g.hairline),
                     OBPatternGateRow(
                       label: 'Ja',
-                      count: p.yesNights,
-                      minimum: perSideMinimum,
+                      count: pattern.yesNights,
+                      minimum: pattern.perSideMinimum,
                     ),
                     OBPatternGateRow(
                       label: 'Nein',
-                      count: p.noNights,
-                      minimum: perSideMinimum,
+                      count: pattern.noNights,
+                      minimum: pattern.perSideMinimum,
                     ),
                   ],
                 ],
