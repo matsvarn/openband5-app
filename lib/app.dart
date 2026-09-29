@@ -10,6 +10,8 @@ import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/release_scope.dart';
+import 'openband/g3/screens/heute.dart';
+import 'openband/g3/screens/heute_routes.dart';
 import 'openband/screens.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
@@ -685,26 +687,19 @@ class _ShellState extends State<_Shell> {
         if (d == ShellDomain.health) unawaited(_day.refresh());
       },
       builder: (c, d) => switch (d) {
-        ShellDomain.home => OpenBandOverview(
+        ShellDomain.home => OpenBandHeute(
           controller: _day,
-          reduced: reduced,
           onProfile: () => pushInTab(
             c,
             MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
           ),
-          onJournal: reduced ? null : () => _go(ShellDomain.wellness),
-          onNutrition: reduced
-              ? null
-              : () => Navigator.of(c).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => OpenBandNutritionRoute(
-                      controller: _day,
-                      onBarcode: _nutritionBarcode,
-                    ),
-                  ),
-                ),
-          onTraining: reduced ? null : () => _go(ShellDomain.workout),
-          onSync: () => _app!.openSession(),
+          onBand: () => _app!.openSession(),
+          onConnect: () => _app!.openSession(),
+          onAddActivity: () => _go(ShellDomain.workout),
+          onJournal: () => _go(ShellDomain.wellness),
+          onOpenMetric: (m) => openHeuteMetric(c, _day, m),
+          onOpenActivity: (_) => _go(ShellDomain.workout),
+          onOpenSleep: () => _go(ShellDomain.sleep),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
         ShellDomain.sleep => OpenBandSleep(controller: _day, asTab: true),
