@@ -7,6 +7,101 @@ import 'domain.dart'
         CaffeineSleepPatternKind,
         WeightHistory;
 
+/// Stored band facts. A device family is not an exact retail model, and the
+/// current store has no firmware-version field.
+class BandDiagnostics {
+  const BandDiagnostics({
+    this.model,
+    this.firmwareVersion,
+    this.deviceFamily,
+    this.lastStoredSampleAt,
+    this.backlog,
+    this.coverage,
+    this.battery,
+  });
+
+  final String? model;
+  final String? firmwareVersion;
+  final String? deviceFamily;
+  final DateTime? lastStoredSampleAt;
+  final BandBacklog? backlog;
+  final BandCoverage? coverage;
+  final BandBattery? battery;
+}
+
+/// Ring-buffer page spans at the last stored connect. Neither span is time.
+class BandBacklog {
+  const BandBacklog({
+    required this.observedAt,
+    this.heldPages,
+    this.unreadPages,
+  });
+
+  final DateTime observedAt;
+
+  /// Modular span from trim page to write page.
+  final int? heldPages;
+
+  /// Modular span from persistent read page to write page.
+  final int? unreadPages;
+}
+
+class BandTimeInterval {
+  const BandTimeInterval(this.start, this.end);
+  final DateTime start;
+  final DateTime end;
+}
+
+/// Last 24 hours of retained primary-band 1 Hz rows. Each recorded second is
+/// observed wear under the engine's record-presence definition. Coverage is the
+/// share of seconds actually stored, not a claim that missing seconds were off
+/// wrist. Wrist-off spans come only from the band's stored toggle events.
+class BandCoverage {
+  const BandCoverage({
+    required this.start,
+    required this.end,
+    required this.recordedSeconds,
+    required this.coveragePercent,
+    this.wristOffIntervals,
+  });
+
+  final DateTime start;
+  final DateTime end;
+  /// Null when there is no retained 1 Hz substrate in this window.
+  final int? recordedSeconds;
+  final double? coveragePercent;
+
+  /// Null when no wrist-state event establishes a state for the window.
+  final List<BandTimeInterval>? wristOffIntervals;
+}
+
+class BandBattery {
+  const BandBattery({required this.observedAt, this.percent, this.charging});
+  final DateTime observedAt;
+  final int? percent;
+  final bool? charging;
+}
+
+/// Reserved for a durable first-transfer section receipt. The current ledger
+/// records batch ACKs without a first-transfer identity or section ranges.
+class FirstTransferReceipt {
+  const FirstTransferReceipt(this.sections);
+  final List<FirstTransferSection> sections;
+}
+
+class FirstTransferSection {
+  const FirstTransferSection({
+    required this.name,
+    required this.start,
+    required this.end,
+    required this.committedAt,
+  });
+  final String name;
+  final DateTime start;
+  final DateTime end;
+  final DateTime committedAt;
+}
+
 enum G3Metric {
   recovery,
   hrv,

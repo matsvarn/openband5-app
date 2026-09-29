@@ -5,6 +5,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
 import '../data/cycle_store.dart';
 import '../data/db.dart';
@@ -115,12 +116,14 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Future<CycleSettings> Function()? cycleSettingsRead,
     Future<void> Function(CycleSettings)? cycleSettingsSave,
     Future<void> Function()? cycleContextRefresh,
+    DateTime Function()? diagnosticsNow,
   })  : _measurementImporter = measurementImporter,
         _glucoseRefresh = glucoseRefresh,
         _reminderRefresh = reminderRefresh,
         _cycleSettingsRead = cycleSettingsRead,
         _cycleSettingsSave = cycleSettingsSave,
-        _cycleContextRefresh = cycleContextRefresh;
+        _cycleContextRefresh = cycleContextRefresh,
+        _diagnosticsNow = diagnosticsNow ?? DateTime.now;
 
   final AppState app;
   final ImportedMeasurementImporter? _measurementImporter;
@@ -129,6 +132,119 @@ class LocalOpenBandRepository implements OpenBandRepository {
   final Future<CycleSettings> Function()? _cycleSettingsRead;
   final Future<void> Function(CycleSettings)? _cycleSettingsSave;
   final Future<void> Function()? _cycleContextRefresh;
+  final DateTime Function() _diagnosticsNow;
+
+  static int? _pageSpan(Object? from, Object? to, Object? capacity) {
+    if (from is! num || to is! num || capacity is! num) return null;
+    final size = capacity.toInt();
+    final first = from.toInt();
+    final last = to.toInt();
+    if (size <= 0 ||
+        first < 0 ||
+        last < 0 ||
+        first > size ||
+        last > size ||
+        first == last) {
+      return null; // Equal ring cursors do not distinguish empty from full.
+    }
+    return (last - first + size) % size;
+  }
+
+  @override
+  Future<BandDiagnostics> readBandDiagnostics() async {
+    const deviceId = LocalDb.kPrimaryDeviceId;
+    final db = await LocalDb.instance;
+    final nowSec = _diagnosticsNow().millisecondsSinceEpoch ~/ 1000;
+    final fromSec = nowSec - const Duration(hours: 24).inSeconds;
+    DateTime at(int seconds) =>
+        DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+
+    final device = await LocalDb.deviceRow(deviceId);
+    final backlogRows = await LocalDb.bandBacklog(limit: 1, deviceId: deviceId);
+    final backlogRow = backlogRows.isEmpty ? null : backlogRows.first;
+    final batteryRow = await LocalDb.latestBandBatterySample(
+      deviceId: deviceId,
+    );
+    final storedThrough = await LocalDb.getCursorInt('rec_ts_hw');
+    final recorded = await db.rawQuery(
+      'SELECT COUNT(DISTINCT rec_ts) AS n FROM decoded_onehz '
+      'WHERE device_id = ? AND rec_ts >= ? AND rec_ts < ? '
+      'AND rec_ts > 0 AND $kPrimaryBandSourceSql',
+      [deviceId, fromSec, nowSec],
+    );
+    final seconds = (recorded.first['n'] as num).toInt();
+    final stateRows = await db.query(
+      'band_events',
+      columns: ['event_id'],
+      where: 'device_id = ? AND ts < ? AND event_id IN (?, ?)',
+      whereArgs: [
+        deviceId,
+        nowSec,
+        proto.EventId.wristOn,
+        proto.EventId.wristOff,
+      ],
+      orderBy: 'ts DESC',
+      limit: 1,
+    );
+    final wristOff = stateRows.isEmpty
+        ? null
+        : await LocalDb.wristOffSpans(fromSec, nowSec, deviceId: deviceId);
+
+    return BandDiagnostics(
+      // `device.adapter_id` is a family (gen4/gen5), and `label` is an
+      // advertising name or serial. Neither is an exact model or firmware.
+      deviceFamily: device?['adapter_id'] as String?,
+      lastStoredSampleAt: storedThrough == null ? null : at(storedThrough),
+      backlog: backlogRow == null
+          ? null
+          : BandBacklog(
+              observedAt: at((backlogRow['ts'] as num).toInt()),
+              heldPages: _pageSpan(
+                backlogRow['trim_page'],
+                backlogRow['written'],
+                backlogRow['capacity'],
+              ),
+              unreadPages: _pageSpan(
+                backlogRow['read_page'],
+                backlogRow['written'],
+                backlogRow['capacity'],
+              ),
+            ),
+      coverage: seconds == 0 && stateRows.isEmpty
+          ? null
+          : BandCoverage(
+              start: at(fromSec),
+              end: at(nowSec),
+              recordedSeconds: seconds == 0 ? null : seconds,
+              coveragePercent: seconds == 0
+                  ? null
+                  : 100 * seconds / const Duration(hours: 24).inSeconds,
+              wristOffIntervals: wristOff == null
+                  ? null
+                  : [
+                      for (final span in wristOff)
+                        BandTimeInterval(at(span[0]), at(span[1])),
+                    ],
+            ),
+      battery: batteryRow == null
+          ? null
+          : BandBattery(
+              observedAt: at((batteryRow['ts'] as num).toInt()),
+              percent: (batteryRow['battery_pct'] as num?)?.round(),
+              charging: batteryRow['charging'] == null
+                  ? null
+                  : batteryRow['charging'] == 1,
+            ),
+    );
+  }
+
+  @override
+  Future<FirstTransferReceipt?> readFirstTransferReceipt() async {
+    // FirstSyncScreen used only the durable frontier and today's evaluation.
+    // sync_ledger has batch tokens/ACK status, not a first-transfer identity
+    // or committed section ranges. A batch ACK cannot become a section receipt.
+    return null;
+  }
 
   static MetricKey? _g3MetricKey(G3Metric metric) => switch (metric) {
     G3Metric.recovery => MetricKey.recovery,

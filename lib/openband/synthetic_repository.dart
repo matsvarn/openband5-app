@@ -93,6 +93,24 @@ class _NightScalarSeed {
 /// observed stages. Not analytics restaging — swap when DerivationEngine owns
 /// this read model.
 class SyntheticOpenBandRepository implements OpenBandRepository {
+  @override
+  Future<BandDiagnostics> readBandDiagnostics() async {
+    final snapshot = band;
+    return BandDiagnostics(
+      deviceFamily: _g3 ? 'gen5' : null,
+      lastStoredSampleAt: snapshot.latestStoredAt,
+      battery: snapshot.batteryObservedAt == null
+          ? null
+          : BandBattery(
+              observedAt: snapshot.batteryObservedAt!,
+              percent: snapshot.batteryPercent,
+            ),
+    );
+  }
+
+  @override
+  Future<FirstTransferReceipt?> readFirstTransferReceipt() async => null;
+
   SyntheticScenario scenario;
   Future<void>? calculationBarrier;
   Future<void>? restoreBarrier;
