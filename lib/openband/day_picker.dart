@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
 import 'calendar.dart';
 import 'controller.dart';
@@ -10,9 +11,18 @@ Future<void> chooseOpenBandDay(
   BuildContext context,
   OpenBandController controller,
 ) async {
-  final selected = await Navigator.of(
-    context,
-  ).push<String>(MaterialPageRoute(builder: (_) => _DayPicker(controller)));
+  final selected = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    barrierColor: Colors.black.withValues(alpha: .38),
+    backgroundColor: OB.of(context).card,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (_) =>
+        FractionallySizedBox(heightFactor: .83, child: _DayPicker(controller)),
+  );
   if (selected != null) await controller.selectDay(selected);
 }
 
@@ -82,15 +92,51 @@ class _DayPickerState extends State<_DayPicker> {
         bottom: false,
         child: Column(
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(top: 10, bottom: 16),
+                decoration: BoxDecoration(
+                  color: p.muted.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: 'Datum wählen',
-                backText: 'Abbrechen',
-                subtitle: 'Gespeicherte Nächte',
-                backLabel: 'Abbrechen',
-                onInfo: _info,
-                infoLabel: 'Gespeicherte Schlafwerte',
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Datum wählen',
+                      style: p.text(24, weight: FontWeight.w700, display: true),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Schließen',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(LucideIcons.x),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Gespeicherte Nächte',
+                      style: p.text(14, color: p.muted),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gespeicherte Schlafwerte',
+                    onPressed: _info,
+                    icon: const Icon(LucideIcons.info, size: 20),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -243,12 +289,24 @@ class _DayPickerState extends State<_DayPicker> {
                 16,
                 MediaQuery.paddingOf(context).bottom,
               ),
-              child: OBAction(
-                selectedDay == dayLabelOf(today)
-                    ? 'Zu heute'
-                    : '${obDate(selectedDay)} ansehen',
-                secondary: selectedDay == dayLabelOf(today),
-                onPressed: () => Navigator.pop(context, selectedDay),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OBAction(
+                      'Zu heute',
+                      secondary: true,
+                      onPressed: () =>
+                          Navigator.pop(context, dayLabelOf(today)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OBAction(
+                      '${obDate(selectedDay)} ansehen',
+                      onPressed: () => Navigator.pop(context, selectedDay),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

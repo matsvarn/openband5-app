@@ -16,6 +16,9 @@ import 'package:provider/provider.dart';
 import '../../health/health_import_state.dart' show storeName;
 import '../../l10n/app_localizations.dart';
 import '../../openband/alp_tokens.dart';
+import '../../openband/g3/band_parts.dart';
+import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/screens/band.dart';
 import '../../openband/domain.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/release_scope.dart';
@@ -338,6 +341,17 @@ class _ProfileHomeState extends State<ProfileHome> {
       bandName: c.read<AppState>().strapName,
       releaseReduced: kOpenBandReleaseReduced,
       onDevices: () => _open(c, const MyDevices()),
+      onBand: () => _open(
+        c,
+        G3BandScreen(
+          band: _band,
+          now: DateTime.now(),
+          databaseSize: snap.data?.storageBytes == null
+              ? null
+              : formatBytes(snap.data!.storageBytes!),
+          onDevices: () => goto(c, const MyDevices()),
+        ),
+      ),
       onData: () => _open(c, const DataScreen()),
       onSettings: () => _open(c, const MoreSettings()),
       onEdit: () => _open(c, const EditProfile()),
@@ -358,6 +372,7 @@ class ProfileHomeView extends StatelessWidget {
   final BandSnapshot? band;
   final String? bandName;
   final VoidCallback? onDevices,
+      onBand,
       onData,
       onSettings,
       onEdit,
@@ -376,6 +391,7 @@ class ProfileHomeView extends StatelessWidget {
     this.band,
     this.bandName,
     this.onDevices,
+    this.onBand,
     this.onData,
     this.onCoach,
     this.onSettings,
@@ -391,6 +407,7 @@ class ProfileHomeView extends StatelessWidget {
     final p = OB.of(c);
     final l = AppLocalizations.of(c);
     final s = stats;
+    if (releaseReduced) return _g3Profile(c, s);
     return Scaffold(
       key: const ValueKey('profile-screen'),
       backgroundColor: p.canvas,
@@ -415,18 +432,16 @@ class ProfileHomeView extends StatelessWidget {
                 children: [
                   _identityCard(c, p, s),
                   if (s != null) _bandCard(c, p, s),
-                  if (releaseReduced)
-                    ...[
-                      _reducedRoutes(c),
-                      const SizedBox(height: 14),
-                      Center(
-                        child: Text(
-                          'OpenBand 5 · ohne Abo',
-                          style: p.text(12, color: p.muted),
-                        ),
+                  if (releaseReduced) ...[
+                    _reducedRoutes(c),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: Text(
+                        'OpenBand 5 · ohne Abo',
+                        style: p.text(12, color: p.muted),
                       ),
-                    ]
-                  else ...[
+                    ),
+                  ] else ...[
                     settingsGroup(c, l?.profileQuickAccessGroup ?? 'Quick access', [
                       SetRow(
                         LucideIcons.watch,
@@ -562,6 +577,210 @@ class ProfileHomeView extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _g3Profile(BuildContext c, ProfileStats? s) {
+    final g = G3.of(c);
+    final name = (s?.name ?? '').trim();
+    final profile = PersonalProfile.fromMap(user);
+    final facts = <String>[
+      if (ageOnDate(profile.birthDate, DateTime.now()) case final age?)
+        '$age Jahre',
+      if (profile.heightCm != null) '${profile.heightCm!.round()} cm',
+      if (profile.weightKg != null)
+        '${profile.weightKg!.toStringAsFixed(1).replaceAll('.', ',')} kg',
+    ];
+    final b = band;
+    final language =
+        languageLabel ?? _languageLabel(c, c.watch<LocaleController>().code);
+    Widget section(String title, List<Widget> rows) => Padding(
+      padding: const EdgeInsets.only(top: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 0, 9),
+            child: Text(title, style: g.caps(color: g.muted)),
+          ),
+          OBSettingsGroup(children: rows),
+        ],
+      ),
+    );
+    return Scaffold(
+      key: const ValueKey('profile-screen'),
+      backgroundColor: g.page,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(c).maybePop(),
+                    icon: const Icon(LucideIcons.chevronLeft),
+                    label: const Text('Heute'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: g.ink,
+                      minimumSize: const Size(44, 44),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text('PROFIL', style: g.caps()),
+                        Text('OpenBand 5', style: g.t(13, 18, color: g.muted)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 70),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                children: [
+                  OBSettingsGroup(
+                    children: [
+                      OBSettingsRow(
+                        key: const ValueKey('profile-identity'),
+                        label: name.isEmpty ? 'Profil' : name,
+                        detail: facts.join(' · '),
+                        onTap: onEdit,
+                      ),
+                    ],
+                  ),
+                  section('BAND', [_g3BandSummary(c, s, b)]),
+                  section('MITTEILUNGEN', [
+                    OBSettingsRow(
+                      label: 'Mitteilungen',
+                      detail: 'Erinnerungen und Bandstatus',
+                      onTap: onSettings,
+                    ),
+                  ]),
+                  section('DATEN', [
+                    OBSettingsRow(
+                      key: const ValueKey('profile-data'),
+                      label: 'Daten & Sicherung',
+                      detail: s?.storageBytes == null
+                          ? 'Datenbankdatei —'
+                          : 'Datenbankdatei ${formatBytes(s!.storageBytes!)}',
+                      onTap: onData,
+                    ),
+                  ]),
+                  section('DARSTELLUNG', [
+                    OBSettingsRow(
+                      key: const ValueKey('profile-settings'),
+                      label: 'Einstellungen',
+                      onTap: onSettings,
+                    ),
+                    OBSettingsRow(
+                      key: const ValueKey('profile-language'),
+                      label: 'Sprache',
+                      value: language,
+                      onTap: onLanguage,
+                    ),
+                  ]),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Text(
+                      'OpenBand 5 · ohne Abo',
+                      style: g.t(12, 17, color: g.muted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _g3BandSummary(BuildContext c, ProfileStats? s, BandSnapshot? b) {
+    final g = G3.of(c);
+    final status = s?.bandReadFailed == true
+        ? 'Bandstatus nicht verfügbar'
+        : b?.connection == BandConnection.connected
+        ? 'Verbunden'
+        : 'Nicht verbunden';
+    final archive = s?.storageBytes == null
+        ? '—'
+        : formatBytes(s!.storageBytes!).replaceFirst('.', ',');
+    final facts = <(String, String)>[
+      ('Daten bis', obTime(b?.latestStoredAt)),
+      ('Letzter Bandwert', obTime(b?.receivedAt)),
+      ('Datenbankdatei', archive),
+    ];
+    final large = bigText(c);
+    Widget fact((String, String) item) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: large
+          ? [
+              Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
+              Text(item.$1, style: g.t(12, 17, color: g.muted)),
+            ]
+          : [
+              Text(item.$1, style: g.t(12, 17, color: g.muted)),
+              Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
+            ],
+    );
+    return Semantics(
+      button: onBand != null || onDevices != null,
+      label: 'Band. $status. ${facts.map((f) => '${f.$1} ${f.$2}').join('. ')}',
+      child: InkWell(
+        key: const ValueKey('profile-band'),
+        onTap: onBand ?? onDevices,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Band',
+                      style: g.t(15, 20, weight: FontWeight.w700),
+                    ),
+                  ),
+                  if (s?.bandReadFailed != true &&
+                      b?.connection == BandConnection.connected)
+                    OBLed(on: true, size: 7),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(status, style: g.t(13, 18, color: g.muted)),
+                  ),
+                  if (b?.batteryPercent != null) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${b!.batteryPercent} %',
+                      style: g.t(13, 18, weight: FontWeight.w700),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (large)
+                for (final item in facts) ...[
+                  fact(item),
+                  const SizedBox(height: 7),
+                ]
+              else
+                Row(
+                  children: [
+                    for (var i = 0; i < facts.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 10),
+                      Expanded(child: fact(facts[i])),
+                    ],
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -940,7 +1159,10 @@ class ProfileHomeView extends StatelessWidget {
                       children: [
                         OBLed(on: !statusUnavailable && connected, size: 7),
                         const SizedBox(width: 8),
-                        Text(status, style: p.text(12, weight: FontWeight.w600)),
+                        Text(
+                          status,
+                          style: p.text(12, weight: FontWeight.w600),
+                        ),
                       ],
                     ),
                   ),
@@ -971,19 +1193,46 @@ class ProfileHomeView extends StatelessWidget {
               if (large)
                 Column(
                   children: [
-                    _bandFactLarge(p, de ? 'Daten bis' : 'Data as of', obTime(b.latestStoredAt), stackLabel: true),
+                    _bandFactLarge(
+                      p,
+                      de ? 'Daten bis' : 'Data as of',
+                      obTime(b.latestStoredAt),
+                      stackLabel: true,
+                    ),
                     const SizedBox(height: 8),
-                    _bandFactLarge(p, de ? 'Letzter Bandwert' : 'Last band value', obTime(b.receivedAt), stackLabel: true),
+                    _bandFactLarge(
+                      p,
+                      de ? 'Letzter Bandwert' : 'Last band value',
+                      obTime(b.receivedAt),
+                      stackLabel: true,
+                    ),
                     const SizedBox(height: 8),
-                    _bandFactLarge(p, de ? 'Rohdaten-Archiv' : 'Raw archive', archive, stackLabel: true),
+                    _bandFactLarge(
+                      p,
+                      de ? 'Rohdaten-Archiv' : 'Raw archive',
+                      archive,
+                      stackLabel: true,
+                    ),
                   ],
                 )
               else
                 Row(
                   children: [
-                    _bandFact(p, de ? 'Daten bis' : 'Data as of', obTime(b.latestStoredAt)),
-                    _bandFact(p, de ? 'Letzter Bandwert' : 'Last band value', obTime(b.receivedAt)),
-                    _bandFact(p, de ? 'Rohdaten-Archiv' : 'Raw archive', archive),
+                    _bandFact(
+                      p,
+                      de ? 'Daten bis' : 'Data as of',
+                      obTime(b.latestStoredAt),
+                    ),
+                    _bandFact(
+                      p,
+                      de ? 'Letzter Bandwert' : 'Last band value',
+                      obTime(b.receivedAt),
+                    ),
+                    _bandFact(
+                      p,
+                      de ? 'Rohdaten-Archiv' : 'Raw archive',
+                      archive,
+                    ),
                   ],
                 ),
             ],
