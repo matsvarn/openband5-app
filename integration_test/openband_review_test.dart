@@ -22121,7 +22121,7 @@ void main() {
       await capture('first-sync-info');
       await tester.tap(find.text('Schließen'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Weiter zum Profil'));
+      await tester.tap(find.text('Weiter'));
       await tester.pumpAndSettle();
       await mountFirstSync(brightness: Brightness.dark);
       await capture('first-sync-dark');
