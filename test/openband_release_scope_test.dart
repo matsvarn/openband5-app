@@ -36,6 +36,7 @@ import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/openband/training.dart';
+import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/templates.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
@@ -1283,6 +1284,37 @@ void main() {
     expect(find.byType(G3TrainingScreen), findsOneWidget);
     expect(find.byType(OpenBandTraining), findsNothing);
     expect(find.text('Übungsbibliothek'), findsNothing);
+  });
+
+  testWidgets('development gallery opens Kraft and a saved Training session', (
+    tester,
+  ) async {
+    phone(tester);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(repository: repository, showControls: false),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Training'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.bySemanticsLabel('Kraft starten'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandTemplates), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Zurück'));
+    await tester.pumpAndSettle();
+    final pastSession = find.textContaining('45 Min.');
+    await tester.ensureVisible(pastSession);
+    await tester.drag(find.byType(OpenBandTraining), const Offset(0, -180));
+    await tester.pumpAndSettle();
+    await tester.tap(pastSession);
+    await tester.pumpAndSettle();
+    expect(find.byType(OpenBandSession), findsOneWidget);
+    expect(
+      find.text('Für diese Einheit sind keine Details gespeichert.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
