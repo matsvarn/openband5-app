@@ -94,6 +94,8 @@ void main() {
   final scale = (reg['scale'] as num).toDouble();
   final realDocs = env['G3_REAL_DOCS'];
   final real = realDocs != null;
+  // Personal renders: resolve and check the target before anything runs.
+  final realOut = real ? g3RealOut(env) : null;
   G3Env screenEnv = const G3Env.paper();
   AppState? realApp;
 
@@ -237,7 +239,7 @@ void main() {
       final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(const ValueKey('capture')));
       final app = await boundary.toImage(pixelRatio: dpr);
       if (real) {
-        final out = env['G3_OUT'] ?? 'build/g3-review-real';
+        final out = realOut!;
         await tester.runAsync(() async {
           final png = await app.toByteData(format: ui.ImageByteFormat.png);
           File('$out/$mode/$name.png')
