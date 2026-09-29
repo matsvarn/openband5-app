@@ -88,8 +88,9 @@ class OBCheckIn extends StatelessWidget {
 }
 
 class OBCheckInDone extends StatelessWidget {
-  const OBCheckInDone({super.key, required this.total});
+  const OBCheckInDone({super.key, required this.total, required this.answers});
   final int total;
+  final List<String> answers;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -99,15 +100,63 @@ class OBCheckInDone extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('CHECK-IN', style: g.caps()),
+          Row(
+            children: [
+              Icon(LucideIcons.notebookPen, size: 20, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(child: Text('CHECK-IN', style: g.caps(size: 14))),
+              Text('$total von $total', style: g.t(13, 17, color: g.ink2)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < total; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: g.ink,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Icon(LucideIcons.check, size: 22, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Für heute erledigt',
+                  style: g.t(21, 26, weight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final answer in answers)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: g.pressed(radius: 14),
+                  child: Text(answer, style: g.t(12, 16, color: g.ink2)),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           Text(
-            'Für heute erledigt',
-            style: g.t(21, 26, weight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$total von $total Antworten gespeichert. Du kannst jede Antwort ändern.',
+            'Du kannst jede Antwort jederzeit ändern.',
             style: g.t(14, 19, color: g.ink2),
           ),
         ],
@@ -184,41 +233,54 @@ class OBStepper extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.max = 20,
+    this.unit,
   });
   final int? value;
   final int max;
+  final String? unit;
   final ValueChanged<int> onChanged;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return Row(
-      children: [
-        IconButton(
-          tooltip: 'Weniger',
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-          onPressed: value == null || value == 0
-              ? null
-              : () => onChanged(value! - 1),
-          icon: const Icon(LucideIcons.minus),
-        ),
-        Expanded(
-          child: Text(
-            value == null
-                ? '—'
-                : value == 0
-                ? 'Keins'
-                : '$value',
-            textAlign: TextAlign.center,
-            style: g.t(24, 28, weight: FontWeight.w700),
+    return Container(
+      decoration: g.pressed(radius: 24),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Weniger',
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            onPressed: value == null || value == 0
+                ? null
+                : () => onChanged(value! - 1),
+            icon: const Icon(LucideIcons.minus),
           ),
-        ),
-        IconButton(
-          tooltip: 'Mehr',
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-          onPressed: value == max ? null : () => onChanged((value ?? 0) + 1),
-          icon: const Icon(LucideIcons.plus),
-        ),
-      ],
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value == null
+                      ? '—'
+                      : value == 0
+                      ? 'Keins'
+                      : '$value',
+                  style: g.t(24, 28, weight: FontWeight.w700),
+                ),
+                if (value != null && value! > 0 && unit != null) ...[
+                  const SizedBox(width: 5),
+                  Text(unit!, style: g.t(13, 18, color: g.ink2)),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Mehr',
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            onPressed: value == max ? null : () => onChanged((value ?? 0) + 1),
+            icon: const Icon(LucideIcons.plus),
+          ),
+        ],
+      ),
     );
   }
 }

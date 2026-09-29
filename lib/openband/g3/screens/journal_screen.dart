@@ -364,6 +364,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             OBStepper(
               value: current,
               max: ((field?.max ?? 20) / step).floor(),
+              unit: field?.unit,
               onChanged: (v) => _save(q, v * step),
             ),
             OBAnswerKey(
@@ -506,7 +507,15 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     retryLabel: 'Neu laden',
                   )
                 : snap != null && count == questions.length
-                ? OBCheckInDone(total: questions.length)
+                ? OBCheckInDone(
+                    total: questions.length,
+                    answers: [
+                      for (final q in questions)
+                        q.kind == _Answer.note
+                            ? 'Notiz'
+                            : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${_value(snap, q)}',
+                    ],
+                  )
                 : OBCheckIn(
                     title: current.prompt,
                     index: _position + 1,
@@ -995,10 +1004,10 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           20,
-          20,
+          10,
           20,
           MediaQuery.viewInsetsOf(context).bottom + 24,
         ),
@@ -1006,36 +1015,115 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Eigene Frage', style: g.t(22, 27, weight: FontWeight.w700)),
+            Align(
+              child: Container(
+                width: 38,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: g.gap,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
             const SizedBox(height: 18),
-            OBTextField(controller: _name, label: 'Name'),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<JournalFieldKind>(
-              initialValue: _kind,
-              decoration: const InputDecoration(labelText: 'Antwortart'),
-              items: const [
-                DropdownMenuItem(
-                  value: JournalFieldKind.yesNo,
-                  child: Text('Ja / Nein'),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Eigene Frage',
+                    style: g.t(22, 27, weight: FontWeight.w700),
+                  ),
                 ),
-                DropdownMenuItem(
-                  value: JournalFieldKind.dose,
-                  child: Text('Anzahl'),
-                ),
-                DropdownMenuItem(
-                  value: JournalFieldKind.rating,
-                  child: Text('Skala 1–5'),
+                IconButton(
+                  tooltip: 'Schließen',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(LucideIcons.x),
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
                 ),
               ],
-              onChanged: (v) {
-                if (v != null) setState(() => _kind = v);
-              },
             ),
-            if (_error != null) OBInlineError(message: _error!),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: const Text('Frage speichern'),
+            const SizedBox(height: 2),
+            Text(
+              'Die Frage erscheint künftig in deinem Check-in.',
+              style: g.t(14, 18, color: g.ink2),
+            ),
+            const SizedBox(height: 20),
+            Text('NAME', style: g.caps(color: g.muted)),
+            const SizedBox(height: 8),
+            OBTextField(controller: _name, label: 'Name'),
+            const SizedBox(height: 20),
+            Text('ANTWORT', style: g.caps(color: g.muted)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (final (kind, label) in [
+                  (JournalFieldKind.yesNo, 'Ja / Nein'),
+                  (JournalFieldKind.dose, 'Anzahl'),
+                  (JournalFieldKind.rating, 'Skala 1–5'),
+                ]) ...[
+                  if (kind != JournalFieldKind.yesNo) const SizedBox(width: 6),
+                  Expanded(
+                    child: OBAnswerKey(
+                      label: label,
+                      selected: _kind == kind,
+                      onTap: _busy ? null : () => setState(() => _kind = kind),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text('SO ERSCHEINT SIE', style: g.caps(color: g.muted)),
+            const SizedBox(height: 8),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _name,
+              builder: (context, value, _) => OBPanel(
+                child: Row(
+                  children: [
+                    const Icon(LucideIcons.notebookPen, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        value.text.trim().isEmpty
+                            ? 'Deine Frage'
+                            : value.text.trim(),
+                        style: g.t(15, 19, weight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(switch (_kind) {
+                      JournalFieldKind.yesNo => 'Nein · Ja',
+                      JournalFieldKind.dose => '0 · 1 · 2',
+                      JournalFieldKind.rating => '1–5',
+                      JournalFieldKind.duration => 'Minuten',
+                    }, style: g.t(13, 17, color: g.ink2)),
+                  ],
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              OBInlineError(message: _error!),
+            ],
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _busy ? null : () => Navigator.pop(context),
+                    child: const Text('Abbrechen'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _busy ? null : _save,
+                    child: const Text('Hinzufügen'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1167,7 +1255,7 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'vorher: ${widget.previous}',
+              'Gespeicherte Antwort ändern',
               style: g.t(14, 18, color: g.muted),
             ),
             const SizedBox(height: 20),
@@ -1207,24 +1295,34 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
                 ],
               ),
             if (q.kind == _Answer.amount)
-              Column(
-                children: [
-                  OBStepper(
-                    value: _draft is num
-                        ? ((_draft as num).toDouble() / step).round()
-                        : null,
-                    max: ((widget.field?.max ?? 20) / step).floor(),
-                    onChanged: (v) => setState(() => _draft = v * step),
-                  ),
-                  OBAnswerKey(
-                    label: 'Keins',
-                    selected: _draft == 0,
-                    onTap: () => setState(() => _draft = 0),
-                  ),
-                ],
+              OBStepper(
+                value: _draft is num
+                    ? ((_draft as num).toDouble() / step).round()
+                    : null,
+                max: ((widget.field?.max ?? 20) / step).floor(),
+                unit: widget.field?.unit,
+                onChanged: (v) => setState(() => _draft = v * step),
               ),
             if (q.kind == _Answer.note)
               OBTextField(controller: _note, label: 'Notiz', maxLines: 3),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'vorher: ${widget.previous}',
+                    style: g.t(14, 18, color: g.muted),
+                  ),
+                ),
+                if (q.kind == _Answer.amount)
+                  TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _draft = 0),
+                    child: const Text('Keins'),
+                  ),
+              ],
+            ),
             if (_error != null) ...[
               const SizedBox(height: 12),
               OBInlineError(
@@ -1233,16 +1331,43 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
                     _commit(q.kind == _Answer.note ? _note.text : _draft),
               ),
             ],
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _saving ? null : () => _commit(null),
-              child: const Text('Antwort löschen'),
+            const SizedBox(height: 8),
+            Divider(color: g.hairline),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: _saving ? null : () => _commit(null),
+                    child: const Text('Antwort löschen'),
+                  ),
+                ),
+                Text(
+                  'Frage wird wieder offen',
+                  style: g.t(12, 16, color: g.muted),
+                ),
+              ],
             ),
-            FilledButton(
-              onPressed: _saving || (q.kind != _Answer.note && _draft == null)
-                  ? null
-                  : () => _commit(q.kind == _Answer.note ? _note.text : _draft),
-              child: const Text('Speichern'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.pop(context),
+                    child: const Text('Abbrechen'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed:
+                        _saving || (q.kind != _Answer.note && _draft == null)
+                        ? null
+                        : () => _commit(
+                            q.kind == _Answer.note ? _note.text : _draft,
+                          ),
+                    child: const Text('Speichern'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

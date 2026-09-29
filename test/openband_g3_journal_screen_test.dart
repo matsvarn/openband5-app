@@ -245,6 +245,51 @@ void main() {
     },
   );
 
+  testWidgets('hiding and restoring a custom question retains its answer', (
+    tester,
+  ) async {
+    await repo.createJournalField(
+      const JournalFieldSpec(
+        key: 'custom_evening_walk',
+        label: 'Abends draußen?',
+        kind: JournalFieldKind.yesNo,
+        unit: '',
+        max: 1,
+        step: 1,
+        custom: true,
+      ),
+    );
+    repo.seedJournalEditor(
+      day: '2026-09-15',
+      metrics: {'custom_evening_walk': const JournalMetricValue(1)},
+    );
+    await mount(tester);
+    await tester.tap(find.text('Anpassen ›'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.listJournalFields(
+        includeHidden: true,
+      )).firstWhere((f) => f.key == 'custom_evening_walk').hidden,
+      isTrue,
+    );
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    expect(
+      (await repo.listJournalFields(
+        includeHidden: true,
+      )).firstWhere((f) => f.key == 'custom_evening_walk').hidden,
+      isFalse,
+    );
+    expect(
+      (await repo.readJournalDay(
+        '2026-09-15',
+      )).metrics['custom_evening_walk']?.value,
+      1,
+    );
+  });
+
   testWidgets(
     'editing a saved answer keeps the sheet draft after a failed save',
     (tester) async {
