@@ -15,6 +15,7 @@ class OBCheckIn extends StatelessWidget {
     required this.onLater,
     this.error,
     this.onRetry,
+    this.retryLabel = 'Erneut speichern',
   });
   final String title;
   final int index, total;
@@ -22,6 +23,7 @@ class OBCheckIn extends StatelessWidget {
   final VoidCallback onLater;
   final String? error;
   final VoidCallback? onRetry;
+  final String retryLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +65,11 @@ class OBCheckIn extends StatelessWidget {
           answer,
           if (error != null) ...[
             const SizedBox(height: 12),
-            OBInlineError(message: error!, onRetry: onRetry),
+            OBInlineError(
+              message: error!,
+              onRetry: onRetry,
+              retryLabel: retryLabel,
+            ),
           ],
           Align(
             alignment: Alignment.centerRight,
@@ -218,9 +224,15 @@ class OBStepper extends StatelessWidget {
 }
 
 class OBInlineError extends StatelessWidget {
-  const OBInlineError({super.key, required this.message, this.onRetry});
+  const OBInlineError({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.retryLabel = 'Erneut speichern',
+  });
   final String message;
   final VoidCallback? onRetry;
+  final String retryLabel;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -233,10 +245,7 @@ class OBInlineError extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(child: Text(message, style: g.t(13, 17))),
           if (onRetry != null)
-            TextButton(
-              onPressed: onRetry,
-              child: const Text('Erneut speichern'),
-            ),
+            TextButton(onPressed: onRetry, child: Text(retryLabel)),
         ],
       ),
     );
