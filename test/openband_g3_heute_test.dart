@@ -199,8 +199,24 @@ void main() {
     expect(find.text('Heute keine Notiz'), findsOneWidget);
     expect(find.text('—'), findsWidgets);
     expect(find.text('9,4'), findsNothing);
+    expect(find.text('Noch keine Aktivität heute'), findsNothing, reason: 'not transferred is not none');
+    expect(find.text('AKTIVITÄT'), findsNothing);
     await tester.tap(find.text('Verbinden'));
     expect(h.connects, 1);
+  });
+
+  testWidgets('stale band: activities stored before the gap still show', (tester) async {
+    await _pump(
+      tester,
+      _Harness(
+        _Repo(SyntheticScenario.g3Sample),
+        BandSnapshot(batteryPercent: 64, latestStoredAt: DateTime(2026, 9, 28, 23, 10), receivedAt: DateTime(2026, 9, 28, 23, 10)),
+      ),
+      size: const Size(393, 3000),
+    );
+    expect(find.text('Band nicht verbunden'), findsOneWidget);
+    expect(find.text('AKTIVITÄT'), findsOneWidget);
+    expect(find.textContaining('07:58–08:40'), findsOneWidget);
   });
 
   testWidgets('Erinnern arms and cancels; a denied permission says so', (tester) async {
