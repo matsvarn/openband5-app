@@ -31,6 +31,7 @@
     "64GL-0": "G3 Schlaf · Regelmäßigkeit",
     "6RY7-0": "G3 Schlaf · Schlafschuld",
     "6SB5-0": "G3 Schlaf · Heute Nacht",
+    "73GI-0": "G3 Schlaf · Heute Nacht · noch keine freie Nacht",
     "6SEZ-0": "G3 Schlaf · Erinnerung gesetzt",
     "64YB-0": "G3 Schlaf · Schlafziel",
     "6532-0": "G3 Schlaf · Schlafzeiten ändern · Entwurf",
@@ -137,7 +138,9 @@
     "6TEI-0": "band-dein-datenstand-dunkel",
     "6TLU-0": "band-dein-datenstand-verbunden-mit-rueckstand-hell",
     "6TT7-0": "band-datum-waehlen-hell",
-    "6U3C-0": "band-datum-waehlen-dunkel"
+    "6U3C-0": "band-datum-waehlen-dunkel",
+    "711J-0": "G3 Schlaf · Kein Schlafziel · Dunkel",
+    "71BO-0": "G3 Schlaf · Schlafziel festlegen · noch kein Ziel"
   },
   "blocks": [
     {
@@ -2312,7 +2315,12 @@
       "design": "G3",
       "paperNode": "5U9X-0",
       "paperNodeDark": "5UOG-0",
-      "usedIn": ["61LO-0", "61T3-0", "65KH-0", "6QVP-0"],
+      "usedIn": [
+        "61LO-0",
+        "61T3-0",
+        "65KH-0",
+        "6QVP-0"
+      ],
       "widget": "OBSleepLead",
       "file": "g3/sleep_parts.dart"
     },
@@ -2322,7 +2330,10 @@
       "design": "G3",
       "paperNode": "65SM-0",
       "paperNodeDark": "65TB-0",
-      "usedIn": ["6RMI-0"],
+      "usedIn": [
+        "6RMI-0",
+        "711J-0"
+      ],
       "widget": "OBSleepLead",
       "file": "g3/sleep_parts.dart"
     },
@@ -2332,7 +2343,10 @@
       "design": "G3",
       "paperNode": "6ONJ-0",
       "paperNodeDark": "6OOG-0",
-      "usedIn": ["6SB5-0", "6SEZ-0"],
+      "usedIn": [
+        "6SB5-0",
+        "6SEZ-0"
+      ],
       "widget": "OBBedtimeLead",
       "file": "g3/sleep_parts.dart"
     },
@@ -2341,7 +2355,10 @@
       "design": "G3",
       "paperNode": "6OR0-0",
       "paperNodeDark": "6OTE-0",
-      "usedIn": ["6SB5-0", "6SEZ-0"],
+      "usedIn": [
+        "6SB5-0",
+        "6SEZ-0"
+      ],
       "widget": "OBPlanBreakdown",
       "file": "g3/sleep_parts.dart"
     },
@@ -2351,7 +2368,10 @@
       "design": "G3",
       "paperNode": "5UCX-0",
       "paperNodeDark": "5URG-0",
-      "usedIn": ["6QVP-0", "64GL-0"],
+      "usedIn": [
+        "6QVP-0",
+        "64GL-0"
+      ],
       "widget": "OBSleepWindows",
       "file": "g3/sleep_parts.dart"
     },
@@ -2361,7 +2381,9 @@
       "design": "G3",
       "paperNode": "6OW5-0",
       "paperNodeDark": "6OYH-0",
-      "usedIn": ["6RDK-0"],
+      "usedIn": [
+        "6RDK-0"
+      ],
       "widget": "OBSleepWindows",
       "file": "g3/sleep_parts.dart"
     },
@@ -2371,7 +2393,10 @@
       "design": "G3",
       "paperNode": "5UFM-0",
       "paperNodeDark": "5UU5-0",
-      "usedIn": ["6QVP-0", "64GL-0"],
+      "usedIn": [
+        "6QVP-0",
+        "64GL-0"
+      ],
       "widget": "OBSocialJetlag",
       "file": "g3/sleep_parts.dart"
     },
@@ -2381,7 +2406,9 @@
       "design": "G3",
       "paperNode": "5UGA-0",
       "paperNodeDark": "5UUT-0",
-      "usedIn": ["6RDK-0"],
+      "usedIn": [
+        "6RDK-0"
+      ],
       "widget": "OBSocialJetlag",
       "file": "g3/sleep_parts.dart"
     },
@@ -2391,7 +2418,10 @@
       "design": "G3",
       "paperNode": "6PHZ-0",
       "paperNodeDark": "6PJJ-0",
-      "usedIn": ["6QVP-0", "6RY7-0"],
+      "usedIn": [
+        "6QVP-0",
+        "6RY7-0"
+      ],
       "widget": "OBSleepDebt",
       "file": "g3/sleep_parts.dart"
     },
@@ -2401,7 +2431,9 @@
       "design": "G3",
       "paperNode": "6P6F-0",
       "paperNodeDark": "6P87-0",
-      "usedIn": ["6RDK-0"],
+      "usedIn": [
+        "6RDK-0"
+      ],
       "widget": "OBSleepDebt",
       "file": "g3/sleep_parts.dart"
     },
@@ -2410,7 +2442,10 @@
       "design": "G3",
       "paperNode": "5UKK-0",
       "paperNodeDark": "5UZ3-0",
-      "usedIn": ["648H-0", "64CJ-0"],
+      "usedIn": [
+        "648H-0",
+        "64CJ-0"
+      ],
       "widget": "OBNightTrace",
       "file": "g3/sleep_parts.dart"
     },
@@ -2420,7 +2455,9 @@
       "design": "G3",
       "paperNode": "5UM0-0",
       "paperNodeDark": "5V0J-0",
-      "usedIn": ["642T-0"],
+      "usedIn": [
+        "642T-0"
+      ],
       "widget": "OBInlineNotice",
       "file": "g3/sleep_parts.dart"
     },
@@ -2430,7 +2467,9 @@
       "design": "G3",
       "paperNode": "6P9J-0",
       "paperNodeDark": "6P9Z-0",
-      "usedIn": ["6SEZ-0"],
+      "usedIn": [
+        "6SEZ-0"
+      ],
       "widget": "OBInlineNotice",
       "file": "g3/sleep_parts.dart",
       "notes": "Uses the same opt-in one-shot notification slot as Heute."
@@ -2441,7 +2480,9 @@
       "design": "G3",
       "paperNode": "5UMM-0",
       "paperNodeDark": "5V15-0",
-      "usedIn": ["655C-0"],
+      "usedIn": [
+        "655C-0"
+      ],
       "widget": "OBInlineNotice",
       "file": "g3/sleep_parts.dart"
     },
@@ -2450,7 +2491,11 @@
       "design": "G3",
       "paperNode": "5UMY-0",
       "paperNodeDark": "5V1H-0",
-      "usedIn": ["6532-0", "655C-0", "657S-0"],
+      "usedIn": [
+        "6532-0",
+        "655C-0",
+        "657S-0"
+      ],
       "widget": "SleepEditor",
       "file": "sleep_editor.dart",
       "notes": "G3 presentation reuses the existing draft, commit and recalculation flow."
