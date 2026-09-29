@@ -30,7 +30,13 @@ class G3Env {
     required String day,
     required DateTime Function() now,
     required BandSnapshot band,
-  }) : this._(real: true, repository: repository, day: day, now: now, band: band);
+  }) : this._(
+         real: true,
+         repository: repository,
+         day: day,
+         now: now,
+         band: band,
+       );
 
   /// True under --real. A builder for a state that only a fixture can show
   /// (never connected, a chosen past day…) returns null then and is skipped.

@@ -1,1 +1,11 @@
-{}
+{
+  "heute-hell": {"page": "p-17-0", "node": "5OIV-0", "mode": "light"},
+  "heute-dunkel": {"page": "p-17-0", "node": "5ONU-0", "mode": "dark"},
+  "heute-gescrollt-hell": {"page": "p-17-0", "node": "5OST-0", "mode": "light"},
+  "heute-basis-hell": {"page": "p-17-0", "node": "5Q4B-0", "mode": "light"},
+  "heute-basis-dunkel": {"page": "p-17-0", "node": "5QH9-0", "mode": "dark"},
+  "heute-vergangen-hell": {"page": "p-17-0", "node": "5QMC-0", "mode": "light"},
+  "heute-kein-band-hell": {"page": "p-17-0", "node": "5QRH-0", "mode": "light"},
+  "heute-getrennt-hell": {"page": "p-17-0", "node": "5QUE-0", "mode": "light"},
+  "heute-luecke-hell": {"page": "p-17-0", "node": "5QYJ-0", "mode": "light"}
+}
