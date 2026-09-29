@@ -678,29 +678,35 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<G3CheckIn> readCheckIn(String day) async {
     _requireDay(day);
-    final snapshot = await readJournalDay(day);
-    return G3CheckIn(day, [
-      for (final field in snapshot.fields)
-        if (!field.hidden && kG3CheckInKeys.contains(field.key))
-          G3CheckInQuestion(field, snapshot.metrics[field.key]),
-    ]);
+    return g3CheckInFromSnapshot(await readJournalDay(day));
   }
 
   @override
   Future<void> answerCheckIn(
     String day,
     String key,
-    JournalMetricValue value,
+    G3CheckInAnswer answer,
   ) async {
     final snapshot = await readJournalDay(day);
-    if (!snapshot.fields.any(
-      (f) => f.key == key && !f.hidden && kG3CheckInKeys.contains(f.key),
-    )) {
-      throw ArgumentError.value(key, 'key', 'Not an active check-in field.');
-    }
-    await patchJournalDay(
-      JournalDayPatch.fromBase(snapshot, metrics: {key: value}),
+    await patchJournalDay(g3CheckInPatch(snapshot, key, answer));
+  }
+
+  @override
+  Future<DateTime?> readLastBandSampleAt(String day) async {
+    _requireDay(day);
+    final from = localDayStartSec(day)!;
+    final until = localDayEndSec(day)!;
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT MAX(rec_ts) AS latest FROM decoded_onehz '
+      'WHERE rec_ts >= ? AND rec_ts < ? AND rec_ts > 0 '
+      'AND ${derivableSourceSql()}',
+      [from, until],
     );
+    final latest = rows.first['latest'];
+    return latest is num
+        ? DateTime.fromMillisecondsSinceEpoch(latest.toInt() * 1000)
+        : null;
   }
 
   @override

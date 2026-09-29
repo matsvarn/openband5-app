@@ -5,7 +5,6 @@ import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
-import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/health/health_export.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
@@ -379,12 +378,47 @@ void main() {
       var checkIn = await repo.readCheckIn(day);
       expect(checkIn.total, 4);
       expect(checkIn.answered, 0);
-      await repo.answerCheckIn(day, 'mood', const JournalMetricValue(4));
+      expect((await repo.readJournalDay(day)).metrics['alcohol_units'], isNull);
+      expect(checkIn.questions.map((q) => q.kind), [
+        G3CheckInKind.yesNo,
+        G3CheckInKind.yesNo,
+        G3CheckInKind.rating,
+        G3CheckInKind.freeNote,
+      ]);
+      await repo.answerCheckIn(
+        day,
+        'alcohol_evening',
+        const G3YesNoAnswer(false),
+      );
+      await repo.answerCheckIn(day, 'alcohol_units', const G3QuantityAnswer(0));
+      expect(
+        (await repo.readJournalDay(day)).metrics['alcohol_units']?.value,
+        0,
+      );
+      await repo.answerCheckIn(day, 'mood', const G3RatingAnswer(4));
+      await repo.answerCheckIn(
+        day,
+        'journal_note',
+        const G3FreeNoteAnswer('Ruhig'),
+      );
       checkIn = await repo.readCheckIn(day);
-      expect(checkIn.answered, 1);
-      expect(checkIn.questions.first.value?.value, 4);
+      expect(checkIn.answered, 3);
+      expect((checkIn.questions.first.answer as G3YesNoAnswer).value, isFalse);
+      expect((checkIn.questions[2].answer as G3RatingAnswer).value, 4);
+      expect(
+        (checkIn.questions.last.answer as G3FreeNoteAnswer).value,
+        'Ruhig',
+      );
       await expectLater(
-        repo.answerCheckIn(day, 'weight_kg', const JournalMetricValue(78)),
+        repo.answerCheckIn(day, 'mood', const G3YesNoAnswer(true)),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repo.answerCheckIn(day, 'mood', const G3RatingAnswer(0)),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repo.answerCheckIn(day, 'weight_kg', const G3QuantityAnswer(78)),
         throwsArgumentError,
       );
       final weight = await repo.readG3Weight(day, 7);
@@ -417,6 +451,31 @@ void main() {
     expect(weight.imported.single.kg, 74.2);
     expect(weight.imported.single.source, G3WeightSource.imported);
     expect(weight.imported.single.sourceName, 'Apple Health');
+  });
+
+  test('last band sample is bounded to the selected local day', () async {
+    expect(await repo.readLastBandSampleAt(day), isNull);
+    final db = await LocalDb.instance;
+    final sample = DateTime(2026, 9, 27, 23, 58).millisecondsSinceEpoch ~/ 1000;
+    for (final (id, ts) in [
+      (1, sample - 60),
+      (2, sample),
+      (3, sample + 3 * 60),
+    ]) {
+      await db.insert('decoded_onehz', {
+        'device_id': '',
+        'ts_ms': ts * 1000,
+        'rec_ts': ts,
+        'counter': id,
+        'hr': 70,
+      });
+    }
+    expect(await repo.readLastBandSampleAt(day), DateTime(2026, 9, 27, 23, 58));
+    expect(await repo.readLastBandSampleAt('2026-09-26'), isNull);
+    expect(
+      await repo.readLastBandSampleAt('2026-09-28'),
+      DateTime(2026, 9, 28, 0, 1),
+    );
   });
 
   test(
