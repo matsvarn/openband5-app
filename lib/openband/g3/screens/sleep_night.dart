@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../domain.dart';
+import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../time.dart';
 import '../chrome.dart' as chrome;
 import '../count_copy.dart';
@@ -77,8 +78,9 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 112),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: 'NACHTVERLAUF',

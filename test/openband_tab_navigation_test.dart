@@ -30,12 +30,18 @@ Widget _shell(
                 builder: (_) => Scaffold(
                   appBar: AppBar(title: Text('Detail ${domain.name}')),
                   body: ListView(
+                    padding: const EdgeInsets.only(
+                      bottom: kOBTabBarContentInset,
+                    ),
                     children: [
                       Text('Content ${domain.name}'),
                       const SizedBox(height: 1000),
-                      TextButton(
-                        onPressed: () {},
-                        child: Text('Last ${domain.name} action'),
+                      Card(
+                        key: ValueKey('last-${domain.name}-card'),
+                        child: SizedBox(
+                          height: 80,
+                          child: Center(child: Text('Last ${domain.name} card')),
+                        ),
                       ),
                     ],
                   ),
@@ -98,26 +104,28 @@ void main() {
     expect(find.byType(OBTabBar), findsOneWidget);
   });
 
-  testWidgets('last detail action can scroll above the floating bar', (
+  testWidgets('detail scroll reaches the screen bottom and clears the bar', (
     tester,
   ) async {
     await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
     await tester.tap(find.text('Open home detail'));
     await tester.pumpAndSettle();
-    final lastAction = find.text('Last home action');
-    await tester.scrollUntilVisible(
-      lastAction,
-      400,
-      scrollable: find.byType(Scrollable).last,
+    final scrollable = find.byType(Scrollable).last;
+    expect(
+      tester.getRect(scrollable).bottom,
+      greaterThan(tester.getRect(find.byType(OBTabBar)).top),
+    );
+    tester.state<ScrollableState>(scrollable).position.jumpTo(
+      tester.state<ScrollableState>(scrollable).position.maxScrollExtent,
     );
     await tester.pumpAndSettle();
     expect(
-      tester.getRect(lastAction).bottom,
+      tester.getRect(find.byKey(const ValueKey('last-home-card'))).bottom,
       lessThan(tester.getRect(find.byType(OBTabBar)).top),
     );
   });
 
-  testWidgets('covered tab root keeps its inset during detail pop animation', (
+  testWidgets('covered tab root keeps its layout during detail pop animation', (
     tester,
   ) async {
     await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
@@ -136,7 +144,7 @@ void main() {
     expect(tester.getSize(root), beforePop);
 
     await tester.pumpAndSettle();
-    expect(tester.getSize(root).height, greaterThan(beforePop.height));
+    expect(tester.getSize(root), beforePop);
   });
 
   testWidgets('kept notification detail opens inside its owning tab', (
