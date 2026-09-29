@@ -11,7 +11,11 @@ import 'theme.dart';
 import 'time.dart';
 import 'g3/chrome.dart' as g3_chrome;
 import 'g3/g3_theme.dart';
-import 'g3/sleep_parts.dart' show OBSleepClockAxis;
+
+double _windowScaleX(int minute, double width, {required bool g3}) {
+  final afterEightPm = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
+  return width * (afterEightPm / ((g3 ? 14 : 12) * 60)).clamp(0.0, 1.0);
+}
 
 class SleepEditor extends StatefulWidget {
   final OpenBandController controller;
@@ -46,9 +50,7 @@ class _WindowScalePainter extends CustomPainter {
   });
 
   double _x(DateTime time, double width) {
-    final minute = time.hour * 60 + time.minute;
-    final afterEightPm = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
-    return width * (afterEightPm / ((g3 ? 14 : 12) * 60)).clamp(0.0, 1.0);
+    return _windowScaleX(time.hour * 60 + time.minute, width, g3: g3);
   }
 
   @override
@@ -102,10 +104,12 @@ class _WindowScalePainter extends CustomPainter {
           ..strokeWidth = 1.2,
       );
     }
-    final tick = Paint()..color = p.muted;
-    for (var i = 0; i <= 4; i++) {
-      final x = math.min(width - .5, math.max(.5, width * i / 4));
-      canvas.drawRect(Rect.fromLTWH(x, 43, 1, i.isEven ? 5 : 3), tick);
+    if (!g3) {
+      final tick = Paint()..color = p.muted;
+      for (var i = 0; i <= 4; i++) {
+        final x = math.min(width - .5, math.max(.5, width * i / 4));
+        canvas.drawRect(Rect.fromLTWH(x, 43, 1, i.isEven ? 5 : 3), tick);
+      }
     }
   }
 
@@ -117,6 +121,47 @@ class _WindowScalePainter extends CustomPainter {
       old.g3 != g3 ||
       old.originalStart != originalStart ||
       old.originalEnd != originalEnd;
+}
+
+class _G3WindowAxis extends StatelessWidget {
+  const _G3WindowAxis();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return LayoutBuilder(
+      builder: (context, box) => SizedBox(
+        height: 22,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (final hour in const [20, 0, 4, 8, 10])
+              Positioned(
+                left: _windowScaleX(hour * 60, box.maxWidth, g3: true) - 17,
+                width: 34,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      key: ValueKey('sleep-window-tick-$hour'),
+                      width: 1,
+                      height: 5,
+                      color: g.muted,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${hour.toString().padLeft(2, '0')}:00',
+                      textAlign: TextAlign.center,
+                      style: g.t(10, 14, color: g.muted),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SleepEditorState extends State<SleepEditor> {
@@ -454,7 +499,7 @@ class _SleepEditorState extends State<SleepEditor> {
                               g3_chrome.OBPageHeader.detail(
                                 title: 'SCHLAFZEITEN',
                                 subtitle:
-                                    'Nacht zu ${DateFormat('E dd.MM', 'de_DE').format(draft!.wake)}',
+                                    'Nacht zu ${DateFormat('E dd.MM', 'de_DE').format(draft!.wake).replaceFirst('.', '')}',
                                 backLabel: receipt == null
                                     ? 'Abbrechen'
                                     : 'Schlaf',
@@ -843,6 +888,17 @@ class _SleepEditorState extends State<SleepEditor> {
     final previous = original.onset == null || original.wake == null
         ? null
         : original.wake!.difference(original.onset!).inMinutes;
+    final originalStart = original.onset == null
+        ? null
+        : recordedTime(original.onset!, original.recordingTimezone);
+    final originalEnd = original.wake == null
+        ? null
+        : recordedTime(original.wake!, original.recordingTimezone);
+    final windowChanged =
+        originalStart != null &&
+        originalEnd != null &&
+        (!draft!.onset.isAtSameMomentAs(originalStart) ||
+            !draft!.wake.isAtSameMomentAs(originalEnd));
     DateTime? recordedStart, recordedEnd;
     for (final segment in original.segments) {
       if (segment.stage == null) continue;
@@ -865,7 +921,7 @@ class _SleepEditorState extends State<SleepEditor> {
               Text('IM BETT', style: g.caps()),
               const Spacer(),
               Text(
-                '${obDuration(bed.toDouble())} · vorher ${obDuration(previous?.toDouble())}',
+                '${obDuration(bed.toDouble())}${windowChanged ? ' · vorher ${obDuration(previous?.toDouble())}' : ''}',
                 style: g.t(13, 17, color: g.muted),
               ),
             ],
@@ -873,7 +929,8 @@ class _SleepEditorState extends State<SleepEditor> {
           const SizedBox(height: 12),
           RepaintBoundary(
             child: SizedBox(
-              height: 50,
+              key: const ValueKey('sleep-window-bar'),
+              height: 43,
               child: CustomPaint(
                 painter: _WindowScalePainter(
                   p: OB.of(context),
@@ -886,14 +943,10 @@ class _SleepEditorState extends State<SleepEditor> {
               ),
             ),
           ),
-          const OBSleepClockAxis(
-            startHour: 20,
-            endHour: 10,
-            labels: ['20:00', '00:00', '04:00', '10:00'],
-          ),
+          const _G3WindowAxis(),
           const SizedBox(height: 12),
           Text(
-            'Band hat aufgezeichnet $recordedSpan · vorher ${obTime(original.onset)}',
+            'Band hat aufgezeichnet $recordedSpan${windowChanged ? ' · vorher ${obTime(originalStart)}–${obTime(originalEnd)}' : ''}',
             style: g.t(12, 16, color: g.ink2),
           ),
         ],

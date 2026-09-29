@@ -275,10 +275,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.textContaining('Band hat aufgezeichnet 23:10–06:54'),
-        findsOneWidget,
-      );
+      expect(find.text('Band hat aufgezeichnet 23:10–06:54'), findsOneWidget);
+      expect(find.text('Nacht zu Di 29.09'), findsOneWidget);
+      expect(find.text('7h44'), findsOneWidget);
       await expectLater(
         find.byKey(const ValueKey('correction')),
         matchesGoldenFile('openband_goldens/g3-schlaf-correction-edit.png'),
