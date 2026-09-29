@@ -15,7 +15,7 @@ import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/screens.dart'
-    show bandStatusValuesHeading;
+    show bandStatusValuesHeading, showBandStatus;
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart' show ImportOutcome;
@@ -69,6 +69,126 @@ void main() {
     expect(find.text('0 Min.'), findsNothing);
     expect(find.textContaining('% übertragen'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('stored band diagnostics replace older card observations', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 9, 29, 9, 41);
+    final diagnostics = BandDiagnostics(
+      deviceFamily: 'gen5',
+      lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38),
+      battery: BandBattery(
+        observedAt: DateTime(2026, 9, 29, 9, 37),
+        percent: 67,
+      ),
+      backlog: BandBacklog(
+        observedAt: DateTime(2026, 9, 29, 9, 36),
+        unreadPages: 3,
+        heldPages: 5,
+      ),
+      coverage: BandCoverage(
+        start: now.subtract(const Duration(hours: 24)),
+        end: now,
+        recordedSeconds: 2,
+        coveragePercent: null,
+        wristOffIntervals: [
+          BandTimeInterval(
+            DateTime(2026, 9, 29, 8),
+            DateTime(2026, 9, 29, 8, 10),
+          ),
+        ],
+      ),
+    );
+    await pump(
+      tester,
+      G3BandScreen(
+        band: BandSnapshot(
+          connection: BandConnection.connected,
+          latestStoredAt: DateTime(2026, 9, 29, 8),
+          batteryPercent: 20,
+        ),
+        now: now,
+        diagnostics: diagnostics,
+      ),
+    );
+    expect(find.text('09:38'), findsOneWidget);
+    expect(find.textContaining('67'), findsWidgets);
+    expect(find.textContaining('3'), findsWidgets);
+    expect(find.textContaining('Seiten ungelesen'), findsOneWidget);
+    expect(find.textContaining('2 Sek. aufgezeichnet'), findsOneWidget);
+    expect(find.textContaining('1 beobachtete Ablegephase'), findsOneWidget);
+    expect(find.text('gen5'), findsOneWidget);
+    expect(find.text('WHOOP 5.0'), findsNothing);
+    expect(find.text('Firmware'), findsOneWidget);
+    expect(find.text('—'), findsWidgets);
+    expect(find.text('2 %'), findsNothing);
+  });
+
+  testWidgets(
+    'exact model and firmware appear only when diagnostics store them',
+    (tester) async {
+      await pump(
+        tester,
+        G3BandScreen(
+          band: const BandSnapshot(connection: BandConnection.connected),
+          now: DateTime(2026, 9, 29, 9, 41),
+          diagnostics: const BandDiagnostics(
+            model: 'Stored model',
+            firmwareVersion: 'Stored firmware',
+          ),
+        ),
+      );
+      expect(find.text('Stored model'), findsWidgets);
+      expect(find.text('Stored firmware'), findsOneWidget);
+    },
+  );
+
+  testWidgets('diagnostics read follows band updates', (tester) async {
+    final updates = ValueNotifier<int>(0);
+    addTearDown(updates.dispose);
+    var percent = 40;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.connected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        bandUpdates: updates,
+        readDiagnostics: () async => BandDiagnostics(
+          battery: BandBattery(
+            observedAt: DateTime(2026, 9, 29, 9, 40),
+            percent: percent,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('40'), findsWidgets);
+    percent = 67;
+    updates.value++;
+    await tester.pump();
+    expect(find.textContaining('67'), findsWidgets);
+  });
+
+  testWidgets('profile summary uses stored sample and battery', (tester) async {
+    await pump(
+      tester,
+      ProfileHomeView(
+        releaseReduced: true,
+        languageLabel: 'Deutsch',
+        stats: const ProfileStats(),
+        band: const BandSnapshot(connection: BandConnection.connected),
+        diagnostics: BandDiagnostics(
+          lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38),
+          battery: BandBattery(
+            observedAt: DateTime(2026, 9, 29, 9, 37),
+            percent: 67,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('09:38'), findsOneWidget);
+    expect(find.text('67 %'), findsOneWidget);
   });
 
   testWidgets('profile distinguishes denied from unknown notifications', (
@@ -378,16 +498,16 @@ void main() {
   testWidgets('date sheet commits only a confirmed selection', (tester) async {
     final summary =
         jsonDecode(
-              await rootBundle.loadString(
+              File(
                 'docs/openband5/assets/fixtures/day-summary.json',
-              ),
+              ).readAsStringSync(),
             )
             as Map;
     final detail =
         jsonDecode(
-              await rootBundle.loadString(
+              File(
                 'docs/openband5/assets/fixtures/sleep-detail.json',
-              ),
+              ).readAsStringSync(),
             )
             as Map;
     final repository = SyntheticOpenBandRepository.fromMaps(summary, detail);
@@ -432,6 +552,84 @@ void main() {
     expect(bandStatusValuesHeading('2026-09-18', now), 'WERTE FÜR HEUTE');
   });
 
+  testWidgets('data status sheet keeps page backlog separate from coverage', (
+    tester,
+  ) async {
+    final summary =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/day-summary.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final detail =
+        jsonDecode(
+              File(
+                'docs/openband5/assets/fixtures/sleep-detail.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final now = DateTime(2026, 9, 29, 9, 41);
+    final repository = _DiagnosticsRepository(
+      summary,
+      detail,
+      BandDiagnostics(
+        lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38),
+        backlog: BandBacklog(
+          observedAt: DateTime(2026, 9, 29, 9, 36),
+          unreadPages: 3,
+        ),
+        coverage: BandCoverage(
+          start: now.subtract(const Duration(hours: 24)),
+          end: now,
+          recordedSeconds: 2,
+          coveragePercent: null,
+          wristOffIntervals: [
+            BandTimeInterval(
+              DateTime(2026, 9, 29, 8),
+              DateTime(2026, 9, 29, 8, 10),
+            ),
+          ],
+        ),
+        battery: BandBattery(
+          observedAt: DateTime(2026, 9, 29, 9, 37),
+          percent: 67,
+        ),
+      ),
+    );
+    final controller = OpenBandController(
+      repository: repository,
+      initialDay: '2026-09-29',
+      now: () => now,
+      band: BandSnapshot(
+        connection: BandConnection.connected,
+        latestStoredAt: DateTime(2026, 9, 29, 8),
+        batteryPercent: 20,
+      ),
+    );
+    addTearDown(controller.dispose);
+    await pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showBandStatus(context, controller, null),
+            child: const Text('Datenstand öffnen'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datenstand öffnen'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('3 Bandseiten ungelesen'), findsOneWidget);
+    expect(find.textContaining('Akku 67 %'), findsOneWidget);
+    expect(find.textContaining('2 Sek. aufgezeichnet'), findsOneWidget);
+    expect(find.textContaining('Anteil unbekannt'), findsOneWidget);
+    expect(find.textContaining('1 beobachtete Ablegephase'), findsOneWidget);
+    expect(find.textContaining('24 h: 100 %'), findsNothing);
+  });
+
   for (final brightness in [Brightness.light, Brightness.dark]) {
     testWidgets('band $brightness golden', (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -454,6 +652,30 @@ void main() {
                 latestStoredAt: DateTime(2026, 9, 29, 9, 38),
                 receivedAt: DateTime(2026, 9, 29, 9, 38),
               ),
+              diagnostics: BandDiagnostics(
+                deviceFamily: 'gen5',
+                lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38),
+                battery: BandBattery(
+                  observedAt: DateTime(2026, 9, 29, 9, 37),
+                  percent: 67,
+                ),
+                backlog: BandBacklog(
+                  observedAt: DateTime(2026, 9, 29, 9, 36),
+                  unreadPages: 3,
+                ),
+                coverage: BandCoverage(
+                  start: DateTime(2026, 9, 28, 9, 41),
+                  end: DateTime(2026, 9, 29, 9, 41),
+                  recordedSeconds: 38000,
+                  coveragePercent: null,
+                  wristOffIntervals: [
+                    BandTimeInterval(
+                      DateTime(2026, 9, 29, 8),
+                      DateTime(2026, 9, 29, 8, 10),
+                    ),
+                  ],
+                ),
+              ),
               now: DateTime(2026, 9, 29, 9, 41),
               databaseSize: '4,2 GB',
               onDevices: () async {},
@@ -467,4 +689,14 @@ void main() {
       );
     }, tags: const ['golden']);
   }
+}
+
+class _DiagnosticsRepository extends SyntheticOpenBandRepository {
+  _DiagnosticsRepository(super.summary, super.detail, this.diagnostics)
+    : super.fromMaps(scenario: SyntheticScenario.g3Sample);
+
+  final BandDiagnostics diagnostics;
+
+  @override
+  Future<BandDiagnostics> readBandDiagnostics() async => diagnostics;
 }

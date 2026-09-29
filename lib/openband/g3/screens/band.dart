@@ -21,6 +21,8 @@ class G3BandScreen extends StatefulWidget {
   final DateTime Function()? clock;
   final Listenable? bandUpdates;
   final Future<BandSnapshot> Function()? readBand;
+  final BandDiagnostics? diagnostics;
+  final Future<BandDiagnostics> Function()? readDiagnostics;
   final String? databaseSize;
   final Future<void> Function()? onDevices;
   final Future<void> Function()? onReconnect;
@@ -37,6 +39,8 @@ class G3BandScreen extends StatefulWidget {
     this.clock,
     this.bandUpdates,
     this.readBand,
+    this.diagnostics,
+    this.readDiagnostics,
     this.databaseSize,
     this.onDevices,
     this.onReconnect,
@@ -53,6 +57,7 @@ class G3BandScreen extends StatefulWidget {
 
 class _G3BandScreenState extends State<G3BandScreen> {
   BandSnapshot? _band;
+  BandDiagnostics? _diagnostics;
   OBBandIssue? _issue;
   late DateTime _now;
   Timer? _clockTick;
@@ -62,6 +67,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
   void initState() {
     super.initState();
     _band = widget.band;
+    _diagnostics = widget.diagnostics;
     _issue = widget.readIssue?.call() ?? widget.issue;
     _now = widget.now;
     widget.bandUpdates?.addListener(_refreshBand);
@@ -82,6 +88,9 @@ class _G3BandScreenState extends State<G3BandScreen> {
       widget.bandUpdates?.addListener(_refreshBand);
     }
     if (oldWidget.band != widget.band) _band = widget.band;
+    if (oldWidget.diagnostics != widget.diagnostics) {
+      _diagnostics = widget.diagnostics;
+    }
     if (oldWidget.issue != widget.issue ||
         oldWidget.readIssue != widget.readIssue) {
       _issue = widget.readIssue?.call() ?? widget.issue;
@@ -101,19 +110,31 @@ class _G3BandScreenState extends State<G3BandScreen> {
     if (mounted && widget.readIssue != null && issue != _issue) {
       setState(() => _issue = issue);
     }
-    final read = widget.readBand;
-    if (read == null) return;
     final version = ++_readVersion;
-    try {
-      final observed = await read();
-      if (mounted && version == _readVersion) {
-        setState(() {
-          _band = observed;
-          _now = widget.clock?.call() ?? _now;
-        });
+    final readBand = widget.readBand;
+    if (readBand != null) {
+      try {
+        final observed = await readBand();
+        if (mounted && version == _readVersion) {
+          setState(() {
+            _band = observed;
+            _now = widget.clock?.call() ?? _now;
+          });
+        }
+      } catch (_) {
+        // A failed read leaves the previous observation visible, with its time.
       }
-    } catch (_) {
-      // A failed read leaves the previous observation visible, with its time.
+    }
+    final readDiagnostics = widget.readDiagnostics;
+    if (readDiagnostics != null) {
+      try {
+        final observed = await readDiagnostics();
+        if (mounted && version == _readVersion) {
+          setState(() => _diagnostics = observed);
+        }
+      } catch (_) {
+        // Keep the last observed, timestamped facts when this read fails.
+      }
     }
   }
 
@@ -175,10 +196,11 @@ class _G3BandScreenState extends State<G3BandScreen> {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final b = _band;
+    final diagnostics = _diagnostics;
     final issue = _issue;
     final disconnected =
         issue != null || b?.connection == BandConnection.disconnected;
-    final stored = b?.latestStoredAt;
+    final stored = diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt;
     final issueTitle = switch (issue) {
       OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
       null => 'Nicht verbunden',
@@ -202,7 +224,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
           children: [
             chrome.OBPageHeader.detail(
               title: 'BAND',
-              subtitle: 'WHOOP 5.0',
+              subtitle: diagnostics?.model ?? 'Band',
               backLabel: 'Profil',
               onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
               onTrailing: widget.onStatus,
@@ -225,6 +247,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
                   else
                     OBBandHero(
                       band: b,
+                      diagnostics: diagnostics,
                       now: _now,
                       onStatus: widget.onStatus,
                       issue: issue,
@@ -286,11 +309,19 @@ class _G3BandScreenState extends State<G3BandScreen> {
                     const SizedBox(height: 8),
                     OBSettingsGroup(
                       children: [
-                        const OBSettingsRow(
+                        OBSettingsRow(
                           label: 'Modell',
-                          value: 'WHOOP 5.0',
+                          value: diagnostics?.model ?? '—',
                         ),
-                        const OBSettingsRow(label: 'Firmware', value: '—'),
+                        OBSettingsRow(
+                          label: 'Firmware',
+                          value: diagnostics?.firmwareVersion ?? '—',
+                        ),
+                        if (diagnostics?.deviceFamily != null)
+                          OBSettingsRow(
+                            label: 'Gerätefamilie',
+                            value: diagnostics!.deviceFamily!,
+                          ),
                         OBSettingsRow(
                           label: 'Datenbankdatei',
                           value: widget.databaseSize ?? '—',
@@ -316,7 +347,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
                     const SizedBox(height: 22),
                     Center(
                       child: Text(
-                        'Letzter Bandwert ${obTime(b.latestStoredAt)} · Übertragung ${obTime(b.receivedAt)}',
+                        'Letzter Bandwert ${obTime(stored)} · Übertragung ${obTime(b.receivedAt)}',
                         textAlign: TextAlign.center,
                         style: g.t(12, 17, color: g.muted),
                       ),

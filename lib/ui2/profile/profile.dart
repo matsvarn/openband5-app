@@ -302,6 +302,7 @@ class _ProfileHomeState extends State<ProfileHome> {
   /// re-entered.
   late Future<ProfileStats> _stats = _load();
   BandSnapshot? _band;
+  BandDiagnostics? _diagnostics;
   bool _dismissedNotificationWarning = false;
 
   Future<void> _showBandStatus(BuildContext c) async {
@@ -339,13 +340,19 @@ class _ProfileHomeState extends State<ProfileHome> {
     } catch (_) {
       // Unknown permission is not a denial.
     }
+    final bandRepository = LocalOpenBandRepository(app);
     try {
-      _band = await LocalOpenBandRepository(app).readBand();
+      _band = await bandRepository.readBand();
     } catch (_) {
       // A failed status read keeps the last real observation. If there has not
       // been one, the view says the status is unavailable rather than claiming
       // that no band is paired.
       bandReadFailed = true;
+    }
+    try {
+      _diagnostics = await bandRepository.readBandDiagnostics();
+    } catch (_) {
+      // Keep the previous timestamped observation if diagnostics cannot load.
     }
     if (repo == null) {
       return ProfileStats(
@@ -377,6 +384,7 @@ class _ProfileHomeState extends State<ProfileHome> {
       stats: snap.data,
       user: c.read<AppState>().user,
       band: _band,
+      diagnostics: _diagnostics,
       bandName: c.read<AppState>().strapName,
       releaseReduced: kOpenBandReleaseReduced,
       onDevices: () => _open(c, const MyDevices()),
@@ -384,11 +392,14 @@ class _ProfileHomeState extends State<ProfileHome> {
         c,
         G3BandScreen(
           band: _band,
+          diagnostics: _diagnostics,
           now: DateTime.now(),
           clock: DateTime.now,
           bandUpdates: c.read<AppState>(),
           readBand: () =>
               LocalOpenBandRepository(c.read<AppState>()).readBand(),
+          readDiagnostics: () =>
+              LocalOpenBandRepository(c.read<AppState>()).readBandDiagnostics(),
           readIssue: () =>
               bandIssueFor(c.read<AppState>().engine.bandStatus.condition),
           onStatus: () => _showBandStatus(c),
@@ -424,6 +435,7 @@ class ProfileHomeView extends StatelessWidget {
   final ProfileStats? stats;
   final Map<String, dynamic>? user;
   final BandSnapshot? band;
+  final BandDiagnostics? diagnostics;
   final String? bandName;
   final VoidCallback? onDevices,
       onBand,
@@ -447,6 +459,7 @@ class ProfileHomeView extends StatelessWidget {
     this.stats,
     this.user,
     this.band,
+    this.diagnostics,
     this.bandName,
     this.onDevices,
     this.onBand,
@@ -688,9 +701,9 @@ class ProfileHomeView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Row(
                 children: [
-                  InkWell(
+                  Pressable(
                     onTap: () => Navigator.of(c).maybePop(),
-                    borderRadius: BorderRadius.circular(20),
+                    semanticLabel: 'Heute',
                     child: Container(
                       height: 40,
                       padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
@@ -730,9 +743,10 @@ class ProfileHomeView extends StatelessWidget {
                 children: [
                   OBSettingsGroup(
                     children: [
-                      InkWell(
+                      Pressable(
                         key: const ValueKey('profile-identity'),
                         onTap: onEdit,
+                        semanticLabel: name.isEmpty ? 'Profil' : name,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           child: Row(
@@ -900,19 +914,24 @@ class ProfileHomeView extends StatelessWidget {
     final g = G3.of(c);
     final status = s?.bandReadFailed == true
         ? 'Bandstatus nicht verfügbar'
-        : b?.connection == BandConnection.connected
-        ? 'Verbunden'
-        : 'Nicht verbunden';
+        : b == null
+        ? 'Nicht verbunden'
+        : bandConnectionLabel(b.connection);
     final archive = s?.storageBytes == null
         ? '—'
         : formatBytes(s!.storageBytes!).replaceFirst('.', ',');
-    final battery = b?.batteryPercent == null
+    final storedBattery = diagnostics?.battery;
+    final batteryPercent = storedBattery?.percent ?? b?.batteryPercent;
+    final battery = batteryPercent == null
         ? '—'
         : b?.connection == BandConnection.connected && s?.bandReadFailed != true
-        ? '${b!.batteryPercent} %'
+        ? '$batteryPercent %'
         : '—';
     final facts = <(String, String)>[
-      ('Daten bis', obTime(b?.latestStoredAt)),
+      (
+        'Daten bis',
+        obTime(diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt),
+      ),
       ('Akku', battery),
       ('Datenbank', archive),
     ];
@@ -932,11 +951,9 @@ class ProfileHomeView extends StatelessWidget {
                   tracking: .08,
                 ),
               ),
-              if (item.$1 == 'Akku' &&
-                  battery == '—' &&
-                  b?.batteryPercent != null)
+              if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
                 Text(
-                  'zuletzt ${b!.batteryPercent} %',
+                  'zuletzt $batteryPercent %${storedBattery == null ? '' : ' · ${obTime(storedBattery.observedAt)}'}',
                   style: g.t(11, 15, color: g.muted),
                 ),
             ]
@@ -952,11 +969,9 @@ class ProfileHomeView extends StatelessWidget {
                 ),
               ),
               Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
-              if (item.$1 == 'Akku' &&
-                  battery == '—' &&
-                  b?.batteryPercent != null)
+              if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
                 Text(
-                  'zuletzt ${b!.batteryPercent} %',
+                  'zuletzt $batteryPercent %${storedBattery == null ? '' : ' · ${obTime(storedBattery.observedAt)}'}',
                   style: g.t(11, 15, color: g.muted),
                 ),
             ],
@@ -964,7 +979,7 @@ class ProfileHomeView extends StatelessWidget {
     return Semantics(
       button: onBand != null || onDevices != null,
       label: 'Band. $status. ${facts.map((f) => '${f.$1} ${f.$2}').join('. ')}',
-      child: InkWell(
+      child: Pressable(
         key: const ValueKey('profile-band'),
         onTap: onBand ?? onDevices,
         child: Padding(
