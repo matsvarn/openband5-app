@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
 import 'package:openstrap_edge/openband/g3/day.dart';
+import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart';
 import 'package:openstrap_edge/openband/theme.dart'
     show OBChevron, openBandTheme;
@@ -15,6 +16,42 @@ Widget _frame(Widget child) => MaterialApp(
 );
 
 void main() {
+  test('C-83 normalizes every audited date form', () {
+    final tuesday = DateTime(2026, 9, 29, 9, 38);
+    final monday = DateTime(2026, 9, 28, 9, 38);
+    expect(g3DayLong(tuesday), 'Dienstag, 29. September');
+    expect(g3NightOf(tuesday), 'Nacht zu Di 29.09');
+    expect(g3DayShort(tuesday), 'Di 29.09');
+    expect(g3DateShort(tuesday), '29.09');
+    expect(g3DateShort(monday), '28.09');
+    expect(g3Relative(tuesday, now: tuesday), 'heute 09:38');
+    expect(g3Relative(monday, now: tuesday), 'gestern 09:38');
+    expect(
+      g3Relative(DateTime(2026, 9, 22, 9, 38), now: tuesday),
+      'Di 22.09 09:38',
+    );
+    expect(g3DayLong(DateTime(2026, 9, 1)), 'Dienstag, 1. September');
+    expect(g3DayShort(DateTime(2025, 9, 23)), 'Di 23.09');
+  });
+
+  test('C-84 uses compact durations, Unicode signs and spaced units', () {
+    expect(g3Duration(438), '7h18');
+    expect(g3Duration(42), '42 Min.');
+    expect(g3Duration(119), '1h59');
+    expect(g3Duration(600), '10h');
+    expect(g3Duration(0), '0 Min.');
+    expect(g3Duration(-27), '−27 Min.');
+    expect(g3Duration(null), '—');
+    expect(g3Signed(6.1, digits: 1), '+6,1');
+    expect(g3Signed(-27, unit: 'Min.'), '−27 Min.');
+    expect(g3Signed(10, unit: 'Min.'), '+10 Min.');
+    expect(g3Signed(-5), '−5');
+    expect(g3Signed(64, unit: '%'), '+64 %');
+    expect(g3Signed(0), '0');
+    expect(g3Signed(-0.04, digits: 1), '0,0');
+    expect(g3Signed(null), '—');
+  });
+
   testWidgets('label and card chevrons require a handler', (tester) async {
     var taps = 0;
     await tester.pumpWidget(_frame(const G3LabelRow('ERHOLUNG')));
