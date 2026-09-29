@@ -167,6 +167,19 @@ void main() {
     expect(bpm.indexOf(176), inInclusiveRange(68, 78));
   });
 
+  testWidgets('result lead separates minutes and names the session strain', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(G3ActivityScreen(repository: repo, activity: activity)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('\u2009Min.'), findsOneWidget);
+    expect(find.text('diese Einheit'), findsOneWidget);
+  });
+
   testWidgets('Karvonen zones identify pulsreserve', (tester) async {
     final repo = _repo(SyntheticScenario.g3Sample);
     final start = DateTime(2026, 9, 29, 8);

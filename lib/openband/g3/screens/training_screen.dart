@@ -1249,7 +1249,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                         context,
                         'BELASTUNG',
                         trainingNumber(a.strain, signed: true),
-                        sub: a.strain == null ? null : 'Einheit',
+                        sub: a.strain == null ? null : 'diese Einheit',
                       ),
                       Container(
                         width: 1,
@@ -1525,7 +1525,7 @@ Widget _figure(
             if (unit != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 5),
-                child: Text(unit, style: g.t(15, 18, color: g.ink2)),
+                child: Text('\u2009$unit', style: g.t(15, 18, color: g.ink2)),
               ),
           ],
         ),
