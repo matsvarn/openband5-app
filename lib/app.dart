@@ -4,7 +4,6 @@ import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/g3/screens/verlauf.dart';
-import 'openband/journal_editor.dart';
 import 'openband/g3/screens/journal_screen.dart';
 import 'openband/medication.dart';
 import 'openband/nutrition_route.dart';
@@ -488,7 +487,7 @@ Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
             : G3AllMetrics(repository: repository, endDay: todayLabel()),
       kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
       kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
-      kRouteJournalCompose => const OpenBandJournalEditorRoute(),
+      kRouteJournalCompose => G3JournalComposeRoute(repository: repository),
       kRouteBreathing => const CalmBreathing(),
       // The hydration reminder lands on Nutrition, where the water tile carries
       // its own − / + and is beside the food it belongs with. There used to be
@@ -772,7 +771,7 @@ class _ShellState extends State<_Shell> {
           onEdit: (day) async {
             await pushInTab(c,
               MaterialPageRoute<void>(
-                builder: (_) => OpenBandJournalEditor(
+                builder: (_) => G3JournalComposeRoute(
                   repository: _day.repository,
                   day: day,
                 ),

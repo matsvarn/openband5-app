@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
+import 'package:openstrap_edge/app.dart' show screenForRoute;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
@@ -57,6 +58,13 @@ void main() {
     );
   });
   tearDown(() => controller.dispose());
+
+  test('journal compose deep link opens the G3 editor route', () {
+    expect(
+      screenForRoute('/journal/compose', repository: repo),
+      isA<G3JournalComposeRoute>(),
+    );
+  });
 
   Future<void> mount(WidgetTester tester) async {
     tester.view.physicalSize = const Size(393, 852);

@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:provider/provider.dart';
 
 import '../../../data/day_label.dart';
 import '../../../data/journal_fields.dart';
+import '../../../state/app_state.dart';
 import '../../controller.dart';
 import '../../domain.dart';
+import '../../local_repository.dart';
 import '../../journal_controls.dart' show kJournalMoodIcons;
 import '../../journal_fields.dart' show journalFieldIcon;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
@@ -82,11 +85,13 @@ class G3JournalScreen extends StatefulWidget {
     this.onEdit,
     this.onProfile,
     this.onBand,
+    this.onBack,
   });
   final OpenBandController controller;
   final FutureOr<void> Function(String day)? onEdit;
   final VoidCallback? onProfile;
   final VoidCallback? onBand;
+  final VoidCallback? onBack;
   @override
   State<G3JournalScreen> createState() => _G3JournalScreenState();
 }
@@ -417,34 +422,45 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
         key: const PageStorageKey('g3.journal'),
         padding: const EdgeInsets.only(top: 20, bottom: kOBTabBarContentInset),
         children: [
-          OBPageHeader.hub(
-            title: 'Journal',
-            subtitle: DateFormat(
-              'EEEE, d. MMMM',
-              'de_DE',
-            ).format(DateTime.parse(day)),
-            band: OBBandCapsule(
-              state: band.connection == BandConnection.connected
-                  ? OBBandState.live
-                  : storedAt == null
-                  ? OBBandState.none
-                  : OBBandState.off,
-              battery: band.batteryPercent,
-              onTap: widget.onBand,
+          if (widget.onBack != null)
+            OBPageHeader.detail(
+              title: 'JOURNAL',
+              subtitle: DateFormat(
+                'EEEE, d. MMMM',
+                'de_DE',
+              ).format(DateTime.parse(day)),
+              backLabel: 'Journal',
+              onBack: widget.onBack,
+            )
+          else
+            OBPageHeader.hub(
+              title: 'Journal',
+              subtitle: DateFormat(
+                'EEEE, d. MMMM',
+                'de_DE',
+              ).format(DateTime.parse(day)),
+              band: OBBandCapsule(
+                state: band.connection == BandConnection.connected
+                    ? OBBandState.live
+                    : storedAt == null
+                    ? OBBandState.none
+                    : OBBandState.off,
+                battery: band.batteryPercent,
+                onTap: widget.onBand,
+              ),
+              onProfile: widget.onProfile,
+              onTitle: () async {
+                final chosen = await showDatePicker(
+                  context: context,
+                  initialDate: DateTime.parse(day),
+                  firstDate: DateTime(2020),
+                  lastDate: widget.controller.now(),
+                );
+                if (chosen != null) {
+                  await widget.controller.selectDay(dayLabelOf(chosen));
+                }
+              },
             ),
-            onProfile: widget.onProfile,
-            onTitle: () async {
-              final chosen = await showDatePicker(
-                context: context,
-                initialDate: DateTime.parse(day),
-                firstDate: DateTime(2020),
-                lastDate: widget.controller.now(),
-              );
-              if (chosen != null) {
-                await widget.controller.selectDay(dayLabelOf(chosen));
-              }
-            },
-          ),
           OBSyncState(
             kind: storedAt == null
                 ? OBSyncKind.never
@@ -560,7 +576,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                       title: '—',
                       detail: 'Vergleich konnte nicht geladen werden.',
                       have: null,
-                      need: 8,
+                      need: null,
                     )
                   : OBPatternCard(
                       title: switch (pattern.pattern.kind) {
@@ -584,6 +600,46 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       ),
     );
   }
+}
+
+/// Focused destination for a Journal notification or a selected past day.
+class G3JournalComposeRoute extends StatefulWidget {
+  const G3JournalComposeRoute({super.key, this.repository, this.day});
+  final OpenBandRepository? repository;
+  final String? day;
+
+  @override
+  State<G3JournalComposeRoute> createState() => _G3JournalComposeRouteState();
+}
+
+class _G3JournalComposeRouteState extends State<G3JournalComposeRoute> {
+  OpenBandController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller ??= OpenBandController(
+      repository:
+          widget.repository ??
+          LocalOpenBandRepository(context.read<AppState>()),
+      initialDay: widget.day ?? todayLabel(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: G3JournalScreen(
+      controller: _controller!,
+      onBack: () => Navigator.of(context).pop(),
+      onEdit: (day) => _controller!.selectDay(day),
+    ),
+  );
 }
 
 class _NoteAnswer extends StatefulWidget {
@@ -967,6 +1023,24 @@ class _NewQuestionState extends State<G3JournalNewQuestionSheet> {
 }
 
 class G3JournalAnswerSheet extends StatefulWidget {
+  G3JournalAnswerSheet.forField({
+    super.key,
+    required JournalFieldSpec definition,
+    required this.previous,
+    required this.initial,
+    required this.onSave,
+  }) : field = definition,
+       _question = _Question(
+         definition.key,
+         definition.label,
+         definition.label,
+         switch (definition.kind) {
+           JournalFieldKind.yesNo => _Answer.yesNo,
+           JournalFieldKind.rating => _Answer.scale,
+           JournalFieldKind.dose || JournalFieldKind.duration => _Answer.amount,
+         },
+       );
+
   const G3JournalAnswerSheet._({
     required _Question question,
     required this.previous,

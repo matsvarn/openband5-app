@@ -9,7 +9,6 @@ import 'openband/cycle.dart';
 import 'openband/cycle_comparison.dart';
 import 'openband/cycle_medians.dart';
 import 'openband/health.dart';
-import 'openband/journal_editor.dart';
 import 'openband/g3/screens/journal_screen.dart';
 import 'openband/domain.dart';
 import 'openband/nutrition_route.dart';
@@ -298,7 +297,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         onEdit: (day) async {
           await Navigator.of(c).push(
             MaterialPageRoute<void>(
-              builder: (_) => OpenBandJournalEditor(
+              builder: (_) => G3JournalComposeRoute(
                 repository: widget.repository,
                 day: day,
               ),
