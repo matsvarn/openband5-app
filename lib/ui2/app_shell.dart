@@ -141,24 +141,11 @@ class AppShellState extends State<AppShell> {
                         children: [
                           for (final domain in ShellDomain.values)
                             if (_built.contains(domain))
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  bottom:
-                                      widget.releaseStyle &&
-                                          _observers[domain]!.coversRoot
-                                      ? tabBottom +
-                                            kOBTabBarHeight +
-                                            kOBTabBarBannerGap
-                                      : 0,
-                                ),
-                                child: Navigator(
-                                  key: _keys[domain],
-                                  observers: [_observers[domain]!],
-                                  onGenerateRoute: (_) =>
-                                      MaterialPageRoute<void>(
-                                        builder: (c) =>
-                                            widget.builder(c, domain),
-                                      ),
+                              Navigator(
+                                key: _keys[domain],
+                                observers: [_observers[domain]!],
+                                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                                  builder: (c) => widget.builder(c, domain),
                                 ),
                               )
                             else
