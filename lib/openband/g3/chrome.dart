@@ -100,7 +100,12 @@ class OBBandCapsule extends StatelessWidget {
       child: Container(
         height: h,
         padding: EdgeInsets.only(left: small ? 10 : 12, right: small ? 11 : 14),
-        decoration: g.raised(radius: h / 2),
+        decoration: onTap == null
+            ? BoxDecoration(
+                color: g.track,
+                borderRadius: BorderRadius.circular(h / 2),
+              )
+            : g.raised(radius: h / 2),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -135,6 +140,7 @@ class OBIconButton extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    if (onTap == null) return const SizedBox(width: 44, height: 44);
     final g = G3.of(context);
     final s = small ? 32.0 : 40.0;
     return _Hit(
@@ -242,11 +248,12 @@ class OBPageHeader extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            OBChevron(
-                              direction: AxisDirection.down,
-                              size: 16,
-                              color: g.muted,
-                            ),
+                            if (onTitle != null)
+                              OBChevron(
+                                direction: AxisDirection.down,
+                                size: 16,
+                                color: g.muted,
+                              ),
                           ],
                         ),
                         const SizedBox(height: 3),
@@ -259,11 +266,14 @@ class OBPageHeader extends StatelessWidget {
               ),
               ?band,
               const SizedBox(width: 4),
-              OBIconButton(
-                icon: LucideIcons.user,
-                label: 'Profil',
-                onTap: onProfile,
-              ),
+              if (onProfile == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: LucideIcons.user,
+                  label: 'Profil',
+                  onTap: onProfile,
+                ),
             ],
           ),
         );
@@ -272,30 +282,33 @@ class OBPageHeader extends StatelessWidget {
           padding: const EdgeInsets.only(left: 16, right: 14, top: 2),
           child: Row(
             children: [
-              _Hit(
-                label: 'Zurück zu $backLabel',
-                onTap: onBack,
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.only(left: 8, right: 14),
-                  decoration: g.raised(radius: 20),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      OBChevron(
-                        direction: AxisDirection.left,
-                        size: 20,
-                        color: g.ink,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        backLabel,
-                        style: g.t(15, 18, weight: FontWeight.w700),
-                      ),
-                    ],
+              if (onBack == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                _Hit(
+                  label: 'Zurück zu $backLabel',
+                  onTap: onBack,
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.only(left: 8, right: 14),
+                    decoration: g.raised(radius: 20),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OBChevron(
+                          direction: AxisDirection.left,
+                          size: 20,
+                          color: g.ink,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          backLabel,
+                          style: g.t(15, 18, weight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               Expanded(
                 child: Column(
                   children: [
@@ -324,11 +337,14 @@ class OBPageHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              OBIconButton(
-                icon: trailing,
-                label: trailingLabel,
-                onTap: onTrailing,
-              ),
+              if (onTrailing == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: trailing,
+                  label: trailingLabel,
+                  onTap: onTrailing,
+                ),
             ],
           ),
         );
@@ -353,12 +369,15 @@ class OBPageHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              OBIconButton(
-                icon: LucideIcons.user,
-                label: 'Profil',
-                small: true,
-                onTap: onProfile,
-              ),
+              if (onProfile == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: LucideIcons.user,
+                  label: 'Profil',
+                  small: true,
+                  onTap: onProfile,
+                ),
             ],
           ),
         );
@@ -537,12 +556,20 @@ class OBSectionHeader extends StatelessWidget {
 class OBCardHeader extends StatelessWidget {
   final String label;
   final String? note;
+  final VoidCallback? onTap;
+  // Kept until area callers migrate; it can suppress, never create, an arrow.
   final bool arrow;
-  const OBCardHeader(this.label, {super.key, this.note, this.arrow = true});
+  const OBCardHeader(
+    this.label, {
+    super.key,
+    this.note,
+    this.onTap,
+    this.arrow = true,
+  });
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
-    child: G3LabelRow(label, note: note, arrow: arrow),
+    child: G3LabelRow(label, note: note, onTap: onTap, arrow: arrow),
   );
 }
 
@@ -663,8 +690,10 @@ class OBListRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(value!, style: g.t(15, 19, weight: FontWeight.w700)),
               ],
-              const SizedBox(width: 12),
-              OBChevron(size: 14, color: g.gap),
+              if (onTap != null) ...[
+                const SizedBox(width: 12),
+                OBChevron(size: 14, color: g.gap),
+              ],
             ],
           ),
         ),
@@ -1142,7 +1171,7 @@ class OBEmptyState extends StatelessWidget {
           Text(title, style: g.t(17, 22, weight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(reason, style: g.t(14, 19, color: g.ink2)),
-          if (action != null)
+          if (action != null && onAction != null)
             Semantics(
               button: true,
               label: action,

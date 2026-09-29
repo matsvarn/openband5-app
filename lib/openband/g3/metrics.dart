@@ -147,29 +147,43 @@ class G3Scale extends StatelessWidget {
 class G3LabelRow extends StatelessWidget {
   final String label;
   final String? note;
+  final VoidCallback? onTap;
+  // Kept until area callers migrate; it can suppress, never create, an arrow.
   final bool arrow;
-  const G3LabelRow(this.label, {super.key, this.note, this.arrow = true});
+  const G3LabelRow(
+    this.label, {
+    super.key,
+    this.note,
+    this.onTap,
+    this.arrow = true,
+  });
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     // Label left, note right; under large text the note drops below.
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 8,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(child: Text(label, style: g.caps())),
-            if (arrow) ...[
-              const SizedBox(width: 4),
-              OBChevron(size: 12, color: g.muted),
+    return GestureDetector(
+      behavior: onTap == null
+          ? HitTestBehavior.deferToChild
+          : HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: Text(label, style: g.caps())),
+              if (onTap != null && arrow) ...[
+                const SizedBox(width: 4),
+                OBChevron(size: 12, color: g.muted),
+              ],
             ],
-          ],
-        ),
-        if (note != null) Text(note!, style: g.t(13, 16, color: g.muted)),
-      ],
+          ),
+          if (note != null) Text(note!, style: g.t(13, 16, color: g.muted)),
+        ],
+      ),
     );
   }
 }
@@ -510,7 +524,7 @@ class OBLeadMetric extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            G3LabelRow(label, note: note),
+            G3LabelRow(label, note: note, onTap: onTap),
             ...body,
           ],
         ),
@@ -562,7 +576,7 @@ class OBSecondaryMetric extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            G3LabelRow(label),
+            G3LabelRow(label, onTap: onTap),
             const SizedBox(height: 2),
             G3ValueLine(
               v ?? '—',
@@ -920,8 +934,10 @@ class OBBodyRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               picture,
-              const SizedBox(width: 12),
-              OBChevron(size: 14, color: g.gap),
+              if (onTap != null) ...[
+                const SizedBox(width: 12),
+                OBChevron(size: 14, color: g.gap),
+              ],
             ],
           ),
         ),

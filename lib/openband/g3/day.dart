@@ -347,8 +347,10 @@ class OBActivityRow extends StatelessWidget {
                       Text('Belastung', style: g.t(11, 14, color: g.muted)),
                     ],
                   ),
-                  const SizedBox(width: 12),
-                  OBChevron(size: 14, color: g.gap),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 12),
+                    OBChevron(size: 14, color: g.gap),
+                  ],
                 ],
               ),
               if (unconfirmed)
@@ -970,7 +972,7 @@ class OBNightCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              G3LabelRow('NACHT', note: note),
+              G3LabelRow('NACHT', note: note, onTap: onTap),
               const SizedBox(height: 4),
               G3ValueLine(
                 asleep!,
