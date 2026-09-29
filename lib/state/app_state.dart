@@ -6052,8 +6052,6 @@ class AppState extends ChangeNotifier {
   // `maxHr` had no readers left at all; its doc still claimed the route map
   // used it, and the route map takes its ceiling from the session.
 
-  int get _restingHr => (user?['resting_hr'] as num?)?.round() ?? 60;
-
   /// Latest MEASURED nightly resting HR (`metric_series` key 'rhr'), or null
   /// before the first night has been derived. Refreshed on init and whenever a
   /// workout starts, since RHR moves on the scale of weeks.
@@ -6062,7 +6060,7 @@ class AppState extends ChangeNotifier {
   /// The resting-HR anchor for SCORING a live session: the measured nightly
   /// value, else a user-supplied one, else nothing.
   ///
-  /// Deliberately not [_restingHr], which falls back to 60 bpm. That default is
+  /// Deliberately no 60 bpm fallback. That default is
   /// fine for display copy, but as a term inside the Banister formula it would
   /// turn an absent input into a confident-looking strain number — exactly the
   /// fabrication the honesty contract forbids. No anchor, no score.
@@ -6354,12 +6352,7 @@ class AppState extends ChangeNotifier {
     // Light up the lock screen / Dynamic Island (iOS).
     LiveActivity.start(
       startedAt: start,
-      targetKcal: targetKcal.round(),
-      // 0 = no ceiling, same convention `_zoneFor` uses. The widget declares
-      // the field and draws nothing with it (`zone` is computed here), so this
-      // is a passthrough, not a number anyone reads.
-      maxHr: activeWorkout?.hrMax?.round() ?? 0,
-      rhr: _restingHr,
+      sport: type,
     );
     _lastLaPush = DateTime.fromMillisecondsSinceEpoch(0);
     // GPS route: only for run/ride/walk, and only if the user grants location.
@@ -6958,24 +6951,31 @@ class AppState extends ChangeNotifier {
     // Keytel with no activity gate and no resting floor. That copy charged the
     // full active rate at any heart rate the band reported, so the number on
     // the gauge did not survive the re-score of its own stream.
-    // Push to the Live Activity at most ~every 4s (ActivityKit throttles; saves battery).
-    // Skipped entirely while HR is absent: the widget's channel takes a
-    // non-null int, so the only way to push "no reading" today would be to send
-    // 0 bpm, which is a fabricated measurement on the lock screen. Holding the
-    // last frame is the lesser wrong until `LiveActivity.update` takes `int?`.
-    if (hr != null && DateTime.now().difference(_lastLaPush).inSeconds >= 4) {
-      _lastLaPush = DateTime.now();
+    // Push absence too, so a dropped stream clears the lock-screen number.
+    if (DateTime.now().difference(_lastLaPush).inSeconds >= 4) {
+      final now = DateTime.now();
+      _lastLaPush = now;
+      final id = liveHrDeviceId;
+      final sampleAtMs = id == null ? device.liveHrAt : _liveHrTraceAt[id];
+      final sampleAt = sampleAtMs == null
+          ? null : DateTime.fromMillisecondsSinceEpoch(sampleAtMs);
+      final signal = hr == null ? LiveSignal.none
+          : sampleAt == null || now.difference(sampleAt) > LiveActivity.hrMaxAge
+              ? LiveSignal.weak : LiveSignal.live;
+      final zone = signal == LiveSignal.live ? _zoneFor(hr!) : 0;
+      final zoneSet = w.zoneSet;
+      final band = zone > 0 && zoneSet != null ? zoneSet.zones[zone - 1] : null;
       LiveActivity.update(
         hr: hr,
-        zone: _zoneFor(hr),
-        // Absent stays absent. These used to be coerced to 0, so a new user
-        // with no profile anchors — the case where both correctly abstain and
-        // the in-app gauge shows "—" — got a confident "0 kcal" pushed to the
-        // lock screen for the whole session. Unmeasured is not zero.
+        hrSampleAt: sampleAt,
+        signal: signal,
+        zone: band?.number,
+        zoneLowPct: band?.lowerPct,
+        zoneHighPct: band?.upperPct,
+        zoneBasis: zoneSet?.source,
+        zoneBasisBpm: zoneSet?.maxHr.round(),
+        elapsed: w.elapsed,
         strain: w.strain,
-        calories: w.caloriesOrNull,
-        maxHr: w.hrMax?.round() ?? 0, // 0 = no ceiling; the widget ignores it
-        rhr: _restingHr,
       );
     }
     notifyListeners();
