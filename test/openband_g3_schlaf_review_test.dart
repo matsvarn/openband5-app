@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
@@ -12,8 +13,10 @@ import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader;
-import 'package:openstrap_edge/openband/g3/day.dart' show OBWeekBars;
+    show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader, OBSectionHeader;
+import 'package:openstrap_edge/openband/g3/day.dart'
+    show OBDayNote, OBHypnogram, OBWeekBars;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart' show OBMissingValue;
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
@@ -285,6 +288,83 @@ void main() {
     expect(find.byType(OBMissingValue), findsWidgets);
   });
 
+  testWidgets('sleep labels and marks use violet while values stay ink', (
+    tester,
+  ) async {
+    await _card(tester, const OBSleepLead(minutes: 438, goalMinutes: null));
+    final label = find.text('SCHLAF');
+    final g = G3.of(tester.element(label));
+    expect(
+      tester.widget<Text>(label).style!.color,
+      g.domainHue(G3Domain.sleep),
+    );
+    expect(tester.widget<Text>(find.text('7h18')).style!.color, g.ink);
+    expect(find.byIcon(LucideIcons.moon), findsOneWidget);
+
+    await _card(tester, const OBPlanBreakdown(baseline: 420, need: 420));
+    expect(
+      tester.widget<Text>(find.text('RECHNUNG')).style!.color,
+      G3.of(tester.element(find.text('RECHNUNG'))).domainHue(G3Domain.sleep),
+    );
+  });
+
+  testWidgets('sleep tonight uses the shared note with its own heading', (
+    tester,
+  ) async {
+    final controller = OpenBandController(
+      repository: _PlanWithoutGoalRepo(),
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 10),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepScreen(
+          controller: controller,
+          reminder: MemorySleepBedtimeReminder(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('HEUTE NACHT'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      tester.widget<OBDayNote>(find.byType(OBDayNote)).heading,
+      'HEUTE NACHT',
+    );
+    expect(find.text('FÜR HEUTE'), findsNothing);
+  });
+
+  testWidgets('free nights use a full-width shared section heading', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepDebtDetail(repository: _repo(), day: '2026-09-29'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('FREIE NÄCHTE · SA UND SO'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.ancestor(
+        of: find.text('FREIE NÄCHTE · SA UND SO'),
+        matching: find.byType(OBSectionHeader),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.getTopLeft(find.text('FREIE NÄCHTE · SA UND SO')).dx, 24);
+  });
+
   testWidgets(
     'night phase method lives in the sheet and the overview uses shared week bars',
     (tester) async {
@@ -305,6 +385,10 @@ void main() {
           ],
         ),
       );
+      expect(
+        tester.widget<OBHypnogram>(find.byType(OBHypnogram)).domain,
+        G3Domain.sleep,
+      );
       expect(find.textContaining('Phasen aus Puls'), findsNothing);
       expect(find.text('lückenlos'), findsNothing);
       await Scrollable.ensureVisible(
@@ -324,6 +408,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(OBWeekBars), findsOneWidget);
+      expect(
+        tester.widget<OBWeekBars>(find.byType(OBWeekBars)).domain,
+        G3Domain.sleep,
+      );
       expect(find.text('+ Eintragen'), findsNothing);
     },
   );

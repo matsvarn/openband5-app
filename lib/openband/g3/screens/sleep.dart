@@ -90,9 +90,7 @@ class _SleepReads {
     final date = DateTime.parse(endDay);
     Future<OBSleepWindow> read(int i) async {
       final day = dayLabelOf(DateTime(date.year, date.month, date.day - i));
-      final label = i == 0
-          ? 'Heute'
-          : g3DayShort(DateTime.parse(day)).split(' ').first;
+      final label = i == 0 ? 'Heute' : g3Weekday(DateTime.parse(day));
       try {
         final night = (await repo.readDay(day)).sleep;
         return (
@@ -666,7 +664,13 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         children: [
           Row(
             children: [
-              Text('NACHT', style: g.caps()),
+              Icon(
+                LucideIcons.moon,
+                size: 16,
+                color: g.domainHue(G3Domain.sleep),
+              ),
+              const SizedBox(width: 6),
+              Text('NACHT', style: g.caps(color: g.domainHue(G3Domain.sleep))),
               if (duration == null ||
                   corrected ||
                   (night.unobservedMinutes != null &&
@@ -720,6 +724,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
           if (duration != null && total != null && segments.isNotEmpty)
             RepaintBoundary(
               child: day_parts.OBHypnogram(
+                domain: G3Domain.sleep,
                 segments: segments,
                 totalMinutes: total,
                 gaps: gaps,
@@ -850,7 +855,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                             10,
                             14,
                             weight: FontWeight.w700,
-                            color: g.muted,
+                            color: g.domainHue(G3Domain.sleep),
                           ),
                         ),
                         value.$2 == null
@@ -884,7 +889,6 @@ class _G3SleepScreenState extends State<G3SleepScreen>
     required bool error,
     required VoidCallback onTap,
   }) {
-    final g = G3.of(context);
     if (!error && plus?.bedtime == null) {
       return chrome.OBEmptyState(
         title: 'Heute Nacht: kein Vorschlag',
@@ -913,75 +917,21 @@ class _G3SleepScreenState extends State<G3SleepScreen>
       child: Semantics(
         button: true,
         label: 'Heute Nacht öffnen',
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 14, 18, 14),
-          decoration: BoxDecoration(
-            color: g.note,
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: g.noteShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('HEUTE NACHT', style: g.caps(color: g.noteMuted)),
-              const SizedBox(height: 5),
-              Text(
-                headline,
-                style: g.t(21, 25, weight: FontWeight.w700, color: g.noteInk),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                error
-                    ? 'Bitte erneut versuchen.'
-                    : plus?.bedtime == null
-                    ? plus?.sleepDebt.hasFreeNight == false
-                          ? 'Noch keine freie Nacht für einen persönlichen Schlafbedarf.'
-                          : 'Kein gespeicherter Schlafbedarf für diesen Tag.'
-                    : 'Geschätzter Bedarf ${obSleepDuration(plus!.needMinutes)}. Belastung kann bis zum Abend steigen.',
-                style: g.t(13, 17, color: g.noteInk2),
-              ),
-              if (shown != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: g.noteInset,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.moon, size: 18, color: g.noteInk),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${obSleepClock(shown)} ins Bett',
-                              style: g.t(
-                                14,
-                                18,
-                                weight: FontWeight.w700,
-                                color: g.noteInk,
-                              ),
-                            ),
-                            Text(
-                              'für ${obSleepDuration(plus?.needMinutes)} Schlafbedarf bis ${obSleepClock(plus?.wake)}',
-                              style: g.t(11, 15, color: g.noteInk2),
-                            ),
-                          ],
-                        ),
-                      ),
-                      chrome.OBPillButton('Ansehen', onPressed: onTap),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
+        child: day_parts.OBDayNote(
+          state: shown == null
+              ? day_parts.OBNoteState.text
+              : day_parts.OBNoteState.action,
+          heading: 'HEUTE NACHT',
+          headline: headline,
+          reason: error
+              ? 'Bitte erneut versuchen.'
+              : 'Geschätzter Bedarf ${obSleepDuration(plus?.needMinutes)}. Belastung kann bis zum Abend steigen.',
+          actionTitle: shown == null ? null : '${obSleepClock(shown)} ins Bett',
+          actionSubtitle: shown == null
+              ? null
+              : 'für ${obSleepDuration(plus?.needMinutes)} Schlafbedarf bis ${obSleepClock(plus?.wake)}',
+          remindLabel: 'Ansehen',
+          onRemind: onTap,
         ),
       ),
     );
@@ -998,12 +948,13 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         ? measured.map((point) => point.value!).reduce((a, b) => a + b) / 7
         : null;
     return day_parts.OBWeekBars(
+      domain: G3Domain.sleep,
       bars: [
         for (final point in values)
           day_parts.OBWeekBar(
             point == values.last
                 ? 'Heute'
-                : g3DayShort(DateTime.parse(point.day)).split(' ').first,
+                : g3Weekday(DateTime.parse(point.day)),
             point.value,
             label: obSleepDuration(point.value),
             today: point == values.last,
@@ -1150,6 +1101,97 @@ class _G3SleepDebtDetailState extends State<G3SleepDebtDetail> {
       'Schlafschuld',
       'Verglichen werden das 75. Perzentil der freien Nächte und der Median der letzten sieben Nächte. Die angezeigten Wochenendnächte können von der Auswertung ausgeschlossen sein.',
     ),
+    fullWidthSection: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const chrome.OBSectionHeader(
+          'FREIE NÄCHTE · SA UND SO',
+          domain: G3Domain.sleep,
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: FutureBuilder<List<(String, double?)>>(
+            future: _freeNights,
+            builder: (context, nights) {
+              if (nights.hasError) {
+                return const OBInlineNotice(
+                  text: 'Freie Nächte nicht geladen.',
+                );
+              }
+              if (nights.data == null) {
+                return const Center(
+                  child: CircularProgressIndicator.adaptive(),
+                );
+              }
+              return chrome.OBPanel(
+                child: Column(
+                  children: [
+                    for (final (label, value) in nights.data!) ...[
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 68,
+                            child: Text(
+                              g3DayShort(DateTime.parse(label)),
+                              style: G3.of(context).t(12, 16),
+                            ),
+                          ),
+                          Expanded(
+                            child: value == null
+                                ? const G3Dashed(height: 9)
+                                : LinearProgressIndicator(
+                                    value: (value / 600).clamp(0.0, 1.0),
+                                    minHeight: 9,
+                                    borderRadius: BorderRadius.circular(5),
+                                    color: G3
+                                        .of(context)
+                                        .domainBar(G3Domain.sleep),
+                                    backgroundColor: G3.of(context).track,
+                                  ),
+                          ),
+                          SizedBox(
+                            width: 57,
+                            child: Text(
+                              obSleepDuration(value),
+                              textAlign: TextAlign.end,
+                              style: G3
+                                  .of(context)
+                                  .t(12, 16, weight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    Text(
+                      'Aufgezeichnete Wochenendnächte; die Schätzung kann Nächte ausschließen.',
+                      style: G3
+                          .of(context)
+                          .t(11, 15, color: G3.of(context).muted),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: chrome.OBEmptyState(
+            title: 'So wird gerechnet',
+            reason:
+                '75. Perzentil deiner freien Nächte minus deine übliche Nacht. Frei = Sa und So, ohne Kalender. Ein Perzentil freien Schlafs, kein gemessener Bedarf.',
+            action: 'Methode',
+            onAction: () => _showSleepMethod(
+              context,
+              'Schlafschuld',
+              'Verglichen werden das 75. Perzentil der freien Nächte und der Median der letzten sieben Nächte. Die angezeigten Wochenendnächte können von der Auswertung ausgeschlossen sein.',
+            ),
+          ),
+        ),
+      ],
+    ),
     child: FutureBuilder<G3SleepPlus>(
       future: _plus,
       builder: (context, snap) {
@@ -1173,86 +1215,6 @@ class _G3SleepDebtDetailState extends State<G3SleepDebtDetail> {
                         (snap.hasError ? 'Nicht verfügbar' : null)
                   : null,
               detail: true,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'FREIE NÄCHTE · SA UND SO',
-              style: G3.of(context).caps(color: G3.of(context).muted),
-            ),
-            const SizedBox(height: 8),
-            FutureBuilder<List<(String, double?)>>(
-              future: _freeNights,
-              builder: (context, nights) {
-                if (nights.hasError) {
-                  return const OBInlineNotice(
-                    text: 'Freie Nächte nicht geladen.',
-                  );
-                }
-                if (nights.data == null) {
-                  return const Center(
-                    child: CircularProgressIndicator.adaptive(),
-                  );
-                }
-                return chrome.OBPanel(
-                  child: Column(
-                    children: [
-                      for (final (label, value) in nights.data!) ...[
-                        Row(
-                          children: [
-                            SizedBox(
-                              width: 68,
-                              child: Text(
-                                g3DayShort(DateTime.parse(label)),
-                                style: G3.of(context).t(12, 16),
-                              ),
-                            ),
-                            Expanded(
-                              child: value == null
-                                  ? const G3Dashed(height: 9)
-                                  : LinearProgressIndicator(
-                                      value: (value / 600).clamp(0.0, 1.0),
-                                      minHeight: 9,
-                                      borderRadius: BorderRadius.circular(5),
-                                      color: G3.of(context).bar,
-                                      backgroundColor: G3.of(context).track,
-                                    ),
-                            ),
-                            SizedBox(
-                              width: 57,
-                              child: Text(
-                                obSleepDuration(value),
-                                textAlign: TextAlign.end,
-                                style: G3
-                                    .of(context)
-                                    .t(12, 16, weight: FontWeight.w700),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      Text(
-                        'Aufgezeichnete Wochenendnächte; die Schätzung kann Nächte ausschließen.',
-                        style: G3
-                            .of(context)
-                            .t(11, 15, color: G3.of(context).muted),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            chrome.OBEmptyState(
-              title: 'So wird gerechnet',
-              reason:
-                  '75. Perzentil deiner freien Nächte minus deine übliche Nacht. Frei = Sa und So, ohne Kalender. Ein Perzentil freien Schlafs, kein gemessener Bedarf.',
-              action: 'Methode',
-              onAction: () => _showSleepMethod(
-                context,
-                'Schlafschuld',
-                'Verglichen werden das 75. Perzentil der freien Nächte und der Median der letzten sieben Nächte. Die angezeigten Wochenendnächte können von der Auswertung ausgeschlossen sein.',
-              ),
             ),
           ],
         );
@@ -1406,7 +1368,7 @@ class _G3SleepTonightState extends State<G3SleepTonight>
       'Der persönliche Schlafbedarf beginnt mit dem 75. Perzentil deiner freien Nächte. Positive Schlafschuld und Belastung erhöhen ihn; Nickerchen senken ihn. Das Schlafziel gehört nicht zur Rechnung.',
     ),
     subtitle:
-        '${g3DayShort(DateTime.parse(widget.day)).split(' ').first} → ${g3DayShort(_followingDay)}',
+        '${g3Weekday(DateTime.parse(widget.day))} → ${g3DayShort(_followingDay)}',
     child: FutureBuilder<G3SleepPlus>(
       future: plus,
       builder: (context, snap) {
@@ -1512,11 +1474,13 @@ class _SleepDetail extends StatelessWidget {
     required this.child,
     this.subtitle,
     this.onInfo,
+    this.fullWidthSection,
   });
   final String title;
   final String? subtitle;
   final Widget child;
   final VoidCallback? onInfo;
+  final Widget? fullWidthSection;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -1528,11 +1492,13 @@ class _SleepDetail extends StatelessWidget {
           bottomInset: kOBTabBarContentInset,
           header: chrome.OBPageHeader.detail(
             title: title,
+            domain: G3Domain.sleep,
             subtitle: subtitle,
             backLabel: 'Schlaf',
             onBack: () => Navigator.of(context).pop(),
             onTrailing: onInfo,
           ),
+          fullWidthSection: fullWidthSection,
           children: [child],
         ),
       ),

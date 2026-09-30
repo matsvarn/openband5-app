@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart'
     show G3SleepNeedClamp, NightSignalReading, NightSignalSeries;
@@ -32,9 +33,7 @@ String _sleepAdjustment(num? minutes) {
   return g3Signed(minutes.round(), unit: 'Min.');
 }
 
-String obSleepClock(DateTime? time) => time == null
-    ? '—'
-    : '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+String obSleepClock(DateTime? time) => time == null ? '—' : g3Clock(time);
 
 DateTime? roundedSleepBedtime(DateTime? value) {
   if (value == null) return null;
@@ -165,7 +164,9 @@ class OBBedtimeLead extends StatelessWidget {
                       child: Container(
                         decoration: g.pressed(
                           radius: 5,
-                          color: today ? g.ink : g.bar,
+                          color: today
+                              ? g.domainHue(G3Domain.sleep)
+                              : g.domainBar(G3Domain.sleep),
                         ),
                       ),
                     ),
@@ -196,22 +197,15 @@ class OBBedtimeLead extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text('INS BETT', style: g.caps()),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  shown == null
-                      ? 'Kein Vorschlag'
-                      : strainOpen
-                      ? 'Schätzung · Belastung läuft'
-                      : 'Schätzung',
-                  textAlign: TextAlign.end,
-                  style: g.t(12, 16, color: g.muted),
-                ),
-              ),
-            ],
+          G3LabelRow(
+            'INS BETT',
+            domain: G3Domain.sleep,
+            glyph: LucideIcons.moon,
+            note: shown == null
+                ? 'Kein Vorschlag'
+                : strainOpen
+                ? 'Schätzung · Belastung läuft'
+                : 'Schätzung',
           ),
           const SizedBox(height: 8),
           if (noFreeNight) ...[
@@ -299,6 +293,8 @@ class OBSleepLead extends StatelessWidget {
         children: [
           G3LabelRow(
             'SCHLAF',
+            domain: G3Domain.sleep,
+            glyph: LucideIcons.moon,
             note: goalMinutes == null ? 'kein Ziel' : null,
             onTap: onGoal,
           ),
@@ -405,7 +401,7 @@ class OBSleepLead extends StatelessWidget {
                         child: Container(
                           height: 10,
                           decoration: BoxDecoration(
-                            color: g.ink,
+                            color: g.domainHue(G3Domain.sleep),
                             borderRadius: BorderRadius.circular(5),
                           ),
                         ),
@@ -478,6 +474,7 @@ class OBSriLead extends StatelessWidget {
         children: [
           G3LabelRow(
             'SRI',
+            domain: G3Domain.sleep,
             note: value == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
@@ -564,6 +561,8 @@ class OBSleepWindows extends StatelessWidget {
         children: [
           G3LabelRow(
             detail ? 'IM BETT JE NACHT' : 'REGELMÄSSIGKEIT',
+            domain: G3Domain.sleep,
+            glyph: detail ? null : LucideIcons.moon,
             onTap: detail ? null : onTap,
             note: regularity == null
                 ? gate == null
@@ -647,8 +646,8 @@ class OBSleepWindows extends StatelessWidget {
                                     height: 10,
                                     decoration: BoxDecoration(
                                       color: window.day == 'Heute'
-                                          ? g.ink
-                                          : g.bar,
+                                          ? g.domainHue(G3Domain.sleep)
+                                          : g.domainBar(G3Domain.sleep),
                                       borderRadius: BorderRadius.circular(5),
                                     ),
                                   ),
@@ -687,6 +686,7 @@ class OBSocialJetlag extends StatelessWidget {
         children: [
           G3LabelRow(
             'SOZIALE ZEITVERSCHIEBUNG',
+            domain: G3Domain.sleep,
             onTap: onTap,
             note: minutes == null ? null : '7 Nächte',
           ),
@@ -742,7 +742,12 @@ class OBSleepDebtLead extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow('SCHLAFSCHULD', note: minutes == null ? null : '3 Wochen'),
+          G3LabelRow(
+            'SCHLAFSCHULD',
+            domain: G3Domain.sleep,
+            glyph: LucideIcons.moon,
+            note: minutes == null ? null : '3 Wochen',
+          ),
           const SizedBox(height: 8),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
@@ -797,6 +802,8 @@ class OBSleepDebt extends StatelessWidget {
         children: [
           G3LabelRow(
             detail ? 'FREI UND ÜBLICH' : 'SCHLAFSCHULD',
+            domain: G3Domain.sleep,
+            glyph: detail ? null : LucideIcons.moon,
             onTap: detail ? null : onTap,
             note: detail ? 'Stunden Schlaf' : 'frei gegen üblich',
           ),
@@ -962,6 +969,8 @@ class OBPlanBreakdown extends StatelessWidget {
         children: [
           G3LabelRow(
             'RECHNUNG',
+            domain: G3Domain.sleep,
+            glyph: LucideIcons.moon,
             note: bedtime == null
                 ? null
                 : 'gerundet von ${obSleepClock(bedtime)}',
@@ -1119,7 +1128,7 @@ class OBNightTrace extends StatelessWidget {
                   start,
                   end,
                   series.maxConnectingGap,
-                  g.ink,
+                  g.domainHue(G3Domain.sleep),
                   g.hairline,
                 ),
               ),
