@@ -35,6 +35,48 @@ import 'series_codec.dart';
 import '../gps/route_models.dart';
 import '../gps/route_math.dart' as rmath;
 
+/// Clock-minute HR means and record-presence gaps for session reads and G3.
+/// Both the live builder and frozen trace use this same shape.
+({List<Map<String, num>> means, List<Map<String, int>> gaps}) sessionHrTimeline(
+  List<int> ts,
+  List<int> hr,
+  int startSec,
+  int endSec,
+) {
+  final means = <Map<String, num>>[];
+  final gaps = <Map<String, int>>[];
+  if (ts.isEmpty) {
+    if (endSec > startSec) gaps.add({'start': startSec, 'end': endSec});
+    return (means: means, gaps: gaps);
+  }
+  var bucket = -1;
+  var sum = 0;
+  var count = 0;
+  void emit() {
+    if (count > 0) means.add({'t': bucket * 60, 'v': (sum / count).round()});
+  }
+  if (ts.first > startSec) gaps.add({'start': startSec, 'end': ts.first});
+  for (var i = 0; i < ts.length; i++) {
+    if (i > 0 && ts[i] - ts[i - 1] > DerivationEngine.offWristGapSec) {
+      gaps.add({'start': ts[i - 1] + 1, 'end': ts[i]});
+    }
+    final current = ts[i] ~/ 60;
+    if (current != bucket) {
+      emit();
+      bucket = current;
+      sum = 0;
+      count = 0;
+    }
+    sum += hr[i];
+    count++;
+  }
+  emit();
+  if (ts.last + 1 < endSec) {
+    gaps.add({'start': ts.last + 1, 'end': endSec});
+  }
+  return (means: means, gaps: gaps);
+}
+
 class LocalRepositoryImpl extends LocalRepository {
   LocalRepositoryImpl({required this.getProfileMap, this.saveProfileFields});
 
@@ -2252,7 +2294,9 @@ class LocalRepositoryImpl extends LocalRepository {
     _ZoneAnchors anchors,
   ) {
     final w = <String, dynamic>{};
-    w['hr'] = _minuteHrCurve(ts, hr);
+    final timeline = sessionHrTimeline(ts, hr, startTs, endTs);
+    w['hr'] = timeline.means;
+    w['signal_gaps'] = timeline.gaps;
     // Spike-suppressed trough (issue #127): a lone low PPG dropout must not
     // define the min, symmetric to the max recompute below.
     w['min_hr'] = smoothedMinHr(hr, age: _profileAge(startTs)) ?? hr.reduce(math.min);
@@ -2301,32 +2345,6 @@ class LocalRepositoryImpl extends LocalRepository {
   /// Freeze one session's trace for storage. Mirror of [_frozenTrace].
   String _encodeTrace(Map<String, dynamic> trace) =>
       jsonEncode({...trace, 'hr': SeriesCodec.encodeCurve(trace['hr'])});
-
-  /// Minute-mean HR curve [{t, v}] (epoch sec at each minute start) from raw
-  /// 1 Hz samples — the shape the detail chart parses.
-  List<Map<String, num>> _minuteHrCurve(List<int> ts, List<int> hr) {
-    final out = <Map<String, num>>[];
-    var bucket = -1;
-    var sum = 0;
-    var n = 0;
-    void emit() {
-      if (n > 0) out.add({'t': bucket * 60, 'v': (sum / n).round()});
-    }
-
-    for (var i = 0; i < ts.length; i++) {
-      final b = ts[i] ~/ 60;
-      if (b != bucket) {
-        emit();
-        bucket = b;
-        sum = 0;
-        n = 0;
-      }
-      sum += hr[i];
-      n++;
-    }
-    emit();
-    return out;
-  }
 
   /// Zone names. "Fat burn" was a substrate-utilisation claim on a band that
   /// measures heart rate. Z2 is an INTENSITY label; which fuel is being
@@ -2618,6 +2636,36 @@ class LocalRepositoryImpl extends LocalRepository {
   );
 
   @override
+  Future<Map<String, dynamic>> confirmWorkoutSuggestion(
+    String suggestionId, {
+    String? sport,
+  }) async {
+    final sessionId = 'auto-suggestion:$suggestionId';
+    final saved = await LocalDb.session(sessionId);
+    if (saved != null) return {'workout_id': sessionId};
+    final db = await LocalDb.instance;
+    final rows = await db.query(
+      'workout_suggestions',
+      where: 'id = ? AND dismissed = 0',
+      whereArgs: [suggestionId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Suggestion is no longer active: $suggestionId');
+    }
+    final suggestion = rows.single;
+    return _writeManualSession(
+      startTs: (suggestion['start_ts'] as num).toInt(),
+      endTs: (suggestion['end_ts'] as num).toInt(),
+      type: sport ?? (suggestion['sport'] as String?) ?? 'other',
+      validateAgainstId: sessionId,
+      sessionId: sessionId,
+      source: 'auto',
+      confirmedSuggestionId: suggestionId,
+    );
+  }
+
+  @override
   Future<Map<String, dynamic>> setWorkoutWindow(
     String id, {
     required int startTs,
@@ -2672,6 +2720,7 @@ class LocalRepositoryImpl extends LocalRepository {
     Map<String, dynamic>? existing,
     String? sessionId,
     String source = 'manual',
+    String? confirmedSuggestionId,
   }) async {
     // Re-check at the write seam. The form validates live, but its snapshot of
     // saved spans can be stale by the time save is tapped (a background derive
@@ -2705,6 +2754,7 @@ class LocalRepositoryImpl extends LocalRepository {
     final deviceFamily = (existing?['device_family'] as String?) ??
         await _windowDeviceFamily(startTs, endTs);
 
+    final zoneAnchors = await _zoneAnchors();
     final stats = computeManualSessionStats(
       hrTs: hrTs,
       hrBpm: hrBpm,
@@ -2719,7 +2769,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // screen's `zone_bands` recomputes. `hrMax` above stays the strain and
       // calorie anchor; the two are named separately because they can now be
       // different ceilings.
-      zoneSet: _zoneSetFor(deviceFamily, await _zoneAnchors(), startTs),
+      zoneSet: _zoneSetFor(deviceFamily, zoneAnchors, startTs),
     );
 
     final row = buildManualSessionRow(
@@ -2736,6 +2786,78 @@ class LocalRepositoryImpl extends LocalRepository {
     // trace all band on the SAME ceiling this write did — `putSession` is
     // INSERT-OR-REPLACE, so omitting it would blank an edit's existing stamp.
     row['device_family'] = deviceFamily;
+    if (confirmedSuggestionId != null) {
+      if (hrBpm.isNotEmpty) {
+        final trace = _sessionTrace(
+          hrTs,
+          hrBpm,
+          startTs,
+          endTs,
+          deviceFamily,
+          zoneAnchors,
+        );
+        row['trace_json'] = _encodeTrace(trace);
+        row['trace_samples'] = hrBpm.length;
+      }
+      final derived = await LocalDb.dayResult(
+        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startTs * 1000)),
+      );
+      if (derived?['algo_version'] == kAlgoVersion &&
+          derived?['partial'] != 1 &&
+          derived?['skipped'] != 1) {
+        final payload = _decode(derived?['payload_json']);
+        final bouts = payload?['workout_suggestions'];
+        if (bouts is List) {
+          for (final bout in bouts) {
+            if (bout is Map &&
+                bout['start'] == startTs &&
+                bout['end'] == endTs &&
+                bout['hrr_bpm'] is num &&
+                (bout['hrr_bpm'] as num).isFinite) {
+              row['hrr_bpm'] = (bout['hrr_bpm'] as num).toDouble();
+              break;
+            }
+          }
+        }
+      }
+      final db = await LocalDb.instance;
+      await db.transaction((txn) async {
+        final alreadySaved = await txn.query(
+          'sessions',
+          columns: ['id'],
+          where: 'id = ?',
+          whereArgs: [row['id']],
+          limit: 1,
+        );
+        if (alreadySaved.isNotEmpty) return;
+        final active = await txn.query(
+          'workout_suggestions',
+          where: 'dismissed = 0',
+        );
+        final superseded = supersededSuggestionIds(
+          active,
+          startSec: startTs,
+          endSec: endTs,
+        );
+        if (!superseded.contains(confirmedSuggestionId)) {
+          throw StateError('Suggestion is no longer active: $confirmedSuggestionId');
+        }
+        await txn.insert('sessions', row);
+        for (final id in superseded) {
+          await txn.update(
+            'workout_suggestions',
+            {'dismissed': 1},
+            where: 'id = ? AND dismissed = 0',
+            whereArgs: [id],
+          );
+        }
+      });
+      return {
+        'workout_id': row['id'],
+        'unscored': stats.isUnscored,
+        'hr_samples': stats.hrSampleCount,
+      };
+    }
     await LocalDb.putSession(row);
 
     // Retire the fragment(s) this window supersedes, so the athlete isn't

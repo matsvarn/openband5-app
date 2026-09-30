@@ -5,9 +5,11 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
 import '../data/cycle_store.dart';
 import '../data/db.dart';
+import '../data/local_repository_impl.dart' show sessionHrTimeline;
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/med_store.dart';
@@ -16,13 +18,92 @@ import '../data/nutrition_targets.dart';
 import '../data/vo2_store.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
-import '../compute/derivation_engine.dart' show kAlgoVersion;
+import '../compute/derivation_engine.dart' show DerivationEngine, kAlgoVersion;
 import '../compute/nap_edits.dart';
 import '../health/health_measurement_import.dart';
+import '../health/health_export.dart';
+import '../models/metric.dart' show baselineCountsFromNote;
 import '../state/app_state.dart';
 import 'domain.dart';
 import 'theme.dart';
 import 'time.dart';
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps}) _g3ProjectTimeline(
+  Object? means,
+  Object? gaps,
+  int startSec,
+  int endSec,
+) {
+  final values = <int, double>{};
+  if (means is List) {
+    for (final item in means) {
+      if (item is! Map || item['t'] is! num || item['v'] is! num) continue;
+      values[(item['t'] as num).toInt()] = (item['v'] as num).toDouble();
+    }
+  }
+  final points = <G3HrPoint>[
+    if (endSec > startSec)
+      for (var t = (startSec ~/ 60) * 60;
+          t <= ((endSec - 1) ~/ 60) * 60;
+          t += 60)
+        G3HrPoint(DateTime.fromMillisecondsSinceEpoch(t * 1000), values[t]),
+  ];
+  final signalGaps = <G3SignalGap>[];
+  if (gaps is List) {
+    for (final item in gaps) {
+      if (item is! Map || item['start'] is! num || item['end'] is! num) {
+        continue;
+      }
+      signalGaps.add(G3SignalGap(
+        DateTime.fromMillisecondsSinceEpoch((item['start'] as num).toInt() * 1000),
+        DateTime.fromMillisecondsSinceEpoch((item['end'] as num).toInt() * 1000),
+      ));
+    }
+  }
+  if (values.isEmpty && signalGaps.isEmpty && endSec > startSec) {
+    signalGaps.add(G3SignalGap(
+      DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+      DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+    ));
+  }
+  return (points: points, gaps: signalGaps);
+}
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps}) _g3ProjectRawTrace(
+  List<Map<String, dynamic>> samples,
+  int startSec,
+  int endSec,
+) {
+  final timeline = sessionHrTimeline(
+    [for (final row in samples) (row['rec_ts'] as num).toInt()],
+    [for (final row in samples) (row['hr'] as num).toInt()],
+    startSec,
+    endSec,
+  );
+  return _g3ProjectTimeline(timeline.means, timeline.gaps, startSec, endSec);
+}
+
+({List<G3HrPoint> points, List<G3SignalGap> gaps})? _g3ProjectFrozenTrace(
+  String raw,
+  int startSec,
+  int endSec,
+) {
+  try {
+    final trace = jsonDecode(raw);
+    if (trace is Map) {
+      if (!trace.containsKey('hr')) return null;
+      return _g3ProjectTimeline(
+        SeriesCodec.decodeCurve(trace['hr']),
+        trace['signal_gaps'],
+        startSec,
+        endSec,
+      );
+    }
+  } on FormatException {
+    // Corrupt frozen data cannot supply a curve.
+  }
+  return null;
+}
 
 /// SQLite-backed boundary for the first OpenBand daily/sleep-correction flow.
 /// All legacy Map payloads are decoded here; callers only see typed values.
@@ -35,12 +116,14 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Future<CycleSettings> Function()? cycleSettingsRead,
     Future<void> Function(CycleSettings)? cycleSettingsSave,
     Future<void> Function()? cycleContextRefresh,
+    DateTime Function()? diagnosticsNow,
   })  : _measurementImporter = measurementImporter,
         _glucoseRefresh = glucoseRefresh,
         _reminderRefresh = reminderRefresh,
         _cycleSettingsRead = cycleSettingsRead,
         _cycleSettingsSave = cycleSettingsSave,
-        _cycleContextRefresh = cycleContextRefresh;
+        _cycleContextRefresh = cycleContextRefresh,
+        _diagnosticsNow = diagnosticsNow ?? DateTime.now;
 
   final AppState app;
   final ImportedMeasurementImporter? _measurementImporter;
@@ -49,6 +132,812 @@ class LocalOpenBandRepository implements OpenBandRepository {
   final Future<CycleSettings> Function()? _cycleSettingsRead;
   final Future<void> Function(CycleSettings)? _cycleSettingsSave;
   final Future<void> Function()? _cycleContextRefresh;
+  final DateTime Function() _diagnosticsNow;
+
+  static int? _pageSpan(Object? from, Object? to, Object? capacity) {
+    if (from is! num || to is! num || capacity is! num) return null;
+    final size = capacity.toInt();
+    final first = from.toInt();
+    final last = to.toInt();
+    if (size <= 0 ||
+        first < 0 ||
+        last < 0 ||
+        first > size ||
+        last > size ||
+        first == last) {
+      return null; // Equal ring cursors do not distinguish empty from full.
+    }
+    return (last - first + size) % size;
+  }
+
+  @override
+  Future<BandDiagnostics> readBandDiagnostics() async {
+    const deviceId = LocalDb.kPrimaryDeviceId;
+    final db = await LocalDb.instance;
+    final nowSec = _diagnosticsNow().millisecondsSinceEpoch ~/ 1000;
+    final fromSec = nowSec - const Duration(hours: 24).inSeconds;
+    DateTime at(int seconds) =>
+        DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+
+    final device = await LocalDb.deviceRow(deviceId);
+    final backlogRows = await LocalDb.bandBacklog(limit: 1, deviceId: deviceId);
+    final backlogRow = backlogRows.isEmpty ? null : backlogRows.first;
+    final batteryRow = await LocalDb.latestBandBatterySample(
+      deviceId: deviceId,
+    );
+    final storedThrough = await LocalDb.getCursorInt('rec_ts_hw');
+    final recorded = await db.rawQuery(
+      'SELECT COUNT(DISTINCT rec_ts) AS n FROM decoded_onehz '
+      'WHERE device_id = ? AND rec_ts >= ? AND rec_ts < ? '
+      'AND rec_ts > 0 AND $kPrimaryBandSourceSql',
+      [deviceId, fromSec, nowSec],
+    );
+    final seconds = (recorded.first['n'] as num).toInt();
+    final stateRows = await db.query(
+      'band_events',
+      columns: ['event_id'],
+      where: 'device_id = ? AND ts < ? AND event_id IN (?, ?)',
+      whereArgs: [
+        deviceId,
+        nowSec,
+        proto.EventId.wristOn,
+        proto.EventId.wristOff,
+      ],
+      orderBy: 'ts DESC',
+      limit: 1,
+    );
+    final wristOff = stateRows.isEmpty
+        ? null
+        : await LocalDb.wristOffSpans(fromSec, nowSec, deviceId: deviceId);
+
+    return BandDiagnostics(
+      // `device.adapter_id` is a family (gen4/gen5), and `label` is an
+      // advertising name or serial. Neither is an exact model or firmware.
+      deviceFamily: device?['adapter_id'] as String?,
+      lastStoredSampleAt: storedThrough == null ? null : at(storedThrough),
+      backlog: backlogRow == null
+          ? null
+          : BandBacklog(
+              observedAt: at((backlogRow['ts'] as num).toInt()),
+              heldPages: _pageSpan(
+                backlogRow['trim_page'],
+                backlogRow['written'],
+                backlogRow['capacity'],
+              ),
+              unreadPages: _pageSpan(
+                backlogRow['read_page'],
+                backlogRow['written'],
+                backlogRow['capacity'],
+              ),
+            ),
+      coverage: seconds == 0 && stateRows.isEmpty
+          ? null
+          : BandCoverage(
+              start: at(fromSec),
+              end: at(nowSec),
+              recordedSeconds: seconds == 0 ? null : seconds,
+              coveragePercent: null,
+              wristOffIntervals: wristOff == null
+                  ? null
+                  : [
+                      for (final span in wristOff)
+                        BandTimeInterval(at(span[0]), at(span[1])),
+                    ],
+            ),
+      battery: batteryRow == null
+          ? null
+          : BandBattery(
+              observedAt: at((batteryRow['ts'] as num).toInt()),
+              percent: (batteryRow['battery_pct'] as num?)?.round(),
+              charging: batteryRow['charging'] == null
+                  ? null
+                  : batteryRow['charging'] == 1,
+            ),
+    );
+  }
+
+  @override
+  Future<FirstTransferReceipt?> readFirstTransferReceipt() async {
+    // FirstSyncScreen used only the durable frontier and today's evaluation.
+    // sync_ledger has batch tokens/ACK status, not a first-transfer identity
+    // or committed section ranges. A batch ACK cannot become a section receipt.
+    return null;
+  }
+
+  static MetricKey? _g3MetricKey(G3Metric metric) => switch (metric) {
+    G3Metric.recovery => MetricKey.recovery,
+    G3Metric.hrv => MetricKey.hrv,
+    G3Metric.rhr => MetricKey.restingHr,
+    G3Metric.respRate => MetricKey.respiration,
+    G3Metric.skinTempZ => MetricKey.skinTemperature,
+    G3Metric.sleepMinutes => MetricKey.sleepDuration,
+    G3Metric.strain => MetricKey.strain,
+    G3Metric.steps => null,
+  };
+
+  static String? _baselinePath(G3Metric metric) => switch (metric) {
+    G3Metric.recovery => 'recovery',
+    G3Metric.hrv => 'hrv',
+    G3Metric.rhr => 'resting_hr',
+    G3Metric.respRate => 'resp',
+    // `skin_temp` is raw ADC; it cannot bound the published z score.
+    G3Metric.skinTempZ ||
+    G3Metric.sleepMinutes ||
+    G3Metric.strain ||
+    G3Metric.steps => null,
+  };
+
+  static int? _needField(String? note, String name) {
+    if (note == null) return null;
+    final match = RegExp('(?:^|[:,])$name=(\\d+)').firstMatch(note);
+    return match == null ? null : int.tryParse(match.group(1)!);
+  }
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    _requireDay(day);
+    final root = _baselinePath(metric);
+    if (root == null) {
+      return const G3Baseline(BaselineStatus(BaselinePhase.none));
+    }
+    final row = await LocalDb.dayResult(day);
+    if (row == null ||
+        row['skipped'] == 1 ||
+        row['partial'] == 1 ||
+        row['algo_version'] != kAlgoVersion) {
+      return const G3Baseline(BaselineStatus(BaselinePhase.none));
+    }
+    final payload = _payload(row['payload_json']);
+    if (payload == null) {
+      throw const FormatException('Stored day result is unreadable.');
+    }
+    final stored = nightScalarBaseline(
+      value: _numAt(payload, 'baselines.$root.baseline'),
+      spread: _numAt(payload, 'baselines.$root.spread'),
+      status: _stringAt(payload, 'baselines.$root.status'),
+      nValid: _at(payload, 'baselines.$root.n_valid'),
+      nightsSinceUpdate: _at(payload, 'baselines.$root.nights_since_update'),
+      note: _stringAt(payload, 'baselines.$root.note'),
+    );
+    final trusted =
+        nightScalarStatus(stored?.status) == kNightScalarTrustedBaseline;
+    final center = stored?.value;
+    final spread = stored?.spread;
+    if (trusted &&
+        center != null &&
+        center.isFinite &&
+        spread != null &&
+        spread.isFinite &&
+        spread > 0) {
+      final half = 1.253 * spread;
+      return G3Baseline(
+        const BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(center - half, center + half, center),
+      );
+    }
+    if (metric == G3Metric.recovery) {
+      final counts = baselineCountsFromNote(
+        _stringAt(payload, 'readiness_absent_diag.note'),
+      );
+      if (counts != null) {
+        return G3Baseline(
+          BaselineStatus(
+            BaselinePhase.building,
+            nightsHave: counts.have,
+            nightsNeeded: counts.need,
+          ),
+        );
+      }
+      return const G3Baseline(BaselineStatus(BaselinePhase.none));
+    }
+    if (stored?.status != null && stored!.status != 'absent') {
+      return G3Baseline(
+        BaselineStatus(
+          BaselinePhase.building,
+          nightsHave: stored.nValid,
+          nightsNeeded: _needField(stored.note, 'need'),
+        ),
+      );
+    }
+    return const G3Baseline(BaselineStatus(BaselinePhase.none));
+  }
+
+  @override
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
+    if (!const {7, 30, 90}.contains(days)) {
+      throw ArgumentError.value(days, 'days', 'Expected 7, 30, or 90.');
+    }
+    _requireDay(endDay);
+    final key = _g3MetricKey(metric);
+    final points = key == null
+        ? await _g3Steps(endDay, days)
+        : await readMetricHistory(key, endDay, days);
+    return g3Trend(metric, points, await readPersonalRange(metric, endDay));
+  }
+
+  Future<List<MetricPoint>> _g3Steps(String endDay, int days) async {
+    final labels = g3DaysEnding(endDay, days);
+    final rows = await LocalDb.metricSeries('steps');
+    final values = <String, double>{
+      for (final r in rows)
+        if (r['date'] is String && r['value'] is num)
+          r['date'] as String: (r['value'] as num).toDouble(),
+    };
+    return [for (final day in labels) MetricPoint(day, values[day])];
+  }
+
+  @override
+  Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay) async {
+    if (!const {
+      G3Metric.recovery,
+      G3Metric.sleepMinutes,
+      G3Metric.strain,
+    }.contains(metric)) {
+      throw ArgumentError.value(metric, 'metric');
+    }
+    final trend = await readTrend(metric, endDay, 7);
+    final goal = metric == G3Metric.sleepMinutes
+        ? (await readSleepGoal(endDay)).targetMinutes?.toDouble()
+        : null;
+    return g3WeekStrip(
+      metric,
+      trend.points,
+      range: metric == G3Metric.recovery ? trend.baseline.range : null,
+      goal: goal,
+    );
+  }
+
+  @override
+  Future<List<G3Activity>> readActivities(String day) async {
+    _requireDay(day);
+    final from = localDayStartSec(day)!;
+    final until = localDayEndSec(day)!;
+    final rows = await LocalDb.sessionsInRange(from, until - 1);
+    final db = await LocalDb.instance;
+    final suggestions = await db.query(
+      'workout_suggestions',
+      where: 'date = ? AND dismissed = 0',
+      whereArgs: [day],
+    );
+    final derived = await LocalDb.dayResult(day);
+    final derivedPayload =
+        derived?['algo_version'] == kAlgoVersion &&
+            derived?['skipped'] != 1 &&
+            derived?['partial'] != 1
+        ? _payload(derived?['payload_json'])
+        : null;
+    final derivedBouts = derivedPayload?['workout_suggestions'];
+    final priorCounts = await _g3PriorHrrCounts([
+      for (final r in [...rows, ...suggestions])
+        if (r['id'] is String && r['start_ts'] is num)
+          (
+            id: r['id'] as String,
+            sport: (r['type'] ?? r['sport'] ?? 'other') as String,
+            startSec: (r['start_ts'] as num).toInt(),
+          ),
+    ]);
+    final result = <G3Activity>[];
+    for (final r in rows) {
+      final id = r['id'];
+      final startSec = (r['start_ts'] as num?)?.toInt();
+      if (id is! String ||
+          startSec == null ||
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startSec * 1000)) !=
+              day) {
+        continue;
+      }
+      final endSec = (r['end_ts'] as num?)?.toInt();
+      if (endSec == null && r['status'] == 'live') {
+        result.add(
+          G3Activity(
+            id: id,
+            sport: (r['type'] as String?) ?? 'other',
+            source: G3ActivitySource.live,
+            confirmed: true,
+            start: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+            end: null,
+            strain: (r['strain'] as num?)?.toDouble(),
+            avgHr: (r['avg_hr'] as num?)?.toDouble(),
+            maxHr: (r['max_hr'] as num?)?.toDouble(),
+          ),
+        );
+        continue;
+      }
+      if (endSec == null || endSec <= startSec) continue;
+      final zoneRaw = r['zone_min_json'];
+      List<double>? zones;
+      if (zoneRaw is String) {
+        try {
+          final parsed = jsonDecode(zoneRaw);
+          if (parsed is List &&
+              parsed.length == 5 &&
+              parsed.every((v) => v is num && v.isFinite)) {
+            zones = [for (final v in parsed) (v as num).toDouble()];
+          }
+        } on FormatException {
+          /* corrupt split remains absent */
+        }
+      }
+      final trace = await _g3HrTrace(
+        startSec,
+        endSec,
+        frozenTrace: r['trace_json'] as String?,
+      );
+      final share = await _g3OpticalShare(startSec, endSec);
+      final sport = (r['type'] as String?) ?? 'other';
+      final source = r['status'] == 'live'
+          ? G3ActivitySource.live
+          : r['source'] == 'auto'
+          ? G3ActivitySource.auto
+          : G3ActivitySource.manual;
+      result.add(
+        G3Activity(
+          id: id,
+          sport: sport,
+          source: source,
+          confirmed: true,
+          start: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+          strain: (r['strain'] as num?)?.toDouble(),
+          avgHr: (r['avg_hr'] as num?)?.toDouble(),
+          maxHr: (r['max_hr'] as num?)?.toDouble(),
+          zoneMinutes: zones,
+          zoneBasis: _g3ZoneBasis(r['trace_json']),
+          hrTrace: trace.points,
+          signalGaps: trace.gaps,
+          opticalShare: share,
+          // The derivation engine banks only the clean-tail hrRecovery result.
+          hrRecoveryOneMinute: (r['hrr_bpm'] as num?)?.toDouble(),
+          priorHrrCount: priorCounts[id] ?? 0,
+        ),
+      );
+    }
+    for (final r in suggestions) {
+      final id = r['id'];
+      final startSec = (r['start_ts'] as num?)?.toInt();
+      final endSec = (r['end_ts'] as num?)?.toInt();
+      if (id is! String ||
+          startSec == null ||
+          endSec == null ||
+          endSec <= startSec ||
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(startSec * 1000)) !=
+              day) {
+        continue;
+      }
+      final sport = (r['sport'] as String?) ?? 'other';
+      final trace = await _g3HrTrace(startSec, endSec);
+      double? hrr;
+      if (derivedBouts is List) {
+        for (final bout in derivedBouts) {
+          if (bout is Map &&
+              bout['start'] == startSec &&
+              bout['end'] == endSec &&
+              bout['hrr_bpm'] is num) {
+            hrr = (bout['hrr_bpm'] as num).toDouble();
+            break;
+          }
+        }
+      }
+      result.add(
+        G3Activity(
+          id: id,
+          sport: sport,
+          source: G3ActivitySource.auto,
+          confirmed: false,
+          start: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+          end: DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+          avgHr: (r['avg_bpm'] as num?)?.toDouble(),
+          maxHr: (r['peak_bpm'] as num?)?.toDouble(),
+          hrTrace: trace.points,
+          signalGaps: trace.gaps,
+          opticalShare: await _g3OpticalShare(startSec, endSec),
+          hrRecoveryOneMinute: hrr,
+          priorHrrCount: priorCounts[id] ?? 0,
+        ),
+      );
+    }
+    result.sort((a, b) => a.start.compareTo(b.start));
+    return result;
+  }
+
+  G3ZoneBasis? _g3ZoneBasis(Object? traceJson) {
+    if (traceJson is! String) return null;
+    try {
+      final trace = jsonDecode(traceJson);
+      if (trace is! Map) return null;
+      final bands = trace['zone_bands'];
+      if (bands is! List || bands.length != 5 || bands.last is! Map) {
+        return null;
+      }
+      final top = bands.last as Map;
+      final method = top['source'];
+      final maxHr = top['hi'];
+      if (method is! String || maxHr is! num) return null;
+      final kind = switch (method) {
+        'tanaka' => G3ZoneBasisKind.hfmaxEstimated,
+        'observed' => G3ZoneBasisKind.hfmaxObserved,
+        'karvonen' => G3ZoneBasisKind.heartRateReserve,
+        _ => null,
+      };
+      return kind == null ? null : G3ZoneBasis(kind, maxHr.toDouble());
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<({List<G3HrPoint> points, List<G3SignalGap> gaps})> _g3HrTrace(
+    int startSec,
+    int endSec,
+    {String? frozenTrace}
+  ) async {
+    if (frozenTrace != null) {
+      final frozen = await Isolate.run(
+        () => _g3ProjectFrozenTrace(frozenTrace, startSec, endSec),
+      );
+      if (frozen != null) return frozen;
+    }
+    final samples = await LocalDb.hrSamplesInRange(startSec, endSec - 1);
+    return Isolate.run(() => _g3ProjectRawTrace(samples, startSec, endSec));
+  }
+
+  Future<double?> _g3OpticalShare(int startSec, int endSec) async {
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS n, '
+      'SUM(CASE WHEN signal_quality_logvar < ${DerivationEngine.trustedLogVarMax} THEN 1 ELSE 0 END) AS trusted '
+      'FROM decoded_onehz '
+      'WHERE rec_ts >= ? AND rec_ts < ? AND signal_quality_logvar IS NOT NULL '
+      'AND ${derivableSourceSql()}',
+      [startSec, endSec],
+    );
+    final count = (rows.first['n'] as num?)?.toInt() ?? 0;
+    return count == 0
+        ? null
+        : ((rows.first['trusted'] as num?)?.toInt() ?? 0) / count;
+  }
+
+  Future<Map<String, int>> _g3PriorHrrCounts(
+    List<({String id, String sport, int startSec})> targets,
+  ) async {
+    if (targets.isEmpty) return const {};
+    final values = List.filled(targets.length, '(?, ?, ?)').join(', ');
+    final args = <Object?>[
+      for (final target in targets) ...[
+        target.id,
+        target.sport,
+        target.startSec,
+      ],
+    ];
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'WITH targets(id, sport, start_ts) AS (VALUES $values) '
+      'SELECT t.id, COUNT(s.id) AS n FROM targets t '
+      'LEFT JOIN sessions s ON s.type = t.sport '
+      "AND s.start_ts < t.start_ts AND typeof(s.hrr_bpm) IN ('integer', 'real') "
+      'GROUP BY t.id',
+      args,
+    );
+    return {
+      for (final row in rows)
+        if (row['id'] is String && row['n'] is num)
+          row['id'] as String: (row['n'] as num).toInt(),
+    };
+  }
+
+  Future<Map<String, dynamic>> _activeSuggestion(String id) async {
+    final rows = await LocalDb.activeWorkoutSuggestions();
+    for (final row in rows) {
+      if (row['id'] == id) return row;
+    }
+    throw StateError('Suggestion is no longer active: $id');
+  }
+
+  @override
+  Future<String> confirmSuggestion(String id, {String? sport}) async {
+    final writer = app.repo;
+    if (writer == null) throw StateError('Workout writer is unavailable.');
+    final saved = await writer.confirmWorkoutSuggestion(id, sport: sport);
+    final sessionId = saved['workout_id'] as String;
+    await HealthExporter.exportWorkoutId(sessionId);
+    return sessionId;
+  }
+
+  @override
+  Future<void> changeSuggestionSport(String id, String sport) async {
+    await _activeSuggestion(id);
+    if (sport.trim().isEmpty) throw ArgumentError.value(sport, 'sport');
+    final db = await LocalDb.instance;
+    await db.update(
+      'workout_suggestions',
+      {'sport': sport},
+      where: 'id = ? AND dismissed = 0',
+      whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<void> dismissSuggestion(String id) async {
+    await _activeSuggestion(id);
+    await LocalDb.dismissWorkoutSuggestion(id);
+  }
+
+  @override
+  Future<G3WeeklyLoad> readWeeklyLoad(String endDay) async {
+    final days = (await readTrend(G3Metric.strain, endDay, 7)).points;
+    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    final artifact = _payload(raw);
+    final value =
+        artifact?['built_for_day'] == endDay &&
+            artifact?['algo_version'] == kAlgoVersion
+        ? _at(artifact, 'load.value')
+        : null;
+    final map = value is Map ? value : null;
+    return G3WeeklyLoad(
+      days,
+      ctl: (map?['ctl'] as num?)?.toDouble(),
+      atl: (map?['atl'] as num?)?.toDouble(),
+    );
+  }
+
+  static G3AvailableValue _crossdayValue(
+    Map<String, dynamic>? artifact,
+    String root,
+    String field,
+  ) {
+    final envelope = artifact?[root];
+    if (envelope is! Map) return const G3AvailableValue(null);
+    final value = envelope['value'];
+    final number = value is Map ? value[field] : null;
+    return G3AvailableValue(
+      number is num && number.isFinite ? number.toDouble() : null,
+      gate: number is num && number.isFinite
+          ? null
+          : envelope['note'] as String?,
+    );
+  }
+
+  static G3SleepDebt _g3SleepDebt(Map<String, dynamic>? source) {
+    final envelope = source?['sleep_debt'];
+    if (envelope is! Map) {
+      return const G3SleepDebt();
+    }
+    final value = envelope['value'];
+    final data = value is Map ? value : null;
+    double? number(String key) {
+      final raw = data?[key];
+      return raw is num && raw.isFinite ? raw.toDouble() : null;
+    }
+    final hasFreeNight = data?['has_free_night'];
+    final observed = hasFreeNight == true;
+    return G3SleepDebt(
+      freeNightP75Hours: observed ? number('osd_hours') : null,
+      habitualMedianHours: number('habitual_hours'),
+      debtHours: observed ? number('debt_hours') : null,
+      hasFreeNight: hasFreeNight is bool ? hasFreeNight : null,
+      refusalNote: envelope['note'] is String
+          ? envelope['note'] as String
+          : null,
+    );
+  }
+
+  static G3RegularityDetail? _g3RegularityDetail(Map<String, dynamic>? source) {
+    final envelope = source?['regularity'];
+    final value = envelope is Map ? envelope['value'] : null;
+    if (value is! Map) return null;
+    final days = value['days'];
+    final rawPairs = value['pairs'];
+    return G3RegularityDetail(
+      days: days is int && days >= 0 ? days : null,
+      pairs: rawPairs is! List
+          ? null
+          : List.unmodifiable([
+              for (final raw in rawPairs)
+                if (raw is Map &&
+                    raw['prev_date'] is String &&
+                    raw['date'] is String &&
+                    _double(raw['sri']) != null)
+                  G3SriPair(
+                    previousDay: raw['prev_date'] as String,
+                    day: raw['date'] as String,
+                    sri: _double(raw['sri'])!,
+                    agreement: raw['agreement'] is int
+                        ? raw['agreement'] as int
+                        : null,
+                    cases: raw['cases'] is int ? raw['cases'] as int : null,
+                  ),
+            ]),
+    );
+  }
+
+  static G3SocialJetlagDetail? _g3SocialJetlagDetail(
+    Map<String, dynamic>? source,
+  ) {
+    final envelope = source?['social_jetlag'];
+    final value = envelope is Map ? envelope['value'] : null;
+    if (value is! Map) return null;
+    final work = value['n_work'];
+    final free = value['n_free'];
+    return G3SocialJetlagDetail(
+      signedHours: _double(value['sjl_hours']),
+      midSleepWorkHours: _double(value['mid_sleep_work_h']),
+      midSleepFreeHours: _double(value['mid_sleep_free_h']),
+      workNights: work is int && work >= 0 ? work : null,
+      freeNights: free is int && free >= 0 ? free : null,
+    );
+  }
+
+  @override
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async {
+    _requireDay(day);
+    final clock = now ?? DateTime.now();
+    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    final artifact = _payload(raw);
+    final current =
+        artifact != null &&
+        artifact['built_for_day'] == day &&
+        artifact['algo_version'] == kAlgoVersion;
+    final source = current ? artifact : null;
+    final regularity = _crossdayValue(
+      source,
+      'regularity',
+      'sri',
+    );
+    final sriDays = (_at(source, 'regularity.value.days') as num?)?.toInt();
+    final gatedRegularity = source?['regularity'] is! Map
+        ? const G3AvailableValue(null)
+        : sriDays != null && sriDays >= 7
+        ? regularity
+        : G3AvailableValue(
+            null,
+            gate: (source!['regularity'] as Map)['note'] as String?,
+          );
+    final social = _crossdayValue(
+      source,
+      'social_jetlag',
+      'abs_hours',
+    );
+    final debt = _g3SleepDebt(source);
+    final plan = await readSleepPlan(day, now: clock);
+    final available =
+        plan.status == SleepPlanStatus.available ||
+        plan.status == SleepPlanStatus.partial;
+    DateTime? time(double? minute, String date) {
+      if (minute == null || !minute.isFinite || minute < 0 || minute >= 1440) {
+        return null;
+      }
+      final start = localDayStartSec(date);
+      if (start == null) return null;
+      final d = DateTime.fromMillisecondsSinceEpoch(start * 1000);
+      return DateTime(
+        d.year,
+        d.month,
+        d.day,
+        minute ~/ 60,
+        minute.toInt() % 60,
+      );
+    }
+
+    final planned = available ? plan.plan : null;
+    final goal = (await readSleepGoal(day)).targetMinutes;
+    final osdHours = planned == null ? null : debt.freeNightP75Hours;
+    final debtHours = planned == null ? null : debt.debtHours;
+    final needMinutes = planned?.needSeconds == null
+        ? null
+        : planned!.needSeconds / 60;
+    final baselineOsdMinutes = osdHours == null
+        ? null
+        : osdHours.clamp(7.0, 9.5).toDouble() * 60;
+    final strainBonus = planned?.strainBonusMin;
+    final napCredit = planned?.napCreditMin;
+    double? appliedDebtMinutes;
+    if (needMinutes != null &&
+        baselineOsdMinutes != null &&
+        debtHours != null &&
+        strainBonus != null &&
+        napCredit != null) {
+      // The coach stores applied strain/nap deltas but raw debt. Its final
+      // 6–11 h clamp can absorb part of debt, so project only the residual
+      // that reconciles with the published need. Refuse inconsistent inputs.
+      final residual =
+          needMinutes - baselineOsdMinutes - strainBonus + napCredit;
+      final rawPositiveDebt = debtHours < 0 ? 0.0 : debtHours * 60;
+      if (residual >= -1e-6 && residual <= rawPositiveDebt + 1e-6) {
+        appliedDebtMinutes = residual < 0 ? 0 : residual;
+      }
+    }
+    return G3SleepPlus(
+      regularity: gatedRegularity,
+      socialJetlag: social,
+      sleepDebt: debt,
+      regularityDetail: _g3RegularityDetail(source),
+      socialJetlagDetail: _g3SocialJetlagDetail(source),
+      bedtime: time(planned?.bedtimeMinuteOfDay, day),
+      wake: time(planned?.wakeMinuteOfDay, sleepPlanWakeDay(day)),
+      needMinutes: needMinutes,
+      goalMinutes: goal?.toDouble(),
+      baselineOsdMinutes: baselineOsdMinutes,
+      appliedDebtMinutes: appliedDebtMinutes,
+      strainBonusMinutes: planned?.strainBonusMin,
+      napCreditMinutes: planned?.napCreditMin,
+      napsJudged: planned == null ? null : planned.napCreditMin != null,
+    );
+  }
+
+  @override
+  Future<G3CheckIn> readCheckIn(String day) async {
+    _requireDay(day);
+    final previous = g3DaysEnding(day, 2).first;
+    final snapshots = await Future.wait([
+      readJournalDay(day),
+      readJournalDay(previous),
+    ]);
+    return g3CheckInFromSnapshots(snapshots[0], snapshots[1]);
+  }
+
+  @override
+  Future<void> answerCheckIn(
+    String day,
+    String key,
+    G3CheckInAnswer answer,
+  ) async {
+    final snapshot = await readJournalDay(g3CheckInTargetDay(day, key));
+    await patchJournalDay(g3CheckInPatch(snapshot, key, answer));
+  }
+
+  @override
+  Future<DateTime?> readLastBandSampleAt(String day) async {
+    _requireDay(day);
+    final from = localDayStartSec(day)!;
+    final until = localDayEndSec(day)!;
+    final db = await LocalDb.instance;
+    final rows = await db.rawQuery(
+      'SELECT MAX(rec_ts) AS latest FROM decoded_onehz '
+      'WHERE rec_ts >= ? AND rec_ts < ? AND rec_ts > 0 '
+      'AND ${derivableSourceSql()}',
+      [from, until],
+    );
+    final latest = rows.first['latest'];
+    return latest is num
+        ? DateTime.fromMillisecondsSinceEpoch(latest.toInt() * 1000)
+        : null;
+  }
+
+  @override
+  Future<G3JournalPattern> readJournalPattern(
+    String endDay,
+    int nights,
+  ) async => G3JournalPattern(
+    await readCaffeineSleepPattern(endDay, nights),
+  );
+
+  @override
+  Future<G3Weight> readG3Weight(String endDay, int days) async {
+    final history = await readWeightHistory(endDay, days);
+    final labels = g3DaysEnding(endDay, days);
+    final start = localDayStartSec(labels.first)!;
+    final end = localDayEndSec(endDay)!;
+    final db = await LocalDb.instance;
+    final rows = await db.query(
+      'imported_measurement',
+      columns: ['uuid', 'ts', 'value', 'source'],
+      where: 'kind = ? AND unit = ? AND ts >= ? AND ts < ?',
+      whereArgs: ['weight_kg', 'kg', start, end],
+      orderBy: 'ts DESC',
+    );
+    return G3Weight(history, {
+      for (final entry in history.entries) entry.day: G3WeightSource.manual,
+    }, imported: [
+      for (final row in rows)
+        if (row['uuid'] is String && row['ts'] is num && row['value'] is num && row['source'] is String)
+          G3ImportedWeight(
+            row['uuid'] as String,
+            DateTime.fromMillisecondsSinceEpoch((row['ts'] as num).toInt() * 1000),
+            (row['value'] as num).toDouble(),
+            row['source'] as String,
+          ),
+    ]);
+  }
+
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -63,7 +952,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
     final row = await LocalDb.dayResult(day);
-    if (row == null || row['skipped'] == 1) {
+    if (row == null ||
+        row['skipped'] == 1 ||
+        row['algo_version'] != kAlgoVersion) {
       return NightSignals(day: day, recordingTimezone: zone);
     }
     final payload = _payload(row['payload_json']);
@@ -76,14 +967,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return NightSignals(day: day, recordingTimezone: zone);
     }
 
-    final selectedVersion = (row['algo_version'] as num?)?.toInt();
+    if (!_nightCorrectionReady(correction, row, payload)) {
+      return NightSignals(day: day, recordingTimezone: zone);
+    }
+
     final neighborDays = [
       for (final id in _nightCandidateDays(day, start, end))
         if (id != day) id,
     ];
     final pulseSources = [_curveReadings(payload, 'hr_curve', start, end)];
     final respSources = [_curveReadings(payload, 'resp_day', start, end)];
-    if (selectedVersion != null && neighborDays.isNotEmpty) {
+    if (neighborDays.isNotEmpty) {
       final neighborRows = await LocalDb.servedDayResultsForDays(neighborDays);
       final neighborCorrections = await LocalDb.openBandSleepCorrectionsForDays(
         neighborDays,
@@ -91,16 +985,22 @@ class LocalOpenBandRepository implements OpenBandRepository {
       for (final id in neighborDays) {
         final neighborRow = neighborRows[id];
         if (neighborRow == null) continue;
-        final neighborVersion = (neighborRow['algo_version'] as num?)?.toInt();
         final neighborCorrection = neighborCorrections[id];
         if (neighborRow['skipped'] == 1 ||
-            neighborVersion != selectedVersion ||
+            neighborRow['algo_version'] != kAlgoVersion ||
             (neighborCorrection != null &&
                 neighborCorrection['status'] != 'complete')) {
           continue;
         }
         final neighborPayload = _payload(neighborRow['payload_json']);
         if (neighborPayload == null) continue;
+        if (!_nightCorrectionReady(
+          neighborCorrection,
+          neighborRow,
+          neighborPayload,
+        )) {
+          continue;
+        }
         pulseSources.add(
           _curveReadings(neighborPayload, 'hr_curve', start, end),
         );
@@ -161,6 +1061,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       day: day,
       window: (start: start, end: end),
       recordingTimezone: zone,
+      unobservedGaps: _storedNightGaps(payload, start, end),
       series: {
         NightSignalKind.pulse: storedCurve(
           _unionNightReadings(pulseSources),
@@ -178,6 +1079,65 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ),
       },
     );
+  }
+
+  /// Reuse the stored correction receipt and published-window proof used by
+  /// the night scalar seam. `complete` status alone cannot publish old curves.
+  static bool _nightCorrectionReady(
+    Map<String, dynamic>? correction,
+    Map<String, dynamic> row,
+    Map<String, dynamic> payload,
+  ) {
+    if (correction == null) return true;
+    final job = NightScalarJob(
+      day: correction['day_id'] as String,
+      status: correction['status'] as String?,
+      identityMatched: correction['status'] != null,
+      resultAlgo: (correction['result_algo_version'] as num?)?.toInt(),
+      resultComputedAt: (correction['result_computed_at'] as num?)?.toInt(),
+      action: correction['action'] as String?,
+      onsetMs: (correction['onset_ms'] as num?)?.toInt(),
+      wakeMs: (correction['wake_ms'] as num?)?.toInt(),
+    );
+    final stored = NightScalarRow(
+      day: job.day,
+      algoVersion: (row['algo_version'] as num?)?.toInt(),
+      computedAtMs: (row['computed_at'] as num?)?.toInt(),
+      sleepSource: _stringAt(payload, 'sleep_source'),
+      windowStartMs: _numAt(payload, 'sleep.window.value.onset_ms')?.toInt(),
+      windowEndMs: _numAt(payload, 'sleep.window.value.offset_ms')?.toInt(),
+    );
+    return nightScalarReceiptState(
+              job,
+              storedAlgo: stored.algoVersion,
+              storedComputedAt: stored.computedAtMs,
+            ) ==
+            null &&
+        nightScalarOverrideProof(job: job, row: stored) == true;
+  }
+
+  /// Direct projection of the engine's `unobserved` hypnogram segments. No
+  /// gap is inferred between sparse pulse/respiration chart points.
+  static List<G3SignalGap>? _storedNightGaps(
+    Map<String, dynamic> payload,
+    DateTime start,
+    DateTime end,
+  ) {
+    final raw = _at(payload, 'series.hypnogram');
+    if (raw is! List) return null;
+    final gaps = <G3SignalGap>[];
+    for (final item in raw) {
+      if (item is! Map || item['stage'] != 'unobserved') continue;
+      final from = _signalTime(item['start'], seconds: true);
+      final until = _signalTime(item['end'], seconds: true);
+      if (from == null || until == null) continue;
+      final clippedStart = from.isBefore(start) ? start : from;
+      final clippedEnd = until.isAfter(end) ? end : until;
+      if (clippedEnd.isAfter(clippedStart)) {
+        gaps.add(G3SignalGap(clippedStart, clippedEnd));
+      }
+    }
+    return List.unmodifiable(gaps);
   }
 
   static DateTime? _signalTime(Object? raw, {bool seconds = false}) {
@@ -1402,16 +2362,19 @@ class LocalOpenBandRepository implements OpenBandRepository {
       }
     }
 
-    final journal = <Map<String, Object>>[
-      for (final d in days)
-        if (caffeineByDay[d] case final v?)
+    // These are exactly the lag-1 pairs supplied to analytics. Count the
+    // sides from this list as the producer omits split counts on refusals.
+    final pairedJournal = <Map<String, Object>>[
+      for (var i = 0; i + 1 < days.length; i++)
+        if (outcomes[i + 1] != null)
+        if (caffeineByDay[days[i]] case final v?)
           {
-            'date': d,
+            'date': days[i],
             'values': {CaffeineSleepPattern.field: v},
           },
     ];
 
-    if (journal.isEmpty || availableOutcomes == 0) {
+    if (pairedJournal.isEmpty || availableOutcomes == 0) {
       return CaffeineSleepPattern.fromProducer(
         empty: true,
         binary: false,
@@ -1430,18 +2393,25 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final produced = await Isolate.run(
       () => _caffeineSleepCorrelate({
         'dates': days,
-        'journal': journal,
+        'journal': pairedJournal,
         'sol': outcomes,
       }),
     );
+    var yesNights = 0;
+    var noNights = 0;
+    for (final row in pairedJournal) {
+      final answer = (row['values'] as Map)[CaffeineSleepPattern.field];
+      if (answer == 1.0) yesNights++;
+      if (answer == 0.0) noNights++;
+    }
     return CaffeineSleepPattern.fromProducer(
       empty: produced['empty'] == true,
       binary: produced['binary'] == true,
       insufficient: produced['insufficient'] == true,
       meaningful: produced['meaningful'] == true,
       n: (produced['n'] as num?)?.toInt() ?? 0,
-      nWith: (produced['nWith'] as num?)?.toInt(),
-      nWithout: (produced['nWithout'] as num?)?.toInt(),
+      nWith: yesNights,
+      nWithout: noNights,
       delta: (produced['delta'] as num?)?.toDouble(),
       note: produced['note'] as String?,
       endDay: endDay,
@@ -4002,6 +4972,8 @@ Map<String, Object?> _caffeineSleepCorrelate(Map<String, Object?> input) {
     fieldLagDays: const {
       CaffeineSleepPattern.field: CaffeineSleepPattern.lagDays,
     },
+    minN: CaffeineSleepPattern.minPairedNights,
+    minPerSide: CaffeineSleepPattern.minPerSideNights,
   );
   if (corr.isEmpty || corr.first.effects.isEmpty) {
     return const {'empty': true, 'n': 0};

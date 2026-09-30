@@ -12,6 +12,7 @@ import 'cycle_measurements_data.dart';
 import 'cycle_medians_data.dart';
 import 'exercise_catalogue.dart';
 import 'exercise_load.dart';
+import 'g3_data.dart';
 import 'medication_data.dart';
 import 'night_scalar_data.dart';
 import 'sleep_plan_data.dart';
@@ -27,6 +28,7 @@ export 'cycle_measurements_data.dart';
 export 'cycle_medians_data.dart';
 export 'exercise_catalogue.dart';
 export 'exercise_load.dart';
+export 'g3_data.dart';
 export 'medication_data.dart';
 export 'night_scalar_data.dart';
 export 'sleep_plan_data.dart';
@@ -356,12 +358,15 @@ class NightSignals {
   final ({DateTime start, DateTime end})? window;
   final String? recordingTimezone;
   final Map<NightSignalKind, NightSignalSeries> series;
+  /// Exact `unobserved` intervals from the stored night hypnogram, if present.
+  final List<G3SignalGap>? unobservedGaps;
   final bool processing, synthetic;
   const NightSignals({
     required this.day,
     this.window,
     this.recordingTimezone,
     this.series = const {},
+    this.unobservedGaps,
     this.processing = false,
     this.synthetic = false,
   });
@@ -584,6 +589,8 @@ enum CaffeineSleepPatternKind {
 }
 
 class CaffeineSleepPattern {
+  static const int minPairedNights = 8;
+  static const int minPerSideNights = 3;
   static const field = 'caffeine_late';
   static const outcome = 'sol_min';
   static const lagDays = 1;
@@ -652,7 +659,7 @@ class CaffeineSleepPattern {
     bool partial = false,
     int availableOutcomes = 0,
   }) {
-    final countsOk = binary && nWith != null && nWithout != null;
+    final countsOk = n > 0 && nWith != null && nWithout != null && nWith + nWithout == n;
     final kind = empty || n == 0 || (!binary && !insufficient)
         ? CaffeineSleepPatternKind.unavailable
         : insufficient
@@ -667,8 +674,8 @@ class CaffeineSleepPattern {
     return CaffeineSleepPattern(
       kind: kind,
       pairedN: n,
-      yesNights: showSplit ? nWith : null,
-      noNights: showSplit ? nWithout : null,
+      yesNights: countsOk ? nWith : null,
+      noNights: countsOk ? nWithout : null,
       delta: showSplit ? delta : null,
       note: kind == CaffeineSleepPatternKind.insufficient ? note : null,
       endDay: endDay,
@@ -2282,6 +2289,28 @@ String? labBoundsError(LabParse low, LabParse high) {
 }
 
 abstract interface class OpenBandRepository {
+  Future<BandDiagnostics> readBandDiagnostics();
+  Future<FirstTransferReceipt?> readFirstTransferReceipt();
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day);
+  Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay);
+  Future<G3Trend> readTrend(G3Metric metric, String endDay, int days);
+  Future<List<G3Activity>> readActivities(String day);
+  Future<String> confirmSuggestion(String id, {String? sport});
+  Future<void> changeSuggestionSport(String id, String sport);
+  Future<void> dismissSuggestion(String id);
+  Future<G3WeeklyLoad> readWeeklyLoad(String endDay);
+  Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now});
+
+  /// [day] is the selected check-in day; each question reports its journal day.
+  Future<G3CheckIn> readCheckIn(String day);
+
+  /// Patches the question's journal day, which can be yesterday.
+  Future<void> answerCheckIn(String day, String key, G3CheckInAnswer answer);
+
+  /// Latest retained canonical band second in this local day, if any.
+  Future<DateTime?> readLastBandSampleAt(String day);
+  Future<G3JournalPattern> readJournalPattern(String endDay, int nights);
+  Future<G3Weight> readG3Weight(String endDay, int days);
   Future<OpenBandDay> readDay(String day);
   Future<SetupEvaluation> readSetupEvaluation(String day);
   Future<NightSignals> readNightSignals(String day);

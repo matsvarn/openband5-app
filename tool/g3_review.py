@@ -43,6 +43,14 @@ def registry():
     return json.loads(REG.read_text())
 
 
+def screens(reg):
+    """Screens from frames.json plus one file per area in paper-g3/screens/."""
+    out = dict(reg.get('screens', {}))
+    for path in sorted((REG.parent / 'screens').glob('*.json')):
+        out.update(json.loads(path.read_text()))
+    return out
+
+
 def frames(reg, filt):
     """(name, mode, pageId, nodeId) for every registered frame."""
     out = []
@@ -50,7 +58,7 @@ def frames(reg, filt):
         for mode in ('light', 'dark'):
             if entry.get(mode):
                 out.append((name, mode, reg['componentsPage'], entry[mode]))
-    for name, entry in reg.get('screens', {}).items():
+    for name, entry in screens(reg).items():
         out.append((name, entry['mode'], entry['page'], entry['node']))
     return [f for f in out if not filt or any(s in f[0] for s in filt)]
 

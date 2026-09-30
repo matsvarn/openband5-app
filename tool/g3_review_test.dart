@@ -20,9 +20,26 @@ import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/specimens.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
-/// Full G3 screens, keyed by their frames.json "screens" name. Screen
-/// workers add an entry here when they register a frame.
-final Map<String, Widget Function()> g3ScreenBuilders = {};
+import 'g3_screens/band.dart';
+import 'g3_screens/heute.dart';
+import 'g3_screens/journal.dart';
+import 'g3_screens/schlaf.dart';
+import 'g3_screens/training.dart';
+import 'g3_screens/verlauf.dart';
+import 'g3_screens/widgets.dart';
+
+/// Full G3 screens, keyed by their registered name. Each area keeps its
+/// frames in docs/openband5/design/paper-g3/screens/<area>.json and its
+/// builders in tool/g3_screens/<area>.dart.
+final Map<String, Widget Function()> g3ScreenBuilders = {
+  ...heuteScreens,
+  ...schlafScreens,
+  ...trainingScreens,
+  ...journalScreens,
+  ...verlaufScreens,
+  ...bandScreens,
+  ...widgetScreens,
+};
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -57,8 +74,14 @@ void main() {
       frames.add((name as String, mode, (entry as Map)['background'] as String?));
     }
   }
-  for (final MapEntry(key: name, value: entry) in (reg['screens'] as Map? ?? {}).entries) {
-    frames.add((name as String, (entry as Map)['mode'] as String, 'page'));
+  final screens = <String, dynamic>{...(reg['screens'] as Map? ?? {})};
+  final areas = Directory('docs/openband5/design/paper-g3/screens').listSync().whereType<File>().where((f) => f.path.endsWith('.json')).toList()
+    ..sort((a, b) => a.path.compareTo(b.path));
+  for (final file in areas) {
+    screens.addAll(jsonDecode(file.readAsStringSync()) as Map<String, dynamic>);
+  }
+  for (final MapEntry(key: name, value: entry) in screens.entries) {
+    frames.add((name, (entry as Map)['mode'] as String, 'page'));
   }
 
   for (final (name, mode, background) in frames) {
