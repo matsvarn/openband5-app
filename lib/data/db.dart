@@ -1301,6 +1301,7 @@ class LocalDb {
         if (oldV < 69) {
           await _ensureOneHzEncoding(db);
           await _ensureBandEventDeviceIndex(db);
+          await _dropUnusedStorageIndexes(db);
         }
       },
       onOpen: (db) async {
@@ -1415,6 +1416,15 @@ class LocalDb {
     // answer, not a thing to invent), so it rides the same-version self-heal
     // path rather than a schema number.
     await _createRawBlob(db);
+    await _dropUnusedStorageIndexes(db);
+  }
+
+  static Future<void> _dropUnusedStorageIndexes(Database db) async {
+    // The day-result index duplicates its PK. Replay reads use device/counter
+    // keys, which raw_blob's PK already serves; none range on first_ts.
+    for (final index in const ['idx_day_result_day', 'idx_raw_blob_ts']) {
+      await db.execute('DROP INDEX IF EXISTS $index');
+    }
   }
 
   /// The column names [table] currently has (empty if the table is absent).
@@ -6095,9 +6105,6 @@ class LocalDb {
         PRIMARY KEY (day_id, algo_version)
       )
     ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_day_result_day ON day_result(day_id, algo_version)',
-    );
   }
 
   /// journal_metric — the numeric half of a journal entry.
@@ -8012,9 +8019,6 @@ class LocalDb {
         PRIMARY KEY (device_id, first_counter, last_counter, first_ts, n)
       )
     ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_raw_blob_ts ON raw_blob(device_id, first_ts)',
-    );
   }
 
   /// One compressed batch for [commitSyncBatch]: every record in [raws],
