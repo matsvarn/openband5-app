@@ -32,7 +32,8 @@ import '../../openband/local_repository.dart';
 import '../../openband/notification_settings.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/units.dart';
-import '../../openband/theme.dart' show OBPageHeader, OB;
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../../data/day_label.dart';
 import '../../platform/app_icon.dart';
 import '../../platform/tasker_bridge.dart';
@@ -237,7 +238,7 @@ class _IconRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -248,10 +249,10 @@ class _IconRow extends StatelessWidget {
             height: 32,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: p.wash(C.indigo),
-              borderRadius: R.rSm,
+              color: g.track,
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(LucideIcons.image, size: 16, color: p.on(C.indigo)),
+            child: Icon(LucideIcons.image, size: 16, color: g.ink),
           ),
           const SizedBox(width: S.x3),
           Expanded(
@@ -260,14 +261,14 @@ class _IconRow extends StatelessWidget {
               children: [
                 Text(
                   l?.settingsIconRowTitle ?? 'Icon',
-                  style: F.body.copyWith(color: p.ink),
+                  style: g.t(15, 20, weight: FontWeight.w500),
                 ),
                 // The cost, stated where the choice is made. iOS shows its own
                 // alert on every change and there is no way to turn that off.
                 Text(
                   l?.settingsIconRowConfirmHint ??
                       'iPhone will ask you to confirm',
-                  style: F.over.copyWith(color: p.ink3),
+                  style: g.t(12, 17, color: g.muted),
                 ),
               ],
             ),
@@ -297,7 +298,7 @@ class _IconChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     // Decoded at the size it is drawn at: the source is the 1024 px launcher
     // master, and decoding that in full to paint a 36 pt thumbnail is 4 MB of
@@ -311,9 +312,9 @@ class _IconChoice extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(S.x1 / 2),
         decoration: BoxDecoration(
-          borderRadius: R.rMd,
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected ? p.on(C.indigo) : p.line,
+            color: selected ? g.ink : g.hairline,
             width: selected ? 2 : 1,
           ),
         ),
@@ -631,21 +632,28 @@ class MoreSettingsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final on = l?.stateOn ?? 'On';
     final off = l?.stateOff ?? 'Off';
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: OBPageHeader(
-                title: l?.settingsNavTitle ?? 'Settings',
-                subtitle: '',
+            chrome.OBPageHeader.detail(
+              title: (l?.settingsNavTitle ?? 'Settings').toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Profil'
+                  : 'Profile',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.settingsNavTitle ?? 'Settings',
+                Localizations.localeOf(c).languageCode == 'de'
+                    ? 'Hier legst du fest, was das Band und dieses iPhone tun. Änderungen werden auf diesem Gerät gespeichert.'
+                    : 'Choose what the band and this phone do. Changes are saved on this device.',
               ),
             ),
             Expanded(
@@ -922,8 +930,8 @@ class MoreSettingsView extends StatelessWidget {
                       ),
                     ]),
                   const SizedBox(height: S.x6),
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                  chrome.OBPanel(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: SetRow(
                       LucideIcons.trash2,
                       C.red,
@@ -1177,41 +1185,26 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: Stack(
-                alignment: Alignment.centerRight,
-                children: [
-                  OBPageHeader(
-                    title: l?.settingsEditProfileNavTitle ?? 'Edit profile',
-                    subtitle: '',
-                  ),
-                  Positioned(
-                    right: 4,
-                    child: Pressable(
-                      semanticLabel: l?.actionSave ?? 'Save',
-                      onTap: _save,
-                      child: Text(
-                        l?.actionSave ?? 'Save',
-                        style: OB
-                            .of(c)
-                            .text(
-                              15,
-                              weight: FontWeight.w600,
-                              color: OB.of(c).action,
-                            ),
-                      ),
-                    ),
-                  ),
-                ],
+            chrome.OBPageHeader.detail(
+              title: (l?.settingsEditProfileNavTitle ?? 'Edit profile')
+                  .toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Profil'
+                  : 'Profile',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.settingsFourFieldsTitle ?? 'These four change your numbers',
+                l?.settingsFourFieldsBody ??
+                    'They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.',
               ),
             ),
             Expanded(
@@ -1232,46 +1225,19 @@ class _EditProfileViewState extends State<EditProfileView> {
                   const SizedBox(height: S.x4),
                   Text(
                     l?.settingsSexFieldLabel ?? 'SEX',
-                    style: F.over.copyWith(color: p.ink3),
+                    style: g.caps(color: g.muted),
                   ),
                   const SizedBox(height: S.x2),
-                  Wrap(
-                    spacing: S.x2,
-                    runSpacing: S.x2,
-                    children: [
-                      for (final (key, label) in [
-                        ('m', l?.settingsSexMale ?? 'Male'),
-                        ('f', l?.settingsSexFemale ?? 'Female'),
-                        (
-                          'other',
-                          l?.settingsSexPreferNotToSay ?? 'Prefer not to say',
-                        ),
-                      ])
-                        Pressable(
-                          onTap: () => setState(() => _sex = key),
-                          semanticLabel: label,
-                          child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: S.x4,
-                              vertical: S.x2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _sex == key ? p.wash(C.green) : p.card,
-                              borderRadius: R.rPill,
-                              border: Border.all(
-                                color: _sex == key ? p.on(C.green) : p.line,
-                              ),
-                            ),
-                            child: Text(
-                              label,
-                              style: F.cap.copyWith(
-                                color: _sex == key ? p.on(C.green) : p.ink2,
-                              ),
-                            ),
-                          ),
-                        ),
+                  chrome.OBSegmented(
+                    items: [
+                      l?.settingsSexMale ?? 'Male',
+                      l?.settingsSexFemale ?? 'Female',
+                      l?.settingsSexPreferNotToSay ?? 'Prefer not to say',
                     ],
+                    selected: ['m', 'f', 'other'].indexOf(_sex ?? ''),
+                    expand: true,
+                    onChanged: (i) =>
+                        setState(() => _sex = ['m', 'f', 'other'][i]),
                   ),
                   const SizedBox(height: S.x4),
                   BirthDateField(
@@ -1292,16 +1258,31 @@ class _EditProfileViewState extends State<EditProfileView> {
                     _u.weightLabel.toUpperCase(),
                     TextInputType.number,
                   ),
-                  ..._importBlock(p, c),
+                  ..._importBlock(c),
+                  const SizedBox(height: 16),
+                  chrome.OBActionPrimary(
+                    l?.actionSave ?? 'Save',
+                    onPressed: _save,
+                    expand: true,
+                  ),
                   const SizedBox(height: S.x6),
-                  StatusCard(
-                    l?.settingsFourFieldsTitle ??
-                        'These four change your numbers',
-                    l?.settingsFourFieldsBody ??
-                        'They feed heart-rate zones, calorie estimates and training '
-                            'load. Clear one and only the metrics that need it stay '
-                            'unavailable.',
-                    icon: LucideIcons.info,
+                  chrome.OBPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l?.settingsFourFieldsTitle ??
+                              'These four change your numbers',
+                          style: g.t(15, 20, weight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          l?.settingsFourFieldsBody ??
+                              'They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.',
+                          style: g.t(13, 19, color: g.muted),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1315,12 +1296,12 @@ class _EditProfileViewState extends State<EditProfileView> {
   /// The health-store read, on the form it fills. Empty when the caller passed
   /// no [EditProfileView.onImport] — the gallery and the golden sweep must not
   /// carry a control that raises a real permission sheet.
-  List<Widget> _importBlock(P p, BuildContext c) {
+  List<Widget> _importBlock(BuildContext c) {
     if (widget.onImport == null) return const [];
     final l = AppLocalizations.of(c);
     return [
       const SizedBox(height: S.x6),
-      Surface(
+      chrome.OBPanel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1335,24 +1316,22 @@ class _EditProfileViewState extends State<EditProfileView> {
                         'Height and weight, straight out of $storeName. It has no '
                             'birthday and no sex to read — no app can — so set those '
                             'two above yourself.'),
-              style: F.cap.copyWith(color: p.ink3, height: 1.5),
+              style: G3.of(c).t(13, 19, color: G3.of(c).ink2),
             ),
             const SizedBox(height: S.x4),
-            BigButton(
+            chrome.OBActionSecondary(
               importLabel(_lastImport),
               icon: LucideIcons.scale,
-              color: C.purple,
-              soft: true,
-              onTap: _importing ? null : _import,
+              onPressed: _importing ? null : _import,
+              expand: true,
             ),
             if (_importNote != null && _importNote!.isNotEmpty) ...[
               const SizedBox(height: S.x3),
+              if (_importFailed)
+                Icon(LucideIcons.triangleAlert, size: 18, color: G3.of(c).ink),
               Text(
                 _importNote!,
-                style: F.cap.copyWith(
-                  color: _importFailed ? p.on(C.red) : p.ink2,
-                  height: 1.5,
-                ),
+                style: G3.of(c).t(13, 19, color: G3.of(c).ink2),
               ),
             ],
           ],
@@ -1367,26 +1346,24 @@ class _EditProfileViewState extends State<EditProfileView> {
     String label,
     TextInputType kind,
   ) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: F.over.copyWith(color: p.ink3)),
-        TextField(
-          controller: ctl,
-          keyboardType: kind,
-          style: F.head.copyWith(color: p.ink),
-          decoration: InputDecoration(
-            hintText: l?.settingsNotSetHint ?? 'Not set',
-            hintStyle: F.head.copyWith(color: p.ink3),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: S.x3),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: p.line),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: p.on(C.green)),
+        Text(label, style: g.caps(color: g.muted)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: g.pressed(radius: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            controller: ctl,
+            keyboardType: kind,
+            style: g.t(18, 24),
+            decoration: InputDecoration(
+              hintText: l?.settingsNotSetHint ?? 'Not set',
+              hintStyle: g.t(18, 24, color: g.muted),
+              border: InputBorder.none,
             ),
           ),
         ),

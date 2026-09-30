@@ -18,7 +18,8 @@ import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show OBActionPrimary, OBActionSecondary, OBListRow, OBSheet;
+    show OBActionPrimary, OBActionSecondary, OBSheet;
+import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
     as g3chrome
     show OBPageHeader;
@@ -1237,7 +1238,7 @@ void main() {
     expect(find.text('Tägliches TRIMP · eigene Einheit'), findsNothing);
     expect(find.text('AKUT · 7 TAGE'), findsOneWidget);
     expect(find.text('GEWOHNT · 6 WOCHEN'), findsOneWidget);
-    await tester.tap(find.text('Methode ›'));
+    await tester.tap(find.text('Methode'));
     expect(opened, isTrue);
   });
 
@@ -1296,6 +1297,30 @@ void main() {
     expect(find.textContaining('Wenig Tragezeit'), findsOneWidget);
   });
 
+  testWidgets('load detail uses the caller back label', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: controller,
+          activity: null,
+          weekly: const G3WeeklyLoad([]),
+          backLabel: 'Heute',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Heute'), findsOneWidget);
+    expect(find.text('Training'), findsNothing);
+  });
+
   testWidgets('result info works and synthetic activity is labelled', (
     tester,
   ) async {
@@ -1315,6 +1340,26 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Erklärung'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Pulserholung ist'), findsOneWidget);
+  });
+
+  testWidgets('result footer uses the caller band timestamp', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(
+        G3ActivityScreen(
+          repository: repo,
+          activity: activity,
+          latestStoredAt: DateTime(2026, 9, 29, 9, 12),
+          now: DateTime(2026, 9, 29, 9, 41),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1800));
+    await tester.pumpAndSettle();
+    expect(find.text('Daten bis 09:12'), findsOneWidget);
+    expect(find.text('Gespeicherte Bandwerte'), findsNothing);
   });
 
   testWidgets('detected sport uses a generic activity label and icon', (
@@ -1379,7 +1424,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(OBListRow), findsNWidgets(3));
+    expect(find.byType(OBSettingsRow), findsNWidgets(3));
     expect(find.text('Beginn'), findsOneWidget);
     expect(find.text('Ende'), findsOneWidget);
   });

@@ -29,7 +29,8 @@ import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/g3/g3_theme.dart';
-import '../../openband/g3/band_parts.dart' show OBBandActionNotice, OBToggle;
+import '../../openband/g3/band_parts.dart'
+    show OBBandActionNotice, OBToggle, OBSettingsRow;
 import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/screens/band_restore.dart';
 import '../../openband/theme.dart';
@@ -491,7 +492,7 @@ class _DataScreenState extends State<DataScreen> {
                   ],
                   if (_note != null && _note!.isNotEmpty) ...[
                     const SizedBox(height: S.x5),
-                    StatusCard(
+                    ProfileNotice(
                       _noteFailed
                           ? (l?.dataThatDidNotWork ?? 'That did not work')
                           : (l?.actionDone ?? 'Done'),
@@ -503,7 +504,7 @@ class _DataScreenState extends State<DataScreen> {
                   ],
                   if (app.importRollupError != null) ...[
                     const SizedBox(height: S.x5),
-                    StatusCard(
+                    ProfileNotice(
                       l?.welcomeSummariesDidNotTitle ??
                           'The days landed, the summaries did not',
                       l?.dataSummariesDidNotBodyShort(
@@ -513,10 +514,12 @@ class _DataScreenState extends State<DataScreen> {
                               'cross-day summaries over them threw '
                               '(${app.importRollupError}), so trends and insights '
                               'still describe the data you had before.',
-                      fix:
+                      action:
                           l?.dataReanalyzeEverything ?? 'Re-analyze everything',
                       icon: LucideIcons.triangleAlert,
-                      onFix: _busy ? null : () => _run(() => _reanalyze(app)),
+                      onAction: _busy
+                          ? null
+                          : () => _run(() => _reanalyze(app)),
                     ),
                   ],
                   // The onboarding report, not a second copy of it. This
@@ -603,35 +606,12 @@ class DataScreenView extends StatelessWidget {
               subtitle: 'OpenBand 5',
               backLabel: de ? 'Profil' : 'Profile',
               onBack: () => Navigator.of(c).maybePop(),
-              onTrailing: () => showModalBottomSheet<void>(
-                context: c,
-                builder: (sheet) => SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          de ? 'Daten & Sicherung' : 'Data & backup',
-                          style: g.t(20, 24, weight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          de
-                              ? 'Sicherungen bleiben auf diesem iPhone. Erst ein Export gibt eine Kopie weiter.'
-                              : 'Backups stay on this iPhone. Export a copy when you want to move it.',
-                          style: g.t(14, 20),
-                        ),
-                        const SizedBox(height: 16),
-                        TextButton(
-                          onPressed: () => Navigator.pop(sheet),
-                          child: Text(de ? 'Schließen' : 'Close'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                de ? 'Daten & Sicherung' : 'Data & backup',
+                de
+                    ? 'Sicherungen bleiben auf diesem iPhone. Erst ein Export gibt eine Kopie weiter.'
+                    : 'Backups stay on this iPhone. Export a copy when you want to move it.',
               ),
               trailingLabel: de ? 'Informationen' : 'Information',
             ),
@@ -649,24 +629,40 @@ class DataScreenView extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
                   if (note != null && note!.isNotEmpty && !backupFailed) ...[
-                    StatusCard(
-                      noteFailed
-                          ? (l?.dataThatDidNotWork ??
-                                (de
-                                    ? 'Das hat nicht geklappt'
-                                    : 'That did not work'))
-                          : (l?.actionDone ?? (de ? 'Erledigt' : 'Done')),
-                      note!,
+                    KeyedSubtree(
                       key: const ValueKey('data-action-receipt'),
-                      icon: noteFailed
-                          ? LucideIcons.triangleAlert
-                          : LucideIcons.check,
+                      child: chrome.OBPanel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              noteFailed
+                                  ? LucideIcons.triangleAlert
+                                  : LucideIcons.check,
+                              size: 18,
+                              color: g.ink,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              noteFailed
+                                  ? (l?.dataThatDidNotWork ??
+                                        (de
+                                            ? 'Das hat nicht geklappt'
+                                            : 'That did not work'))
+                                  : (l?.actionDone ??
+                                        (de ? 'Erledigt' : 'Done')),
+                              style: g.t(15, 20, weight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(note!, style: g.t(13, 19, color: g.ink2)),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Container(
-                    decoration: g.raised(),
-                    padding: const EdgeInsets.all(20),
+                  chrome.OBPanel(
+                    hero: true,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -730,12 +726,12 @@ class DataScreenView extends StatelessWidget {
                           const SizedBox(height: 16),
                           KeyedSubtree(
                             key: const ValueKey('data-backup-now'),
-                            child: OBAction(
+                            child: chrome.OBActionPrimary(
                               de
                                   ? 'Sicherung jetzt erstellen'
                                   : 'Create backup now',
-                              ink: true,
                               onPressed: onBackupNow,
+                              expand: true,
                             ),
                           ),
                         ],
@@ -753,30 +749,15 @@ class DataScreenView extends StatelessWidget {
                       actionIcon: LucideIcons.refreshCw,
                       onAction: onBackupNow,
                       helpLabel: de ? 'Details' : 'Details',
-                      onHelp: () => showModalBottomSheet<void>(
-                        context: c,
-                        builder: (sheet) => SafeArea(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(note!, style: g.t(15, 21)),
-                                const SizedBox(height: 16),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(sheet),
-                                  child: Text(de ? 'Schließen' : 'Close'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      onHelp: () => showProfileInfoSheet(
+                        c,
+                        de ? 'Details' : 'Details',
+                        note!,
                       ),
                     ),
                   ],
                   _sectionLabel(c, de ? 'Sicherung' : 'Backup'),
-                  OBCard(
+                  chrome.OBPanel(
                     child: Column(
                       children: [
                         Pressable(
@@ -831,7 +812,7 @@ class DataScreenView extends StatelessWidget {
                     ),
                   ),
                   _sectionLabel(c, 'Export'),
-                  OBCard(
+                  chrome.OBPanel(
                     child: Column(
                       children: [
                         _paperRow(
@@ -864,7 +845,7 @@ class DataScreenView extends StatelessWidget {
                     ),
                   ),
                   _sectionLabel(c, de ? 'Wiederherstellen' : 'Restore'),
-                  OBCard(
+                  chrome.OBPanel(
                     child: Column(
                       children: [
                         _paperRow(
@@ -897,15 +878,40 @@ class DataScreenView extends StatelessWidget {
                   ],
                   if (importRollupError != null) ...[
                     const SizedBox(height: 12),
-                    StatusCard(
-                      l?.welcomeSummariesDidNotTitle ??
-                          'The days landed, the summaries did not',
-                      l?.dataSummariesDidNotBodyShort(importRollupError!) ??
-                          'Imported rows were stored, but summaries could not be rebuilt.',
-                      icon: LucideIcons.triangleAlert,
-                      onFix: onReanalyze,
-                      fix:
-                          l?.dataReanalyzeEverything ?? 'Re-analyze everything',
+                    chrome.OBPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            LucideIcons.triangleAlert,
+                            size: 18,
+                            color: g.ink,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            l?.welcomeSummariesDidNotTitle ??
+                                'The days landed, the summaries did not',
+                            style: g.t(15, 20, weight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            l?.dataSummariesDidNotBodyShort(
+                                  importRollupError!,
+                                ) ??
+                                'Imported rows were stored, but summaries could not be rebuilt.',
+                            style: g.t(13, 19, color: g.ink2),
+                          ),
+                          if (onReanalyze != null) ...[
+                            const SizedBox(height: 12),
+                            chrome.OBActionSecondary(
+                              l?.dataReanalyzeEverything ??
+                                  'Re-analyze everything',
+                              onPressed: onReanalyze,
+                              expand: true,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                   if (outcome != null) ...[
@@ -953,36 +959,9 @@ class DataScreenView extends StatelessWidget {
     String? value,
     Key? key,
     VoidCallback? onTap,
-  }) => Pressable(
+  }) => KeyedSubtree(
     key: key,
-    onTap: onTap,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 50),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: p.text(15, weight: FontWeight.w600)),
-                  if (sub != null) Text(sub, style: p.text(12, color: p.muted)),
-                ],
-              ),
-            ),
-            if (value != null)
-              Flexible(
-                child: Text(value, style: p.text(14, color: p.muted)),
-              ),
-            if (onTap != null) ...[
-              const SizedBox(width: 10),
-              Text('›', style: p.text(17, color: p.gap)),
-            ],
-          ],
-        ),
-      ),
-    ),
+    child: OBSettingsRow(label: title, detail: sub, value: value, onTap: onTap),
   );
 }
 

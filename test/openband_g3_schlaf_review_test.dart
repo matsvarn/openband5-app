@@ -12,8 +12,9 @@ import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show OBPanel, OBPageHeader;
+    show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader;
 import 'package:openstrap_edge/openband/g3/day.dart' show OBWeekBars;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBMissingValue;
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
@@ -266,12 +267,22 @@ void main() {
         MaterialApp(theme: openBandTheme(Brightness.light), home: page),
       );
       await tester.pumpAndSettle();
+      expect(find.byType(G3DetailPage), findsOneWidget);
       await tester.tap(find.bySemanticsLabel('Erklärung'));
       await tester.pumpAndSettle();
-      expect(find.text('Verstanden'), findsOneWidget);
-      await tester.tap(find.text('Verstanden'));
+      expect(find.byType(OBInfoSheet), findsOneWidget);
+      expect(find.bySemanticsLabel('Schließen'), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Schließen'));
       await tester.pumpAndSettle();
     }
+  });
+
+  testWidgets('sleep overview uses the shared night date and missing value', (
+    tester,
+  ) async {
+    await _root(tester, const SleepNight());
+    expect(find.text('Nacht zu Di 29.09'), findsOneWidget);
+    expect(find.byType(OBMissingValue), findsWidgets);
   });
 
   testWidgets(
@@ -304,7 +315,7 @@ void main() {
       await tester.tap(find.text('Methode'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Tief ist am unsichersten'), findsOneWidget);
-      await tester.tap(find.text('Verstanden'));
+      await tester.tap(find.bySemanticsLabel('Schließen'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('LETZTE 7 NÄCHTE'),
@@ -345,19 +356,19 @@ void main() {
       tester,
       const OBPlanBreakdown(debt: 10, bonus: 20, napCredit: 0),
     );
-    expect(find.text('+ 10 Min.'), findsOneWidget);
-    expect(find.text('+ 20 Min.'), findsOneWidget);
+    expect(find.text('+10 Min.'), findsOneWidget);
+    expect(find.text('+20 Min.'), findsOneWidget);
     expect(find.text('0 Min.'), findsOneWidget);
-    expect(find.text('− 0 Min.'), findsNothing);
+    expect(find.text('−0 Min.'), findsNothing);
 
     await _card(
       tester,
       const OBPlanBreakdown(debt: 0, bonus: 0, napCredit: 15),
     );
     expect(find.text('0 Min.'), findsNWidgets(2));
-    expect(find.text('− 15 Min.'), findsOneWidget);
-    expect(find.text('+ 0 Min.'), findsNothing);
-    expect(find.text('− 0 Min.'), findsNothing);
+    expect(find.text('−15 Min.'), findsOneWidget);
+    expect(find.text('+0 Min.'), findsNothing);
+    expect(find.text('−0 Min.'), findsNothing);
   });
 
   testWidgets('first goal starts from measured nights without storing it', (
@@ -405,7 +416,7 @@ void main() {
     expect(find.textContaining('erinnern'), findsOneWidget);
     expect(find.text('Eigenes Schlafziel'), findsNothing);
     expect(find.text('7h35'), findsOneWidget);
-    expect(find.text('+ 10 Min.'), findsOneWidget);
+    expect(find.text('+10 Min.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -417,7 +428,7 @@ void main() {
       const OBPlanBreakdown(baseline: 451, debt: 13, need: 484),
     );
     expect(find.text('7h31'), findsOneWidget);
-    expect(find.text('+ 13 Min.'), findsOneWidget);
+    expect(find.text('+13 Min.'), findsOneWidget);
     expect(find.text('÷ übliche Schlafeffizienz'), findsOneWidget);
     expect(find.text('8h35 im Bett'), findsNothing);
   });
@@ -867,8 +878,8 @@ void main() {
     );
     await _root(tester, night);
     expect(find.textContaining('00:00–01:00 ohne Daten'), findsOneWidget);
-    expect(find.text('1h00'), findsOneWidget);
-    expect(find.text('2h00'), findsOneWidget);
+    expect(find.text('1h'), findsOneWidget);
+    expect(find.text('2h'), findsOneWidget);
   });
 
   testWidgets('multiple night gaps name every uncovered clock range', (

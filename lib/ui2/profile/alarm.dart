@@ -20,6 +20,8 @@
 // The time above is [armedAt] only — the schedule cannot invent it.
 
 import 'package:flutter/material.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -143,23 +145,23 @@ class AlarmScreenView extends StatefulWidget {
   // stored configuration, never an unqualified promise that the alarm fires.
   @visibleForTesting
   static String stateLabel(AlarmArmState s) => switch (s) {
-        AlarmArmState.storedSeconds => 'Stored on band',
-        AlarmArmState.allSlotsInactive => 'Slots inactive',
-        AlarmArmState.pending => 'Waiting',
-        AlarmArmState.unknown => 'Not confirmed',
-        AlarmArmState.none => 'Not set',
-        AlarmArmState.offPending => 'Waiting',
-        AlarmArmState.offUnknown => 'Not confirmed',
-      };
+    AlarmArmState.storedSeconds => 'Stored on band',
+    AlarmArmState.allSlotsInactive => 'Slots inactive',
+    AlarmArmState.pending => 'Waiting',
+    AlarmArmState.unknown => 'Not confirmed',
+    AlarmArmState.none => 'Not set',
+    AlarmArmState.offPending => 'Waiting',
+    AlarmArmState.offUnknown => 'Not confirmed',
+  };
 
   /// Civil-day count from [from]'s calendar date to [to]'s. Local midnight
   /// [Duration.inDays] is not safe: a 23-hour spring-forward "tomorrow" is 0.
   @visibleForTesting
   static int civilDayDelta(DateTime from, DateTime to) => DateTime.utc(
-        to.year,
-        to.month,
-        to.day,
-      ).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
+    to.year,
+    to.month,
+    to.day,
+  ).difference(DateTime.utc(from.year, from.month, from.day)).inDays;
 
   @visibleForTesting
   static String whichDay(DateTime d, DateTime now, AppLocalizations? l) {
@@ -203,84 +205,79 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final at = widget.armedAt;
     final anyDayEnabled = widget.schedule.any((d) => d.enabled);
-    final showTest =
-        widget.onTest != null && at != null && !_isDisableLatch;
-    final retryDisable = _latch == AlarmArmState.offPending ||
+    final showTest = widget.onTest != null && at != null && !_isDisableLatch;
+    final retryDisable =
+        _latch == AlarmArmState.offPending ||
         _latch == AlarmArmState.offUnknown;
-    final showCancel = widget.onCancel != null &&
+    final showCancel =
+        widget.onCancel != null &&
         (retryDisable || (!_isDisableLatch && (at != null || anyDayEnabled)));
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: IconButtonTheme(
-              data: IconButtonThemeData(
-                style: IconButton.styleFrom(
-                  backgroundColor: p.card,
-                  foregroundColor: p.ink,
-                  minimumSize: const Size(44, 44),
-                  shape: const CircleBorder(),
+        child: Column(
+          children: [
+            chrome.OBPageHeader.detail(
+              title: (l?.alarmNavTitle ?? 'Alarm').toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Einstellungen'
+                  : 'Settings',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => _info(c),
+              trailingLabel: _infoLabel(c),
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  tabRouteBottomInset(c, 24),
                 ),
-              ),
-              child: OBPageHeader(
-                title: l?.alarmNavTitle ?? 'Alarm',
-                subtitle: '',
-                onInfo: () => _info(c),
-                infoLabel: _infoLabel(c),
-              ),
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                0,
-                16,
-                tabRouteBottomInset(c, 24),
-              ),
-              children: [
-                _hero(c, p, at),
-                const SizedBox(height: 12),
-                _scheduleCard(c),
-                if (showTest || showCancel) ...[
+                children: [
+                  _hero(c, p, at),
                   const SizedBox(height: 12),
-                  _actions(c, showTest: showTest, showCancel: showCancel),
-                ],
-                if (widget.synthetic) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: Text(
-                      'Synthetische Daten',
-                      textAlign: TextAlign.center,
-                      style: p.text(12, color: p.muted),
+                  _scheduleCard(c),
+                  if (showTest || showCancel) ...[
+                    const SizedBox(height: 12),
+                    _actions(c, showTest: showTest, showCancel: showCancel),
+                  ],
+                  if (widget.synthetic) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Text(
+                        'Synthetische Daten',
+                        textAlign: TextAlign.center,
+                        style: p.text(12, color: p.muted),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 
   Widget _hero(BuildContext c, OB p, DateTime? at) {
-    final showLast = (_latch == AlarmArmState.offPending ||
+    final showLast =
+        (_latch == AlarmArmState.offPending ||
             _latch == AlarmArmState.offUnknown) &&
         at != null;
     final blankTime = at == null || _latch == AlarmArmState.allSlotsInactive;
     final date = showLast
         ? _lastArmedLabel(c)
         : blankTime
-            ? _nextAlarmLabel(c)
-            : _dateLabel(c, at);
+        ? _nextAlarmLabel(c)
+        : _dateLabel(c, at);
     final relative = blankTime || showLast
         ? null
         : AlarmScreenView.whichDay(
@@ -288,8 +285,9 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
             widget.now ?? DateTime.now(),
             AppLocalizations.of(c),
           );
-    return OBCard(
-      padding: const EdgeInsets.all(AlpSpace.s20),
+    final g = G3.of(c);
+    return chrome.OBPanel(
+      hero: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: AlpSpace.s4,
@@ -297,14 +295,12 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
           Text(
             date,
             semanticsLabel: relative == null ? date : '$date. $relative',
-            style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
+            style: g.t(13, 17, color: g.muted),
           ),
           Text(
             blankTime ? '—' : _hhmm(at),
             key: const ValueKey('alarm-hero-time'),
-            style: p
-                .text(48, weight: FontWeight.w700, display: true)
-                .copyWith(height: 56 / 48, letterSpacing: -0.04 * 48),
+            style: g.t(48, 56, weight: FontWeight.w700, tracking: -.04),
           ),
           _statusLine(c, p),
           if (!widget.connected)
@@ -340,7 +336,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   }
 
   Widget _scheduleCard(BuildContext c) {
-    return OBCard(
+    return chrome.OBPanel(
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -355,8 +351,8 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
               onToggle: widget.onToggleDay == null
                   ? null
                   : () => _run(
-                        () => widget.onToggleDay!(day.weekday, !day.enabled),
-                      ),
+                      () => widget.onToggleDay!(day.weekday, !day.enabled),
+                    ),
               onPickTime: widget.onSetDayTime == null
                   ? null
                   : () => _pickDayTime(c, day),
@@ -378,9 +374,8 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         ? null
         : ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
-            child: OBAction(
+            child: chrome.OBActionSecondary(
               AppLocalizations.of(c)?.alarmTestTheBuzz ?? 'Vibration testen',
-              secondary: true,
               onPressed: !_canWrite ? null : () => _run(() => widget.onTest!()),
             ),
           );
@@ -388,37 +383,39 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         ? null
         : ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
-            child: OBAction(
+            child: chrome.OBActionSecondary(
               _cancelLabel(c),
-              secondary: true,
-              destructive: true,
-              onPressed:
-                  !_canWrite ? null : () => _run(() => widget.onCancel!()),
+              onPressed: !_canWrite
+                  ? null
+                  : () => _run(() => widget.onCancel!()),
             ),
           );
-    return LayoutBuilder(builder: (context, constraints) {
-      final stacked = constraints.maxWidth < 340 ||
-          MediaQuery.textScalerOf(context).scale(15) > 20 ||
-          test == null ||
-          cancel == null;
-      if (stacked) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < 340 ||
+            MediaQuery.textScalerOf(context).scale(15) > 20 ||
+            test == null ||
+            cancel == null;
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ?test,
+              if (test != null && cancel != null) const SizedBox(height: 12),
+              ?cancel,
+            ],
+          );
+        }
+        return Row(
           children: [
-            ?test,
-            if (test != null && cancel != null) const SizedBox(height: 12),
-            ?cancel,
+            Expanded(child: test),
+            const SizedBox(width: AlpSpace.s8),
+            Expanded(child: cancel),
           ],
         );
-      }
-      return Row(
-        children: [
-          Expanded(child: test),
-          const SizedBox(width: AlpSpace.s8),
-          Expanded(child: cancel),
-        ],
-      );
-    });
+      },
+    );
   }
 
   Future<void> _pickDayTime(BuildContext c, AlarmScheduleEntry day) async {
@@ -449,69 +446,77 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
       ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(msg)));
 
   void _info(BuildContext c) {
-    final p = OB.of(c);
     showModalBottomSheet<void>(
       context: c,
       useRootNavigator: true,
       isScrollControlled: true,
-      backgroundColor: p.card,
-      builder: (sheet) {
-        final sp = OB.of(sheet);
-        return SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 12,
-              children: [
-                Text(
-                  AppLocalizations.of(sheet)?.alarmNavTitle ?? 'Alarm',
-                  style: sp.text(22, weight: FontWeight.w700),
+      backgroundColor: Colors.transparent,
+      builder: (sheet) => SafeArea(
+        child: chrome.OBSheet(
+          title: AppLocalizations.of(sheet)?.alarmNavTitle ?? 'Alarm',
+          cancelLabel: _closeLabel(sheet),
+          confirmLabel: Localizations.localeOf(sheet).languageCode == 'de'
+              ? 'Verstanden'
+              : 'Got it',
+          onCancel: () => Navigator.pop(sheet),
+          onConfirm: () => Navigator.pop(sheet),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheet).height * .6,
+            ),
+            child: SingleChildScrollView(
+              child: chrome.OBPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final paragraph in _infoBody(sheet)) ...[
+                      Text(paragraph, style: G3.of(sheet).t(14, 20)),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
                 ),
-                for (final paragraph in _infoBody(sheet))
-                  Text(paragraph, style: sp.text(14)),
-                OBAction(
-                  _closeLabel(sheet),
-                  onPressed: () => Navigator.pop(sheet),
-                ),
-              ],
+              ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   List<String> _infoBody(BuildContext c) {
     final confirmation = switch (_latch) {
-      AlarmArmState.storedSeconds => _s(c,
-          'Die gespeicherte Zeit wurde in ganzen Sekunden aus dem Band gelesen. Das ist nur die Konfiguration, keine Zusage, dass der Alarm auslöst oder vibriert.',
-          'The stored time was read from the band to whole-second precision. This is configuration readback, not a promise the alarm will fire or vibrate.'),
-      AlarmArmState.allSlotsInactive => _s(c,
-          'Alle sechs Alarmplätze wurden in dieser Verbindung als inaktiv ausgelesen.',
-          'All six alarm slots were read as inactive in this connection.'),
+      AlarmArmState.storedSeconds => _s(
+        c,
+        'Die gespeicherte Zeit wurde in ganzen Sekunden aus dem Band gelesen. Das ist nur die Konfiguration, keine Zusage, dass der Alarm auslöst oder vibriert.',
+        'The stored time was read from the band to whole-second precision. This is configuration readback, not a promise the alarm will fire or vibrate.',
+      ),
+      AlarmArmState.allSlotsInactive => _s(
+        c,
+        'Alle sechs Alarmplätze wurden in dieser Verbindung als inaktiv ausgelesen.',
+        'All six alarm slots were read as inactive in this connection.',
+      ),
       AlarmArmState.pending => _s(
-          c,
-          'Der Alarm wurde gesendet. Die Bestätigung steht noch aus.',
-          'The alarm was sent. Confirmation is still outstanding.',
-          l10n: (l) => l.alarmDetailPending,
-        ),
+        c,
+        'Der Alarm wurde gesendet. Die Bestätigung steht noch aus.',
+        'The alarm was sent. Confirmation is still outstanding.',
+        l10n: (l) => l.alarmDetailPending,
+      ),
       AlarmArmState.unknown => _s(
-          c,
-          'Zu diesem gespeicherten Termin liegt keine aktuelle Bestätigung vor.',
-          'There is no current confirmation for this stored time.',
-          l10n: (l) => l.alarmDetailUnknown,
-        ),
+        c,
+        'Zu diesem gespeicherten Termin liegt keine aktuelle Bestätigung vor.',
+        'There is no current confirmation for this stored time.',
+        l10n: (l) => l.alarmDetailUnknown,
+      ),
       AlarmArmState.offPending => _s(
-          c,
-          'Ausschalten wurde gesendet. Die Bestätigung steht noch aus.',
-          'Turn-off was sent. Confirmation is still outstanding.',
-        ),
+        c,
+        'Ausschalten wurde gesendet. Die Bestätigung steht noch aus.',
+        'Turn-off was sent. Confirmation is still outstanding.',
+      ),
       AlarmArmState.offUnknown => _s(
-          c,
-          'Ob das Band den Alarm ausgeschaltet hat, ist nicht bestätigt.',
-          'Whether the band switched the alarm off is not confirmed.',
-        ),
+        c,
+        'Ob das Band den Alarm ausgeschaltet hat, ist nicht bestätigt.',
+        'Whether the band switched the alarm off is not confirmed.',
+      ),
       AlarmArmState.none => null,
     };
     return [
@@ -531,13 +536,21 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   }
 
   String _latchLabel(BuildContext c) => switch (_latch) {
-        AlarmArmState.storedSeconds => _s(c, 'Im Band gespeichert', 'Stored on band'),
-        AlarmArmState.allSlotsInactive => _s(c, 'Alarmplätze im Band aus', 'Band alarm slots off'),
-        AlarmArmState.pending || AlarmArmState.unknown => _pendingLabel(c),
-        AlarmArmState.offPending || AlarmArmState.offUnknown =>
-          _disablePendingLabel(c),
-        AlarmArmState.none => _offLabel(c),
-      };
+    AlarmArmState.storedSeconds => _s(
+      c,
+      'Im Band gespeichert',
+      'Stored on band',
+    ),
+    AlarmArmState.allSlotsInactive => _s(
+      c,
+      'Alarmplätze im Band aus',
+      'Band alarm slots off',
+    ),
+    AlarmArmState.pending || AlarmArmState.unknown => _pendingLabel(c),
+    AlarmArmState.offPending ||
+    AlarmArmState.offUnknown => _disablePendingLabel(c),
+    AlarmArmState.none => _offLabel(c),
+  };
 
   String _dateLabel(BuildContext c, DateTime at) {
     final locale = Localizations.localeOf(c).languageCode;
@@ -573,68 +586,51 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     ][weekday];
   }
 
-  String _offLabel(BuildContext c) =>
-      AppLocalizations.of(c)?.stateOff ?? 'Aus';
+  String _offLabel(BuildContext c) => AppLocalizations.of(c)?.stateOff ?? 'Aus';
 
-  String _onLabel(BuildContext c) =>
-      AppLocalizations.of(c)?.stateOn ?? 'An';
+  String _onLabel(BuildContext c) => AppLocalizations.of(c)?.stateOn ?? 'An';
 
   String _pendingLabel(BuildContext c) => _s(
-        c,
-        'Bestätigung offen',
-        'Confirmation pending',
-        l10n: (l) => _latch == AlarmArmState.unknown
-            ? l.alarmHeadlineUnknown
-            : l.alarmHeadlinePending,
-      );
+    c,
+    'Bestätigung offen',
+    'Confirmation pending',
+    l10n: (l) => _latch == AlarmArmState.unknown
+        ? l.alarmHeadlineUnknown
+        : l.alarmHeadlinePending,
+  );
 
   String _offlineLabel(BuildContext c) => _s(
-        c,
-        'Nicht verbunden',
-        'Not connected',
-        l10n: (l) => l.alarmNotConnectedTitle,
-      );
+    c,
+    'Nicht verbunden',
+    'Not connected',
+    l10n: (l) => l.alarmNotConnectedTitle,
+  );
 
-  String _nextAlarmLabel(BuildContext c) => _s(
-        c,
-        'Nächster Alarm',
-        'Next alarm',
-        l10n: (l) => l.alarmHeadlineNone,
-      );
+  String _nextAlarmLabel(BuildContext c) =>
+      _s(c, 'Nächster Alarm', 'Next alarm', l10n: (l) => l.alarmHeadlineNone);
 
   String _cancelLabel(BuildContext c) {
     if (_latch == AlarmArmState.offPending ||
         _latch == AlarmArmState.offUnknown) {
       return _s(c, 'Erneut ausschalten', 'Turn off again');
     }
-    return _s(
-      c,
-      'Ausschalten',
-      'Turn off',
-      l10n: (l) => l.alarmCancelTheAlarm,
-    );
+    return _s(c, 'Ausschalten', 'Turn off', l10n: (l) => l.alarmCancelTheAlarm);
   }
 
-  String _lastArmedLabel(BuildContext c) => _s(
-        c,
-        'Letzter gestellter Alarm',
-        'Last set alarm',
-      );
+  String _lastArmedLabel(BuildContext c) =>
+      _s(c, 'Letzter gestellter Alarm', 'Last set alarm');
 
-  String _disablePendingLabel(BuildContext c) => _s(
-        c,
-        'Ausschalten offen',
-        'Turn-off pending',
-      );
+  String _disablePendingLabel(BuildContext c) =>
+      _s(c, 'Ausschalten offen', 'Turn-off pending');
 
   String _closeLabel(BuildContext c) => _s(c, 'Schließen', 'Close');
 
   String _infoLabel(BuildContext c) => _s(
-        c,
-        'Alarm: Plan und Bestätigung',
-        'Alarm: schedule and confirmation',
-        l10n: (l) => l.alarmNavTitle,
-      );
+    c,
+    'Alarm: Plan und Bestätigung',
+    'Alarm: schedule and confirmation',
+    l10n: (l) => l.alarmNavTitle,
+  );
 
   String _timeSemantic(BuildContext c) => _s(c, 'Uhrzeit', 'Time');
 

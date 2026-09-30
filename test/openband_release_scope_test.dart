@@ -763,9 +763,9 @@ void main() {
 
     final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
     final labels = [
-      find.text('Daten bis'),
-      find.text('Akku'),
-      find.text('Datenbank'),
+      find.text('DATEN BIS'),
+      find.text('AKKU'),
+      find.text('DATENBANKDATEI'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);

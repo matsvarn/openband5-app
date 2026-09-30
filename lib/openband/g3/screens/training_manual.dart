@@ -3,11 +3,15 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../compute/manual_session.dart';
+import '../../../data/day_label.dart';
 import '../../../health/health_export.dart';
 import '../../../ui2/screens/home_screen.dart' show repoOf;
 import '../../../ui2/screens/log_workout.dart' show appOf;
 import '../../domain.dart';
-import '../chrome.dart' show OBActionPrimary, OBListRow;
+import '../chrome.dart' show OBActionPrimary, OBPanel;
+import '../band_parts.dart' show OBSettingsRow;
+import '../metrics.dart' show OBMissingValue;
+import '../g3_format.dart';
 import '../g3_theme.dart';
 import '../training_parts.dart';
 
@@ -62,10 +66,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
     final repository = widget.recentRepository;
     if (repository == null) return;
     try {
-      final days = g3DaysEnding(
-        DateFormat('yyyy-MM-dd').format(widget.now()),
-        7,
-      );
+      final days = g3DaysEnding(dayLabelOf(widget.now()), 7);
       final activities =
           (await Future.wait([
               for (final day in days) repository.readActivities(day),
@@ -279,12 +280,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
                     ] else if (step == 1) ...[
                       Text('ZEITRAUM', style: g.caps(color: g.muted)),
                       const SizedBox(height: 8),
-                      _timeRow(
-                        context,
-                        'Tag',
-                        DateFormat('EEEE, d. MMMM', 'de_DE').format(start),
-                        _pickDay,
-                      ),
+                      _timeRow(context, 'Tag', g3DayLong(start), _pickDay),
                       _timeRow(
                         context,
                         'Beginn',
@@ -305,7 +301,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
                           children: [
                             Text('Bandpuls im Zeitraum', style: g.caps()),
                             const SizedBox(height: 6),
-                            Text('—', style: g.t(28, 34, color: g.gap)),
+                            const OBMissingValue(size: 28, lineHeight: 34),
                             Text(
                               'Die Verfügbarkeit wird beim Speichern geprüft. Lücken bleiben leer.',
                               style: g.t(13, 18, color: g.ink2),
@@ -355,12 +351,12 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
                               style: g.t(24, 30, weight: FontWeight.w700),
                             ),
                             Text(
-                              '${DateFormat('d. MMMM', 'de_DE').format(start)} · ${DateFormat.Hm('de_DE').format(start)}–${DateFormat.Hm('de_DE').format(end)}',
+                              '${g3DateShort(start)} · ${DateFormat.Hm('de_DE').format(start)}–${DateFormat.Hm('de_DE').format(end)}',
                               style: g.t(14, 20, color: g.ink2),
                             ),
                             const SizedBox(height: 14),
                             Text(
-                              '${end.difference(start).inMinutes} Min. · Belastung —',
+                              '${g3Duration(end.difference(start).inMinutes)} · Belastung —',
                               style: g.t(17, 22, weight: FontWeight.w700),
                             ),
                             const SizedBox(height: 5),
@@ -465,11 +461,8 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
   );
 }
 
-Widget _panel(BuildContext context, Widget content) => Container(
-  padding: const EdgeInsets.all(18),
-  decoration: G3.of(context).raised(),
-  child: content,
-);
+Widget _panel(BuildContext context, Widget content) =>
+    OBPanel(padding: const EdgeInsets.all(18), child: content);
 
 Widget _timeRow(
   BuildContext context,
@@ -477,12 +470,7 @@ Widget _timeRow(
   String value,
   VoidCallback tap,
 ) {
-  return OBListRow(
-    title: label,
-    value: value,
-    icon: label == 'Tag' ? LucideIcons.calendarDays : LucideIcons.clock3,
-    onTap: tap,
-  );
+  return OBSettingsRow(label: label, value: value, onTap: tap);
 }
 
 String _windowError(ManualWindowError error) => switch (error) {
