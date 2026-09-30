@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme.dart' show OBChevron;
+import 'count_copy.dart';
 import 'g3_theme.dart';
 
 // ---------------------------------------------------------------------------
@@ -217,7 +218,10 @@ class OBChip extends StatelessWidget {
 
   /// Arrow for delta chips: true = up, false = down, null = none.
   final bool? up;
-  const OBChip(this.kind, this.text, {super.key, this.up});
+
+  /// Keeps the neutral chip visible when it sits directly on the page.
+  final bool onPage;
+  const OBChip(this.kind, this.text, {super.key, this.up, this.onPage = false});
 
   @override
   Widget build(BuildContext context) {
@@ -240,6 +244,9 @@ class OBChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(h / 2),
+        border: onPage && !g.dark && kind == OBChipKind.delta
+            ? Border.all(color: g.hairline)
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -286,12 +293,16 @@ class OBLeadMetric extends StatelessWidget {
   final String? note;
   final OBLeadState state;
   final double? value;
+
+  /// Presentation for values such as durations and grouped counts.
+  final String? valueText;
   final int digits;
   final String? unit;
 
   /// Delta chip text and direction, e.g. ("6", up: true). Omitted when null.
   final String? delta;
   final bool deltaUp;
+  final bool deltaChipOnPage;
 
   /// Plain state: the dashed basis chip text ("kein Normalbereich").
   final String? basisChip;
@@ -300,7 +311,7 @@ class OBLeadMetric extends StatelessWidget {
 
   /// Building: nights (or values) stored and needed.
   final int? have, need;
-  final String unitNoun, unitNounDative;
+  final String unitNoun, unitNounDative, unitNounSingular;
   final String title, reason;
 
   /// Show a leading + for positive values (relative deviations).
@@ -313,10 +324,12 @@ class OBLeadMetric extends StatelessWidget {
     required this.state,
     this.note,
     this.value,
+    this.valueText,
     this.digits = 0,
     this.unit,
     this.delta,
     this.deltaUp = true,
+    this.deltaChipOnPage = false,
     this.basisChip,
     this.caption,
     this.scale,
@@ -324,6 +337,7 @@ class OBLeadMetric extends StatelessWidget {
     this.need,
     this.unitNoun = 'Nächte',
     this.unitNounDative = 'Nächten',
+    this.unitNounSingular = 'Nacht',
     this.title = 'Noch keine Werte',
     this.reason = 'Es fehlt die Nacht. Nichts wird geschätzt.',
     this.signed = false,
@@ -393,11 +407,11 @@ class OBLeadMetric extends StatelessWidget {
           spacing: 8,
           children: [
             Text(
-              '$have von $need $unitNounDative',
+              '$have von $need ${g3CountNoun(need!, unitNounSingular, unitNounDative)}',
               style: g.t(12, 16, weight: FontWeight.w700),
             ),
             Text(
-              'Basis: noch $left $unitNoun',
+              'Basis: noch $left ${g3CountNoun(left, unitNounSingular, unitNoun)}',
               style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
             ),
           ],
@@ -421,6 +435,7 @@ class OBLeadMetric extends StatelessWidget {
                     },
                     delta!,
                     up: deltaUp,
+                    onPage: deltaChipOnPage,
                   ));
       final s = scale;
       body = [
@@ -432,7 +447,9 @@ class OBLeadMetric extends StatelessWidget {
               TextSpan(
                 children: [
                   TextSpan(
-                    text: g3Number(value, digits: digits, signed: signed),
+                    text:
+                        valueText ??
+                        g3Number(value, digits: digits, signed: signed),
                     style: g.lead(decimal: digits > 0),
                   ),
                   if (unit != null)

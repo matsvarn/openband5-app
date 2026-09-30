@@ -22,6 +22,7 @@ import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../today_note.dart';
 import '../../training.dart' show OBSportIcon, obSport;
 import '../chrome.dart';
+import '../count_copy.dart';
 import '../day.dart';
 import '../g3_theme.dart';
 import '../heute_parts.dart';
@@ -770,7 +771,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         title: 'Noch keine Erholung',
         reason: need == null
             ? 'Sie braucht eine Basis aus deinen Nächten.'
-            : 'Sie braucht $need Nächte als Basis.',
+            : 'Sie braucht $need ${g3CountNoun(need, 'Nacht', 'Nächte')} als Basis.',
         onTap: widget.onOpenMetric == null ? null : open,
       );
     } else if (value != null) {
@@ -1396,7 +1397,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           band: range == null ? null : (range.low, range.high),
           emptyReason: empty
               ? (need != null && left != null
-                    ? 'Erholung braucht $need Nächte · noch $left'
+                    ? 'Erholung braucht $need ${g3CountNoun(need, 'Nacht', 'Nächte')} · noch $left'
                     : 'Keine Erholung in dieser Woche')
               : null,
           footer: [
@@ -1408,12 +1409,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               const G3Legend.text('noch kein Normalbereich'),
             if (below > 0)
               G3Legend.mark(
-                '$below ${below == 1 ? 'Tag' : 'Tage'} darunter',
+                '$below ${g3CountNoun(below, 'Tag', 'Tage')} darunter',
                 G3Deviation.worse,
               ),
             if (above > 0)
               G3Legend.mark(
-                '$above ${above == 1 ? 'Tag' : 'Tage'} darüber',
+                '$above ${g3CountNoun(above, 'Tag', 'Tage')} darüber',
                 G3Deviation.better,
               ),
           ],
@@ -1621,7 +1622,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         value: text,
         unit: unit,
         note: base?.status.phase == BaselinePhase.building
-            ? (left == null ? 'Basis im Aufbau' : 'Basis: noch $left Nächte')
+            ? (left == null
+                  ? 'Basis im Aufbau'
+                  : 'Basis: noch $left ${g3CountNoun(left, 'Nacht', 'Nächte')}')
             : 'kein Normalbereich',
         onTap: tap,
       );
@@ -1678,7 +1681,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             note: building
                 ? (left == null
                       ? 'Basis im Aufbau'
-                      : 'Basis: noch $left Nächte')
+                      : 'Basis: noch $left ${g3CountNoun(left, 'Nacht', 'Nächte')}')
                 : 'vergangene Nacht',
           ),
           ...rows,

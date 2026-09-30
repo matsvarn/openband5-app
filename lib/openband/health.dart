@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'controller.dart';
 import 'domain.dart';
+import 'g3/screens/verlauf.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 import 'glucose.dart';
 import 'labs.dart';
@@ -37,7 +38,15 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
   int nights = 7;
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
+  Widget build(BuildContext context) => widget.bandMetricsOnly
+      ? G3AllMetrics(
+          repository: widget.controller.repository,
+          endDay: widget.controller.selectedDay,
+          band: widget.controller.band,
+        )
+      : _buildLegacy(context);
+
+  Widget _buildLegacy(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
     builder: (context, _) {
       final p = OB.of(context);

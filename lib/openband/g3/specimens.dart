@@ -803,7 +803,7 @@ final Map<String, Widget Function()> g3Specimens = {
     band: (58, 80),
     bandLabels: ('58', '80'),
     xLabels: const ['31.08', '14.09', 'heute'],
-    footLeft: 'Ø 66 · 2 Tage darunter · 3 Lücke',
+    footLeft: 'Ø 66 · 2 Tage darunter · 3 Lücken',
     footRight: '27 von 30 Tagen',
   ),
   'OBTrendChart.d90': () => OBTrendChart(
@@ -816,7 +816,7 @@ final Map<String, Widget Function()> g3Specimens = {
     band: (58, 80),
     bandLabels: ('58', '80'),
     xLabels: const ['02.07', '15.08', 'heute'],
-    footLeft: 'Ø 65 · 3 Tage darunter · 10 Lücke',
+    footLeft: 'Ø 65 · 3 Tage darunter · 10 Lücken',
     footRight: '80 von 90 Tagen',
   ),
   'OBCardHeader': () => const OBCardHeader('KÖRPER', note: 'vergangene Nacht'),
@@ -830,7 +830,7 @@ final Map<String, Widget Function()> g3Specimens = {
   'OBStepsCard.missing': () =>
       const OBStepsCard(total: null, note: 'Zähler im Band'),
   'OBFooterStamp': () => const OBFooterStamp(
-    'Letzter Bandwert 09:37 · Übertragung 09:38',
+    'Letzter Bandwert 09:38 · Übertragung 09:38',
     synthetic: true,
   ),
   'OBDateStrip': () => const OBDateStrip(
