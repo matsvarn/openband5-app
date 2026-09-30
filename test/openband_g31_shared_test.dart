@@ -198,6 +198,17 @@ void main() {
     );
     await tester.tap(close);
     expect(closed, isTrue);
+
+    await tester.pumpWidget(
+      _frame(
+        OBPageHeader.modal(
+          title: 'LIVE',
+          leadingIcon: LucideIcons.chevronDown,
+          onBack: () => closed = true,
+        ),
+      ),
+    );
+    expect(find.byIcon(LucideIcons.chevronDown), findsOneWidget);
   });
 
   testWidgets(
