@@ -4,21 +4,18 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
-import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
-import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
 import 'env.dart';
 
 const _day = '2026-09-29';
 
-_PaperVerlaufRepository _repo(SyntheticScenario scenario) {
+_PaperVerlaufRepository _repo(SyntheticScenario scenario, {bool g31 = false}) {
   initializeDateFormatting('de_DE');
   Map<String, dynamic> fixture(String name) => Map<String, dynamic>.from(
     jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync())
@@ -28,14 +25,21 @@ _PaperVerlaufRepository _repo(SyntheticScenario scenario) {
     fixture('day-summary.json'),
     fixture('sleep-detail.json'),
     scenario: scenario,
+    g31: g31,
   );
 }
 
 /// The screen artboards have denser historical rows than the shared daily
 /// fixture. These extra values exist only in the synthetic diff gallery.
 class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
-  _PaperVerlaufRepository(super.summary, super.detail, {super.scenario})
-    : super.fromMaps();
+  _PaperVerlaufRepository(
+    super.summary,
+    super.detail, {
+    super.scenario,
+    this.g31 = false,
+  }) : super.fromMaps();
+
+  final bool g31;
 
   static const _recovery = <double?>[
     66,
@@ -136,6 +140,14 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day) {
+    if (g31 && metric == G3Metric.recovery) {
+      return Future.value(
+        const G3Baseline(
+          BaselineStatus(BaselinePhase.trusted),
+          range: PersonalRange(58, 80, 68),
+        ),
+      );
+    }
     if (metric == G3Metric.respRate) {
       return Future.value(
         const G3Baseline(
@@ -155,9 +167,43 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
     final labels = g3DaysEnding(endDay, days);
     List<double?>? values;
     if (metric == G3Metric.recovery) {
+      final recovery = g31
+          ? <double?>[
+              68,
+              70,
+              null,
+              58,
+              72,
+              69,
+              61,
+              68,
+              84,
+              71,
+              68,
+              58,
+              55,
+              64,
+              70,
+              null,
+              74,
+              69,
+              62,
+              58,
+              72,
+              68,
+              64,
+              68,
+              58,
+              62,
+              71,
+              49,
+              63,
+              74,
+            ]
+          : _recovery;
       values = days == 90
-          ? [...List<double?>.filled(60, null), ..._recovery]
-          : _recovery.sublist(30 - days);
+          ? [...List<double?>.filled(60, null), ...recovery]
+          : recovery.sublist(30 - days);
     } else if (metric == G3Metric.hrv) {
       values = days == 90
           ? [...List<double?>.filled(60, null), ..._hrv]
@@ -245,68 +291,40 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
   }
 }
 
-Widget _frame(Widget child) => Builder(
-  builder: (context) {
-    final g = G3.of(context);
-    return Stack(
-      children: [
-        Positioned.fill(top: 48, bottom: 95, child: child),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 48,
-          child: ColoredBox(
-            color: g.page,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(44, 15, 28, 0),
-              child: Row(
-                children: [
-                  Text('9:41', style: g.t(17, 21, weight: FontWeight.w700)),
-                  const Spacer(),
-                  Icon(LucideIcons.signal, size: 17, color: g.ink),
-                  const SizedBox(width: 6),
-                  Icon(LucideIcons.wifi, size: 17, color: g.ink),
-                  const SizedBox(width: 6),
-                  Icon(LucideIcons.batteryFull, size: 22, color: g.ink),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 24,
-          child: OBTabBar(
-            domains: const [
-              ShellDomain.home,
-              ShellDomain.sleep,
-              ShellDomain.workout,
-              ShellDomain.wellness,
-            ],
-            selected: ShellDomain.home,
-            onSelect: (_) {},
-          ),
-        ),
-      ],
-    );
-  },
+Widget _frame(Widget child) => AppShell(
+  releaseStyle: true,
+  domains: const [
+    ShellDomain.home,
+    ShellDomain.sleep,
+    ShellDomain.workout,
+    ShellDomain.wellness,
+  ],
+  builder: (_, domain) =>
+      domain == ShellDomain.home ? child : const SizedBox.shrink(),
 );
 
-Widget _metric(G3Env env, G3Metric metric, {OBTrendPeriod? period}) {
+Widget _metric(
+  G3Env env,
+  G3Metric metric, {
+  OBTrendPeriod? period,
+  bool g31 = false,
+}) {
   _PaperVerlaufRepository? synthetic;
   _PaperVerlaufRepository sample() =>
-      synthetic ??= _repo(SyntheticScenario.g3Sample);
+      synthetic ??= _repo(SyntheticScenario.g3Sample, g31: g31);
   final child = G3MetricDetail(
     metric: metric,
     repository: env.repository(sample),
     endDay: env.day(_day),
     band: env.band(() => sample().band),
     initialPeriod: period,
+    now: env.now(() => DateTime(2026, 9, 29, 9, 41)),
   );
   return env.real ? child : _frame(child);
 }
+
+Widget g31RecoveryBuilder(G3Env env) =>
+    _metric(env, G3Metric.recovery, g31: true);
 
 class _WeightSheetPreview extends StatefulWidget {
   const _WeightSheetPreview({required this.repo, required this.day, this.band});

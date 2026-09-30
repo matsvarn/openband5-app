@@ -47,10 +47,52 @@ final Map<String, G3ScreenBuilder> journalScreens = {
     name: (env) => env.real ? null : _JournalPreview(name: name, env: env),
 };
 
+G3ScreenBuilder g31JournalBuilder(String legacyName) =>
+    (env) => _JournalPreview(name: legacyName, env: env, g31: true);
+
+class _G31JournalFixture extends SyntheticOpenBandRepository {
+  _G31JournalFixture(super.summary, super.detail) : super.fromMaps();
+  @override
+  Future<G3JournalPattern> readJournalPattern(
+    String endDay,
+    int nights,
+  ) async => G3JournalPattern(
+    CaffeineSleepPattern(
+      kind: CaffeineSleepPatternKind.insufficient,
+      pairedN: 5,
+      yesNights: 2,
+      noNights: 3,
+      endDay: endDay,
+      startDay: g3DaysEnding(endDay, nights).first,
+      nights: nights,
+      algoVersion: 98,
+    ),
+  );
+  @override
+  Future<JournalDaySnapshot> readJournalDay(String day) async {
+    final value = await super.readJournalDay(day);
+    if (day != '2026-09-26' && day != '2026-09-25') return value;
+    return JournalDaySnapshot(
+      day: day,
+      metrics: const {},
+      metricUpdatedAt: const {},
+      tags: const [],
+      note: '',
+      journalUpdatedAt: 0,
+      fields: value.fields,
+    );
+  }
+}
+
 class _JournalPreview extends StatefulWidget {
-  const _JournalPreview({required this.name, required this.env});
+  const _JournalPreview({
+    required this.name,
+    required this.env,
+    this.g31 = false,
+  });
   final String name;
   final G3Env env;
+  final bool g31;
   @override
   State<_JournalPreview> createState() => _JournalPreviewState();
 }
@@ -64,7 +106,9 @@ class _JournalPreviewState extends State<_JournalPreview> {
   @override
   void initState() {
     super.initState();
-    repo = widget.env.repository(() => _syntheticRepository(widget.name));
+    repo = widget.env.repository(
+      () => _syntheticRepository(widget.name, g31: widget.g31),
+    );
     scrollController = ScrollController(
       initialScrollOffset: widget.name.contains('Scrolled') ? 910 : 0,
     );
@@ -89,7 +133,10 @@ class _JournalPreviewState extends State<_JournalPreview> {
     });
   }
 
-  static SyntheticOpenBandRepository _syntheticRepository(String name) {
+  static SyntheticOpenBandRepository _syntheticRepository(
+    String name, {
+    bool g31 = false,
+  }) {
     final summary =
         jsonDecode(
               File(
@@ -105,7 +152,9 @@ class _JournalPreviewState extends State<_JournalPreview> {
             )
             as Map;
     summary['day'] = '2026-09-29';
-    final repo = SyntheticOpenBandRepository.fromMaps(summary, detail);
+    final repo = g31
+        ? _G31JournalFixture(summary, detail)
+        : SyntheticOpenBandRepository.fromMaps(summary, detail);
     if (name.contains('Tab') || name.contains('Scrolled')) {
       repo.seedCaffeineSleepPattern(
         '2026-09-29',
@@ -213,7 +262,11 @@ class _JournalPreviewState extends State<_JournalPreview> {
     return Stack(
       children: [
         Positioned.fill(
-          top: detail || patternFrame ? 0 : 42,
+          top: detail || patternFrame
+              ? 0
+              : widget.g31
+              ? 62
+              : 42,
           child: patternFrame
               ? G3JournalPatternScreen(
                   pattern: G3JournalPattern(
@@ -238,6 +291,9 @@ class _JournalPreviewState extends State<_JournalPreview> {
                   controller: controller,
                   scrollController: scrollController,
                   onEdit: (_) {},
+                  onBand: widget.g31 ? () {} : null,
+                  onProfile: widget.g31 ? () {} : null,
+                  onDataStatus: widget.g31 ? () {} : null,
                 ),
         ),
         Positioned(

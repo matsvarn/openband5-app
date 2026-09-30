@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -11,20 +12,28 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep_naps.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader, OBSectionHeader;
+    show
+        G3DetailPage,
+        OBInfoSheet,
+        OBListRow,
+        OBPanel,
+        OBPageHeader,
+        OBSectionHeader;
 import 'package:openstrap_edge/openband/g3/day.dart'
-    show OBDayNote, OBHypnogram, OBStageLegend, OBWeekBars;
+    show OBHypnogram, OBStageLegend, OBWeekBars;
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3LabelRow, OBMissingValue;
+    show G3LabelRow, G3Scale, OBMissingValue;
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
-import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
+import 'package:openstrap_edge/openband/theme.dart'
+    show OBChevron, openBandTheme;
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
 Map _fixture(String name) =>
@@ -121,6 +130,18 @@ class _RespirationRangeRepo extends _PlanWithoutGoalRepo {
       : super.readPersonalRange(metric, day);
 }
 
+class _NoNapsRepo extends _RespirationRangeRepo {
+  @override
+  Future<NapDay> readNaps(String day) async =>
+      NapDay(day: day, judged: true, totalMin: 0);
+}
+
+class _MissingNightMetricRepo extends _RespirationRangeRepo {
+  @override
+  Future<OpenBandDay> readDay(String day) async =>
+      OpenBandDay(day: day, synthetic: true);
+}
+
 class _OneNightBasisRepo extends _PlanWithoutGoalRepo {
   @override
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async =>
@@ -165,7 +186,18 @@ Future<void> _root(WidgetTester tester, SleepNight night) async {
 }
 
 void main() {
-  setUpAll(() => initializeDateFormatting('de_DE'));
+  setUpAll(() async {
+    await initializeDateFormatting('de_DE');
+    for (final (family, path) in [
+      ('Inter', 'assets/fonts/Inter/Inter.ttf'),
+      ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
+    ]) {
+      await (FontLoader(family)..addFont(
+            Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+          ))
+          .load();
+    }
+  });
 
   testWidgets(
     'sleep overview cards open from their bodies and detail labels are inert',
@@ -330,14 +362,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('HEUTE NACHT'),
-      300,
+      find.text('SCHLAF'),
+      -300,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(
-      tester.widget<OBDayNote>(find.byType(OBDayNote)).heading,
-      'HEUTE NACHT',
-    );
+    await tester.tap(find.text('SCHLAF'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Heute Nacht'));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3SleepTonight), findsOneWidget);
+    expect(find.text('HEUTE NACHT'), findsOneWidget);
     expect(find.text('FÜR HEUTE'), findsNothing);
   });
 
@@ -424,7 +458,19 @@ void main() {
         tester.widget<OBWeekBars>(find.byType(OBWeekBars)).domain,
         G3Domain.sleep,
       );
+      expect(find.text('Eintragen'), findsOneWidget);
       expect(find.text('+ Eintragen'), findsNothing);
+      final napsHeader = find.ancestor(
+        of: find.text('NICKERCHEN'),
+        matching: find.byType(OBSectionHeader),
+      );
+      expect(
+        find.descendant(
+          of: napsHeader,
+          matching: find.byIcon(LucideIcons.plus),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -637,42 +683,69 @@ void main() {
     expect(find.text('aus 7 Nächten'), findsNothing);
   });
 
-  testWidgets('one remaining night is singular in root and night detail', (
+  testWidgets(
+    'root omits baseline explanations and night detail keeps singular copy',
+    (tester) async {
+      final repo = _OneNightBasisRepo();
+      final controller = OpenBandController(
+        repository: repo,
+        initialDay: '2026-09-29',
+        now: () => DateTime(2026, 9, 29, 10),
+      );
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: G3SleepScreen(controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('HRV · ms'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('noch 1 Nacht'), findsNothing);
+      expect(find.text('noch 1 Nächte'), findsNothing);
+      final emptyScales = find.byWidgetPredicate(
+        (widget) => widget is G3Dashed && widget.height == 7,
+      );
+      expect(emptyScales, findsNWidgets(3));
+      for (var index = 0; index < 3; index++) {
+        expect(tester.getSize(emptyScales.at(index)).width, greaterThan(60));
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: G3SleepNightSignals(repository: repo, day: '2026-09-29'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('noch 1 Nacht'), findsWidgets);
+      expect(find.text('noch 1 Nächte'), findsNothing);
+    },
+  );
+
+  testWidgets('trusted range with a missing night metric stays missing', (
     tester,
   ) async {
-    final repo = _OneNightBasisRepo();
-    final controller = OpenBandController(
-      repository: repo,
-      initialDay: '2026-09-29',
-      now: () => DateTime(2026, 9, 29, 10),
-    );
-    addTearDown(controller.dispose);
-    await controller.refresh();
     await tester.pumpWidget(
       MaterialApp(
         theme: openBandTheme(Brightness.light),
-        home: G3SleepScreen(controller: controller),
+        home: G3SleepNightSignals(
+          repository: _MissingNightMetricRepo(),
+          day: '2026-09-29',
+          initialKind: NightSignalKind.respiration,
+        ),
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('HRV · ms'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('noch 1 Nacht'), findsWidgets);
-    expect(find.text('noch 1 Nächte'), findsNothing);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: openBandTheme(Brightness.light),
-        home: G3SleepNightSignals(repository: repo, day: '2026-09-29'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('noch 1 Nacht'), findsWidgets);
-    expect(find.text('noch 1 Nächte'), findsNothing);
+    expect(tester.takeException(), isNull);
+    expect(find.text('—'), findsWidgets);
+    expect(find.textContaining('deinem Median'), findsNothing);
   });
 
   testWidgets('one window and one measured point use singular', (tester) async {
@@ -689,6 +762,7 @@ void main() {
           ),
         ],
         regularity: 75,
+        detail: true,
       ),
     );
     expect(find.text('1 Nacht'), findsOneWidget);
@@ -775,8 +849,9 @@ void main() {
     expect(
       find.byWidgetPredicate(
         (widget) =>
-            widget is Container &&
-            widget.color == g.domainBar(G3Domain.recovery),
+            widget is G3Scale &&
+            widget.domain == G3Domain.recovery &&
+            widget.band != null,
       ),
       findsWidgets,
     );
@@ -837,7 +912,7 @@ void main() {
   ) async {
     await _card(
       tester,
-      const OBSleepDebt(gate: 'Braucht längere freie Nächte.'),
+      const OBSleepDebt(gate: 'Braucht längere freie Nächte.', detail: true),
     );
     expect(find.text('Braucht längere freie Nächte.'), findsOneWidget);
     expect(
@@ -871,10 +946,10 @@ void main() {
 
   testWidgets('sleep debt formats positive, negative and zero', (tester) async {
     await _card(tester, const OBSleepDebtLead(minutes: -47));
-    expect(find.text('47 Min.'), findsOneWidget);
+    expect(find.text('0h47'), findsOneWidget);
     expect(find.text('mehr als in freien Nächten'), findsOneWidget);
     await _card(tester, const OBSleepDebt(minutes: 0));
-    expect(find.text('0 Min.'), findsOneWidget);
+    expect(find.text('0h00'), findsOneWidget);
     expect(find.text('gleich lang wie in freien Nächten'), findsOneWidget);
     await _card(tester, const OBSleepDebt(minutes: 47));
     expect(find.text('weniger als in freien Nächten'), findsOneWidget);
@@ -920,13 +995,16 @@ void main() {
   testWidgets('another day with null value and gate is not called building', (
     tester,
   ) async {
-    await _card(tester, const OBSleepWindows(windows: [], regularity: null));
+    await _card(
+      tester,
+      const OBSleepWindows(windows: [], regularity: null, detail: true),
+    );
     expect(
       find.text('Für diesen Tag keine Auswertung gespeichert.'),
       findsOneWidget,
     );
     expect(find.text('Basis im Aufbau'), findsNothing);
-    await _card(tester, const OBSleepDebt());
+    await _card(tester, const OBSleepDebt(detail: true));
     expect(
       find.text('Für diesen Tag keine Auswertung gespeichert.'),
       findsOneWidget,
@@ -1000,7 +1078,12 @@ void main() {
   ) async {
     await _card(
       tester,
-      const OBSleepDebt(minutes: 90, freeMinutes: 600, usualMinutes: 350),
+      const OBSleepDebt(
+        minutes: 90,
+        freeMinutes: 600,
+        usualMinutes: 350,
+        detail: true,
+      ),
     );
     expect(find.text('Wert außerhalb der Skala 6–9 h.'), findsOneWidget);
   });
@@ -1206,16 +1289,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(OBTabBar), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text('Schlafzeiten ändern'),
+        find.text('Zeiten ändern'),
         200,
         scrollable: find.byType(Scrollable).first,
       );
       await Scrollable.ensureVisible(
-        tester.element(find.text('Schlafzeiten ändern')),
+        tester.element(find.text('Zeiten ändern')),
         alignment: .3,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Schlafzeiten ändern'));
+      await tester.tap(find.text('Zeiten ändern'));
       await tester.pumpAndSettle();
       expect(find.byType(SleepEditor), findsOneWidget);
       expect(find.byType(OBTabBar), findsNothing);
@@ -1331,4 +1414,189 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Tag: Mo 28.09'), findsOneWidget);
   });
+  test('night trace labels only stored missing runs with known cadence', () {
+    final start = DateTime(2026, 9, 29, 4, 10);
+    final end = start.add(const Duration(minutes: 10));
+    final readings = [
+      NightSignalReading(start, 54),
+      for (var i = 2; i < 8; i++)
+        NightSignalReading(start.add(Duration(minutes: i)), null),
+      NightSignalReading(start.add(const Duration(minutes: 8)), 55),
+    ];
+    final gaps = nightTraceGaps(
+      NightSignalSeries(
+        readings: readings,
+        maxConnectingGap: const Duration(minutes: 2),
+      ),
+      start,
+      end,
+    );
+    expect(gaps, hasLength(1));
+    expect(gaps.single.start, DateTime(2026, 9, 29, 4, 12));
+    expect(gaps.single.end, DateTime(2026, 9, 29, 4, 18));
+    expect(
+      nightTraceGaps(NightSignalSeries(readings: readings), start, end),
+      isEmpty,
+    );
+    expect(
+      nightTraceGaps(
+        NightSignalSeries(
+          readings: [
+            NightSignalReading(start, 54),
+            NightSignalReading(end, 55),
+          ],
+          maxConnectingGap: const Duration(minutes: 10),
+        ),
+        start,
+        end,
+      ),
+      isEmpty,
+    );
+  });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('sleep target labels do not overlap at 375 pt $brightness', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      for (final scale in [1.0, 1.3]) {
+        for (final goal in [300, 465, 600, 720]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: openBandTheme(brightness),
+              home: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                child: Scaffold(
+                  body: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: OBSleepLead(minutes: 438, goalMinutes: goal),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final label = tester.getRect(
+            find.text('Ziel ${obSleepDuration(goal)}'),
+          );
+          expect(
+            label.left,
+            greaterThan(tester.getRect(find.text('0 h')).right),
+          );
+          expect(label.right, lessThan(tester.getRect(find.text('10 h')).left));
+          expect(tester.takeException(), isNull);
+        }
+      }
+    });
+
+    testWidgets(
+      'sleep navigation and all night segments fit 375×812 $brightness',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 812);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        final repo = _NoNapsRepo();
+        final controller = OpenBandController(
+          repository: repo,
+          initialDay: '2026-09-29',
+          now: () => DateTime(2026, 9, 29, 10),
+        );
+        addTearDown(controller.dispose);
+        await controller.refresh();
+        final scroll = ScrollController();
+        addTearDown(scroll.dispose);
+        Future<void> frame(Widget child) async {
+          await tester.pumpWidget(const SizedBox());
+          await tester.pumpWidget(
+            MaterialApp(theme: openBandTheme(brightness), home: child),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+
+        await frame(
+          G3SleepScreen(
+            controller: controller,
+            scrollController: scroll,
+            reminder: MemorySleepBedtimeReminder(),
+          ),
+        );
+        await tester.tap(find.text('NACHT'));
+        await tester.pumpAndSettle();
+        expect(find.byType(G3SleepNightSignals), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        for (final segment in ['HRV', 'Atemfrequenz', 'Puls']) {
+          await tester.tap(find.text(segment).first);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.textContaining('tiefster'), findsOneWidget);
+          expect(find.textContaining('Ø Schlaf'), findsNothing);
+          expect(find.text('Optisches Signal verwertbar'), findsNothing);
+          await tester.drag(
+            find.byType(Scrollable).first,
+            const Offset(0, -350),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          await tester.drag(
+            find.byType(Scrollable).first,
+            const Offset(0, 700),
+          );
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('Schlaf'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Zeiten ändern'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SleepEditor), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await frame(
+          G3SleepScreen(
+            controller: controller,
+            scrollController: scroll,
+            reminder: MemorySleepBedtimeReminder(),
+          ),
+        );
+        await tester.scrollUntilVisible(
+          find.text('Noch keins erkannt'),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final emptyNap = find.ancestor(
+          of: find.text('Noch keins erkannt'),
+          matching: find.byType(OBListRow),
+        );
+        expect(
+          find.descendant(of: emptyNap, matching: find.byType(OBChevron)),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('Noch keins erkannt'));
+        await tester.pumpAndSettle();
+        expect(find.byType(G3SleepNaps), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        for (final detail in <Widget>[
+          G3SleepRegularity(repository: repo, day: '2026-09-29'),
+          G3SleepDebtDetail(repository: repo, day: '2026-09-29'),
+        ]) {
+          await frame(detail);
+          await tester.drag(
+            find.byType(Scrollable).first,
+            const Offset(0, -500),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+  }
 }

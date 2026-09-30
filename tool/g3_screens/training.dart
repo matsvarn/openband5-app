@@ -43,10 +43,14 @@ final Map<String, G3ScreenBuilder> trainingScreens = {
         : _TrainingFrame(name, env),
 };
 
+G3ScreenBuilder g31TrainingBuilder(String legacyName) =>
+    (env) => _TrainingFrame(legacyName, env, g31: true);
+
 class _TrainingFrame extends StatefulWidget {
   final String name;
   final G3Env env;
-  const _TrainingFrame(this.name, this.env);
+  final bool g31;
+  const _TrainingFrame(this.name, this.env, {this.g31 = false});
 
   @override
   State<_TrainingFrame> createState() => _TrainingFrameState();
@@ -67,6 +71,7 @@ class _TrainingFrameState extends State<_TrainingFrame> {
               ? SyntheticScenario.g3Building
               : SyntheticScenario.g3Sample,
           savedYoga: widget.name.contains('nachtragen-gespeichert'),
+          g31: widget.g31,
         );
   late final OpenBandRepository repo = widget.env.repository(() => fixtureRepo);
   late final OpenBandController controller = OpenBandController(
@@ -105,6 +110,9 @@ class _TrainingFrameState extends State<_TrainingFrame> {
           G3TrainingScreen(
             controller: controller,
             scrollController: savedScrolled,
+            onBand: widget.g31 ? () {} : null,
+            onProfile: widget.g31 ? () {} : null,
+            onDataStatus: widget.g31 ? () {} : null,
           ),
           toast: 'Yoga nachgetragen · Mo 28.09',
           onToast: () async {
@@ -326,6 +334,10 @@ class _TrainingFrameState extends State<_TrainingFrame> {
               context,
               G3ActivityScreen(
                 repository: repo,
+                latestStoredAt: widget.g31
+                    ? DateTime(2026, 9, 29, 9, 38)
+                    : null,
+                now: widget.g31 ? DateTime(2026, 9, 29, 9, 41) : null,
                 initialSheet: name.contains('sportart-aendern')
                     ? 'sport'
                     : name.contains('kein-training')
@@ -350,7 +362,12 @@ class _TrainingFrameState extends State<_TrainingFrame> {
                       : base.sport,
                   source: manual ? G3ActivitySource.manual : base.source,
                   confirmed:
-                      reserve || manual || changed || noRecovery || refused,
+                      (widget.g31 && name.contains('lauf-ergebnis')) ||
+                      reserve ||
+                      manual ||
+                      changed ||
+                      noRecovery ||
+                      refused,
                   start: start,
                   end: end,
                   strain: refused || manual ? null : base.strain,
@@ -364,14 +381,18 @@ class _TrainingFrameState extends State<_TrainingFrame> {
                       : refused
                       ? 149
                       : base.maxHr,
-                  zoneMinutes: refused || manual
+                  zoneMinutes: widget.g31 && name.contains('lauf-ergebnis')
+                      ? const [3, 9, 17, 11, 2]
+                      : refused || manual
                       ? null
                       : reserve
                       ? const [14, 17, 10, 3, 0]
                       : changed
                       ? const [0, 4, 19, 16, 3]
                       : base.zoneMinutes,
-                  zoneBasis: reserve
+                  zoneBasis: widget.g31 && name.contains('lauf-ergebnis')
+                      ? const G3ZoneBasis(G3ZoneBasisKind.hfmaxEstimated, 186)
+                      : reserve
                       ? const G3ZoneBasis(G3ZoneBasisKind.heartRateReserve, 191)
                       : base.zoneBasis,
                   hrTrace: manual
@@ -406,6 +427,7 @@ class _TrainingFrameState extends State<_TrainingFrame> {
                   hrRecoveryOneMinute: noRecovery || manual
                       ? null
                       : base.hrRecoveryOneMinute,
+                  priorHrrCount: widget.g31 ? base.priorHrrCount : null,
                 ),
               ),
             );
@@ -417,6 +439,9 @@ class _TrainingFrameState extends State<_TrainingFrame> {
         G3TrainingScreen(
           controller: controller,
           scrollController: name.contains('gescrollt') ? scrolled : null,
+          onBand: widget.g31 ? () {} : null,
+          onProfile: widget.g31 ? () {} : null,
+          onDataStatus: widget.g31 ? () {} : null,
         ),
       );
     },
@@ -471,20 +496,62 @@ List<G3HrPoint> _tennisTrace(DateTime start) {
 
 class _TrainingFixtureRepo extends SyntheticOpenBandRepository {
   final bool savedYoga;
+  final bool g31;
   _TrainingFixtureRepo(
     super.summary,
     super.detail, {
     required super.scenario,
     this.savedYoga = false,
+    this.g31 = false,
   }) : super.fromMaps();
 
   @override
   Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
+    if (g31 && metric == G3Metric.strain && days == 30) {
+      final labels = g3DaysEnding(endDay, days);
+      const values = <double?>[
+        9.2,
+        10.1,
+        11.8,
+        null,
+        9.0,
+        11.3,
+        7.9,
+        10.0,
+        12.5,
+        9.8,
+        7.3,
+        11.8,
+        9.9,
+        8.6,
+        10.9,
+        13.5,
+        3.9,
+        9.6,
+        10.6,
+        11.7,
+        8.9,
+        15.2,
+        10.2,
+        8.5,
+        12.0,
+        10.3,
+        null,
+        4.3,
+        11.0,
+        9.4,
+      ];
+      return g3Trend(metric, [
+        for (var i = 0; i < days; i++) MetricPoint(labels[i], values[i]),
+      ], const G3Baseline(BaselineStatus(BaselinePhase.none)));
+    }
     if (metric == G3Metric.strain &&
         days == 7 &&
         scenario != SyntheticScenario.g3Building) {
       final labels = g3DaysEnding(endDay, 7);
-      const values = [8.6, 12.4, 6.1, 13.8, 11.2, 7.3, 9.4];
+      final values = g31
+          ? const <double?>[8.2, 12.6, 10.1, null, 4.3, 11.0, 9.4]
+          : const <double?>[8.6, 12.4, 6.1, 13.8, 11.2, 7.3, 9.4];
       return g3Trend(metric, [
         for (var i = 0; i < 7; i++) MetricPoint(labels[i], values[i]),
       ], const G3Baseline(BaselineStatus(BaselinePhase.none)));
@@ -497,6 +564,8 @@ class _TrainingFixtureRepo extends SyntheticOpenBandRepository {
     final dates = g3DaysEnding(endDay, 7);
     final values = scenario == SyntheticScenario.g3Building
         ? const <double?>[null, null, null, null, null, null, 9.4]
+        : g31
+        ? const <double?>[8.2, 12.6, 10.1, null, 4.3, 11.0, 9.4]
         : const <double?>[8.6, 12.4, 6.1, 13.8, 11.2, 7.3, 9.4];
     final days = [for (var i = 0; i < 7; i++) MetricPoint(dates[i], values[i])];
     if (scenario == SyntheticScenario.g3Building) {
@@ -514,14 +583,20 @@ class _TrainingFixtureRepo extends SyntheticOpenBandRepository {
   Future<List<G3Activity>> readActivities(String day) async {
     final activities = await super.readActivities(day);
     if (day != '2026-09-29') {
-      final prior = switch (day) {
-        '2026-09-28' => ('cycling', 17, 35, 45, 4.2),
-        '2026-09-27' => ('hiking', 10, 20, 90, 8.4),
-        '2026-09-26' => ('tennis', 16, 0, 85, null),
-        '2026-09-25' => ('swimming', 7, 10, 45, null),
-        '2026-09-24' => ('running', 8, 0, 45, 7.0),
-        _ => null,
-      };
+      final prior = g31
+          ? switch (day) {
+              '2026-09-28' => ('cycling', 20, 9, 55, 8.4),
+              '2026-09-25' => ('strength', 8, 0, 42, 4.9),
+              _ => null,
+            }
+          : switch (day) {
+              '2026-09-28' => ('cycling', 17, 35, 45, 4.2),
+              '2026-09-27' => ('hiking', 10, 20, 90, 8.4),
+              '2026-09-26' => ('tennis', 16, 0, 85, null),
+              '2026-09-25' => ('swimming', 7, 10, 45, null),
+              '2026-09-24' => ('running', 8, 0, 45, 7.0),
+              _ => null,
+            };
       if (prior == null) return activities;
       final start = DateTime(
         int.parse(day.substring(0, 4)),
@@ -551,6 +626,11 @@ class _TrainingFixtureRepo extends SyntheticOpenBandRepository {
           start: start,
           end: start.add(Duration(minutes: prior.$4)),
           strain: prior.$5,
+          zoneMinutes: g31
+              ? day == '2026-09-28'
+                    ? const [4, 7, 19, 19, 6]
+                    : const [1, 5, 17, 16, 3]
+              : null,
           opticalShare: prior.$1 == 'tennis' ? .41 : null,
         ),
       ];

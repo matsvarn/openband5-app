@@ -191,16 +191,21 @@ class OBJournalEntryRow extends StatelessWidget {
     required this.onEdit,
     this.subtitle,
     this.icon,
+    this.last = false,
   });
   final String title, value;
   final String? subtitle;
   final IconData? icon;
   final VoidCallback onEdit;
+  final bool last;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
+    return Container(
+      decoration: BoxDecoration(
+        border: last ? null : Border(bottom: BorderSide(color: g.line)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Container(
@@ -233,6 +238,7 @@ class OBJournalEntryRow extends StatelessWidget {
             icon: LucideIcons.pencil,
             label: '$title ändern',
             small: true,
+            plain: true,
             onTap: onEdit,
           ),
         ],
@@ -419,16 +425,19 @@ class OBPatternCard extends StatelessWidget {
     required this.have,
     required this.need,
     this.footer,
+    this.showFooter = true,
     this.loading = false,
     this.onRetry,
     this.partial = false,
     this.onOpen,
+    this.relation,
   });
   final String title, detail;
+  final Widget? relation;
   final int? have;
   final int? need;
   final String? footer;
-  final bool loading, partial;
+  final bool loading, partial, showFooter;
   final VoidCallback? onRetry;
   final VoidCallback? onOpen;
   @override
@@ -438,7 +447,7 @@ class OBPatternCard extends StatelessWidget {
     return InkWell(
       onTap: onOpen,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: kG3CardPadding,
         decoration: g.raised(radius: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -447,7 +456,9 @@ class OBPatternCard extends StatelessWidget {
               'MUSTER',
               domain: G3Domain.neutral,
               onTap: onOpen,
-              note: loading
+              note: relation != null && !partial
+                  ? null
+                  : loading
                   ? 'wird geladen'
                   : onRetry != null
                   ? 'nicht verfügbar'
@@ -457,7 +468,7 @@ class OBPatternCard extends StatelessWidget {
                   ? 'noch kein Vergleich'
                   : title,
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: relation == null ? 12 : 8),
             if (loading)
               Row(
                 children: [
@@ -485,7 +496,14 @@ class OBPatternCard extends StatelessWidget {
                   OBPillButton('Erneut', onPressed: onRetry),
                 ],
               )
-            else if (awaiting)
+            else if (relation != null) ...[
+              relation!,
+              const SizedBox(height: 4),
+              Text(
+                '$title · $have von $need Paaren',
+                style: g.t(14, 18, weight: FontWeight.w500),
+              ),
+            ] else if (awaiting)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -516,21 +534,22 @@ class OBPatternCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(detail, style: g.t(14, 19, color: g.ink2)),
             ],
-            if (!loading &&
+            if (relation == null &&
+                !loading &&
                 onRetry == null &&
                 have != null &&
                 need != null) ...[
               const SizedBox(height: 16),
               OBPatternProgress(have: have!.clamp(0, need!), need: need!),
             ],
-            if (!loading && onRetry == null) ...[
-              const SizedBox(height: 10),
+            if (showFooter && !loading && onRetry == null) ...[
+              SizedBox(height: relation == null ? 10 : 2),
               Text(
                 footer ??
                     (have == null || need == null
                         ? '—'
                         : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
-                style: g.t(13, 17, weight: FontWeight.w700),
+                style: g.t(13, 17, color: g.muted),
               ),
             ],
           ],

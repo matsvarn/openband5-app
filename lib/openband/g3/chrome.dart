@@ -4,6 +4,7 @@
 //
 // Visual keys follow Paper (40 pt); every tap target keeps 44 pt.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../ble/band_status_l10n.dart' show localizedBandStatus;
@@ -21,11 +22,16 @@ class _Hit extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget child;
   final double? width;
+  final Alignment alignment;
+  final double bottomPadding, height;
   const _Hit({
     required this.label,
     required this.onTap,
     required this.child,
     this.width,
+    this.alignment = Alignment.center,
+    this.bottomPadding = 0,
+    this.height = 44,
   });
   @override
   Widget build(BuildContext context) => Semantics(
@@ -39,8 +45,15 @@ class _Hit extends StatelessWidget {
       onTap: onTap,
       child: SizedBox(
         width: width,
-        height: 44,
-        child: Center(widthFactor: width == null ? 1 : null, child: child),
+        height: height,
+        child: Align(
+          alignment: alignment,
+          widthFactor: width == null ? 1 : null,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomPadding),
+            child: child,
+          ),
+        ),
       ),
     ),
   );
@@ -49,21 +62,33 @@ class _Hit extends StatelessWidget {
 /// Text link with the shared inline chevron and a 44 pt tap target.
 class OBLink extends StatelessWidget {
   final String label;
+  final bool bottomAligned;
   final String? semanticsLabel;
   final VoidCallback onTap;
   const OBLink(
     this.label, {
     super.key,
     this.semanticsLabel,
+    this.bottomAligned = true,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return _Hit(
+    final footer =
+        bottomAligned &&
+        context.findAncestorWidgetOfExactType<OBPanel>() != null;
+    final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 13;
+    final targetHeight = footer
+        ? (lineHeight + 20).clamp(44.0, double.infinity)
+        : 44.0;
+    final target = _Hit(
+      height: targetHeight,
+      bottomPadding: footer ? 18 : 0,
       label: semanticsLabel ?? label,
       onTap: onTap,
+      alignment: bottomAligned ? Alignment.bottomCenter : Alignment.center,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -73,6 +98,138 @@ class OBLink extends StatelessWidget {
         ],
       ),
     );
+    if (!footer) {
+      return target;
+    }
+    return _LinkTapArea(
+      overlap: targetHeight - (lineHeight + 2).clamp(18.0, double.infinity),
+      child: target,
+    );
+  }
+}
+
+// Footer layout stays at text height; its target uses the gap and bottom padding.
+class _LinkTapArea extends SingleChildRenderObjectWidget {
+  const _LinkTapArea({required this.overlap, required super.child});
+  final double overlap;
+  @override
+  RenderObject createRenderObject(BuildContext context) => _LinkTapBox(overlap);
+  @override
+  void updateRenderObject(BuildContext context, _LinkTapBox renderObject) =>
+      renderObject.overlap = overlap;
+}
+
+class _LinkTapBox extends RenderShiftedBox {
+  _LinkTapBox(this._overlap) : super(null);
+  double _overlap;
+  bool _panelHit = false;
+  set overlap(double value) {
+    if (value == _overlap) return;
+    _overlap = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    child!.layout(constraints, parentUsesSize: true);
+    size = constraints.constrain(
+      Size(child!.size.width, child!.size.height - _overlap),
+    );
+    (child!.parentData! as BoxParentData).offset = Offset(0, 18 - _overlap);
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!_panelHit && !size.contains(position)) return false;
+    final hit = result.addWithPaintOffset(
+      offset: Offset(0, 18 - _overlap),
+      position: position,
+      hitTest: (result, position) => child!.hitTest(result, position: position),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      context.paintChild(child!, offset + Offset(0, 18 - _overlap));
+}
+
+// Route footer targets through the card so rows do not clip the padding area.
+class _PanelLinkTargets extends SingleChildRenderObjectWidget {
+  const _PanelLinkTargets({required super.child});
+  @override
+  RenderObject createRenderObject(BuildContext context) => _PanelLinkBox();
+}
+
+class _PanelLinkBox extends RenderProxyBox {
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final links = <_LinkTapBox>[];
+    final content = <Rect>[];
+    bool collect(RenderObject object) {
+      if (object is _LinkTapBox) {
+        links.add(object);
+        return true;
+      }
+      var hasLink = false;
+      object.visitChildren((child) {
+        hasLink = collect(child) || hasLink;
+      });
+      if (!hasLink &&
+          object is RenderBox &&
+          (object is RenderParagraph ||
+              object is RenderImage ||
+              object is RenderCustomPaint ||
+              object is RenderDecoratedBox)) {
+        content.add(
+          MatrixUtils.transformRect(
+            object.getTransformTo(this),
+            Offset.zero & object.size,
+          ),
+        );
+      }
+      return hasLink;
+    }
+
+    child?.visitChildren(collect);
+    for (final link in links) {
+      final transform = link.getTransformTo(this);
+      final visual = MatrixUtils.transformRect(
+        transform,
+        Offset.zero & link.size,
+      );
+      var top = visual.top + 18 - link._overlap;
+      for (final rect in content) {
+        if (rect.bottom <= visual.top &&
+            rect.right > visual.left &&
+            rect.left < visual.right) {
+          if (rect.bottom > top) top = rect.bottom;
+        }
+      }
+      final target = Rect.fromLTRB(
+        visual.left,
+        top,
+        visual.right,
+        visual.bottom + 18,
+      );
+      if (target.contains(position) &&
+          result.addWithPaintTransform(
+            transform: transform,
+            position: position,
+            hitTest: (result, position) {
+              link._panelHit = true;
+              try {
+                return link.hitTest(result, position: position);
+              } finally {
+                link._panelHit = false;
+              }
+            },
+          )) {
+        return true;
+      }
+    }
+    return super.hitTestChildren(result, position: position);
   }
 }
 
@@ -183,13 +340,14 @@ class OBBandCapsule extends StatelessWidget {
 class OBIconButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool small;
+  final bool small, plain;
   final VoidCallback? onTap;
   const OBIconButton({
     super.key,
     required this.icon,
     required this.label,
     this.small = false,
+    this.plain = false,
     this.onTap,
   });
   @override
@@ -204,7 +362,7 @@ class OBIconButton extends StatelessWidget {
       child: Container(
         width: s,
         height: s,
-        decoration: g.raised(radius: s / 2),
+        decoration: plain ? null : g.raised(radius: s / 2),
         child: Icon(icon, size: small ? 16 : 18, color: g.ink),
       ),
     );
@@ -374,7 +532,7 @@ class OBPageHeader extends StatelessWidget {
         );
       case _Kind.detail:
         return Padding(
-          padding: const EdgeInsets.only(left: 16, right: 16, top: 2),
+          padding: const EdgeInsets.only(left: 16, right: 16),
           child: Row(
             children: [
               if (onBack == null)
@@ -526,18 +684,60 @@ class G3DetailPage extends StatelessWidget {
 
 enum OBSyncKind { live, partial, stale, never, past }
 
-/// "Daten bis 09:38 · Nacht lückenlos ›". The caller writes the sentence; the
-/// kind sets its weight and the hollow LED for a stale band.
+// Keep the 44 pt target while the line occupies only its visible rhythm.
+class _SyncTapArea extends SingleChildRenderObjectWidget {
+  const _SyncTapArea({required this.compact, required super.child});
+  final bool compact;
+  @override
+  RenderObject createRenderObject(BuildContext context) => _SyncTapBox(compact);
+  @override
+  void updateRenderObject(BuildContext context, _SyncTapBox renderObject) =>
+      renderObject.compact = compact;
+}
+
+class _SyncTapBox extends RenderShiftedBox {
+  _SyncTapBox(this._compact) : super(null);
+  bool _compact;
+  set compact(bool value) {
+    if (value == _compact) return;
+    _compact = value;
+    markNeedsLayout();
+  }
+
+  Offset get _offset => Offset(0, _compact ? -12 : 0);
+  @override
+  void performLayout() {
+    child!.layout(constraints, parentUsesSize: true);
+    size = constraints.constrain(
+      Size(child!.size.width, child!.size.height - (_compact ? 20 : 0)),
+    );
+    (child!.parentData! as BoxParentData).offset = _offset;
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!child!.hitTest(result, position: position - _offset)) return false;
+    result.add(BoxHitTestEntry(this, position));
+    return true;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      context.paintChild(child!, offset + _offset);
+}
+
+/// "Daten bis 09:38 · Nacht lückenlos ›" with a separate 44 pt tap target.
 class OBSyncState extends StatelessWidget {
   final OBSyncKind kind;
   final String text;
-  final bool synthetic;
+  final bool synthetic, compact;
   final VoidCallback? onTap;
   const OBSyncState({
     super.key,
     required this.kind,
     required this.text,
     this.synthetic = false,
+    this.compact = true,
     this.onTap,
   });
   OBSyncState.dataThrough({
@@ -546,74 +746,83 @@ class OBSyncState extends StatelessWidget {
     required DateTime? storedAt,
     required DateTime now,
     this.synthetic = false,
+    this.compact = true,
     this.onTap,
   }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final strong = kind == OBSyncKind.stale || kind == OBSyncKind.never;
-    return Semantics(
-      button: onTap != null,
-      label: text,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 24, right: 16, top: 8),
-            // The chevron is part of the text so both wrap as one unit; the
-            // synthetic tag (gallery/synthetic only) yields to its own line.
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (kind == OBSyncKind.stale) ...[
-                  // Centred on the first 16 pt text line.
-                  Container(
-                    width: 7,
-                    height: 7,
-                    margin: const EdgeInsets.only(top: 4.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: g.muted, width: 1.5),
+    return _SyncTapArea(
+      compact: compact,
+      child: Semantics(
+        button: onTap != null,
+        label: text,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 16,
+                top: compact ? 20 : 8,
+                bottom: compact ? 8 : 0,
+              ),
+              // The chevron is part of the text so both wrap as one unit; the
+              // synthetic tag (gallery/synthetic only) yields to its own line.
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (kind == OBSyncKind.stale) ...[
+                    // Centred on the first 16 pt text line.
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(top: 4.5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: g.muted, width: 1.5),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 2,
+                      children: [
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: text),
+                              if (onTap != null)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 6),
+                                    child: OBChevron(size: 12, color: g.muted),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: g.t(
+                            12,
+                            16,
+                            weight: strong ? FontWeight.w700 : FontWeight.w500,
+                            color: strong ? g.ink : g.muted,
+                          ),
+                        ),
+                        if (synthetic) const G3SyntheticLabel(),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
                 ],
-                Expanded(
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 2,
-                    children: [
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(text: text),
-                            if (onTap != null)
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: OBChevron(size: 12, color: g.muted),
-                                ),
-                              ),
-                          ],
-                        ),
-                        style: g.t(
-                          12,
-                          16,
-                          weight: strong ? FontWeight.w700 : FontWeight.w500,
-                          color: strong ? g.ink : g.muted,
-                        ),
-                      ),
-                      if (synthetic) const G3SyntheticLabel(),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -632,6 +841,7 @@ class OBSectionHeader extends StatelessWidget {
   final String? action;
   final VoidCallback? onAction;
   final Widget? trailing;
+  final double trailingTopPadding;
   final bool _insideDetailPage;
   const OBSectionHeader(
     this.text, {
@@ -641,6 +851,7 @@ class OBSectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.trailing,
+    this.trailingTopPadding = 10,
   }) : _insideDetailPage = false;
 
   /// Use in [G3DetailPage.children], which already have a 16 pt gutter.
@@ -652,6 +863,7 @@ class OBSectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.trailing,
+    this.trailingTopPadding = 10,
   }) : _insideDetailPage = true;
   @override
   Widget build(BuildContext context) {
@@ -661,64 +873,76 @@ class OBSectionHeader extends StatelessWidget {
         left: _insideDetailPage ? 8 : 24,
         right: _insideDetailPage ? 0 : 16,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 18, bottom: 8),
-              child: Row(
-                children: [
-                  if (glyph != null) ...[
-                    Icon(glyph, size: 16, color: g.domainHue(domain)),
-                    const SizedBox(width: 6),
-                  ],
-                  Flexible(
-                    child: Text(
-                      text,
-                      style: g.caps(
-                        color: domain == G3Domain.neutral
-                            ? g.muted
-                            : g.domainHue(domain),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (action != null && onAction != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: _Hit(
-                label: action!,
-                onTap: onAction,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.plus, size: 14, color: g.ink),
-                      const SizedBox(width: 2),
-                      Text(
-                        action!,
-                        style: g.t(13, 16, weight: FontWeight.w700),
-                      ),
-                    ],
+      child: trailing != null && action == null
+          ? Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _title(g),
+                Padding(
+                  padding: EdgeInsets.only(top: trailingTopPadding),
+                  child: Transform.translate(
+                    offset: Offset(0, 5 - trailingTopPadding / 2),
+                    child: trailing!,
                   ),
                 ),
-              ),
+              ],
             )
-          else if (action != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(action!, style: g.t(13, 16, color: g.muted)),
-            )
-          else if (trailing != null)
-            Padding(padding: const EdgeInsets.only(top: 10), child: trailing),
-        ],
-      ),
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: _title(g)),
+                if (action != null && onAction != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: _Hit(
+                      label: action!,
+                      onTap: onAction,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.plus, size: 14, color: g.ink),
+                            const SizedBox(width: 2),
+                            Text(
+                              action!,
+                              style: g.t(13, 16, weight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else if (action != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(action!, style: g.t(13, 16, color: g.muted)),
+                  ),
+              ],
+            ),
     );
   }
+
+  Widget _title(G3 g) => Padding(
+    padding: const EdgeInsets.only(top: 18, bottom: 8),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (glyph != null) ...[
+          Icon(glyph, size: 16, color: g.domainHue(domain)),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            style: g.caps(
+              color: domain == G3Domain.neutral ? g.muted : g.domainHue(domain),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class OBCardHeader extends StatelessWidget {
@@ -811,12 +1035,14 @@ class OBPanel extends StatelessWidget {
     this.padding,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding ?? kG3CardPadding,
-    decoration: G3
-        .of(context)
-        .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
-    child: child,
+  Widget build(BuildContext context) => _PanelLinkTargets(
+    child: Container(
+      padding: padding ?? kG3CardPadding,
+      decoration: G3
+          .of(context)
+          .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
+      child: child,
+    ),
   );
 }
 
@@ -1060,7 +1286,20 @@ class OBSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    Widget seg(int i) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final bold = MediaQuery.boldTextOf(context);
+    TextStyle style(int i) => DefaultTextStyle.of(context).style.merge(
+      g.t(
+        12,
+        14,
+        weight: bold || i == selected ? FontWeight.w700 : FontWeight.w500,
+        color: i == selected ? g.ink : (disabled.contains(i) ? g.gap : g.ink2),
+      ),
+    );
+    final lineHeight = scaler.scale(12) * 14 / 12;
+    final height = (lineHeight + 30).clamp(44.0, double.infinity);
+    final trackHeight = (lineHeight + 16).clamp(30.0, double.infinity);
+    Widget seg(int i, {bool expanded = false}) {
       final on = i == selected;
       final off = disabled.contains(i);
       final child = Container(
@@ -1068,17 +1307,9 @@ class OBSegmented extends StatelessWidget {
           horizontal: horizontalPadding,
           vertical: 5,
         ),
-        alignment: expand ? Alignment.center : null,
+        alignment: expanded ? Alignment.center : null,
         decoration: on ? g.raised(radius: 12) : null,
-        child: Text(
-          items[i],
-          style: g.t(
-            12,
-            14,
-            weight: on ? FontWeight.w700 : FontWeight.w500,
-            color: on ? g.ink : (off ? g.gap : g.ink2),
-          ),
-        ),
+        child: Text(items[i], style: style(i)),
       );
       final tap = Semantics(
         button: true,
@@ -1102,29 +1333,25 @@ class OBSegmented extends StatelessWidget {
           ),
         ),
       );
-      return expand ? Expanded(child: tap) : tap;
+      return expanded ? Expanded(child: tap) : tap;
     }
 
-    if (!expand) {
-      final widths = <double>[];
-      for (var i = 0; i < items.length; i++) {
-        final on = i == selected;
-        final off = disabled.contains(i);
-        final style = g.t(
-          12,
-          14,
-          weight: on ? FontWeight.w700 : FontWeight.w500,
-          color: on ? g.ink : (off ? g.gap : g.ink2),
-        );
-        final painter = TextPainter(
-          text: TextSpan(text: items[i], style: style),
-          textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
-        )..layout();
-        widths.add(painter.width + 2 * horizontalPadding);
-      }
+    final widths = <double>[];
+    for (var i = 0; i < items.length; i++) {
+      final textStyle = style(i);
+      final painter = TextPainter(
+        text: TextSpan(text: items[i], style: textStyle),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+      )..layout();
+      widths.add(
+        (painter.width + 2 * horizontalPadding).clamp(44.0, double.infinity),
+      );
+      painter.dispose();
+    }
+    Widget natural() {
       final visualWidth = widths.fold<double>(0, (sum, item) => sum + item);
-      final width = visualWidth < 44 ? 44.0 : visualWidth;
+      final width = visualWidth + 6;
       var left = 0.0;
       final visuals = <Widget>[];
       final targets = <Widget>[];
@@ -1143,28 +1370,16 @@ class OBSegmented extends StatelessWidget {
                 vertical: 5,
               ),
               decoration: on ? g.raised(radius: 12) : null,
-              child: Text(
-                items[i],
-                style: g.t(
-                  12,
-                  14,
-                  weight: on ? FontWeight.w700 : FontWeight.w500,
-                  color: on ? g.ink : (off ? g.gap : g.ink2),
-                ),
-              ),
+              child: Text(items[i], style: style(i)),
             ),
           ),
         );
-        final targetWidth = itemWidth < 44 ? 44.0 : itemWidth;
         targets.add(
           Positioned(
-            left: (left + (itemWidth - targetWidth) / 2).clamp(
-              0.0,
-              (width - targetWidth).clamp(0.0, width),
-            ),
+            left: left + 3,
             top: 0,
-            width: targetWidth,
-            height: 44,
+            width: itemWidth,
+            height: height,
             child: Semantics(
               button: true,
               selected: on,
@@ -1179,42 +1394,69 @@ class OBSegmented extends StatelessWidget {
         );
         left += itemWidth;
       }
-      return SizedBox(
-        width: width,
-        height: 44,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 7,
-              height: 30,
-              child: DecoratedBox(decoration: g.pressed(radius: 15)),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (width > constraints.maxWidth) {
+            return DecoratedBox(
+              decoration: g.pressed(radius: 15),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Wrap(
+                  children: [for (var i = 0; i < items.length; i++) seg(i)],
+                ),
+              ),
+            );
+          }
+          return SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 7,
+                  height: trackHeight,
+                  child: DecoratedBox(decoration: g.pressed(radius: 15)),
+                ),
+                ExcludeSemantics(child: Stack(children: visuals)),
+                ...targets,
+              ],
             ),
-            ExcludeSemantics(child: Stack(children: visuals)),
-            ...targets,
-          ],
-        ),
+          );
+        },
       );
     }
 
-    return SizedBox(
-      height: 44,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 7,
-            height: 30,
-            child: DecoratedBox(decoration: g.pressed(radius: 15)),
+    if (!expand) return natural();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (widths.any(
+          (width) => width > constraints.maxWidth / items.length,
+        )) {
+          return natural();
+        }
+        return SizedBox(
+          height: height,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 7,
+                height: trackHeight,
+                child: DecoratedBox(decoration: g.pressed(radius: 15)),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  for (var i = 0; i < items.length; i++) seg(i, expanded: true),
+                ],
+              ),
+            ],
           ),
-          Row(
-            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-            children: [for (var i = 0; i < items.length; i++) seg(i)],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

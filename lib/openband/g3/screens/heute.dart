@@ -478,7 +478,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         ),
       ],
       if (day != null || never) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _pad(_lead(day, isToday, never, stale)),
       ],
       if (never) ...[
@@ -670,6 +670,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             ].join(' · '),
           );
     return OBSyncState(
+      compact: true,
       kind: kind,
       text: text,
       synthetic: synthetic,
@@ -883,10 +884,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             : armed
             ? OBNoteState.reminded
             : OBNoteState.action,
-        headline: note.headline.replaceAll(
-          'Heute früher ins Bett.',
-          'Früher ins Bett.',
-        ),
+        headline: note.headline,
         reason: note.reason,
         actionTitle: armed
             ? 'Erinnerung um ${g3Clock(action.reminderAt)}'
@@ -1214,6 +1212,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             ? null
             : () => widget.onJournalDay!(last.targetDay),
         onLater: () => setState(() => _checkInLater = true),
+        inlineLater: q.kind == G3CheckInKind.yesNo,
+        footerLabel: q.kind == G3CheckInKind.rating
+            ? '1 ${copy.low} · ${(q.field?.max ?? 5).round()} ${copy.high}'
+            : null,
         answer: answer,
       );
       final field = q.field;
@@ -1227,6 +1229,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         G3CheckInKind.rating => ask(
           OBRatingKeys(
             question: question,
+            showLegend: false,
             low: copy.low,
             high: copy.high,
             max: (field?.max ?? 5).round(),
@@ -1376,7 +1379,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         return OBWeekBars(
           domain: G3Domain.recovery,
           bars: bars,
-          max: 111,
+          max: 100,
           band: range == null ? null : (range.low, range.high),
           emptyReason: empty
               ? (need != null && left != null
@@ -1387,6 +1390,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             if (range != null)
               G3Legend.band(
                 'dein Normalbereich ${_int(range.low)}–${_int(range.high)}',
+                domain: G3Domain.recovery,
               )
             else
               const G3Legend.text('noch kein Normalbereich'),

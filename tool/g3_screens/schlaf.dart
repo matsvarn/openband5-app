@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
@@ -18,6 +19,47 @@ import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
 import 'env.dart';
+
+List<NightSegment> _g31NightSegments(DateTime onset) {
+  const stages = <(NightStage, int)>[
+    (NightStage.awake, 5),
+    (NightStage.light, 20),
+    (NightStage.deep, 35),
+    (NightStage.light, 40),
+    (NightStage.rem, 15),
+    (NightStage.light, 30),
+    (NightStage.deep, 25),
+    (NightStage.light, 35),
+    (NightStage.awake, 4),
+    (NightStage.rem, 25),
+    (NightStage.light, 40),
+    (NightStage.deep, 8),
+    (NightStage.light, 30),
+    (NightStage.rem, 30),
+    (NightStage.awake, 6),
+    (NightStage.light, 32),
+    (NightStage.rem, 28),
+    (NightStage.light, 20),
+    (NightStage.rem, 25),
+    (NightStage.awake, 11),
+  ];
+  final out = <NightSegment>[];
+  var minute = 0;
+  for (final (stage, length) in stages) {
+    out.add(
+      NightSegment(
+        onset.add(Duration(minutes: minute)),
+        onset.add(Duration(minutes: minute + length)),
+        stage,
+      ),
+    );
+    minute += length;
+  }
+  return out;
+}
+
+G3ScreenBuilder g31SleepBuilder(String legacyName) =>
+    (env) => _PaperSleepFrame(legacyName, env, g31: true);
 
 final Map<String, G3ScreenBuilder> schlafScreens = {
   for (final name in const [
@@ -64,9 +106,10 @@ bool _fixtureOnly(String name) =>
     name.contains('neue-bausteine');
 
 class _PaperRepo extends SyntheticOpenBandRepository {
-  _PaperRepo(this.state, Map summary, Map detail)
+  _PaperRepo(this.state, Map summary, Map detail, {this.g31 = false})
     : super.fromMaps(summary, detail, scenario: SyntheticScenario.g3Sample);
   final String state;
+  final bool g31;
   static const selected = '2026-09-29';
   static DateTime at(int day, int hour, int minute) =>
       DateTime(2026, 9, day, hour, minute);
@@ -143,7 +186,14 @@ class _PaperRepo extends SyntheticOpenBandRepository {
       final ripple = i == lowMinute
           ? 0.0
           : math.sin(i * .13) * 1.1 + math.sin(i * .47) * .5;
-      readings.add(NightSignalReading(time, math.max(49, trend + ripple)));
+      readings.add(
+        NightSignalReading(
+          time,
+          g31 && i != lowMinute
+              ? math.max(49.1, trend + ripple)
+              : math.max(49, trend + ripple),
+        ),
+      );
     }
     return NightSignals(
       day: day,
@@ -201,19 +251,21 @@ class _PaperRepo extends SyntheticOpenBandRepository {
     final corrected = state == 'corrected';
     final start = at(28, corrected ? 22 : 23, corrected ? 40 : 10);
     final end = at(29, 6, 54);
-    final segments = <NightSegment>[
-      NightSegment(start, at(29, 0, 10), NightStage.light),
-      NightSegment(at(29, 0, 10), at(29, 1, 10), NightStage.deep),
-      NightSegment(at(29, 1, 10), at(29, 2, 1), NightStage.light),
-      NightSegment(
-        at(29, 2, 1),
-        at(29, 2, 49),
-        partial ? null : NightStage.rem,
-      ),
-      NightSegment(at(29, 2, 49), at(29, 4, 30), NightStage.light),
-      NightSegment(at(29, 4, 30), at(29, 5, 25), NightStage.rem),
-      NightSegment(at(29, 5, 25), end, NightStage.light),
-    ];
+    final segments = g31 && !corrected && !partial
+        ? _g31NightSegments(start)
+        : <NightSegment>[
+            NightSegment(start, at(29, 0, 10), NightStage.light),
+            NightSegment(at(29, 0, 10), at(29, 1, 10), NightStage.deep),
+            NightSegment(at(29, 1, 10), at(29, 2, 1), NightStage.light),
+            NightSegment(
+              at(29, 2, 1),
+              at(29, 2, 49),
+              partial ? null : NightStage.rem,
+            ),
+            NightSegment(at(29, 2, 49), at(29, 4, 30), NightStage.light),
+            NightSegment(at(29, 4, 30), at(29, 5, 25), NightStage.rem),
+            NightSegment(at(29, 5, 25), end, NightStage.light),
+          ];
     return OpenBandDay(
       day: day,
       synthetic: true,
@@ -256,6 +308,17 @@ class _PaperRepo extends SyntheticOpenBandRepository {
             )
           : null,
     );
+  }
+
+  @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    if (g31 && metric == G3Metric.rhr) {
+      return const G3Baseline(
+        BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(52, 58, 53),
+      );
+    }
+    return super.readPersonalRange(metric, day);
   }
 
   @override
@@ -325,9 +388,10 @@ class _PaperRepo extends SyntheticOpenBandRepository {
 }
 
 class _PaperSleepFrame extends StatefulWidget {
-  const _PaperSleepFrame(this.name, this.env);
+  const _PaperSleepFrame(this.name, this.env, {this.g31 = false});
   final String name;
   final G3Env env;
+  final bool g31;
   @override
   State<_PaperSleepFrame> createState() => _PaperSleepFrameState();
 }
@@ -386,7 +450,7 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
                 ).readAsStringSync(),
               )
               as Map;
-      return _PaperRepo(state, summary, detail);
+      return _PaperRepo(state, summary, detail, g31: widget.g31);
     });
     controller = OpenBandController(
       repository: repo,
@@ -396,7 +460,7 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
         () => BandSnapshot(
           connection: BandConnection.connected,
           batteryPercent: 64,
-          latestStoredAt: DateTime(2026, 9, 29, 9, 37),
+          latestStoredAt: DateTime(2026, 9, 29, 9, widget.g31 ? 38 : 37),
         ),
       ),
     );
@@ -458,7 +522,12 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
   Widget build(BuildContext context) {
     final name = widget.name;
     final content = name.contains('nachtverlauf')
-        ? G3SleepNightSignals(repository: repo, day: controller.selectedDay)
+        ? G3SleepNightSignals(
+            repository: repo,
+            day: controller.selectedDay,
+            storedAt: controller.band.latestStoredAt,
+            now: controller.now,
+          )
         : name.contains('regelmaessigkeit')
         ? G3SleepRegularity(repository: repo, day: controller.selectedDay)
         : name.contains('schlafschuld')
@@ -496,6 +565,9 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
             asTab: true,
             scrollController: scroll,
             reminder: reminder,
+            onBand: widget.g31 ? () {} : null,
+            onProfile: widget.g31 ? () {} : null,
+            onDataStatus: widget.g31 ? () {} : null,
           );
     final g = G3.of(context);
     return Stack(
@@ -509,7 +581,18 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
         Positioned(
           right: 30,
           top: 19,
-          child: Text('▮▮  ◕  ▰', style: g.t(14, 18, weight: FontWeight.w700)),
+          child: widget.g31
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(LucideIcons.signal, size: 16, color: g.ink),
+                    const SizedBox(width: 7),
+                    Icon(LucideIcons.wifi, size: 17, color: g.ink),
+                    const SizedBox(width: 7),
+                    Icon(LucideIcons.batteryFull, size: 20, color: g.ink),
+                  ],
+                )
+              : Text('▮▮  ◕  ▰', style: g.t(14, 18, weight: FontWeight.w700)),
         ),
         if (!name.contains('schlafzeiten') &&
             !name.contains('schlafziel') &&

@@ -4,10 +4,11 @@
 // Painters sit behind RepaintBoundary. Gaps stay gaps: a null value or a
 // listed gap is drawn hollow and dashed, never interpolated.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import 'chrome.dart' show OBLink, OBSegmented;
+import 'chrome.dart' show OBLink, OBPanel, OBSegmented;
 import 'g3_theme.dart';
-import 'metrics.dart' show OBMissingValue;
+import 'metrics.dart' show OBMissingValue, G3LabelRow;
 
 void _dash(
   Canvas canvas,
@@ -28,11 +29,21 @@ void _dash(
   }
 }
 
+IconData? _domainGlyph(G3Domain domain) => switch (domain) {
+  G3Domain.recovery => LucideIcons.heartPulse,
+  G3Domain.sleep => LucideIcons.moon,
+  G3Domain.load => LucideIcons.flame,
+  G3Domain.neutral => null,
+};
+
 // ---------------------------------------------------------------------------
 // Heart-rate trace
 
 class OBHrTrace extends StatelessWidget {
   final G3Domain domain;
+  final IconData? glyph;
+  final double plotHeight;
+  final bool showSignalStrip, showExplanation, showZoneBands, showZoneLabels;
 
   /// (minute since start, bpm) samples.
   final List<(double, double)> samples;
@@ -56,6 +67,12 @@ class OBHrTrace extends StatelessWidget {
   const OBHrTrace({
     super.key,
     this.domain = G3Domain.neutral,
+    this.glyph,
+    this.plotHeight = 120,
+    this.showSignalStrip = false,
+    this.showExplanation = false,
+    this.showZoneBands = false,
+    this.showZoneLabels = false,
     required this.samples,
     required this.duration,
     this.gaps = const [],
@@ -74,8 +91,7 @@ class OBHrTrace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    const w = 291.0, h = 150.0;
-    double x(double t) => t / duration * w;
+    final h = plotHeight;
     double y(double v) => h * (max - v) / (max - min);
     final peakAt = hrTraceVisiblePeak(samples, gaps);
     Widget stat(String k, String? v) => Row(
@@ -99,173 +115,193 @@ class OBHrTrace extends StatelessWidget {
     return Container(
       padding: kG3CardPadding,
       decoration: g.raised(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth - (showZoneLabels ? 24 : 0);
+          double x(double t) => t / duration * w;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('HERZFREQUENZ', style: g.caps()),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '/min · 30-s-Mittel',
-                  textAlign: TextAlign.right,
-                  style: g.t(13, 16, color: g.muted),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: G3LabelRow(
+                      'HERZFREQUENZ',
+                      domain: domain,
+                      glyph: glyph ?? _domainGlyph(domain),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '/min',
+                    textAlign: TextAlign.right,
+                    style: g.t(13, 16, color: g.muted),
+                  ),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              stat('Ø', average),
-              const SizedBox(width: 18),
-              stat('max', peak),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: h,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  width: w,
-                  height: h,
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _HrPainter(
-                        samples,
-                        duration,
-                        gaps,
-                        min,
-                        max,
-                        zoneEdges,
-                        peakAt,
-                        g,
-                        domain,
-                      ),
-                    ),
-                  ),
-                ),
-                for (var i = 0; i < zoneEdges.length - 1; i++)
-                  if (zoneEdges[i + 1] > min && zoneEdges[i] < max)
-                    Positioned(
-                      left: w + 8,
-                      top:
-                          (y(zoneEdges[i + 1].clamp(min, max)) +
-                                  y(zoneEdges[i].clamp(min, max))) /
-                              2 -
-                          7,
-                      child: Text(
-                        'Z${i + 1}',
-                        style: g.t(11, 14, color: g.muted),
-                      ),
-                    ),
-                for (final (_, g1) in gaps)
-                  Positioned(
-                    left: x(g1) + 5,
-                    top: h - 18,
-                    child: Text(
-                      gapLabel,
-                      style: g.t(
-                        11,
-                        14,
-                        weight: FontWeight.w500,
-                        color: g.ink2,
-                      ),
-                    ),
-                  ),
-                if (peakAt != null && peak != null)
-                  Positioned(
-                    left: x(peakAt.$1) + 7,
-                    top: y(peakAt.$2) - 3,
-                    child: Text(
-                      g3Number(peakAt.$2),
-                      style: g.t(11, 14, weight: FontWeight.w700),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            width: w,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                for (final t in [axis.$1, axis.$2, axis.$3])
-                  Text(t, style: g.t(12, 16, color: g.muted)),
-              ],
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: g.line)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  stat('Ø', average),
+                  const SizedBox(width: 18),
+                  stat('max', peak),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: h,
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Expanded(
-                      child: Text(
-                        'Optisches Signal verwertbar',
-                        style: g.t(
-                          13,
-                          16,
-                          weight: FontWeight.w500,
-                          color: g.ink2,
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      width: w,
+                      height: h,
+                      child: RepaintBoundary(
+                        child: CustomPaint(
+                          painter: _HrPainter(
+                            samples,
+                            duration,
+                            gaps,
+                            min,
+                            max,
+                            zoneEdges,
+                            peakAt,
+                            g,
+                            domain,
+                            showZoneBands,
+                          ),
                         ),
                       ),
                     ),
-                    if (signalShare == null)
-                      const OBMissingValue(size: 13, lineHeight: 16)
-                    else
-                      Text(
-                        signalShare!,
-                        style: g.t(13, 16, weight: FontWeight.w700),
+                    if (showZoneLabels)
+                      for (var i = 0; i < zoneEdges.length - 1; i++)
+                        if (zoneEdges[i + 1] > min && zoneEdges[i] < max)
+                          Positioned(
+                            left: w + 8,
+                            top:
+                                (y(zoneEdges[i + 1].clamp(min, max)) +
+                                        y(zoneEdges[i].clamp(min, max))) /
+                                    2 -
+                                7,
+                            child: Text(
+                              'Z${i + 1}',
+                              style: g.t(11, 14, color: g.muted),
+                            ),
+                          ),
+                    for (final (_, g1) in gaps)
+                      Positioned(
+                        left: x(g1) + 5,
+                        top: h - 18,
+                        child: Text(
+                          gapLabel,
+                          style: g.t(
+                            11,
+                            14,
+                            weight: FontWeight.w500,
+                            color: g.ink2,
+                          ),
+                        ),
+                      ),
+                    if (peakAt != null && peak != null)
+                      Positioned(
+                        left: x(peakAt.$1) + 7,
+                        top: y(peakAt.$2) - 3,
+                        child: Text(
+                          g3Number(peakAt.$2),
+                          style: g.t(11, 14, weight: FontWeight.w700),
+                        ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 5),
-                SizedBox(
-                  height: 6,
-                  child: Row(
-                    children: [
-                      for (final (i, (flex, gap))
-                          in signalSegments.indexed) ...[
-                        if (i > 0) const SizedBox(width: 2),
-                        Expanded(
-                          flex: flex,
-                          child: gap
-                              ? const G3Dashed(radius: 0)
-                              : Container(
-                                  decoration: BoxDecoration(
-                                    color: g.ink,
-                                    borderRadius: BorderRadius.horizontal(
-                                      left: Radius.circular(i == 0 ? 3 : 0),
-                                      right: Radius.circular(
-                                        i == signalSegments.length - 1 ? 3 : 0,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                      ],
-                    ],
-                  ),
+              ),
+              const SizedBox(height: 6),
+              SizedBox(
+                width: w,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    for (final t in [axis.$1, axis.$2, axis.$3])
+                      Text(t, style: g.t(12, 16, color: g.muted)),
+                  ],
                 ),
-                const SizedBox(height: 5),
-                Text(signalNote, style: g.t(12, 16, color: g.muted)),
-              ],
-            ),
-          ),
-        ],
+              ),
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: 12),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: g.line)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Optisches Signal verwertbar',
+                            style: g.t(
+                              13,
+                              16,
+                              weight: FontWeight.w500,
+                              color: g.ink2,
+                            ),
+                          ),
+                        ),
+                        if (signalShare == null)
+                          const OBMissingValue(size: 13, lineHeight: 16)
+                        else
+                          Text(
+                            signalShare!,
+                            style: g.t(13, 16, weight: FontWeight.w700),
+                          ),
+                      ],
+                    ),
+                    if (showSignalStrip && signalSegments.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      SizedBox(
+                        height: 6,
+                        child: Row(
+                          children: [
+                            for (final (i, (flex, gap))
+                                in signalSegments.indexed) ...[
+                              if (i > 0) const SizedBox(width: 2),
+                              Expanded(
+                                flex: flex,
+                                child: gap
+                                    ? const G3Dashed(radius: 0)
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          color: g.ink,
+                                          borderRadius: BorderRadius.horizontal(
+                                            left: Radius.circular(
+                                              i == 0 ? 3 : 0,
+                                            ),
+                                            right: Radius.circular(
+                                              i == signalSegments.length - 1
+                                                  ? 3
+                                                  : 0,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (showExplanation && signalNote.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(signalNote, style: g.t(12, 16, color: g.muted)),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -315,6 +351,7 @@ class _HrPainter extends CustomPainter {
   final List<double> edges;
   final (double, double)? peak;
   final G3 g;
+  final bool showZoneBands;
   _HrPainter(
     this.samples,
     this.duration,
@@ -325,19 +362,31 @@ class _HrPainter extends CustomPainter {
     this.peak,
     this.g,
     this.domain,
+    this.showZoneBands,
   );
 
   @override
   void paint(Canvas canvas, Size size) {
     double x(double t) => t / duration * size.width;
     double y(double v) => size.height * (max - v) / (max - min);
-    for (var i = 0; i < edges.length - 1 && i < 5; i++) {
-      final lo = edges[i].clamp(min, max), hi = edges[i + 1].clamp(min, max);
-      if (hi <= lo) continue;
-      canvas.drawRect(
-        Rect.fromLTRB(0, y(hi), size.width, y(lo)),
-        Paint()..color = g.zoneTintsFor(domain)[i],
-      );
+    if (showZoneBands) {
+      for (var i = 0; i < edges.length - 1 && i < 5; i++) {
+        final lo = edges[i].clamp(min, max), hi = edges[i + 1].clamp(min, max);
+        if (hi <= lo) continue;
+        canvas.drawRect(
+          Rect.fromLTRB(0, y(hi), size.width, y(lo)),
+          Paint()..color = g.zoneTintsFor(domain)[i],
+        );
+      }
+    }
+    if (!showZoneBands) {
+      for (final level in [0.0, size.height / 2, size.height]) {
+        canvas.drawLine(
+          Offset(0, level),
+          Offset(size.width, level),
+          Paint()..color = g.line,
+        );
+      }
     }
     for (final (g0, g1) in gaps) {
       canvas.drawRect(
@@ -393,7 +442,8 @@ class _HrPainter extends CustomPainter {
       old.samples != samples ||
       old.gaps != gaps ||
       old.g.dark != g.dark ||
-      old.domain != domain;
+      old.domain != domain ||
+      old.showZoneBands != showZoneBands;
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +460,8 @@ class OBZone {
 
 class OBZoneRows extends StatelessWidget {
   final G3Domain domain;
+  final IconData? glyph;
+  final List<String>? ranges;
   final List<OBZone> zones;
 
   /// Unit of the ranges ("% HFmax") and the stored zone source
@@ -419,6 +471,8 @@ class OBZoneRows extends StatelessWidget {
   const OBZoneRows({
     super.key,
     this.domain = G3Domain.neutral,
+    this.glyph,
+    this.ranges,
     required this.zones,
     this.basis = '% HFmax',
     required this.source,
@@ -430,97 +484,115 @@ class OBZoneRows extends StatelessWidget {
     final longest = zones
         .map((z) => z.minutes ?? 0)
         .fold(1, (a, b) => a > b ? a : b);
-    return Container(
-      padding: kG3CardPadding,
-      decoration: g.raised(),
+    return OBPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Text('ZEIT IN ZONEN', style: g.caps()),
-              const Spacer(),
+              Expanded(
+                child: G3LabelRow(
+                  'ZEIT IN ZONEN',
+                  domain: domain,
+                  glyph: glyph ?? _domainGlyph(domain),
+                ),
+              ),
               Text(basis, style: g.t(13, 16, color: g.muted)),
             ],
           ),
           const SizedBox(height: 8),
-          for (final z in zones)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 30),
-              child: Row(
+          Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    width: 92,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 28,
-                          child: Text(
-                            'Z${z.index}',
-                            style: g.t(14, 18, weight: FontWeight.w700),
+                  for (final (i, z) in zones.indexed)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 26),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: ranges == null ? 28 : 100,
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 28,
+                                  child: Text(
+                                    'Z${z.index}',
+                                    style: g.t(14, 18, weight: FontWeight.w700),
+                                  ),
+                                ),
+                                if (ranges != null && i < ranges!.length)
+                                  Flexible(
+                                    child: Text(
+                                      ranges![i],
+                                      style: g.t(12, 16, color: g.muted),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            z.range,
-                            style: g.t(12, 16, color: g.muted),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(5),
+                              child: Container(
+                                height: 10,
+                                color: g.track,
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: (z.minutes ?? 0) / longest,
+                                  heightFactor: 1,
+                                  child: ColoredBox(
+                                    color: g.zonesFor(domain)[z.index - 1],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FractionallySizedBox(
-                        widthFactor: (z.minutes ?? 0) / longest,
-                        child: Container(
-                          height: 14,
-                          decoration: BoxDecoration(
-                            color: g.zonesFor(domain)[z.index - 1],
-                            borderRadius: BorderRadius.circular(3),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              z.minutes == null ? '—' : '${z.minutes} Min.',
+                              textAlign: TextAlign.right,
+                              style: g.t(
+                                14,
+                                18,
+                                weight: FontWeight.w700,
+                                color: z.minutes == null ? g.gap : g.ink,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 52,
-                    child: Text(
-                      z.minutes == null ? '—' : '${z.minutes} Min.',
-                      textAlign: TextAlign.right,
-                      style: g.t(
-                        14,
-                        18,
-                        weight: FontWeight.w700,
-                        color: z.minutes == null ? g.gap : g.ink,
+                  if (source.isNotEmpty || onBasis != null) ...[
+                    const SizedBox(height: 8),
+                    Divider(height: 1, color: g.line),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: EdgeInsets.only(
+                        right: onBasis == null
+                            ? 0
+                            : 88 * MediaQuery.textScalerOf(context).scale(1),
                       ),
+                      child: Text(source, style: g.t(12, 16, color: g.muted)),
                     ),
-                  ),
+                  ],
                 ],
               ),
-            ),
-          Container(
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.only(top: 12),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: g.line)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(source, style: g.t(12, 16, color: g.muted)),
-                ),
-                if (onBasis != null)
-                  OBLink(
+              if (onBasis != null)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: OBLink(
                     'Grundlage',
                     semanticsLabel: 'Grundlage der Zonen',
                     onTap: onBasis!,
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         ],
       ),
@@ -539,6 +611,12 @@ enum OBTrendMark { none, better, worse, outside }
 
 class OBTrendChart extends StatelessWidget {
   final G3Domain domain;
+  final IconData? glyph;
+  final String? headerNote;
+  final Widget? footer;
+  final bool showPeriod, compactGaps;
+  final double? median;
+  final double plotHeight;
   final String title;
   final OBTrendPeriod period;
   final List<double?> values;
@@ -556,6 +634,13 @@ class OBTrendChart extends StatelessWidget {
   const OBTrendChart({
     super.key,
     this.domain = G3Domain.neutral,
+    this.glyph,
+    this.headerNote,
+    this.footer,
+    this.showPeriod = true,
+    this.compactGaps = true,
+    this.median,
+    this.plotHeight = 150,
     required this.title,
     required this.period,
     required this.values,
@@ -575,7 +660,7 @@ class OBTrendChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    const h = 150.0;
+    final h = plotHeight;
     double y(double v) => h - (v - min) / (max - min) * h;
     return Container(
       padding: kG3CardPadding,
@@ -584,7 +669,7 @@ class OBTrendChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Transform.translate(
-            offset: const Offset(0, -7),
+            offset: Offset(0, showPeriod ? -7 : 0),
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final narrow = constraints.maxWidth < 300;
@@ -597,18 +682,22 @@ class OBTrendChart extends StatelessWidget {
                       ? null
                       : (i) => onPeriod!(OBTrendPeriod.values[i]),
                 );
+                final label = G3LabelRow(
+                  title,
+                  domain: domain,
+                  glyph: glyph ?? _domainGlyph(domain),
+                  note: headerNote,
+                );
+                if (!showPeriod) return label;
                 if (narrow) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(title, style: g.caps()),
-                      selector,
-                    ],
+                    children: [label, selector],
                   );
                 }
                 return Row(
                   children: [
-                    Expanded(child: Text(title, style: g.caps())),
+                    Expanded(child: label),
                     selector,
                   ],
                 );
@@ -617,7 +706,7 @@ class OBTrendChart extends StatelessWidget {
           ),
           const SizedBox(height: 0),
           SizedBox(
-            height: 152,
+            height: h + 2,
             child: LayoutBuilder(
               builder: (context, constraints) => Stack(
                 clipBehavior: Clip.none,
@@ -696,21 +785,28 @@ class OBTrendChart extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: g.line)),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    footLeft ?? '',
-                    style: g.t(12, 16, color: g.ink2),
-                  ),
+            child:
+                footer ??
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        footLeft ?? '',
+                        style: g.t(12, 16, color: g.ink2),
+                      ),
+                    ),
+                    if (footRight != null)
+                      Text(
+                        footRight!,
+                        style: g.t(
+                          12,
+                          16,
+                          weight: FontWeight.w500,
+                          color: g.muted,
+                        ),
+                      ),
+                  ],
                 ),
-                if (footRight != null)
-                  Text(
-                    footRight!,
-                    style: g.t(12, 16, weight: FontWeight.w500, color: g.muted),
-                  ),
-              ],
-            ),
           ),
         ],
       ),
@@ -751,6 +847,16 @@ class _TrendPainter extends CustomPainter {
       );
     }
     canvas.drawLine(Offset(0, h), Offset(w, h), Paint()..color = g.hairline);
+    if (c.median != null) {
+      _dash(
+        canvas,
+        Path()
+          ..moveTo(0, y(c.median!))
+          ..lineTo(w, y(c.median!)),
+        g.muted,
+        width: 1,
+      );
+    }
     if (c.zero != null) {
       _dash(
         canvas,
@@ -772,9 +878,9 @@ class _TrendPainter extends CustomPainter {
             canvas,
             Path()..addRRect(
               RRect.fromLTRBR(
-                cx - 12,
-                h - 36,
-                cx + 12,
+                cx - (c.compactGaps ? 4 : 12),
+                h - (c.compactGaps ? 10 : 36),
+                cx + (c.compactGaps ? 4 : 12),
                 h - 1,
                 const Radius.circular(5),
               ),
@@ -807,14 +913,19 @@ class _TrendPainter extends CustomPainter {
         }
         final x0 = ((i - .5) * step).clamp(0.0, w),
             x1 = ((j - .5) * step).clamp(0.0, w);
-        canvas.drawRect(Rect.fromLTRB(x0, 0, x1, h), Paint()..color = g.canvas);
+        if (!c.compactGaps) {
+          canvas.drawRect(
+            Rect.fromLTRB(x0, 0, x1, h),
+            Paint()..color = g.canvas,
+          );
+        }
         _dash(
           canvas,
           Path()..addRRect(
             RRect.fromLTRBR(
-              x0 + .75,
-              .75,
-              x1 - .75,
+              c.compactGaps ? (x0 + x1) / 2 - 4 : x0 + .75,
+              c.compactGaps ? h - 10 : .75,
+              c.compactGaps ? (x0 + x1) / 2 + 4 : x1 - .75,
               h - .75,
               const Radius.circular(3),
             ),
@@ -863,23 +974,36 @@ class _TrendPainter extends CustomPainter {
           Paint()..color = mark,
         );
       } else if (ring || c.sparse || c.period == OBTrendPeriod.d30) {
-        final r = ring ? 4.0 : (c.sparse ? 3.2 : 2.6);
+        final r = ring ? 4.0 : (c.sparse ? 3.2 : 2.0);
         canvas
-          ..drawCircle(o, r, Paint()..color = g.canvas)
+          ..drawCircle(
+            o,
+            r,
+            Paint()
+              ..color = ring || c.sparse ? g.canvas : g.domainBar(c.domain),
+          )
           ..drawCircle(
             o,
             r,
             Paint()
               ..color = g.domainHue(c.domain)
               ..style = PaintingStyle.stroke
-              ..strokeWidth = ring ? 2 : 1.5,
+              ..strokeWidth = ring ? 2 : .8,
           );
       }
     }
     if (_value(n - 1) case final last?) {
       final o = Offset(w, y(last));
       canvas
-        ..drawCircle(o, 5.5, Paint()..color = g.canvas)
+        ..drawCircle(o, 6.5, Paint()..color = g.canvas)
+        ..drawCircle(
+          o,
+          6.5,
+          Paint()
+            ..color = (_mark(n - 1) ?? g.domainHue(c.domain))
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        )
         ..drawCircle(
           o,
           4.5,

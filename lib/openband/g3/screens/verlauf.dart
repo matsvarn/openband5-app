@@ -11,6 +11,7 @@ import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../charts.dart';
 import '../chrome.dart' as chrome;
 import '../count_copy.dart';
+import '../day.dart' show G3Legend;
 import '../g3_format.dart';
 import '../g3_theme.dart';
 import '../metrics.dart' as metrics;
@@ -74,8 +75,8 @@ String _longDate(String day) => g3DayLong(DateTime.parse(day));
 String _endLabel(String day) =>
     day == todayLabel() ? 'heute' : g3DateShort(DateTime.parse(day));
 
-String _bandStamp(BandSnapshot band) =>
-    g3DataThrough(band.latestStoredAt?.toLocal(), now: DateTime.now());
+String _bandStamp(BandSnapshot band, {DateTime? now}) =>
+    g3DataThrough(band.latestStoredAt?.toLocal(), now: now ?? DateTime.now());
 
 /// Shared section chrome already adds 24 pt; shift it out of detail content's gutter.
 Widget _outsideGutter(Widget child) =>
@@ -164,12 +165,16 @@ class G3MetricDetail extends StatefulWidget {
     this.backLabel = 'Heute',
     this.band,
     this.initialPeriod,
+    this.showDailyValue = false,
+    this.now,
   });
   final G3Metric metric;
   final OpenBandRepository repository;
   final String endDay, backLabel;
   final BandSnapshot? band;
   final OBTrendPeriod? initialPeriod;
+  final bool showDailyValue;
+  final DateTime Function()? now;
 
   @override
   State<G3MetricDetail> createState() => _G3MetricDetailState();
@@ -181,6 +186,8 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
       (widget.metric == G3Metric.rhr ? OBTrendPeriod.d90 : OBTrendPeriod.d30);
   G3Trend? _trend;
   G3Baseline? _baseline;
+  _MetricSummary? _summary;
+  bool _synthetic = false;
   bool _loading = true, _error = false;
   int _request = 0;
 
@@ -225,6 +232,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
         widget.endDay,
         days,
       );
+      final day = await widget.repository.readDay(widget.endDay);
       final baseline = await widget.repository.readPersonalRange(
         widget.metric,
         widget.endDay,
@@ -232,7 +240,14 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
       if (!mounted || request != _request) return;
       setState(() {
         _trend = trend;
+        _synthetic = day.synthetic;
         _baseline = baseline;
+        _summary = _MetricSummary.from(
+          trend.points,
+          baseline.status.phase == BaselinePhase.trusted
+              ? baseline.range
+              : null,
+        );
         _loading = false;
       });
     } catch (_) {
@@ -255,10 +270,18 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
     final g = G3.of(context);
     final metric = widget.metric;
     final trend = _trend;
+    final summary = _summary;
+    final average = summary?.average;
+    final recovery = metric == G3Metric.recovery && !widget.showDailyValue;
+    final days = switch (_period) {
+      OBTrendPeriod.d7 => 7,
+      OBTrendPeriod.d30 => 30,
+      OBTrendPeriod.d90 => 90,
+    };
+    final nights = _bodyMetrics.contains(metric);
     final points = trend?.points ?? const <MetricPoint>[];
     final value = points.isEmpty ? null : _usable(points.last);
     final valueCount = points.where((p) => _usable(p) != null).length;
-    final remaining = valueCount < 7 ? 7 - valueCount : null;
     final range =
         metric != G3Metric.skinTempZ &&
             _baseline?.status.phase == BaselinePhase.trusted
@@ -283,7 +306,9 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
           header: chrome.OBPageHeader.detail(
             title: title.toUpperCase(),
             domain: g3MetricDomain(metric),
-            subtitle: _longDate(widget.endDay),
+            subtitle: recovery
+                ? 'Verlauf · $days Tage'
+                : _longDate(widget.endDay),
             backLabel: widget.backLabel,
             onBack: () => Navigator.of(context).pop(),
             onTrailing: () => _showExplanation(context, metric),
@@ -304,71 +329,138 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 ),
               )
             else ...[
-              metrics.OBLeadMetric(
-                domain: g3MetricDomain(metric),
-                label: metric == G3Metric.skinTempZ ? 'Abweichung' : '',
-                state: value == null
-                    ? metrics.OBLeadState.missing
-                    : metric == G3Metric.skinTempZ || range == null
-                    ? metrics.OBLeadState.plain
-                    : mark == null
-                    ? metrics.OBLeadState.normal
-                    : better
-                    ? metrics.OBLeadState.better
-                    : metrics.OBLeadState.worse,
-                value: value,
-                valueText:
-                    metric == G3Metric.sleepMinutes || metric == G3Metric.steps
-                    ? _number(value, metric)
-                    : null,
-                digits: _digits(metric),
-                unit: _unit(metric).isEmpty ? null : _unit(metric),
-                signed: metric == G3Metric.skinTempZ,
-                note: metric == G3Metric.skinTempZ
-                    ? g3NightOf(DateTime.parse(widget.endDay))
-                    : range == null
-                    ? _baseline?.status.phase == BaselinePhase.building
-                          ? 'Basis im Aufbau'
-                          : 'kein Normalbereich'
-                    : 'normal ${_number(range.low, metric)}–${_number(range.high, metric)} ${_unit(metric)}',
-                basisChip: metric == G3Metric.skinTempZ
-                    ? 'keine Wertung'
-                    : _baselineChip(_baseline),
-                delta: value == null || range == null
-                    ? null
-                    : _number((value - range.median).abs(), metric),
-                deltaUp:
-                    value == null || range == null || value >= range.median,
-                deltaChipOnPage: true,
-                caption: metric == G3Metric.skinTempZ
-                    ? 'Relative Abweichung von deiner Basis'
-                    : range == null
-                    ? _baseline?.status.nightsHave == null ||
-                              _baseline?.status.nightsNeeded == null
-                          ? 'Ohne verlässlichen Normalbereich'
-                          : '${_baseline!.status.nightsHave} von ${_baseline!.status.nightsNeeded} ${g3CountNoun(_baseline!.status.nightsNeeded!, 'Wert', 'Werten')} gespeichert'
-                    : value == null
-                    ? null
-                    : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
-                scale: value == null ? null : _scale(metric, range),
-                title: 'Kein Messwert',
-                reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
-              ),
-              const SizedBox(height: 10),
+              if (recovery) ...[
+                Align(
+                  alignment: Alignment.center,
+                  child: chrome.OBSegmented(
+                    items: const ['7 Tage', '30 Tage', '90 Tage'],
+                    selected: _period.index,
+                    onChanged: (i) => _changePeriod(OBTrendPeriod.values[i]),
+                  ),
+                ),
+                const SizedBox(height: 0),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        _number(summary?.average, metric),
+                        style: g.t(
+                          64,
+                          68,
+                          weight: FontWeight.w700,
+                          tracking: -.06,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Ø $days Tage',
+                              style: g.t(17, 21, weight: FontWeight.w700),
+                            ),
+                            Text(
+                              average == null
+                                  ? 'Keine Werte in diesem Zeitraum'
+                                  : 'Median ${_number(summary?.median, metric)}${range == null
+                                        ? ''
+                                        : range.contains(average)
+                                        ? ' · im Normalbereich'
+                                        : average < range.low
+                                        ? ' · unter Normalbereich'
+                                        : ' · über Normalbereich'}',
+                              style: g.t(14, 18, color: g.ink2),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                chrome.OBPanel(
+                  child: metrics.OBLeadMetric(
+                    domain: g3MetricDomain(metric),
+                    label: title.toUpperCase(),
+                    glyph: switch (g3MetricDomain(metric)) {
+                      G3Domain.sleep => LucideIcons.moon,
+                      G3Domain.load =>
+                        metric == G3Metric.steps
+                            ? LucideIcons.footprints
+                            : LucideIcons.flame,
+                      _ => LucideIcons.heartPulse,
+                    },
+                    state: value == null
+                        ? metrics.OBLeadState.missing
+                        : metric == G3Metric.skinTempZ || range == null
+                        ? metrics.OBLeadState.plain
+                        : mark == null
+                        ? metrics.OBLeadState.normal
+                        : better
+                        ? metrics.OBLeadState.better
+                        : metrics.OBLeadState.worse,
+                    value: value,
+                    valueText:
+                        metric == G3Metric.sleepMinutes ||
+                            metric == G3Metric.steps
+                        ? _number(value, metric)
+                        : null,
+                    digits: _digits(metric),
+                    unit: null,
+                    signed: metric == G3Metric.skinTempZ,
+                    note: metric == G3Metric.skinTempZ
+                        ? g3NightOf(DateTime.parse(widget.endDay))
+                        : range == null
+                        ? _baseline?.status.phase == BaselinePhase.building
+                              ? 'Basis im Aufbau'
+                              : 'kein Normalbereich'
+                        : 'normal ${_number(range.low, metric)}–${_number(range.high, metric)} ${_unit(metric)}',
+                    basisChip: metric == G3Metric.skinTempZ
+                        ? 'keine Wertung'
+                        : _baselineChip(_baseline),
+                    delta: value == null || range == null
+                        ? null
+                        : _number((value - range.median).abs(), metric),
+                    deltaUp:
+                        value == null || range == null || value >= range.median,
+                    deltaChipOnPage: false,
+                    caption: metric == G3Metric.skinTempZ
+                        ? 'Relative Abweichung von deiner Basis'
+                        : range == null
+                        ? _baseline?.status.nightsHave == null ||
+                                  _baseline?.status.nightsNeeded == null
+                              ? 'Ohne verlässlichen Normalbereich'
+                              : '${_baseline!.status.nightsHave} von ${_baseline!.status.nightsNeeded} ${g3CountNoun(_baseline!.status.nightsNeeded!, 'Wert', 'Werten')} gespeichert'
+                        : value == null
+                        ? null
+                        : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
+                    scale: value == null ? null : _scale(metric, range),
+                    title: 'Kein Messwert',
+                    reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
+                  ),
+                ),
+              const SizedBox(height: 12),
               OBTrendChart(
                 domain: g3MetricDomain(metric),
-                title: metric == G3Metric.skinTempZ
-                    ? 'ABWEICHUNG · RELATIV'
-                    : '${title.toUpperCase()}${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}',
+                title: recovery
+                    ? 'VERLAUF'
+                    : metric == G3Metric.skinTempZ
+                    ? 'RELATIV · $days TAGE'
+                    : '${_unit(metric).isEmpty ? title.toUpperCase() : _unit(metric)} · $days TAGE',
+                headerNote: recovery ? '$valueCount von $days Tagen' : null,
+                showPeriod: !recovery,
                 period: _period,
+                compactGaps: true,
+                plotHeight: 144,
                 values: [for (final p in points) _usable(p)],
                 marks: [for (final p in points) _pointMark(metric, p, range)],
                 min: _chartBounds(metric, points, range).$1,
                 max: _chartBounds(metric, points, range).$2,
                 band: range == null ? null : (range.low, range.high),
-                bandLabels: range == null
-                    ? null
-                    : (_number(range.low, metric), _number(range.high, metric)),
+                median: recovery ? range?.median : null,
                 zero: metric == G3Metric.skinTempZ ? 0 : null,
                 xLabels: _period == OBTrendPeriod.d7
                     ? [for (final p in points) g3Weekday(DateTime.parse(p.day))]
@@ -377,38 +469,107 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : [
                         g3DateShort(DateTime.parse(points.first.day)),
                         g3DateShort(
-                          DateTime.parse(points[points.length ~/ 2].day),
+                          DateTime.parse(points[(points.length - 1) ~/ 2].day),
                         ),
-                        _endLabel(widget.endDay),
+                        widget.endDay ==
+                                    dayLabelOf(
+                                      widget.now?.call() ?? DateTime.now(),
+                                    ) &&
+                                widget.band?.latestStoredAt != null &&
+                                dayLabelOf(widget.band!.latestStoredAt!) ==
+                                    widget.endDay
+                            ? 'heute'
+                            : _endLabel(widget.endDay),
                       ],
-                footLeft: remaining != null
+                footLeft: valueCount < 7
                     ? '$valueCount ${g3CountNoun(valueCount, 'Wert', 'Werte')} · Verlauf ab 7'
-                    : '$valueCount von ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tagen')} mit Wert',
-                footRight: remaining == null
+                    : 'Ø ${_number(summary?.average, metric)}${summary?.below == null ? '' : ' · ${summary!.below} ${g3CountNoun(summary.below!, nights ? 'Nacht' : 'Tag', nights ? 'Nächte' : 'Tage')} darunter'}',
+                footRight:
+                    '$valueCount von $days ${nights ? 'Nächten' : 'Tagen'}',
+                footer: !recovery
                     ? null
-                    : 'noch $remaining ${g3CountNoun(remaining, 'Tag', 'Tage')}',
+                    : Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        spacing: 12,
+                        runSpacing: 6,
+                        children: [
+                          if (valueCount < 7)
+                            Text(
+                              '$valueCount ${g3CountNoun(valueCount, 'Wert', 'Werte')} · Verlauf ab 7',
+                              style: g.t(12, 16, color: g.muted),
+                            ),
+                          if (range != null)
+                            G3Legend.band(
+                              'normal ${_number(range.low, metric)}–${_number(range.high, metric)}',
+                              domain: g3MetricDomain(metric),
+                            ),
+                          if ((summary?.below ?? 0) > 0)
+                            G3Legend.mark(
+                              '${summary!.below} darunter',
+                              G3Deviation.worse,
+                            ),
+                          if ((summary?.above ?? 0) > 0)
+                            G3Legend.mark(
+                              '${summary!.above} darüber',
+                              G3Deviation.better,
+                            ),
+                        ],
+                      ),
                 onPeriod: _changePeriod,
               ),
-              if (remaining == null) ...[
-                const SizedBox(height: 10),
-                if (metric != G3Metric.skinTempZ)
-                  _Stats(metric: metric, points: points, range: range),
-                if (metric == G3Metric.hrv || metric == G3Metric.recovery) ...[
+              if (summary != null) ...[
+                const SizedBox(height: 12),
+                _Stats(metric: metric, summary: summary, days: days),
+                if (nights || metric == G3Metric.recovery) ...[
                   _outsideGutter(
-                    chrome.OBSectionHeader(
-                      metric == G3Metric.hrv ? 'NÄCHTE' : 'LETZTE NACHT',
-                    ),
+                    chrome.OBSectionHeader(nights ? 'NÄCHTE' : 'TAGE'),
                   ),
                   chrome.OBPanel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 6,
+                    ),
                     child: Column(
                       children: [
-                        for (final p in points.reversed.take(5).indexed)
+                        for (final p in points.reversed.take(4).indexed)
                           metrics.OBDayValueRow(
+                            domain: g3MetricDomain(metric),
+                            showBar: metric != G3Metric.recovery,
+                            deviation:
+                                !recovery ||
+                                    range == null ||
+                                    _usable(p.$2) == null ||
+                                    range.contains(_usable(p.$2)!)
+                                ? null
+                                : _usable(p.$2)! < range.low
+                                ? G3Deviation.worse
+                                : G3Deviation.better,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => G3MetricDetail(
+                                  metric: metric,
+                                  repository: widget.repository,
+                                  endDay: p.$2.day,
+                                  backLabel: title,
+                                  band: widget.band,
+                                  showDailyValue: true,
+                                ),
+                              ),
+                            ),
                             date: _date(p.$2.day),
                             value: p.$2.partial || p.$2.value == null
                                 ? null
                                 : _number(p.$2.value, metric),
-                            note: p.$2.partial ? 'teilweise erfasst' : null,
+                            note: p.$2.partial
+                                ? 'teilweise erfasst'
+                                : !recovery ||
+                                      range == null ||
+                                      _usable(p.$2) == null ||
+                                      range.contains(_usable(p.$2)!)
+                                ? null
+                                : _usable(p.$2)! < range.low
+                                ? 'unter Normalbereich'
+                                : 'über Normalbereich',
                             share: _usable(p.$2) == null
                                 ? null
                                 : ((p.$2.value! -
@@ -428,7 +589,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                                                 range,
                                               ).$1))
                                       .clamp(0, 1),
-                            last: p.$1 == math.min(points.length, 5) - 1,
+                            last: p.$1 == math.min(points.length, 4) - 1,
                           ),
                       ],
                     ),
@@ -437,6 +598,10 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 if (metric == G3Metric.rhr && _gaps(points).isNotEmpty) ...[
                   _outsideGutter(const chrome.OBSectionHeader('LÜCKEN')),
                   chrome.OBPanel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 6,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -456,7 +621,10 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 ],
               ],
               if (widget.band != null)
-                chrome.OBFooterStamp(_bandStamp(widget.band!)),
+                chrome.OBFooterStamp(
+                  _bandStamp(widget.band!, now: widget.now?.call()),
+                  synthetic: _synthetic,
+                ),
             ],
           ],
         ),
@@ -495,6 +663,13 @@ metrics.G3Scale? _scale(G3Metric metric, PersonalRange? range) {
     G3Metric.recovery => (0.0, 100.0),
     G3Metric.strain => (0.0, 21.0),
     G3Metric.skinTempZ => (-1.0, 1.0),
+    G3Metric.hrv =>
+      range == null
+          ? null
+          : (
+              (_personalBounds(range).$1 / 10).floor() * 10.0,
+              (_personalBounds(range).$2 / 10).ceil() * 10.0,
+            ),
     _ => range == null ? null : _personalBounds(range),
   };
   if (bounds == null) return null;
@@ -526,7 +701,10 @@ metrics.G3Scale? _scale(G3Metric metric, PersonalRange? range) {
                 strong: true,
               ),
             ],
-            metrics.G3Tick(hi, _number(hi, metric)),
+            metrics.G3Tick(
+              hi,
+              '${_number(hi, metric)}${_unit(metric).isEmpty ? '' : ' ${_unit(metric)}'}',
+            ),
           ],
   );
 }
@@ -549,7 +727,10 @@ metrics.G3Scale? _scale(G3Metric metric, PersonalRange? range) {
     return metric == G3Metric.recovery ? (0, 100) : (0, 1);
   }
   final lo = values.reduce(math.min), hi = values.reduce(math.max);
-  final pad = math.max((hi - lo) * .25, metric == G3Metric.skinTempZ ? .1 : 1);
+  final pad = math.max(
+    (hi - lo) * (metric == G3Metric.hrv ? .5 : .25),
+    metric == G3Metric.skinTempZ ? .1 : 1,
+  );
   return (lo - pad, hi + pad);
 }
 
@@ -575,46 +756,66 @@ OBTrendMark _pointMark(
   return OBTrendMark.worse;
 }
 
+class _MetricSummary {
+  const _MetricSummary(
+    this.average,
+    this.median,
+    this.low,
+    this.high,
+    this.below,
+    this.above,
+  );
+  final double? average, median, low, high;
+  final int? below, above;
+  factory _MetricSummary.from(List<MetricPoint> points, PersonalRange? range) {
+    final values = [
+      for (final p in points)
+        if (_usable(p) != null) _usable(p)!,
+    ]..sort();
+    if (values.isEmpty) {
+      return const _MetricSummary(null, null, null, null, null, null);
+    }
+    final mid = values.length ~/ 2;
+    return _MetricSummary(
+      values.reduce((a, b) => a + b) / values.length,
+      values.length.isOdd ? values[mid] : (values[mid - 1] + values[mid]) / 2,
+      values.first,
+      values.last,
+      range == null ? null : values.where((v) => v < range.low).length,
+      range == null ? null : values.where((v) => v > range.high).length,
+    );
+  }
+}
+
 class _Stats extends StatelessWidget {
   const _Stats({
     required this.metric,
-    required this.points,
-    required this.range,
+    required this.summary,
+    required this.days,
   });
   final G3Metric metric;
-  final List<MetricPoint> points;
-  final PersonalRange? range;
+  final _MetricSummary summary;
+  final int days;
   @override
-  Widget build(BuildContext context) {
-    final values = [
-      for (final p in points)
-        if (!p.partial && p.value?.isFinite == true) p.value!,
-    ];
-    final average = values.isEmpty
-        ? null
-        : values.reduce((a, b) => a + b) / values.length;
-    final under = range == null
-        ? null
-        : values.where((v) => v < range!.low).length;
-    final lo = values.isEmpty ? null : values.reduce(math.min);
-    final hi = values.isEmpty ? null : values.reduce(math.max);
-    final averageLabel = values.length == points.length
-        ? 'Ø ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tage')}'
-        : 'Ø ${values.length} von ${points.length} ${g3CountNoun(points.length, 'Tag', 'Tagen')}';
-    return metrics.OBStatRow([
-      (averageLabel, average == null ? null : _number(average, metric), null),
-      (
-        'Unter Bereich',
-        under?.toString(),
-        under == null ? null : g3CountNoun(under, 'Tag', 'Tage'),
-      ),
-      (
-        'Spanne',
-        lo == null ? null : '${_number(lo, metric)}–${_number(hi, metric)}',
-        null,
-      ),
-    ]);
-  }
+  Widget build(BuildContext context) => metrics.OBStatRow([
+    (
+      'Ø $days ${_bodyMetrics.contains(metric) ? 'NÄCHTE' : 'TAGE'}',
+      summary.average == null ? null : _number(summary.average, metric),
+      null,
+    ),
+    (
+      'MEDIAN',
+      summary.median == null ? null : _number(summary.median, metric),
+      null,
+    ),
+    (
+      'SPANNE',
+      summary.low == null
+          ? null
+          : '${_number(summary.low, metric)}–${_number(summary.high, metric)}',
+      null,
+    ),
+  ], domain: g3MetricDomain(metric));
 }
 
 void _showExplanation(

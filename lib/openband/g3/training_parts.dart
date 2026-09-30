@@ -7,8 +7,7 @@ import 'count_copy.dart';
 import 'g3_format.dart' show g3Signed;
 import 'g3_theme.dart';
 import 'sport.dart';
-import 'metrics.dart'
-    show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind, OBMissingValue;
+import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind, OBMissingValue;
 
 final trainingSports = g3SportIds;
 String trainingSport(String sport) => g3SportLabel(sport);
@@ -107,11 +106,20 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: g.caps(color: g.muted),
+          SizedBox(
+            height: MediaQuery.textScalerOf(context).scale(11) * 16 / 11,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: g.caps(color: g.muted, size: 11),
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 5),
           if (value == null)
@@ -138,9 +146,14 @@ class OBTrainingLoad extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              column('AKUT · 7 T.', ready ? acute : null),
-              SizedBox(height: 55, child: VerticalDivider(color: g.line)),
-              column('GEWOHNT · 6 WO.', ready ? usual : null),
+              column('AKUT · 7 TAGE', ready ? acute : null),
+              Container(
+                width: 1,
+                height: 55,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: g.line,
+              ),
+              column('GEWOHNT · 6 WOCHEN', ready ? usual : null),
             ],
           ),
           if (ready) ...[
@@ -221,7 +234,7 @@ class OBLoadLead extends StatelessWidget {
         onTap: onTap,
         child: OBPanel(
           hero: true,
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -258,13 +271,32 @@ class OBLoadLead extends StatelessWidget {
                   ),
                 ],
               ),
-              G3Scale(
-                domain: G3Domain.load,
-                min: 0,
-                max: 21,
-                value: value,
-                band: value == null ? null : (0.0, value!),
-                ticks: const [G3Tick(0, '0'), G3Tick(21, '21')],
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: Container(
+                  height: 6,
+                  color: g.track,
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    heightFactor: 1,
+                    widthFactor: value?.isFinite == true
+                        ? (value! / 21).clamp(0.0, 1.0)
+                        : 0,
+                    child: ColoredBox(
+                      key: const ValueKey('load-value-fill'),
+                      color: g.domainHue(G3Domain.load),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('0', style: g.t(12, 16, color: g.muted)),
+                  Text('21', style: g.t(12, 16, color: g.muted)),
+                ],
               ),
             ],
           ),

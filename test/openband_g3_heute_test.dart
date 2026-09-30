@@ -197,6 +197,27 @@ void main() {
         .load();
   });
 
+  for (final dark in [false, true]) {
+    testWidgets('Heute has no overflow at 375 × 812, dark: $dark', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _Harness(_Repo(SyntheticScenario.g3Sample), _connected),
+        dark: dark,
+        size: const Size(375, 812),
+      );
+      for (final offset in [0.0, 500.0, 1000.0, 1500.0]) {
+        final scroll = tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position;
+        scroll.jumpTo(offset.clamp(0.0, scroll.maxScrollExtent));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
+
   testWidgets('trusted day: lead on the range, note with the sleep-plan bedtime, no °C', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
     expect(find.text('Heute'), findsWidgets);
@@ -269,7 +290,7 @@ void main() {
     expect(find.text('Basis im Aufbau'), findsNothing);
     expect(find.textContaining('Sie braucht 14 Nächte'), findsNothing);
     expect(find.text('vergangene Nacht'), findsOneWidget);
-    expect(find.text('Früher ins Bett.'), findsOneWidget);
+    expect(find.text('Heute früher ins Bett.'), findsOneWidget);
     expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
     expect(find.text('Erholung: noch keine Werte'), findsNothing);

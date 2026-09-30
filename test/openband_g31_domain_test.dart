@@ -259,7 +259,7 @@ void main() {
     testWidgets('G3.1 domain components ${dark ? 'dark' : 'light'}', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(393, 2320);
+      tester.view.physicalSize = const Size(393, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);

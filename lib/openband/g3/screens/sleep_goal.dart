@@ -22,21 +22,28 @@ class G3SleepGoalSheet extends StatefulWidget {
     super.key,
     required this.repository,
     required this.day,
+    this.onTonight,
   });
   final OpenBandRepository repository;
   final String day;
+  final VoidCallback? onTonight;
 
   static Future<void> show(
     BuildContext context,
     OpenBandRepository repository,
-    String day,
-  ) => showModalBottomSheet<void>(
+    String day, {
+    VoidCallback? onTonight,
+  }) => showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     barrierColor: Colors.black.withValues(alpha: .32),
     backgroundColor: Colors.transparent,
-    builder: (_) => G3SleepGoalSheet(repository: repository, day: day),
+    builder: (_) => G3SleepGoalSheet(
+      repository: repository,
+      day: day,
+      onTonight: onTonight,
+    ),
   );
 
   @override
@@ -312,6 +319,17 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                     onRetry: () => setState(() => _goal = _read()),
                   ),
                 ],
+                if (widget.onTonight != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OBLink(
+                      'Heute Nacht',
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        widget.onTonight!();
+                      },
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 Row(
                   children: [

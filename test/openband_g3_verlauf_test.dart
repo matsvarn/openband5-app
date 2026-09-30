@@ -12,7 +12,8 @@ import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow;
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3Domain;
-import 'package:openstrap_edge/openband/g3/chrome.dart' show G3DetailPage, OBListRow;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show G3DetailPage, OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
     show
@@ -48,17 +49,33 @@ SyntheticOpenBandRepository _repo(SyntheticScenario scenario) {
 }
 
 class _ControlledTrendRepository extends SyntheticOpenBandRepository {
-  _ControlledTrendRepository({this.fail = false, this.partial = false})
-    : super.fromMaps(
-        _fixture('day-summary.json'),
-        _fixture('sleep-detail.json'),
-        scenario: SyntheticScenario.g3Sample,
-      );
+  _ControlledTrendRepository({
+    this.fail = false,
+    this.partial = false,
+    this.values,
+  }) : super.fromMaps(
+         _fixture('day-summary.json'),
+         _fixture('sleep-detail.json'),
+         scenario: SyntheticScenario.g3Sample,
+       );
   final bool fail, partial;
+  final List<double?>? values;
 
   @override
   Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
     if (fail) throw StateError('unreadable trend');
+    if (values case final stored?) {
+      final labels = g3DaysEnding(endDay, days);
+      return g3Trend(metric, [
+        for (final (i, day) in labels.indexed)
+          MetricPoint(
+            day,
+            i < days - stored.length
+                ? null
+                : stored[i - (days - stored.length)],
+          ),
+      ], await readPersonalRange(metric, endDay));
+    }
     if (partial) {
       final labels = g3DaysEnding(endDay, days);
       return g3Trend(metric, [
@@ -388,7 +405,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
-    expect(tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).onTap, isNull);
+    expect(
+      tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).onTap,
+      isNull,
+    );
     expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
     expect(find.text('Noch kein Verlauf'), findsNothing);
     expect(find.text('Lücken bleiben leer'), findsNothing);
@@ -405,18 +425,20 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      _app(G3MetricDetail(
-        metric: G3Metric.hrv,
-        repository: _ValuesRepository(
-          48,
-          const G3Baseline(
-            BaselineStatus(BaselinePhase.trusted),
-            range: PersonalRange(38, 52, 45),
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.hrv,
+          repository: _ValuesRepository(
+            48,
+            const G3Baseline(
+              BaselineStatus(BaselinePhase.trusted),
+              range: PersonalRange(38, 52, 45),
+            ),
+            presentDays: 7,
           ),
-          presentDays: 7,
+          endDay: _day,
         ),
-        endDay: _day,
-      )),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.byType(G3DetailPage), findsOneWidget);
@@ -446,7 +468,7 @@ void main() {
 
     expect(
       tester.widget<OBTrendChart>(find.byType(OBTrendChart)).title,
-      'HRV · ms',
+      'ms · 30 TAGE',
     );
     expect(
       tester.widget<OBTrendChart>(find.byType(OBTrendChart)).domain,
@@ -467,7 +489,7 @@ void main() {
                 .decoration!
             as BoxDecoration;
     expect(decoration.color, AlpColor.chip);
-    expect(decoration.border, isNotNull);
+    expect(decoration.border, isNull);
   });
 
   testWidgets('partial values stay absent for every wave-1 trend', (
@@ -494,7 +516,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Kein Messwert'), findsOneWidget, reason: '$metric');
+      expect(
+        find.text(
+          metric == G3Metric.recovery
+              ? 'Keine Werte in diesem Zeitraum'
+              : 'Kein Messwert',
+        ),
+        findsOneWidget,
+        reason: '$metric',
+      );
       expect(find.text('99'), findsNothing, reason: '$metric');
       expect(
         find.text('0 Werte · Verlauf ab 7'),
@@ -503,6 +533,35 @@ void main() {
       );
     }
   });
+
+  testWidgets(
+    'recovery range uses stored values and leaves missing days open',
+    (tester) async {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            metric: G3Metric.recovery,
+            repository: _ControlledTrendRepository(values: [50, null, 70, 90]),
+            endDay: _day,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('70'), findsWidgets);
+      expect(find.text('50–90'), findsOneWidget);
+      expect(find.text('3 von 30 Tagen'), findsOneWidget);
+      expect(find.text('1 darunter'), findsOneWidget);
+      expect(find.text('1 darüber'), findsOneWidget);
+      final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
+      expect(chart.values.sublist(26), [50, null, 70, 90]);
+      await tester.ensureVisible(find.text('Di 29.09'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Di 29.09'));
+      await tester.pumpAndSettle();
+      expect(find.text('90'), findsWidgets);
+      expect(find.byType(OBLeadMetric), findsOneWidget);
+    },
+  );
 
   testWidgets('read error is a retryable refusal', (tester) async {
     final repo = _ControlledTrendRepository(fail: true);
@@ -534,9 +593,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('74'), findsWidgets);
-    await tester.tap(find.text('7 T').first);
+    await tester.tap(find.text('7 Tage').first);
     await tester.pumpAndSettle();
-    expect(find.text('7 von 7 Tagen mit Wert'), findsOneWidget);
+    expect(find.text('7 von 7 Tagen'), findsOneWidget);
   });
 
   testWidgets('sleep duration and steps format the lead value', (tester) async {
@@ -560,24 +619,27 @@ void main() {
     }
   });
 
-  testWidgets('average labels the count of usable days', (tester) async {
-    await tester.pumpWidget(
-      _app(
-        G3MetricDetail(
-          metric: G3Metric.hrv,
-          repository: _ValuesRepository(
-            48,
-            const G3Baseline(BaselineStatus(BaselinePhase.none)),
-            presentDays: 27,
+  testWidgets(
+    'average keeps range label and reports usable nights separately',
+    (tester) async {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            metric: G3Metric.hrv,
+            repository: _ValuesRepository(
+              48,
+              const G3Baseline(BaselineStatus(BaselinePhase.none)),
+              presentDays: 27,
+            ),
+            endDay: _day,
           ),
-          endDay: _day,
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Ø 27 von 30 Tagen'), findsOneWidget);
-    expect(find.text('Ø 30 Tage'), findsNothing);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('27 von 30 Nächten'), findsOneWidget);
+      expect(find.text('Ø 30 NÄCHTE'), findsOneWidget);
+    },
+  );
 
   testWidgets('HRV endpoint stays inside the chart card at 375 pt', (
     tester,
@@ -658,6 +720,7 @@ void main() {
           G3MetricDetail(
             key: ValueKey('$metric$value'),
             metric: metric,
+            showDailyValue: true,
             repository: repo,
             endDay: _day,
           ),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
+import 'package:openstrap_edge/openband/g3/charts.dart' show OBZone, OBZoneRows;
 import 'package:openstrap_edge/openband/g3/check_in.dart';
 import 'package:openstrap_edge/openband/g3/journal_parts.dart' show OBAnswerKey;
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
@@ -80,6 +81,198 @@ void main() {
         .load();
   });
 
+  for (final twoLinks in [false, true]) {
+    testWidgets(
+      'card footer keeps compact spacing and full targets ($twoLinks)',
+      (tester) async {
+        var methodTaps = 0;
+        var editTaps = 0;
+        await tester.pumpWidget(
+          _frame(
+            OBPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(key: ValueKey('content'), height: 40),
+                  const SizedBox(height: 10),
+                  if (twoLinks)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        OBLink('Zeiten ändern', onTap: () => editTaps++),
+                        OBLink('Methode', onTap: () => methodTaps++),
+                      ],
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OBLink('Methode', onTap: () => methodTaps++),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final card = tester.getRect(find.byType(OBPanel));
+        final text = tester.getRect(find.text('Methode'));
+        final content = tester.getRect(find.byKey(const ValueKey('content')));
+        expect(text.top - content.bottom, 12);
+        expect(card.bottom - text.bottom, 18);
+        expect(tester.getSize(find.byType(OBLink).last).height, 18);
+        for (final label in [if (twoLinks) 'Zeiten ändern', 'Methode']) {
+          final target = find.descendant(
+            of: find.widgetWithText(OBLink, label),
+            matching: find.byType(GestureDetector),
+          );
+          final bounds = tester.getRect(target);
+          expect(bounds.height, 44);
+          await tester.tapAt(Offset(bounds.center.dx, bounds.top + 1));
+          await tester.tapAt(Offset(bounds.center.dx, bounds.bottom - 1));
+        }
+        expect(methodTaps, 2);
+        expect(editTaps, twoLinks ? 2 : 0);
+      },
+    );
+  }
+
+  testWidgets('zone footer keeps its overlapping basis target', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OBZoneRows(
+              zones: const [OBZone(2, '', 3), OBZone(1, '', null)],
+              source: 'HFmax 186 · geschätzt aus Alter',
+              onBasis: () => taps++,
+            ),
+          ],
+        ),
+      ),
+    );
+    final card = tester.getRect(find.byType(OBZoneRows));
+    final text = tester.getRect(find.text('Grundlage'));
+    expect(
+      tester.getCenter(find.text('Z1')).dy -
+          tester.getCenter(find.text('Z2')).dy,
+      26,
+    );
+    expect(find.text('—'), findsOneWidget);
+    expect(card.bottom - text.bottom, 18);
+    final target = find.descendant(
+      of: find.byType(OBLink),
+      matching: find.byType(GestureDetector),
+    );
+    final bounds = tester.getRect(target);
+    expect(bounds.height, 44);
+    await tester.tapAt(Offset(bounds.center.dx, bounds.top + 1));
+    await tester.tapAt(Offset(bounds.center.dx, bounds.bottom - 1));
+    expect(taps, 2);
+  });
+
+  testWidgets('sync keeps a 44 pt target and a 10 pt visual card gap', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        Column(
+          children: [
+            const SizedBox(height: 40),
+            OBSyncState(
+              kind: OBSyncKind.live,
+              text: 'Daten bis 09:38',
+              onTap: () => taps++,
+            ),
+            const SizedBox(height: 10),
+            const SizedBox(
+              key: ValueKey('first-card'),
+              height: 100,
+              width: 300,
+            ),
+          ],
+        ),
+      ),
+    );
+    final target = find.descendant(
+      of: find.byType(OBSyncState),
+      matching: find.byType(GestureDetector),
+    );
+    final bounds = tester.getRect(target);
+    expect(bounds.height, 44);
+    expect(find.byType(OBSyncState).hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('first-card'))).dy -
+          tester
+              .getBottomLeft(
+                find.descendant(
+                  of: find.byType(OBSyncState),
+                  matching: find.byType(RichText),
+                ),
+              )
+              .dy,
+      10,
+    );
+    await tester.tapAt(Offset(bounds.left + 30, bounds.top + 1));
+    await tester.tapAt(Offset(bounds.left + 30, bounds.bottom - 1));
+    expect(taps, 2);
+  });
+
+  testWidgets('statistics use one card interior when nested in a panel', (
+    tester,
+  ) async {
+    const statistics = OBStatRow([
+      ('Ø 30 Nächte', '45', null),
+      ('Median', '45', null),
+      ('Spanne', '36–50', null),
+    ]);
+    await tester.pumpWidget(_frame(statistics));
+    final standalone = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - standalone.top, 18);
+    expect(
+      tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - standalone.left,
+      18,
+    );
+    expect(find.text('MEDIAN'), findsOneWidget);
+    await tester.pumpWidget(_frame(const OBPanel(child: statistics)));
+    final outer = tester.getRect(find.byType(OBPanel));
+    final inner = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - outer.top, 18);
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - outer.left, 18);
+    expect(inner.height, standalone.height - 36);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recent-day chevron requires a tap handler', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        const OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsNothing);
+    await tester.pumpWidget(
+      _frame(
+        OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+          onTap: () => taps++,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsOneWidget);
+    await tester.tap(find.text('Di 29.09'));
+    expect(taps, 1);
+  });
+
   test('Band frontier prefixes use the shared short date format', () {
     final now = DateTime(2026, 9, 29, 10);
     expect(bandFrontierDayPrefix(DateTime(2026, 9, 29, 9), now), '');
@@ -135,7 +328,7 @@ void main() {
     expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');
     expect(g3CheckInCopy('caffeine_late', '').question, 'Koffein nach 14 Uhr?');
     expect(g3CheckInCopy('mood', '').low, 'schlecht');
-    expect(g3CheckInCopy('mood', '').high, 'gut');
+    expect(g3CheckInCopy('mood', '').high, 'sehr gut');
     expect(g3CheckInCopy('custom', 'Meine Frage?').question, 'Meine Frage?');
   });
 
