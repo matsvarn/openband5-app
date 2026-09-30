@@ -105,6 +105,7 @@ class OBBandCapsule extends StatelessWidget {
     final status = bandStatus;
     final statusText = switch (status?.condition) {
       BandCondition.connecting => 'Verbindet …',
+      BandCondition.scanning => g3BandScanningLabel,
       BandCondition.unreachable => 'nicht erreichbar',
       BandCondition.bluetoothOff => 'Bluetooth aus',
       BandCondition.bluetoothDenied => 'Bluetooth gesperrt',

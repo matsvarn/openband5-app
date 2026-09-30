@@ -251,6 +251,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
         rawStatus?.condition == BandCondition.connecting ||
         (rawStatus == null && b?.connection == BandConnection.connecting);
     final unreachable = localizedFault?.condition == BandCondition.unreachable;
+    final scanning = rawStatus?.condition == BandCondition.scanning;
     final disconnected =
         connecting ||
         localizedFault != null ||
@@ -259,6 +260,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final stored = diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt;
     final issueTitle = connecting
         ? 'Verbindet …'
+        : scanning
+        ? g3BandScanningLabel
         : localizedFault?.title ??
               switch (issue) {
                 OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
@@ -267,6 +270,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final failedAt = localizedFault?.lastConnectFailedAt?.toLocal();
     final issueBody = connecting
         ? 'Verbindung wird hergestellt · bis zu 20 Sekunden.'
+        : scanning
+        ? 'Suche nach dem Band läuft.'
         : unreachable
         ? '${failedAt == null ? 'Letzter Versuch fehlgeschlagen.' : 'Letzter Versuch: ${g3DateShort(failedAt)}, ${g3Clock(failedAt)} Uhr.'}\nBand in Reichweite und am Handgelenk? Bluetooth in den iPhone-Einstellungen aus- und wieder einschalten. Band kurz auf das Ladegerät legen.'
         : localizedFault == null
@@ -281,6 +286,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
         : [localizedFault.reason, ?localizedFault.fix].join('\n\n');
     final action = connecting
         ? 'Verbindet …'
+        : scanning
+        ? g3BandScanningLabel
         : unreachable
         ? 'Erneut verbinden'
         : localizedFault?.condition == BandCondition.bluetoothOff
@@ -330,7 +337,9 @@ class _G3BandScreenState extends State<G3BandScreen> {
                 now: _now,
                 onStatus: widget.onStatus,
                 issue: issue,
-                faultLabel: localizedFault?.title,
+                faultLabel: scanning
+                    ? g3BandScanningLabel
+                    : localizedFault?.title,
               ),
             if (b != null && disconnected) ...[
               const SizedBox(height: 12),
@@ -338,14 +347,14 @@ class _G3BandScreenState extends State<G3BandScreen> {
                 title: issueTitle,
                 body: issueBody,
                 action: action,
-                onAction: connecting
+                onAction: connecting || scanning
                     ? null
                     : helpIsPrimary
                     ? _help
                     : widget.onReconnect == null
                     ? null
                     : _reconnect,
-                onHelp: connecting || helpIsPrimary || unreachable
+                onHelp: connecting || scanning || helpIsPrimary || unreachable
                     ? null
                     : _help,
               ),

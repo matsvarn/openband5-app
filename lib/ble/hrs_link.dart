@@ -184,6 +184,12 @@ class HrsLink {
   /// `unknown` is CoreBluetooth's pre-init value, never a verdict.
   static const Duration _blockerProbe = Duration(seconds: 2);
 
+  @visibleForTesting
+  static Stream<BluetoothAdapterState> Function()? debugAdapterStateStream;
+
+  @visibleForTesting
+  static Future<void> Function()? debugStartScan;
+
   static const Duration _connectTimeout = Duration(seconds: 12);
 
   /// WHOSE scan is running right now — the `owner` token its caller passed —
@@ -421,16 +427,21 @@ class HrsLink {
       // `startScan`/`stopScan` through one mutex, so a stop issued in the
       // window queues behind this start and takes effect on the way out.
       _scanOwner = owner;
-      await FlutterBluePlus.startScan(
-        withServices: serviceGuids,
-        timeout: timeout,
-      );
+      if (debugStartScan case final start?) {
+        await start();
+      } else {
+        await FlutterBluePlus.startScan(
+          withServices: serviceGuids,
+          timeout: timeout,
+        );
+      }
       // The scan's own timeout is what stops it; this waits that out.
       await FlutterBluePlus.isScanning.where((on) => on == false).first;
     } catch (e) {
       // Android reports a missing runtime permission by throwing HERE rather
       // than through the adapter state, so the pre-check above cannot see it.
-      final blocker = classifyBleBlocker(error: e);
+      final adapter = await _readAdapterState();
+      final blocker = classifyBleBlocker(adapterState: adapter.name, error: e);
       if (blocker != null) throw BleUnavailableException(blocker);
       debugPrint('[hrs] scan error: $e');
     } finally {
@@ -452,17 +463,20 @@ class HrsLink {
   /// grow one — the point of the sensor link is that it never routes through
   /// the band's engine. The classifier itself ([classifyBleBlocker]) is
   /// shared, which is the half that has to stay in one place.
-  static Future<BleBlocker?> _detectBlocker() async {
+  static Future<BluetoothAdapterState> _readAdapterState() async {
     try {
-      final s = await FlutterBluePlus.adapterState
+      return await (debugAdapterStateStream?.call() ??
+              FlutterBluePlus.adapterState)
           .firstWhere((s) => s != BluetoothAdapterState.unknown)
           .timeout(_blockerProbe,
               onTimeout: () => BluetoothAdapterState.unknown);
-      return classifyBleBlocker(adapterState: s.name);
-    } catch (e) {
-      return classifyBleBlocker(error: e);
+    } catch (_) {
+      return BluetoothAdapterState.unknown;
     }
   }
+
+  static Future<BleBlocker?> _detectBlocker() async =>
+      classifyBleBlocker(adapterState: (await _readAdapterState()).name);
 
   /// One sentence saying why a scan should not be STARTED on this phone yet,
   /// or null when it may run. Not an error — a warning the screen shows before

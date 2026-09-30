@@ -97,13 +97,17 @@ extension BleEngineTransport on BleEngine {
       }
     });
     try {
-      await FlutterBluePlus.startScan(withServices: wanted, timeout: timeout);
+      if (debugStartScan case final start?) {
+        await start();
+      } else {
+        await FlutterBluePlus.startScan(withServices: wanted, timeout: timeout);
+      }
       await FlutterBluePlus.isScanning.where((on) => on == false).first;
     } catch (e) {
       // Recheck the OS state after a thrown scan. Exception text alone can be
       // stale during adapter initialization and must not become a phone blocker.
-      final blocker = await _detectBlocker();
-      if (blocker != null && _blocker == blocker) {
+      final blocker = await _classifyRadioError(e);
+      if (blocker != null) {
         await sub.cancel();
         _setPhase(BleConnState.idle);
         throw BleUnavailableException(blocker);

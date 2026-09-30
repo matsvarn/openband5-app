@@ -3,6 +3,8 @@
 // Writes to the app's external files dir on Android so it can be pulled with a
 // plain `adb pull` (no run-as needed):
 //   /storage/emulated/0/Android/data/wtf.openstrap.openstrap_edge/files/openstrap_sync.log
+// On iOS the log lives in Application Support: Documents is shared through
+// Files and the log contains band identity and health-adjacent diagnostics.
 //
 // Bounded: rotates to a single .1 sibling at [_maxBytes] so a 24/7 headless
 // process can't grow it without limit, and appends WITHOUT a per-line fsync —
@@ -28,20 +30,43 @@ class FileLog {
     if (_init) return;
     _init = true;
     try {
-      // getExternalStorageDirectory() is Android-only and THROWS on iOS, which
-      // used to land in the catch below and disable the log on iPhone
-      // entirely. Documents is pulled with the rest of the app container.
       Directory? dir;
       if (Platform.isAndroid) {
         try {
           dir = await getExternalStorageDirectory();
         } catch (_) {}
+      } else if (Platform.isIOS) {
+        dir = await getApplicationSupportDirectory();
+        await dir.create(recursive: true);
+        await _moveOldIosLogs(dir);
       }
       dir ??= await getApplicationDocumentsDirectory();
       _file = File('${dir.path}/openstrap_sync.log');
     } catch (_) {
       _file = null;
     }
+  }
+
+  static Future<void> _moveOldIosLogs(Directory destination) async {
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      for (final name in ['openstrap_sync.log', 'openstrap_sync.log.1']) {
+        final old = File('${documents.path}/$name');
+        if (!await old.exists()) continue;
+        try {
+          final target = File('${destination.path}/$name');
+          if (await target.exists()) {
+            await old.delete();
+          } else {
+            await old.rename(target.path);
+          }
+        } catch (_) {
+          try {
+            await old.delete();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 
   // Appends run one at a time. Unserialised, two in-flight appends each open
