@@ -33,6 +33,16 @@ String g3MetricName(G3Metric metric) => switch (metric) {
   G3Metric.steps => 'Schritte',
 };
 
+G3Domain g3MetricDomain(G3Metric metric) => switch (metric) {
+  G3Metric.recovery ||
+  G3Metric.hrv ||
+  G3Metric.rhr ||
+  G3Metric.respRate ||
+  G3Metric.skinTempZ => G3Domain.recovery,
+  G3Metric.sleepMinutes => G3Domain.sleep,
+  G3Metric.strain || G3Metric.steps => G3Domain.load,
+};
+
 String _unit(G3Metric metric) => switch (metric) {
   G3Metric.recovery => '',
   G3Metric.hrv => 'ms',
@@ -97,6 +107,7 @@ metrics.OBBodyRow _bodyRow(
       : null;
   final bounds = range == null ? null : _personalBounds(range);
   return metrics.OBBodyRow(
+    domain: g3MetricDomain(metric),
     state: metric == G3Metric.skinTempZ
         ? metrics.OBBodyState.deviation
         : value == null
@@ -271,6 +282,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
           bottomInset: kOBTabBarContentInset,
           header: chrome.OBPageHeader.detail(
             title: title.toUpperCase(),
+            domain: g3MetricDomain(metric),
             subtitle: _longDate(widget.endDay),
             backLabel: widget.backLabel,
             onBack: () => Navigator.of(context).pop(),
@@ -293,6 +305,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
               )
             else ...[
               metrics.OBLeadMetric(
+                domain: g3MetricDomain(metric),
                 label: metric == G3Metric.skinTempZ ? 'Abweichung' : '',
                 state: value == null
                     ? metrics.OBLeadState.missing
@@ -343,6 +356,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
               ),
               const SizedBox(height: 10),
               OBTrendChart(
+                domain: g3MetricDomain(metric),
                 title: metric == G3Metric.skinTempZ
                     ? 'ABWEICHUNG · RELATIV'
                     : '${title.toUpperCase()}${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}',
@@ -357,10 +371,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : (_number(range.low, metric), _number(range.high, metric)),
                 zero: metric == G3Metric.skinTempZ ? 0 : null,
                 xLabels: _period == OBTrendPeriod.d7
-                    ? [
-                        for (final p in points)
-                          g3DayShort(DateTime.parse(p.day)).split(' ').first,
-                      ]
+                    ? [for (final p in points) g3Weekday(DateTime.parse(p.day))]
                     : points.isEmpty
                     ? const []
                     : [
@@ -1104,7 +1115,7 @@ class _WeightEntrySheetState extends State<_WeightEntrySheet> {
     final g = G3.of(context);
     final timeLabel = _minute == null
         ? 'ohne Uhrzeit'
-        : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}';
+        : g3Clock(DateTime(2000, 1, 1, _minute! ~/ 60, _minute! % 60));
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: chrome.OBSheet(

@@ -17,8 +17,9 @@ import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeRemi
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBBandCapsule, OBCardHeader, OBPageHeader, OBSegmented, OBSyncState;
-import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
-import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow, OBLeadMetric;
+import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow, OBNightCard, OBStepsCard, OBWeekBars;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3Domain;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow, OBLeadMetric, OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart' show OBChevron, openBandTheme;
@@ -212,6 +213,29 @@ void main() {
     expect(_hasText(tester, (s) => s.contains('°C')), isFalse);
     expect(find.text('zur Basis'), findsNothing, reason: 'unit is a span');
     expect(_hasText(tester, (s) => s.contains('+0,4')), isTrue);
+  });
+
+  testWidgets('Heute keeps each metric in its domain and freshness in the header', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    expect(tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).domain, G3Domain.recovery);
+    final secondary = tester.widgetList<OBSecondaryMetric>(find.byType(OBSecondaryMetric)).toList();
+    expect(secondary.map((metric) => metric.domain), [G3Domain.sleep, G3Domain.load]);
+    expect(tester.widget<OBActivityRow>(find.byType(OBActivityRow)).domain, G3Domain.load);
+    expect(tester.widget<OBNightCard>(find.byType(OBNightCard)).domain, G3Domain.sleep);
+    expect(tester.widgetList<OBBodyRow>(find.byType(OBBodyRow)).every((row) => row.domain == G3Domain.recovery), isTrue);
+    expect(tester.widget<OBStepsCard>(find.byType(OBStepsCard)).domain, G3Domain.load);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).synthetic, isTrue);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
+
+    final week = find.byType(OBWeekBars);
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.recovery);
+    final selector = tester.widget<OBSegmented>(find.byType(OBSegmented));
+    selector.onChanged!(1);
+    await tester.pump();
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.sleep);
+    selector.onChanged!(2);
+    await tester.pump();
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.load);
   });
 
   testWidgets('Körper header opens Messwerte; absent recovery has no chevron', (tester) async {
@@ -456,7 +480,8 @@ void main() {
     expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
     await tester.tap(find.text('Später'));
     await tester.pumpAndSettle();
-    expect(find.text('2 offen'), findsOneWidget);
+    expect(find.text('Für später gemerkt. Kein Nachteil, wenn du es auslässt.'), findsOneWidget);
+    expect(find.text('Jetzt'), findsOneWidget);
   });
 
   testWidgets('check-in: Ändern opens the journal on the answer\'s own day', (tester) async {

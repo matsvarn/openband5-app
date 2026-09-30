@@ -11,6 +11,7 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow;
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
+import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3Domain;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show G3DetailPage, OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
@@ -174,6 +175,21 @@ Widget _app(Widget child) =>
     MaterialApp(theme: openBandTheme(Brightness.light), home: child);
 
 void main() {
+  test('metric domain follows the metric across detail routes', () {
+    for (final metric in [
+      G3Metric.recovery,
+      G3Metric.hrv,
+      G3Metric.rhr,
+      G3Metric.respRate,
+      G3Metric.skinTempZ,
+    ]) {
+      expect(g3MetricDomain(metric), G3Domain.recovery);
+    }
+    expect(g3MetricDomain(G3Metric.sleepMinutes), G3Domain.sleep);
+    expect(g3MetricDomain(G3Metric.strain), G3Domain.load);
+    expect(g3MetricDomain(G3Metric.steps), G3Domain.load);
+  });
+
   setUpAll(() async => initializeDateFormatting('de_DE'));
 
   testWidgets('Heute HRV chevron opens G3 detail inside the Heute tab', (
@@ -431,6 +447,14 @@ void main() {
     expect(
       tester.widget<OBTrendChart>(find.byType(OBTrendChart)).title,
       'HRV · ms',
+    );
+    expect(
+      tester.widget<OBTrendChart>(find.byType(OBTrendChart)).domain,
+      G3Domain.recovery,
+    );
+    expect(
+      tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).domain,
+      G3Domain.recovery,
     );
     final chip = find.byType(OBChip);
     final decoration =
