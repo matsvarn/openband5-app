@@ -572,8 +572,8 @@ JournalDayPatch g3CheckInPatch(
   );
 }
 
-/// The producer's paired-day and per-side floors. Other refusals keep null.
-enum G3PatternRefusalGate { paired, side }
+/// The producer's paired-day, per-side, and history floors.
+enum G3PatternRefusalGate { paired, side, history }
 
 class G3JournalPattern {
   const G3JournalPattern(this.pattern);
@@ -583,6 +583,15 @@ class G3JournalPattern {
   String? get refusalNote => pattern.note;
   int get pairedMinimum => CaffeineSleepPattern.minPairedNights;
   int get perSideMinimum => CaffeineSleepPattern.minPerSideNights;
+  ({int have, int need})? get historyNeed {
+    if (pattern.kind != CaffeineSleepPatternKind.insufficient) return null;
+    final match = RegExp(
+      r'^need_history:have=(\d+),need=(\d+)',
+    ).firstMatch(refusalNote ?? '');
+    if (match == null) return null;
+    return (have: int.parse(match[1]!), need: int.parse(match[2]!));
+  }
+
   G3PatternRefusalGate? get refusalGate {
     if (pattern.kind != CaffeineSleepPatternKind.insufficient) return null;
     if (pattern.pairedN < pairedMinimum) return G3PatternRefusalGate.paired;
@@ -592,8 +601,10 @@ class G3JournalPattern {
         (yes < perSideMinimum || no < perSideMinimum)) {
       return G3PatternRefusalGate.side;
     }
+    if (historyNeed != null) return G3PatternRefusalGate.history;
     return null;
   }
+
   int? get remaining =>
       refusalGate == G3PatternRefusalGate.paired
       ? pairedMinimum - pattern.pairedN

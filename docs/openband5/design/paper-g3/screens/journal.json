@@ -1,1 +1,20 @@
-{}
+{
+  "G3JournalTabLight": {"page": "p-1C-0", "node": "5T4H-0", "mode": "light"},
+  "G3JournalTabDark": {"page": "p-1C-0", "node": "5TAF-0", "mode": "dark"},
+  "G3JournalScrolledLight": {"page": "p-1C-0", "node": "5W5Y-0", "mode": "light"},
+  "G3JournalYesNoLight": {"page": "p-1C-0", "node": "5VFE-0", "mode": "light"},
+  "G3JournalAmountLight": {"page": "p-1C-0", "node": "5WCQ-0", "mode": "light"},
+  "G3JournalNoteLight": {"page": "p-1C-0", "node": "5VOB-0", "mode": "light"},
+  "G3JournalDoneLight": {"page": "p-1C-0", "node": "5VTQ-0", "mode": "light"},
+  "G3JournalSaveFailedLight": {"page": "p-1C-0", "node": "5WHJ-0", "mode": "light"},
+  "G3JournalEditSheetLight": {"page": "p-1C-0", "node": "5WNX-0", "mode": "light"},
+  "G3JournalCustomizeLight": {"page": "p-1C-0", "node": "5YV7-0", "mode": "light"},
+  "G3JournalCustomizeDark": {"page": "p-1C-0", "node": "5Z19-0", "mode": "dark"},
+  "G3JournalCustomSheetLight": {"page": "p-1C-0", "node": "600J-0", "mode": "light"},
+  "G3JournalCustomSheetDark": {"page": "p-1C-0", "node": "605U-0", "mode": "dark"},
+  "G3JournalPatternRefusedLight": {"page": "p-1C-0", "node": "5XHD-0", "mode": "light"},
+  "G3JournalPatternRefusedDark": {"page": "p-1C-0", "node": "6J05-0", "mode": "dark"},
+  "G3JournalPatternMatureLight": {"page": "p-1C-0", "node": "5ZHX-0", "mode": "light"},
+  "G3JournalPatternMatureDark": {"page": "p-1C-0", "node": "5ZR8-0", "mode": "dark"},
+  "G3JournalParts": {"page": "p-1C-0", "node": "6JDZ-0", "mode": "light"}
+}

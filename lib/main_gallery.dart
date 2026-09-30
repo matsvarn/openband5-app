@@ -9,6 +9,7 @@ import 'openband/cycle.dart';
 import 'openband/cycle_comparison.dart';
 import 'openband/cycle_medians.dart';
 import 'openband/health.dart';
+import 'openband/g3/screens/journal_screen.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/domain.dart';
@@ -291,29 +292,47 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           ),
         ),
       ),
-      ShellDomain.wellness => OpenBandJournal(
-        controller: controller,
-        releaseReduced: widget.releaseReduced,
-        onEdit: (day) async {
-          await Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandJournalEditor(
-                repository: widget.repository,
-                day: day,
+      ShellDomain.wellness =>
+        widget.releaseReduced
+            ? G3JournalScreen(
+                controller: controller,
+                onBand: () => showBandStatus(c, controller, () {}),
+                onProfile: () => _openSyntheticProfile(c),
+                onEdit: (day) async {
+                  await Navigator.of(c).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => G3JournalComposeRoute(
+                        repository: widget.repository,
+                        day: day,
+                      ),
+                    ),
+                  );
+                  controller.refresh();
+                },
+              )
+            : OpenBandJournal(
+                controller: controller,
+                releaseReduced: widget.releaseReduced,
+                onEdit: (day) async {
+                  await Navigator.of(c).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => OpenBandJournalEditor(
+                        repository: widget.repository,
+                        day: day,
+                      ),
+                    ),
+                  );
+                  controller.refresh();
+                },
+                onNutrition: () => Navigator.of(c).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OpenBandNutritionRoute(
+                      controller: controller,
+                      onBarcode: _syntheticBarcode,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          );
-          controller.refresh();
-        },
-        onNutrition: () => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) => OpenBandNutritionRoute(
-              controller: controller,
-              onBarcode: _syntheticBarcode,
-            ),
-          ),
-        ),
-      ),
     },
   );
 

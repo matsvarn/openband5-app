@@ -22,7 +22,10 @@ import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/health.dart';
-import 'package:openstrap_edge/openband/journal_editor.dart';
+import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
+import 'package:openstrap_edge/openband/journal.dart';
+import 'package:openstrap_edge/openband/nutrition.dart';
+import 'package:openstrap_edge/openband/nutrition_route.dart';
 import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -1156,10 +1159,56 @@ void main() {
       expect(find.byKey(const ValueKey('medication-journal')), findsNothing);
       expect(find.byKey(const ValueKey('cycle-journal')), findsNothing);
       expect(find.text('Ernährung'), findsNothing);
-      await tester.tap(find.byTooltip('Journal bearbeiten'));
+      expect(find.byType(G3JournalScreen), findsOneWidget);
+      expect(find.text('CHECK-IN'), findsOneWidget);
+      expect(
+        releaseScreenForRoute(kRouteJournalCompose, reduced: true),
+        isA<G3JournalComposeRoute>(),
+      );
+      await tester.tap(find.text('Anpassen ›'));
       await tester.pumpAndSettle();
-      expect(find.byType(OpenBandJournalEditor), findsOneWidget);
+      expect(find.byType(G3JournalCustomize), findsOneWidget);
+      await tester.tap(find.text('Eigene Frage'));
+      await tester.pumpAndSettle();
+      expect(find.byType(G3JournalNewQuestionSheet), findsOneWidget);
+      expect(find.text('Symbol'), findsNothing);
+      expect(find.text('Freitext'), findsNothing);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'development Journal reaches nutrition; release Journal does not',
+    (tester) async {
+      phone(tester);
+      final repository = (await tester.runAsync(loadGalleryRepository))!;
+      await tester.pumpWidget(
+        OpenBandGallery(repository: repository, showControls: false),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Journal'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OpenBandJournal), findsOneWidget);
+      await tester.tap(find.bySemanticsLabel('Ernährung'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OpenBandNutritionRoute), findsOneWidget);
+      expect(find.byType(OpenBandNutrition), findsOneWidget);
+
+      await tester.pumpWidget(
+        OpenBandGallery(
+          key: UniqueKey(),
+          repository: repository,
+          showControls: false,
+          releaseReduced: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ob-tab-wellness')));
+      await tester.pumpAndSettle();
+      expect(find.byType(G3JournalScreen), findsOneWidget);
+      expect(find.byType(OpenBandJournal), findsNothing);
+      expect(find.bySemanticsLabel('Ernährung'), findsNothing);
+      expect(find.byType(OpenBandNutritionRoute), findsNothing);
     },
   );
 

@@ -144,6 +144,11 @@ void main() {
     expect(side.noNights, 2);
     expect(side.refusalGate, G3PatternRefusalGate.side);
     expect(side.remaining, isNull);
+    final history = G3JournalPattern(
+      pattern(8, 4, 4, 'need_history:have=8,need=18'),
+    );
+    expect(history.refusalGate, G3PatternRefusalGate.history);
+    expect(history.historyNeed, (have: 8, need: 18));
     expect(
       G3JournalPattern(pattern(8, 3, 5, 'other')).refusalGate,
       isNull,

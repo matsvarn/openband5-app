@@ -4,6 +4,7 @@ import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/g3/screens/verlauf.dart';
+import 'openband/g3/screens/journal_screen.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/cycle.dart';
@@ -489,7 +490,7 @@ Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
             : G3AllMetrics(repository: repository, endDay: todayLabel()),
       kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
       kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
-      kRouteJournalCompose => const OpenBandJournalEditorRoute(),
+      kRouteJournalCompose => G3JournalComposeRoute(repository: repository),
       kRouteBreathing => const CalmBreathing(),
       // The hydration reminder lands on Nutrition, where the water tile carries
       // its own − / + and is beside the food it belongs with. There used to be
@@ -764,35 +765,60 @@ class _ShellState extends State<_Shell> {
             ),
           ),
         ),
-        ShellDomain.wellness => OpenBandJournal(
-          controller: _day,
-          releaseReduced: reduced,
-          onEdit: (day) async {
-            await pushInTab(c,
-              MaterialPageRoute<void>(
-                builder: (_) => OpenBandJournalEditor(
-                  repository: _day.repository,
-                  day: day,
+        ShellDomain.wellness =>
+          reduced
+              ? G3JournalScreen(
+                  controller: _day,
+                  onBand: () =>
+                      showBandStatus(c, _day, () => _app!.openSession()),
+                  onProfile: () => pushInTab(
+                    c,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfileHome(),
+                    ),
+                  ),
+                  onEdit: (day) async {
+                    await pushInTab(
+                      c,
+                      MaterialPageRoute<void>(
+                        builder: (_) => G3JournalComposeRoute(
+                          repository: _day.repository,
+                          day: day,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : OpenBandJournal(
+                  controller: _day,
+                  releaseReduced: reduced,
+                  onEdit: (day) async {
+                    await pushInTab(
+                      c,
+                      MaterialPageRoute<void>(
+                        builder: (_) => OpenBandJournalEditor(
+                          repository: _day.repository,
+                          day: day,
+                        ),
+                      ),
+                    );
+                  },
+                  onNutrition: () => Navigator.of(c).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => OpenBandNutritionRoute(
+                        controller: _day,
+                        onBarcode: _nutritionBarcode,
+                      ),
+                    ),
+                  ),
+                  onCycle: () => OpenBandCycle.push(
+                    c,
+                    repository: _day.repository,
+                    day: _day.selectedDay,
+                    now: _day.now,
+                    synthetic: _day.day?.synthetic == true,
+                  ),
                 ),
-              ),
-            );
-          },
-          onNutrition: () => Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandNutritionRoute(
-                controller: _day,
-                onBarcode: _nutritionBarcode,
-              ),
-            ),
-          ),
-          onCycle: () => OpenBandCycle.push(
-            c,
-            repository: _day.repository,
-            day: _day.selectedDay,
-            now: _day.now,
-            synthetic: _day.day?.synthetic == true,
-          ),
-        ),
       },
     );
   }

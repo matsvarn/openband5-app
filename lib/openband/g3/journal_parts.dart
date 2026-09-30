@@ -1,0 +1,935 @@
+// G3 Journal presentation. The caller owns persistence and decides which
+// questions and comparisons are supported by the repository.
+import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import 'count_copy.dart';
+import 'g3_theme.dart';
+
+class OBCheckIn extends StatelessWidget {
+  const OBCheckIn({
+    super.key,
+    required this.title,
+    required this.index,
+    required this.total,
+    required this.answer,
+    required this.onLater,
+    this.error,
+    this.onRetry,
+    this.retryLabel = 'Erneut speichern',
+    this.inlineLater = false,
+    this.footerLabel,
+  });
+  final String title;
+  final int index, total;
+  final Widget answer;
+  final VoidCallback onLater;
+  final String? error;
+  final VoidCallback? onRetry;
+  final String retryLabel;
+  final bool inlineLater;
+  final String? footerLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: g.pressed(radius: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.notebookPen, size: 20, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(child: Text('CHECK-IN', style: g.caps(size: 14))),
+              Text('$index von $total', style: g.t(13, 17, color: g.ink2)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < total; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: i < index - 1
+                          ? g.ink
+                          : i == index - 1
+                          ? g.dark
+                                ? g.ink2
+                                : g.ink2.withValues(alpha: .45)
+                          : g.band,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(title, style: g.t(19, 24, weight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          if (inlineLater)
+            Row(
+              children: [
+                Expanded(child: answer),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: TextButton(
+                    onPressed: onLater,
+                    child: const Text('Später'),
+                  ),
+                ),
+              ],
+            )
+          else
+            answer,
+          if (error != null) ...[
+            const SizedBox(height: 12),
+            OBInlineError(
+              message: error!,
+              onRetry: onRetry,
+              retryLabel: retryLabel,
+            ),
+          ],
+          if (!inlineLater)
+            Row(
+              children: [
+                if (footerLabel != null)
+                  Expanded(
+                    child: Text(
+                      footerLabel!,
+                      style: g.t(12, 16, color: g.muted),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                TextButton(
+                  onPressed: onLater,
+                  child: Text('Später', style: g.t(14, 18, color: g.ink2)),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBCheckInDone extends StatelessWidget {
+  const OBCheckInDone({
+    super.key,
+    required this.total,
+    required this.answers,
+    this.title = 'Für heute erledigt',
+  });
+  final int total;
+  final List<String> answers;
+  final String title;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: g.raised(radius: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.notebookPen, size: 20, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(child: Text('CHECK-IN', style: g.caps(size: 14))),
+              Text('$total von $total', style: g.t(13, 17, color: g.ink2)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < total; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: g.ink,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Icon(LucideIcons.check, size: 22, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title, style: g.t(21, 26, weight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final answer in answers)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: g.pressed(radius: 14),
+                  child: Text(answer, style: g.t(12, 16, color: g.ink2)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Du kannst jede Antwort jederzeit ändern.',
+            style: g.t(14, 19, color: g.ink2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBAnswerKey extends StatelessWidget {
+  const OBAnswerKey({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+    this.icon,
+  });
+  final String label;
+  final VoidCallback? onTap;
+  final bool selected;
+  final IconData? icon;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+        child: Container(
+          constraints: BoxConstraints(minHeight: icon == null ? 44 : 58),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? g.ink : g.canvas,
+            borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+          ),
+          child: icon == null
+              ? Text(
+                  label,
+                  style: g.t(
+                    16,
+                    20,
+                    weight: FontWeight.w700,
+                    color: selected ? g.onInk : g.ink,
+                  ),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 22, color: selected ? g.onInk : g.ink),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      style: g.t(
+                        12,
+                        15,
+                        weight: FontWeight.w700,
+                        color: selected ? g.onInk : g.ink,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class OBStepper extends StatelessWidget {
+  const OBStepper({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.max = 20,
+    this.unit,
+  });
+  final int? value;
+  final int max;
+  final String? unit;
+  final ValueChanged<int> onChanged;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      decoration: g.pressed(radius: 24),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Weniger',
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            onPressed: value == null || value == 0
+                ? null
+                : () => onChanged(value! - 1),
+            icon: const Icon(LucideIcons.minus),
+          ),
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value == null
+                      ? '—'
+                      : value == 0
+                      ? 'Keins'
+                      : '$value',
+                  style: g.t(24, 28, weight: FontWeight.w700),
+                ),
+                if (value != null && value! > 0 && unit != null) ...[
+                  const SizedBox(width: 5),
+                  Text(unit!, style: g.t(13, 18, color: g.ink2)),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Mehr',
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            onPressed: value == max ? null : () => onChanged((value ?? 0) + 1),
+            icon: const Icon(LucideIcons.plus),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBInlineError extends StatelessWidget {
+  const OBInlineError({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.retryLabel = 'Erneut speichern',
+  });
+  final String message;
+  final VoidCallback? onRetry;
+  final String retryLabel;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: g.pressed(),
+      child: Row(
+        children: [
+          Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
+          const SizedBox(width: 8),
+          Expanded(child: Text(message, style: g.t(13, 17))),
+          if (onRetry != null)
+            TextButton(onPressed: onRetry, child: Text(retryLabel)),
+        ],
+      ),
+    );
+  }
+}
+
+class OBJournalEntryRow extends StatelessWidget {
+  const OBJournalEntryRow({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.onEdit,
+    this.subtitle,
+    this.icon,
+  });
+  final String title, value;
+  final String? subtitle;
+  final IconData? icon;
+  final VoidCallback onEdit;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: g.chip,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              icon ?? LucideIcons.notebookPen,
+              size: 18,
+              color: g.ink,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: g.t(15, 19, weight: FontWeight.w700)),
+                if (subtitle != null)
+                  Text(subtitle!, style: g.t(12, 16, color: g.muted)),
+              ],
+            ),
+          ),
+          Text(value, style: g.t(17, 21, weight: FontWeight.w700)),
+          IconButton(
+            tooltip: '$title ändern',
+            onPressed: onEdit,
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            icon: Icon(LucideIcons.pencil, size: 14, color: g.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBJournalDayRow extends StatelessWidget {
+  const OBJournalDayRow({
+    super.key,
+    required this.title,
+    required this.summary,
+    required this.onTap,
+    this.chips = const [],
+    this.count,
+  });
+  final String title, summary;
+  final VoidCallback onTap;
+  final List<String> chips;
+  final String? count;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 58),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: g.hairline)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: g.t(15, 19, weight: FontWeight.w700),
+                        ),
+                      ),
+                      if (count != null)
+                        Text(count!, style: g.t(12, 16, color: g.muted)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (chips.isEmpty)
+                    Text(summary, style: g.t(13, 17, color: g.muted))
+                  else
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: [
+                        for (final chip in chips)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: g.chip,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              chip,
+                              style: g.t(11, 16, color: g.ink2),
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, color: g.gap, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class OBPatternProgress extends StatelessWidget {
+  const OBPatternProgress({
+    super.key,
+    required this.have,
+    required this.need,
+    this.height = 22,
+  });
+  final int have, need;
+  final double height;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Row(
+      children: [
+        for (var i = 0; i < need; i++)
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(right: i == need - 1 ? 0 : 6),
+              child: Container(
+                height: height,
+                decoration: BoxDecoration(
+                  color: i < have ? g.ink : g.page,
+                  border: i < have ? null : Border.all(color: g.gap),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class OBPatternGateRow extends StatelessWidget {
+  const OBPatternGateRow({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.minimum,
+  });
+  final String label;
+  final int? count;
+  final int? minimum;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final narrow = MediaQuery.sizeOf(context).width < 360;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: narrow ? 90 : 145,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: g.t(14, 18, weight: FontWeight.w700)),
+                Text(
+                  label == 'Ja'
+                      ? 'Koffein nach 14 Uhr'
+                      : 'kein Koffein nach 14 Uhr',
+                  style: g.t(12, 16, color: g.muted),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: narrow ? 66 : 96,
+            child: count == null || minimum == null
+                ? Text('—', style: g.t(14, 18, color: g.muted))
+                : OBPatternProgress(
+                    have: count!.clamp(0, minimum!),
+                    need: minimum!,
+                    height: 14,
+                  ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              count == null || minimum == null
+                  ? '—'
+                  : count! < minimum!
+                  ? '$count von $minimum'
+                  : '$count · genug',
+              textAlign: TextAlign.end,
+              style: g.t(13, 17, color: g.ink2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class OBPatternCard extends StatelessWidget {
+  const OBPatternCard({
+    super.key,
+    required this.title,
+    required this.detail,
+    required this.have,
+    required this.need,
+    this.footer,
+    this.loading = false,
+    this.onRetry,
+    this.partial = false,
+  });
+  final String title, detail;
+  final int? have;
+  final int? need;
+  final String? footer;
+  final bool loading, partial;
+  final VoidCallback? onRetry;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final awaiting = have != null && need != null && have! < need!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: g.raised(radius: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('MUSTER ›', style: g.caps())),
+              Text(
+                loading
+                    ? 'wird geladen'
+                    : onRetry != null
+                    ? 'nicht verfügbar'
+                    : partial
+                    ? 'Teilweise auswertbar'
+                    : awaiting
+                    ? 'noch kein Vergleich'
+                    : title,
+                style: g.t(13, 17, color: g.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (loading)
+            Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  child: Text('…', style: g.t(18, 19, color: g.ink2)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Vergleich wird geladen.',
+                    style: g.t(14, 19, color: g.ink2),
+                  ),
+                ),
+              ],
+            )
+          else if (onRetry != null)
+            Row(
+              children: [
+                Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(detail, style: g.t(14, 19, color: g.ink2)),
+                ),
+                TextButton(onPressed: onRetry, child: const Text('Erneut')),
+              ],
+            )
+          else if (awaiting)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
+                          style: g.t(15, 19, weight: FontWeight.w700),
+                        ),
+                        Text(detail, style: g.t(13, 17, color: g.ink2)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else ...[
+            Text(
+              have == null ? '—' : title,
+              style: g.t(23, 27, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(detail, style: g.t(14, 19, color: g.ink2)),
+          ],
+          if (!loading && onRetry == null && have != null && need != null) ...[
+            const SizedBox(height: 16),
+            OBPatternProgress(have: have!.clamp(0, need!), need: need!),
+          ],
+          if (!loading && onRetry == null) ...[
+            const SizedBox(height: 10),
+            Text(
+              footer ??
+                  (have == null || need == null
+                      ? '—'
+                      : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
+              style: g.t(13, 17, weight: FontWeight.w700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class OBQuestionRow extends StatelessWidget {
+  const OBQuestionRow({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.active,
+    required this.onChanged,
+    this.icon = LucideIcons.notebookPen,
+  });
+  final String title, subtitle;
+  final bool active;
+  final ValueChanged<bool>? onChanged;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 58),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: g.hairline)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: g.track,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 17, color: g.ink),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: g.t(15, 19, weight: FontWeight.w700)),
+                Text(subtitle, style: g.t(12, 16, color: g.muted)),
+              ],
+            ),
+          ),
+          if (onChanged != null)
+            OBSwitch(value: active, onChanged: onChanged!, label: title),
+        ],
+      ),
+    );
+  }
+}
+
+class OBTextField extends StatelessWidget {
+  const OBTextField({
+    super.key,
+    required this.controller,
+    required this.label,
+    this.maxLines = 1,
+  });
+  final TextEditingController controller;
+  final String label;
+  final int maxLines;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Semantics(
+      textField: true,
+      label: label,
+      child: Container(
+        constraints: BoxConstraints(minHeight: maxLines > 1 ? 92 : 48),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: g.raised(radius: 14),
+        child: TextField(
+          controller: controller,
+          maxLines: maxLines,
+          style: g.t(15, 20),
+          decoration: InputDecoration.collapsed(hintText: label),
+        ),
+      ),
+    );
+  }
+}
+
+/// A neutral distribution view. Only pass observed values; no interpolation.
+class OBPatternDotPlot extends StatelessWidget {
+  const OBPatternDotPlot({
+    super.key,
+    required this.withAnswer,
+    required this.withoutAnswer,
+    required this.min,
+    required this.max,
+    this.bandLow,
+    this.bandHigh,
+  });
+  final List<double> withAnswer, withoutAnswer;
+  final double min, max;
+  final double? bandLow, bandHigh;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Semantics(
+      label:
+          '${withAnswer.length} ${g3CountNoun(withAnswer.length, 'beobachtete Nacht', 'beobachtete Nächte')} mit Ja und ${withoutAnswer.length} ${g3CountNoun(withoutAnswer.length, 'beobachtete Nacht', 'beobachtete Nächte')} mit Nein',
+      child: RepaintBoundary(
+        child: SizedBox(
+          height: 112,
+          child: CustomPaint(
+            painter: _PatternDots(
+              g,
+              withAnswer,
+              withoutAnswer,
+              min,
+              max,
+              bandLow,
+              bandHigh,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PatternDots extends CustomPainter {
+  const _PatternDots(
+    this.g,
+    this.yes,
+    this.no,
+    this.min,
+    this.max,
+    this.low,
+    this.high,
+  );
+  final G3 g;
+  final List<double> yes, no;
+  final double min, max;
+  final double? low, high;
+  double _x(double v, double w) => ((v - min) / (max - min)).clamp(0, 1) * w;
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (max <= min) return;
+    final w = size.width - 12;
+    if (low != null && high != null && high! > low!) {
+      canvas.drawRect(
+        Rect.fromLTWH(
+          6 + _x(low!, w),
+          0,
+          _x(high!, w) - _x(low!, w),
+          size.height,
+        ),
+        Paint()..color = g.band,
+      );
+    }
+    final paint = Paint()..color = g.ink;
+    for (final (row, values) in [(0, yes), (1, no)]) {
+      for (var i = 0; i < values.length; i++) {
+        final v = values[i];
+        if (!v.isFinite) continue;
+        canvas.drawCircle(
+          Offset(6 + _x(v, w), row * 52 + 14 + (i % 5) * 7),
+          2.5,
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PatternDots old) =>
+      old.g.dark != g.dark ||
+      old.yes != yes ||
+      old.no != no ||
+      old.min != min ||
+      old.max != max ||
+      old.low != low ||
+      old.high != high;
+}
+
+class OBSwitch extends StatelessWidget {
+  const OBSwitch({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    required this.label,
+  });
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final String label;
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Semantics(
+      label: label,
+      toggled: value,
+      button: true,
+      onTap: () => onChanged(!value),
+      child: GestureDetector(
+        excludeFromSemantics: true,
+        onTap: () => onChanged(!value),
+        child: SizedBox(
+          width: 46,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 46,
+              height: 28,
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: value ? g.ink : g.track,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Align(
+                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: g.canvas,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
