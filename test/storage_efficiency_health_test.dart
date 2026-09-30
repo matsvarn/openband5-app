@@ -16,8 +16,8 @@ void main() {
     await databaseFactory.setDatabasesPath(temp.path);
     LocalDb.dbName = 'test.db';
     calls.clear();
-    LocalDb.debugIntegrityCheck = (pragma) async {
-      calls.add(pragma);
+    LocalDb.debugIntegrityCheck = (statement) async {
+      calls.add(statement);
       return ['ok'];
     };
   });
@@ -94,8 +94,8 @@ void main() {
   test(
     'a full-check failure survives reopen and a weaker quick-check success',
     () async {
-      LocalDb.debugIntegrityCheck = (pragma) async {
-        calls.add(pragma);
+      LocalDb.debugIntegrityCheck = (statement) async {
+        calls.add(statement);
         return calls.length == 1 ? ['index mismatch'] : ['ok'];
       };
       expect((await LocalDb.schemaHealth(now: start))['integrity_ok'], isFalse);
@@ -127,8 +127,8 @@ void main() {
   test(
     'a daily failure clears only after a later successful eligible check',
     () async {
-      LocalDb.debugIntegrityCheck = (pragma) async {
-        calls.add(pragma);
+      LocalDb.debugIntegrityCheck = (statement) async {
+        calls.add(statement);
         return calls.length == 2 ? ['page mismatch'] : ['ok'];
       };
       await LocalDb.schemaHealth(now: start);
