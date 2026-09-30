@@ -33,8 +33,7 @@ extension BleEngineTransport on BleEngine {
     // one fix that cannot work. Check the adapter BEFORE scanning and throw,
     // so the reason reaches the caller instead of being flattened into a null.
     final pre = await _detectBlocker();
-    if (pre != null) {
-      _noteBlocker(pre);
+    if (pre != null && _blocker == pre) {
       _setPhase(BleConnState.idle);
       throw BleUnavailableException(pre);
     }
@@ -101,11 +100,10 @@ extension BleEngineTransport on BleEngine {
       await FlutterBluePlus.startScan(withServices: wanted, timeout: timeout);
       await FlutterBluePlus.isScanning.where((on) => on == false).first;
     } catch (e) {
-      // Android reports a missing runtime permission by throwing here rather
-      // than through the adapter state, so the pre-check above cannot catch it.
-      final blocker = classifyBleBlocker(error: e);
-      if (blocker != null) {
-        _noteBlocker(blocker);
+      // Recheck the OS state after a thrown scan. Exception text alone can be
+      // stale during adapter initialization and must not become a phone blocker.
+      final blocker = await _detectBlocker();
+      if (blocker != null && _blocker == blocker) {
         await sub.cancel();
         _setPhase(BleConnState.idle);
         throw BleUnavailableException(blocker);
@@ -121,7 +119,7 @@ extension BleEngineTransport on BleEngine {
       // does not make it fixable on its own.
       _log('No band found (force-quit the official app; band must be free).');
     } else {
-      _clearBlocker();
+      _clearBlocker('on (scan reached radio)');
     }
     return found;
   }

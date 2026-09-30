@@ -368,6 +368,8 @@ class DeviceState {
   String?
   strapName; // strap advertising name (editable via SET_ADVERTISING_NAME)
   String connection; // 'disconnected' | 'scanning' | 'connecting' | 'connected'
+  /// Last failed connection attempt in this process; cleared when retrying.
+  DateTime? lastConnectFailedAt;
 
   // ── resumable-sync / reconnect-health flags ──────────────────────────────────
   /// MarginalRadioDetector tripped: the BT radio can't sustain the R10/R11 raw

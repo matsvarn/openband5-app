@@ -70,6 +70,14 @@ BandStatus localizedBandStatus(BuildContext c, BandStatus s) {
         l?.bandStatusClockLostReason ?? s.reason,
         fix: l?.bandStatusClockLostFix ?? s.fix,
       );
+    case BandCondition.unreachable:
+      return BandStatus(
+        s.condition,
+        'Band nicht erreichbar',
+        'Das Band hat auf den letzten Verbindungsversuch nicht geantwortet.',
+        fix: 'Erneut verbinden',
+        lastConnectFailedAt: s.lastConnectFailedAt,
+      );
     case BandCondition.connected:
       return BandStatus(
         s.condition,

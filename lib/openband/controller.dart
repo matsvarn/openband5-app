@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../ble/ble_state.dart' show BandStatus;
 import '../data/day_label.dart';
 import 'domain.dart';
 
@@ -12,6 +13,7 @@ class OpenBandController extends ChangeNotifier {
   String selectedDay;
   OpenBandDay? day;
   BandSnapshot band;
+  BandStatus? bandStatus;
   Object? loadError;
   bool loading = false;
   int _request = 0;
@@ -59,6 +61,15 @@ class OpenBandController extends ChangeNotifier {
 
   void updateBand(BandSnapshot value) {
     band = value;
+    _notify();
+  }
+
+  void updateBandStatus(BandStatus value) {
+    if (bandStatus?.condition == value.condition &&
+        bandStatus?.lastConnectFailedAt == value.lastConnectFailedAt) {
+      return;
+    }
+    bandStatus = value;
     _notify();
   }
 

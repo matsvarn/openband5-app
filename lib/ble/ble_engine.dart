@@ -866,6 +866,7 @@ class BleEngine {
   /// its always-on v18 per-second stream perfectly well. Wire a caller-owned
   /// settings read here to make it a real user-facing toggle.
   final bool Function() gen5DeepBuffersEnabled;
+  final Stream<BluetoothAdapterState> _adapterStates;
 
   BleEngine({
     required this.onRecord,
@@ -884,7 +885,20 @@ class BleEngine {
     this.deriveDataStaleness = _defaultDeriveDataStaleness,
     this.isForegroundActive = _defaultIsForegroundActive,
     this.gen5DeepBuffersEnabled = _defaultGen5DeepBuffersDisabled,
-  });
+    Stream<BluetoothAdapterState>? adapterStates,
+  }) : _adapterStates = adapterStates ?? FlutterBluePlus.adapterState {
+    if (!isBackgroundDrainer &&
+        (adapterStates != null || Platform.isIOS || Platform.isAndroid)) {
+      _adapterStateSub = _adapterStates.listen(_onAdapterState);
+    }
+  }
+
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSub;
+
+  void dispose() {
+    _adapterStateSub?.cancel();
+    _adapterStateSub = null;
+  }
 
   static bool _defaultGen5DeepBuffersDisabled() => false;
 
@@ -2153,9 +2167,9 @@ class BleEngine {
 
   // ── phone-level Bluetooth blockers ──────────────────────────────────────────
   /// The last reason the phone's own stack refused us, or null when the stack is
-  /// usable. Latched (a blocker does not clear itself) and cleared only by a
-  /// scan or connect that actually got through.
+  /// usable. Re-evaluated on adapter-state events and foreground resume.
   BleBlocker? _blocker;
+  BluetoothAdapterState _lastAdapterState = BluetoothAdapterState.unknown;
 
   BleBlocker? get bluetoothBlocker => _blocker;
 
@@ -2172,6 +2186,7 @@ class BleEngine {
         strapNeedsReboot: state.strapNeedsReboot,
         syncClockLost: state.syncClockLost,
         bondRefusals: state.bondRefusals,
+        lastConnectFailedAt: state.lastConnectFailedAt,
       );
 
   /// Read the adapter state without hanging: `unknown` is the pre-init value and
@@ -2180,28 +2195,44 @@ class BleEngine {
 
   Future<BleBlocker?> _detectBlocker() async {
     try {
-      final s = await FlutterBluePlus.adapterState
+      final s = await _adapterStates
           .firstWhere((s) => s != BluetoothAdapterState.unknown)
           .timeout(_blockerProbe,
               onTimeout: () => BluetoothAdapterState.unknown);
+      _onAdapterState(s);
       return classifyBleBlocker(adapterState: s.name);
     } catch (e) {
-      return classifyBleBlocker(error: e);
+      _log('[BLE] adapter state probe failed: $e');
+      return null;
     }
   }
 
-  void _noteBlocker(BleBlocker b) {
+  Future<void> refreshBluetoothBlocker() async {
+    await _detectBlocker();
+  }
+
+  void _onAdapterState(BluetoothAdapterState adapter) {
+    _lastAdapterState = adapter;
+    final blocker = classifyBleBlocker(adapterState: adapter.name);
+    if (blocker != null) {
+      _noteBlocker(blocker, adapter.name);
+    } else if (adapter == BluetoothAdapterState.on) {
+      _clearBlocker(adapter.name);
+    }
+  }
+
+  void _noteBlocker(BleBlocker b, String adapterState) {
     if (_blocker == b) return;
     _blocker = b;
-    _log('[BLE] blocked by the phone, not the band: ${b.name}.');
+    _log('[BLE] blocker set: ${b.name} (adapter=$adapterState).');
     onState(state);
   }
 
   /// Anything that actually reached the radio proves the stack is usable again.
-  void _clearBlocker() {
+  void _clearBlocker(String adapterState) {
     if (_blocker == null) return;
     _blocker = null;
-    _log('[BLE] phone-level Bluetooth block cleared.');
+    _log('[BLE] blocker cleared (adapter=$adapterState).');
     onState(state);
   }
 
@@ -2267,11 +2298,15 @@ class BleEngine {
   Future<void> _failConnect() async {
     await _teardownSession(intentional: true);
     _releaseBand();
+    state.lastConnectFailedAt = _lastAdapterState == BluetoothAdapterState.on
+        ? DateTime.now()
+        : null;
     _setPhase(BleConnState.idle);
   }
 
   Future<bool> _doConnect(BluetoothDevice device, {String? generationHint}) async {
     state.address = device.remoteId.str;
+    state.lastConnectFailedAt = null;
     _setPhase(BleConnState.connecting);
     final session = _Session(device);
     _session = session;
@@ -2305,13 +2340,12 @@ class BleEngine {
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
       // vanish into the reconnect loop as an ordinary failed attempt — retrying
       // silently forever against a stack that will never answer.
-      final blocker = classifyBleBlocker(error: e);
-      if (blocker != null) _noteBlocker(blocker);
+      await _detectBlocker();
       _log('connect failed: $e');
       await _failConnect();
       return false;
     }
-    _clearBlocker();
+    _clearBlocker('on (connect succeeded)');
 
     // connect() resolved without throwing => the link is up. Set this explicitly
     // rather than racing the connectionState stream's `connected` emission, so

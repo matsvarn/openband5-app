@@ -108,6 +108,7 @@ class _OpenStrapAppState extends State<OpenStrapApp>
       // to latch for the whole process, silencing every notification and
       // scheduled reminder until a full app restart.
       NotificationService.instance.invalidatePermissionCache();
+      unawaited(app.engine.refreshBluetoothBlocker());
       // A background relaunch while the phone was locked cannot read the
       // keychain, so the BYOK key can be missing from an otherwise healthy
       // process. Coming to the foreground means the phone is unlocked — take
@@ -553,6 +554,7 @@ class _ShellState extends State<_Shell> {
 
   void _sourceChanged() {
     final app = _app!;
+    _day.updateBandStatus(app.engine.bandStatus);
     final processing = app.deriving || app.derivePending;
     if (_insightsRevision != app.insightsRevision.value ||
         _lastDeriving != processing) {

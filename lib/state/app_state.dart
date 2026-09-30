@@ -1642,6 +1642,7 @@ class AppState extends ChangeNotifier {
     _pmdTraceId = null;
     if (pmdId != null) _clearLiveHrTrace(pmdId);
     BandOwnership.markForegroundIntent(false);
+    engine.dispose();
     _releaseForegroundLease();
     _deriveScheduler.dispose();
     _waterBuzzer.dispose();
