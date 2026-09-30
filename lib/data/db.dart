@@ -8446,10 +8446,6 @@ class LocalDb {
     return null;
   }
 
-  /// Queues the decoded_onehz + decoded_rr writes for one raw onto [batch].
-  /// Returns the number of batch operations added, so a caller committing a
-  /// large offload can chunk the batch to bound the native argument-list size
-  /// (see [commitSyncBatch]).
   static const _compactOneHzColumns = [
     'ax', 'ay', 'az', 'temp_ch2_c', 'temp_ch3_c', 'dyn_accel_g',
   ];
@@ -8462,6 +8458,8 @@ class LocalDb {
       'CASE WHEN onehz_enc = 1 THEN $c / 10000.0 ELSE $c END AS $c'
   ).join(', ');
 
+  // REAL affinity returns the scaled integer as a double, so it must fit
+  // exactly in the double mantissa as well as in SQLite's integer range.
   static bool _canCompactOneHz(double? value) {
     if (value == null) return true;
     if (!value.isFinite || (value * 10000).abs() > 9007199254740991) {
@@ -8470,6 +8468,10 @@ class LocalDb {
     return (value * 10000).round() / 10000.0 == value;
   }
 
+  /// Queues the decoded_onehz + decoded_rr writes for one raw onto [batch].
+  /// Returns the number of batch operations added, so a caller committing a
+  /// large offload can chunk the batch to bound the native argument-list size
+  /// (see [commitSyncBatch]).
   static int _queueDecodedOneHz(
     Batch batch,
     RawRecord raw,
