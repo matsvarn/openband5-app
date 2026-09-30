@@ -427,6 +427,7 @@ class _TrainingFrameState extends State<_TrainingFrame> {
                   hrRecoveryOneMinute: noRecovery || manual
                       ? null
                       : base.hrRecoveryOneMinute,
+                  priorHrrCount: widget.g31 ? base.priorHrrCount : null,
                 ),
               ),
             );
@@ -506,6 +507,44 @@ class _TrainingFixtureRepo extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Trend> readTrend(G3Metric metric, String endDay, int days) async {
+    if (g31 && metric == G3Metric.strain && days == 30) {
+      final labels = g3DaysEnding(endDay, days);
+      const values = <double?>[
+        9.2,
+        10.1,
+        11.8,
+        null,
+        9.0,
+        11.3,
+        7.9,
+        10.0,
+        12.5,
+        9.8,
+        7.3,
+        11.8,
+        9.9,
+        8.6,
+        10.9,
+        13.5,
+        3.9,
+        9.6,
+        10.6,
+        11.7,
+        8.9,
+        15.2,
+        10.2,
+        8.5,
+        12.0,
+        10.3,
+        null,
+        4.3,
+        11.0,
+        9.4,
+      ];
+      return g3Trend(metric, [
+        for (var i = 0; i < days; i++) MetricPoint(labels[i], values[i]),
+      ], const G3Baseline(BaselineStatus(BaselinePhase.none)));
+    }
     if (metric == G3Metric.strain &&
         days == 7 &&
         scenario != SyntheticScenario.g3Building) {
