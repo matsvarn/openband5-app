@@ -570,12 +570,12 @@ final Map<String, Widget Function()> g3Specimens = {
     strain: '+6,1',
     zoneMinutes: [0, 4, 19, 16, 3],
   ),
-  'OBCheckIn.question': () => const OBCheckIn(
+  'OBCheckIn.question': () => const G3CheckInPreview(
     state: OBCheckInState.question,
     progress: '1 von 4',
     question: 'Gestern Abend Alkohol?',
   ),
-  'OBCheckIn.answered': () => const OBCheckIn(
+  'OBCheckIn.answered': () => const G3CheckInPreview(
     state: OBCheckInState.answered,
     progress: '2 von 4',
     answered: 'Alkohol gestern: Nein',
@@ -583,7 +583,7 @@ final Map<String, Widget Function()> g3Specimens = {
     onChange: _noop,
   ),
   'OBCheckIn.later': () =>
-      const OBCheckIn(state: OBCheckInState.later, progress: '4 offen'),
+      const G3CheckInPreview(state: OBCheckInState.later, progress: '4 offen'),
   'OBSegmented.week': () => _paperSegmented(
     const OBSegmented(items: ['Erholung', 'Schlaf', 'Belastung'], selected: 0),
   ),

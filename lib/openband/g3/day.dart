@@ -423,7 +423,7 @@ class OBActivityRow extends StatelessWidget {
               else if (!compact && zoneMinutes != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 56, right: 26, top: 12),
-                    child: OBZoneStrip(zoneMinutes!, domain: domain),
+                  child: OBZoneStrip(zoneMinutes!, domain: domain),
                 ),
               if (confirmationFooter case final footer?) ...[
                 const SizedBox(height: 12),
@@ -443,13 +443,13 @@ class OBActivityRow extends StatelessWidget {
 enum OBCheckInState { question, answered, later }
 
 /// One journal question at a time. "Später" never penalises.
-class OBCheckIn extends StatelessWidget {
+class G3CheckInPreview extends StatelessWidget {
   final OBCheckInState state;
   final String progress;
   final String? question, answered;
   final String laterText;
   final VoidCallback? onYes, onNo, onLater, onChange, onResume;
-  const OBCheckIn({
+  const G3CheckInPreview({
     super.key,
     required this.state,
     required this.progress,

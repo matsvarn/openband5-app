@@ -1171,7 +1171,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     if (open.isEmpty) return null;
     final Widget card;
     if (_checkInLater) {
-      card = OBCheckIn(
+      card = G3CheckInPreview(
         state: OBCheckInState.later,
         progress: '${open.length} offen',
         onResume: () => setState(() => _checkInLater = false),

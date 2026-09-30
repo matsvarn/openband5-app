@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
+import 'package:openstrap_edge/openband/g3/check_in.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
@@ -23,6 +24,53 @@ Widget _frame(Widget child) => MaterialApp(
 );
 
 void main() {
+  test('check-in question copy keeps the target day separate', () {
+    expect(g3CheckInCopy('alcohol_evening', '').question, 'Alkohol am Abend?');
+    expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');
+    expect(g3CheckInCopy('caffeine_late', '').question, 'Koffein nach 14 Uhr?');
+    expect(g3CheckInCopy('mood', '').low, 'schlecht');
+    expect(g3CheckInCopy('mood', '').high, 'gut');
+    expect(g3CheckInCopy('custom', 'Meine Frage?').question, 'Meine Frage?');
+  });
+
+  testWidgets('shared check-in supports target, prior answer and later state', (
+    tester,
+  ) async {
+    var changed = false;
+    await tester.pumpWidget(
+      _frame(
+        OBCheckIn(
+          title: 'Alkohol am Abend?',
+          index: 2,
+          total: 4,
+          target: 'zu gestern Abend',
+          answered: 'Stimmung: 4 von 5',
+          onChange: () => changed = true,
+          answer: const Text('Ja oder Nein'),
+          onLater: () {},
+        ),
+      ),
+    );
+    expect(find.text('zu gestern Abend'), findsOneWidget);
+    expect(find.text('Stimmung: 4 von 5'), findsOneWidget);
+    await tester.tap(find.text('Ändern'));
+    expect(changed, isTrue);
+    await tester.pumpWidget(
+      _frame(
+        OBCheckIn(
+          title: '',
+          index: 2,
+          total: 4,
+          later: true,
+          answer: const SizedBox.shrink(),
+          onLater: () {},
+        ),
+      ),
+    );
+    expect(find.textContaining('Für später gemerkt'), findsOneWidget);
+    expect(find.text('Ja oder Nein'), findsNothing);
+  });
+
   test('Heute and Training resolve the same sport order and labels', () {
     expect(g3SportIds.first, 'running');
     expect(g3QuickSportIds, [...g3SportIds.take(8), 'other']);

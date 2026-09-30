@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'chrome.dart' show OBActionSecondary;
+import 'check_in.dart' show g3CheckInCopy;
 import 'g3_theme.dart';
 import 'sport.dart';
 
@@ -17,35 +18,14 @@ final kHeuteSports = g3QuickSportIds;
 
 /// Question copy for a check-in key; the day it belongs to is shown apart
 /// ("zu gestern"), so questions do not say "gestern" themselves.
-String heuteCheckInQuestion(String key, String title) {
-  final rating = heuteRatingCopy(key).question;
-  return switch (key) {
-    'alcohol_evening' => 'Alkohol am Abend?',
-    'caffeine_late' => 'Koffein nach 14 Uhr?',
-    'alcohol_units' => 'Wie viel Alkohol?',
-    'journal_note' => 'Noch etwas zum Tag?',
-    _ => rating == key ? '$title?' : rating,
-  };
-}
+String heuteCheckInQuestion(String key, String title) =>
+    g3CheckInCopy(key, title).question;
 
 /// Question and end labels for a check-in rating key.
-({String question, String low, String high}) heuteRatingCopy(
-  String key,
-) => switch (key) {
-  'mood' => (question: 'Wie ist deine Stimmung?', low: 'schlecht', high: 'gut'),
-  'sleep_quality' => (
-    question: 'Wie hast du geschlafen?',
-    low: 'schlecht',
-    high: 'gut',
-  ),
-  'energy' => (
-    question: 'Wie viel Energie hast du?',
-    low: 'wenig',
-    high: 'viel',
-  ),
-  'stress' => (question: 'Wie gestresst bist du?', low: 'wenig', high: 'sehr'),
-  _ => (question: key, low: '1', high: '5'),
-};
+({String question, String low, String high}) heuteRatingCopy(String key) {
+  final copy = g3CheckInCopy(key, key);
+  return (question: copy.question, low: copy.low, high: copy.high);
+}
 
 /// One check-in question in the Heute card: header with progress (and the
 /// answer's day when it is not the selected day), the last answer with its
