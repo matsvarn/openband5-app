@@ -79,19 +79,7 @@ class OBDayNote extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text(heading, style: g.caps(color: g.noteMuted)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'aus deinen Werten',
-                  textAlign: TextAlign.right,
-                  style: g.t(12, 16, color: g.noteMuted),
-                ),
-              ),
-            ],
-          ),
+          Text(heading, style: g.caps(color: g.noteMuted)),
           const SizedBox(height: 8),
           Text(
             headline,
@@ -998,7 +986,7 @@ class OBNightCard extends StatelessWidget {
     };
     if (state == OBNightState.missing || asleep == null) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: kG3CardPadding,
         decoration: g.raised(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1049,12 +1037,18 @@ class OBNightCard extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          padding: kG3CardPadding,
           decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              G3LabelRow('NACHT', domain: domain, note: note, onTap: onTap),
+              G3LabelRow(
+                'NACHT',
+                domain: domain,
+                glyph: LucideIcons.moon,
+                note: note,
+                onTap: onTap,
+              ),
               const SizedBox(height: 4),
               G3ValueLine(
                 asleep!,

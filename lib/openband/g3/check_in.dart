@@ -108,104 +108,123 @@ class OBCheckIn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: g.pressed(radius: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    final compactFooter = footerLabel != null && !inlineLater && !later;
+    Widget laterButton() => TextButton(
+      onPressed: onLater,
+      style: TextButton.styleFrom(
+        foregroundColor: g.ink2,
+        minimumSize: const Size(44, 44),
+        padding: EdgeInsets.zero,
+        textStyle: g.t(13, 18, weight: FontWeight.w700),
+      ),
+      child: const Text('Später'),
+    );
+    return Stack(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: g.pressed(radius: 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(LucideIcons.notebookPen, size: 20, color: g.ink),
-              const SizedBox(width: 8),
-              Expanded(child: Text('CHECK-IN', style: g.caps(size: 14))),
-              Text('$index von $total', style: g.t(13, 17, color: g.ink2)),
+              Row(
+                children: [
+                  Icon(LucideIcons.notebookPen, size: 18, color: g.ink),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('CHECK-IN', style: g.caps(size: 12))),
+                  Text('$index von $total', style: g.t(13, 17, color: g.ink2)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (later) ...[
+                Text(laterText, style: g.t(13, 17, color: g.ink2)),
+                if (onResume != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OBPillButton('Jetzt', onPressed: onResume),
+                  ),
+              ] else ...[
+                if (answered != null) ...[
+                  Row(
+                    children: [
+                      const Icon(LucideIcons.check, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          answered!,
+                          style: g.t(14, 18, color: g.ink2),
+                        ),
+                      ),
+                      if (onChange != null)
+                        OBPillButton('Ändern', onPressed: onChange),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Text(title, style: g.t(18, 22, weight: FontWeight.w700)),
+                if (target != null)
+                  Text(target!, style: g.t(12, 16, color: g.ink2)),
+                const SizedBox(height: 8),
+                if (inlineLater)
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: answer),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: onLater,
+                          style: TextButton.styleFrom(
+                            foregroundColor: g.ink,
+                            minimumSize: const Size(44, 44),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            textStyle: g.t(13, 18, weight: FontWeight.w700),
+                          ),
+                          child: const Text(
+                            'Später',
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  answer,
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  OBInlineError(
+                    message: error!,
+                    onRetry: onRetry,
+                    retryLabel: retryLabel,
+                  ),
+                ],
+                if (compactFooter) const SizedBox(height: 14),
+                if (!inlineLater)
+                  Row(
+                    children: [
+                      if (footerLabel != null)
+                        Expanded(
+                          child: Text(
+                            footerLabel!,
+                            style: g.t(12, 16, color: g.muted),
+                          ),
+                        )
+                      else
+                        const Spacer(),
+                      if (compactFooter)
+                        const SizedBox(width: 60, height: 16)
+                      else
+                        laterButton(),
+                    ],
+                  ),
+              ],
             ],
           ),
-          const SizedBox(height: 12),
-          if (later) ...[
-            Text(laterText, style: g.t(13, 17, color: g.ink2)),
-            if (onResume != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: OBPillButton('Jetzt', onPressed: onResume),
-              ),
-          ] else ...[
-            if (answered != null) ...[
-              Row(
-                children: [
-                  const Icon(LucideIcons.check, size: 16),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(answered!, style: g.t(14, 18, color: g.ink2)),
-                  ),
-                  if (onChange != null)
-                    OBPillButton('Ändern', onPressed: onChange),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
-            Text(title, style: g.t(19, 24, weight: FontWeight.w700)),
-            if (target != null)
-              Text(target!, style: g.t(12, 16, color: g.ink2)),
-            const SizedBox(height: 12),
-            if (inlineLater)
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: answer),
-                    const SizedBox(width: 8),
-                    TextButton(
-                      onPressed: onLater,
-                      style: TextButton.styleFrom(
-                        foregroundColor: g.ink,
-                        minimumSize: const Size(44, 44),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        textStyle: g.t(13, 18, weight: FontWeight.w700),
-                      ),
-                      child: const Text('Später', maxLines: 1, softWrap: false),
-                    ),
-                  ],
-                ),
-              )
-            else
-              answer,
-            if (error != null) ...[
-              const SizedBox(height: 12),
-              OBInlineError(
-                message: error!,
-                onRetry: onRetry,
-                retryLabel: retryLabel,
-              ),
-            ],
-            if (!inlineLater)
-              Row(
-                children: [
-                  if (footerLabel != null)
-                    Expanded(
-                      child: Text(
-                        footerLabel!,
-                        style: g.t(12, 16, color: g.muted),
-                      ),
-                    )
-                  else
-                    const Spacer(),
-                  TextButton(
-                    onPressed: onLater,
-                    style: TextButton.styleFrom(
-                      foregroundColor: g.ink2,
-                      minimumSize: const Size(44, 44),
-                      padding: const EdgeInsets.symmetric(horizontal: 0),
-                      textStyle: g.t(13, 18, weight: FontWeight.w700),
-                    ),
-                    child: const Text('Später'),
-                  ),
-                ],
-              ),
-          ],
-        ],
-      ),
+        ),
+        if (compactFooter)
+          Positioned(right: 18, bottom: 4, child: laterButton()),
+      ],
     );
   }
 }

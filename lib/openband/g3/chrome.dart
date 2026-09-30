@@ -4,6 +4,7 @@
 //
 // Visual keys follow Paper (40 pt); every tap target keeps 44 pt.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../ble/band_status_l10n.dart' show localizedBandStatus;
@@ -535,18 +536,60 @@ class G3DetailPage extends StatelessWidget {
 
 enum OBSyncKind { live, partial, stale, never, past }
 
-/// "Daten bis 09:38 · Nacht lückenlos ›". The caller writes the sentence; the
-/// kind sets its weight and the hollow LED for a stale band.
+// Keep the 44 pt target while the line occupies only its visible rhythm.
+class _SyncTapArea extends SingleChildRenderObjectWidget {
+  const _SyncTapArea({required this.compact, required super.child});
+  final bool compact;
+  @override
+  RenderObject createRenderObject(BuildContext context) => _SyncTapBox(compact);
+  @override
+  void updateRenderObject(BuildContext context, _SyncTapBox renderObject) =>
+      renderObject.compact = compact;
+}
+
+class _SyncTapBox extends RenderShiftedBox {
+  _SyncTapBox(this._compact) : super(null);
+  bool _compact;
+  set compact(bool value) {
+    if (value == _compact) return;
+    _compact = value;
+    markNeedsLayout();
+  }
+
+  Offset get _offset => Offset(0, _compact ? -12 : 0);
+  @override
+  void performLayout() {
+    child!.layout(constraints, parentUsesSize: true);
+    size = constraints.constrain(
+      Size(child!.size.width, child!.size.height - (_compact ? 20 : 0)),
+    );
+    (child!.parentData! as BoxParentData).offset = _offset;
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!child!.hitTest(result, position: position - _offset)) return false;
+    result.add(BoxHitTestEntry(this, position));
+    return true;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      context.paintChild(child!, offset + _offset);
+}
+
+/// "Daten bis 09:38 · Nacht lückenlos ›" with a separate 44 pt tap target.
 class OBSyncState extends StatelessWidget {
   final OBSyncKind kind;
   final String text;
-  final bool synthetic;
+  final bool synthetic, compact;
   final VoidCallback? onTap;
   const OBSyncState({
     super.key,
     required this.kind,
     required this.text,
     this.synthetic = false,
+    this.compact = true,
     this.onTap,
   });
   OBSyncState.dataThrough({
@@ -555,74 +598,83 @@ class OBSyncState extends StatelessWidget {
     required DateTime? storedAt,
     required DateTime now,
     this.synthetic = false,
+    this.compact = true,
     this.onTap,
   }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final strong = kind == OBSyncKind.stale || kind == OBSyncKind.never;
-    return Semantics(
-      button: onTap != null,
-      label: text,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 24, right: 16, top: 8),
-            // The chevron is part of the text so both wrap as one unit; the
-            // synthetic tag (gallery/synthetic only) yields to its own line.
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (kind == OBSyncKind.stale) ...[
-                  // Centred on the first 16 pt text line.
-                  Container(
-                    width: 7,
-                    height: 7,
-                    margin: const EdgeInsets.only(top: 4.5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: g.muted, width: 1.5),
+    return _SyncTapArea(
+      compact: compact,
+      child: Semantics(
+        button: onTap != null,
+        label: text,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 16,
+                top: compact ? 20 : 8,
+                bottom: compact ? 8 : 0,
+              ),
+              // The chevron is part of the text so both wrap as one unit; the
+              // synthetic tag (gallery/synthetic only) yields to its own line.
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (kind == OBSyncKind.stale) ...[
+                    // Centred on the first 16 pt text line.
+                    Container(
+                      width: 7,
+                      height: 7,
+                      margin: const EdgeInsets.only(top: 4.5),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: g.muted, width: 1.5),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 2,
+                      children: [
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: text),
+                              if (onTap != null)
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(left: 6),
+                                    child: OBChevron(size: 12, color: g.muted),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          style: g.t(
+                            12,
+                            16,
+                            weight: strong ? FontWeight.w700 : FontWeight.w500,
+                            color: strong ? g.ink : g.muted,
+                          ),
+                        ),
+                        if (synthetic) const G3SyntheticLabel(),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
                 ],
-                Expanded(
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 2,
-                    children: [
-                      Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(text: text),
-                            if (onTap != null)
-                              WidgetSpan(
-                                alignment: PlaceholderAlignment.middle,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(left: 6),
-                                  child: OBChevron(size: 12, color: g.muted),
-                                ),
-                              ),
-                          ],
-                        ),
-                        style: g.t(
-                          12,
-                          16,
-                          weight: strong ? FontWeight.w700 : FontWeight.w500,
-                          color: strong ? g.ink : g.muted,
-                        ),
-                      ),
-                      if (synthetic) const G3SyntheticLabel(),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -641,6 +693,7 @@ class OBSectionHeader extends StatelessWidget {
   final String? action;
   final VoidCallback? onAction;
   final Widget? trailing;
+  final double trailingTopPadding;
   final bool _insideDetailPage;
   const OBSectionHeader(
     this.text, {
@@ -650,6 +703,7 @@ class OBSectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.trailing,
+    this.trailingTopPadding = 10,
   }) : _insideDetailPage = false;
 
   /// Use in [G3DetailPage.children], which already have a 16 pt gutter.
@@ -661,6 +715,7 @@ class OBSectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.trailing,
+    this.trailingTopPadding = 10,
   }) : _insideDetailPage = true;
   @override
   Widget build(BuildContext context) {
@@ -722,8 +777,14 @@ class OBSectionHeader extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(action!, style: g.t(13, 16, color: g.muted)),
             )
-          else if (trailing != null)
-            Padding(padding: const EdgeInsets.only(top: 10), child: trailing),
+          else if (trailing case final trailing?)
+            Padding(
+              padding: EdgeInsets.only(top: trailingTopPadding),
+              child: Transform.translate(
+                offset: Offset(0, 5 - trailingTopPadding / 2),
+                child: trailing,
+              ),
+            ),
         ],
       ),
     );

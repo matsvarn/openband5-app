@@ -205,7 +205,7 @@ class OBJournalEntryRow extends StatelessWidget {
       decoration: BoxDecoration(
         border: last ? null : Border(bottom: BorderSide(color: g.line)),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 11),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Container(
@@ -455,7 +455,9 @@ class OBPatternCard extends StatelessWidget {
               'MUSTER',
               domain: G3Domain.neutral,
               onTap: onOpen,
-              note: loading
+              note: relation != null && !partial
+                  ? null
+                  : loading
                   ? 'wird geladen'
                   : onRetry != null
                   ? 'nicht verfügbar'
@@ -465,7 +467,7 @@ class OBPatternCard extends StatelessWidget {
                   ? 'noch kein Vergleich'
                   : title,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             if (loading)
               Row(
                 children: [
@@ -546,7 +548,7 @@ class OBPatternCard extends StatelessWidget {
                     (have == null || need == null
                         ? '—'
                         : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
-                style: g.t(13, 17, weight: FontWeight.w700),
+                style: g.t(13, 17, color: g.muted),
               ),
             ],
           ],

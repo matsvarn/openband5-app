@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme.dart' show OBChevron;
+import '../alp_tokens.dart' show AlpRadius;
+import 'chrome.dart' show OBPanel;
 import 'count_copy.dart';
 import 'g3_theme.dart';
 
@@ -1149,13 +1151,26 @@ class OBStatRow extends StatelessWidget {
   /// (label, value, unit); a null value renders "—".
   final List<(String, String?, String?)> items;
   final G3Domain domain;
-  const OBStatRow(this.items, {super.key, this.domain = G3Domain.neutral});
+  final bool? embedded;
+  const OBStatRow(
+    this.items, {
+    super.key,
+    this.domain = G3Domain.neutral,
+    this.embedded,
+  });
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final inCard =
+        embedded ?? context.findAncestorWidgetOfExactType<OBPanel>() != null;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      decoration: g.raised(),
+      padding: inCard ? EdgeInsets.zero : kG3CardPadding,
+      decoration: inCard
+          ? null
+          : BoxDecoration(
+              color: g.canvas,
+              borderRadius: BorderRadius.circular(AlpRadius.card),
+            ),
       child: LayoutBuilder(
         builder: (context, c) {
           // CSS flex:1 with padding: equal share of the space left after padding.

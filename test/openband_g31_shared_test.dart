@@ -99,6 +99,79 @@ void main() {
     expect(tester.getSize(find.byType(OBLink)).height, 44);
   });
 
+  testWidgets('sync keeps a 44 pt target and a 10 pt visual card gap', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        Column(
+          children: [
+            const SizedBox(height: 40),
+            OBSyncState(
+              kind: OBSyncKind.live,
+              text: 'Daten bis 09:38',
+              onTap: () => taps++,
+            ),
+            const SizedBox(height: 10),
+            const SizedBox(
+              key: ValueKey('first-card'),
+              height: 100,
+              width: 300,
+            ),
+          ],
+        ),
+      ),
+    );
+    final target = find.descendant(
+      of: find.byType(OBSyncState),
+      matching: find.byType(GestureDetector),
+    );
+    final bounds = tester.getRect(target);
+    expect(bounds.height, 44);
+    expect(find.byType(OBSyncState).hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('first-card'))).dy -
+          tester
+              .getBottomLeft(
+                find.descendant(
+                  of: find.byType(OBSyncState),
+                  matching: find.byType(RichText),
+                ),
+              )
+              .dy,
+      10,
+    );
+    await tester.tapAt(Offset(bounds.left + 30, bounds.top + 1));
+    await tester.tapAt(Offset(bounds.left + 30, bounds.bottom - 1));
+    expect(taps, 2);
+  });
+
+  testWidgets('statistics use one card interior when nested in a panel', (
+    tester,
+  ) async {
+    const statistics = OBStatRow([
+      ('Ø 30 Nächte', '45', null),
+      ('Median', '45', null),
+      ('Spanne', '36–50', null),
+    ]);
+    await tester.pumpWidget(_frame(statistics));
+    final standalone = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - standalone.top, 18);
+    expect(
+      tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - standalone.left,
+      18,
+    );
+    expect(find.text('MEDIAN'), findsOneWidget);
+    await tester.pumpWidget(_frame(const OBPanel(child: statistics)));
+    final outer = tester.getRect(find.byType(OBPanel));
+    final inner = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - outer.top, 18);
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - outer.left, 18);
+    expect(inner.height, standalone.height - 36);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('recent-day chevron requires a tap handler', (tester) async {
     var taps = 0;
     await tester.pumpWidget(

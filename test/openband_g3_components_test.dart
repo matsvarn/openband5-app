@@ -704,6 +704,110 @@ void main() {
       );
     });
 
+    testWidgets('heart-rate result uses the domain header and honest unit', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          const OBHrTrace(
+            domain: G3Domain.load,
+            samples: [(0, 148), (10, 176)],
+            duration: 10,
+            zoneEdges: [],
+            average: '148',
+            peak: '176',
+            signalShare: '96 %',
+            signalSegments: [(9, false), (1, true)],
+            signalNote: 'Extra Erklärung',
+          ),
+        ),
+      );
+      expect(find.text('/min'), findsOneWidget);
+      expect(find.textContaining('30-s-Mittel'), findsNothing);
+      expect(find.text('Optisches Signal verwertbar'), findsOneWidget);
+      expect(find.text('96 %'), findsOneWidget);
+      expect(find.text('Extra Erklärung'), findsNothing);
+      expect(find.byType(G3Dashed), findsNothing);
+      expect(
+        tester.widget<G3LabelRow>(find.byType(G3LabelRow)).domain,
+        G3Domain.load,
+      );
+    });
+
+    testWidgets('zone percentage labels require explicit caller ranges', (
+      tester,
+    ) async {
+      for (final ranges in [
+        null,
+        <String>['90–100 %'],
+      ]) {
+        await tester.pumpWidget(
+          _app(
+            OBZoneRows(
+              domain: G3Domain.load,
+              zones: const [OBZone(5, '90–100 %', 2)],
+              ranges: ranges,
+              source: 'HFmax 186',
+            ),
+          ),
+        );
+        expect(
+          find.text('90–100 %'),
+          ranges == null ? findsNothing : findsOneWidget,
+        );
+        expect(find.text('2 Min.'), findsOneWidget);
+      }
+    });
+
+    testWidgets('trend gaps keep the known normal band and break the stroke', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          const OBTrendChart(
+            domain: G3Domain.load,
+            title: 'VERLAUF',
+            period: OBTrendPeriod.d30,
+            values: [20, null, 80],
+            min: 0,
+            max: 100,
+            band: (40, 60),
+          ),
+        ),
+      );
+      expect(
+        await tester.runAsync(
+          () => _paintPixel(_painter(tester, '_TrendPainter'), 162, 75),
+        ),
+        G3(false).domainTint(G3Domain.load),
+      );
+    });
+
+    testWidgets(
+      'seven-day missing bars leave the space above the marker empty',
+      (tester) async {
+        await tester.pumpWidget(
+          _app(
+            const OBTrendChart(
+              domain: G3Domain.load,
+              title: 'VERLAUF',
+              period: OBTrendPeriod.d7,
+              values: [20, null, 80],
+              min: 0,
+              max: 100,
+            ),
+          ),
+        );
+        final pixels = await tester.runAsync(
+          () async => [
+            for (final y in [120, 122, 124])
+              await _paintPixel(_painter(tester, '_TrendPainter'), 151, y),
+          ],
+        );
+        expect(pixels, everyElement(Colors.transparent));
+      },
+    );
+
     testWidgets('heart-rate peak ignores samples inside optical gaps', (
       tester,
     ) async {
