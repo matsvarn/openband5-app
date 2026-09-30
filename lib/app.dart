@@ -19,13 +19,17 @@ import 'openband/g3/screens/sleep.dart';
 import 'openband/session.dart';
 import 'openband/strength_live.dart';
 import 'openband/template_editor.dart';
-import 'openband/templates.dart';
 import 'openband/training.dart';
+import 'openband/templates.dart';
+import 'openband/exercise_picker.dart';
+import 'openband/g3/screens/training_screen.dart';
+import 'openband/g3/screens/training_live.dart';
+import 'openband/g3/screens/training_manual.dart';
+import 'openband/g3/training_parts.dart';
 import 'openband/theme.dart' show openBandTheme;
 import 'data/day_label.dart';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import 'ai/briefing.dart' show BriefingPeriod;
@@ -42,7 +46,6 @@ import 'theme/theme_switcher.dart';
 import 'widget/widget_service.dart';
 import 'ui2/activity/catalogue.dart';
 import 'ui2/activity/live.dart';
-import 'ui2/activity/tiles.dart' show mapTilesAllowed;
 import 'ui2/onboarding/first_sync.dart';
 import 'ui2/onboarding/pairing.dart' show OnboardingBypass, PairingScreen;
 import 'ui2/onboarding/profile_setup.dart';
@@ -53,7 +56,6 @@ import 'ui2/profile/profile.dart';
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
-import 'ui2/screens/log_workout.dart';
 import 'ui2/screens/log_food.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
@@ -510,7 +512,8 @@ Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
             : OpenBandMedications(repository: repository, day: todayLabel()),
       // The detected bout, with the three answers to it: log it, adjust the
       // times first, or say it never happened.
-      kRouteWorkoutSuggestion => WorkoutSuggestionScreen(
+      kRouteWorkoutSuggestion => G3SuggestionRoute(
+        repository: repository,
         focusId: routeId(route),
       ),
       // Battery, band and sources all live behind this one.
@@ -741,31 +744,110 @@ class _ShellState extends State<_Shell> {
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
         ShellDomain.sleep => G3SleepScreen(controller: _day, asTab: true),
-        ShellDomain.workout => OpenBandTraining(
-          controller: _day,
-          releaseReduced: reduced,
-          onStart: (type) => _startActivity(c, type),
-          onOpenTemplates: () async {
-            await Navigator.of(c).push(
-              MaterialPageRoute<void>(
-                builder: (_) => OpenBandTemplates(
-                  repository: _day.repository,
-                  onStartTemplate: (t) => _openStrength(c, t),
-                  onEditTemplate: (t) => _openTemplateEditor(c, t),
+        ShellDomain.workout =>
+          !reduced
+              ? Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => pushFullScreen(
+                          c,
+                          MaterialPageRoute<void>(
+                            builder: (_) => OpenBandExercisePicker(
+                              repository: _day.repository,
+                            ),
+                          ),
+                        ),
+                        child: const Text('Übungsbibliothek'),
+                      ),
+                    ),
+                    Expanded(
+                      child: OpenBandTraining(
+                        controller: _day,
+                        onStart: (type) => unawaited(_startActivity(c, type)),
+                        onStartTemplate: (template) =>
+                            _openStrength(c, template),
+                        onEditTemplate: (template) =>
+                            _openTemplateEditor(c, template),
+                        onOpenTemplates: () => unawaited(
+                          pushFullScreen(
+                            c,
+                            MaterialPageRoute<void>(
+                              builder: (_) => OpenBandTemplates(
+                                repository: _day.repository,
+                                onStartTemplate: (template) =>
+                                    _openStrength(c, template),
+                                onEditTemplate: (template) =>
+                                    _openTemplateEditor(c, template),
+                              ),
+                            ),
+                          ),
+                        ),
+                        onOpen: (session) => unawaited(
+                          pushFullScreen(
+                            c,
+                            MaterialPageRoute<void>(
+                              builder: (_) => OpenBandSession(
+                                repository: _day.repository,
+                                session: session,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : G3TrainingScreen(
+                  controller: _day,
+                  onStart: (type) => _startActivity(c, type),
+                  onManual: () async {
+                    final saved = await Navigator.of(c).push<G3ManualSaved>(
+                      MaterialPageRoute<G3ManualSaved>(
+                        builder: (_) => G3ManualFlow(
+                          recentRepository: _day.repository,
+                        ),
+                      ),
+                    );
+                    await _day.refresh();
+                    if (saved != null && c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${trainingSport(saved.sport)} nachgetragen',
+                          ),
+                          action: SnackBarAction(
+                            label: 'Ansehen',
+                            onPressed: () async {
+                              final all = await _day.repository.readActivities(
+                                dayLabelOf(saved.start),
+                              );
+                              if (!c.mounted) return;
+                              final activity = all
+                                  .where((a) => a.id == saved.id)
+                                  .firstOrNull;
+                              if (activity != null) {
+                                await Navigator.of(c).push(
+                                  g3ActivityResultRoute(
+                                    repository: _day.repository,
+                                    activity: activity,
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  onProfile: () => pushInTab(
+                    c,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfileHome(),
+                    ),
+                  ),
                 ),
-              ),
-            );
-            _day.refresh();
-          },
-          onStartTemplate: (t) => _openStrength(c, t),
-          onEditTemplate: (t) => _openTemplateEditor(c, t),
-          onOpen: (s) => pushInTab(c,
-            MaterialPageRoute<void>(
-              builder: (_) =>
-                  OpenBandSession(repository: _day.repository, session: s),
-            ),
-          ),
-        ),
         ShellDomain.wellness =>
           reduced
               ? G3JournalScreen(
@@ -825,7 +907,8 @@ class _ShellState extends State<_Shell> {
   }
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return pushFullScreen(c,
+    return pushFullScreen(
+      c,
       MaterialPageRoute<void>(
         builder: (_) => OpenBandStrengthLive(
           repository: _day.repository,
@@ -846,14 +929,13 @@ class _ShellState extends State<_Shell> {
     _day.refresh();
   }
 
-  /// Quick-Start entry. Running opens the OpenBand live screen on the single
-  /// AppState live engine; every other type goes through the existing picker
-  /// so its setup (weight, privacy, GPS consent) stays in one place.
+  /// Quick-start every non-set sport on the same durable live engine.
   Future<void> _startActivity(BuildContext c, String type) async {
     final app = _app;
     if (app == null) return;
-    if (type != 'running') {
-      await pushFullScreen(c,
+    if (activityByName(type)?.track == Track.sets) {
+      await pushFullScreen(
+        c,
         MaterialPageRoute<void>(
           builder: (_) =>
               const WorkoutScreen(releaseReduced: kOpenBandReleaseReduced),
@@ -863,7 +945,7 @@ class _ShellState extends State<_Shell> {
     }
     if (app.activeWorkout == null) {
       try {
-        await app.startWorkout(type: 'running');
+        await app.startWorkout(type: type);
       } catch (_) {
         if (c.mounted) {
           showRetryableActivityStart(
@@ -881,54 +963,13 @@ class _ShellState extends State<_Shell> {
       return;
     }
     if (!c.mounted) return;
-    final feed = _LiveRunFeed(app);
-    await pushFullScreen(c,
-      MaterialPageRoute<void>(
-        builder: (_) => OpenBandRunLive(
-          run: feed,
-          tracker: app.routeTracker,
-          mapAllowed: mapTilesAllowed,
-          onPause: feed.pause,
-          onResume: feed.resume,
-          onLap: () {
-            if (feed.value.paused) return;
-            final v = feed.value;
-            final id = app.activeWorkout?.workoutId;
-            if (id == null) return;
-            unawaited(
-              _day.repository.recordLap(
-                id,
-                Lap(
-                  index: v.laps + 1,
-                  elapsedSec: v.elapsedSec,
-                  pausedSec: v.pausedSec,
-                  distanceM: v.distanceM,
-                  at: DateTime.now(),
-                ),
-              ),
-            );
-            feed.markLap();
-          },
-          onFinish: () async {
-            await app.stopWorkout();
-            _day.refresh();
-            if (c.mounted) Navigator.of(c, rootNavigator: true).maybePop();
-          },
-        ),
-      ),
-    );
-    feed.dispose();
+    await _pushG3Live(c, app, onFinished: _day.refresh);
   }
 }
 
-/// Adapts the AppState tick to a [LiveRun]. Pauses are the user's; the
-/// banked pause seconds and the current pause start live here, never inferred
-/// from a missing heart rate.
+/// Adapts the durable AppState clock and zone set to the G3 live screen.
 class _LiveRunFeed extends ValueNotifier<LiveRun> {
   final AppState app;
-  int _pausedSec = 0;
-  int _laps = 0;
-  DateTime? _pausedAt;
   _LiveRunFeed(this.app) : super(const LiveRun(elapsedSec: 0)) {
     app.addListener(_update);
     _update();
@@ -937,38 +978,26 @@ class _LiveRunFeed extends ValueNotifier<LiveRun> {
     final w = app.activeWorkout;
     if (w == null) return;
     final now = DateTime.now();
-    final inPause = _pausedAt == null
-        ? 0
-        : now.difference(_pausedAt!).inSeconds;
-    final km = app.liveDistanceKm;
+    final hr = w.pausedAt == null ? app.liveHr : null;
+    final set = w.zoneSet;
+    final measuredMinutes = w.perMinuteHr();
+    final pausedSec = w.totalPausedSec(now);
     value = LiveRun(
-      elapsedSec: now.difference(w.startTime).inSeconds,
-      pausedSec: _pausedSec + inPause,
-      laps: _laps,
-      distanceM: km == null ? null : km * 1000,
-      heartRate: app.liveHr,
-      zone: app.liveZone,
-      paused: _pausedAt != null,
+      elapsedSec: w.activeElapsed(now).inSeconds + pausedSec,
+      pausedSec: pausedSec,
+      heartRate: hr,
+      zone: hr == null || set == null ? null : set.zoneNumber(hr.toDouble()),
+      strain: w.strain,
+      zoneSet: set,
+      maxHrSeen: w.maxHrSeen > 0 ? w.maxHrSeen : null,
+      averageHr: measuredMinutes.isEmpty
+          ? null
+          : (measuredMinutes.reduce((a, b) => a + b) / measuredMinutes.length)
+                .round(),
+      startedAt: w.startTime,
+      paused: w.pausedAt != null,
       gps: app.routeTracking,
     );
-  }
-
-  void pause() {
-    _pausedAt ??= DateTime.now();
-    _update();
-  }
-
-  void markLap() {
-    _laps++;
-    _update();
-  }
-
-  void resume() {
-    if (_pausedAt case final at?) {
-      _pausedSec += DateTime.now().difference(at).inSeconds;
-      _pausedAt = null;
-    }
-    _update();
   }
 
   @override
@@ -986,24 +1015,11 @@ class _LiveRunFeed extends ValueNotifier<LiveRun> {
 /// could end it was the iOS Live Activity's Finish button. Android had
 /// nothing at all.
 ///
-/// No clock: the elapsed time would be stale the moment it was painted, and a
-/// per-second rebuild of the whole shell to keep one number honest is not a
-/// trade worth making. The number is on the screen this taps through to.
+/// The clock comes from the durable engine, including time banked as paused.
 class _LiveSessionBar extends StatelessWidget {
   final OpenBandRepository repository;
   final VoidCallback? onFinished;
   const _LiveSessionBar({required this.repository, this.onFinished});
-
-  /// The activity behind the open session.
-  ///
-  /// The draft FIRST (it carries the private flag and the entered weight), but
-  /// `activeWorkout.type` as the fallback — a session started by the gesture
-  /// path creates no draft, and neither does one rehydrated from a `sessions`
-  /// row after a crash. Keying on the draft alone meant both of those left the
-  /// workout open with no way to reach or end it, and `startWorkout` refuses
-  /// every later workout while one is open.
-  static Activity? _activityFor(AppState app) =>
-      activityByName(LiveDraft.current?.activityKey ?? app.activeWorkout?.type);
 
   Future<void> _resume(BuildContext c) async {
     await resumeLiveSession(c, repository: repository, onFinished: onFinished);
@@ -1011,112 +1027,46 @@ class _LiveSessionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
     final app = c.read<AppState>();
-    final a = _activityFor(app);
-    // A session the app is holding but this build cannot draw — an older
-    // build's type key, say. Never nothing: the bar is the ONLY control that
-    // can end an open session, and hiding it left the workout open forever
-    // with every later one refused. Offer the one action that is certainly
-    // right rather than a button that opens the wrong screen.
-    if (a == null) {
-      return Container(
-        decoration: BoxDecoration(
-          color: p.card,
-          border: Border(top: BorderSide(color: p.line)),
-        ),
-        child: Pressable(
-          semanticLabel: 'Finish the session that is still running',
-          onTap: () => app.stopWorkout(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: S.x4,
-              vertical: S.x3,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Session running — tap to finish',
-                    style: F.body.copyWith(color: p.ink),
-                  ),
-                ),
-                Icon(LucideIcons.square, size: 18, color: p.ink3),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: p.card,
-        border: Border(top: BorderSide(color: p.line)),
-      ),
-      child: Pressable(
-        semanticLabel: 'Back to your ${a.name.toLowerCase()} session',
-        onTap: () => _resume(c),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: p.wash(a.color),
-                  borderRadius: R.rSm,
-                ),
-                child: Icon(a.icon, size: 16, color: p.on(a.color)),
-              ),
-              const SizedBox(width: S.x3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      a.name,
-                      style: F.body.copyWith(
-                        color: p.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      'Session running',
-                      style: F.over.copyWith(color: p.ink3),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(LucideIcons.chevronUp, size: 20, color: p.ink3),
-            ],
-          ),
-        ),
-      ),
+    return AnimatedBuilder(
+      animation: app,
+      builder: (context, _) {
+        final session = app.activeWorkout;
+        final seconds = session?.activeElapsed(DateTime.now()).inSeconds ?? 0;
+        final elapsed =
+            '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+        final hr = app.liveHr;
+        final zoneSet = session?.zoneSet;
+        return OBSessionMiniBar(
+          sport: session?.type ?? 'other',
+          elapsed: elapsed,
+          heartRate: hr,
+          paused: session?.pausedAt != null,
+          zone: hr == null || zoneSet == null
+              ? null
+              : zoneSet.zoneNumber(hr.toDouble()),
+          onTap: () => unawaited(_resume(c)),
+        );
+      },
     );
   }
 }
 
 /// Resume the session the live bar is holding.
 ///
-/// Non-sets keep their live route without a strength snapshot read. Sets and
-/// unknown types wait for a real read: Active/Corrupt → Alpin resume,
-/// Legacy/NoActive → the existing live engine. A thrown read is not Alpin
-/// and not NoActive — Erneut calls this again.
+/// Non-set and unknown rows always reopen G3 with an explicit finish control.
+/// A set session with a valid snapshot keeps the existing strength runtime.
 Future<void> resumeLiveSession(
   BuildContext context, {
   required OpenBandRepository repository,
   VoidCallback? onFinished,
 }) async {
   final app = context.read<AppState>();
-  final draft = LiveDraft.current;
-  final a = activityByName(draft?.activityKey ?? app.activeWorkout?.type);
-  if (a != null && a.track != Track.sets) {
-    final page = await _activityLive(app, a, draft);
-    if (!context.mounted) return;
-    await _pushResumedLive(context, page);
+  final type = app.activeWorkout?.type ?? LiveDraft.current?.activityKey;
+  if (type == null) return;
+  final a = activityByName(type);
+  if (a?.track != Track.sets && type != 'weight_training') {
+    await _pushG3Live(context, app, onFinished: onFinished);
     return;
   }
   final ActiveStrengthRuntime runtime;
@@ -1139,7 +1089,6 @@ Future<void> resumeLiveSession(
   if (!context.mounted) return;
   switch (runtime) {
     case ActiveStrengthSession():
-    case CorruptActiveStrength():
       await _pushResumedLive(
         context,
         OpenBandStrengthLive.resume(
@@ -1147,31 +1096,50 @@ Future<void> resumeLiveSession(
           onFinished: onFinished,
         ),
       );
+    case CorruptActiveStrength():
     case LegacyActiveStrength():
     case NoActiveStrength():
-      if (a == null) return;
-      final page = await _activityLive(app, a, draft);
-      if (!context.mounted) return;
-      await _pushResumedLive(context, page);
+      await _pushG3Live(context, app, onFinished: onFinished);
   }
 }
 
-Future<Widget> _activityLive(AppState app, Activity a, LiveDraft? draft) async {
-  final history = await loadSetHistory();
-  return liveFor(
-    a,
-    private: draft?.private ?? false,
-    weightKg: draft?.weightKg,
-    host: activityHost(app, history: history),
-  );
+Future<void> _pushG3Live(
+  BuildContext context,
+  AppState app, {
+  VoidCallback? onFinished,
+}) async {
+  final session = app.activeWorkout;
+  if (session == null || !context.mounted) return;
+  final feed = _LiveRunFeed(app);
+  try {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (pageContext) => G3LiveRun(
+          run: feed,
+          sport: session.type,
+          onPause: () => app.setWorkoutPaused(true),
+          onResume: () => app.setWorkoutPaused(false),
+          onFinish: () async {
+            await app.stopWorkout();
+            onFinished?.call();
+            if (pageContext.mounted) Navigator.of(pageContext).maybePop();
+          },
+          onDiscard: () async {
+            await app.deleteWorkout(session.workoutId!);
+            onFinished?.call();
+            if (pageContext.mounted) Navigator.of(pageContext).maybePop();
+          },
+        ),
+      ),
+    );
+  } finally {
+    feed.dispose();
+  }
 }
 
 Future<void> _pushResumedLive(BuildContext context, Widget page) async {
   if (!context.mounted) return;
-  await pushFullScreen(
-    context,
-    MaterialPageRoute<void>(builder: (_) => page),
-  );
+  await pushFullScreen(context, MaterialPageRoute<void>(builder: (_) => page));
 }
 
 void showRetryableNotice(

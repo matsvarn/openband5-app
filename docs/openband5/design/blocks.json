@@ -140,7 +140,39 @@
     "6TT7-0": "band-datum-waehlen-hell",
     "6U3C-0": "band-datum-waehlen-dunkel",
     "711J-0": "G3 Schlaf · Kein Schlafziel · Dunkel",
-    "71BO-0": "G3 Schlaf · Schlafziel festlegen · noch kein Ziel"
+    "71BO-0": "G3 Schlaf · Schlafziel festlegen · noch kein Ziel",
+    "6XO2-0": "G3 · Training · Hell · Synthetische Daten",
+    "6XSB-0": "G3 · Training · Dunkel · Synthetische Daten",
+    "6XWK-0": "G3 · Training · gescrollt · Hell · Synthetische Daten",
+    "6WO5-0": "G3 · Training · Noch keine Aktivität · Hell · Synthetische Daten",
+    "6Y4C-0": "G3 · Training · Trainingslast im Aufbau · Hell · Synthetische Daten",
+    "6HVO-0": "G3 · Training · Lauf · Ergebnis · Hell · Synthetische Daten",
+    "6I33-0": "G3 · Training · Lauf · Ergebnis · Dunkel · Synthetische Daten",
+    "6IAI-0": "G3 · Training · Tennis · Zonen abgelehnt · Hell · Synthetische Daten",
+    "6IKV-0": "G3 · Training · Rad · ohne Pulserholung · gescrollt · Hell · Synthetische Daten",
+    "6IUV-0": "G3 · Training · Schwimmen · nachgetragen ohne Bandpuls · Hell · Synthetische Daten",
+    "6LVI-0": "G3 · Training · Sportart ändern · Sheet · Hell · Synthetische Daten",
+    "6M5Z-0": "G3 · Training · Sportart geändert · Rad bestätigt · Hell · Synthetische Daten",
+    "6MDH-0": "G3 · Training · Kein Training · Bestätigen · Hell · Synthetische Daten",
+    "6MI3-0": "G3 · Training · Nachtragen · Sportart · Hell · Synthetische Daten",
+    "6MPB-0": "G3 · Training · Nachtragen · Zeitraum · Hell · Synthetische Daten",
+    "6MSM-0": "G3 · Training · Nachtragen · Prüfen · Hell · Synthetische Daten",
+    "6MVY-0": "G3 · Training · Nachtragen · gespeichert · Hell · Synthetische Daten",
+    "6N12-0": "G3 · Training · Nachtragen · Überschneidung · Hell · Synthetische Daten",
+    "6N3N-0": "G3 · Training · Live · läuft · Hell · Synthetische Daten",
+    "6N60-0": "G3 · Training · Live · läuft · Dunkel · Synthetische Daten",
+    "6N8D-0": "G3 · Training · Live · pausiert · Hell · Synthetische Daten",
+    "6NAP-0": "G3 · Training · Live · Signal schwach · Hell · Synthetische Daten",
+    "6OTD-0": "G3 · Training · Live · Beenden · Hell · Synthetische Daten",
+    "6P2E-0": "G3 · Training · Live · wird gespeichert · Hell · Synthetische Daten",
+    "6PD7-0": "G3 · Training · Live · gespeichert · Hell · Synthetische Daten",
+    "6NNE-0": "G3 · Training · Live · Speichern fehlgeschlagen · Hell · Synthetische Daten",
+    "6XK8-0": "G3 · Training · Einheit wiedergefunden · Hell · Synthetische Daten",
+    "6NT9-0": "G3 · Training · Läuft-Leiste auf Heute · Hell · Synthetische Daten",
+    "6NYL-0": "G3 · Training · Live · Kraft läuft · Hell · Synthetische Daten",
+    "6YA6-0": "G3 · Training · Belastung · 30 Tage · Hell · Synthetische Daten",
+    "6YI0-0": "G3 · Training · Belastung · 30 Tage · Dunkel · Synthetische Daten",
+    "6YPU-0": "G3 · Training · Belastung · 7 Tage · Hell · Synthetische Daten"
   },
   "blocks": [
     {
@@ -2499,6 +2531,308 @@
       "widget": "SleepEditor",
       "file": "sleep_editor.dart",
       "notes": "G3 presentation reuses the existing draft, commit and recalculation flow."
+    },
+    {
+      "name": "OBActivityHeader",
+      "design": "G3",
+      "paperNode": "6V1P-0",
+      "paperNodeDark": "6VMR-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
+    },
+    {
+      "name": "OBKeyFigures.default",
+      "design": "G3",
+      "paperNode": "6V23-0",
+      "paperNodeDark": "6VN5-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "default"
+    },
+    {
+      "name": "OBKeyFigures.missing",
+      "design": "G3",
+      "paperNode": "6V2Q-0",
+      "paperNodeDark": "6VNS-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "missing"
+    },
+    {
+      "name": "OBDetectConfirm.question",
+      "design": "G3",
+      "paperNode": "6V3D-0",
+      "paperNodeDark": "6VOF-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "question"
+    },
+    {
+      "name": "OBDetectConfirm.changed",
+      "design": "G3",
+      "paperNode": "6V3R-0",
+      "paperNodeDark": "6VOT-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "changed"
+    },
+    {
+      "name": "OBActivityRow.autoPending",
+      "design": "G3",
+      "paperNode": "6V43-0",
+      "paperNodeDark": "6VP5-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "autoPending"
+    },
+    {
+      "name": "OBZoneRows.pending",
+      "design": "G3",
+      "paperNode": "6V4W-0",
+      "paperNodeDark": "6VPY-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "pending"
+    },
+    {
+      "name": "OBZoneRows.refused",
+      "design": "G3",
+      "paperNode": "6V61-0",
+      "paperNodeDark": "6VR3-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "refused"
+    },
+    {
+      "name": "OBHrRecovery.drop",
+      "design": "G3",
+      "paperNode": "6V7C-0",
+      "paperNodeDark": "6VSE-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "drop"
+    },
+    {
+      "name": "OBHrRecovery.absent",
+      "design": "G3",
+      "paperNode": "6V7R-0",
+      "paperNodeDark": "6VST-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "absent"
+    },
+    {
+      "name": "OBLeadMetric.load",
+      "design": "G3",
+      "paperNode": "6V83-0",
+      "paperNodeDark": "6VT5-0",
+      "widget": "OBLoadLead",
+      "file": "g3/training_parts.dart",
+      "usedIn": [
+        "6XO2-0",
+        "6XSB-0",
+        "6YA6-0",
+        "6YI0-0",
+        "6YPU-0"
+      ],
+      "variant": "load"
+    },
+    {
+      "name": "OBLoadWeekBars",
+      "design": "G3",
+      "paperNode": "6V8R-0",
+      "paperNodeDark": "6VTT-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
+    },
+    {
+      "name": "OBTrainingLoad.default",
+      "design": "G3",
+      "paperNode": "6VA2-0",
+      "paperNodeDark": "6VV4-0",
+      "widget": "OBTrainingLoad",
+      "file": "g3/training_parts.dart",
+      "usedIn": [
+        "6XO2-0",
+        "6XSB-0",
+        "6XWK-0",
+        "6YA6-0",
+        "6YI0-0",
+        "6YPU-0"
+      ],
+      "variant": "default"
+    },
+    {
+      "name": "OBTrainingLoad.building",
+      "design": "G3",
+      "paperNode": "6VAX-0",
+      "paperNodeDark": "6VVZ-0",
+      "widget": "OBTrainingLoad",
+      "file": "g3/training_parts.dart",
+      "usedIn": [
+        "6Y4C-0"
+      ],
+      "variant": "building"
+    },
+    {
+      "name": "OBActivityListRow.default",
+      "design": "G3",
+      "paperNode": "6VBZ-0",
+      "paperNodeDark": "6VX1-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "default"
+    },
+    {
+      "name": "OBActivityListRow.manual",
+      "design": "G3",
+      "paperNode": "6VCI-0",
+      "paperNodeDark": "6VXK-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "manual"
+    },
+    {
+      "name": "OBActivityListRow.refused",
+      "design": "G3",
+      "paperNode": "6VD2-0",
+      "paperNodeDark": "6VY4-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "refused"
+    },
+    {
+      "name": "OBSportTile.default",
+      "design": "G3",
+      "paperNode": "6VDL-0",
+      "paperNodeDark": "6VYN-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "default"
+    },
+    {
+      "name": "OBSportTile.selected",
+      "design": "G3",
+      "paperNode": "6VDW-0",
+      "paperNodeDark": "6VYY-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "selected"
+    },
+    {
+      "name": "OBTimeWindow",
+      "design": "G3",
+      "paperNode": "6VE7-0",
+      "paperNodeDark": "6VZ9-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
+    },
+    {
+      "name": "OBWindowCoverage.full",
+      "design": "G3",
+      "paperNode": "6VEW-0",
+      "paperNodeDark": "6VZY-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "full"
+    },
+    {
+      "name": "OBWindowCoverage.none",
+      "design": "G3",
+      "paperNode": "6VGA-0",
+      "paperNodeDark": "6W1C-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "none"
+    },
+    {
+      "name": "OBSessionHeader.running",
+      "design": "G3",
+      "paperNode": "6VGL-0",
+      "paperNodeDark": "6W1N-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "running"
+    },
+    {
+      "name": "OBLiveHr.running",
+      "design": "G3",
+      "paperNode": "6VGZ-0",
+      "paperNodeDark": "6W21-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "running"
+    },
+    {
+      "name": "OBLiveHr.paused",
+      "design": "G3",
+      "paperNode": "6VI0-0",
+      "paperNodeDark": "6W32-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "paused"
+    },
+    {
+      "name": "OBLiveHr.weak",
+      "design": "G3",
+      "paperNode": "6VJ1-0",
+      "paperNodeDark": "6W43-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "weak"
+    },
+    {
+      "name": "OBLiveStats",
+      "design": "G3",
+      "paperNode": "6VK1-0",
+      "paperNodeDark": "6W53-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
+    },
+    {
+      "name": "OBSessionControls.running",
+      "design": "G3",
+      "paperNode": "6VKI-0",
+      "paperNodeDark": "6W5K-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "running"
+    },
+    {
+      "name": "OBSessionControls.paused",
+      "design": "G3",
+      "paperNode": "6VKW-0",
+      "paperNodeDark": "6W5Y-0",
+      "implementationStatus": "paper-only",
+      "usedIn": [],
+      "variant": "paused"
+    },
+    {
+      "name": "OBSessionMiniBar",
+      "design": "G3",
+      "paperNode": "6VL9-0",
+      "paperNodeDark": "6W6B-0",
+      "widget": "OBSessionMiniBar",
+      "file": "g3/training_parts.dart",
+      "usedIn": [
+        "6NT9-0"
+      ]
+    },
+    {
+      "name": "OBToast",
+      "design": "G3",
+      "paperNode": "6VLP-0",
+      "paperNodeDark": "6W6R-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
+    },
+    {
+      "name": "OBSessionSummary",
+      "design": "G3",
+      "paperNode": "6VLY-0",
+      "paperNodeDark": "6W70-0",
+      "implementationStatus": "paper-only",
+      "usedIn": []
     }
   ],
   "openBlocks": [],

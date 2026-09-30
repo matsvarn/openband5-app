@@ -6014,6 +6014,7 @@ class AppState extends ChangeNotifier {
   LiveWorkoutState? activeWorkout;
   Timer? _workoutTimer;
   Future<void> _workoutArmQueue = Future.value();
+  Future<void> _workoutPauseQueue = Future.value();
 
   /// One start/reconcile/adopt at a time. Waiters run after the holder
   /// finishes so a Start tap is not a silent no-op while a stale live row
@@ -6350,10 +6351,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     _log('Live session started. Goal: ${targetKcal.round()} kcal');
     // Light up the lock screen / Dynamic Island (iOS).
-    LiveActivity.start(
-      startedAt: start,
-      sport: type,
-    );
+    LiveActivity.start(startedAt: start, sport: type);
     _lastLaPush = DateTime.fromMillisecondsSinceEpoch(0);
     // GPS route: only for run/ride/walk, and only if the user grants location.
     unawaited(_maybeStartRouteTracking(id, type));
@@ -6561,6 +6559,12 @@ class AppState extends ChangeNotifier {
     );
     activeWorkout = LiveWorkoutState(
       startTime: DateTime.fromMillisecondsSinceEpoch(startMs),
+      pausedSec: (row['paused_sec'] as num?)?.toInt() ?? 0,
+      pausedAt: (row['paused_at_ms'] as num?) == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              (row['paused_at_ms'] as num).toInt(),
+            ),
       targetKcal: 300,
       workoutId: id,
       type: (row['type'] as String?) ?? 'other',
@@ -6607,7 +6611,39 @@ class AppState extends ChangeNotifier {
     ScreenWake.enable();
   }
 
+  /// Persist the user's pause before changing the live gauge. A paused row
+  /// rehydrates with the same clock and accrual rule after a process restart.
+  Future<void> setWorkoutPaused(bool paused) async {
+    final previous = _workoutPauseQueue;
+    final released = Completer<void>();
+    _workoutPauseQueue = released.future;
+    try {
+      await previous;
+      final w = activeWorkout;
+      final id = w?.workoutId;
+      if (w == null || id == null || (w.pausedAt != null) == paused) return;
+      final now = DateTime.now();
+      final banked = paused ? w.pausedSec : w.totalPausedSec(now);
+      final changed = await LocalDb.setLiveSessionPause(
+        id,
+        pausedSec: banked,
+        pausedAtMs: paused ? now.millisecondsSinceEpoch : null,
+      );
+      if (changed != 1) throw StateError('Live-Einheit nicht gefunden.');
+      if (activeWorkout != w) return;
+      w.pausedSec = banked;
+      w.pausedAt = paused ? now : null;
+      if (paused) w.breakHrSpan();
+      w.elapsed = w.activeElapsed(now);
+      _publishWorkoutLiveActivity(w, now, force: true);
+      notifyListeners();
+    } finally {
+      released.complete();
+    }
+  }
+
   Future<void> stopWorkout() async {
+    await _workoutPauseQueue;
     if (activeWorkout == null) return;
     _workoutTimer?.cancel();
     _workoutTimer = null;
@@ -6635,6 +6671,8 @@ class AppState extends ChangeNotifier {
     ScreenWake.release();
     _deriveScheduler.setWorkoutActive(false);
     final w = activeWorkout!;
+    final finishedAt = DateTime.now();
+    w.elapsed = w.activeElapsed(finishedAt);
     // Nullable for the same reason `steps` below is: an unanchored profile
     // means this session was never costed, and a 0 in the column reads as
     // "burned nothing" rather than "not measured".
@@ -6651,7 +6689,7 @@ class AppState extends ChangeNotifier {
     // the per-zone seconds the 1 Hz tick accumulated (Z1..Z5, minutes).
     final id = w.workoutId ?? 'w${w.startTime.millisecondsSinceEpoch}';
     final zoneMin = w.zoneMinutes();
-    final endTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final endTs = finishedAt.millisecondsSinceEpoch ~/ 1000;
     // Which strap measured this workout. `putSession` is INSERT OR REPLACE, so
     // an omitted key would blank the stamp startWorkout banked — keep that one
     // when the link has since dropped rather than downgrading a real answer to
@@ -6669,10 +6707,26 @@ class AppState extends ChangeNotifier {
       'strain': w.strain,
       'max_hr': w.maxHrSeen > 0 ? w.maxHrSeen : null,
       'duration_min': w.elapsed.inMinutes,
+      'paused_sec': w.totalPausedSec(finishedAt),
+      'paused_at_ms': null,
       'hr_covered_sec': w.hrCoveredSec,
       'zone_min_json': jsonEncode(
         zoneMin.any((v) => v > 0) ? zoneMin : const <num>[],
       ),
+      if (zoneMin.any((v) => v > 0) && w.zoneSet != null)
+        // A basis-only trace leaves 'hr' absent, so the read path still uses
+        // retained 1 Hz samples and a later fuller trace can replace this.
+        'trace_json': jsonEncode({
+          'zone_bands': [
+            for (final band in w.zoneSet!.zones)
+              {
+                'zone': band.number,
+                'lo': band.lower.round(),
+                'hi': band.upper.round(),
+                'source': w.zoneSet!.source,
+              },
+          ],
+        }),
       if (wSteps != null && wSteps > 0) 'steps': wSteps,
       'cadence_spm': ?wCadence,
       'source': 'manual',
@@ -6770,6 +6824,7 @@ class AppState extends ChangeNotifier {
   /// was GENUINELY still live would have left its timer/route tracker/Live
   /// Activity running against a deleted id.
   Future<void> deleteWorkout(String id) async {
+    await _workoutPauseQueue;
     await repo?.deleteWorkout(id);
     if (activeWorkout?.workoutId == id) {
       await _cancelActiveWorkoutTeardown();
@@ -6909,14 +6964,20 @@ class AppState extends ChangeNotifier {
     final w = activeWorkout;
     if (w == null) return;
 
-    w.elapsed = DateTime.now().difference(w.startTime);
+    final now = DateTime.now();
+    w.elapsed = w.activeElapsed(now);
     // [liveHr], not `device.liveHr`: a reading that is stale or arriving from a
     // band that has dropped is NOT a measurement of this second, and billing it
     // into the peak, the per-zone seconds and (through accrueHr) strain and
     // calories is how a session that ended at the trailhead came back reading
     // like an hour of zone 3. Absent stays absent — the tick simply skips.
     final hr = liveHr;
-    w.currentHr = hr;
+    w.currentHr = w.pausedAt == null ? hr : null;
+    if (w.pausedAt != null) {
+      _publishWorkoutLiveActivity(w, now);
+      notifyListeners();
+      return;
+    }
     if (hr != null) {
       // Smooth at accrual (issue #127): a raw `> maxHrSeen` would let a 1–2 s
       // PPG spike define the session max. accrueHr feeds the rolling-median peak.
@@ -6951,20 +7012,36 @@ class AppState extends ChangeNotifier {
     // Keytel with no activity gate and no resting floor. That copy charged the
     // full active rate at any heart rate the band reported, so the number on
     // the gauge did not survive the re-score of its own stream.
-    // Push absence too, so a dropped stream clears the lock-screen number.
-    if (DateTime.now().difference(_lastLaPush).inSeconds >= 4) {
-      final now = DateTime.now();
-      _lastLaPush = now;
-      final id = liveHrDeviceId;
-      final sampleAtMs = id == null ? device.liveHrAt : _liveHrTraceAt[id];
-      final sampleAt = sampleAtMs == null
-          ? null : DateTime.fromMillisecondsSinceEpoch(sampleAtMs);
-      final signal = hr == null ? LiveSignal.none
-          : sampleAt == null || now.difference(sampleAt) > LiveActivity.hrMaxAge
-              ? LiveSignal.weak : LiveSignal.live;
-      final zone = signal == LiveSignal.live ? _zoneFor(hr!) : 0;
-      final zoneSet = w.zoneSet;
-      final band = zone > 0 && zoneSet != null ? zoneSet.zones[zone - 1] : null;
+    _publishWorkoutLiveActivity(w, now);
+    notifyListeners();
+  }
+
+  /// One handoff to the Live Activity contract (lib/live/live_activity.dart).
+  /// Pushes absence too, so a dropped stream clears the lock-screen number;
+  /// while paused the pulse is withheld and the elapsed time is frozen.
+  void _publishWorkoutLiveActivity(
+    LiveWorkoutState w,
+    DateTime now, {
+    bool force = false,
+  }) {
+    if (!force && now.difference(_lastLaPush).inSeconds < 4) return;
+    _lastLaPush = now;
+    final paused = w.pausedAt != null;
+    final hr = paused ? null : liveHr;
+    final id = liveHrDeviceId;
+    final sampleAtMs = id == null ? device.liveHrAt : _liveHrTraceAt[id];
+    final sampleAt = sampleAtMs == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(sampleAtMs);
+    final signal = hr == null
+        ? LiveSignal.none
+        : sampleAt == null || now.difference(sampleAt) > LiveActivity.hrMaxAge
+        ? LiveSignal.weak
+        : LiveSignal.live;
+    final zone = signal == LiveSignal.live ? _zoneFor(hr!) : 0;
+    final zoneSet = w.zoneSet;
+    final band = zone > 0 && zoneSet != null ? zoneSet.zones[zone - 1] : null;
+    unawaited(
       LiveActivity.update(
         hr: hr,
         hrSampleAt: sampleAt,
@@ -6974,11 +7051,11 @@ class AppState extends ChangeNotifier {
         zoneHighPct: band?.upperPct,
         zoneBasis: zoneSet?.source,
         zoneBasisBpm: zoneSet?.maxHr.round(),
-        elapsed: w.elapsed,
+        elapsed: w.activeElapsed(now),
+        paused: paused,
         strain: w.strain,
-      );
-    }
-    notifyListeners();
+      ),
+    );
   }
 }
 
@@ -6989,6 +7066,19 @@ class LiveWorkoutState {
   final String? workoutId; // local session id (for the breakdown on finish)
   final String type; // exercise type label
   Duration elapsed = Duration.zero;
+  int pausedSec;
+  DateTime? pausedAt;
+
+  int totalPausedSec(DateTime now) =>
+      pausedSec +
+      (pausedAt == null
+          ? 0
+          : now.difference(pausedAt!).inSeconds.clamp(0, 1 << 30));
+
+  Duration activeElapsed(DateTime now) => Duration(
+    seconds: ((pausedAt ?? now).difference(startTime).inSeconds - pausedSec)
+        .clamp(0, 1 << 30),
+  );
 
   /// Live kcal for the bout so far. Zero here is ambiguous on its own — read
   /// [caloriesOrNull] anywhere a user can see it.
@@ -7255,6 +7345,11 @@ class LiveWorkoutState {
   int? _lastSampleHr;
   double? _lastSampleSec;
 
+  void breakHrSpan() {
+    _lastSampleHr = null;
+    _lastSampleSec = null;
+  }
+
   /// A stream that stops for longer than this stopped being one bout; billing
   /// the pre-gap heart rate across an hour of no data would invent the hour.
   ///
@@ -7267,6 +7362,8 @@ class LiveWorkoutState {
   LiveWorkoutState({
     required this.startTime,
     required this.targetKcal,
+    this.pausedSec = 0,
+    this.pausedAt,
     this.workoutId,
     this.type = 'other',
     int? age,

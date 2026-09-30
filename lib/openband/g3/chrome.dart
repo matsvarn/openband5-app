@@ -299,10 +299,20 @@ class OBPageHeader extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: g.t(13, 16, weight: FontWeight.w700, tracking: .1),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: g.t(
+                          13,
+                          16,
+                          weight: FontWeight.w700,
+                          tracking: .1,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 1),
                     if (subtitle != null)

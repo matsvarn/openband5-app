@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'openband/controller.dart';
 import 'openband/cycle.dart';
 import 'openband/cycle_comparison.dart';
@@ -16,11 +17,12 @@ import 'openband/domain.dart';
 import 'openband/g3/screens/band.dart';
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
-import 'openband/strength_live.dart';
+import 'openband/session.dart';
 import 'openband/exercise_picker.dart';
 import 'openband/template_editor.dart';
+import 'openband/strength_live.dart';
+import 'openband/training.dart';
 import 'openband/templates.dart';
-import 'openband/session.dart';
 import 'openband/release_scope.dart';
 import 'openband/g3/screens/heute.dart';
 import 'openband/g3/screens/heute_routes.dart';
@@ -34,7 +36,9 @@ import 'openband/theme.dart';
 import 'openband/units.dart';
 import 'state/units_controller.dart';
 import 'theme/theme_controller.dart';
-import 'openband/training.dart';
+import 'openband/g3/screens/training_screen.dart';
+import 'openband/g3/screens/training_live.dart';
+import 'openband/g3/screens/training_manual.dart';
 import 'compute/derivation_engine.dart' show kAlgoVersion;
 import 'data/auto_backup.dart' show BackupCadence;
 import 'state/alarm_schedule.dart';
@@ -125,6 +129,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       controller.refresh();
     }
   }
+
   late bool dark = widget.initialBrightness == Brightness.dark;
   late double? scale = widget.initialTextScale;
   @override
@@ -232,69 +237,66 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.sleep => G3SleepScreen(controller: controller, asTab: true),
-      ShellDomain.workout => OpenBandTraining(
-        controller: controller,
-        releaseReduced: widget.releaseReduced,
-        onStart: (type) {
-          if (type != 'running') return;
-          final run = ValueNotifier(
-            const LiveRun(
-              elapsedSec: 962,
-              distanceM: 2840,
-              heartRate: 154,
-              zone: 3,
-              gps: true,
-            ),
-          );
-          pushFullScreen(c,
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandRunLive(
-                run: run,
-                onPause: () => run.value = LiveRun(
-                  elapsedSec: run.value.elapsedSec,
-                  pausedSec: run.value.pausedSec,
-                  distanceM: run.value.distanceM,
-                  heartRate: run.value.heartRate,
-                  zone: run.value.zone,
-                  gps: true,
-                  paused: true,
-                ),
-                onResume: () => run.value = LiveRun(
-                  elapsedSec: run.value.elapsedSec + 30,
-                  pausedSec: run.value.pausedSec + 30,
-                  distanceM: run.value.distanceM,
-                  heartRate: run.value.heartRate,
-                  zone: run.value.zone,
-                  gps: true,
-                ),
-                onLap: () {},
-                onFinish: () => Navigator.of(c, rootNavigator: true).maybePop(),
+      ShellDomain.workout =>
+        !widget.releaseReduced
+            ? Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => pushFullScreen(
+                        c,
+                        MaterialPageRoute<void>(
+                          builder: (_) => OpenBandExercisePicker(
+                            repository: widget.repository,
+                          ),
+                        ),
+                      ),
+                      child: const Text('Übungsbibliothek'),
+                    ),
+                  ),
+                  Expanded(
+                    child: OpenBandTraining(
+                      controller: controller,
+                      onStart: (type) => type == 'weight_training'
+                          ? _openGalleryTemplates(c)
+                          : _openSyntheticRun(c, type),
+                      onStartTemplate: (template) => _openStrength(c, template),
+                      onEditTemplate: (template) =>
+                          _openTemplateEditor(c, template),
+                      onOpenTemplates: () => _openGalleryTemplates(c),
+                      onOpen: (session) => pushFullScreen(
+                        c,
+                        MaterialPageRoute<void>(
+                          builder: (_) => OpenBandSession(
+                            repository: widget.repository,
+                            session: session,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : G3TrainingScreen(
+                controller: controller,
+                onStart: (type) {
+                  if (type != 'running') return;
+                  _openSyntheticRun(c, type);
+                },
+                onManual: () async {
+                  await pushFullScreen<G3ManualSaved>(
+                    c,
+                    MaterialPageRoute<G3ManualSaved>(
+                      builder: (_) => G3ManualFlow(
+                        recentRepository: widget.repository,
+                        now: () => _clock,
+                        initialSpans: const [],
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
-          );
-        },
-        onOpenTemplates: () async {
-          await Navigator.of(c).push(
-            MaterialPageRoute<void>(
-              builder: (_) => OpenBandTemplates(
-                repository: widget.repository,
-                synthetic: true,
-                onStartTemplate: (t) => _openStrength(c, t),
-                onEditTemplate: (t) => _openTemplateEditor(c, t),
-              ),
-            ),
-          );
-          controller.refresh();
-        },
-        onStartTemplate: (t) => _openStrength(c, t),
-        onEditTemplate: (t) => _openTemplateEditor(c, t),
-        onOpen: (s) => Navigator.of(c).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                OpenBandSession(repository: widget.repository, session: s),
-          ),
-        ),
-      ),
       ShellDomain.wellness =>
         widget.releaseReduced
             ? G3JournalScreen(
@@ -339,8 +341,75 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     },
   );
 
+  Future<void> _openGalleryTemplates(BuildContext c) => pushFullScreen(
+    c,
+    MaterialPageRoute<void>(
+      builder: (_) => OpenBandTemplates(
+        repository: widget.repository,
+        onStartTemplate: (template) => _openStrength(c, template),
+        onEditTemplate: (template) => _openTemplateEditor(c, template),
+        synthetic: true,
+      ),
+    ),
+  );
+
+  void _openSyntheticRun(BuildContext c, String type) {
+    final zoneSet = ana.HeartRateZones.zonesFromMaxHr(186, source: 'tanaka');
+    final run = ValueNotifier(
+      LiveRun(
+        elapsedSec: 962,
+        distanceM: type == 'running' ? 2840 : null,
+        heartRate: 141,
+        zone: zoneSet.zoneNumber(141),
+        zoneSet: zoneSet,
+        strain: 3.8,
+        maxHrSeen: 158,
+        averageHr: 136,
+        gps: type == 'running',
+      ),
+    );
+    pushFullScreen(
+      c,
+      MaterialPageRoute<void>(
+        builder: (_) => G3LiveRun(
+          run: run,
+          sport: type,
+          onPause: () => run.value = LiveRun(
+            elapsedSec: run.value.elapsedSec,
+            pausedSec: run.value.pausedSec,
+            distanceM: run.value.distanceM,
+            heartRate: run.value.heartRate,
+            zone: run.value.zone,
+            zoneSet: run.value.zoneSet,
+            strain: run.value.strain,
+            maxHrSeen: run.value.maxHrSeen,
+            averageHr: run.value.averageHr,
+            gps: run.value.gps,
+            paused: true,
+          ),
+          onResume: () => run.value = LiveRun(
+            elapsedSec: run.value.elapsedSec + 30,
+            pausedSec: run.value.pausedSec + 30,
+            distanceM: run.value.distanceM,
+            heartRate: run.value.heartRate,
+            zone: run.value.zone,
+            zoneSet: run.value.zoneSet,
+            strain: run.value.strain,
+            maxHrSeen: run.value.maxHrSeen,
+            averageHr: run.value.averageHr,
+            gps: run.value.gps,
+          ),
+          onFinish: () async {
+            Navigator.of(c, rootNavigator: true).maybePop();
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return pushFullScreen(c,
+    return pushFullScreen(
+      c,
       MaterialPageRoute<void>(
         builder: (_) =>
             OpenBandStrengthLive(repository: widget.repository, template: t),

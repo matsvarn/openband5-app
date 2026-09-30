@@ -488,6 +488,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
           confirmed: true,
           start: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
           end: DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+          storedDuration: (r['duration_min'] as num?) == null
+              ? null
+              : Duration(minutes: (r['duration_min'] as num).toInt()),
           strain: (r['strain'] as num?)?.toDouble(),
           avgHr: (r['avg_hr'] as num?)?.toDouble(),
           maxHr: (r['max_hr'] as num?)?.toDouble(),
@@ -682,10 +685,21 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ? _at(artifact, 'load.value')
         : null;
     final map = value is Map ? value : null;
+    final current = artifact?['built_for_day'] == endDay &&
+        artifact?['algo_version'] == kAlgoVersion;
+    final load = current ? (artifact?['load']) : null;
+    final note = load is Map ? load['note'] as String? : null;
+    int? count(String key) {
+      final match = note == null ? null : RegExp('(?:^|[:,])$key=(\\d+)').firstMatch(note);
+      return match == null ? null : int.tryParse(match.group(1)!);
+    }
     return G3WeeklyLoad(
       days,
       ctl: (map?['ctl'] as num?)?.toDouble(),
       atl: (map?['atl'] as num?)?.toDouble(),
+      refusalNote: note,
+      daysHave: count('have'),
+      daysNeed: count('need'),
     );
   }
 
