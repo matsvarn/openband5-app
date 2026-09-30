@@ -407,7 +407,7 @@ class _OpenBandGlucoseState extends State<OpenBandGlucose> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Glukose',
               subtitle: '',
               onInfo: _info,
@@ -708,7 +708,7 @@ class _OpenBandGlucoseSourceState extends State<OpenBandGlucoseSource> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Quelle',
               subtitle: '',
               onInfo: () => showOpenBandJournalInfo(
@@ -951,7 +951,7 @@ class _OpenBandGlucoseHistoryState extends State<OpenBandGlucoseHistory> {
             const SliverPadding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
               sliver: SliverToBoxAdapter(
-                child: OBPageHeader(title: 'Messungen', subtitle: ''),
+                child: G2PageHeader(title: 'Messungen', subtitle: ''),
               ),
             ),
             if (waiting)

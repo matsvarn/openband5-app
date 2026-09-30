@@ -564,7 +564,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 20,
                                 ),
-                                child: OBPageHeader(
+                                child: G2PageHeader(
                                   title: title,
                                   backText: receipt == null
                                       ? 'Abbrechen'

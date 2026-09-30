@@ -105,7 +105,7 @@ void main() {
                     padding: const EdgeInsets.all(16),
                     child: OBAdaptiveValues(
                       children: [
-                        OBMetricCard(
+                        G2MetricCard(
                           label: 'HRV',
                           unit: 'ms',
                           metric: hrv,
@@ -113,7 +113,7 @@ void main() {
                           color: p.recovery,
                           onTap: onHrv,
                         ),
-                        OBMetricCard(
+                        G2MetricCard(
                           label: 'Ruhepuls',
                           unit: '/min',
                           metric: rhr,
@@ -383,7 +383,7 @@ void main() {
     expect(find.text('+8 über Basis'), findsOneWidget);
     expect(find.text('−2 unter Basis'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(find.byType(OBMetricCard).first).width, 343);
+    expect(tester.getSize(find.byType(G2MetricCard).first).width, 343);
   }, tags: const ['golden']);
 
   testWidgets('narrow 320 stacks value and unit when they cannot share a row', (
@@ -494,14 +494,14 @@ void main() {
                   builder: (_) => Scaffold(
                     body: ListView(
                       children: [
-                        const OBPageHeader(title: 'Schlaf', subtitle: ''),
+                        const G2PageHeader(title: 'Schlaf', subtitle: ''),
                         const SizedBox(height: 720),
                         Builder(
                           builder: (inner) => TextButton(
                             onPressed: () => Navigator.of(inner).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => const Scaffold(
-                                  body: OBPageHeader(
+                                  body: G2PageHeader(
                                     title: 'Ruhepuls',
                                     subtitle: '',
                                   ),

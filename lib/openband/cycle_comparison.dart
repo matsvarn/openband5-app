@@ -253,7 +253,7 @@ class _OpenBandCycleComparisonState extends State<OpenBandCycleComparison> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: 'Vergleich', subtitle: '', onInfo: _info),
+            G2PageHeader(title: 'Vergleich', subtitle: '', onInfo: _info),
             ..._body(p),
             if (widget.synthetic) const _ComparisonSyntheticFooter(),
           ],

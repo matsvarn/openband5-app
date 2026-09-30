@@ -7,9 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
+import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
 import 'package:openstrap_edge/notify/fired_keys.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
@@ -1190,11 +1190,9 @@ void main() {
         of: find.text(label),
         matching: find.byType(OBSettingsRow),
       );
+      expect(tester.widget<OBSettingsRow>(row).onTap, isNotNull);
       expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(LucideIcons.chevronRight),
-        ),
+        find.descendant(of: row, matching: find.byType(OBChevron)),
         findsOneWidget,
       );
       await tester.ensureVisible(row);
@@ -1286,7 +1284,14 @@ void main() {
       expect(find.text('Gesundheit'), findsOneWidget);
       expect(find.text('Training'), findsOneWidget);
       expect(find.text('Journal'), findsOneWidget);
-      expect(find.text('Schlaf'), findsOneWidget);
+      // Schlaf also appears in Heute content; assert the development tab.
+      expect(
+        find.descendant(
+          of: find.byType(Pressable),
+          matching: find.text('Schlaf'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.pumpWidget(
         OpenBandGallery(
@@ -1646,6 +1651,14 @@ void main() {
   test('kept reminder routes and workout suggestion each claim once', () async {
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(quietEnabled: false).save();
+    // FiredKeyStore prunes dated claims after 14 days. Use a fresh local day
+    // and unique keys so the claim assertions do not age or collide on reruns.
+    final day = todayLabel();
+    final run = DateTime.now().microsecondsSinceEpoch;
+    final alarmKey = 'alarm_fired:$run';
+    final syncKey = '$day:sync_stale:$run';
+    final healthKey = '$day:exception:medical:$run';
+    final idleKey = 'w$run:workout_idle';
     final center = NotificationCenter.instance;
     final previousReduced = center.releaseReduced;
     final previousSink = center.presentSink;
@@ -1660,15 +1673,15 @@ void main() {
     });
     center.releaseReduced = true;
     const store = FiredKeyStore();
-    const suggestionId = '2026-09-15:1750000000';
-    const suggestionKey = '$suggestionId:auto_workout';
+    final suggestionId = '$day:$run';
+    final suggestionKey = '$suggestionId:auto_workout';
     final suggestion = NotificationEvent(
       dedupeKey: suggestionKey,
       category: NotifCategory.reminders,
       priority: NotifPriority.normal,
       title: 'Did you work out?',
       body: 'We spotted ~20 min of elevated activity. Tap to log it.',
-      date: '2026-09-15',
+      date: day,
       route: workoutSuggestionRoute(suggestionId),
     );
     expect(await center.emit(suggestion, allowPermissionPrompt: false), isTrue);
@@ -1679,13 +1692,13 @@ void main() {
         center.emit(event, allowPermissionPrompt: false);
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: 'alarm_fired:1750000000',
+        NotificationEvent(
+          dedupeKey: alarmKey,
           category: NotifCategory.reminders,
           priority: NotifPriority.critical,
           title: 'Alarm',
           body: 'Your strap alarm just fired.',
-          date: '2026-09-15',
+          date: day,
           route: '/today',
         ),
       ),
@@ -1693,15 +1706,15 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: '2026-09-15:sync_stale',
+        NotificationEvent(
+          dedupeKey: syncKey,
           category: NotifCategory.device,
           priority: NotifPriority.normal,
           title: "Your band hasn't synced in a while",
           body:
               'No new data for about 12 hours. Open OpenStrap to '
               'reconnect — background sync may have stalled.',
-          date: '2026-09-15',
+          date: day,
           route: '/today',
         ),
       ),
@@ -1709,13 +1722,13 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: '2026-09-15:exception:medical',
+        NotificationEvent(
+          dedupeKey: healthKey,
           category: NotifCategory.health,
           priority: NotifPriority.critical,
           title: 'Something changed',
           body: 'A health exception needs a look.',
-          date: '2026-09-15',
+          date: day,
           route: '/heart',
         ),
       ),
@@ -1723,32 +1736,26 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: 'w123:workout_idle',
+        NotificationEvent(
+          dedupeKey: idleKey,
           category: NotifCategory.reminders,
           priority: NotifPriority.normal,
           title: 'Still working out?',
           body:
               'Nothing above resting effort has been recorded. If the '
               'session is over, open the app to finish it.',
-          date: '2026-09-15',
+          date: day,
           route: kRouteWorkoutIdle,
         ),
       ),
       isTrue,
     );
     expect(await store.hasFired(suggestionKey), isTrue);
-    expect(await store.hasFired('alarm_fired:1750000000'), isTrue);
-    expect(await store.hasFired('2026-09-15:sync_stale'), isTrue);
-    expect(await store.hasFired('2026-09-15:exception:medical'), isTrue);
-    expect(await store.hasFired('w123:workout_idle'), isTrue);
-    expect(shown, [
-      suggestionKey,
-      'alarm_fired:1750000000',
-      '2026-09-15:sync_stale',
-      '2026-09-15:exception:medical',
-      'w123:workout_idle',
-    ]);
+    expect(await store.hasFired(alarmKey), isTrue);
+    expect(await store.hasFired(syncKey), isTrue);
+    expect(await store.hasFired(healthKey), isTrue);
+    expect(await store.hasFired(idleKey), isTrue);
+    expect(shown, [suggestionKey, alarmKey, syncKey, healthKey, idleKey]);
     expect(
       await center.emit(suggestion, allowPermissionPrompt: false),
       isFalse,

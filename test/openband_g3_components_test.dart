@@ -1037,7 +1037,7 @@ void main() {
     testWidgets('answered check-in change has a 44 pt target', (tester) async {
       await tester.pumpWidget(
         _app(
-          OBCheckIn(
+          G3CheckInPreview(
             state: OBCheckInState.answered,
             progress: '1 von 4',
             question: 'Frage?',
@@ -1192,7 +1192,7 @@ void main() {
               ),
               SizedBox(
                 width: 361,
-                child: OBCheckIn(
+                child: G3CheckInPreview(
                   state: OBCheckInState.question,
                   progress: '1 von 4',
                   question: 'Gestern Abend Alkohol?',

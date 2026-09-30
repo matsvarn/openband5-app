@@ -64,7 +64,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
           ),
           children: [
             if (widget.bandMetricsOnly)
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Messwerte',
                 subtitle: obNightPillLabel(c.selectedDay),
                 backText: 'Heute',
@@ -92,7 +92,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
               ),
             ],
             if (!widget.bandMetricsOnly) ...[
-              OBSegmented(
+              G2Segmented(
                 labels: const ['7 Nächte', '30 Nächte'],
                 selected: nights == 7 ? 0 : 1,
                 onChanged: (i) => setState(() => nights = i == 0 ? 7 : 30),
@@ -117,7 +117,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
             ] else if (day != null) ...[
               OBAdaptiveValues(
                 children: [
-                  OBMetricCard(
+                  G2MetricCard(
                     label: 'HRV',
                     metricKey: MetricKey.hrv,
                     unit: 'ms',
@@ -137,7 +137,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       tint: (p) => p.line,
                     ),
                   ),
-                  OBMetricCard(
+                  G2MetricCard(
                     label: 'Ruhepuls',
                     metricKey: MetricKey.restingHr,
                     unit: '/min',
@@ -162,7 +162,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
               const SizedBox(height: 10),
               OBAdaptiveValues(
                 children: [
-                  OBMetricCard(
+                  G2MetricCard(
                     key: const ValueKey('atemfrequenz'),
                     label: 'Atemfrequenz',
                     metricKey: MetricKey.respiration,
@@ -185,7 +185,7 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                       digits: 1,
                     ),
                   ),
-                  OBMetricCard(
+                  G2MetricCard(
                     key: const ValueKey('hauttemperatur'),
                     label: 'Hauttemperatur',
                     unit: '',
@@ -557,13 +557,13 @@ class _HealthWeightRowState extends State<_HealthWeightRow> {
   }
 }
 
-class OBSegmented extends StatelessWidget {
+class G2Segmented extends StatelessWidget {
   final List<String> labels;
   final int selected;
   final ValueChanged<int> onChanged;
   final bool compact;
   final List<bool>? enabled;
-  const OBSegmented({
+  const G2Segmented({
     super.key,
     required this.labels,
     required this.selected,

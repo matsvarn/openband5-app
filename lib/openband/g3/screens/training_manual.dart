@@ -44,7 +44,7 @@ class G3ManualFlow extends StatefulWidget {
 }
 
 class _G3ManualFlowState extends State<G3ManualFlow> {
-  static const sports = trainingSports;
+  static final sports = trainingSports;
   late int step = widget.initialStep;
   String sport = 'yoga';
   late DateTime start, end;

@@ -501,7 +501,7 @@ class _OpenBandExerciseDefinitionEditorState
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: 'Eigene Übung',
                 subtitle: '',
                 onInfo: _info,
@@ -739,7 +739,7 @@ class _MuscleRolePageState extends State<_MuscleRolePage> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(title: 'Muskelgruppen', subtitle: ''),
+              child: G2PageHeader(title: 'Muskelgruppen', subtitle: ''),
             ),
             Expanded(
               child: ListView(

@@ -88,14 +88,14 @@ void main() {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: compact
-                            ? OBSegmented(
+                            ? G2Segmented(
                                 compact: true,
                                 labels: labels,
                                 selected: selected,
                                 enabled: enabled,
                                 onChanged: onChanged ?? (_) {},
                               )
-                            : OBSegmented(
+                            : G2Segmented(
                                 labels: labels,
                                 selected: selected,
                                 enabled: enabled,
@@ -116,8 +116,8 @@ void main() {
 
   void expectHorizontal(WidgetTester tester, {required double contentWidth}) {
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(find.byType(OBSegmented)).width, contentWidth);
-    expect(tester.getSize(find.byType(OBSegmented)).height, 44);
+    expect(tester.getSize(find.byType(G2Segmented)).width, contentWidth);
+    expect(tester.getSize(find.byType(G2Segmented)).height, 44);
     expect(tester.getSize(find.text('Tag')).height, 18);
     final tag = tester.getRect(well('Tag'));
     final woche = tester.getRect(well('Woche'));
@@ -134,7 +134,7 @@ void main() {
 
   void expectStacked52(WidgetTester tester, {required double contentWidth}) {
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(find.byType(OBSegmented)).width, contentWidth);
+    expect(tester.getSize(find.byType(G2Segmented)).width, contentWidth);
     final tag = tester.getRect(well('Tag'));
     final woche = tester.getRect(well('Woche'));
     final food = tester.getRect(well('Lebensmittel'));
@@ -143,7 +143,7 @@ void main() {
     expect(food.height, 52);
     expect(woche.top - tag.bottom, 2);
     expect(food.top - woche.bottom, 2);
-    expect(tester.getSize(find.byType(OBSegmented)).height, 166);
+    expect(tester.getSize(find.byType(G2Segmented)).height, 166);
     expect(tester.getSize(find.text('Tag')).height, 36);
     expect(tester.getSize(find.text('Lebensmittel')).height, 36);
     expect(inside(food, tester.getRect(find.text('Lebensmittel'))), isTrue);
@@ -283,7 +283,7 @@ void main() {
       scale: 2,
     );
     expect(tester.takeException(), isNull);
-    expect(tester.getSize(find.byType(OBSegmented)).width, 288);
+    expect(tester.getSize(find.byType(G2Segmented)).width, 288);
     expect(find.text(long), findsOneWidget);
     expect(find.textContaining('Lebensmit'), findsOneWidget);
     final food = tester.getRect(well(long));
@@ -311,7 +311,7 @@ void main() {
           .first,
     );
     expect(wellSize.height, 42);
-    expect(tester.getSize(find.byType(OBSegmented)).height, 44);
+    expect(tester.getSize(find.byType(G2Segmented)).height, 44);
     expect(
       inside(tester.getRect(well('Tag')), tester.getRect(find.text('Tag'))),
       isTrue,
@@ -373,7 +373,7 @@ void main() {
       }
 
       await show();
-      expect(tester.getSize(find.byType(OBSegmented)).width, 102);
+      expect(tester.getSize(find.byType(G2Segmented)).width, 102);
       expect(tester.getSize(well('g')).height, greaterThanOrEqualTo(44));
       expect(tester.getSize(well('%')).height, greaterThanOrEqualTo(44));
       await tester.tapAt(
@@ -394,7 +394,7 @@ void main() {
       expect(selected, 1);
 
       await show(scale: 2);
-      expect(tester.getSize(find.byType(OBSegmented)).width, 146);
+      expect(tester.getSize(find.byType(G2Segmented)).width, 146);
       expect(tester.getSize(well('g')).height, greaterThanOrEqualTo(44));
     } finally {
       semantics.dispose();
@@ -404,7 +404,7 @@ void main() {
   testWidgets('empty and single label stay usable', (tester) async {
     await mount(tester, labels: const []);
     expect(tester.takeException(), isNull);
-    expect(find.byType(OBSegmented), findsOneWidget);
+    expect(find.byType(G2Segmented), findsOneWidget);
 
     final taps = <int>[];
     await mount(tester, labels: const ['Nur'], onChanged: taps.add);

@@ -268,7 +268,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                OBPageHeader(
+                G2PageHeader(
                   title: widget.label,
                   subtitle: widget.subtitle,
                   backText: widget.backText,

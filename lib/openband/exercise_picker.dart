@@ -415,7 +415,7 @@ class _OpenBandExercisePickerState extends State<OpenBandExercisePicker> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: 'Übungen',
                 subtitle: '',
                 onInfo: loaded ? _openCreate : null,
@@ -836,7 +836,7 @@ class _ExerciseFilterPageState extends State<_ExerciseFilterPage> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(title: 'Filter', subtitle: ''),
+              child: G2PageHeader(title: 'Filter', subtitle: ''),
             ),
             Expanded(
               child: ListView(
@@ -991,7 +991,7 @@ class _ExerciseDetailPage extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 key: const ValueKey('exercise-copy'),
                 title: 'Übung',
                 subtitle: '',

@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented;
+import 'health.dart' show G2Segmented;
 import 'theme.dart';
 import 'time.dart';
 
@@ -68,7 +68,7 @@ class _OpenBandNightSignalsState extends State<OpenBandNightSignals> {
                       shape: const CircleBorder(),
                     ),
                   ),
-                  child: OBPageHeader(
+                  child: G2PageHeader(
                     title: 'Nachtverlauf',
                     subtitle:
                         '${start == null ? '' : '${recordedTime(start, night?.recordingTimezone).day}./'}${obDate(widget.day)}',
@@ -86,7 +86,7 @@ class _OpenBandNightSignalsState extends State<OpenBandNightSignals> {
                 else if (night == null)
                   const Center(child: CircularProgressIndicator.adaptive())
                 else ...[
-                  OBSegmented(
+                  G2Segmented(
                     labels: [
                       for (final kind in NightSignalKind.values) kind.label,
                     ],

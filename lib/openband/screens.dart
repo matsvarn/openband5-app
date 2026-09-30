@@ -95,7 +95,7 @@ class _OpenBandOverviewState extends State<OpenBandOverview> {
               ),
               const SizedBox(height: 16),
               if (controller.band.latestStoredAt != null &&
-                  !OBSyncState.showsFor(controller.band, controller.now))
+                  !G2SyncState.showsFor(controller.band, controller.now))
                 _DataStrip(
                   band: controller.band,
                   night: day?.sleep,
@@ -123,7 +123,7 @@ class _OpenBandOverviewState extends State<OpenBandOverview> {
                   child: Center(child: CircularProgressIndicator.adaptive()),
                 ),
               if (day != null) ...[
-                OBSyncState(
+                G2SyncState(
                   band: controller.band,
                   onResume: onSync,
                   now: controller.now,
@@ -1507,7 +1507,7 @@ String? obCompactMetricStatus(DayMetric metric, {required int digits}) {
   }
 }
 
-class OBMetricCard extends StatelessWidget {
+class G2MetricCard extends StatelessWidget {
   final String label, unit;
   final DayMetric metric;
   final IconData icon;
@@ -1517,7 +1517,7 @@ class OBMetricCard extends StatelessWidget {
   /// Metric for the verdict colour of the comparison; null keeps it ink.
   final MetricKey? metricKey;
   final VoidCallback? onTap;
-  const OBMetricCard({
+  const G2MetricCard({
     super.key,
     required this.label,
     required this.unit,
@@ -1705,7 +1705,7 @@ double _textWidth(
 /// area and grows with text rather than shrinking its button below that.
 enum OBSyncActionState { pending }
 
-class OBSyncState extends StatelessWidget {
+class G2SyncState extends StatelessWidget {
   final BandSnapshot band;
   final VoidCallback? onResume;
   final DateTime Function() now;
@@ -1714,7 +1714,7 @@ class OBSyncState extends StatelessWidget {
   final String interruptedLabel;
   final String pendingLabel;
   final String resumeLabel;
-  const OBSyncState({
+  const G2SyncState({
     super.key,
     required this.band,
     this.onResume,
@@ -2290,7 +2290,7 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                   widget.asTab ? kOBTabBarContentInset : 24,
                 ),
                 children: [
-                  OBPageHeader(
+                  G2PageHeader(
                     title: 'Schlaf',
                     backText: widget.asTab ? null : 'Heute',
                     showBack: !widget.asTab,

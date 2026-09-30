@@ -250,7 +250,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: _tonight ? 'Heute Nacht' : 'Nacht',
               backText: 'Schlaf',
               subtitle: sleepPlanNightRangeLabel(widget.day),

@@ -663,13 +663,13 @@ class _OpenBandFoodEntryState extends State<OpenBandFoodEntry> {
     final day = _navDay;
     switch (_pane) {
       case _Pane.editor:
-        return OBPageHeader(
+        return G2PageHeader(
           title: 'Eintrag bearbeiten',
           subtitle: obDate(day),
           onBack: _busy ? null : _back,
         );
       case _Pane.nutrients:
-        return OBPageHeader(
+        return G2PageHeader(
           title: 'Nährwerte',
           subtitle: _name.text.trim().isEmpty
               ? (_draft ?? _stored)?.label ?? ''
@@ -677,7 +677,7 @@ class _OpenBandFoodEntryState extends State<OpenBandFoodEntry> {
           onBack: _busy ? null : _back,
         );
       default:
-        return OBPageHeader(
+        return G2PageHeader(
           title: 'Eintrag',
           subtitle: isLabCalendarDay(day) ? obDate(day) : day,
           onBack: _busy ? null : _back,
@@ -1772,7 +1772,7 @@ class _FoodDatePageState extends State<_FoodDatePage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Datum', subtitle: ''),
+            const G2PageHeader(title: 'Datum', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(

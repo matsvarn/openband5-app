@@ -192,6 +192,7 @@ class OBIconButton extends StatelessWidget {
 // Page headers
 
 class OBPageHeader extends StatelessWidget {
+  final G3Domain domain;
   final _Kind _kind;
   final String title;
   final String? subtitle;
@@ -210,6 +211,7 @@ class OBPageHeader extends StatelessWidget {
     this.onTitle,
     this.onProfile,
   }) : _kind = _Kind.hub,
+       domain = G3Domain.neutral,
        onBack = null,
        onTrailing = null,
        backLabel = '',
@@ -223,6 +225,7 @@ class OBPageHeader extends StatelessWidget {
     this.subtitle,
     required this.backLabel,
     required this.onBack,
+    this.domain = G3Domain.neutral,
     this.trailing = LucideIcons.info,
     this.trailingLabel = 'Erklärung',
     this.onTrailing,
@@ -239,6 +242,7 @@ class OBPageHeader extends StatelessWidget {
     required this.band,
     this.onProfile,
   }) : _kind = _Kind.compact,
+       domain = G3Domain.neutral,
        onBack = null,
        onTitle = null,
        onTrailing = null,
@@ -246,10 +250,47 @@ class OBPageHeader extends StatelessWidget {
        trailing = LucideIcons.info,
        trailingLabel = '';
 
+  /// Modal flow header with a 44 pt close target and a centred title.
+  const OBPageHeader.modal({
+    super.key,
+    required this.title,
+    required this.onBack,
+    this.backLabel = 'Schließen',
+    IconData leadingIcon = LucideIcons.x,
+  }) : _kind = _Kind.modal,
+       domain = G3Domain.neutral,
+       trailing = leadingIcon,
+       subtitle = null,
+       band = null,
+       onTitle = null,
+       onProfile = null,
+       onTrailing = null,
+       trailingLabel = '',
+       assert(onBack != null);
+
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     switch (_kind) {
+      case _Kind.modal:
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              OBIconButton(icon: trailing, label: backLabel, onTap: onBack),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: g.t(13, 16, weight: FontWeight.w700, tracking: .1),
+                ),
+              ),
+              const SizedBox(width: 44, height: 44),
+            ],
+          ),
+        );
       case _Kind.hub:
         return Padding(
           padding: const EdgeInsets.only(left: 24, right: 16, top: 4),
@@ -355,6 +396,7 @@ class OBPageHeader extends StatelessWidget {
                           16,
                           weight: FontWeight.w700,
                           tracking: .1,
+                          color: g.domainHue(domain),
                         ),
                       ),
                     ),
@@ -416,23 +458,30 @@ class OBPageHeader extends StatelessWidget {
   }
 }
 
-enum _Kind { hub, detail, compact }
+enum _Kind { hub, detail, compact, modal }
 
 /// A detail header outside the 16 pt content gutter, followed by a 12 pt gap.
 /// [bottomInset] is scroll padding, so content can travel behind a tab bar.
 class G3DetailPage extends StatelessWidget {
   final Widget header;
   final List<Widget> children;
+
+  /// A section after the inset content, spanning the page width.
+  final Widget? fullWidthSection;
+  final ScrollController? scrollController;
   final double bottomInset;
   const G3DetailPage({
     super.key,
     required this.header,
     required this.children,
+    this.fullWidthSection,
+    this.scrollController,
     this.bottomInset = 0,
   });
 
   @override
   Widget build(BuildContext context) => ListView(
+    controller: scrollController,
     padding: EdgeInsets.only(bottom: bottomInset),
     children: [
       header,
@@ -444,6 +493,7 @@ class G3DetailPage extends StatelessWidget {
           children: children,
         ),
       ),
+      ?fullWidthSection,
     ],
   );
 }
@@ -553,6 +603,8 @@ class OBSyncState extends StatelessWidget {
 // Section header, card header, footer
 
 class OBSectionHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String text;
   final String? action;
   final VoidCallback? onAction;
@@ -560,6 +612,8 @@ class OBSectionHeader extends StatelessWidget {
   const OBSectionHeader(
     this.text, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.action,
     this.onAction,
     this.trailing,
@@ -575,7 +629,24 @@ class OBSectionHeader extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 18, bottom: 8),
-              child: Text(text, style: g.caps(color: g.muted)),
+              child: Row(
+                children: [
+                  if (glyph != null) ...[
+                    Icon(glyph, size: 16, color: g.domainHue(domain)),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: g.caps(
+                        color: domain == G3Domain.neutral
+                            ? g.muted
+                            : g.domainHue(domain),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (action != null && onAction != null)
@@ -613,6 +684,8 @@ class OBSectionHeader extends StatelessWidget {
 }
 
 class OBCardHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
   final String? note;
   final VoidCallback? onTap;
@@ -621,6 +694,8 @@ class OBCardHeader extends StatelessWidget {
   const OBCardHeader(
     this.label, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.note,
     this.onTap,
     this.arrow = true,
@@ -628,7 +703,14 @@ class OBCardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
-    child: G3LabelRow(label, note: note, onTap: onTap, arrow: arrow),
+    child: G3LabelRow(
+      label,
+      domain: domain,
+      glyph: glyph,
+      note: note,
+      onTap: onTap,
+      arrow: arrow,
+    ),
   );
 }
 

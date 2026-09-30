@@ -243,7 +243,7 @@ class _OpenBandVo2State extends State<OpenBandVo2> {
           key: const ValueKey('vo2-scroll'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'VO₂max',
               subtitle: '',
               onInfo: _showInfo,
@@ -1005,7 +1005,7 @@ class _Vo2DatePageState extends State<_Vo2DatePage> {
           key: const ValueKey('vo2-calendar'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Datum', subtitle: ''),
+            const G2PageHeader(title: 'Datum', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(
@@ -1208,7 +1208,7 @@ class _Vo2RemovedPageState extends State<_Vo2RemovedPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'VO₂max', subtitle: ''),
+            const G2PageHeader(title: 'VO₂max', subtitle: ''),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.only(top: 80),
@@ -1359,7 +1359,7 @@ class _Vo2HistoryPageState extends State<_Vo2HistoryPage> {
           key: const ValueKey('vo2-history-page'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Änderungen',
               subtitle: '',
               onInfo: () => _showVo2Info(context),

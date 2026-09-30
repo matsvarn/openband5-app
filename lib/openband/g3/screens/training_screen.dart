@@ -896,7 +896,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
       backgroundColor: Colors.transparent,
       builder: (c) => StatefulBuilder(
         builder: (c, update) {
-          const sports = trainingSports;
+          final sports = trainingSports;
           return SafeArea(
             child: SingleChildScrollView(
               child: OBSheet(

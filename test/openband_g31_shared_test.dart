@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
+import 'package:openstrap_edge/openband/g3/check_in.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
+import 'package:openstrap_edge/openband/g3/heute_parts.dart'
+    show heuteSportLabel;
 import 'package:openstrap_edge/openband/g3/metrics.dart';
+import 'package:openstrap_edge/openband/g3/sport.dart';
+import 'package:openstrap_edge/openband/g3/training_parts.dart'
+    show trainingSport, trainingSportIcon;
 import 'package:openstrap_edge/openband/theme.dart'
     show OBChevron, openBandTheme;
 
@@ -18,6 +24,76 @@ Widget _frame(Widget child) => MaterialApp(
 );
 
 void main() {
+  test('check-in question copy keeps the target day separate', () {
+    expect(g3CheckInCopy('alcohol_evening', '').question, 'Alkohol am Abend?');
+    expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');
+    expect(g3CheckInCopy('caffeine_late', '').question, 'Koffein nach 14 Uhr?');
+    expect(g3CheckInCopy('mood', '').low, 'schlecht');
+    expect(g3CheckInCopy('mood', '').high, 'gut');
+    expect(g3CheckInCopy('custom', 'Meine Frage?').question, 'Meine Frage?');
+  });
+
+  testWidgets('shared check-in supports target, prior answer and later state', (
+    tester,
+  ) async {
+    var changed = false;
+    await tester.pumpWidget(
+      _frame(
+        OBCheckIn(
+          title: 'Alkohol am Abend?',
+          index: 2,
+          total: 4,
+          target: 'zu gestern Abend',
+          answered: 'Stimmung: 4 von 5',
+          onChange: () => changed = true,
+          answer: const Text('Ja oder Nein'),
+          onLater: () {},
+        ),
+      ),
+    );
+    expect(find.text('zu gestern Abend'), findsOneWidget);
+    expect(find.text('Stimmung: 4 von 5'), findsOneWidget);
+    await tester.tap(find.text('Ändern'));
+    expect(changed, isTrue);
+    await tester.pumpWidget(
+      _frame(
+        OBCheckIn(
+          title: '',
+          index: 2,
+          total: 4,
+          later: true,
+          answer: const SizedBox.shrink(),
+          onLater: () {},
+        ),
+      ),
+    );
+    expect(find.textContaining('Für später gemerkt'), findsOneWidget);
+    expect(find.text('Ja oder Nein'), findsNothing);
+  });
+
+  test('Heute and Training resolve the same sport order and labels', () {
+    expect(g3SportIds.first, 'running');
+    expect(g3QuickSportIds, [...g3SportIds.take(8), 'other']);
+    for (final sport in g3Sports) {
+      expect(heuteSportLabel(sport.id), sport.label);
+      expect(trainingSport(sport.id), sport.label);
+    }
+    expect(g3SportLabel('weightlifting'), 'Kraft');
+    expect(g3SportLabel('detected'), 'Aktivität');
+  });
+
+  testWidgets('Heute and Training use the same sport pictogram', (
+    tester,
+  ) async {
+    for (final sport in ['running', 'yoga', 'detected']) {
+      final shared = g3SportIcon(sport, color: Colors.black);
+      final training = trainingSportIcon(sport, color: Colors.black);
+      expect(training.runtimeType, shared.runtimeType);
+      await tester.pumpWidget(_frame(shared));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   test('C-83 normalizes every audited date form', () {
     final tuesday = DateTime(2026, 9, 29, 9, 38);
     final monday = DateTime(2026, 9, 28, 9, 38);
@@ -26,6 +102,9 @@ void main() {
     expect(g3DayShort(tuesday), 'Di 29.09');
     expect(g3DateShort(tuesday), '29.09');
     expect(g3DateShort(monday), '28.09');
+    expect(g3Clock(DateTime(2026, 9, 29, 6, 4)), '06:04');
+    expect(g3Weekday(tuesday), 'Di');
+    expect(g3Weekday(DateTime(2026, 10, 4)), 'So');
     expect(g3Relative(tuesday, now: tuesday), 'heute 09:38');
     expect(g3Relative(monday, now: tuesday), 'gestern 09:38');
     expect(
@@ -60,6 +139,98 @@ void main() {
     expect(g3Signed(-0.04, digits: 1), '0,0');
     expect(g3Signed(null), '—');
   });
+
+  testWidgets('day note uses the supplied heading', (tester) async {
+    await tester.pumpWidget(
+      _frame(
+        const OBDayNote(
+          state: OBNoteState.text,
+          heading: 'FÜR DIE NACHT',
+          headline: 'Zeit fürs Bett',
+          reason: 'Dein Schlafbedarf',
+        ),
+      ),
+    );
+    expect(find.text('FÜR DIE NACHT'), findsOneWidget);
+    expect(find.text('FÜR HEUTE'), findsNothing);
+  });
+
+  testWidgets('detail page exposes a full-width section and controller', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _frame(
+        G3DetailPage(
+          header: const Text('Titel'),
+          fullWidthSection: const SizedBox(
+            width: double.infinity,
+            child: Text('Abschnitt'),
+          ),
+          scrollController: controller,
+          children: const [Text('Inset')],
+        ),
+      ),
+    );
+    expect(controller.hasClients, isTrue);
+    expect(
+      tester.getTopLeft(find.text('Abschnitt')).dx,
+      lessThan(tester.getTopLeft(find.text('Inset')).dx),
+    );
+  });
+
+  testWidgets('modal header closes from a 44 pt target', (tester) async {
+    var closed = false;
+    await tester.pumpWidget(
+      _frame(
+        OBPageHeader.modal(title: 'NACHTRAGEN', onBack: () => closed = true),
+      ),
+    );
+    final close = find.byIcon(LucideIcons.x);
+    expect(
+      tester
+          .getSize(
+            find.ancestor(of: close, matching: find.byType(OBIconButton)),
+          )
+          .height,
+      greaterThanOrEqualTo(44),
+    );
+    await tester.tap(close);
+    expect(closed, isTrue);
+
+    await tester.pumpWidget(
+      _frame(
+        OBPageHeader.modal(
+          title: 'LIVE',
+          leadingIcon: LucideIcons.chevronDown,
+          onBack: () => closed = true,
+        ),
+      ),
+    );
+    expect(find.byIcon(LucideIcons.chevronDown), findsOneWidget);
+  });
+
+  testWidgets(
+    'activity row supports compact presentation and a confirmation footer',
+    (tester) async {
+      await tester.pumpWidget(
+        _frame(
+          const OBActivityRow(
+            pictogram: Icon(LucideIcons.activity),
+            title: 'Lauf',
+            subtitle: 'Di. 29.09',
+            compact: true,
+            confirmationFooter: Text('Sportart richtig?'),
+          ),
+        ),
+      );
+      expect(find.text('Sportart richtig?'), findsOneWidget);
+      expect(find.text('Belastung'), findsNothing);
+      expect(find.byType(OBChevron), findsNothing);
+      expect(find.bySemanticsLabel('Lauf, Di. 29.09'), findsOneWidget);
+    },
+  );
 
   testWidgets('label and card chevrons require a handler', (tester) async {
     var taps = 0;

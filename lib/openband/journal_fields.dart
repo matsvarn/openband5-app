@@ -235,7 +235,7 @@ class _OpenBandJournalFieldsState extends State<OpenBandJournalFields> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: 'Eigene Felder',
                 subtitle: '',
                 onInfo: () => showOpenBandJournalInfo(
@@ -437,7 +437,7 @@ class _OpenBandJournalHiddenFieldsState
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: 'Ausgeblendet',
                 subtitle: '',
                 onInfo: () => showOpenBandJournalInfo(
@@ -685,7 +685,7 @@ class _OpenBandJournalFieldCreateState
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: OBPageHeader(
+                child: G2PageHeader(
                   title: 'Feld hinzufügen',
                   subtitle: '',
                   onInfo: () => showOpenBandJournalInfo(
