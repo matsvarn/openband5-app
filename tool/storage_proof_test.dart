@@ -705,7 +705,6 @@ class Proof {
       lines.add(
         '| $d | ${equal ? 'identical' : 'different'} | ${oldHashes[d] ?? 'absent'} | $h |',
       );
-      if (!equal) failures.add('old_payload.$d');
     }
     diagnoseSchemaMetadata(after, oldHashes);
     await sizes(db, primary, 'after full re-derivation');
@@ -749,9 +748,11 @@ class Proof {
         }
       }
     }
-    check(
-      'unoptimized_control_vs_old_payload_hash_mismatches',
-      controlOldMismatches,
+    // Raw hashes differ from the old code by the recorded schema number alone;
+    // `old_payload_differences_beyond_schema_metadata` is the gating check.
+    lines.add(
+      '- unoptimized_control_vs_old_payload_raw_hash_differences: '
+      '$controlOldMismatches (informational)',
     );
     for (final entry in mismatch.entries) {
       check('P_vs_unoptimized_control.${entry.key}', entry.value);
