@@ -14,11 +14,10 @@ import '../../today_note.dart';
 import '../../../notify/notification_center.dart';
 import '../../../ui2/app_shell.dart' show pushFullScreen;
 import '../chrome.dart' as chrome;
-import '../count_copy.dart';
 import '../day.dart' as day_parts;
 import '../g3_format.dart';
 import '../g3_theme.dart';
-import '../metrics.dart' show OBMissingValue;
+import '../metrics.dart' show G3LabelRow, G3Scale, OBMissingValue;
 import '../sleep_parts.dart';
 import 'sleep_goal.dart';
 import 'sleep_night.dart';
@@ -73,7 +72,6 @@ class _SleepReads {
           controller.selectedDay,
         ),
       ]),
-      windows = _windows(controller.repository, controller.selectedDay),
       naps = controller.repository.readNaps(controller.selectedDay);
   final String selectedDay;
   final OpenBandDay? day;
@@ -81,7 +79,6 @@ class _SleepReads {
   final Future<SleepGoalSnapshot> goal;
   final Future<List<MetricPoint>> history;
   final Future<List<G3Baseline>> baselines;
-  final Future<List<OBSleepWindow>> windows;
   final Future<NapDay> naps;
 
   static Future<List<OBSleepWindow>> _windows(
@@ -225,9 +222,25 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         context,
         controller.repository,
         controller.selectedDay,
+        onTonight: controller.selectedDay == todayLabel(controller.now())
+            ? _openTonight
+            : null,
       ).then((_) {
         if (mounted) setState(() => _reads = null);
       });
+
+  void _openTonight() => _push(
+    G3SleepTonight(
+      repository: controller.repository,
+      day: controller.selectedDay,
+      now: controller.now,
+      reminder:
+          widget.reminder ??
+          (controller.day?.synthetic == true
+              ? MemorySleepBedtimeReminder()
+              : NotificationSleepBedtimeReminder()),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -302,7 +315,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                             ? null
                             : controller.refresh),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   if (controller.loadError != null)
                     _inset(
                       chrome.OBErrorBlock(
@@ -404,64 +417,32 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                   ],
                   const chrome.OBSectionHeader('IN DER NACHT'),
                   _inset(_nightFacts(controller.day, current.baselines)),
-                  const SizedBox(height: 8),
-                  _inset(
-                    chrome.OBListRow(
-                      icon: LucideIcons.heart,
-                      title: 'Nachtverlauf Puls',
-                      subtitle: 'Puls · HRV · Atmung',
-                      onTap: () => _push(
-                        G3SleepNightSignals(
-                          repository: controller.repository,
-                          day: selected,
+                  const chrome.OBSectionHeader('LETZTE 7 NÄCHTE'),
+                  FutureBuilder<List<MetricPoint>>(
+                    future: current.history,
+                    builder: (context, history) =>
+                        FutureBuilder<SleepGoalSnapshot>(
+                          future: current.goal,
+                          builder: (context, goal) => _inset(
+                            _week(
+                              context,
+                              history.data,
+                              goal.data?.targetMinutes,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 8),
-                  _inset(
-                    chrome.OBListRow(
-                      icon: LucideIcons.pencil,
-                      title: 'Schlafzeiten ändern',
-                      subtitle: 'Wenn Beginn oder Ende nicht stimmen',
-                      onTap: _editSleep,
-                    ),
-                  ),
-                  const chrome.OBSectionHeader('RHYTHMUS · 7 NÄCHTE'),
+                  const chrome.OBSectionHeader('RHYTHMUS'),
                   FutureBuilder<G3SleepPlus>(
                     future: current.plus,
                     builder: (context, plusSnap) {
                       final plus = plusSnap.hasError ? null : plusSnap.data;
                       return Column(
                         children: [
-                          FutureBuilder<List<OBSleepWindow>>(
-                            future: current.windows,
-                            builder: (context, windows) => _inset(
-                              OBSleepWindows(
-                                windows: windows.data ?? const [],
-                                regularity: plus?.regularity.value,
-                                gate:
-                                    plus?.regularity.gate ??
-                                    (plusSnap.hasError
-                                        ? 'Nicht verfügbar'
-                                        : null),
-                                onTap: () => _push(
-                                  G3SleepRegularity(
-                                    repository: controller.repository,
-                                    day: selected,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
                           _inset(
-                            OBSocialJetlag(
-                              minutes:
-                                  plus?.socialJetlagDetail?.signedHours == null
-                                  ? null
-                                  : plus!.socialJetlagDetail!.signedHours! * 60,
-                              gate: plus?.socialJetlag.gate,
+                            OBSleepWindows(
+                              windows: const [],
+                              regularity: plus?.regularity.value,
                               onTap: () => _push(
                                 G3SleepRegularity(
                                   repository: controller.repository,
@@ -470,7 +451,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 12),
                           _inset(
                             OBSleepDebt(
                               minutes: plus?.sleepDebt.debtHours == null
@@ -495,36 +476,13 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                               ),
                             ),
                           ),
-                          if (selected == todayLabel(controller.now())) ...[
-                            const SizedBox(height: 10),
-                            _inset(
-                              _tonight(
-                                context,
-                                plus,
-                                lastOnset: night.onset,
-                                error: plusSnap.hasError,
-                                onTap: () => _push(
-                                  G3SleepTonight(
-                                    repository: controller.repository,
-                                    day: selected,
-                                    now: controller.now,
-                                    reminder:
-                                        widget.reminder ??
-                                        (controller.day?.synthetic == true
-                                            ? MemorySleepBedtimeReminder()
-                                            : NotificationSleepBedtimeReminder()),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ],
                       );
                     },
                   ),
                   chrome.OBSectionHeader(
                     'NICKERCHEN',
-                    action: 'Eintragen',
+                    action: '+ Eintragen',
                     onAction: () => showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
@@ -539,34 +497,24 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                   FutureBuilder<NapDay>(
                     future: current.naps,
                     builder: (context, naps) => _inset(
-                      chrome.OBListRow(
-                        icon: LucideIcons.moon,
-                        title: naps.data?.sessions.isEmpty == true
-                            ? selected == todayLabel(controller.now())
-                                  ? 'Heute noch keins'
-                                  : 'Keins erkannt'
-                            : 'Nickerchen',
-                        subtitle: naps.data?.sessions.isEmpty == true
-                            ? 'Noch keins erkannt'
-                            : 'Erkannte und eingetragene Ruhezeiten',
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: () => _push(G3SleepNaps(controller: controller)),
+                        child: chrome.OBListRow(
+                          icon: LucideIcons.moon,
+                          title: naps.data?.sessions.isEmpty == true
+                              ? 'Noch keins erkannt'
+                              : 'Nickerchen',
+                          subtitle: naps.data?.sessions.isEmpty == true
+                              ? null
+                              : 'Erkannte und eingetragene Ruhezeiten',
+                          onTap: naps.data?.sessions.isEmpty == true
+                              ? null
+                              : () =>
+                                    _push(G3SleepNaps(controller: controller)),
+                        ),
                       ),
                     ),
-                  ),
-                  const chrome.OBSectionHeader('LETZTE 7 NÄCHTE'),
-                  FutureBuilder<List<MetricPoint>>(
-                    future: current.history,
-                    builder: (context, history) =>
-                        FutureBuilder<SleepGoalSnapshot>(
-                          future: current.goal,
-                          builder: (context, goal) => _inset(
-                            _week(
-                              context,
-                              history.data,
-                              goal.data?.targetMinutes,
-                            ),
-                          ),
-                        ),
                   ),
                 ],
               ),
@@ -665,37 +613,25 @@ class _G3SleepScreenState extends State<G3SleepScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                LucideIcons.moon,
-                size: 16,
-                color: g.domainHue(G3Domain.sleep),
+          G3LabelRow(
+            'NACHT',
+            domain: G3Domain.sleep,
+            glyph: LucideIcons.moon,
+            onTap: () => _push(
+              G3SleepNightSignals(
+                repository: controller.repository,
+                day: controller.selectedDay,
+                storedAt: controller.band.latestStoredAt,
+                now: controller.now,
               ),
-              const SizedBox(width: 6),
-              Text('NACHT', style: g.caps(color: g.domainHue(G3Domain.sleep))),
-              if (duration == null ||
-                  corrected ||
-                  (night.unobservedMinutes != null &&
-                      night.unobservedMinutes! >=
-                          kSleepGapSignificantMinutes)) ...[
-                const Spacer(),
-                Text(
-                  duration == null
-                      ? closed
-                            ? 'Band getragen'
-                            : 'noch offen'
-                      : corrected
-                      ? 'korrigiert'
-                      : night.unobservedMinutes != null &&
-                            night.unobservedMinutes! >=
-                                kSleepGapSignificantMinutes
-                      ? '${obSleepDuration(night.unobservedMinutes)} Lücke'
-                      : '',
-                  style: g.t(12, 16, color: g.muted),
-                ),
-              ],
-            ],
+            ),
+            note: duration == null
+                ? closed
+                      ? 'Band getragen'
+                      : 'noch offen'
+                : corrected
+                ? 'korrigiert'
+                : null,
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -794,16 +730,19 @@ class _G3SleepScreenState extends State<G3SleepScreen>
               ),
             ]),
             const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: chrome.OBLink(
-                'Methode',
-                onTap: () => _showSleepMethod(
-                  context,
-                  'Schlafphasen',
-                  'Phasen aus Puls und Bewegung geschätzt. Tief ist am unsichersten. Fehlende Daten werden nicht aufgefüllt.',
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                chrome.OBLink('Zeiten ändern', onTap: _editSleep),
+                chrome.OBLink(
+                  'Methode',
+                  onTap: () => _showSleepMethod(
+                    context,
+                    'Schlafphasen',
+                    'Phasen aus Puls und Bewegung geschätzt. Tief ist am unsichersten. Fehlende Daten werden nicht aufgefüllt.',
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ],
@@ -821,59 +760,73 @@ class _G3SleepScreenState extends State<G3SleepScreen>
           ('RUHEPULS', day?.restingHr.value, 0),
           ('ATEMFREQUENZ', day?.respiration.value, 1),
         ];
-        String basis(int index) {
-          final baseline = snapshot.data?.elementAtOrNull(index);
-          if (baseline == null) {
-            return snapshot.hasError
-                ? 'Basis nicht verfügbar'
-                : 'Basis wird geladen';
-          }
-          return switch (baseline.status.phase) {
-            BaselinePhase.trusted =>
-              baseline.range == null
-                  ? 'kein Normalbereich'
-                  : 'eigener Normalbereich',
-            BaselinePhase.building =>
-              baseline.status.remaining == null
-                  ? 'Basis im Aufbau'
-                  : 'noch ${baseline.status.remaining} ${g3CountNoun(baseline.status.remaining!, 'Nacht', 'Nächte')}',
-            BaselinePhase.none => 'kein Normalbereich',
-          };
-        }
-
         return chrome.OBPanel(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final (i, value) in values.indexed) ...[
                 if (i > 0) Container(width: 1, height: 38, color: g.line),
                 Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          value.$1,
-                          style: g.t(
-                            10,
-                            14,
-                            weight: FontWeight.w700,
-                            color: g.domainHue(G3Domain.recovery),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _push(
+                      G3SleepNightSignals(
+                        repository: controller.repository,
+                        day: controller.selectedDay,
+                        initialKind: [
+                          NightSignalKind.hrv,
+                          NightSignalKind.pulse,
+                          NightSignalKind.respiration,
+                        ][i],
+                        storedAt: controller.band.latestStoredAt,
+                        now: controller.now,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            value.$1,
+                            style: g.t(
+                              10,
+                              14,
+                              weight: FontWeight.w700,
+                              color: g.domainHue(G3Domain.recovery),
+                            ),
                           ),
-                        ),
-                        value.$2 == null
-                            ? const OBMissingValue(size: 22, lineHeight: 27)
-                            : Text(
-                                value.$2!
-                                    .toStringAsFixed(value.$3)
-                                    .replaceAll('.', ','),
-                                style: g.t(22, 27, weight: FontWeight.w700),
-                              ),
-                        Text(
-                          value.$2 == null ? 'keine Daten' : basis(i),
-                          style: g.t(10, 14, color: g.muted),
-                        ),
-                      ],
+                          const SizedBox(height: 3),
+                          value.$2 == null
+                              ? const OBMissingValue(size: 22, lineHeight: 27)
+                              : Text.rich(
+                                  TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: value.$2!
+                                            .toStringAsFixed(value.$3)
+                                            .replaceAll('.', ','),
+                                        style: g.t(
+                                          22,
+                                          27,
+                                          weight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      if (i > 0)
+                                        TextSpan(
+                                          text: ' /min',
+                                          style: g.t(11, 15, color: g.muted),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                          const SizedBox(height: 5),
+                          _miniScale(
+                            snapshot.data?.elementAtOrNull(i),
+                            value.$2,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -885,58 +838,27 @@ class _G3SleepScreenState extends State<G3SleepScreen>
     );
   }
 
-  Widget _tonight(
-    BuildContext context,
-    G3SleepPlus? plus, {
-    DateTime? lastOnset,
-    required bool error,
-    required VoidCallback onTap,
-  }) {
-    if (!error && plus?.bedtime == null) {
-      return chrome.OBEmptyState(
-        title: 'Heute Nacht: kein Vorschlag',
-        reason: plus?.sleepDebt.hasFreeNight == false
-            ? 'Noch keine freie Nacht für einen persönlichen Schlafbedarf.'
-            : 'Kein gespeicherter Bedarf und keine Bettzeit für diesen Tag.',
-      );
+  Widget _miniScale(G3Baseline? baseline, double? value) {
+    final range = baseline?.status.phase == BaselinePhase.trusted
+        ? baseline?.range
+        : null;
+    if (range == null) {
+      return const G3Dashed(width: double.infinity, height: 7, radius: 4);
     }
-    final shown = roundedSleepBedtime(plus?.bedtime);
-    final difference = shown == null || lastOnset == null
-        ? null
-        : ((lastOnset.hour * 60 +
-                      lastOnset.minute -
-                      shown.hour * 60 -
-                      shown.minute +
-                      720) %
-                  1440) -
-              720;
-    final headline = error
-        ? 'Plan nicht geladen'
-        : difference == null
-        ? '${obSleepClock(shown)} ins Bett'
-        : '${obSleepDuration(difference.abs())} ${difference >= 0 ? 'früher' : 'später'} ins Bett.';
-    return GestureDetector(
-      onTap: onTap,
-      child: Semantics(
-        button: true,
-        label: 'Heute Nacht öffnen',
-        child: day_parts.OBDayNote(
-          state: shown == null
-              ? day_parts.OBNoteState.text
-              : day_parts.OBNoteState.action,
-          heading: 'HEUTE NACHT',
-          headline: headline,
-          reason: error
-              ? 'Bitte erneut versuchen.'
-              : 'Geschätzter Bedarf ${obSleepDuration(plus?.needMinutes)}. Belastung kann bis zum Abend steigen.',
-          actionTitle: shown == null ? null : '${obSleepClock(shown)} ins Bett',
-          actionSubtitle: shown == null
-              ? null
-              : 'für ${obSleepDuration(plus?.needMinutes)} Schlafbedarf bis ${obSleepClock(plus?.wake)}',
-          remindLabel: 'Ansehen',
-          onRemind: onTap,
-        ),
-      ),
+    final span = range.high - range.low;
+    if (span <= 0) {
+      return const G3Dashed(width: double.infinity, height: 7, radius: 4);
+    }
+    return G3Scale(
+      domain: G3Domain.recovery,
+      min: range.low - span,
+      max: range.high + span,
+      value: value,
+      band: (range.low, range.high),
+      median: range.median,
+      top: 0,
+      trackHeight: 6,
+      pointerHeight: 14,
     );
   }
 
@@ -946,10 +868,6 @@ class _G3SleepScreenState extends State<G3SleepScreen>
     int? goalMinutes,
   ) {
     final values = points ?? const <MetricPoint>[];
-    final measured = values.where((point) => point.value != null).toList();
-    final average = measured.length == 7
-        ? measured.map((point) => point.value!).reduce((a, b) => a + b) / 7
-        : null;
     return day_parts.OBWeekBars(
       domain: G3Domain.sleep,
       bars: [
@@ -970,9 +888,6 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         goalMinutes == null
             ? const day_parts.G3Legend.text('kein Ziel gesetzt')
             : day_parts.G3Legend.goal('Ziel ${obSleepDuration(goalMinutes)}'),
-        day_parts.G3Legend.text(
-          average == null ? 'Ø —' : 'Ø ${obSleepDuration(average)}',
-        ),
       ],
     );
   }

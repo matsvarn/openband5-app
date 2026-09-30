@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart'
-    show G3SleepNeedClamp, NightSignalReading, NightSignalSeries;
+    show G3SleepNeedClamp, G3SignalGap, NightSignalReading, NightSignalSeries;
 import 'chrome.dart' show OBLink, OBPanel, OBPillButton;
 import 'count_copy.dart';
 import 'g3_format.dart';
 import 'g3_theme.dart';
-import 'metrics.dart' show G3LabelRow, OBMissingValue;
+import 'metrics.dart' show G3LabelRow, G3Scale, G3Tick, OBMissingValue;
 
 class _SleepTapCard extends StatelessWidget {
   const _SleepTapCard({required this.child, this.onTap, this.hero = false});
@@ -44,6 +44,11 @@ DateTime? roundedSleepBedtime(DateTime? value) {
     value.hour,
     (value.minute / 5).round() * 5,
   );
+}
+
+String sleepDebtDuration(double minutes) {
+  final value = minutes.abs().round();
+  return '${value ~/ 60}h${(value % 60).toString().padLeft(2, '0')}';
 }
 
 String sleepDebtDirection(double minutes) => minutes > 0
@@ -298,7 +303,7 @@ class OBSleepLead extends StatelessWidget {
             note: goalMinutes == null ? 'kein Ziel' : null,
             onTap: onGoal,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           if (minutes == null) ...[
             Row(
               children: [
@@ -326,8 +331,8 @@ class OBSleepLead extends StatelessWidget {
                   child: Text(
                     obSleepDuration(minutes),
                     style: g.t(
-                      72,
-                      76,
+                      80,
+                      80,
                       weight: FontWeight.w700,
                       tracking: -.045,
                     ),
@@ -373,7 +378,7 @@ class OBSleepLead extends StatelessWidget {
             ),
           ],
           if (minutes != null) ...[
-            const SizedBox(height: 15),
+            const SizedBox(height: 8),
             LayoutBuilder(
               builder: (context, box) {
                 final width = box.maxWidth;
@@ -382,24 +387,24 @@ class OBSleepLead extends StatelessWidget {
                     ? null
                     : (goalMinutes! / 600).clamp(0.0, 1.0) * width;
                 return SizedBox(
-                  height: 24,
+                  height: 16,
                   child: Stack(
                     children: [
                       Positioned(
                         left: 0,
                         right: 0,
-                        top: 7,
+                        top: 5,
                         child: Container(
-                          height: 10,
+                          height: 6,
                           decoration: g.pressed(radius: 5, color: g.track),
                         ),
                       ),
                       Positioned(
                         left: 0,
-                        top: 7,
+                        top: 5,
                         width: fill,
                         child: Container(
-                          height: 10,
+                          height: 6,
                           decoration: BoxDecoration(
                             color: g.domainHue(G3Domain.sleep),
                             borderRadius: BorderRadius.circular(5),
@@ -410,25 +415,42 @@ class OBSleepLead extends StatelessWidget {
                         Positioned(
                           left: target - 1,
                           top: 0,
-                          child: Container(width: 2, height: 24, color: g.ink),
+                          child: Container(width: 2, height: 16, color: g.ink),
                         ),
                     ],
                   ),
                 );
               },
             ),
-            Row(
-              children: [
-                Text('0 h', style: g.t(12, 16, color: g.muted)),
-                const Spacer(),
-                if (goalMinutes != null)
-                  Text(
-                    'Ziel ${obSleepDuration(goalMinutes)}',
-                    style: g.t(12, 16, color: g.ink2),
-                  ),
-                const Spacer(),
-                Text('10 h', style: g.t(12, 16, color: g.muted)),
-              ],
+            LayoutBuilder(
+              builder: (context, box) => SizedBox(
+                height: MediaQuery.textScalerOf(context).scale(16),
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('0 h', style: g.t(12, 16, color: g.muted)),
+                    ),
+                    if (goalMinutes != null)
+                      Positioned(
+                        left: (goalMinutes! / 600 * box.maxWidth - 40).clamp(
+                          0.0,
+                          box.maxWidth - 80,
+                        ),
+                        width: 80,
+                        child: Text(
+                          'Ziel ${obSleepDuration(goalMinutes)}',
+                          textAlign: TextAlign.center,
+                          style: g.t(12, 16, color: g.ink2),
+                        ),
+                      ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text('10 h', style: g.t(12, 16, color: g.muted)),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
           if (goalMinutes == null && onGoal != null) ...[
@@ -564,7 +586,9 @@ class OBSleepWindows extends StatelessWidget {
             domain: G3Domain.sleep,
             glyph: detail ? null : LucideIcons.moon,
             onTap: detail ? null : onTap,
-            note: regularity == null
+            note: !detail
+                ? null
+                : regularity == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
                       : 'Basis im Aufbau'
@@ -586,85 +610,105 @@ class OBSleepWindows extends StatelessWidget {
                 const SizedBox(width: 6),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
-                  child: Text(
-                    'SRI · −100 bis 100',
-                    style: g.t(12, 16, color: g.ink2),
-                  ),
+                  child: Text('SRI', style: g.t(12, 16, color: g.ink2)),
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            G3Scale(
+              min: -100,
+              max: 100,
+              value: regularity,
+              ticks: const [
+                G3Tick(-100, '−100'),
+                G3Tick(0, '0'),
+                G3Tick(100, '100'),
+              ],
+            ),
+          ],
+          if (detail) ...[
             if (regularity == null)
               Text(
                 gate ?? 'Für diesen Tag keine Auswertung gespeichert.',
                 style: g.t(12, 16, color: g.ink2),
               ),
-          ],
-          const SizedBox(height: 10),
-          for (final window in windows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 42,
-                    child: Text(window.day, style: g.t(12, 16, color: g.muted)),
-                  ),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, box) {
-                        if (window.start == null || window.end == null) {
-                          return const G3Dashed(height: 10, radius: 5);
-                        }
-                        double position(DateTime t) {
-                          final m = t.hour * 60 + t.minute;
-                          return ((m < 12 * 60 ? m + 24 * 60 : m) - 21 * 60) /
-                              (13 * 60) *
-                              box.maxWidth;
-                        }
+            const SizedBox(height: 10),
+            for (final window in windows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 42,
+                      child: Text(
+                        window.day,
+                        style: g.t(12, 16, color: g.muted),
+                      ),
+                    ),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, box) {
+                          if (window.start == null || window.end == null) {
+                            return const G3Dashed(height: 10, radius: 5);
+                          }
+                          double position(DateTime t) {
+                            final m = t.hour * 60 + t.minute;
+                            return ((m < 12 * 60 ? m + 24 * 60 : m) - 21 * 60) /
+                                (13 * 60) *
+                                box.maxWidth;
+                          }
 
-                        final left = position(
-                          window.start!,
-                        ).clamp(0.0, box.maxWidth);
-                        final right = position(
-                          window.end!,
-                        ).clamp(0.0, box.maxWidth);
-                        return SizedBox(
-                          height: 10,
-                          child: Stack(
-                            children: [
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                top: 4,
-                                child: Container(height: 1, color: g.hairline),
-                              ),
-                              if (right > left)
+                          final left = position(
+                            window.start!,
+                          ).clamp(0.0, box.maxWidth);
+                          final right = position(
+                            window.end!,
+                          ).clamp(0.0, box.maxWidth);
+                          return SizedBox(
+                            height: 10,
+                            child: Stack(
+                              children: [
                                 Positioned(
-                                  left: left,
-                                  width: right - left,
+                                  left: 0,
+                                  right: 0,
+                                  top: 4,
                                   child: Container(
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      color: window.day == 'Heute'
-                                          ? g.domainHue(G3Domain.sleep)
-                                          : g.domainBar(G3Domain.sleep),
-                                      borderRadius: BorderRadius.circular(5),
-                                    ),
+                                    height: 1,
+                                    color: g.hairline,
                                   ),
                                 ),
-                            ],
-                          ),
-                        );
-                      },
+                                if (right > left)
+                                  Positioned(
+                                    left: left,
+                                    width: right - left,
+                                    child: Container(
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: window.day == 'Heute'
+                                            ? g.domainHue(G3Domain.sleep)
+                                            : g.domainBar(G3Domain.sleep),
+                                        borderRadius: BorderRadius.circular(5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            const Padding(
+              padding: EdgeInsets.only(top: 5),
+              child: OBSleepClockAxis(
+                startHour: 21,
+                endHour: 10,
+                leftInset: 42,
               ),
             ),
-          const Padding(
-            padding: EdgeInsets.only(top: 5),
-            child: OBSleepClockAxis(startHour: 21, endHour: 10, leftInset: 42),
-          ),
+          ],
         ],
       ),
     );
@@ -756,7 +800,7 @@ class OBSleepDebtLead extends StatelessWidget {
               rounded == null
                   ? const OBMissingValue(size: 72, lineHeight: 76)
                   : Text(
-                      obSleepDuration(rounded.abs()),
+                      sleepDebtDuration(rounded.toDouble()),
                       style: g.t(72, 76, weight: FontWeight.w700),
                     ),
               if (minutes != null)
@@ -805,7 +849,7 @@ class OBSleepDebt extends StatelessWidget {
             domain: G3Domain.sleep,
             glyph: detail ? null : LucideIcons.moon,
             onTap: detail ? null : onTap,
-            note: detail ? 'Stunden Schlaf' : 'frei gegen üblich',
+            note: detail ? 'Stunden Schlaf' : null,
           ),
           if (!detail) ...[
             const SizedBox(height: 5),
@@ -816,7 +860,7 @@ class OBSleepDebt extends StatelessWidget {
                 minutes == null
                     ? const OBMissingValue(size: 34, lineHeight: 40)
                     : Text(
-                        obSleepDuration(minutes!.abs()),
+                        sleepDebtDuration(minutes!),
                         style: g.t(34, 40, weight: FontWeight.w700),
                       ),
                 if (minutes != null)
@@ -830,37 +874,39 @@ class OBSleepDebt extends StatelessWidget {
               ],
             ),
           ],
-          const SizedBox(height: 12),
-          _fact(context, 'Frei · p75', freeMinutes),
-          _fact(context, 'Üblich · Median', usualMinutes),
-          if (_onDebtScale(freeMinutes) || _onDebtScale(usualMinutes)) ...[
-            const SizedBox(height: 8),
-            _debtTrack(g, freeMinutes, hollow: true),
-            const SizedBox(height: 8),
-            _debtTrack(g, usualMinutes, hollow: false),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                for (final label in ['6 h', '7 h', '8 h', '9 h'])
-                  Text(label, style: g.t(10, 14, color: g.muted)),
-              ],
+          if (detail) ...[
+            const SizedBox(height: 12),
+            _fact(context, 'Frei · p75', freeMinutes),
+            _fact(context, 'Üblich · Median', usualMinutes),
+            if (_onDebtScale(freeMinutes) || _onDebtScale(usualMinutes)) ...[
+              const SizedBox(height: 8),
+              _debtTrack(g, freeMinutes, hollow: true),
+              const SizedBox(height: 8),
+              _debtTrack(g, usualMinutes, hollow: false),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (final label in ['6 h', '7 h', '8 h', '9 h'])
+                    Text(label, style: g.t(10, 14, color: g.muted)),
+                ],
+              ),
+            ],
+            if ((freeMinutes != null && !_onDebtScale(freeMinutes)) ||
+                (usualMinutes != null && !_onDebtScale(usualMinutes)))
+              Text(
+                'Wert außerhalb der Skala 6–9 h.',
+                style: g.t(12, 16, color: g.muted),
+              ),
+            const SizedBox(height: 10),
+            Text(
+              gate ??
+                  (minutes == null
+                      ? 'Für diesen Tag keine Auswertung gespeichert.'
+                      : 'Perzentil freien Schlafs, kein gemessener Bedarf.'),
+              style: g.t(12, 16, color: g.ink2),
             ),
           ],
-          if ((freeMinutes != null && !_onDebtScale(freeMinutes)) ||
-              (usualMinutes != null && !_onDebtScale(usualMinutes)))
-            Text(
-              'Wert außerhalb der Skala 6–9 h.',
-              style: g.t(12, 16, color: g.muted),
-            ),
-          const SizedBox(height: 10),
-          Text(
-            gate ??
-                (minutes == null
-                    ? 'Für diesen Tag keine Auswertung gespeichert.'
-                    : 'Perzentil freien Schlafs, kein gemessener Bedarf.'),
-            style: g.t(12, 16, color: g.ink2),
-          ),
         ],
       ),
     );
@@ -1097,6 +1143,29 @@ class OBInlineNotice extends StatelessWidget {
   }
 }
 
+List<G3SignalGap> nightTraceGaps(
+  NightSignalSeries series,
+  DateTime start,
+  DateTime end,
+) {
+  if (series.maxConnectingGap == null) return const [];
+  final gaps = <G3SignalGap>[];
+  DateTime? missingAt;
+  for (final reading in series.readings) {
+    if (reading.at.isBefore(start) || reading.at.isAfter(end)) continue;
+    if (reading.value == null) {
+      missingAt ??= reading.at;
+    } else if (missingAt != null) {
+      gaps.add(G3SignalGap(missingAt, reading.at));
+      missingAt = null;
+    }
+  }
+  if (missingAt != null && missingAt.isBefore(end)) {
+    gaps.add(G3SignalGap(missingAt, end));
+  }
+  return gaps;
+}
+
 /// One recorded night signal. Null readings and intervals beyond the stored
 /// connecting cadence break the stroke instead of interpolating a value.
 class OBNightTrace extends StatelessWidget {
@@ -1106,7 +1175,9 @@ class OBNightTrace extends StatelessWidget {
     required this.series,
     required this.start,
     required this.end,
+    this.gaps,
   });
+  final List<G3SignalGap>? gaps;
   final G3Domain domain;
   final NightSignalSeries series;
   final DateTime start, end;
@@ -1123,7 +1194,7 @@ class OBNightTrace extends StatelessWidget {
               'Nachtverlauf mit $readingCount ${g3CountNoun(readingCount, 'gespeichertem Messpunkt', 'gespeicherten Messpunkten')}. Lücken bleiben leer.',
           child: RepaintBoundary(
             child: SizedBox(
-              height: 180,
+              height: 136,
               child: CustomPaint(
                 painter: _NightTracePainter(
                   series.readings,
@@ -1132,6 +1203,8 @@ class OBNightTrace extends StatelessWidget {
                   series.maxConnectingGap,
                   g.domainHue(domain),
                   g.hairline,
+                  g.t(11, 15, weight: FontWeight.w500, color: g.ink2),
+                  gaps ?? nightTraceGaps(series, start, end),
                 ),
               ),
             ),
@@ -1142,14 +1215,21 @@ class OBNightTrace extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(obSleepClock(start), style: g.t(11, 15, color: g.muted)),
-            Text(
-              obSleepClock(start.add(end.difference(start) ~/ 2)),
-              style: g.t(11, 15, color: g.muted),
-            ),
+            Text(obSleepClock(_middleTick), style: g.t(11, 15, color: g.muted)),
             Text(obSleepClock(end), style: g.t(11, 15, color: g.muted)),
           ],
         ),
       ],
+    );
+  }
+
+  DateTime get _middleTick {
+    final middle = start.add(end.difference(start) ~/ 2);
+    return DateTime(
+      middle.year,
+      middle.month,
+      middle.day,
+      middle.hour + (middle.minute >= 30 ? 1 : 0),
     );
   }
 }
@@ -1162,11 +1242,15 @@ class _NightTracePainter extends CustomPainter {
     this.maxGap,
     this.ink,
     this.grid,
+    this.caption,
+    this.gaps,
   );
   final List<NightSignalReading> readings;
   final DateTime start, end;
   final Duration? maxGap;
   final Color ink, grid;
+  final TextStyle caption;
+  final List<G3SignalGap> gaps;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1174,7 +1258,7 @@ class _NightTracePainter extends CustomPainter {
     if (duration <= 0) return;
     final valid = readings
         .where(
-          (r) => r.value != null && r.at.isAfter(start) && r.at.isBefore(end),
+          (r) => r.value != null && !r.at.isBefore(start) && !r.at.isAfter(end),
         )
         .toList();
     if (valid.isEmpty) return;
@@ -1186,8 +1270,8 @@ class _NightTracePainter extends CustomPainter {
       high += 1;
     }
     final span = high - low;
-    for (var i = 0; i < 3; i++) {
-      final y = 15 + i * (size.height - 30) / 2;
+    for (var i = 0; i < 2; i++) {
+      final y = 26 + i * (size.height - 52);
       canvas.drawLine(
         Offset(0, y),
         Offset(size.width, y),
@@ -1198,8 +1282,40 @@ class _NightTracePainter extends CustomPainter {
     }
     Offset point(NightSignalReading r) => Offset(
       r.at.difference(start).inMilliseconds / duration * size.width,
-      15 + (high - r.value!) / span * (size.height - 30),
+      38 + (high - r.value!) / span * (size.height - 42),
     );
+    for (final gap in gaps) {
+      final x =
+          gap.start.difference(start).inMilliseconds / duration * size.width;
+      final right =
+          gap.end.difference(start).inMilliseconds / duration * size.width;
+      final dash = Paint()
+        ..color = grid
+        ..strokeWidth = 1;
+      for (var y = 0.0; y < size.height; y += 6) {
+        canvas.drawLine(
+          Offset(x, y),
+          Offset(x, (y + 3).clamp(0.0, size.height)),
+          dash,
+        );
+        canvas.drawLine(
+          Offset(right, y),
+          Offset(right, (y + 3).clamp(0.0, size.height)),
+          dash,
+        );
+      }
+      final text = TextPainter(
+        text: TextSpan(
+          text: '${gap.end.difference(gap.start).inMinutes} Min. ohne Signal',
+          style: caption,
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: size.width);
+      text.paint(
+        canvas,
+        Offset((right + 3).clamp(0.0, size.width - text.width), 2),
+      );
+    }
     final line = Paint()
       ..color = ink
       ..strokeWidth = 1.8
@@ -1228,6 +1344,15 @@ class _NightTracePainter extends CustomPainter {
       previous = r;
     }
     canvas.drawPath(path, line);
+    final lowest = valid.reduce((a, b) => a.value! <= b.value! ? a : b);
+    canvas.drawCircle(
+      point(lowest),
+      4.5,
+      Paint()
+        ..color = ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
   }
 
   @override
@@ -1237,5 +1362,7 @@ class _NightTracePainter extends CustomPainter {
       old.end != end ||
       old.maxGap != maxGap ||
       old.ink != ink ||
-      old.grid != grid;
+      old.grid != grid ||
+      old.caption != caption ||
+      old.gaps != gaps;
 }
