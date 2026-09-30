@@ -1,0 +1,134 @@
+part of 'harness.dart';
+
+Future<void> reviewLabs(ReviewHarness h) async {
+  final tester = h.tester;
+  // ── Hub- und Flow-Captures der neuen Oberflächen ──
+  await h.mount();
+  await h.press('Gesundheit');
+  await h.capture('health-hub');
+  await h.press('30 Nächte');
+  await h.capture('health-30');
+
+  await h.press('Laborwerte');
+  await h.capture('labs-list');
+  await h.press('Ferritin');
+  await h.capture('labs-detail');
+  await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
+  await tester.pumpAndSettle();
+  await h.capture('labs-editor');
+  await tester.enterText(find.byKey(const ValueKey('lab-value')), '53');
+  await tester.pumpAndSettle();
+  await h.capture('labs-editor-keyboard');
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+  await h.press('Verwerfen');
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+  await h.press('Wert hinzufügen');
+  await h.capture('labs-chooser');
+  await h.press('Ferritin');
+  await h.capture('labs-add');
+  await tester.enterText(find.byKey(const ValueKey('lab-value')), '40');
+  await tester.pumpAndSettle();
+  await h.press('Speichern');
+  await h.capture('labs-add-success');
+  await h.press('Ferritin');
+  await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
+  await tester.pumpAndSettle();
+  await h.press('Wert entfernen');
+  await h.capture('labs-delete-confirm');
+  await tester.tap(find.text('Wert entfernen').last);
+  await tester.pumpAndSettle();
+  await h.capture('labs-delete-success');
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+
+  final failingDelete = await h.mount();
+  failingDelete.failLabWrites = true;
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.press('Ferritin');
+  await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
+  await tester.pumpAndSettle();
+  await h.press('Wert entfernen');
+  await tester.tap(find.text('Wert entfernen').last);
+  await tester.pumpAndSettle();
+  expect(find.text('Nicht entfernt.'), findsOneWidget);
+  await h.capture('labs-delete-failure');
+
+  await h.mount(brightness: Brightness.dark);
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.capture('labs-list-dark');
+  await h.press('Ferritin');
+  await h.capture('labs-detail-dark');
+  await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
+  await tester.pumpAndSettle();
+  await h.capture('labs-editor-dark');
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+
+  final emptyLabs = await h.mount();
+  await emptyLabs.deleteLabDraw('ferritin', '2026-09-15');
+  await emptyLabs.deleteLabDraw('ferritin', '2026-06-12');
+  await emptyLabs.deleteLabDraw('ferritin', '2026-03-04');
+  await emptyLabs.deleteLabDraw('vitamin_b12', '2026-09-15');
+  await emptyLabs.deleteLabDraw('vitamin_d', '2026-09-15');
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.capture('labs-empty');
+
+  final failingLabs = await h.mount();
+  failingLabs.failLabWrites = true;
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.press('Ferritin');
+  await tester.tap(find.byKey(const ValueKey('lab-hist-2026-09-15')));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const ValueKey('lab-value')), '53');
+  await tester.pumpAndSettle();
+  await h.press('Speichern');
+  expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
+  await h.capture('labs-save-failure');
+
+  await h.mount();
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.press('Vitamin D (25-OH)');
+  expect(find.text('Befundbereich unbekannt'), findsNothing);
+  expect(find.text('Befundbereich'), findsWidgets);
+  expect(find.text('—'), findsWidgets);
+  await h.capture('labs-bounds-missing');
+  await tester.tap(find.byTooltip('Zurück'));
+  await tester.pumpAndSettle();
+  await h.press('Eigene Marker');
+  await h.press('Marker anlegen');
+  await tester.enterText(find.byKey(const ValueKey('lab-def-name')), 'Kupfer');
+  await tester.enterText(find.byKey(const ValueKey('lab-def-unit')), 'µg/dL');
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  await h.capture('labs-custom-marker');
+
+  await h.mount(brightness: Brightness.dark);
+  await h.press('Gesundheit');
+  await h.press('Laborwerte');
+  await h.press('Eigene Marker');
+  await h.press('Marker anlegen');
+  await tester.enterText(find.byKey(const ValueKey('lab-def-name')), 'Kupfer');
+  await tester.enterText(find.byKey(const ValueKey('lab-def-unit')), 'µg/dL');
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  await h.capture('labs-custom-dark');
+
+  await h.mount(scale: 2);
+  await h.press('Gesundheit');
+  await h.capture('health-large-text');
+  await h.press('Laborwerte');
+  await h.capture('labs-list-large');
+  await h.press('Ferritin');
+  await h.capture('labs-detail-large');
+  await h.press('Wert hinzufügen');
+  await h.capture('labs-editor-large');
+}
