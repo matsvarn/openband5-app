@@ -23,6 +23,7 @@ enum OBNoteState { action, reminded, text, absent }
 class OBDayNote extends StatelessWidget {
   final OBNoteState state;
   final String headline, reason;
+  final String heading;
 
   /// Action row: "22:20 ins Bett" / "für 8h05 Schlafbedarf bis 06:54", or the
   /// reminder confirmation when [state] is reminded.
@@ -34,6 +35,7 @@ class OBDayNote extends StatelessWidget {
     required this.state,
     required this.headline,
     required this.reason,
+    this.heading = 'FÜR HEUTE',
     this.actionTitle,
     this.actionSubtitle,
     this.remindLabel = 'Erinnern',
@@ -79,7 +81,7 @@ class OBDayNote extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('FÜR HEUTE', style: g.caps(color: g.noteMuted)),
+              Text(heading, style: g.caps(color: g.noteMuted)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(

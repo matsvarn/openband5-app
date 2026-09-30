@@ -428,16 +428,23 @@ enum _Kind { hub, detail, compact }
 class G3DetailPage extends StatelessWidget {
   final Widget header;
   final List<Widget> children;
+
+  /// A section after the inset content, spanning the page width.
+  final Widget? fullWidthSection;
+  final ScrollController? scrollController;
   final double bottomInset;
   const G3DetailPage({
     super.key,
     required this.header,
     required this.children,
+    this.fullWidthSection,
+    this.scrollController,
     this.bottomInset = 0,
   });
 
   @override
   Widget build(BuildContext context) => ListView(
+    controller: scrollController,
     padding: EdgeInsets.only(bottom: bottomInset),
     children: [
       header,
@@ -449,6 +456,7 @@ class G3DetailPage extends StatelessWidget {
           children: children,
         ),
       ),
+      ?fullWidthSection,
     ],
   );
 }

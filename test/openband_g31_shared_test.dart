@@ -26,6 +26,9 @@ void main() {
     expect(g3DayShort(tuesday), 'Di 29.09');
     expect(g3DateShort(tuesday), '29.09');
     expect(g3DateShort(monday), '28.09');
+    expect(g3Clock(DateTime(2026, 9, 29, 6, 4)), '06:04');
+    expect(g3Weekday(tuesday), 'Di');
+    expect(g3Weekday(DateTime(2026, 10, 4)), 'So');
     expect(g3Relative(tuesday, now: tuesday), 'heute 09:38');
     expect(g3Relative(monday, now: tuesday), 'gestern 09:38');
     expect(
@@ -59,6 +62,46 @@ void main() {
     expect(g3Signed(0), '0');
     expect(g3Signed(-0.04, digits: 1), '0,0');
     expect(g3Signed(null), '—');
+  });
+
+  testWidgets('day note uses the supplied heading', (tester) async {
+    await tester.pumpWidget(
+      _frame(
+        const OBDayNote(
+          state: OBNoteState.text,
+          heading: 'FÜR DIE NACHT',
+          headline: 'Zeit fürs Bett',
+          reason: 'Dein Schlafbedarf',
+        ),
+      ),
+    );
+    expect(find.text('FÜR DIE NACHT'), findsOneWidget);
+    expect(find.text('FÜR HEUTE'), findsNothing);
+  });
+
+  testWidgets('detail page exposes a full-width section and controller', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _frame(
+        G3DetailPage(
+          header: const Text('Titel'),
+          fullWidthSection: const SizedBox(
+            width: double.infinity,
+            child: Text('Abschnitt'),
+          ),
+          scrollController: controller,
+          children: const [Text('Inset')],
+        ),
+      ),
+    );
+    expect(controller.hasClients, isTrue);
+    expect(
+      tester.getTopLeft(find.text('Abschnitt')).dx,
+      lessThan(tester.getTopLeft(find.text('Inset')).dx),
+    );
   });
 
   testWidgets('label and card chevrons require a handler', (tester) async {
