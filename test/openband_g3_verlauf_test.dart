@@ -4,17 +4,24 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow;
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
+import 'package:openstrap_edge/openband/g3/g3_format.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show G3DetailPage, OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3Scale, OBBodyRow, OBBodyState, OBChip, OBLeadMetric, OBLeadState, OBSecondaryMetric;
+    show
+        G3Scale,
+        OBBodyRow,
+        OBBodyState,
+        OBChip,
+        OBLeadMetric,
+        OBLeadState,
+        OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart'
     show G3ActivityScreen, G3LoadScreen;
@@ -304,10 +311,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.descendant(
-      of: find.byType(OBSecondaryMetric),
-      matching: find.byType(OBChevron),
-    ));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(OBSecondaryMetric),
+        matching: find.byType(OBChevron),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(G3LoadScreen), findsOneWidget);
@@ -348,6 +357,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
+    expect(tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).onTap, isNull);
     expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
     expect(find.text('Noch kein Verlauf'), findsNothing);
     expect(find.text('Lücken bleiben leer'), findsNothing);
@@ -357,6 +367,30 @@ void main() {
       find.textContaining('Tage ohne Messung werden nicht geschätzt'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('detail header and section keep one page gutter', (tester) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(G3MetricDetail(
+        metric: G3Metric.hrv,
+        repository: _ValuesRepository(
+          48,
+          const G3Baseline(
+            BaselineStatus(BaselinePhase.trusted),
+            range: PersonalRange(38, 52, 45),
+          ),
+          presentDays: 7,
+        ),
+        endDay: _day,
+      )),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(G3DetailPage), findsOneWidget);
+    expect(tester.getTopLeft(find.bySemanticsLabel('Zurück zu Heute')).dx, 16);
+    expect(tester.getTopLeft(find.text('NÄCHTE')).dx, 24);
   });
 
   testWidgets('metric chart keeps unit case and detail delta chip is visible', (
@@ -694,9 +728,7 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining(
-        'Letzter Bandwert ${DateFormat('dd.MM').format(stored)}',
-      ),
+      find.textContaining('Daten bis ${g3DayShort(stored)}'),
       findsOneWidget,
     );
   });
