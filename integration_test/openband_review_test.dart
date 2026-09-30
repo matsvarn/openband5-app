@@ -20644,14 +20644,16 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byKey(const ValueKey('g3-sleep')), findsOneWidget);
           await capture('g3-schlaf-$suffix');
-          await revealG3(find.text('HEUTE NACHT'));
-          await tester.tap(find.text('HEUTE NACHT'));
+          // The plan for tonight is reached through the sleep goal sheet.
+          await tester.tap(find.text('SCHLAF').first);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Heute Nacht'));
           await tester.pumpAndSettle();
           expect(find.byType(G3SleepTonight), findsOneWidget);
           await capture('g3-heute-nacht-$suffix');
           await backFromG3();
-          await revealG3(find.text('Schlafzeiten ändern'), delta: -240);
-          await tester.tap(find.text('Schlafzeiten ändern'));
+          await revealG3(find.text('Zeiten ändern'));
+          await tester.tap(find.text('Zeiten ändern'));
           await tester.pumpAndSettle();
           expect(find.byType(SleepEditor), findsOneWidget);
           await capture('g3-schlaf-correction-$suffix');
