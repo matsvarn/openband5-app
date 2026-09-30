@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'count_copy.dart';
+import 'band_parts.dart' show OBToggle;
+import 'chrome.dart' show OBIconButton, OBPillButton;
 import 'g3_theme.dart';
-import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind;
+import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind, OBMissingValue;
 
 class OBCheckIn extends StatelessWidget {
   const OBCheckIn({
@@ -81,10 +83,7 @@ class OBCheckIn extends StatelessWidget {
                 const SizedBox(width: 8),
                 SizedBox(
                   width: 72,
-                  child: TextButton(
-                    onPressed: onLater,
-                    child: const Text('Später'),
-                  ),
+                  child: OBPillButton('Später', onPressed: onLater),
                 ),
               ],
             )
@@ -110,10 +109,7 @@ class OBCheckIn extends StatelessWidget {
                   )
                 else
                   const Spacer(),
-                TextButton(
-                  onPressed: onLater,
-                  child: Text('Später', style: g.t(14, 18, color: g.ink2)),
-                ),
+                OBPillButton('Später', onPressed: onLater),
               ],
             ),
         ],
@@ -276,26 +272,24 @@ class OBStepper extends StatelessWidget {
       decoration: g.pressed(radius: 24),
       child: Row(
         children: [
-          IconButton(
-            tooltip: 'Weniger',
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            onPressed: value == null || value == 0
+          OBIconButton(
+            icon: LucideIcons.minus,
+            label: 'Weniger',
+            onTap: value == null || value == 0
                 ? null
                 : () => onChanged(value! - 1),
-            icon: const Icon(LucideIcons.minus),
           ),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  value == null
-                      ? '—'
-                      : value == 0
-                      ? 'Keins'
-                      : '$value',
-                  style: g.t(24, 28, weight: FontWeight.w700),
-                ),
+                if (value == null)
+                  const OBMissingValue(size: 24, lineHeight: 28)
+                else
+                  Text(
+                    value == 0 ? 'Keins' : '$value',
+                    style: g.t(24, 28, weight: FontWeight.w700),
+                  ),
                 if (value != null && value! > 0 && unit != null) ...[
                   const SizedBox(width: 5),
                   Text(unit!, style: g.t(13, 18, color: g.ink2)),
@@ -303,11 +297,10 @@ class OBStepper extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Mehr',
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            onPressed: value == max ? null : () => onChanged((value ?? 0) + 1),
-            icon: const Icon(LucideIcons.plus),
+          OBIconButton(
+            icon: LucideIcons.plus,
+            label: 'Mehr',
+            onTap: value == max ? null : () => onChanged((value ?? 0) + 1),
           ),
         ],
       ),
@@ -336,8 +329,7 @@ class OBInlineError extends StatelessWidget {
           Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
           const SizedBox(width: 8),
           Expanded(child: Text(message, style: g.t(13, 17))),
-          if (onRetry != null)
-            TextButton(onPressed: onRetry, child: Text(retryLabel)),
+          if (onRetry != null) OBPillButton(retryLabel, onPressed: onRetry),
         ],
       ),
     );
@@ -390,11 +382,11 @@ class OBJournalEntryRow extends StatelessWidget {
             ),
           ),
           Text(value, style: g.t(17, 21, weight: FontWeight.w700)),
-          IconButton(
-            tooltip: '$title ändern',
-            onPressed: onEdit,
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            icon: Icon(LucideIcons.pencil, size: 14, color: g.muted),
+          OBIconButton(
+            icon: LucideIcons.pencil,
+            label: '$title ändern',
+            small: true,
+            onTap: onEdit,
           ),
         ],
       ),
@@ -544,7 +536,7 @@ class OBPatternGateRow extends StatelessWidget {
           SizedBox(
             width: narrow ? 66 : 96,
             child: count == null || minimum == null
-                ? Text('—', style: g.t(14, 18, color: g.muted))
+                ? const OBMissingValue(size: 14, lineHeight: 18)
                 : OBPatternProgress(
                     have: count!.clamp(0, minimum!),
                     need: minimum!,
@@ -553,15 +545,18 @@ class OBPatternGateRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              count == null || minimum == null
-                  ? '—'
-                  : count! < minimum!
-                  ? '$count von $minimum'
-                  : '$count · genug',
-              textAlign: TextAlign.end,
-              style: g.t(13, 17, color: g.ink2),
-            ),
+            child: count == null || minimum == null
+                ? const Align(
+                    alignment: Alignment.centerRight,
+                    child: OBMissingValue(size: 13, lineHeight: 17),
+                  )
+                : Text(
+                    count! < minimum!
+                        ? '$count von $minimum'
+                        : '$count · genug',
+                    textAlign: TextAlign.end,
+                    style: g.t(13, 17, color: g.ink2),
+                  ),
           ),
         ],
       ),
@@ -603,7 +598,7 @@ class OBPatternCard extends StatelessWidget {
           children: [
             G3LabelRow(
               'MUSTER',
-              arrow: onOpen != null,
+              onTap: onOpen,
               note: loading
                   ? 'wird geladen'
                   : onRetry != null
@@ -639,7 +634,7 @@ class OBPatternCard extends StatelessWidget {
                   Expanded(
                     child: Text(detail, style: g.t(14, 19, color: g.ink2)),
                   ),
-                  TextButton(onPressed: onRetry, child: const Text('Erneut')),
+                  OBPillButton('Erneut', onPressed: onRetry),
                 ],
               )
             else if (awaiting)
@@ -666,10 +661,10 @@ class OBPatternCard extends StatelessWidget {
                 ],
               )
             else ...[
-              Text(
-                have == null ? '—' : title,
-                style: g.t(23, 27, weight: FontWeight.w700),
-              ),
+              if (have == null)
+                const OBMissingValue(size: 23, lineHeight: 27)
+              else
+                Text(title, style: g.t(23, 27, weight: FontWeight.w700)),
               const SizedBox(height: 4),
               Text(detail, style: g.t(14, 19, color: g.ink2)),
             ],
@@ -884,44 +879,8 @@ class OBSwitch extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   final String label;
+
   @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Semantics(
-      label: label,
-      toggled: value,
-      button: true,
-      onTap: () => onChanged(!value),
-      child: GestureDetector(
-        excludeFromSemantics: true,
-        onTap: () => onChanged(!value),
-        child: SizedBox(
-          width: 46,
-          height: 44,
-          child: Center(
-            child: Container(
-              width: 46,
-              height: 28,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: value ? g.ink : g.track,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Align(
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: g.canvas,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      OBToggle(value: value, onChanged: onChanged, label: label);
 }
