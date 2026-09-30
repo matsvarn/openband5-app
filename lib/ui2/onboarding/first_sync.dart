@@ -6,7 +6,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -14,8 +13,10 @@ import '../../data/day_label.dart';
 import '../../openband/domain.dart';
 import '../../openband/g3/band_parts.dart';
 import '../../openband/g3/chrome.dart' show OBActionSecondary, OBErrorBlock;
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/g3_format.dart';
 import '../../openband/local_repository.dart';
-import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
 
@@ -281,17 +282,25 @@ class FirstSyncView extends StatelessWidget {
     final p = OB.of(context);
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: G3.of(context).page,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            OBSetupHeader(
-              title: _s(context, 'Erste Übertragung', 'First transfer'),
-              backLabel: _s(context, 'Zurück', 'Back'),
-              onBack: onBack,
-              onInfo: () => _info(context),
-            ),
+            MediaQuery.textScalerOf(context).scale(15) > 20
+                ? OBSetupHeader(
+                    title: _s(context, 'Übertragung', 'Transfer'),
+                    backLabel: _s(context, 'Zurück', 'Back'),
+                    onBack: onBack,
+                    onInfo: () => _info(context),
+                  )
+                : chrome.OBPageHeader.detail(
+                    title: _s(context, 'ÜBERTRAGUNG', 'TRANSFER'),
+                    backLabel: _s(context, 'Zurück', 'Back'),
+                    onBack: onBack,
+                    onTrailing: () => _info(context),
+                    trailingLabel: _s(context, 'Information', 'Information'),
+                  ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -327,7 +336,7 @@ class FirstSyncView extends StatelessWidget {
                               'Die Übertragung stoppte, bevor ein Wert gespeichert wurde. Band nah ans iPhone halten und fortsetzen.',
                               'The transfer stopped before a value was stored. Keep the band near the phone and resume.',
                             )
-                          : '${_s(context, 'Bis', 'Until')} ${bandFrontierDayPrefix(band!.latestStoredAt!, now, de: Localizations.localeOf(context).languageCode == 'de')}${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
+                          : '${_s(context, 'Bis', 'Until')} ${_storedTime(context, band!.latestStoredAt!, now)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
                       action: _s(context, 'Fortsetzen', 'Resume'),
                       actionIcon: LucideIcons.refreshCw,
                       onAction: onResume,
@@ -409,23 +418,24 @@ class FirstSyncView extends StatelessWidget {
                   ],
                   if (resumeBusy) ...[
                     const SizedBox(height: 12),
-                    OBSyncState(
-                      band: band ?? const BandSnapshot(),
-                      now: () => now,
-                      onResume: onResume,
-                      showStoredTime: false,
-                      actionState: OBSyncActionState.pending,
-                      interruptedLabel: _s(
-                        context,
-                        'Unterbrochen',
-                        'Interrupted',
+                    chrome.OBPanel(
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _s(
+                              context,
+                              'Wird erneut versucht …',
+                              'Trying again …',
+                            ),
+                          ),
+                        ],
                       ),
-                      pendingLabel: _s(
-                        context,
-                        'Wird erneut versucht …',
-                        'Trying again …',
-                      ),
-                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
                     ),
                   ],
                   if (resumeFailed) ...[
@@ -486,12 +496,17 @@ class FirstSyncView extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottom),
               child: Column(
                 children: [
-                  OBAction(
-                    _s(context, 'Weiter', 'Continue'),
-                    secondary: band?.transfer == TransferState.interrupted,
-                    ink: band?.transfer != TransferState.interrupted,
-                    onPressed: onDone,
-                  ),
+                  band?.transfer == TransferState.interrupted
+                      ? chrome.OBActionSecondary(
+                          _s(context, 'Weiter', 'Continue'),
+                          onPressed: onDone,
+                          expand: true,
+                        )
+                      : chrome.OBActionPrimary(
+                          _s(context, 'Weiter', 'Continue'),
+                          onPressed: onDone,
+                          expand: true,
+                        ),
                   const SizedBox(height: 10),
                   Text(
                     band?.transfer == TransferState.interrupted
@@ -542,7 +557,7 @@ class _ReceivingCard extends StatelessWidget {
   Widget build(BuildContext context) => OBFrontierCard(
     storedAt: band.latestStoredAt,
     now: now,
-    rightLabel: _s(context, 'Erste Übertragung', 'First transfer'),
+    rightLabel: _s(context, 'gespeichert', 'saved'),
     caption: band.latestStoredAt == null
         ? _s(
             context,
@@ -570,7 +585,7 @@ class OBSetupStatusCard extends StatelessWidget {
     final connection = _connection(context, band);
     final stored = _stored(context, band, now);
     final eval = _eval(context, evaluation);
-    return OBCard(
+    return chrome.OBPanel(
       child: Column(
         children: [
           _StatusRow(
@@ -667,12 +682,15 @@ class OBSetupStatusCard extends StatelessWidget {
 
 String _frontier(BuildContext context, DateTime? stored, DateTime now) {
   if (stored == null) return '—';
+  if (_german(context)) return g3DataThrough(stored, now: now);
+  return 'until ${_storedTime(context, stored, now)}';
+}
+
+String _storedTime(BuildContext context, DateTime stored, DateTime now) {
+  if (_german(context)) return g3Relative(stored, now: now);
   final time = obTime(stored);
-  final sameDay = dayLabelOf(stored) == todayLabel(now);
-  final dated = sameDay
-      ? time
-      : '${DateFormat(_german(context) ? 'd.M.' : 'd MMM', _german(context) ? 'de_DE' : 'en').format(stored)} $time';
-  return '${_s(context, 'bis', 'until')} $dated';
+  if (dayLabelOf(stored) == todayLabel(now)) return time;
+  return '${MaterialLocalizations.of(context).formatMediumDate(stored)} $time';
 }
 
 bool _stackStatusRows(BuildContext context) =>
@@ -795,31 +813,28 @@ String _s(BuildContext context, String de, String en) =>
     _german(context) ? de : en;
 
 void _info(BuildContext context) {
-  final p = OB.of(context);
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: p.card,
-    builder: (sheet) {
-      final sp = OB.of(sheet);
-      return SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+    backgroundColor: Colors.transparent,
+    builder: (sheet) => SafeArea(
+      child: chrome.OBSheet(
+        title: _s(sheet, 'Erste Übertragung', 'First transfer'),
+        cancelLabel: _s(sheet, 'Schließen', 'Close'),
+        confirmLabel: _s(sheet, 'Verstanden', 'Got it'),
+        onCancel: () => Navigator.pop(sheet),
+        onConfirm: () => Navigator.pop(sheet),
+        child: chrome.OBPanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                _s(sheet, 'Erste Übertragung', 'First transfer'),
-                style: sp.text(18, weight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
               Text(
                 _s(
                   sheet,
                   'Auf dem iPhone ist der zuletzt vollständig gespeicherte Bandzeitpunkt.',
                   'On iPhone is the last fully stored band time.',
                 ),
-                style: sp.text(14),
+                style: G3.of(sheet).t(14, 20),
               ),
               const SizedBox(height: 8),
               Text(
@@ -828,17 +843,12 @@ void _info(BuildContext context) {
                   'Auswertung heute gilt für den aktuellen Kalendertag und die aktuelle Berechnungsversion.',
                   "Today's evaluation refers to the current local day and the current calculation version.",
                 ),
-                style: sp.text(14),
-              ),
-              const SizedBox(height: 16),
-              OBAction(
-                _s(sheet, 'Schließen', 'Close'),
-                onPressed: () => Navigator.pop(sheet),
+                style: G3.of(sheet).t(14, 20),
               ),
             ],
           ),
         ),
-      );
-    },
+      ),
+    ),
   );
 }

@@ -1,83 +1,28 @@
 // Heute-only parts. The typed G3 check-in asks yes/no, 1–5 ratings, counts
 // (with an explicit "Keins") and a free note, some about yesterday. The
-// shared OBCheckIn Baustein has no place for the answer's day (its progress
-// label overflows at 200 % text), so Heute renders every kind in
-// [OBCheckInAsk], the same Baustein language with a "zu gestern" line.
-// ponytail: the Journal's check-in parts (OBStepper, OBTextField) are not on
-// this stack; swap the count and note controls for them at integration.
+// The shared OBCheckIn is ready for both tabs. Heute still uses OBCheckInAsk
+// until its area pass migrates the answer controls.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'chrome.dart' show OBActionSecondary;
+import 'check_in.dart' show g3CheckInCopy;
 import 'g3_theme.dart';
+import 'sport.dart';
 
-/// Training's sport names, so an activity reads the same on Heute and in
-/// Training (Lauf, Rad, Gehen, …; unknown sports read "Training").
-// ponytail: mirrors trainingSport in g3/training_parts.dart, which lives on
-// openband5/g3-training and is not on this stack; call it at integration.
-String heuteSportLabel(String sport) => switch (sport) {
-  'running' => 'Lauf',
-  'cycling' => 'Rad',
-  'hiking' => 'Wandern',
-  'walking' => 'Gehen',
-  'tennis' => 'Tennis',
-  'intervals' => 'Intervalle',
-  'stretching' => 'Dehnen',
-  'soccer' || 'football' => 'Fußball',
-  'rowing' => 'Rudern',
-  'climbing' => 'Klettern',
-  'skiing' => 'Ski',
-  'martial_arts' => 'Kampfsport',
-  'swimming' => 'Schwimmen',
-  'yoga' => 'Yoga',
-  'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
-  _ => sport == 'other' ? 'Sonstiges' : 'Training',
-};
-
-/// Training's sport picker, in its order.
-const kHeuteSports = [
-  'running',
-  'cycling',
-  'walking',
-  'hiking',
-  'weight_training',
-  'swimming',
-  'yoga',
-  'tennis',
-  'other',
-];
+String heuteSportLabel(String sport) => g3SportLabel(sport);
+final kHeuteSports = g3QuickSportIds;
 
 /// Question copy for a check-in key; the day it belongs to is shown apart
 /// ("zu gestern"), so questions do not say "gestern" themselves.
-String heuteCheckInQuestion(String key, String title) {
-  final rating = heuteRatingCopy(key).question;
-  return switch (key) {
-    'alcohol_evening' => 'Alkohol am Abend?',
-    'caffeine_late' => 'Koffein nach 14 Uhr?',
-    'alcohol_units' => 'Wie viel Alkohol?',
-    'journal_note' => 'Noch etwas zum Tag?',
-    _ => rating == key ? '$title?' : rating,
-  };
-}
+String heuteCheckInQuestion(String key, String title) =>
+    g3CheckInCopy(key, title).question;
 
 /// Question and end labels for a check-in rating key.
-({String question, String low, String high}) heuteRatingCopy(
-  String key,
-) => switch (key) {
-  'mood' => (question: 'Wie ist deine Stimmung?', low: 'schlecht', high: 'gut'),
-  'sleep_quality' => (
-    question: 'Wie hast du geschlafen?',
-    low: 'schlecht',
-    high: 'gut',
-  ),
-  'energy' => (
-    question: 'Wie viel Energie hast du?',
-    low: 'wenig',
-    high: 'viel',
-  ),
-  'stress' => (question: 'Wie gestresst bist du?', low: 'wenig', high: 'sehr'),
-  _ => (question: key, low: '1', high: '5'),
-};
+({String question, String low, String high}) heuteRatingCopy(String key) {
+  final copy = g3CheckInCopy(key, key);
+  return (question: copy.question, low: copy.low, high: copy.high);
+}
 
 /// One check-in question in the Heute card: header with progress (and the
 /// answer's day when it is not the selected day), the last answer with its

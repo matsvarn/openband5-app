@@ -5,10 +5,9 @@
 // listed gap is drawn hollow and dashed, never interpolated.
 import 'package:flutter/material.dart';
 
-import '../alp_tokens.dart';
-import '../theme.dart' show OBChevron;
-import 'chrome.dart' show OBSegmented;
+import 'chrome.dart' show OBLink, OBSegmented;
 import 'g3_theme.dart';
+import 'metrics.dart' show OBMissingValue;
 
 void _dash(
   Canvas canvas,
@@ -33,6 +32,8 @@ void _dash(
 // Heart-rate trace
 
 class OBHrTrace extends StatelessWidget {
+  final G3Domain domain;
+
   /// (minute since start, bpm) samples.
   final List<(double, double)> samples;
   final double duration;
@@ -54,6 +55,7 @@ class OBHrTrace extends StatelessWidget {
   final String signalNote;
   const OBHrTrace({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.samples,
     required this.duration,
     this.gaps = const [],
@@ -82,24 +84,21 @@ class OBHrTrace extends StatelessWidget {
       children: [
         Text(k, style: g.t(15, 18, color: g.ink2)),
         const SizedBox(width: 5),
-        MediaQuery.withClampedTextScaling(
-          maxScaleFactor: 1.3,
-          child: Text(
-            v ?? '—',
-            style: g.t(
-              40,
-              44,
-              weight: FontWeight.w700,
-              color: v == null ? g.gap : g.ink,
-              tracking: -.04,
+        if (v == null)
+          const OBMissingValue(size: 40, lineHeight: 44)
+        else
+          MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: Text(
+              v,
+              style: g.t(40, 44, weight: FontWeight.w700, tracking: -.04),
             ),
           ),
-        ),
       ],
     );
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-      decoration: g.raised(radius: AlpRadius.hero),
+      padding: kG3CardPadding,
+      decoration: g.raised(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -146,6 +145,7 @@ class OBHrTrace extends StatelessWidget {
                         zoneEdges,
                         peakAt,
                         g,
+                        domain,
                       ),
                     ),
                   ),
@@ -223,10 +223,13 @@ class OBHrTrace extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Text(
-                      signalShare ?? '—',
-                      style: g.t(13, 16, weight: FontWeight.w700),
-                    ),
+                    if (signalShare == null)
+                      const OBMissingValue(size: 13, lineHeight: 16)
+                    else
+                      Text(
+                        signalShare!,
+                        style: g.t(13, 16, weight: FontWeight.w700),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 5),
@@ -304,6 +307,7 @@ List<List<(double, double)>> hrTraceStrokeRuns(
 }
 
 class _HrPainter extends CustomPainter {
+  final G3Domain domain;
   final List<(double, double)> samples;
   final double duration;
   final List<(double, double)> gaps;
@@ -320,6 +324,7 @@ class _HrPainter extends CustomPainter {
     this.edges,
     this.peak,
     this.g,
+    this.domain,
   );
 
   @override
@@ -331,7 +336,7 @@ class _HrPainter extends CustomPainter {
       if (hi <= lo) continue;
       canvas.drawRect(
         Rect.fromLTRB(0, y(hi), size.width, y(lo)),
-        Paint()..color = g.zoneTints[i],
+        Paint()..color = g.zoneTintsFor(domain)[i],
       );
     }
     for (final (g0, g1) in gaps) {
@@ -353,7 +358,7 @@ class _HrPainter extends CustomPainter {
       }
     }
     final line = Paint()
-      ..color = g.ink
+      ..color = g.domainHue(domain)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeJoin = StrokeJoin.round
@@ -376,7 +381,7 @@ class _HrPainter extends CustomPainter {
           Offset(x(t), y(v)),
           3.5,
           Paint()
-            ..color = g.ink
+            ..color = g.domainHue(domain)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2,
         );
@@ -385,7 +390,10 @@ class _HrPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HrPainter old) =>
-      old.samples != samples || old.gaps != gaps || old.g.dark != g.dark;
+      old.samples != samples ||
+      old.gaps != gaps ||
+      old.g.dark != g.dark ||
+      old.domain != domain;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,6 +409,7 @@ class OBZone {
 }
 
 class OBZoneRows extends StatelessWidget {
+  final G3Domain domain;
   final List<OBZone> zones;
 
   /// Unit of the ranges ("% HFmax") and the stored zone source
@@ -409,6 +418,7 @@ class OBZoneRows extends StatelessWidget {
   final VoidCallback? onBasis;
   const OBZoneRows({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.zones,
     this.basis = '% HFmax',
     required this.source,
@@ -421,124 +431,97 @@ class OBZoneRows extends StatelessWidget {
         .map((z) => z.minutes ?? 0)
         .fold(1, (a, b) => a > b ? a : b);
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      padding: kG3CardPadding,
       decoration: g.raised(),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          Row(
             children: [
-              Row(
-                children: [
-                  Text('ZEIT IN ZONEN', style: g.caps()),
-                  const Spacer(),
-                  Text(basis, style: g.t(13, 16, color: g.muted)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              for (final z in zones)
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 30),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 92,
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 28,
-                              child: Text(
-                                'Z${z.index}',
-                                style: g.t(14, 18, weight: FontWeight.w700),
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                z.range,
-                                style: g.t(12, 16, color: g.muted),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: (z.minutes ?? 0) / longest,
-                            child: Container(
-                              height: 14,
-                              decoration: BoxDecoration(
-                                color: g.zones[z.index - 1],
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 52,
-                        child: Text(
-                          z.minutes == null ? '—' : '${z.minutes} Min.',
-                          textAlign: TextAlign.right,
-                          style: g.t(
-                            14,
-                            18,
-                            weight: FontWeight.w700,
-                            color: z.minutes == null ? g.gap : g.ink,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Container(
-                margin: const EdgeInsets.only(top: 10),
-                padding: const EdgeInsets.only(top: 12),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: g.line)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(source, style: g.t(12, 16, color: g.muted)),
-                    ),
-                    if (onBasis != null)
-                      ExcludeSemantics(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'Grundlage',
-                              style: g.t(13, 16, weight: FontWeight.w700),
-                            ),
-                            const SizedBox(width: 2),
-                            OBChevron(size: 12, color: g.muted),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              Text('ZEIT IN ZONEN', style: g.caps()),
+              const Spacer(),
+              Text(basis, style: g.t(13, 16, color: g.muted)),
             ],
           ),
-          if (onBasis != null)
-            Positioned(
-              bottom: 0,
-              right: 0,
-              width: 92,
-              height: 44,
-              child: Semantics(
-                button: true,
-                label: 'Grundlage der Zonen',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onBasis,
-                ),
+          const SizedBox(height: 8),
+          for (final z in zones)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 30),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 92,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 28,
+                          child: Text(
+                            'Z${z.index}',
+                            style: g.t(14, 18, weight: FontWeight.w700),
+                          ),
+                        ),
+                        Flexible(
+                          child: Text(
+                            z.range,
+                            style: g.t(12, 16, color: g.muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: (z.minutes ?? 0) / longest,
+                        child: Container(
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: g.zonesFor(domain)[z.index - 1],
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 52,
+                    child: Text(
+                      z.minutes == null ? '—' : '${z.minutes} Min.',
+                      textAlign: TextAlign.right,
+                      style: g.t(
+                        14,
+                        18,
+                        weight: FontWeight.w700,
+                        color: z.minutes == null ? g.gap : g.ink,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
+          Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.only(top: 12),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: g.line)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(source, style: g.t(12, 16, color: g.muted)),
+                ),
+                if (onBasis != null)
+                  OBLink(
+                    'Grundlage',
+                    semanticsLabel: 'Grundlage der Zonen',
+                    onTap: onBasis!,
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -555,6 +538,7 @@ enum OBTrendPeriod { d7, d30, d90 }
 enum OBTrendMark { none, better, worse, outside }
 
 class OBTrendChart extends StatelessWidget {
+  final G3Domain domain;
   final String title;
   final OBTrendPeriod period;
   final List<double?> values;
@@ -571,6 +555,7 @@ class OBTrendChart extends StatelessWidget {
   final ValueChanged<OBTrendPeriod>? onPeriod;
   const OBTrendChart({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.title,
     required this.period,
     required this.values,
@@ -593,7 +578,7 @@ class OBTrendChart extends StatelessWidget {
     const h = 150.0;
     double y(double v) => h - (v - min) / (max - min) * h;
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      padding: kG3CardPadding,
       decoration: g.raised(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -759,7 +744,10 @@ class _TrendPainter extends CustomPainter {
     if (c.band case (final lo, final hi)) {
       canvas.drawRect(
         Rect.fromLTRB(0, y(hi), w, y(lo)),
-        Paint()..color = g.band.withValues(alpha: .45),
+        Paint()
+          ..color = c.domain == G3Domain.neutral
+              ? g.band.withValues(alpha: .45)
+              : g.domainTint(c.domain),
       );
     }
     canvas.drawLine(Offset(0, h), Offset(w, h), Paint()..color = g.hairline);
@@ -795,7 +783,9 @@ class _TrendPainter extends CustomPainter {
           );
           continue;
         }
-        final color = _mark(i) ?? (i == n - 1 ? g.ink : g.bar);
+        final color =
+            _mark(i) ??
+            (i == n - 1 ? g.domainHue(c.domain) : g.domainBar(c.domain));
         canvas.drawRRect(
           RRect.fromLTRBR(cx - 12, y(v), cx + 12, h, const Radius.circular(4)),
           Paint()..color = color,
@@ -836,7 +826,7 @@ class _TrendPainter extends CustomPainter {
       }
     }
     final line = Paint()
-      ..color = g.ink
+      ..color = g.domainHue(c.domain)
       ..style = PaintingStyle.stroke
       ..strokeWidth = c.period == OBTrendPeriod.d30 ? 2 : 1.5
       ..strokeJoin = StrokeJoin.round
@@ -880,7 +870,7 @@ class _TrendPainter extends CustomPainter {
             o,
             r,
             Paint()
-              ..color = g.ink
+              ..color = g.domainHue(c.domain)
               ..style = PaintingStyle.stroke
               ..strokeWidth = ring ? 2 : 1.5,
           );
@@ -890,7 +880,11 @@ class _TrendPainter extends CustomPainter {
       final o = Offset(w, y(last));
       canvas
         ..drawCircle(o, 5.5, Paint()..color = g.canvas)
-        ..drawCircle(o, 4.5, Paint()..color = (_mark(n - 1) ?? g.ink));
+        ..drawCircle(
+          o,
+          4.5,
+          Paint()..color = (_mark(n - 1) ?? g.domainHue(c.domain)),
+        );
     }
   }
 

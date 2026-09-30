@@ -176,7 +176,7 @@ Future<void> reviewMountImportReceipt(
             key: const ValueKey('import-receipt-scroll'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Datenimport',
                 subtitle: '',
                 onBack: () {},
@@ -1010,6 +1010,7 @@ void main() {
         double? scale,
         bool release = false,
         bool failRead = false,
+        bool showControls = false,
       }) async {
         final g3 = scenario == SyntheticScenario.g3Sample ||
             scenario == SyntheticScenario.g3Building;
@@ -1036,7 +1037,7 @@ void main() {
           OpenBandGallery(
             key: UniqueKey(),
             repository: repository,
-            showControls: false,
+            showControls: showControls,
             initialBrightness: brightness,
             initialTextScale: scale,
             releaseReduced: release,
@@ -5643,7 +5644,7 @@ void main() {
 
         Future<void> tapTab(String label) async {
           final tab = find.descendant(
-            of: find.byType(OBSegmented),
+            of: find.byType(G2Segmented),
             matching: find.text(label),
           );
           expect(tab.hitTestable(), findsOneWidget);
@@ -18905,10 +18906,10 @@ void main() {
               find.byType(OBNightSignalChart).evaluate().isNotEmpty,
           'Night signals did not load.',
         );
-        final nightTabs = tester.widget<OBSegmented>(
+        final nightTabs = tester.widget<G2Segmented>(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBSegmented &&
+                widget is G2Segmented &&
                 widget.labels.contains('Puls') &&
                 widget.labels.contains('HRV'),
           ),
@@ -19487,7 +19488,7 @@ void main() {
         }
 
         Future<void> tapCard(int index) async {
-          final cards = find.byType(OBMetricCard);
+          final cards = find.byType(G2MetricCard);
           await tester.ensureVisible(cards.at(index));
           await tester.pumpAndSettle();
           await tester.tap(cards.at(index));
@@ -19551,7 +19552,7 @@ void main() {
         }) {
           final cards = find.byWidgetPredicate(
             (widget) =>
-                widget is OBMetricCard &&
+                widget is G2MetricCard &&
                 (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
           );
           expect(cards, findsNWidgets(2));
@@ -19641,7 +19642,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
@@ -19794,19 +19795,19 @@ void main() {
         await openGallery(scale: 2, seed: seedPair);
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
         );
         await tester.pumpAndSettle();
-        expect(find.byType(OBMetricCard), findsNWidgets(2));
+        expect(find.byType(G2MetricCard), findsNWidgets(2));
         await capture('night-cards-overview-2x');
         await tester.tap(find.text('Gesundheit'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
@@ -19815,7 +19816,7 @@ void main() {
         expect(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBMetricCard &&
+                widget is G2MetricCard &&
                 (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
           ),
           findsNWidgets(2),
@@ -19834,15 +19835,15 @@ void main() {
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
         );
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.byType(OBMetricCard).at(1));
+        await tester.ensureVisible(find.byType(G2MetricCard).at(1));
         await tester.pumpAndSettle();
-        expect(find.byType(OBMetricCard), findsNWidgets(2));
+        expect(find.byType(G2MetricCard), findsNWidgets(2));
         expectCardValues(
           hrv: '48',
           rhr: '54',
@@ -20039,10 +20040,10 @@ void main() {
               find.byType(OBNightSignalChart).evaluate().isNotEmpty,
           'Night signals did not load.',
         );
-        final nightTabs = tester.widget<OBSegmented>(
+        final nightTabs = tester.widget<G2Segmented>(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBSegmented &&
+                widget is G2Segmented &&
                 widget.labels.contains('Puls') &&
                 widget.labels.contains('Atmung'),
           ),
@@ -20394,7 +20395,7 @@ void main() {
             if (expectSourceVisible) {
               expect(find.text('Quelle'), findsOneWidget);
             } else {
-              expect(find.byType(OBSegmented), findsOneWidget);
+              expect(find.byType(G2Segmented), findsOneWidget);
               expect(find.text('30 Nächte'), findsOneWidget);
             }
           }
@@ -20540,7 +20541,7 @@ void main() {
       binding.reportData!['flow'] = kOpenBandReviewFlow;
       if (kOpenBandReviewFlow == 'release') {
         Future<void> chooseG3Scenario(String label) async {
-          await tester.tap(find.byType(g3chrome.OBBandCapsule).first);
+          await tester.tap(find.text('Synthetische Galerie'));
           await tester.pumpAndSettle();
           final choice = find.text(label);
           final sheetScroll = find.descendant(
@@ -20555,6 +20556,18 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.tap(choice);
+          await tester.pumpAndSettle();
+          final gallery = tester.widget<OpenBandGallery>(
+            find.byType(OpenBandGallery),
+          );
+          await tester.pumpWidget(OpenBandGallery(
+            key: gallery.key,
+            repository: gallery.repository,
+            initialBrightness: gallery.initialBrightness,
+            initialTextScale: gallery.initialTextScale,
+            releaseReduced: gallery.releaseReduced,
+            showControls: false,
+          ));
           await tester.pumpAndSettle();
           expect(find.textContaining('29. September'), findsWidgets);
         }
@@ -20584,6 +20597,7 @@ void main() {
             release: true,
             scenario: SyntheticScenario.g3Sample,
             brightness: brightness,
+            showControls: true,
           );
           await chooseG3Scenario('G3 · Tagesblatt');
           for (final domain in ['home', 'sleep', 'workout', 'wellness']) {
@@ -20692,15 +20706,15 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byType(BottomSheet), findsOneWidget);
           await capture('g3-training-sport-picker-$suffix');
-          await tester.tap(
-            find.ancestor(
-              of: find.descendant(
-                of: find.byType(BottomSheet),
-                matching: find.text('Lauf'),
-              ),
-              matching: find.byType(ActionChip),
-            ),
-          );
+          await tester.tap(find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Lauf'),
+          ));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Starten'),
+          ));
           await tester.pumpAndSettle();
           expect(find.byType(G3LiveRun), findsOneWidget);
           await capture('g3-training-live-$suffix');
@@ -20713,7 +20727,7 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(
             find.descendant(
-              of: find.byType(AlertDialog),
+              of: find.byType(BottomSheet),
               matching: find.text('Verwerfen'),
             ),
           );
@@ -20735,6 +20749,7 @@ void main() {
         await mount(
           release: true,
           scenario: SyntheticScenario.g3Building,
+          showControls: true,
         );
         await chooseG3Scenario('G3 · Basis im Aufbau');
         await capture('g3-heute-baseline-building');
@@ -20742,7 +20757,7 @@ void main() {
         expect(find.textContaining('Basis: noch 3 Nächte'), findsWidgets);
         await capture('g3-heute-baseline-building-scrolled');
 
-        await mount(scenario: SyntheticScenario.g3Sample);
+        await mount(scenario: SyntheticScenario.g3Sample, showControls: true);
         await chooseG3Scenario('G3 · Tagesblatt');
         expect(find.bySemanticsLabel('Gesundheit'), findsOneWidget);
         await capture('g3-development-shell');
@@ -20795,7 +20810,7 @@ void main() {
           expect(find.text('Noch nicht verbunden. Band nah ans iPhone halten.'),
               findsOneWidget);
           await capture('release-pairing-$suffix');
-          final pairAction = find.byType(OBAction).first;
+          final pairAction = find.byType(g3chrome.OBActionPrimary).first;
           await tester.tap(pairAction);
           await tester.pumpAndSettle();
           expect(pairingActions, greaterThan(0));

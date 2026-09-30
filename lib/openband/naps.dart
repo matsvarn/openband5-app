@@ -177,7 +177,7 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
             key: PageStorageKey('openband.naps.$day'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Nickerchen',
                 backText: 'Schlaf',
                 subtitle: '',
@@ -847,7 +847,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    OBPageHeader(
+                    G2PageHeader(
                       title: editing
                           ? 'Nickerchen bearbeiten'
                           : 'Nickerchen ergänzen',
@@ -872,7 +872,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 children: [
-                  OBPageHeader(
+                  G2PageHeader(
                     title: editing
                         ? 'Nickerchen bearbeiten'
                         : 'Nickerchen ergänzen',

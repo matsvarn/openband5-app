@@ -200,7 +200,7 @@ class _OpenBandCycleObservationsState extends State<OpenBandCycleObservations> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: 'Beobachtungen', subtitle: '', onInfo: _info),
+            G2PageHeader(title: 'Beobachtungen', subtitle: '', onInfo: _info),
             ..._body(p),
             if (widget.synthetic) const _ObservationsSyntheticFooter(),
           ],

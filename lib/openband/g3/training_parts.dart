@@ -2,62 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart';
-import '../training.dart' show OBSportIcon;
+import 'chrome.dart' show OBLink, OBPanel;
 import 'count_copy.dart';
+import 'g3_format.dart' show g3Signed;
 import 'g3_theme.dart';
-import 'metrics.dart' show G3Scale, G3Tick;
+import 'sport.dart';
+import 'metrics.dart'
+    show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind, OBMissingValue;
 
-String trainingSport(String sport) => switch (sport) {
-  'running' => 'Lauf',
-  'cycling' => 'Rad',
-  'hiking' => 'Wandern',
-  'walking' => 'Gehen',
-  'tennis' => 'Tennis',
-  'intervals' => 'Intervalle',
-  'stretching' => 'Dehnen',
-  'soccer' || 'football' => 'Fußball',
-  'rowing' => 'Rudern',
-  'climbing' => 'Klettern',
-  'skiing' => 'Ski',
-  'martial_arts' => 'Kampfsport',
-  'swimming' => 'Schwimmen',
-  'yoga' => 'Yoga',
-  'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
-  _ => sport == 'other' ? 'Sonstiges' : 'Training',
-};
-
-String trainingSportIconName(String sport) => switch (sport) {
-  'running' => 'run',
-  'walking' => 'walk',
-  'cycling' => 'bike',
-  'hiking' => 'trekking',
-  'tennis' => 'ball-tennis',
-  'swimming' => 'swimming',
-  'strength' || 'weightlifting' || 'weight_training' => 'barbell',
-  'yoga' => 'yoga',
-  'intervals' => 'jump-rope',
-  'stretching' => 'stretching',
-  'soccer' || 'football' => 'ball-football',
-  'rowing' => 'kayak',
-  'climbing' => 'mountain',
-  'skiing' => 'ski-jumping',
-  'martial_arts' => 'karate',
-  _ => '',
-};
-
+final trainingSports = g3SportIds;
+String trainingSport(String sport) => g3SportLabel(sport);
 Widget trainingSportIcon(
   String sport, {
   double size = 24,
   required Color color,
-}) {
-  if (sport == 'yoga') {
-    return Icon(LucideIcons.flower2, size: size, color: color);
-  }
-  final name = trainingSportIconName(sport);
-  return name.isEmpty
-      ? Icon(LucideIcons.activity, size: size, color: color)
-      : OBSportIcon(name, size: size, color: color);
-}
+}) => g3SportIcon(sport, size: size, color: color);
 
 class OBSportTile extends StatelessWidget {
   final String sport;
@@ -122,7 +81,9 @@ class OBSportTile extends StatelessWidget {
 String trainingNumber(double? value, {bool signed = false}) =>
     value == null || !value.isFinite
     ? '—'
-    : g3Number(value, digits: 1, signed: signed);
+    : signed
+    ? g3Signed(value, digits: 1)
+    : g3Number(value, digits: 1);
 
 class OBTrainingLoad extends StatelessWidget {
   final G3WeeklyLoad? load;
@@ -146,34 +107,36 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: g.caps(color: g.muted)),
-          const SizedBox(height: 5),
           Text(
-            trainingNumber(value).replaceAll(',0', ''),
-            style: g.t(
-              36,
-              40,
-              weight: FontWeight.w700,
-              color: value == null ? g.gap : g.ink,
-            ),
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: g.caps(color: g.muted),
           ),
+          const SizedBox(height: 5),
+          if (value == null)
+            const OBMissingValue(size: 36, lineHeight: 40)
+          else
+            Text(
+              trainingNumber(value).replaceAll(',0', ''),
+              style: g.t(36, 40, weight: FontWeight.w700),
+            ),
         ],
       ),
     );
-    return Container(
+    return OBPanel(
       padding: const EdgeInsets.all(18),
-      decoration: g.raised(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text('TRAININGSLAST', style: g.caps())),
-              Text('TRIMP', style: g.t(13, 16, color: g.muted)),
-            ],
+          const G3LabelRow(
+            'TRAININGSLAST',
+            domain: G3Domain.load,
+            glyph: LucideIcons.flame,
           ),
           const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               column('AKUT · 7 T.', ready ? acute : null),
               SizedBox(height: 55, child: VerticalDivider(color: g.line)),
@@ -199,11 +162,6 @@ class OBTrainingLoad extends StatelessWidget {
               style: g.t(15, 19, weight: FontWeight.w700),
             ),
             if (building) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Akut und gewohnt aus täglichem TRIMP.',
-                style: g.t(13, 17, color: g.ink2),
-              ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -227,21 +185,13 @@ class OBTrainingLoad extends StatelessWidget {
               ),
             ],
           ],
-          const SizedBox(height: 14),
-          Divider(color: g.line, height: 1),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Tägliches TRIMP · eigene Einheit',
-                  style: g.t(12, 16, color: g.muted),
-                ),
-              ),
-              if (onMethod != null)
-                TextButton(onPressed: onMethod, child: const Text('Methode')),
-            ],
-          ),
+          if (onMethod != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OBLink('Methode', onTap: onMethod!),
+            ),
+          ],
         ],
       ),
     );
@@ -264,34 +214,34 @@ class OBLoadLead extends StatelessWidget {
     final g = G3.of(context);
     return Semantics(
       button: onTap != null,
-      label: 'Belastung ${trainingNumber(value)}, Verlauf öffnen',
+      label: onTap == null
+          ? 'Belastung ${trainingNumber(value)}'
+          : 'Belastung ${trainingNumber(value)}, Verlauf öffnen',
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
+        child: OBPanel(
+          hero: true,
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(child: Text('BELASTUNG  ›', style: g.caps())),
-                  Text('Tagessumme 0–21', style: g.t(13, 17, color: g.muted)),
-                ],
+              G3LabelRow(
+                'BELASTUNG',
+                domain: G3Domain.load,
+                glyph: LucideIcons.flame,
+                onTap: onTap,
               ),
               const SizedBox(height: 3),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    trainingNumber(value),
-                    style: g.t(
-                      92,
-                      84,
-                      weight: FontWeight.w700,
-                      color: value == null ? g.gap : g.ink,
+                  if (value == null)
+                    const OBMissingValue(size: 92, lineHeight: 84)
+                  else
+                    Text(
+                      trainingNumber(value),
+                      style: g.t(92, 84, weight: FontWeight.w700),
                     ),
-                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Padding(
@@ -300,24 +250,7 @@ class OBLoadLead extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (countTime != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: g.track,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Tag läuft',
-                                style: g.t(13, 16, weight: FontWeight.w700),
-                              ),
-                            ),
-                            Text(
-                              'gezählt bis $countTime',
-                              style: g.t(12, 16, color: g.ink2),
-                            ),
+                            const OBChip(OBChipKind.tag, 'Tag läuft'),
                           ],
                         ],
                       ),
@@ -326,9 +259,11 @@ class OBLoadLead extends StatelessWidget {
                 ],
               ),
               G3Scale(
+                domain: G3Domain.load,
                 min: 0,
                 max: 21,
                 value: value,
+                band: value == null ? null : (0.0, value!),
                 ticks: const [G3Tick(0, '0'), G3Tick(21, '21')],
               ),
             ],

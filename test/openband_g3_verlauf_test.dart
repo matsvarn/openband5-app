@@ -4,17 +4,28 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
+import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow;
+import 'package:openstrap_edge/openband/g3/g3_format.dart';
+import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3Domain;
+import 'package:openstrap_edge/openband/g3/chrome.dart' show G3DetailPage, OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3Scale, OBBodyRow, OBBodyState, OBChip, OBLeadMetric, OBLeadState;
+    show
+        G3Scale,
+        OBBodyRow,
+        OBBodyState,
+        OBChip,
+        OBLeadMetric,
+        OBLeadState,
+        OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_screen.dart'
+    show G3ActivityScreen, G3LoadScreen;
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
@@ -164,6 +175,21 @@ Widget _app(Widget child) =>
     MaterialApp(theme: openBandTheme(Brightness.light), home: child);
 
 void main() {
+  test('metric domain follows the metric across detail routes', () {
+    for (final metric in [
+      G3Metric.recovery,
+      G3Metric.hrv,
+      G3Metric.rhr,
+      G3Metric.respRate,
+      G3Metric.skinTempZ,
+    ]) {
+      expect(g3MetricDomain(metric), G3Domain.recovery);
+    }
+    expect(g3MetricDomain(G3Metric.sleepMinutes), G3Domain.sleep);
+    expect(g3MetricDomain(G3Metric.strain), G3Domain.load);
+    expect(g3MetricDomain(G3Metric.steps), G3Domain.load);
+  });
+
   setUpAll(() async => initializeDateFormatting('de_DE'));
 
   testWidgets('Heute HRV chevron opens G3 detail inside the Heute tab', (
@@ -218,6 +244,120 @@ void main() {
     );
   });
 
+  testWidgets('Heute activity opens its own result inside the Heute tab', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities(_day)).single;
+    final storedAt = DateTime(2026, 9, 29, 9, 38);
+    final now = DateTime(2026, 9, 29, 9, 41);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: _day,
+      band: BandSnapshot(
+        connection: BandConnection.connected,
+        latestStoredAt: storedAt,
+      ),
+      now: () => now,
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          releaseStyle: true,
+          domains: const [ShellDomain.home, ShellDomain.workout],
+          builder: (context, domain) => domain == ShellDomain.home
+              ? Scaffold(
+                  body: OBActivityRow(
+                    pictogram: const SizedBox(),
+                    title: 'Lauf',
+                    subtitle: '07:58–08:40',
+                    onTap: () =>
+                        openHeuteActivity(context, controller, activity),
+                  ),
+                )
+              : const Scaffold(body: Text('Training root')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lauf'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(G3ActivityScreen), findsOneWidget);
+    expect(
+      tester
+          .widget<G3ActivityScreen>(find.byType(G3ActivityScreen))
+          .activity
+          .id,
+      activity.id,
+    );
+    final result = tester.widget<G3ActivityScreen>(
+      find.byType(G3ActivityScreen),
+    );
+    expect(result.latestStoredAt, storedAt);
+    expect(result.now, now);
+    expect(find.text('Training root'), findsNothing);
+    expect(
+      tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
+      ShellDomain.home,
+    );
+  });
+
+  testWidgets('Heute Belastung opens the G3 load detail inside its tab', (
+    tester,
+  ) async {
+    final controller = OpenBandController(
+      repository: _repo(SyntheticScenario.g3Sample),
+      initialDay: _day,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          releaseStyle: true,
+          domains: const [ShellDomain.home, ShellDomain.workout],
+          builder: (context, domain) => domain == ShellDomain.home
+              ? Scaffold(
+                  body: OBSecondaryMetric(
+                    label: 'BELASTUNG',
+                    value: '9,4',
+                    start: '0',
+                    end: '21',
+                    onTap: () =>
+                        openHeuteMetric(context, controller, G3Metric.strain),
+                  ),
+                )
+              : const Scaffold(body: Text('Training root')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(OBSecondaryMetric),
+        matching: find.byType(OBChevron),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(G3LoadScreen), findsOneWidget);
+    expect(
+      tester.widget<G3LoadScreen>(find.byType(G3LoadScreen)).backLabel,
+      'Heute',
+    );
+    expect(find.text('Training root'), findsNothing);
+    expect(
+      tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
+      ShellDomain.home,
+    );
+  });
+
   testWidgets('missing HRV refuses a value and names the missing input', (
     tester,
   ) async {
@@ -248,7 +388,40 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
+    expect(tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).onTap, isNull);
     expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
+    expect(find.text('Noch kein Verlauf'), findsNothing);
+    expect(find.text('Lücken bleiben leer'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Tage ohne Messung werden nicht geschätzt'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('detail header and section keep one page gutter', (tester) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(G3MetricDetail(
+        metric: G3Metric.hrv,
+        repository: _ValuesRepository(
+          48,
+          const G3Baseline(
+            BaselineStatus(BaselinePhase.trusted),
+            range: PersonalRange(38, 52, 45),
+          ),
+          presentDays: 7,
+        ),
+        endDay: _day,
+      )),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(G3DetailPage), findsOneWidget);
+    expect(tester.getTopLeft(find.bySemanticsLabel('Zurück zu Heute')).dx, 16);
+    expect(tester.getTopLeft(find.text('NÄCHTE')).dx, 24);
   });
 
   testWidgets('metric chart keeps unit case and detail delta chip is visible', (
@@ -274,6 +447,14 @@ void main() {
     expect(
       tester.widget<OBTrendChart>(find.byType(OBTrendChart)).title,
       'HRV · ms',
+    );
+    expect(
+      tester.widget<OBTrendChart>(find.byType(OBTrendChart)).domain,
+      G3Domain.recovery,
+    );
+    expect(
+      tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).domain,
+      G3Domain.recovery,
     );
     final chip = find.byType(OBChip);
     final decoration =
@@ -586,9 +767,7 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining(
-        'Letzter Bandwert ${DateFormat('dd.MM').format(stored)}',
-      ),
+      find.textContaining('Daten bis ${g3DayShort(stored)}'),
       findsOneWidget,
     );
   });

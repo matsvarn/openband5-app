@@ -16,12 +16,13 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPageHeader;
-import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
-import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBBandCapsule, OBCardHeader, OBPageHeader, OBSegmented, OBSyncState;
+import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow, OBNightCard, OBStepsCard, OBWeekBars;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart' show G3Domain;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow, OBLeadMetric, OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
-import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
+import 'package:openstrap_edge/openband/theme.dart' show OBChevron, openBandTheme;
 
 Map _json(String name) =>
     jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync()) as Map;
@@ -106,6 +107,9 @@ class _Harness {
   int connects = 0;
   final journalDays = <String>[];
   final opened = <G3Metric>[];
+  int allMetricsOpens = 0;
+  int bandOpens = 0;
+  int dataStatusOpens = 0;
 }
 
 final _connected = BandSnapshot(
@@ -138,7 +142,10 @@ Future<_Harness> _pump(
           controller: h.controller,
           reminder: h.reminder,
           onConnect: () => h.connects++,
+          onBand: () => h.bandOpens++,
+          onDataStatus: () => h.dataStatusOpens++,
           onOpenMetric: h.opened.add,
+          onOpenAllMetrics: () => h.allMetricsOpens++,
           onJournalDay: h.journalDays.add,
           onAddActivity: () {},
         ),
@@ -196,11 +203,13 @@ void main() {
     expect(find.text('normal 58–78'), findsOneWidget);
     expect(find.text('über deinem Median 68'), findsOneWidget);
     expect(find.text('22:20 ins Bett'), findsOneWidget);
-    expect(find.text('für 8h05 Schlafbedarf bis 06:54'), findsOneWidget);
-    expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
-    expect(find.text('Daten bis 09:37 · Nacht lückenlos'), findsOneWidget);
-    // One instant for both: the footer's last band value is latestStoredAt.
-    expect(find.text('Letzter Bandwert 09:37 · Übertragung 09:38'), findsOneWidget);
+    expect(find.text('Bedarf 8h05 · bis 06:54'), findsOneWidget);
+    expect(find.text('Zonen nach Bestätigung'), findsNothing);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Daten bis 09:37 · Nacht lückenlos');
+    expect(find.textContaining('Letzter Bandwert'), findsNothing);
+    expect(find.text('lückenlos'), findsNothing);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
+    expect(tester.widget<OBStepsCard>(find.byType(OBStepsCard)).note, startsWith('bis '));
     // The design day stores its stage timeline: no totals-only fallback.
     expect(find.text('ohne Verlauf'), findsNothing);
     expect(_hasText(tester, (s) => s.contains('°C')), isFalse);
@@ -208,20 +217,81 @@ void main() {
     expect(_hasText(tester, (s) => s.contains('+0,4')), isTrue);
   });
 
+  testWidgets('Heute keeps each metric in its domain and freshness in the header', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    expect(tester.widget<OBLeadMetric>(find.byType(OBLeadMetric)).domain, G3Domain.recovery);
+    final secondary = tester.widgetList<OBSecondaryMetric>(find.byType(OBSecondaryMetric)).toList();
+    expect(secondary.map((metric) => metric.domain), [G3Domain.sleep, G3Domain.load]);
+    expect(tester.widget<OBActivityRow>(find.byType(OBActivityRow)).domain, G3Domain.load);
+    expect(tester.widget<OBNightCard>(find.byType(OBNightCard)).domain, G3Domain.sleep);
+    expect(tester.widgetList<OBBodyRow>(find.byType(OBBodyRow)).every((row) => row.domain == G3Domain.recovery), isTrue);
+    expect(tester.widget<OBStepsCard>(find.byType(OBStepsCard)).domain, G3Domain.load);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).synthetic, isTrue);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
+
+    final week = find.byType(OBWeekBars);
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.recovery);
+    final selector = tester.widget<OBSegmented>(find.byType(OBSegmented));
+    selector.onChanged!(1);
+    await tester.pump();
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.sleep);
+    selector.onChanged!(2);
+    await tester.pump();
+    expect(tester.widget<OBWeekBars>(week).domain, G3Domain.load);
+  });
+
+  testWidgets('Körper header opens Messwerte; absent recovery has no chevron', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    final bodyHeader = find.byWidgetPredicate((widget) => widget is OBCardHeader && widget.label == 'KÖRPER');
+    await tester.tap(find.descendant(of: bodyHeader, matching: find.text('KÖRPER')));
+    expect(h.allMetricsOpens, 1);
+
+    await _pump(tester, _Harness(
+      _Repo(SyntheticScenario.g3Sample, empty: true),
+      const BandSnapshot(connection: BandConnection.disconnected),
+    ));
+    expect(find.descendant(of: find.byType(OBLeadMetric), matching: find.byType(OBChevron)), findsNothing);
+  });
+
+  testWidgets('band capsule and sync line use separate callbacks', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
+    await tester.tap(find.byType(OBBandCapsule).first);
+    await tester.tap(find.byType(OBSyncState));
+    expect(h.bandOpens, 1);
+    expect(h.dataStatusOpens, 1);
+  });
+
   testWidgets('building baseline: tiles instead of a score, week opens on Schlaf', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Building), _connected), size: const Size(393, 3000));
     expect(find.text('Noch keine Erholung'), findsOneWidget);
     expect(find.text('11 von 14 Nächten'), findsOneWidget);
-    expect(find.text('Basis: noch 3 Nächte'), findsWidgets);
-    expect(find.text('Heute früher ins Bett.'), findsOneWidget);
+    expect(find.text('Basis: noch 3 Nächte'), findsNWidgets(4));
+    expect(find.text('Basis im Aufbau'), findsNothing);
+    expect(find.textContaining('Sie braucht 14 Nächte'), findsNothing);
+    expect(find.text('vergangene Nacht'), findsOneWidget);
+    expect(find.text('Früher ins Bett.'), findsOneWidget);
     expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
-    expect(find.text('Erholung: noch keine Werte'), findsOneWidget);
+    expect(find.text('Erholung: noch keine Werte'), findsNothing);
     // HRV 48 without a basis: no scale invented from the value (36…60).
     expect(_hasText(tester, (s) => s == '48 ms'), isTrue);
     expect(find.text('36'), findsNothing);
     expect(find.text('60'), findsNothing);
     expect(_inBody('Basis: noch 3 Nächte'), findsNWidgets(3), reason: 'HRV, Ruhepuls, Atemfrequenz');
+  });
+
+  testWidgets('week footer keeps legends and omits overview explanations', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    final segments = find.byType(OBSegmented);
+    expect(find.textContaining('dein Normalbereich'), findsWidgets);
+    await tester.ensureVisible(segments);
+    await tester.tap(find.descendant(of: segments, matching: find.text('Belastung')));
+    await tester.pumpAndSettle();
+    expect(find.text('Skala 0–21 · kein Normalbereich'), findsNothing);
+    await tester.tap(find.descendant(of: segments, matching: find.text('Schlaf')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ziel 7h45'), findsWidgets);
+    expect(find.text('Erholung: noch keine Werte'), findsNothing);
   });
 
   testWidgets('no basis at all: body values without a scale, "kein Normalbereich"', (tester) async {
@@ -235,7 +305,7 @@ void main() {
 
   testWidgets('never connected: no value, one real connect action', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample, empty: true), const BandSnapshot()));
-    expect(find.text('Noch kein Band verbunden'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Noch kein Band verbunden');
     expect(find.text('Noch keine Werte'), findsOneWidget);
     expect(find.text('ERHOLUNG'), findsOneWidget);
     expect(find.text('SCHLAF'), findsNothing);
@@ -251,7 +321,7 @@ void main() {
         BandSnapshot(batteryPercent: 64, latestStoredAt: DateTime(2026, 9, 28, 23, 10), receivedAt: DateTime(2026, 9, 28, 23, 10)),
       ),
     );
-    expect(find.text('Getrennt · Daten bis gestern 23:10'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Getrennt · Daten bis gestern 23:10');
     expect(find.text('Band nicht verbunden'), findsOneWidget);
     expect(find.text('Keine Erholung für heute'), findsOneWidget);
     expect(find.text('Heute keine Notiz'), findsOneWidget);
@@ -413,7 +483,8 @@ void main() {
     expect(find.text('Koffein nach 14 Uhr?'), findsOneWidget);
     await tester.tap(find.text('Später'));
     await tester.pumpAndSettle();
-    expect(find.text('2 offen'), findsOneWidget);
+    expect(find.text('Für später gemerkt. Kein Nachteil, wenn du es auslässt.'), findsOneWidget);
+    expect(find.text('Jetzt'), findsOneWidget);
   });
 
   testWidgets('check-in: Ändern opens the journal on the answer\'s own day', (tester) async {
@@ -523,7 +594,7 @@ void main() {
     await h.controller.selectDay('2026-09-27');
     await tester.pumpAndSettle();
     expect(find.text('Sonntag'), findsOneWidget);
-    expect(find.text('Gespeicherter Tag'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Gespeicherter Tag');
     expect(find.text('FÜR HEUTE'), findsNothing);
     expect(find.text('CHECK-IN'), findsNothing);
     expect(find.text('Heute'), findsNothing, reason: 'no "Heute" week label on a past day');
@@ -566,13 +637,17 @@ void main() {
     }
   });
 
-  testWidgets('a past day: "Daten bis" and "Letzter Bandwert" are its last stored sample', (tester) async {
+  testWidgets('a past day keeps its stored timestamp in the sync line', (tester) async {
     final repo = _Repo(SyntheticScenario.g3Sample)..lastSamples['2026-09-27'] = DateTime(2026, 9, 27, 23, 58);
-    final h = await _pump(tester, _Harness(repo, _connected), size: const Size(393, 3000));
+    final h = await _pump(tester, _Harness(repo, _connected));
     await h.controller.selectDay('2026-09-27');
     await tester.pumpAndSettle();
-    expect(find.text('Gespeicherter Tag · Daten bis 23:58'), findsOneWidget);
-    expect(find.text('Letzter Bandwert 27.09. 23:58 · Übertragung 09:38'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Gespeicherter Tag · Daten bis So 27.09 23:58');
+    expect(find.textContaining('Letzter Bandwert'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(find.text('So 27.09'), findsOneWidget);
+    expect(find.text('vor 2 Tagen · SYNTHETISCHE DATEN'), findsOneWidget);
   });
 
   testWidgets('scrolled: the compact header is opaque, content does not show through', (tester) async {

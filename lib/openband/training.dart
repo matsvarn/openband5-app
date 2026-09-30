@@ -47,7 +47,7 @@ class OpenBandTraining extends StatelessWidget {
           ),
           children: [
             if (releaseReduced)
-              const OBPageHeader(
+              const G2PageHeader(
                 title: 'Training',
                 subtitle: '',
                 showBack: false,

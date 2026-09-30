@@ -26,13 +26,15 @@ import '../../health/health_export.dart' show HealthLinkState;
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/appearance.dart';
 import '../../openband/cycle.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/notification_settings.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/units.dart';
-import '../../openband/theme.dart' show OBPageHeader, OB;
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../../data/day_label.dart';
 import '../../platform/app_icon.dart';
 import '../../platform/tasker_bridge.dart';
@@ -237,7 +239,7 @@ class _IconRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -247,11 +249,8 @@ class _IconRow extends StatelessWidget {
             width: 32,
             height: 32,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: p.wash(C.indigo),
-              borderRadius: R.rSm,
-            ),
-            child: Icon(LucideIcons.image, size: 16, color: p.on(C.indigo)),
+            decoration: BoxDecoration(color: g.track, borderRadius: R.rMd),
+            child: Icon(LucideIcons.image, size: 16, color: g.ink),
           ),
           const SizedBox(width: S.x3),
           Expanded(
@@ -260,14 +259,14 @@ class _IconRow extends StatelessWidget {
               children: [
                 Text(
                   l?.settingsIconRowTitle ?? 'Icon',
-                  style: F.body.copyWith(color: p.ink),
+                  style: g.t(15, 20, weight: FontWeight.w500),
                 ),
                 // The cost, stated where the choice is made. iOS shows its own
                 // alert on every change and there is no way to turn that off.
                 Text(
                   l?.settingsIconRowConfirmHint ??
                       'iPhone will ask you to confirm',
-                  style: F.over.copyWith(color: p.ink3),
+                  style: g.t(12, 17, color: g.muted),
                 ),
               ],
             ),
@@ -297,7 +296,7 @@ class _IconChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     // Decoded at the size it is drawn at: the source is the 1024 px launcher
     // master, and decoding that in full to paint a 36 pt thumbnail is 4 MB of
@@ -313,7 +312,7 @@ class _IconChoice extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: R.rMd,
           border: Border.all(
-            color: selected ? p.on(C.indigo) : p.line,
+            color: selected ? g.ink : g.hairline,
             width: selected ? 2 : 1,
           ),
         ),
@@ -407,111 +406,160 @@ String healthSyncSub(
 /// IMMEDIATELY, with no dialog in the way, and only then says what had already
 /// been sent: a revocation you have to confirm is a revocation that can be
 /// mis-tapped into staying on.
+Future<bool?> _settingsChoice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String cancelLabel,
+  required String confirmLabel,
+}) => showModalBottomSheet<bool>(
+  context: context,
+  useRootNavigator: true,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheet) {
+    final largeText = MediaQuery.textScalerOf(sheet).scale(15) > 22;
+    final cancel = chrome.OBActionSecondary(
+      cancelLabel,
+      expand: true,
+      onPressed: () => Navigator.pop(sheet, false),
+    );
+    final confirm = chrome.OBActionPrimary(
+      confirmLabel,
+      expand: true,
+      onPressed: () => Navigator.pop(sheet, true),
+    );
+    return chrome.OBSheet(
+      title: title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheet).height * .5,
+            ),
+            child: SingleChildScrollView(
+              child: Text(body, style: G3.of(sheet).t(14, 20)),
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (largeText) ...[
+            cancel,
+            const SizedBox(height: 10),
+            confirm,
+          ] else
+            Row(
+              children: [
+                Expanded(child: cancel),
+                const SizedBox(width: 10),
+                Expanded(child: confirm),
+              ],
+            ),
+        ],
+      ),
+    );
+  },
+);
+
+Future<void> _settingsNotice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String closeLabel,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useRootNavigator: true,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheet) => chrome.OBSheet(
+    title: title,
+    confirmLabel: closeLabel,
+    onConfirm: () => Navigator.pop(sheet),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(sheet).height * .55,
+      ),
+      child: SingleChildScrollView(
+        child: Text(body, style: G3.of(sheet).t(14, 20)),
+      ),
+    ),
+  ),
+);
+
 Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
   if (app.healthShareConsent) {
     await app.setHealthShareConsent(false);
     final last = await HealthUploader.instance.lastUploadAt();
     if (!c.mounted) return;
     final l = AppLocalizations.of(c);
-    await showDialog<void>(
-      context: c,
-      builder: (d) => AlertDialog(
-        title: Text(l?.settingsHealthShareOffTitle ?? 'Contribution off'),
-        content: Text(
-          last == null
-              ? (l?.settingsHealthShareOffNeverUploaded ??
-                    'Nothing was ever uploaded. Nothing will be.')
-              // What we KNOW, not what we hope: the revocation is posted
-              // once, unawaited, with no retry queue, so offline it never
-              // arrives and nothing here can tell.
-              : (l?.settingsHealthShareOffDetail(
-                      last.toLocal().toString().split('.').first,
-                    ) ??
-                    'Nothing further will be uploaded.\n\n'
-                        'One copy of your database was uploaded on '
-                        '${last.toLocal().toString().split('.').first}. The server '
-                        'keeps only the most recent copy per device. We tried to '
-                        'tell it your consent is withdrawn — that message is sent '
-                        'once and is not retried, so if this phone is offline it '
-                        'will not have arrived, and we cannot show you that the copy '
-                        'is gone either.'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(d).pop(),
-            child: Text(l?.settingsOk ?? 'OK'),
-          ),
-        ],
-      ),
+    final localLast = last?.toLocal();
+    final lastLabel = localLast == null
+        ? null
+        : '${MaterialLocalizations.of(c).formatMediumDate(localLast)} '
+              '${MaterialLocalizations.of(c).formatTimeOfDay(TimeOfDay.fromDateTime(localLast))}';
+    await _settingsNotice(
+      c,
+      title: l?.settingsHealthShareOffTitle ?? 'Contribution off',
+      body: last == null
+          ? (l?.settingsHealthShareOffNeverUploaded ??
+                'Nothing was ever uploaded. Nothing will be.')
+          // What we KNOW, not what we hope: the revocation is posted
+          // once, unawaited, with no retry queue, so offline it never
+          // arrives and nothing here can tell.
+          : (l?.settingsHealthShareOffDetail(lastLabel!) ??
+                'Nothing further will be uploaded.\n\n'
+                    'One copy of your database was uploaded on '
+                    '$lastLabel. The server '
+                    'keeps only the most recent copy per device. We tried to '
+                    'tell it your consent is withdrawn — that message is sent '
+                    'once and is not retried, so if this phone is offline it '
+                    'will not have arrived, and we cannot show you that the copy '
+                    'is gone either.'),
+      closeLabel: l?.settingsOk ?? 'OK',
     );
     return;
   }
   final l = AppLocalizations.of(c);
-  final ok = await showDialog<bool>(
-    context: c,
-    builder: (d) => AlertDialog(
-      title: Text(
-        l?.settingsHealthShareOnTitle ?? 'Contribute your health data?',
-      ),
-      content: Text(
+  final ok = await _settingsChoice(
+    c,
+    title: l?.settingsHealthShareOnTitle ?? 'Contribute your health data?',
+    body:
         l?.settingsHealthShareOnBody ??
-            'Once a day, on Wi-Fi and while charging, a compressed copy of your '
-                'ENTIRE database is uploaded — every derived day and every raw sensor '
-                'row the band has sent. It is used to improve the algorithms.\n\n'
-                'It is not anonymous in any meaningful sense: it is your whole health '
-                'history. You can switch this off at any time, and nothing further '
-                'is sent from that moment.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(false),
-          child: Text(l?.settingsNo ?? 'No'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(true),
-          child: Text(l?.settingsContribute ?? 'Contribute'),
-        ),
-      ],
-    ),
+        'Once a day, on Wi-Fi and while charging, a compressed copy of your '
+            'ENTIRE database is uploaded — every derived day and every raw sensor '
+            'row the band has sent. It is used to improve the algorithms.\n\n'
+            'It is not anonymous in any meaningful sense: it is your whole health '
+            'history. You can switch this off at any time, and nothing further '
+            'is sent from that moment.',
+    cancelLabel: l?.settingsNo ?? 'No',
+    confirmLabel: l?.settingsContribute ?? 'Contribute',
   );
   if (ok == true) await app.setHealthShareConsent(true);
 }
 
 Future<void> _confirmReset(BuildContext c, AppState app) async {
   final l = AppLocalizations.of(c);
-  final ok = await showDialog<bool>(
-    context: c,
-    builder: (d) => AlertDialog(
-      title: Text(l?.settingsResetTitle ?? 'Delete everything?'),
-      // Enumerated, because the previous wording ("every measured day, session
-      // and profile field") was false in about twenty places: it deleted the
-      // derived days and left the labs, the meals, the doses, the breathing
-      // sessions, the logged sets, the baselines, the consent flags, the
-      // install id, the stored API key and the home-screen widget standing.
-      // It now removes all of that, so it can say so.
-      content: Text(
+  // Enumerated because a reset deletes the raw and derived records, profile,
+  // preferences, reminders, and stored backups.
+  final ok = await _settingsChoice(
+    c,
+    title: l?.settingsResetTitle ?? 'Delete everything?',
+    body:
         l?.settingsResetBody ??
-            'This deletes, permanently and with no copy anywhere else:\n\n'
-                '· every measured day, sleep, workout and route\n'
-                '· every lab result, meal, medication dose, habit, breathing session '
-                'and logged set\n'
-                '· your journal, cycle log and rolling baselines\n'
-                '· your profile, every preference and any stored AI key\n'
-                '· the home-screen widget and every scheduled reminder\n\n'
-                'The band is unpaired, and it cannot re-send history it has already '
-                'handed over. Export from Your data first if you want a copy.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(false),
-          child: Text(l?.settingsResetKeepData ?? 'Keep my data'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(true),
-          child: Text(l?.settingsResetDeleteEverything ?? 'Delete everything'),
-        ),
-      ],
-    ),
+        'This deletes, permanently and with no copy anywhere else:\n\n'
+            '· every measured day, sleep, workout and route\n'
+            '· every lab result, meal, medication dose, habit, breathing session '
+            'and logged set\n'
+            '· your journal, cycle log and rolling baselines\n'
+            '· your profile, every preference and any stored AI key\n'
+            '· the home-screen widget and every scheduled reminder\n\n'
+            'The band is unpaired, and it cannot re-send history it has already '
+            'handed over. Export from Your data first if you want a copy.',
+    cancelLabel: l?.settingsResetKeepData ?? 'Keep my data',
+    confirmLabel: l?.settingsResetDeleteEverything ?? 'Delete everything',
   );
   if (ok != true) return;
   await app.resetAllData();
@@ -631,23 +679,31 @@ class MoreSettingsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final on = l?.stateOn ?? 'On';
     final off = l?.stateOff ?? 'Off';
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: OBPageHeader(
-                title: l?.settingsNavTitle ?? 'Settings',
-                subtitle: '',
+            chrome.OBPageHeader.detail(
+              title: (l?.settingsNavTitle ?? 'Settings').toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Profil'
+                  : 'Profile',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.settingsNavTitle ?? 'Settings',
+                Localizations.localeOf(c).languageCode == 'de'
+                    ? 'Hier legst du fest, was das Band und dieses iPhone tun. Änderungen werden auf diesem Gerät gespeichert.'
+                    : 'Choose what the band and this phone do. Changes are saved on this device.',
               ),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -922,8 +978,8 @@ class MoreSettingsView extends StatelessWidget {
                       ),
                     ]),
                   const SizedBox(height: S.x6),
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                  chrome.OBPanel(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: SetRow(
                       LucideIcons.trash2,
                       C.red,
@@ -1177,43 +1233,29 @@ class _EditProfileViewState extends State<EditProfileView> {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x4),
-              child: Stack(
-                alignment: Alignment.centerRight,
-                children: [
-                  OBPageHeader(
-                    title: l?.settingsEditProfileNavTitle ?? 'Edit profile',
-                    subtitle: '',
-                  ),
-                  Positioned(
-                    right: 4,
-                    child: Pressable(
-                      semanticLabel: l?.actionSave ?? 'Save',
-                      onTap: _save,
-                      child: Text(
-                        l?.actionSave ?? 'Save',
-                        style: OB
-                            .of(c)
-                            .text(
-                              15,
-                              weight: FontWeight.w600,
-                              color: OB.of(c).action,
-                            ),
-                      ),
-                    ),
-                  ),
-                ],
+            chrome.OBPageHeader.detail(
+              title: (l?.settingsEditProfileNavTitle ?? 'Edit profile')
+                  .toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Profil'
+                  : 'Profile',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.settingsFourFieldsTitle ?? 'These four change your numbers',
+                l?.settingsFourFieldsBody ??
+                    'They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.',
               ),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -1232,46 +1274,19 @@ class _EditProfileViewState extends State<EditProfileView> {
                   const SizedBox(height: S.x4),
                   Text(
                     l?.settingsSexFieldLabel ?? 'SEX',
-                    style: F.over.copyWith(color: p.ink3),
+                    style: g.caps(color: g.muted),
                   ),
                   const SizedBox(height: S.x2),
-                  Wrap(
-                    spacing: S.x2,
-                    runSpacing: S.x2,
-                    children: [
-                      for (final (key, label) in [
-                        ('m', l?.settingsSexMale ?? 'Male'),
-                        ('f', l?.settingsSexFemale ?? 'Female'),
-                        (
-                          'other',
-                          l?.settingsSexPreferNotToSay ?? 'Prefer not to say',
-                        ),
-                      ])
-                        Pressable(
-                          onTap: () => setState(() => _sex = key),
-                          semanticLabel: label,
-                          child: Container(
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: S.x4,
-                              vertical: S.x2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _sex == key ? p.wash(C.green) : p.card,
-                              borderRadius: R.rPill,
-                              border: Border.all(
-                                color: _sex == key ? p.on(C.green) : p.line,
-                              ),
-                            ),
-                            child: Text(
-                              label,
-                              style: F.cap.copyWith(
-                                color: _sex == key ? p.on(C.green) : p.ink2,
-                              ),
-                            ),
-                          ),
-                        ),
+                  chrome.OBSegmented(
+                    items: [
+                      l?.settingsSexMale ?? 'Male',
+                      l?.settingsSexFemale ?? 'Female',
+                      l?.settingsSexPreferNotToSay ?? 'Prefer not to say',
                     ],
+                    selected: ['m', 'f', 'other'].indexOf(_sex ?? ''),
+                    expand: true,
+                    onChanged: (i) =>
+                        setState(() => _sex = ['m', 'f', 'other'][i]),
                   ),
                   const SizedBox(height: S.x4),
                   BirthDateField(
@@ -1292,16 +1307,31 @@ class _EditProfileViewState extends State<EditProfileView> {
                     _u.weightLabel.toUpperCase(),
                     TextInputType.number,
                   ),
-                  ..._importBlock(p, c),
+                  ..._importBlock(c),
+                  const SizedBox(height: 16),
+                  chrome.OBActionPrimary(
+                    l?.actionSave ?? 'Save',
+                    onPressed: _save,
+                    expand: true,
+                  ),
                   const SizedBox(height: S.x6),
-                  StatusCard(
-                    l?.settingsFourFieldsTitle ??
-                        'These four change your numbers',
-                    l?.settingsFourFieldsBody ??
-                        'They feed heart-rate zones, calorie estimates and training '
-                            'load. Clear one and only the metrics that need it stay '
-                            'unavailable.',
-                    icon: LucideIcons.info,
+                  chrome.OBPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l?.settingsFourFieldsTitle ??
+                              'These four change your numbers',
+                          style: g.t(15, 20, weight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          l?.settingsFourFieldsBody ??
+                              'They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.',
+                          style: g.t(13, 19, color: g.muted),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1315,12 +1345,12 @@ class _EditProfileViewState extends State<EditProfileView> {
   /// The health-store read, on the form it fills. Empty when the caller passed
   /// no [EditProfileView.onImport] — the gallery and the golden sweep must not
   /// carry a control that raises a real permission sheet.
-  List<Widget> _importBlock(P p, BuildContext c) {
+  List<Widget> _importBlock(BuildContext c) {
     if (widget.onImport == null) return const [];
     final l = AppLocalizations.of(c);
     return [
       const SizedBox(height: S.x6),
-      Surface(
+      chrome.OBPanel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1335,24 +1365,22 @@ class _EditProfileViewState extends State<EditProfileView> {
                         'Height and weight, straight out of $storeName. It has no '
                             'birthday and no sex to read — no app can — so set those '
                             'two above yourself.'),
-              style: F.cap.copyWith(color: p.ink3, height: 1.5),
+              style: G3.of(c).t(13, 19, color: G3.of(c).ink2),
             ),
             const SizedBox(height: S.x4),
-            BigButton(
+            chrome.OBActionSecondary(
               importLabel(_lastImport),
               icon: LucideIcons.scale,
-              color: C.purple,
-              soft: true,
-              onTap: _importing ? null : _import,
+              onPressed: _importing ? null : _import,
+              expand: true,
             ),
             if (_importNote != null && _importNote!.isNotEmpty) ...[
               const SizedBox(height: S.x3),
+              if (_importFailed)
+                Icon(LucideIcons.triangleAlert, size: 18, color: G3.of(c).ink),
               Text(
                 _importNote!,
-                style: F.cap.copyWith(
-                  color: _importFailed ? p.on(C.red) : p.ink2,
-                  height: 1.5,
-                ),
+                style: G3.of(c).t(13, 19, color: G3.of(c).ink2),
               ),
             ],
           ],
@@ -1367,26 +1395,24 @@ class _EditProfileViewState extends State<EditProfileView> {
     String label,
     TextInputType kind,
   ) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: F.over.copyWith(color: p.ink3)),
-        TextField(
-          controller: ctl,
-          keyboardType: kind,
-          style: F.head.copyWith(color: p.ink),
-          decoration: InputDecoration(
-            hintText: l?.settingsNotSetHint ?? 'Not set',
-            hintStyle: F.head.copyWith(color: p.ink3),
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: S.x3),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: p.line),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: p.on(C.green)),
+        Text(label, style: g.caps(color: g.muted)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: g.pressed(radius: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            controller: ctl,
+            keyboardType: kind,
+            style: g.t(18, 24),
+            decoration: InputDecoration(
+              hintText: l?.settingsNotSetHint ?? 'Not set',
+              hintStyle: g.t(18, 24, color: g.muted),
+              border: InputBorder.none,
             ),
           ),
         ),

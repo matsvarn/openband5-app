@@ -18,6 +18,9 @@ import '../../l10n/app_localizations.dart';
 import '../../openband/alp_tokens.dart';
 import '../../openband/g3/band_parts.dart';
 import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/g3_format.dart';
+import '../../openband/g3/metrics.dart' show OBMissingValue;
+import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/screens/band.dart';
 import '../../openband/controller.dart';
 import '../../openband/domain.dart';
@@ -82,11 +85,10 @@ class SetRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = OB.of(c);
-    final tint = danger ? p.danger : p.ink;
+    final g = G3.of(c);
+    final tint = danger ? g.muted : g.ink;
     return Pressable(
       onTap: onTap,
-      semanticLabel: sub.isEmpty ? title : '$title. $sub',
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: minHeight),
         child: Row(
@@ -102,23 +104,12 @@ class SetRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: p.text(
-                      15,
-                      weight: FontWeight.w500,
-                      color: danger ? p.danger : p.ink,
-                    ),
+                    style: g.t(15, 20, weight: FontWeight.w500, color: tint),
                   ),
                   if (value.isNotEmpty && bigText(c))
-                    Text(
-                      value,
-                      style: p.text(
-                        13,
-                        weight: FontWeight.w600,
-                        color: p.muted,
-                      ),
-                    ),
+                    Text(value, style: g.t(13, 18, color: g.muted)),
                   if (sub.isNotEmpty)
-                    Text(sub, style: p.text(12, color: p.muted)),
+                    Text(sub, style: g.t(12, 17, color: g.muted)),
                 ],
               ),
             ),
@@ -130,20 +121,11 @@ class SetRow extends StatelessWidget {
             // itself and the chevron off the right of every settings screen.
             if (value.isNotEmpty && !bigText(c)) ...[
               const SizedBox(width: 12),
-              Text(
-                value,
-                style: p.text(13, color: p.muted).copyWith(height: 16 / 13),
-              ),
+              Text(value, style: g.t(13, 18, color: g.muted)),
             ],
-            // Paper G2: a light "›", not an icon.
-            if (chevron && !danger) ...[
+            if (chevron && onTap != null && !danger) ...[
               const SizedBox(width: 12),
-              ExcludeSemantics(
-                child: Text(
-                  '›',
-                  style: p.text(16, color: p.gap).copyWith(height: 20 / 16),
-                ),
-              ),
+              ExcludeSemantics(child: OBChevron(size: 14, color: g.gap)),
             ],
           ],
         ),
@@ -159,7 +141,7 @@ Widget settingsGroup(
   List<Widget> rows, {
   double top = 16,
 }) {
-  final p = OB.of(c);
+  final g = G3.of(c);
   return Padding(
     padding: EdgeInsets.only(top: top),
     child: Column(
@@ -167,17 +149,17 @@ Widget settingsGroup(
       children: [
         if (title.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 8),
-            child: Text(title.toUpperCase(), style: p.label(size: 11)),
+            padding: const EdgeInsets.only(left: 8, bottom: 8),
+            child: Text(title.toUpperCase(), style: g.caps(color: g.muted)),
           ),
-        OBCard(
+        chrome.OBPanel(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             children: [
               for (var i = 0; i < rows.length; i++) ...[
                 rows[i],
                 if (i < rows.length - 1)
-                  Divider(color: p.line, height: 1, thickness: 1),
+                  Divider(color: g.hairline, height: 1, thickness: 1),
               ],
             ],
           ),
@@ -192,6 +174,70 @@ Widget settingsGroup(
 /// re-read them.
 Future<void> goto(BuildContext c, Widget w) =>
     Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
+
+Future<void> showProfileInfoSheet(
+  BuildContext context,
+  String title,
+  String body,
+) => showModalBottomSheet<void>(
+  context: context,
+  useRootNavigator: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheet) => SafeArea(
+    child: chrome.OBSheet(
+      title: title,
+      cancelLabel: 'Schließen',
+      confirmLabel: 'Verstanden',
+      onCancel: () => Navigator.pop(sheet),
+      onConfirm: () => Navigator.pop(sheet),
+      child: chrome.OBPanel(child: Text(body, style: G3.of(sheet).t(14, 20))),
+    ),
+  ),
+);
+
+class ProfileNotice extends StatelessWidget {
+  const ProfileNotice(
+    this.title,
+    this.body, {
+    super.key,
+    required this.icon,
+    this.action,
+    this.onAction,
+  });
+
+  final String title;
+  final String body;
+  final IconData icon;
+  final String? action;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return chrome.OBPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title, style: g.t(16, 20, weight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(body, style: g.t(14, 19, color: g.ink2)),
+          if (action != null) ...[
+            const SizedBox(height: 12),
+            chrome.OBActionSecondary(action!, onPressed: onAction),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 /// The one way into the profile stack. Home's avatar calls this — profile is
 /// a pushed route, never a sixth tab.
@@ -214,8 +260,7 @@ String _languageLabel(BuildContext c, String? code) => code == null
     ? (AppLocalizations.of(c)?.languageSystemDefault ?? 'System default')
     : (_kLanguageNames[code] ?? code);
 
-Future<void> _pickLanguage(BuildContext c) async {
-  final p = P.of(c);
+Future<void> showProfileLanguagePicker(BuildContext c) async {
   final ctrl = c.read<LocaleController>();
   final options = <String?>[
     null,
@@ -224,27 +269,55 @@ Future<void> _pickLanguage(BuildContext c) async {
   await showModalBottomSheet<void>(
     context: c,
     useRootNavigator: true,
-    backgroundColor: p.card,
-    showDragHandle: true,
+    backgroundColor: Colors.transparent,
     builder: (sheet) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final code in options)
-            ListTile(
-              title: Text(
-                _languageLabel(sheet, code),
-                style: F.body.copyWith(color: p.ink),
-              ),
-              trailing: ctrl.code == code
-                  ? Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
-                  : null,
-              onTap: () async {
-                await ctrl.setCode(code);
-                if (sheet.mounted) Navigator.of(sheet).pop();
-              },
-            ),
-        ],
+      child: chrome.OBSheet(
+        title: Localizations.localeOf(sheet).languageCode == 'de'
+            ? 'Sprache'
+            : 'Language',
+        cancelLabel: Localizations.localeOf(sheet).languageCode == 'de'
+            ? 'Schließen'
+            : 'Close',
+        confirmLabel: Localizations.localeOf(sheet).languageCode == 'de'
+            ? 'Fertig'
+            : 'Done',
+        onCancel: () => Navigator.of(sheet).pop(),
+        onConfirm: () => Navigator.of(sheet).pop(),
+        child: chrome.OBPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Column(
+            children: [
+              for (var i = 0; i < options.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: G3.of(sheet).hairline),
+                Pressable(
+                  onTap: () async {
+                    await ctrl.setCode(options[i]);
+                    if (sheet.mounted) Navigator.of(sheet).pop();
+                  },
+                  child: SizedBox(
+                    height: 50,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _languageLabel(sheet, options[i]),
+                            style: G3.of(sheet).t(15, 20),
+                          ),
+                        ),
+                        if (ctrl.code == options[i])
+                          Icon(
+                            LucideIcons.check,
+                            size: 18,
+                            color: G3.of(sheet).ink,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -296,7 +369,9 @@ class ProfileStats {
 }
 
 class ProfileHome extends StatefulWidget {
-  const ProfileHome({super.key});
+  const ProfileHome({super.key, this.backLabel = 'Heute'});
+
+  final String backLabel;
 
   @override
   State<ProfileHome> createState() => _ProfileHomeState();
@@ -395,6 +470,7 @@ class _ProfileHomeState extends State<ProfileHome> {
       diagnostics: _diagnostics,
       bandName: c.read<AppState>().strapName,
       releaseReduced: kOpenBandReleaseReduced,
+      backLabel: widget.backLabel,
       onDevices: () => _open(c, const MyDevices()),
       onBand: () => _open(
         c,
@@ -430,7 +506,7 @@ class _ProfileHomeState extends State<ProfileHome> {
       onDismissNotificationWarning: () =>
           setState(() => _dismissedNotificationWarning = true),
       onEdit: () => _open(c, const EditProfile()),
-      onLanguage: () => _pickLanguage(c),
+      onLanguage: () => showProfileLanguagePicker(c),
       showCoach: !kOpenBandReleaseReduced,
       onCoach: kOpenBandReleaseReduced
           ? null
@@ -440,6 +516,8 @@ class _ProfileHomeState extends State<ProfileHome> {
 }
 
 class ProfileHomeView extends StatelessWidget {
+  final String backLabel;
+
   /// Null while the counts are still being read — the numbers are absent, not
   /// zero, and a zero rendered during a load is a wrong number on screen.
   final ProfileStats? stats;
@@ -484,6 +562,7 @@ class ProfileHomeView extends StatelessWidget {
     this.languageLabel,
     this.showCoach = true,
     this.releaseReduced = false,
+    this.backLabel = 'Heute',
     this.dismissedNotificationWarning = false,
     this.synthetic = false,
     this.onDismissNotificationWarning,
@@ -503,7 +582,7 @@ class ProfileHomeView extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title:
                     releaseReduced &&
                         Localizations.localeOf(c).languageCode == 'de'
@@ -581,7 +660,7 @@ class ProfileHomeView extends StatelessWidget {
                             c,
                             c.watch<LocaleController>().code,
                           ),
-                          onTap: () => _pickLanguage(c),
+                          onTap: () => showProfileLanguagePicker(c),
                         ),
                       ),
                     ]),
@@ -689,12 +768,12 @@ class ProfileHomeView extends StatelessWidget {
     final language =
         languageLabel ?? _languageLabel(c, c.watch<LocaleController>().code);
     Widget section(String title, List<Widget> rows, {Widget? tag}) => Padding(
-      padding: const EdgeInsets.only(top: 22),
+      padding: const EdgeInsets.only(top: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 0, 8),
+            padding: const EdgeInsets.fromLTRB(8, 0, 0, 8),
             child: Row(
               children: [
                 Expanded(
@@ -713,220 +792,155 @@ class ProfileHomeView extends StatelessWidget {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Row(
-                children: [
-                  Pressable(
-                    onTap: () => Navigator.of(c).maybePop(),
-                    semanticLabel: 'Heute',
-                    child: Container(
-                      height: 40,
-                      padding: const EdgeInsets.fromLTRB(8, 0, 14, 0),
-                      decoration: g.raised(radius: 20),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          OBChevron(
-                            direction: AxisDirection.left,
-                            size: 20,
-                            color: g.ink,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            'Heute',
-                            style: g.t(15, 18, weight: FontWeight.w700),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text('PROFIL', style: g.caps()),
-                        Text('OpenBand 5', style: g.t(13, 18, color: g.muted)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 70),
-                ],
-              ),
+        child: chrome.G3DetailPage(
+          header: chrome.OBPageHeader.detail(
+            title: 'PROFIL',
+            subtitle: 'OpenBand 5',
+            backLabel: backLabel,
+            onBack: () => Navigator.of(c).maybePop(),
+            onTrailing: () => showProfileInfoSheet(
+              c,
+              'Dein Profil',
+              'Deine Angaben und Bandwerte bleiben auf diesem iPhone. Fehlende Angaben bleiben offen und werden nicht geschätzt.',
             ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  0,
-                  16,
-                  kOBTabBarContentInset,
-                ),
-                children: [
-                  OBSettingsGroup(
-                    children: [
-                      Pressable(
-                        key: const ValueKey('profile-identity'),
-                        onTap: onEdit,
-                        semanticLabel: name.isEmpty ? 'Profil' : name,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Row(
+          ),
+          bottomInset: kOBTabBarContentInset,
+          children: [
+            OBSettingsGroup(
+              children: [
+                Pressable(
+                  key: const ValueKey('profile-identity'),
+                  onTap: onEdit,
+                  semanticLabel: name.isEmpty ? 'Profil' : name,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: g.track,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            name.isEmpty ? 'P' : name[0].toUpperCase(),
+                            style: g.t(18, 22, weight: FontWeight.w700),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: g.track,
-                                  shape: BoxShape.circle,
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  name.isEmpty ? 'P' : name[0].toUpperCase(),
-                                  style: g.t(18, 22, weight: FontWeight.w700),
-                                ),
+                              Text(
+                                name.isEmpty ? 'Profil' : name,
+                                style: g.t(15, 20, weight: FontWeight.w700),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name.isEmpty ? 'Profil' : name,
-                                      style: g.t(
-                                        15,
-                                        20,
-                                        weight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    Text(
-                                      facts.join(' · '),
-                                      style: g.t(12, 17, color: g.muted),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Icon(
-                                LucideIcons.chevronRight,
-                                size: 14,
-                                color: g.gap,
+                              Text(
+                                facts.join(' · '),
+                                style: g.t(12, 17, color: g.muted),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  section(
-                    'BAND',
-                    [_g3BandSummary(c, s, b)],
-                    tag: Row(
-                      children: [
-                        if (s?.bandReadFailed != true &&
-                            b?.connection == BandConnection.connected)
-                          OBLed(on: true, size: 8)
-                        else
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: g.muted, width: 1.5),
-                            ),
-                          ),
-                        const SizedBox(width: 6),
-                        Text(
-                          s?.bandReadFailed == true
-                              ? 'Status unbekannt'
-                              : b?.connection == BandConnection.connected
-                              ? 'Verbunden'
-                              : 'Nicht verbunden',
-                          style: g.t(13, 18, weight: FontWeight.w700),
-                        ),
+                        if (onEdit != null) OBChevron(size: 14, color: g.gap),
                       ],
                     ),
                   ),
-                  if (s?.notificationsAllowed == false &&
-                      !dismissedNotificationWarning) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 22, 0, 9),
-                      child: Text(
-                        'MITTEILUNGEN',
-                        style: g.caps(color: g.muted),
+                ),
+              ],
+            ),
+            section(
+              'BAND',
+              [_g3BandSummary(c, s, b)],
+              tag: Row(
+                children: [
+                  if (s?.bandReadFailed != true &&
+                      b?.connection == BandConnection.connected)
+                    OBLed(on: true, size: 8)
+                  else
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: g.muted, width: 1.5),
                       ),
                     ),
-                    OBBandActionNotice(
-                      title: 'Mitteilungen nicht erlaubt',
-                      body:
-                          'Die Erinnerung zur Schlafenszeit braucht die Erlaubnis. In iOS ist sie für OpenBand 5 aus.',
-                      action: 'Erlauben',
-                      onAction: onNotifications ?? onSettings,
-                      helpLabel: 'Später',
-                      onHelp: onDismissNotificationWarning,
-                    ),
-                    const SizedBox(height: 12),
-                    OBSettingsGroup(
-                      children: [
-                        OBSettingsRow(
-                          label: 'Mitteilungen',
-                          detail: 'Alle aus, bis du erlaubst',
-                          onTap: onNotifications ?? onSettings,
-                        ),
-                      ],
-                    ),
-                  ] else
-                    section('MITTEILUNGEN', [
-                      OBSettingsRow(
-                        label: 'Mitteilungen',
-                        detail: s?.notificationsAllowed == false
-                            ? 'Alle aus, bis du erlaubst'
-                            : 'Erinnerungen und Bandstatus',
-                        onTap: onNotifications ?? onSettings,
-                      ),
-                    ]),
-                  section('DATEN', [
-                    OBSettingsRow(
-                      key: const ValueKey('profile-data'),
-                      label: 'Daten & Sicherung',
-                      detail: s?.storageBytes == null
-                          ? 'Datenbankdatei —'
-                          : 'Datenbankdatei ${formatBytes(s!.storageBytes!, de: true)}',
-                      onTap: onData,
-                    ),
-                  ]),
-                  section('DARSTELLUNG', [
-                    OBSettingsRow(
-                      key: const ValueKey('profile-settings'),
-                      label: 'Einstellungen',
-                      onTap: onSettings,
-                    ),
-                    OBSettingsRow(
-                      key: const ValueKey('profile-language'),
-                      label: 'Sprache',
-                      value: language,
-                      onTap: onLanguage,
-                    ),
-                  ]),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: Text(
-                      'OpenBand 5 · ohne Abo',
-                      style: g.t(12, 17, color: g.muted),
-                    ),
+                  const SizedBox(width: 6),
+                  Text(
+                    s?.bandReadFailed == true
+                        ? 'Status unbekannt'
+                        : b?.connection == BandConnection.connected
+                        ? 'Verbunden'
+                        : 'Nicht verbunden',
+                    style: g.t(13, 18, weight: FontWeight.w700),
                   ),
-                  if (synthetic) ...[
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        'SYNTHETISCHE DATEN',
-                        style: g.caps(color: g.muted, size: 11),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
+            if (s?.notificationsAllowed == false &&
+                !dismissedNotificationWarning) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 18, 0, 8),
+                child: Text('MITTEILUNGEN', style: g.caps(color: g.muted)),
+              ),
+              OBBandActionNotice(
+                title: 'Mitteilungen nicht erlaubt',
+                body:
+                    'Die Erinnerung zur Schlafenszeit braucht die Erlaubnis. In iOS ist sie für OpenBand 5 aus.',
+                action: 'Erlauben',
+                onAction: onNotifications ?? onSettings,
+                helpLabel: 'Später',
+                onHelp: onDismissNotificationWarning,
+              ),
+            ],
+            section('EINSTELLUNGEN', [
+              OBSettingsRow(
+                label: 'Mitteilungen',
+                detail: s?.notificationsAllowed == false
+                    ? 'Alle aus, bis du erlaubst'
+                    : 'Erinnerungen und Bandstatus',
+                onTap: onNotifications ?? onSettings,
+              ),
+              OBSettingsRow(
+                key: const ValueKey('profile-data'),
+                label: 'Daten & Sicherung',
+                detail: s?.storageBytes == null
+                    ? 'Datenbankdatei —'
+                    : 'Datenbankdatei ${formatBytes(s!.storageBytes!, de: true)}',
+                onTap: onData,
+              ),
+              OBSettingsRow(
+                key: const ValueKey('profile-settings'),
+                label: 'Einstellungen',
+                onTap: onSettings,
+              ),
+              OBSettingsRow(
+                key: const ValueKey('profile-language'),
+                label: 'Sprache',
+                value: language,
+                onTap: onLanguage,
+              ),
+            ]),
+            const SizedBox(height: 24),
+            Center(
+              child: Text(
+                'OpenBand 5 · ohne Abo',
+                style: g.t(12, 17, color: g.muted),
+              ),
+            ),
+            if (synthetic) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  'SYNTHETISCHE DATEN',
+                  style: g.caps(color: g.muted, size: 11),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -947,27 +961,33 @@ class ProfileHomeView extends StatelessWidget {
     final batteryAt = storedBattery?.observedAt;
     final batteryTime = batteryAt == null
         ? ''
-        : ' · ${bandFrontierDayPrefix(batteryAt, now ?? DateTime.now())}${obTime(batteryAt)}';
+        : ' · ${g3Relative(batteryAt, now: now ?? DateTime.now())}';
     final batteryPercent = storedBattery?.percent ?? b?.batteryPercent;
     final battery = batteryPercent == null
         ? '—'
         : b?.connection == BandConnection.connected && s?.bandReadFailed != true
         ? '$batteryPercent %'
         : '—';
+    final stored = diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt;
+    final frontier = stored == null
+        ? '—'
+        : dayLabelOf(stored) == todayLabel(now ?? DateTime.now())
+        ? obTime(stored)
+        : g3Relative(stored, now: now ?? DateTime.now());
     final facts = <(String, String)>[
-      (
-        'Daten bis',
-        obTime(diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt),
-      ),
-      ('Akku', battery),
-      ('Datenbank', archive),
+      ('DATEN BIS', frontier),
+      ('AKKU', battery),
+      ('DATENBANKDATEI', archive),
     ];
     final large = bigText(c);
     Widget fact((String, String) item) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: large
           ? [
-              Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
+              if (item.$2 == '—')
+                const OBMissingValue(size: 21, lineHeight: 26)
+              else
+                Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
               Text(
                 item.$1,
                 style: g.t(
@@ -978,7 +998,7 @@ class ProfileHomeView extends StatelessWidget {
                   tracking: .08,
                 ),
               ),
-              if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
+              if (item.$1 == 'AKKU' && battery == '—' && batteryPercent != null)
                 Text(
                   'zuletzt $batteryPercent %$batteryTime',
                   style: g.t(11, 15, color: g.muted),
@@ -995,8 +1015,11 @@ class ProfileHomeView extends StatelessWidget {
                   tracking: .08,
                 ),
               ),
-              Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
-              if (item.$1 == 'Akku' && battery == '—' && batteryPercent != null)
+              if (item.$2 == '—')
+                const OBMissingValue(size: 21, lineHeight: 26)
+              else
+                Text(item.$2, style: g.t(21, 26, weight: FontWeight.w700)),
+              if (item.$1 == 'AKKU' && battery == '—' && batteryPercent != null)
                 Text(
                   'zuletzt $batteryPercent %$batteryTime',
                   style: g.t(11, 15, color: g.muted),
@@ -1045,7 +1068,8 @@ class ProfileHomeView extends StatelessWidget {
                         ],
                       ),
               ),
-              Icon(LucideIcons.chevronRight, size: 14, color: g.gap),
+              if (onBand != null || onDevices != null)
+                OBChevron(size: 14, color: g.gap),
             ],
           ),
         ),

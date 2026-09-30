@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../compute/manual_session.dart';
+import '../../../data/day_label.dart';
 import '../../../health/health_export.dart';
 import '../../../ui2/screens/home_screen.dart' show repoOf;
 import '../../../ui2/screens/log_workout.dart' show appOf;
 import '../../domain.dart';
-import '../chrome.dart' show OBActionPrimary;
+import '../chrome.dart' show OBActionPrimary, OBPageHeader, OBPanel;
+import '../band_parts.dart' show OBSettingsRow;
+import '../metrics.dart' show OBMissingValue;
+import '../g3_format.dart';
 import '../g3_theme.dart';
 import '../training_parts.dart';
 
@@ -40,24 +43,7 @@ class G3ManualFlow extends StatefulWidget {
 }
 
 class _G3ManualFlowState extends State<G3ManualFlow> {
-  static const sports = <String>[
-    'running',
-    'cycling',
-    'hiking',
-    'tennis',
-    'walking',
-    'weight_training',
-    'swimming',
-    'yoga',
-    'intervals',
-    'stretching',
-    'soccer',
-    'rowing',
-    'climbing',
-    'skiing',
-    'martial_arts',
-    'other',
-  ];
+  static final sports = trainingSports;
   late int step = widget.initialStep;
   String sport = 'yoga';
   late DateTime start, end;
@@ -79,10 +65,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
     final repository = widget.recentRepository;
     if (repository == null) return;
     try {
-      final days = g3DaysEnding(
-        DateFormat('yyyy-MM-dd').format(widget.now()),
-        7,
-      );
+      final days = g3DaysEnding(dayLabelOf(widget.now()), 7);
       final activities =
           (await Future.wait([
               for (final day in days) repository.readActivities(day),
@@ -227,201 +210,183 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
       backgroundColor: g.page,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+          padding: const EdgeInsets.fromLTRB(0, 12, 0, 20),
           child: Column(
             children: [
-              Row(
-                children: [
-                  SizedBox(
-                    width: 48,
-                    child: IconButton(
-                      tooltip: step > 0 ? 'Zurück' : 'Abbrechen',
-                      onPressed: saving
-                          ? null
-                          : () {
-                              if (step > 0) {
-                                setState(() => step--);
-                              } else {
-                                Navigator.of(context).maybePop();
-                              }
-                            },
-                      icon: Icon(
-                        step > 0 ? LucideIcons.chevronLeft : LucideIcons.x,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            'NACHTRAGEN',
-                            maxLines: 1,
-                            softWrap: false,
-                            style: g.caps(size: 17),
-                          ),
-                        ),
-                        Text(
-                          'Schritt ${step + 1} von 3',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: g.t(13, 17, color: g.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 48),
-                ],
+              if (saving)
+                SizedBox(
+                  height: 44,
+                  child: Center(child: Text('NACHTRAGEN', style: g.caps())),
+                )
+              else
+                OBPageHeader.modal(
+                  title: 'NACHTRAGEN',
+                  backLabel: step > 0 ? 'Zurück' : 'Abbrechen',
+                  leadingIcon: step > 0
+                      ? LucideIcons.chevronLeft
+                      : LucideIcons.x,
+                  onBack: () {
+                    if (step > 0) {
+                      setState(() => step--);
+                    } else {
+                      Navigator.of(context).maybePop();
+                    }
+                  },
+                ),
+              Text(
+                'Schritt ${step + 1} von 3',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: g.t(13, 17, color: g.muted),
               ),
               const SizedBox(height: 22),
               Expanded(
-                child: ListView(
-                  children: [
-                    if (step == 0) ...[
-                      if (recentSports.isNotEmpty) ...[
-                        Text('ZULETZT', style: g.caps(color: g.muted)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: ListView(
+                    children: [
+                      if (step == 0) ...[
+                        if (recentSports.isNotEmpty) ...[
+                          Text('ZULETZT', style: g.caps(color: g.muted)),
+                          const SizedBox(height: 8),
+                          _sports(context, recentSports),
+                          const SizedBox(height: 24),
+                        ],
+                        Text('ALLE SPORTARTEN', style: g.caps(color: g.muted)),
                         const SizedBox(height: 8),
-                        _sports(context, recentSports),
-                        const SizedBox(height: 24),
-                      ],
-                      Text('ALLE SPORTARTEN', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      _sports(
-                        context,
-                        sports
-                            .where((value) => !recentSports.contains(value))
-                            .toList(),
-                      ),
-                    ] else if (step == 1) ...[
-                      Text('ZEITRAUM', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      _timeRow(
-                        context,
-                        'Tag',
-                        DateFormat('EEEE, d. MMMM', 'de_DE').format(start),
-                        _pickDay,
-                      ),
-                      _timeRow(
-                        context,
-                        'Beginn',
-                        DateFormat.Hm('de_DE').format(start),
-                        () => _pickTime(true),
-                      ),
-                      _timeRow(
-                        context,
-                        'Ende',
-                        DateFormat.Hm('de_DE').format(end),
-                        () => _pickTime(false),
-                      ),
-                      const SizedBox(height: 18),
-                      _panel(
-                        context,
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Bandpuls im Zeitraum', style: g.caps()),
-                            const SizedBox(height: 6),
-                            Text('—', style: g.t(28, 34, color: g.gap)),
-                            Text(
-                              'Die Verfügbarkeit wird beim Speichern geprüft. Lücken bleiben leer.',
-                              style: g.t(13, 18, color: g.ink2),
-                            ),
-                          ],
+                        _sports(
+                          context,
+                          sports
+                              .where((value) => !recentSports.contains(value))
+                              .toList(),
                         ),
-                      ),
-                      if (status != null || error != null) ...[
-                        const SizedBox(height: 12),
+                      ] else if (step == 1) ...[
+                        Text('ZEITRAUM', style: g.caps(color: g.muted)),
+                        const SizedBox(height: 8),
+                        _timeRow(context, 'Tag', g3DayLong(start), _pickDay),
+                        _timeRow(
+                          context,
+                          'Beginn',
+                          g3Clock(start),
+                          () => _pickTime(true),
+                        ),
+                        _timeRow(
+                          context,
+                          'Ende',
+                          g3Clock(end),
+                          () => _pickTime(false),
+                        ),
+                        const SizedBox(height: 18),
                         _panel(
                           context,
-                          Text(
-                            error ?? _windowError(status!),
-                            style: g.t(15, 20, weight: FontWeight.w700),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Bandpuls im Zeitraum', style: g.caps()),
+                              const SizedBox(height: 6),
+                              const OBMissingValue(size: 28, lineHeight: 34),
+                              Text(
+                                'Die Verfügbarkeit wird beim Speichern geprüft. Lücken bleiben leer.',
+                                style: g.t(13, 18, color: g.ink2),
+                              ),
+                            ],
                           ),
                         ),
+                        if (status != null || error != null) ...[
+                          const SizedBox(height: 12),
+                          _panel(
+                            context,
+                            Text(
+                              error ?? _windowError(status!),
+                              style: g.t(15, 20, weight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ] else if (status ==
+                          ManualWindowError.overlapsExisting) ...[
+                        _panel(
+                          context,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Zeitraum schon erfasst',
+                                style: g.t(17, 22, weight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Diese Zeit überschneidet sich mit einer gespeicherten Einheit. Zweimal dieselbe Zeit wird nicht gespeichert.',
+                                style: g.t(13, 18, color: g.ink2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        Text('PRÜFEN', style: g.caps(color: g.muted)),
+                        const SizedBox(height: 8),
+                        _panel(
+                          context,
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                trainingSport(sport),
+                                style: g.t(24, 30, weight: FontWeight.w700),
+                              ),
+                              Text(
+                                '${g3DateShort(start)} · ${g3Clock(start)}–${g3Clock(end)}',
+                                style: g.t(14, 20, color: g.ink2),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                '${g3Duration(end.difference(start).inMinutes)} · Belastung —',
+                                style: g.t(17, 22, weight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                'Belastung und Zonen nur mit gespeicherten Bandwerten.',
+                                style: g.t(13, 18, color: g.ink2),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(error!, style: g.t(14, 18)),
+                          ),
                       ],
-                    ] else if (status ==
-                        ManualWindowError.overlapsExisting) ...[
-                      _panel(
-                        context,
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Zeitraum schon erfasst',
-                              style: g.t(17, 22, weight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Diese Zeit überschneidet sich mit einer gespeicherten Einheit. Zweimal dieselbe Zeit wird nicht gespeichert.',
-                              style: g.t(13, 18, color: g.ink2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ] else ...[
-                      Text('PRÜFEN', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      _panel(
-                        context,
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              trainingSport(sport),
-                              style: g.t(24, 30, weight: FontWeight.w700),
-                            ),
-                            Text(
-                              '${DateFormat('d. MMMM', 'de_DE').format(start)} · ${DateFormat.Hm('de_DE').format(start)}–${DateFormat.Hm('de_DE').format(end)}',
-                              style: g.t(14, 20, color: g.ink2),
-                            ),
-                            const SizedBox(height: 14),
-                            Text(
-                              '${end.difference(start).inMinutes} Min. · Belastung —',
-                              style: g.t(17, 22, weight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Belastung und Zonen nur mit gespeicherten Bandwerten.',
-                              style: g.t(13, 18, color: g.ink2),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(error!, style: g.t(14, 18)),
-                        ),
                     ],
-                  ],
+                  ),
                 ),
               ),
-              if (step == 2 && status == ManualWindowError.overlapsExisting)
-                OBActionPrimary(
-                  'Zeit ändern',
-                  onPressed: () => setState(() => step = 1),
-                  expand: true,
-                )
-              else
-                OBActionPrimary(
-                  saving
-                      ? 'Wird gespeichert …'
-                      : step == 0
-                      ? 'Weiter mit ${trainingSport(sport)}'
-                      : step == 1
-                      ? 'Weiter'
-                      : 'Speichern',
-                  onPressed: saving || (step == 1 && status != null)
-                      ? null
-                      : step == 2
-                      ? _save
-                      : () => setState(() {
-                          step++;
-                          error = null;
-                        }),
-                  expand: true,
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: step == 2 && status == ManualWindowError.overlapsExisting
+                    ? OBActionPrimary(
+                        'Zeit ändern',
+                        onPressed: () => setState(() => step = 1),
+                        expand: true,
+                      )
+                    : OBActionPrimary(
+                        saving
+                            ? 'Wird gespeichert …'
+                            : step == 0
+                            ? 'Weiter mit ${trainingSport(sport)}'
+                            : step == 1
+                            ? 'Weiter'
+                            : 'Speichern',
+                        onPressed: saving || (step == 1 && status != null)
+                            ? null
+                            : step == 2
+                            ? _save
+                            : () => setState(() {
+                                step++;
+                                error = null;
+                              }),
+                        expand: true,
+                      ),
+              ),
             ],
           ),
         ),
@@ -444,7 +409,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
             decoration: sport == value
                 ? BoxDecoration(
                     color: G3.of(context).ink,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
                   )
                 : G3.of(context).raised(),
             child: Column(
@@ -482,11 +447,8 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
   );
 }
 
-Widget _panel(BuildContext context, Widget content) => Container(
-  padding: const EdgeInsets.all(18),
-  decoration: G3.of(context).raised(),
-  child: content,
-);
+Widget _panel(BuildContext context, Widget content) =>
+    OBPanel(padding: const EdgeInsets.all(18), child: content);
 
 Widget _timeRow(
   BuildContext context,
@@ -494,13 +456,7 @@ Widget _timeRow(
   String value,
   VoidCallback tap,
 ) {
-  final g = G3.of(context);
-  return ListTile(
-    title: Text(label, style: g.t(13, 17, color: g.muted)),
-    subtitle: Text(value, style: g.t(17, 22, weight: FontWeight.w700)),
-    trailing: const Icon(LucideIcons.chevronRight),
-    onTap: tap,
-  );
+  return OBSettingsRow(label: label, value: value, onTap: tap);
 }
 
 String _windowError(ManualWindowError error) => switch (error) {

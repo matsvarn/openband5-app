@@ -7,6 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/openband/controller.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPanel;
+import 'package:openstrap_edge/openband/g3/day.dart' show OBStageLegend;
+import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
@@ -178,13 +182,13 @@ void main() {
     await tester.tap(find.text('Ziel öffnen'));
     await tester.pumpAndSettle();
     expect(find.text('Ziel wählen'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.tap(find.text('Ziel wählen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('5h00').last);
+    await tester.tap(find.text('5h').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ziel speichern'));
     await tester.pumpAndSettle();
-    expect(find.text('5h00'), findsOneWidget);
+    expect(find.text('5h'), findsOneWidget);
     expect(
       find.textContaining('Deine Auswahl bleibt erhalten'),
       findsOneWidget,
@@ -284,4 +288,70 @@ void main() {
       );
     },
   );
+
+  testWidgets('night chart and stage legend domains', tags: const ['golden'], (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(393, 852);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final repo = SyntheticOpenBandRepository.fromMaps(
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/day-summary.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/sleep-detail.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      scenario: SyntheticScenario.g3Sample,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: RepaintBoundary(
+          key: const ValueKey('night-signals'),
+          child: G3SleepNightSignals(repository: repo, day: '2026-09-15'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byKey(const ValueKey('night-signals')),
+      matchesGoldenFile('openband_goldens/g31-schlaf-night-signals.png'),
+    );
+
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepScreen(
+          controller: controller,
+          reminder: MemorySleepBedtimeReminder(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final legend = find.byType(OBStageLegend);
+    expect(legend, findsOneWidget);
+    await Scrollable.ensureVisible(tester.element(legend));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.ancestor(of: legend, matching: find.byType(OBPanel)).first,
+      matchesGoldenFile('openband_goldens/g31-schlaf-night-card.png'),
+    );
+  });
 }

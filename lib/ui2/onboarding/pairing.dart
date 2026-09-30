@@ -13,6 +13,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../openband/g3/band_parts.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -230,18 +232,28 @@ class PairingView extends StatelessWidget {
         ? _body(c, phase, blocker)
         : blocked.fix ?? blocked.reason;
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: G3.of(c).page,
       body: SafeArea(
         child: Column(
           children: [
-            OBSetupHeader(
-              title: _s(c, 'Band verbinden', 'Connect band'),
-              backLabel: _s(c, 'Zurück', 'Back'),
-              onBack:
-                  onBack ??
-                  (Navigator.canPop(c) ? () => Navigator.pop(c) : null),
-              onInfo: onInfo ?? () => _showInfo(c),
-            ),
+            MediaQuery.textScalerOf(c).scale(15) > 20
+                ? OBSetupHeader(
+                    title: _s(c, 'Band verbinden', 'Connect band'),
+                    backLabel: _s(c, 'Zurück', 'Back'),
+                    onBack:
+                        onBack ??
+                        (Navigator.canPop(c) ? () => Navigator.pop(c) : null),
+                    onInfo: onInfo ?? () => _showInfo(c),
+                  )
+                : chrome.OBPageHeader.detail(
+                    title: _s(c, 'BAND VERBINDEN', 'CONNECT BAND'),
+                    backLabel: _s(c, 'Zurück', 'Back'),
+                    onBack:
+                        onBack ??
+                        (Navigator.canPop(c) ? () => Navigator.pop(c) : null),
+                    onTrailing: onInfo ?? () => _showInfo(c),
+                    trailingLabel: _s(c, 'Information', 'Information'),
+                  ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
@@ -250,7 +262,7 @@ class PairingView extends StatelessWidget {
                     const OBStepProgress(step: 1),
                     const SizedBox(height: 18),
                   ],
-                  OBCard(
+                  chrome.OBPanel(
                     child: Column(
                       children: [
                         Container(
@@ -335,12 +347,12 @@ class PairingView extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(8, 0, 0, 8),
                       child: Text(
                         _s(c, 'VORHER', 'BEFORE'),
-                        style: p.label(size: 12),
+                        style: G3.of(c).caps(color: G3.of(c).muted),
                       ),
                     ),
-                    OBCard(
+                    chrome.OBPanel(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
+                        horizontal: 18,
                         vertical: 4,
                       ),
                       child: Column(
@@ -370,9 +382,9 @@ class PairingView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  OBAction(
+                  chrome.OBActionPrimary(
                     _cta(c, phase),
-                    ink: true,
+                    expand: true,
                     onPressed: busy
                         ? null
                         : phase == PairPhase.paired
@@ -383,22 +395,10 @@ class PairingView extends StatelessWidget {
                     const SizedBox(height: 10),
                     // Never disabled mid-scan: the escape hatch must not make
                     // someone wait out a scan they already chose to leave.
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: onSkip,
-                        style: TextButton.styleFrom(
-                          foregroundColor: p.muted,
-                          minimumSize: const Size(44, 44),
-                        ),
-                        child: Text(
-                          _s(c, 'Später verbinden', 'Connect later'),
-                          style: p.text(
-                            15,
-                            weight: FontWeight.w600,
-                            color: p.muted,
-                          ),
-                        ),
+                    Center(
+                      child: chrome.OBLink(
+                        _s(c, 'Später verbinden', 'Connect later'),
+                        onTap: onSkip!,
                       ),
                     ),
                   ],
@@ -420,31 +420,35 @@ class PairingView extends StatelessWidget {
   }
 
   void _showInfo(BuildContext context) {
-    final p = OB.of(context);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: p.card,
+      backgroundColor: Colors.transparent,
       builder: (sheet) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _title(sheet, phase, blocker),
-                style: p.text(18, weight: FontWeight.w600),
+        child: chrome.OBSheet(
+          title: _title(sheet, phase, blocker),
+          cancelLabel: _s(sheet, 'Schließen', 'Close'),
+          confirmLabel: _s(sheet, 'Verstanden', 'Got it'),
+          onCancel: () => Navigator.pop(sheet),
+          onConfirm: () => Navigator.pop(sheet),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheet).height * .6,
+            ),
+            child: SingleChildScrollView(
+              child: chrome.OBPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _body(sheet, phase, blocker),
+                      style: G3.of(sheet).t(14, 20),
+                    ),
+                    ..._advice(sheet, phase, detail),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              Text(_body(sheet, phase, blocker), style: p.text(14)),
-              ..._advice(sheet, phase, detail),
-              const SizedBox(height: 16),
-              OBAction(
-                _s(sheet, 'Schließen', 'Close'),
-                ink: true,
-                onPressed: () => Navigator.pop(sheet),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -678,7 +682,7 @@ class _Detail extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
-    return OBCard(
+    return chrome.OBPanel(
       child: Text(text, style: p.text(13, color: p.muted)),
     );
   }

@@ -17,7 +17,13 @@ import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBActionPrimary;
+import 'package:openstrap_edge/openband/g3/day.dart'
+    show OBActivityRow, OBWeekBars;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart';
+import 'package:openstrap_edge/openband/g3/metrics.dart' show G3Scale;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBActionPrimary, OBActionSecondary, OBSheet;
+import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
     as g3chrome
     show OBPageHeader;
@@ -74,6 +80,35 @@ class _NoWeekRepo extends SyntheticOpenBandRepository {
   Future<G3WeeklyLoad> readWeeklyLoad(String endDay) async => G3WeeklyLoad([
     for (final day in g3DaysEnding(endDay, 7)) MetricPoint(day, null),
   ]);
+}
+
+class _RecentTrainingRepo extends SyntheticOpenBandRepository {
+  _RecentTrainingRepo()
+    : super.fromMaps(
+        _fixture('day-summary'),
+        _fixture('sleep-detail'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+
+  @override
+  Future<List<G3Activity>> readActivities(String day) async {
+    if (day == '2026-09-28') {
+      final start = DateTime(2026, 9, 28, 17);
+      return [
+        G3Activity(
+          id: 'recent-ride',
+          sport: 'cycling',
+          source: G3ActivitySource.live,
+          confirmed: true,
+          start: start,
+          end: start.add(const Duration(minutes: 55)),
+          strain: 8.4,
+          zoneMinutes: const [2, 8, 19, 15, 1],
+        ),
+      ];
+    }
+    return super.readActivities(day);
+  }
 }
 
 SyntheticOpenBandRepository _repo(SyntheticScenario scenario) =>
@@ -177,7 +212,7 @@ void main() {
       _app(G3ActivityScreen(repository: repo, activity: activity)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('\u2009Min.'), findsOneWidget);
+    expect(find.text(' Min.'), findsOneWidget);
     expect(find.text('diese Einheit'), findsOneWidget);
   });
 
@@ -252,7 +287,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Training starten'));
     await tester.pumpAndSettle();
+    expect(find.byType(OBSheet), findsOneWidget);
+    expect(find.text('Weitere …'), findsOneWidget);
     await tester.tap(find.text('Kraft'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Starten'));
     await tester.pumpAndSettle();
     expect(started, 'weight_training');
   });
@@ -420,7 +459,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Pausiert · Puls zählt nicht mit'), findsOneWidget);
+    expect(find.text('Puls zählt nicht mit'), findsOneWidget);
     expect(find.textContaining('Band fester anlegen'), findsNothing);
   });
 
@@ -458,12 +497,24 @@ void main() {
       _app(G3ActivityScreen(repository: repo, activity: unknown)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Training'), findsWidgets);
+    expect(find.text('Aktivität'), findsWidgets);
     expect(find.text('unmapped_sensor_code'), findsNothing);
     expect(find.text('BELASTUNG'), findsOneWidget);
     expect(find.text('Zonen nach Bestätigung'), findsWidgets);
     await tester.tap(find.text('Ändern'));
     await tester.pumpAndSettle();
+    final dismiss = find.ancestor(
+      of: find.text('Kein Training'),
+      matching: find.byType(OBActionSecondary),
+    );
+    expect(dismiss, findsOneWidget);
+    expect(
+      find.descendant(
+        of: dismiss,
+        matching: find.byIcon(LucideIcons.chevronRight),
+      ),
+      findsNothing,
+    );
     expect(find.text('Rad'), findsWidgets);
     await tester.tap(find.text('Rad'));
     await tester.pump();
@@ -914,7 +965,7 @@ void main() {
       lessThanOrEqualTo(title.preferredLineHeight * 1.2),
     );
     expect(title.didExceedMaxLines, isFalse);
-    expect(find.byTooltip('Abbrechen'), findsOneWidget);
+    expect(find.bySemanticsLabel('Abbrechen'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1005,7 +1056,7 @@ void main() {
       title.size.height,
       lessThanOrEqualTo(title.preferredLineHeight * 1.2),
     );
-    expect(title.didExceedMaxLines, isFalse);
+    expect(title.maxLines, 1);
   });
 
   testWidgets('load detail title stays on one line at 375 pt and 2× text', (
@@ -1125,7 +1176,8 @@ void main() {
     await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
     await tester.pumpAndSettle();
     expect(find.text('9,4'), findsWidgets);
-    expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
+    expect(find.text('Sportart richtig?'), findsOneWidget);
+    expect(find.text('Belastung im Verlauf'), findsNothing);
     await tester.tap(find.text('Lauf').first);
     await tester.pumpAndSettle();
     expect(find.text('PULSERHOLUNG'), findsOneWidget);
@@ -1154,7 +1206,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Training starten'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Weitere …'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Sonstiges'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Sonstiges'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Starten'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Starten'));
     await tester.pumpAndSettle();
     expect(started, 'other');
   });
@@ -1177,9 +1237,380 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('Synthetische Daten'), findsOneWidget);
+    expect(find.text('Di 29.09 · Synthetische Daten'), findsOneWidget);
     scroll.jumpTo(0);
     await tester.pumpAndSettle();
     expect(find.textContaining('Synthetische Daten'), findsNothing);
+  });
+
+  testWidgets('Training lead and load keep method copy off the overview', (
+    tester,
+  ) async {
+    var opened = false;
+    await tester.pumpWidget(
+      _app(
+        ListView(
+          children: [
+            OBLoadLead(
+              value: 9.4,
+              countTime: '09:38',
+              onTap: () => opened = true,
+            ),
+            OBTrainingLoad(
+              load: const G3WeeklyLoad([], atl: 64, ctl: 51),
+              onMethod: () => opened = true,
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(find.text('Tagessumme 0–21'), findsNothing);
+    expect(find.textContaining('gezählt bis'), findsNothing);
+    expect(find.text('Tag läuft'), findsOneWidget);
+    expect(find.text('TRIMP'), findsNothing);
+    expect(find.text('Tägliches TRIMP · eigene Einheit'), findsNothing);
+    expect(find.text('AKUT · 7 T.'), findsOneWidget);
+    expect(find.text('GEWOHNT · 6 WO.'), findsOneWidget);
+    await tester.tap(find.text('Methode'));
+    expect(opened, isTrue);
+  });
+
+  testWidgets('load period labels and values align at 375 pt', (tester) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        const Center(
+          child: OBTrainingLoad(load: G3WeeklyLoad([], atl: 64, ctl: 51)),
+        ),
+      ),
+    );
+    for (final label in ['AKUT · 7 T.', 'GEWOHNT · 6 WO.']) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(
+        paragraph.size.height,
+        lessThanOrEqualTo(paragraph.preferredLineHeight * 1.2),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+    }
+    expect(
+      tester.getTopLeft(find.text('64')).dy,
+      tester.getTopLeft(find.text('51')).dy,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('load period labels fit at large text on a narrow phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: const Center(
+            child: OBTrainingLoad(load: G3WeeklyLoad([], atl: 64, ctl: 51)),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('AKUT · 7 T.'), findsOneWidget);
+    expect(find.text('GEWOHNT · 6 WO.'), findsOneWidget);
+  });
+
+  testWidgets('load detail explains scale and has no dead lead chevron', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: controller,
+          activity: null,
+          weekly: const G3WeeklyLoad([]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(OBLoadLead),
+        matching: find.byType(OBChevron),
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('keinen persönlichen Bereich'), findsOneWidget);
+    expect(find.textContaining('Wenig Tragezeit'), findsOneWidget);
+  });
+
+  testWidgets('load detail uses the caller back label', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: controller,
+          activity: null,
+          weekly: const G3WeeklyLoad([]),
+          backLabel: 'Heute',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Heute'), findsOneWidget);
+    expect(find.text('Training'), findsNothing);
+  });
+
+  testWidgets('result info works and synthetic activity is labelled', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(G3ActivityScreen(repository: repo, activity: activity)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('EINHEIT'), findsOneWidget);
+    expect(find.byIcon(LucideIcons.ellipsis), findsNothing);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
+    expect(
+      find.text('Wie stark der Puls in der ersten Minute nach dem Ende fällt.'),
+      findsNothing,
+    );
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Pulserholung ist'), findsOneWidget);
+  });
+
+  testWidgets('result footer uses the caller band timestamp', (tester) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(
+        G3ActivityScreen(
+          repository: repo,
+          activity: activity,
+          latestStoredAt: DateTime(2026, 9, 29, 9, 12),
+          now: DateTime(2026, 9, 29, 9, 41),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1800));
+    await tester.pumpAndSettle();
+    expect(find.text('Daten bis 09:12'), findsOneWidget);
+    expect(find.text('Gespeicherte Bandwerte'), findsNothing);
+  });
+
+  testWidgets('detected sport uses a generic activity label and icon', (
+    tester,
+  ) async {
+    expect(trainingSport('detected'), 'Aktivität');
+    expect(trainingSport('unknown'), 'Aktivität');
+    await tester.pumpWidget(
+      _app(trainingSportIcon('detected', color: Colors.black)),
+    );
+    expect(find.byIcon(LucideIcons.activity), findsOneWidget);
+  });
+
+  testWidgets('Training clock follows the latest stored band value', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: BandSnapshot(latestStoredAt: DateTime(2026, 9, 29, 9, 12)),
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect(find.text('Daten bis 09:12'), findsOneWidget);
+    expect(find.textContaining('Daten bis 09:38'), findsNothing);
+  });
+
+  testWidgets('Training overview uses the load domain for facts and charts', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect(tester.widget<G3Scale>(find.byType(G3Scale)).domain, G3Domain.load);
+    expect(
+      tester
+          .widget<ColoredBox>(find.byKey(const ValueKey('scale-normal-band')))
+          .color,
+      G3(false).domainBar(G3Domain.load),
+    );
+    expect(
+      tester.widget<OBActivityRow>(find.byType(OBActivityRow).first).domain,
+      G3Domain.load,
+    );
+    expect(
+      tester.widget<OBWeekBars>(find.byType(OBWeekBars)).domain,
+      G3Domain.load,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byType(OBLoadLead),
+              matching: find.text('9,4'),
+            ),
+          )
+          .style!
+          .color,
+      G3(false).ink,
+    );
+  });
+
+  testWidgets('shared activity footer confirms without opening the result', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect((await repo.readActivities('2026-09-29')).single.confirmed, isFalse);
+    expect(find.text('Sportart richtig?'), findsOneWidget);
+    expect(find.text('Zonen nach Bestätigung'), findsNothing);
+    await tester.tap(find.text('Stimmt'));
+    await tester.pumpAndSettle();
+    expect((await repo.readActivities('2026-09-29')).single.confirmed, isTrue);
+    expect(find.byType(G3ActivityScreen), findsNothing);
+  });
+
+  testWidgets('recent activity keeps its stored strain in the shared row', (
+    tester,
+  ) async {
+    final repo = _RecentTrainingRepo();
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widgetList<OBActivityRow>(find.byType(OBActivityRow))
+          .any((row) => row.title == 'Rad' && row.strain == '+8,4'),
+      isTrue,
+    );
+  });
+
+  testWidgets('result colours trace and zones while live pulse stays ink', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await repo.confirmSuggestion(activity.id);
+    final confirmed = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(G3ActivityScreen(repository: repo, activity: confirmed)),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(OBHrTrace));
+    expect(
+      tester.widget<OBHrTrace>(find.byType(OBHrTrace)).domain,
+      G3Domain.load,
+    );
+    await tester.ensureVisible(find.byType(OBZoneRows));
+    expect(
+      tester.widget<OBZoneRows>(find.byType(OBZoneRows)).domain,
+      G3Domain.load,
+    );
+
+    final run = ValueNotifier(const LiveRun(elapsedSec: 60, heartRate: 142));
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LiveRun(
+          run: run,
+          sport: 'running',
+          onPause: () {},
+          onResume: () {},
+          onFinish: () async {},
+        ),
+      ),
+    );
+    expect(tester.widget<Text>(find.text('142')).style!.color, G3(false).ink);
+  });
+
+  testWidgets('live copy states pause once and keeps active time explicit', (
+    tester,
+  ) async {
+    final run = ValueNotifier(const LiveRun(elapsedSec: 120, paused: true));
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LiveRun(
+          run: run,
+          sport: 'cycling',
+          onPause: () {},
+          onResume: () {},
+          onFinish: () async {},
+        ),
+      ),
+    );
+    expect(find.text('RAD · PAUSIERT'), findsOneWidget);
+    expect(find.text('Puls zählt nicht mit'), findsOneWidget);
+    expect(find.text('aktive Zeit'), findsOneWidget);
+    expect(find.text('angehalten'), findsNothing);
+    run.value = const LiveRun(elapsedSec: 120);
+    await tester.pump();
+    expect(find.text('RAD · LÄUFT'), findsOneWidget);
+    expect(find.text('auf dem iPhone'), findsOneWidget);
+    expect(find.text('Einheit läuft auf dem iPhone'), findsNothing);
+  });
+
+  testWidgets('manual time fields use the shared tappable row', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        G3ManualFlow(now: () => DateTime(2026, 9, 29, 9, 41), initialStep: 1),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(OBSettingsRow), findsNWidgets(3));
+    expect(find.text('Beginn'), findsOneWidget);
+    expect(find.text('Ende'), findsOneWidget);
   });
 
   testWidgets('canonical light root golden', (tester) async {

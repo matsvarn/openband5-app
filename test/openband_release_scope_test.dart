@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
@@ -24,7 +23,11 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
     show OBSettingsRow, OBToggle;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBBandCapsule, OBInfoSheet, OBSyncState;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -502,6 +505,19 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
+  Future<void> pumpReducedGallery(WidgetTester tester) async {
+    phone(tester);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(
+        repository: repository,
+        showControls: false,
+        releaseReduced: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('release Messwerte keeps band metrics and weight', (
     tester,
   ) async {
@@ -762,11 +778,15 @@ void main() {
       ),
     );
 
-    final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
+    final values = [
+      find.textContaining('18.09 07:42'),
+      find.text('64 %'),
+      find.text('4,2 GB'),
+    ];
     final labels = [
-      find.text('Daten bis'),
-      find.text('Akku'),
-      find.text('Datenbank'),
+      find.text('DATEN BIS'),
+      find.text('AKKU'),
+      find.text('DATENBANKDATEI'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
@@ -830,7 +850,7 @@ void main() {
       expect(find.text('Status unbekannt'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
       expect(find.text('zuletzt 64 %'), findsOneWidget);
-      expect(find.text('07:42'), findsOneWidget);
+      expect(find.textContaining('18.09 07:42'), findsOneWidget);
     },
   );
 
@@ -1079,6 +1099,101 @@ void main() {
     expect(changed?.remindersEnabled, isFalse);
   });
 
+  testWidgets(
+    'each release tab opens Band from its capsule and Datenstand from its sync line',
+    (tester) async {
+      await pumpReducedGallery(tester);
+      // The shared Datenstand card has a separate narrow-width layout issue.
+      tester.view.physicalSize = const Size(480, 852);
+      await tester.pumpAndSettle();
+
+      for (final (tab, label) in [
+        ('home', 'Heute'),
+        ('sleep', 'Schlaf'),
+        ('workout', 'Training'),
+        ('wellness', 'Journal'),
+      ]) {
+        await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(OBBandCapsule).hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.byType(G3BandScreen), findsOneWidget);
+        expect(find.bySemanticsLabel('Zurück zu $label'), findsOneWidget);
+        Navigator.of(tester.element(find.byType(G3BandScreen))).pop();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(OBSyncState).hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.text('Dein Datenstand'), findsOneWidget);
+        expect(find.text('Übertragung fortsetzen'), findsNothing);
+        Navigator.of(tester.element(find.text('Dein Datenstand'))).pop();
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
+  testWidgets('release Heute Schlaf secondary opens the Schlaf tab', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+    final sleep = find.byWidgetPredicate(
+      (w) => w is OBSecondaryMetric && w.label == 'SCHLAF',
+    );
+    expect(tester.widget<OBSecondaryMetric>(sleep).onTap, isNotNull);
+    await tester.tap(sleep);
+    await tester.pumpAndSettle();
+    expect(find.byType(G3SleepScreen), findsOneWidget);
+  });
+
+  testWidgets('each gallery tab passes its name to the profile back action', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+
+    for (final (tab, label) in [
+      ('home', 'Heute'),
+      ('sleep', 'Schlaf'),
+      ('workout', 'Training'),
+      ('wellness', 'Journal'),
+    ]) {
+      await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Profil'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileHomeView), findsOneWidget);
+      expect(
+        tester.widget<ProfileHomeView>(find.byType(ProfileHomeView)).backLabel,
+        label,
+      );
+      if (tab == 'sleep') {
+        await tester.tap(find.byKey(const ValueKey('profile-band')));
+        await tester.pumpAndSettle();
+        expect(find.byType(G3BandScreen), findsOneWidget);
+        await tester.tap(find.bySemanticsLabel('Zurück zu Profil'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.bySemanticsLabel('Zurück zu $label'));
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('gallery profile language row opens its explanation', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+    await tester.tap(find.bySemanticsLabel('Profil'));
+    await tester.pumpAndSettle();
+
+    final language = find.ancestor(
+      of: find.text('Sprache'),
+      matching: find.byType(OBSettingsRow),
+    );
+    await tester.ensureVisible(language);
+    await tester.tap(language);
+    await tester.pumpAndSettle();
+    expect(find.byType(OBInfoSheet), findsOneWidget);
+    expect(find.text('Sprache'), findsWidgets);
+  });
+
   testWidgets('reduced gallery opens Profile and deterministic Data receipts', (
     tester,
   ) async {
@@ -1106,11 +1221,9 @@ void main() {
         of: find.text(label),
         matching: find.byType(OBSettingsRow),
       );
+      expect(tester.widget<OBSettingsRow>(row).onTap, isNotNull);
       expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(LucideIcons.chevronRight),
-        ),
+        find.descendant(of: row, matching: find.byType(OBChevron)),
         findsOneWidget,
       );
       await tester.ensureVisible(row);
@@ -1202,7 +1315,14 @@ void main() {
       expect(find.text('Gesundheit'), findsOneWidget);
       expect(find.text('Training'), findsOneWidget);
       expect(find.text('Journal'), findsOneWidget);
-      expect(find.text('Schlaf'), findsOneWidget);
+      // Schlaf also appears in Heute content; assert the development tab.
+      expect(
+        find.descendant(
+          of: find.byType(Pressable),
+          matching: find.text('Schlaf'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.pumpWidget(
         OpenBandGallery(
@@ -1238,7 +1358,7 @@ void main() {
         releaseScreenForRoute(kRouteJournalCompose, reduced: true),
         isA<G3JournalComposeRoute>(),
       );
-      await tester.tap(find.text('Anpassen ›'));
+      await tester.tap(find.bySemanticsLabel('Anpassen'));
       await tester.pumpAndSettle();
       expect(find.byType(G3JournalCustomize), findsOneWidget);
       await tester.tap(find.text('Eigene Frage'));
@@ -1352,7 +1472,7 @@ void main() {
 
     await tester.tap(find.text('Pause'));
     await tester.pumpAndSettle();
-    expect(find.text('Pausiert · Puls zählt nicht mit'), findsOneWidget);
+    expect(find.text('Puls zählt nicht mit'), findsOneWidget);
     await tester.tap(find.text('Fortsetzen'));
     await tester.pumpAndSettle();
     expect(find.text('Zone 3'), findsOneWidget);
@@ -1417,6 +1537,9 @@ void main() {
   );
 
   test('parked notification emits do not fire or claim the key', () async {
+    final fixtureClock = DateTime.now();
+    final day = todayLabel(fixtureClock);
+    final run = fixtureClock.microsecondsSinceEpoch;
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(
       quietEnabled: false,
@@ -1448,11 +1571,11 @@ void main() {
       priority: priority,
       title: key,
       body: 'b',
-      date: '2026-09-15',
+      date: day,
       route: route,
     );
     final parked = event(
-      key: '2026-09-15:water',
+      key: '$day:water:$run',
       category: NotifCategory.reminders,
       route: kRouteWater,
     );
@@ -1461,7 +1584,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:recovery',
+          key: '$day:recovery:$run',
           category: NotifCategory.recovery,
           route: kRouteRecovery,
         ),
@@ -1471,7 +1594,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:steps',
+          key: '$day:steps:$run',
           category: NotifCategory.reminders,
           route: kRouteSteps,
         ),
@@ -1481,7 +1604,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:alarm',
+          key: '$day:alarm:$run',
           category: NotifCategory.reminders,
           route: kRouteAlarm,
           priority: NotifPriority.critical,
@@ -1489,16 +1612,15 @@ void main() {
       ),
       isTrue,
     );
-    expect(shown, [
-      '2026-09-15:recovery',
-      '2026-09-15:steps',
-      '2026-09-15:alarm',
-    ]);
+    expect(shown, ['$day:recovery:$run', '$day:steps:$run', '$day:alarm:$run']);
   });
 
   test(
     'kept release prompts use their own switches, not weekly recap',
     () async {
+      final fixtureClock = DateTime.now();
+      final day = todayLabel(fixtureClock);
+      final run = fixtureClock.microsecondsSinceEpoch;
       SharedPreferences.setMockInitialValues({});
       final center = NotificationCenter.instance;
       final previousReduced = center.releaseReduced;
@@ -1538,11 +1660,11 @@ void main() {
       ];
       for (final (name, route, withSwitch) in cases) {
         NotificationEvent event(String state) => NotificationEvent(
-          dedupeKey: 'release-prompt:$name:$state',
+          dedupeKey: 'release-prompt:$day:$run:$name:$state',
           category: NotifCategory.reminders,
           title: name,
           body: 'test',
-          date: '2026-09-15',
+          date: day,
           route: route,
         );
         await withSwitch(
@@ -1562,9 +1684,15 @@ void main() {
   test('kept reminder routes and workout suggestion each claim once', () async {
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(quietEnabled: false).save();
-    // FiredKeyStore prunes dated claims after 14 days, so a fixed fixture date
-    // ages out. Use the current local day.
-    final day = todayLabel();
+    // Capture one clock instant for the day and unique keys. FiredKeyStore
+    // prunes dated claims after 14 days.
+    final fixtureClock = DateTime.now();
+    final day = todayLabel(fixtureClock);
+    final run = fixtureClock.microsecondsSinceEpoch;
+    final alarmKey = 'alarm_fired:$run';
+    final syncKey = '$day:sync_stale:$run';
+    final healthKey = '$day:exception:medical:$run';
+    final idleKey = 'w$run:workout_idle';
     final center = NotificationCenter.instance;
     final previousReduced = center.releaseReduced;
     final previousSink = center.presentSink;
@@ -1579,7 +1707,7 @@ void main() {
     });
     center.releaseReduced = true;
     const store = FiredKeyStore();
-    final suggestionId = '$day:1750000000';
+    final suggestionId = '$day:$run';
     final suggestionKey = '$suggestionId:auto_workout';
     final suggestion = NotificationEvent(
       dedupeKey: suggestionKey,
@@ -1599,7 +1727,7 @@ void main() {
     expect(
       await emitReal(
         NotificationEvent(
-          dedupeKey: 'alarm_fired:1750000000',
+          dedupeKey: alarmKey,
           category: NotifCategory.reminders,
           priority: NotifPriority.critical,
           title: 'Alarm',
@@ -1613,7 +1741,7 @@ void main() {
     expect(
       await emitReal(
         NotificationEvent(
-          dedupeKey: '$day:sync_stale',
+          dedupeKey: syncKey,
           category: NotifCategory.device,
           priority: NotifPriority.normal,
           title: "Your band hasn't synced in a while",
@@ -1629,7 +1757,7 @@ void main() {
     expect(
       await emitReal(
         NotificationEvent(
-          dedupeKey: '$day:exception:medical',
+          dedupeKey: healthKey,
           category: NotifCategory.health,
           priority: NotifPriority.critical,
           title: 'Something changed',
@@ -1643,7 +1771,7 @@ void main() {
     expect(
       await emitReal(
         NotificationEvent(
-          dedupeKey: 'w123:workout_idle',
+          dedupeKey: idleKey,
           category: NotifCategory.reminders,
           priority: NotifPriority.normal,
           title: 'Still working out?',
@@ -1657,17 +1785,11 @@ void main() {
       isTrue,
     );
     expect(await store.hasFired(suggestionKey), isTrue);
-    expect(await store.hasFired('alarm_fired:1750000000'), isTrue);
-    expect(await store.hasFired('$day:sync_stale'), isTrue);
-    expect(await store.hasFired('$day:exception:medical'), isTrue);
-    expect(await store.hasFired('w123:workout_idle'), isTrue);
-    expect(shown, [
-      suggestionKey,
-      'alarm_fired:1750000000',
-      '$day:sync_stale',
-      '$day:exception:medical',
-      'w123:workout_idle',
-    ]);
+    expect(await store.hasFired(alarmKey), isTrue);
+    expect(await store.hasFired(syncKey), isTrue);
+    expect(await store.hasFired(healthKey), isTrue);
+    expect(await store.hasFired(idleKey), isTrue);
+    expect(shown, [suggestionKey, alarmKey, syncKey, healthKey, idleKey]);
     expect(
       await center.emit(suggestion, allowPermissionPrompt: false),
       isFalse,

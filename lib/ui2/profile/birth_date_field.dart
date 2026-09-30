@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../ui2.dart';
 
 class BirthDateField extends StatelessWidget {
@@ -28,13 +30,14 @@ class BirthDateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = P.of(context);
+    final g = G3.of(context);
     final l = AppLocalizations.of(context);
     final label = l?.profileBirthDateLabel ?? 'Birth date';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: F.over.copyWith(color: p.ink3)),
+        Text(label.toUpperCase(), style: g.caps(color: g.muted)),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
@@ -44,28 +47,28 @@ class BirthDateField extends StatelessWidget {
                 child: Container(
                   constraints: const BoxConstraints(minHeight: S.tap),
                   alignment: Alignment.centerLeft,
-                  padding: const EdgeInsets.symmetric(vertical: S.x3),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: p.line)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
                   ),
+                  decoration: g.pressed(radius: 14),
                   child: Text(
                     value == null
                         ? l?.profileBirthDateSelect ?? 'Select birth date'
                         : MaterialLocalizations.of(
                             context,
                           ).formatCompactDate(value!),
-                    style: F.head.copyWith(
-                      color: value == null ? p.ink3 : p.ink,
-                    ),
+                    style: g.t(17, 22, color: value == null ? g.muted : g.ink),
                   ),
                 ),
               ),
             ),
             if (value != null)
-              IconButton(
-                tooltip: l?.profileBirthDateClear ?? 'Clear birth date',
-                onPressed: () => onChanged(null),
-                icon: Icon(LucideIcons.x, color: p.ink3),
+              chrome.OBIconButton(
+                icon: LucideIcons.x,
+                label: l?.profileBirthDateClear ?? 'Clear birth date',
+                onTap: () => onChanged(null),
+                small: true,
               ),
           ],
         ),
@@ -73,7 +76,7 @@ class BirthDateField extends StatelessWidget {
         Text(
           l?.profileBirthDateHelp ??
               'Your age is calculated for each recording. Leave this blank to keep age-dependent estimates unavailable.',
-          style: F.cap.copyWith(color: p.ink3),
+          style: g.t(13, 18, color: g.muted),
         ),
       ],
     );

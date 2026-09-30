@@ -1002,7 +1002,7 @@ class _OpenBandNutritionState extends State<OpenBandNutrition> {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: OBPageHeader(
+                child: G2PageHeader(
                   title: 'Ernährung',
                   subtitle: _headerSubtitle,
                   onInfo: _info,
@@ -1016,7 +1016,7 @@ class _OpenBandNutritionState extends State<OpenBandNutrition> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                         children: [
-                          OBSegmented(
+                          G2Segmented(
                             labels: const ['Tag', 'Woche', 'Lebensmittel'],
                             selected: _tab,
                             onChanged: _selectTab,

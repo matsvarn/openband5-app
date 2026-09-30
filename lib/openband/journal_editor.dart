@@ -387,7 +387,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: OBPageHeader(
+                child: G2PageHeader(
                   title: 'Tagesjournal',
                   subtitle: obDate(day),
                   onBack: _busy

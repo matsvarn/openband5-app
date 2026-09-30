@@ -202,7 +202,7 @@ void main() {
       await mount(tester);
       expect(find.text('75,0'), findsOneWidget);
       expect(find.text('Journal · 15. Sept.'), findsOneWidget);
-      expect(find.byType(OBSegmented), findsOneWidget);
+      expect(find.byType(G2Segmented), findsOneWidget);
       expect(find.byType(OBCalendarLine), findsOneWidget);
       final line = tester.widget<OBCalendarLine>(find.byType(OBCalendarLine));
       expect(line.values, hasLength(7));
@@ -371,7 +371,7 @@ void main() {
       await mount(tester);
       expect(find.text('Noch keine Einträge'), findsOneWidget);
       expect(find.text('Eintragen'), findsOneWidget);
-      expect(find.byType(OBSegmented), findsNothing);
+      expect(find.byType(G2Segmented), findsNothing);
 
       repo.weightReadError = true;
       await mount(tester);
@@ -400,7 +400,7 @@ void main() {
         expect(find.text('—'), findsOneWidget);
         expect(find.text('Einträge nicht lesbar'), findsOneWidget);
         expect(find.text('Eintragen'), findsOneWidget);
-        expect(find.byType(OBSegmented), findsNothing);
+        expect(find.byType(G2Segmented), findsNothing);
         expect(find.byType(OBCalendarLine), findsNothing);
         expect(find.text('Einträge'), findsNothing);
       },

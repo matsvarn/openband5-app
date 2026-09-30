@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../run_live.dart';
-import '../chrome.dart' show OBActionPrimary, OBActionSecondary;
+import '../chrome.dart'
+    show OBActionPrimary, OBActionSecondary, OBPageHeader, OBSheet;
 import '../g3_theme.dart';
+import '../g3_format.dart';
 import '../training_parts.dart';
 
 /// G3 presentation over the existing durable AppState workout engine.
@@ -63,21 +65,15 @@ class _G3LiveRunState extends State<G3LiveRun> {
 
   Future<void> _discard() async {
     if (saving || discarding || widget.onDiscard == null) return;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showModalBottomSheet<bool>(
       context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Einheit verwerfen?'),
-        content: const Text('Diese Einheit wird nicht gespeichert.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(c).pop(false),
-            child: const Text('Abbrechen'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(c).pop(true),
-            child: const Text('Verwerfen'),
-          ),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (c) => OBSheet(
+        title: 'Einheit verwerfen?',
+        onCancel: () => Navigator.of(c).pop(false),
+        onConfirm: () => Navigator.of(c).pop(true),
+        confirmLabel: 'Verwerfen',
+        child: const Text('Diese Einheit wird nicht gespeichert.'),
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -143,40 +139,22 @@ class _G3LiveRunState extends State<G3LiveRun> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Einheit einklappen',
-                          onPressed:
-                              widget.onCollapse ??
-                              () => Navigator.of(context).maybePop(),
-                          icon: const Icon(LucideIcons.chevronDown),
-                        ),
-                        Expanded(
-                          child: Column(
-                            children: [
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${trainingSport(widget.sport).toUpperCase()} · $started',
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  style: g.caps(size: 16),
-                                ),
-                              ),
-                              Text(
-                                run.startedAt == null
-                                    ? 'Einheit läuft auf dem iPhone'
-                                    : 'seit ${run.startedAt!.hour.toString().padLeft(2, '0')}:${run.startedAt!.minute.toString().padLeft(2, '0')}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: g.t(12, 16, color: g.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 48),
-                      ],
+                    OBPageHeader.modal(
+                      title:
+                          '${trainingSport(widget.sport).toUpperCase()} · $started',
+                      backLabel: 'Einheit einklappen',
+                      leadingIcon: LucideIcons.chevronDown,
+                      onBack:
+                          widget.onCollapse ??
+                          () => Navigator.of(context).maybePop(),
+                    ),
+                    Text(
+                      run.startedAt == null
+                          ? 'auf dem iPhone'
+                          : 'seit ${g3Clock(run.startedAt!)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: g.t(12, 16, color: g.muted),
                     ),
                     const SizedBox(height: 42),
                     Row(
@@ -222,7 +200,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                     ),
                     if (run.paused) ...[
                       Text(
-                        'Pausiert · Puls zählt nicht mit',
+                        'Puls zählt nicht mit',
                         style: g.t(15, 20, color: g.ink2),
                       ),
                     ] else if (hr == null) ...[
@@ -266,14 +244,14 @@ class _G3LiveRunState extends State<G3LiveRun> {
                             context,
                             'DAUER',
                             _clock(active),
-                            run.paused ? 'pausiert' : 'aktiv',
+                            'aktive Zeit',
                           ),
                           _stat(
                             context,
                             'BELASTUNG',
                             trainingNumber(run.strain, signed: true),
                             run.paused
-                                ? 'angehalten'
+                                ? 'bisher'
                                 : hr == null
                                 ? 'wartet auf Signal'
                                 : 'bisher',
@@ -401,7 +379,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                           _stat(
                             context,
                             'DAUER',
-                            '${(run.activeSec / 60).round()} Min.',
+                            g3Duration((run.activeSec / 60).round()),
                             '',
                           ),
                           _stat(
@@ -586,7 +564,9 @@ Widget _liveZoneMeter(
                         child: Container(
                           height: 10,
                           decoration: BoxDecoration(
-                            color: showZone ? g.zones[i] : g.track,
+                            color: showZone
+                                ? g.zonesFor(G3Domain.load)[i]
+                                : g.track,
                             border: showZone ? null : Border.all(color: g.gap),
                             borderRadius: BorderRadius.circular(3),
                           ),

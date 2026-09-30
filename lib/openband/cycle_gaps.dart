@@ -190,7 +190,7 @@ class _OpenBandCycleGapsState extends State<OpenBandCycleGaps> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: 'Abstände', subtitle: '', onInfo: _info),
+            G2PageHeader(title: 'Abstände', subtitle: '', onInfo: _info),
             ..._body(p),
             if (widget.synthetic) const _GapsSyntheticFooter(),
           ],

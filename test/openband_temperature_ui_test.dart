@@ -266,7 +266,7 @@ void main() {
     await mountDetail(tester);
     expect(detailText('—'), findsWidgets);
     expect(detailText('Einheit unbekannt'), findsOneWidget);
-    expect(find.byType(OBSegmented), findsNothing);
+    expect(find.byType(G2Segmented), findsNothing);
     expect(find.byType(OBCalendarLine), findsNothing);
     await mountHealth(tester);
     final unknownCard = find.byKey(const ValueKey('hauttemperatur'));
@@ -287,7 +287,7 @@ void main() {
     );
     await mountDetail(tester);
     expect(detailText('Noch kein Nachtwert'), findsOneWidget);
-    expect(find.byType(OBSegmented), findsNothing);
+    expect(find.byType(G2Segmented), findsNothing);
     expect(detailText('33,2'), findsNothing);
   });
 

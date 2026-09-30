@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
@@ -8,7 +7,9 @@ import '../../domain.dart';
 import '../../naps.dart';
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart' as chrome;
+import '../g3_format.dart';
 import '../g3_theme.dart';
+import '../metrics.dart' show G3LabelRow, OBMissingValue;
 import '../sleep_parts.dart';
 
 class G3SleepNaps extends StatefulWidget {
@@ -22,20 +23,12 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
   late Future<List<NapDay>> _week = _readWeek();
   String? _error;
 
-  void _info() => showDialog<void>(
-    context: context,
-    builder: (dialog) => AlertDialog(
-      title: const Text('Nickerchen'),
-      content: const Text(
-        'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialog).pop(),
-          child: const Text('Schließen'),
-        ),
-      ],
-    ),
+  void _info() => chrome.showOBInfoSheet(
+    context,
+    title: 'Nickerchen',
+    paragraphs: const [
+      'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
+    ],
   );
 
   Future<List<NapDay>> _readWeek() {
@@ -118,210 +111,236 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
-          children: [
-            chrome.OBPageHeader.detail(
-              title: 'NICKERCHEN',
-              subtitle: DateFormat(
-                'EEEE, dd. MMMM',
-                'de_DE',
-              ).format(DateTime.parse(selected)),
-              backLabel: 'Schlaf',
-              onBack: () => Navigator.of(context).pop(),
-              onTrailing: _info,
-            ),
-            const SizedBox(height: 18),
-            FutureBuilder<List<NapDay>>(
-              future: _week,
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return chrome.OBErrorBlock(
-                    title: 'Nickerchen nicht geladen',
-                    reason: 'Bitte erneut versuchen.',
-                    onRetry: _reload,
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: 'NICKERCHEN',
+            domain: G3Domain.sleep,
+            subtitle: g3DayLong(DateTime.parse(selected)),
+            backLabel: 'Schlaf',
+            onBack: () => Navigator.of(context).pop(),
+            onTrailing: _info,
+          ),
+          fullWidthSection: Column(
+            children: [
+              FutureBuilder<List<NapDay>>(
+                future: _week,
+                builder: (context, snapshot) {
+                  Widget inset(Widget child) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: child,
                   );
-                }
-                final days = snapshot.data;
-                if (days == null) {
-                  return const Center(
-                    child: CircularProgressIndicator.adaptive(),
+                  if (snapshot.hasError) {
+                    return inset(
+                      chrome.OBErrorBlock(
+                        title: 'Nickerchen nicht geladen',
+                        reason: 'Bitte erneut versuchen.',
+                        onRetry: _reload,
+                      ),
+                    );
+                  }
+                  final days = snapshot.data;
+                  if (days == null) {
+                    return inset(
+                      const Center(child: CircularProgressIndicator.adaptive()),
+                    );
+                  }
+                  final sessions = [
+                    for (final day in days)
+                      for (final session in day.sessions)
+                        (day: day.day, nap: session),
+                  ];
+                  final complete = days.every(
+                    (d) => d.judged && d.totalMin != null,
                   );
-                }
-                final sessions = [
-                  for (final day in days)
-                    for (final session in day.sessions)
-                      (day: day.day, nap: session),
-                ];
-                final complete = days.every(
-                  (d) => d.judged && d.totalMin != null,
-                );
-                final total = complete
-                    ? days.fold<int>(0, (sum, d) => sum + d.totalMin!)
-                    : null;
-                final shown = sessions
-                    .where((s) => s.nap.durationMin != null)
-                    .length;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    chrome.OBPanel(
-                      hero: true,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                  final total = complete
+                      ? days.fold<int>(0, (sum, d) => sum + d.totalMin!)
+                      : null;
+                  final shown = sessions
+                      .where((s) => s.nap.durationMin != null)
+                      .length;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      inset(
+                        chrome.OBPanel(
+                          hero: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('NICKERCHEN', style: g.caps()),
-                              const Spacer(),
-                              Text(
-                                'letzte 7 Tage',
-                                style: g.t(12, 16, color: g.muted),
+                              const G3LabelRow(
+                                'NICKERCHEN',
+                                domain: G3Domain.sleep,
+                                glyph: LucideIcons.moon,
+                                note: 'letzte 7 Tage',
                               ),
+                              const SizedBox(height: 8),
+                              if (total == 0 && sessions.isEmpty)
+                                Row(
+                                  children: [
+                                    const OBMissingValue(
+                                      size: 34,
+                                      lineHeight: 39,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Keine Nickerchen',
+                                      style: g.t(
+                                        17,
+                                        22,
+                                        weight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.end,
+                                  spacing: 10,
+                                  children: [
+                                    total == null
+                                        ? const OBMissingValue(
+                                            size: 92,
+                                            lineHeight: 98,
+                                          )
+                                        : Text(
+                                            obSleepDuration(total),
+                                            style: g.t(
+                                              92,
+                                              98,
+                                              weight: FontWeight.w700,
+                                            ),
+                                          ),
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: SizedBox(
+                                        width: 90,
+                                        child: Text(
+                                          complete
+                                              ? 'Schlaf in $shown Nickerchen'
+                                              : '7 Tage noch nicht vollständig',
+                                          style: g.t(14, 19, color: g.ink2),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (total == 0 && sessions.isEmpty)
+                                Text(
+                                  'In 7 Tagen keins erkannt oder eingetragen.',
+                                  style: g.t(14, 19, color: g.ink2),
+                                ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          if (total == 0 && sessions.isEmpty)
-                            Row(
-                              children: [
-                                Container(
-                                  width: 60,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: g.gap,
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  'Keine Nickerchen',
-                                  style: g.t(17, 22, weight: FontWeight.w700),
-                                ),
-                              ],
-                            )
-                          else
-                            Wrap(
-                              crossAxisAlignment: WrapCrossAlignment.end,
-                              spacing: 10,
-                              children: [
-                                Text(
-                                  obSleepDuration(total),
-                                  style: g.t(92, 98, weight: FontWeight.w700),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: SizedBox(
-                                    width: 90,
-                                    child: Text(
-                                      complete
-                                          ? 'Schlaf in $shown Nickerchen'
-                                          : '7 Tage noch nicht vollständig',
-                                      style: g.t(14, 19, color: g.ink2),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          if (total == 0 && sessions.isEmpty)
-                            Text(
-                              'In 7 Tagen keins erkannt oder eingetragen.',
-                              style: g.t(14, 19, color: g.ink2),
-                            ),
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    chrome.OBActionPrimary(
-                      'Nickerchen eintragen',
-                      expand: true,
-                      onPressed: () => _edit(),
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 10),
-                      OBInlineNotice(text: _error!),
-                    ],
-                    if (days.first.job?.state == CorrectionState.pending ||
-                        days.first.job?.state == CorrectionState.failed) ...[
-                      const SizedBox(height: 12),
-                      OBInlineNotice(
-                        text: 'Gespeichert · Auswertung offen',
-                        action: days.first.job?.state == CorrectionState.failed
-                            ? 'Erneut auswerten'
-                            : null,
-                        onAction: () => _retry(days.first),
-                      ),
-                    ],
-                    if (sessions.isEmpty && total == 0) ...[
                       const SizedBox(height: 14),
-                      chrome.OBEmptyState(
-                        title: 'Wie erkannt wird',
-                        reason:
-                            'Das Band erkennt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen, dann trag es ein.',
-                        action: 'Methode',
-                        onAction: _info,
+                      inset(
+                        chrome.OBActionPrimary(
+                          'Nickerchen eintragen',
+                          expand: true,
+                          onPressed: () => _edit(),
+                        ),
                       ),
-                    ] else ...[
-                      const SizedBox(height: 18),
-                      Text('HEUTE', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      if (days.first.sessions.isEmpty)
-                        chrome.OBListRow(
-                          icon: LucideIcons.moon,
-                          title: days.first.judged
-                              ? 'Noch keins'
-                              : 'Noch nicht beurteilbar',
-                          subtitle: days.first.judged
-                              ? 'Daten bis ${obSleepClock(widget.controller.band.latestStoredAt)}'
-                              : 'Daten fehlen',
-                          onTap: () => _edit(),
-                        )
-                      else
-                        for (final nap in days.first.sessions) ...[
-                          _row(days.first.day, nap),
-                          const SizedBox(height: 8),
-                        ],
-                      if (sessions.any((s) => s.day != selected)) ...[
-                        const SizedBox(height: 18),
-                        Text('LETZTE 7 TAGE', style: g.caps(color: g.muted)),
-                        const SizedBox(height: 8),
-                        for (final item in sessions.where(
-                          (s) => s.day != selected,
-                        )) ...[
-                          _row(item.day, item.nap),
-                          const SizedBox(height: 8),
-                        ],
+                      if (_error != null) ...[
+                        const SizedBox(height: 10),
+                        inset(OBInlineNotice(text: _error!)),
                       ],
-                    ],
-                    for (final day in days)
-                      for (final rejected in day.rejected)
-                        TextButton(
-                          onPressed: () => _restore(day.day, rejected),
-                          child: Text(
-                            '${obSleepClock(rejected.start)}–${obSleepClock(rejected.end)} wiederherstellen',
+                      if (days.first.job?.state == CorrectionState.pending ||
+                          days.first.job?.state == CorrectionState.failed) ...[
+                        const SizedBox(height: 12),
+                        inset(
+                          OBInlineNotice(
+                            text: 'Gespeichert · Auswertung offen',
+                            action:
+                                days.first.job?.state == CorrectionState.failed
+                                ? 'Erneut auswerten'
+                                : null,
+                            onAction: () => _retry(days.first),
                           ),
                         ),
-                  ],
-                );
-              },
-            ),
-          ],
+                      ],
+                      if (sessions.isEmpty && total == 0) ...[
+                        const SizedBox(height: 14),
+                        inset(
+                          chrome.OBEmptyState(
+                            title: 'Wie erkannt wird',
+                            reason:
+                                'Das Band erkennt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen, dann trag es ein.',
+                            action: 'Methode',
+                            onAction: _info,
+                          ),
+                        ),
+                      ] else ...[
+                        const chrome.OBSectionHeader(
+                          'HEUTE',
+                          domain: G3Domain.sleep,
+                        ),
+                        if (days.first.sessions.isEmpty)
+                          inset(
+                            chrome.OBListRow(
+                              icon: LucideIcons.moon,
+                              title: days.first.judged
+                                  ? 'Noch keins'
+                                  : 'Noch nicht beurteilbar',
+                              subtitle: days.first.judged
+                                  ? 'Noch keins erkannt'
+                                  : 'Daten fehlen',
+                              onTap: () => _edit(),
+                            ),
+                          )
+                        else
+                          for (final nap in days.first.sessions) ...[
+                            inset(_row(days.first.day, nap)),
+                            const SizedBox(height: 8),
+                          ],
+                        if (sessions.any((s) => s.day != selected)) ...[
+                          const chrome.OBSectionHeader(
+                            'LETZTE 7 TAGE',
+                            domain: G3Domain.sleep,
+                          ),
+                          for (final item in sessions.where(
+                            (s) => s.day != selected,
+                          )) ...[
+                            inset(_row(item.day, item.nap)),
+                            const SizedBox(height: 8),
+                          ],
+                        ],
+                      ],
+                      for (final day in days)
+                        for (final rejected in day.rejected)
+                          inset(
+                            chrome.OBLink(
+                              '${obSleepClock(rejected.start)}–${obSleepClock(rejected.end)} wiederherstellen',
+                              onTap: () => _restore(day.day, rejected),
+                            ),
+                          ),
+                    ],
+                  );
+                },
+              ),
+              chrome.OBFooterStamp.dataThrough(
+                storedAt: widget.controller.band.latestStoredAt,
+                now: widget.controller.now(),
+                synthetic: widget.controller.day?.synthetic == true,
+              ),
+            ],
+          ),
+          children: const [],
         ),
       ),
     );
   }
 
   Widget _row(String day, NapSession nap) {
-    final label = DateFormat(
-      'EE dd.MM',
-      'de_DE',
-    ).format(DateTime.parse(day)).replaceFirst('.', '');
+    final label = g3DayShort(DateTime.parse(day));
     final time = '${obSleepClock(nap.start)}–${obSleepClock(nap.end)}';
     return chrome.OBListRow(
       icon: LucideIcons.moon,
       title: '$label · $time',
       subtitle: nap.source == NapSource.manual
           ? 'eingetragen'
-          : 'auto-erkannt${nap.durationMin == null ? '' : ' · ${nap.durationMin} Min. gelegen'}',
+          : 'auto-erkannt${nap.durationMin == null ? '' : ' · ${g3Duration(nap.durationMin)} gelegen'}',
       value: obSleepDuration(nap.durationMin),
       onTap: () => _edit(day: day, session: nap),
     );

@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron, OBLed;
+import 'g3_format.dart';
 import 'g3_theme.dart';
 import 'metrics.dart' show G3LabelRow;
 
@@ -41,6 +42,36 @@ class _Hit extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Text link with the shared inline chevron and a 44 pt tap target.
+class OBLink extends StatelessWidget {
+  final String label;
+  final String? semanticsLabel;
+  final VoidCallback onTap;
+  const OBLink(
+    this.label, {
+    super.key,
+    this.semanticsLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return _Hit(
+      label: semanticsLabel ?? label,
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: g.t(13, 16, weight: FontWeight.w700)),
+          const SizedBox(width: 2),
+          OBChevron(size: 12, color: g.muted),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +131,12 @@ class OBBandCapsule extends StatelessWidget {
       child: Container(
         height: h,
         padding: EdgeInsets.only(left: small ? 10 : 12, right: small ? 11 : 14),
-        decoration: g.raised(radius: h / 2),
+        decoration: onTap == null
+            ? BoxDecoration(
+                color: g.track,
+                borderRadius: BorderRadius.circular(h / 2),
+              )
+            : g.raised(radius: h / 2),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -135,6 +171,7 @@ class OBIconButton extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
+    if (onTap == null) return const SizedBox(width: 44, height: 44);
     final g = G3.of(context);
     final s = small ? 32.0 : 40.0;
     return _Hit(
@@ -155,6 +192,7 @@ class OBIconButton extends StatelessWidget {
 // Page headers
 
 class OBPageHeader extends StatelessWidget {
+  final G3Domain domain;
   final _Kind _kind;
   final String title;
   final String? subtitle;
@@ -173,6 +211,7 @@ class OBPageHeader extends StatelessWidget {
     this.onTitle,
     this.onProfile,
   }) : _kind = _Kind.hub,
+       domain = G3Domain.neutral,
        onBack = null,
        onTrailing = null,
        backLabel = '',
@@ -186,6 +225,7 @@ class OBPageHeader extends StatelessWidget {
     this.subtitle,
     required this.backLabel,
     required this.onBack,
+    this.domain = G3Domain.neutral,
     this.trailing = LucideIcons.info,
     this.trailingLabel = 'Erklärung',
     this.onTrailing,
@@ -202,6 +242,7 @@ class OBPageHeader extends StatelessWidget {
     required this.band,
     this.onProfile,
   }) : _kind = _Kind.compact,
+       domain = G3Domain.neutral,
        onBack = null,
        onTitle = null,
        onTrailing = null,
@@ -209,13 +250,50 @@ class OBPageHeader extends StatelessWidget {
        trailing = LucideIcons.info,
        trailingLabel = '';
 
+  /// Modal flow header with a 44 pt close target and a centred title.
+  const OBPageHeader.modal({
+    super.key,
+    required this.title,
+    required this.onBack,
+    this.backLabel = 'Schließen',
+    IconData leadingIcon = LucideIcons.x,
+  }) : _kind = _Kind.modal,
+       domain = G3Domain.neutral,
+       trailing = leadingIcon,
+       subtitle = null,
+       band = null,
+       onTitle = null,
+       onProfile = null,
+       onTrailing = null,
+       trailingLabel = '',
+       assert(onBack != null);
+
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     switch (_kind) {
+      case _Kind.modal:
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              OBIconButton(icon: trailing, label: backLabel, onTap: onBack),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: g.t(13, 16, weight: FontWeight.w700, tracking: .1),
+                ),
+              ),
+              const SizedBox(width: 44, height: 44),
+            ],
+          ),
+        );
       case _Kind.hub:
         return Padding(
-          padding: const EdgeInsets.only(left: 24, right: 18, top: 4),
+          padding: const EdgeInsets.only(left: 24, right: 16, top: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -242,11 +320,12 @@ class OBPageHeader extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            OBChevron(
-                              direction: AxisDirection.down,
-                              size: 16,
-                              color: g.muted,
-                            ),
+                            if (onTitle != null)
+                              OBChevron(
+                                direction: AxisDirection.down,
+                                size: 16,
+                                color: g.muted,
+                              ),
                           ],
                         ),
                         const SizedBox(height: 3),
@@ -259,43 +338,49 @@ class OBPageHeader extends StatelessWidget {
               ),
               ?band,
               const SizedBox(width: 4),
-              OBIconButton(
-                icon: LucideIcons.user,
-                label: 'Profil',
-                onTap: onProfile,
-              ),
+              if (onProfile == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: LucideIcons.user,
+                  label: 'Profil',
+                  onTap: onProfile,
+                ),
             ],
           ),
         );
       case _Kind.detail:
         return Padding(
-          padding: const EdgeInsets.only(left: 16, right: 14, top: 2),
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 2),
           child: Row(
             children: [
-              _Hit(
-                label: 'Zurück zu $backLabel',
-                onTap: onBack,
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.only(left: 8, right: 14),
-                  decoration: g.raised(radius: 20),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      OBChevron(
-                        direction: AxisDirection.left,
-                        size: 20,
-                        color: g.ink,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        backLabel,
-                        style: g.t(15, 18, weight: FontWeight.w700),
-                      ),
-                    ],
+              if (onBack == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                _Hit(
+                  label: 'Zurück zu $backLabel',
+                  onTap: onBack,
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.only(left: 8, right: 14),
+                    decoration: g.raised(radius: 20),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OBChevron(
+                          direction: AxisDirection.left,
+                          size: 20,
+                          color: g.ink,
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          backLabel,
+                          style: g.t(15, 18, weight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               Expanded(
                 child: Column(
                   children: [
@@ -311,6 +396,7 @@ class OBPageHeader extends StatelessWidget {
                           16,
                           weight: FontWeight.w700,
                           tracking: .1,
+                          color: g.domainHue(domain),
                         ),
                       ),
                     ),
@@ -324,11 +410,14 @@ class OBPageHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              OBIconButton(
-                icon: trailing,
-                label: trailingLabel,
-                onTap: onTrailing,
-              ),
+              if (onTrailing == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: trailing,
+                  label: trailingLabel,
+                  onTap: onTrailing,
+                ),
             ],
           ),
         );
@@ -336,7 +425,7 @@ class OBPageHeader extends StatelessWidget {
         // Opaque page tone: it floats over scrolled content, and a
         // translucent fill without blur shows that content as ghosts.
         return Container(
-          padding: const EdgeInsets.only(left: 16, right: 14, bottom: 4),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
           decoration: BoxDecoration(
             color: g.page,
             border: Border(bottom: BorderSide(color: g.hairline)),
@@ -353,12 +442,15 @@ class OBPageHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              OBIconButton(
-                icon: LucideIcons.user,
-                label: 'Profil',
-                small: true,
-                onTap: onProfile,
-              ),
+              if (onProfile == null)
+                const SizedBox(width: 44, height: 44)
+              else
+                OBIconButton(
+                  icon: LucideIcons.user,
+                  label: 'Profil',
+                  small: true,
+                  onTap: onProfile,
+                ),
             ],
           ),
         );
@@ -366,7 +458,45 @@ class OBPageHeader extends StatelessWidget {
   }
 }
 
-enum _Kind { hub, detail, compact }
+enum _Kind { hub, detail, compact, modal }
+
+/// A detail header outside the 16 pt content gutter, followed by a 12 pt gap.
+/// [bottomInset] is scroll padding, so content can travel behind a tab bar.
+class G3DetailPage extends StatelessWidget {
+  final Widget header;
+  final List<Widget> children;
+
+  /// A section after the inset content, spanning the page width.
+  final Widget? fullWidthSection;
+  final ScrollController? scrollController;
+  final double bottomInset;
+  const G3DetailPage({
+    super.key,
+    required this.header,
+    required this.children,
+    this.fullWidthSection,
+    this.scrollController,
+    this.bottomInset = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    controller: scrollController,
+    padding: EdgeInsets.only(bottom: bottomInset),
+    children: [
+      header,
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      ),
+      ?fullWidthSection,
+    ],
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Sync line
@@ -387,6 +517,14 @@ class OBSyncState extends StatelessWidget {
     this.synthetic = false,
     this.onTap,
   });
+  OBSyncState.dataThrough({
+    super.key,
+    required this.kind,
+    required DateTime? storedAt,
+    required DateTime now,
+    this.synthetic = false,
+    this.onTap,
+  }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -401,7 +539,7 @@ class OBSyncState extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
-            padding: const EdgeInsets.only(left: 24, right: 22, top: 8),
+            padding: const EdgeInsets.only(left: 24, right: 16, top: 8),
             // The chevron is part of the text so both wrap as one unit; the
             // synthetic tag (gallery/synthetic only) yields to its own line.
             child: Row(
@@ -448,17 +586,7 @@ class OBSyncState extends StatelessWidget {
                           color: strong ? g.ink : g.muted,
                         ),
                       ),
-                      if (synthetic)
-                        Text(
-                          'SYNTHETISCHE DATEN',
-                          style: g.t(
-                            10,
-                            14,
-                            weight: FontWeight.w500,
-                            color: g.muted,
-                            tracking: .1,
-                          ),
-                        ),
+                      if (synthetic) const G3SyntheticLabel(),
                     ],
                   ),
                 ),
@@ -475,29 +603,65 @@ class OBSyncState extends StatelessWidget {
 // Section header, card header, footer
 
 class OBSectionHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String text;
   final String? action;
   final VoidCallback? onAction;
   final Widget? trailing;
+  final bool _insideDetailPage;
   const OBSectionHeader(
     this.text, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.action,
     this.onAction,
     this.trailing,
-  });
+  }) : _insideDetailPage = false;
+
+  /// Use in [G3DetailPage.children], which already have a 16 pt gutter.
+  const OBSectionHeader.detail(
+    this.text, {
+    super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
+    this.action,
+    this.onAction,
+    this.trailing,
+  }) : _insideDetailPage = true;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Padding(
-      padding: const EdgeInsets.only(left: 24, right: 20),
+      padding: EdgeInsets.only(
+        left: _insideDetailPage ? 8 : 24,
+        right: _insideDetailPage ? 0 : 16,
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 18, bottom: 8),
-              child: Text(text, style: g.caps(color: g.muted)),
+              child: Row(
+                children: [
+                  if (glyph != null) ...[
+                    Icon(glyph, size: 16, color: g.domainHue(domain)),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: g.caps(
+                        color: domain == G3Domain.neutral
+                            ? g.muted
+                            : g.domainHue(domain),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (action != null && onAction != null)
@@ -527,7 +691,7 @@ class OBSectionHeader extends StatelessWidget {
               child: Text(action!, style: g.t(13, 16, color: g.muted)),
             )
           else if (trailing != null)
-            Padding(padding: const EdgeInsets.only(bottom: 4), child: trailing),
+            Padding(padding: const EdgeInsets.only(top: 10), child: trailing),
         ],
       ),
     );
@@ -535,14 +699,33 @@ class OBSectionHeader extends StatelessWidget {
 }
 
 class OBCardHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
   final String? note;
+  final VoidCallback? onTap;
+  // Kept until area callers migrate; it can suppress, never create, an arrow.
   final bool arrow;
-  const OBCardHeader(this.label, {super.key, this.note, this.arrow = true});
+  const OBCardHeader(
+    this.label, {
+    super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
+    this.note,
+    this.onTap,
+    this.arrow = true,
+  });
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
-    child: G3LabelRow(label, note: note, arrow: arrow),
+    child: G3LabelRow(
+      label,
+      domain: domain,
+      glyph: glyph,
+      note: note,
+      onTap: onTap,
+      arrow: arrow,
+    ),
   );
 }
 
@@ -550,6 +733,12 @@ class OBFooterStamp extends StatelessWidget {
   final String text;
   final bool synthetic;
   const OBFooterStamp(this.text, {super.key, this.synthetic = false});
+  OBFooterStamp.dataThrough({
+    super.key,
+    required DateTime? storedAt,
+    required DateTime now,
+    this.synthetic = false,
+  }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -564,16 +753,7 @@ class OBFooterStamp extends StatelessWidget {
           ),
           if (synthetic) ...[
             const SizedBox(height: 4),
-            Text(
-              'SYNTHETISCHE DATEN',
-              style: g.t(
-                11,
-                14,
-                weight: FontWeight.w500,
-                color: g.muted,
-                tracking: .1,
-              ),
-            ),
+            const G3SyntheticLabel(),
           ],
         ],
       ),
@@ -583,6 +763,19 @@ class OBFooterStamp extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Panels, list rows, keys
+
+/// Show once per screen: on the tab root sync line or a detail footer.
+class G3SyntheticLabel extends StatelessWidget {
+  const G3SyntheticLabel({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Text(
+      'SYNTHETISCHE DATEN',
+      style: g.t(11, 14, weight: FontWeight.w500, color: g.muted, tracking: .1),
+    );
+  }
+}
 
 class OBPanel extends StatelessWidget {
   final bool hero;
@@ -596,9 +789,7 @@ class OBPanel extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Container(
-    padding:
-        padding ??
-        EdgeInsets.symmetric(horizontal: hero ? 20 : 18, vertical: 16),
+    padding: padding ?? kG3CardPadding,
     decoration: G3
         .of(context)
         .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
@@ -633,7 +824,7 @@ class OBListRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: kG3CardPadding,
           decoration: g.raised(),
           child: Row(
             children: [
@@ -663,8 +854,10 @@ class OBListRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(value!, style: g.t(15, 19, weight: FontWeight.w700)),
               ],
-              const SizedBox(width: 12),
-              OBChevron(size: 14, color: g.gap),
+              if (onTap != null) ...[
+                const SizedBox(width: 12),
+                OBChevron(size: 14, color: g.gap),
+              ],
             ],
           ),
         ),
@@ -1011,7 +1204,7 @@ class OBSheet extends StatelessWidget {
   final String? subtitle;
   final Widget child;
   final String cancelLabel, confirmLabel;
-  final VoidCallback? onCancel, onConfirm;
+  final VoidCallback? onCancel, onConfirm, onClose;
   const OBSheet({
     super.key,
     required this.title,
@@ -1021,10 +1214,12 @@ class OBSheet extends StatelessWidget {
     this.confirmLabel = 'Speichern',
     this.onCancel,
     this.onConfirm,
+    this.onClose,
   });
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final close = onClose ?? onCancel ?? () => Navigator.of(context).maybePop();
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
       decoration: BoxDecoration(
@@ -1067,7 +1262,7 @@ class OBSheet extends StatelessWidget {
               _Hit(
                 label: 'Schließen',
                 width: 44,
-                onTap: onCancel,
+                onTap: close,
                 child: Container(
                   width: 32,
                   height: 32,
@@ -1085,31 +1280,75 @@ class OBSheet extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           child,
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: OBActionSecondary(
-                  cancelLabel,
-                  onPressed: onCancel,
-                  expand: true,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OBActionPrimary(
-                  confirmLabel,
-                  onPressed: onConfirm,
-                  expand: true,
-                ),
-              ),
-            ],
-          ),
+          if (onCancel != null || onConfirm != null) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                if (onCancel != null)
+                  Expanded(
+                    child: OBActionSecondary(
+                      cancelLabel,
+                      onPressed: onCancel,
+                      expand: true,
+                    ),
+                  ),
+                if (onCancel != null && onConfirm != null)
+                  const SizedBox(width: 10),
+                if (onConfirm != null)
+                  Expanded(
+                    child: OBActionPrimary(
+                      confirmLabel,
+                      onPressed: onConfirm,
+                      expand: true,
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+/// Shared explanation sheet. The route covers the floating tab bar.
+class OBInfoSheet extends StatelessWidget {
+  final String title;
+  final List<String> paragraphs;
+  const OBInfoSheet({super.key, required this.title, required this.paragraphs});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return OBSheet(
+      title: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < paragraphs.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Text(paragraphs[i], style: g.t(14, 20, color: g.ink2)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> showOBInfoSheet(
+  BuildContext context, {
+  required String title,
+  required List<String> paragraphs,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useRootNavigator: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (_) => SafeArea(
+    top: false,
+    child: OBInfoSheet(title: title, paragraphs: paragraphs),
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Empty and error blocks
@@ -1132,7 +1371,7 @@ class OBEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: kG3CardPadding,
       decoration: g.pressed(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1142,7 +1381,7 @@ class OBEmptyState extends StatelessWidget {
           Text(title, style: g.t(17, 22, weight: FontWeight.w700)),
           const SizedBox(height: 6),
           Text(reason, style: g.t(14, 19, color: g.ink2)),
-          if (action != null)
+          if (action != null && onAction != null)
             Semantics(
               button: true,
               label: action,

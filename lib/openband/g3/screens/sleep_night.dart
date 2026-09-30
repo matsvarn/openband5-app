@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../domain.dart';
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../time.dart';
 import '../chrome.dart' as chrome;
 import '../count_copy.dart';
+import '../g3_format.dart';
 import '../g3_theme.dart';
+import '../metrics.dart' show G3LabelRow, OBMissingValue;
 import '../sleep_parts.dart';
 
 bool nightSignalHasUncoveredInterval(
@@ -79,34 +81,25 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
-          children: [
-            chrome.OBPageHeader.detail(
-              title: 'NACHTVERLAUF',
-              subtitle:
-                  'Nacht zu ${DateFormat('EE dd.MM', 'de_DE').format(DateTime.parse(widget.day)).replaceFirst('.', '')}',
-              backLabel: 'Schlaf',
-              onBack: () => Navigator.of(context).pop(),
-              onTrailing: () => showDialog<void>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Nachtverlauf'),
-                  content: const Text(
-                    'Gespeicherte Signale während der erkannten Nacht. Lücken bleiben leer; einzelne Werte werden nicht verbunden.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Schließen'),
-                    ),
-                  ],
-                ),
-              ),
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: 'NACHTVERLAUF',
+            domain: G3Domain.sleep,
+            subtitle: g3NightOf(DateTime.parse(widget.day)),
+            backLabel: 'Schlaf',
+            onBack: () => Navigator.of(context).pop(),
+            onTrailing: () => chrome.showOBInfoSheet(
+              context,
+              title: 'Nachtverlauf',
+              paragraphs: const [
+                'Gespeicherte Signale während der erkannten Nacht. Lücken bleiben leer; einzelne Werte werden nicht verbunden.',
+              ],
             ),
-            const SizedBox(height: 18),
+          ),
+          children: [
             chrome.OBSegmented(
-              items: const ['Puls', 'HRV', 'Atmung'],
+              items: const ['Puls', 'HRV', 'Atemfrequenz'],
               selected: _kind.index,
               onChanged: _select,
               expand: true,
@@ -147,30 +140,29 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            Text(switch (_kind) {
-                              NightSignalKind.pulse => 'RUHEPULS',
-                              NightSignalKind.hrv => 'HRV',
-                              NightSignalKind.respiration => 'ATMUNG',
-                            }, style: g.caps()),
-                            const Spacer(),
-                            Text(status(), style: g.t(12, 16, color: g.muted)),
-                          ],
+                        G3LabelRow(
+                          switch (_kind) {
+                            NightSignalKind.pulse => 'RUHEPULS',
+                            NightSignalKind.hrv => 'HRV',
+                            NightSignalKind.respiration => 'ATEMFREQUENZ',
+                          },
+                          domain: G3Domain.recovery,
+                          glyph: LucideIcons.heartPulse,
+                          note: status(),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          metric?.value == null
-                              ? '—'
-                              : metric!.value!
+                        metric?.value == null
+                            ? const OBMissingValue(size: 72, lineHeight: 76)
+                            : Text(
+                                metric!.value!
                                     .toStringAsFixed(
                                       _kind == NightSignalKind.respiration
                                           ? 1
                                           : 0,
                                     )
                                     .replaceAll('.', ','),
-                          style: g.t(72, 76, weight: FontWeight.w700),
-                        ),
+                                style: g.t(72, 76, weight: FontWeight.w700),
+                              ),
                         if (basis?.status.phase == BaselinePhase.trusted &&
                             basis?.range != null &&
                             metric?.value != null) ...[
@@ -214,44 +206,38 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            '${switch (_kind) {
-                              NightSignalKind.pulse => 'PULS',
-                              NightSignalKind.hrv => 'HRV',
-                              NightSignalKind.respiration => 'ATMUNG',
-                            }} · NACHT',
-                            style: g.caps(),
-                          ),
-                          const Spacer(),
-                          Text(
-                            recorded.isEmpty
-                                ? 'keine Daten'
-                                : series != null &&
-                                      window != null &&
-                                      nightSignalHasUncoveredInterval(
-                                        series,
-                                        window,
-                                      )
-                                ? 'teilweise'
-                                : 'gespeichert',
-                            style: g.t(12, 16, color: g.muted),
-                          ),
-                        ],
+                      G3LabelRow(
+                        '${switch (_kind) {
+                          NightSignalKind.pulse => 'PULS',
+                          NightSignalKind.hrv => 'HRV',
+                          NightSignalKind.respiration => 'ATEMFREQUENZ',
+                        }} · NACHT',
+                        domain: G3Domain.recovery,
+                        glyph: LucideIcons.heartPulse,
+                        note: recorded.isEmpty
+                            ? 'keine Daten'
+                            : series != null &&
+                                  window != null &&
+                                  nightSignalHasUncoveredInterval(
+                                    series,
+                                    window,
+                                  )
+                            ? 'teilweise'
+                            : 'gespeichert',
                       ),
                       const SizedBox(height: 14),
-                      Text(
-                        lowest == null
-                            ? '—'
-                            : 'Tiefster Wert ${lowest.value!.toStringAsFixed(_kind == NightSignalKind.respiration ? 1 : 0).replaceAll('.', ',')} um ${obSleepClock(recordedTime(lowest.at, night?.recordingTimezone))}',
-                        style: g.t(17, 22, weight: FontWeight.w700),
-                      ),
+                      lowest == null
+                          ? const OBMissingValue(size: 17, lineHeight: 22)
+                          : Text(
+                              'Tiefster Wert ${lowest.value!.toStringAsFixed(_kind == NightSignalKind.respiration ? 1 : 0).replaceAll('.', ',')} um ${obSleepClock(recordedTime(lowest.at, night?.recordingTimezone))}',
+                              style: g.t(17, 22, weight: FontWeight.w700),
+                            ),
                       const SizedBox(height: 18),
                       if (window != null &&
                           series != null &&
                           recorded.isNotEmpty)
                         OBNightTrace(
+                          domain: G3Domain.recovery,
                           series: series,
                           start: recordedTime(
                             window.start,
@@ -316,7 +302,10 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                   left: box.maxWidth / 3,
                   width: box.maxWidth / 3,
                   top: 8,
-                  child: Container(height: 9, color: g.bar),
+                  child: Container(
+                    height: 9,
+                    color: g.domainBar(G3Domain.recovery),
+                  ),
                 ),
                 Positioned(
                   left: x * (box.maxWidth - 3),

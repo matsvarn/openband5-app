@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
@@ -12,6 +11,7 @@ import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../charts.dart';
 import '../chrome.dart' as chrome;
 import '../count_copy.dart';
+import '../g3_format.dart';
 import '../g3_theme.dart';
 import '../metrics.dart' as metrics;
 
@@ -33,6 +33,16 @@ String g3MetricName(G3Metric metric) => switch (metric) {
   G3Metric.steps => 'Schritte',
 };
 
+G3Domain g3MetricDomain(G3Metric metric) => switch (metric) {
+  G3Metric.recovery ||
+  G3Metric.hrv ||
+  G3Metric.rhr ||
+  G3Metric.respRate ||
+  G3Metric.skinTempZ => G3Domain.recovery,
+  G3Metric.sleepMinutes => G3Domain.sleep,
+  G3Metric.strain || G3Metric.steps => G3Domain.load,
+};
+
 String _unit(G3Metric metric) => switch (metric) {
   G3Metric.recovery => '',
   G3Metric.hrv => 'ms',
@@ -50,31 +60,26 @@ int _digits(G3Metric metric) => switch (metric) {
 
 String _number(double? value, G3Metric metric) {
   if (value == null || !value.isFinite) return '—';
-  if (metric == G3Metric.sleepMinutes) {
-    final m = value.round();
-    return '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}';
-  }
+  if (metric == G3Metric.sleepMinutes) return g3Duration(value.round());
   if (metric == G3Metric.steps) return g3Count(value.round());
-  final text = value.toStringAsFixed(_digits(metric)).replaceAll('.', ',');
-  return metric == G3Metric.skinTempZ && value > 0 ? '+$text' : text;
+  return metric == G3Metric.skinTempZ
+      ? g3Signed(value, digits: _digits(metric))
+      : g3Number(value, digits: _digits(metric));
 }
 
-String _date(String day) =>
-    DateFormat('EEE d.MM', 'de_DE').format(DateTime.parse(day));
+String _date(String day) => g3DayShort(DateTime.parse(day));
 
-String _longDate(String day) =>
-    DateFormat('EEEE, d. MMMM', 'de_DE').format(DateTime.parse(day));
+String _longDate(String day) => g3DayLong(DateTime.parse(day));
 
-String _endLabel(String day) => day == todayLabel()
-    ? 'heute'
-    : DateFormat('dd.MM', 'de_DE').format(DateTime.parse(day));
+String _endLabel(String day) =>
+    day == todayLabel() ? 'heute' : g3DateShort(DateTime.parse(day));
 
-String _bandStamp(BandSnapshot band) {
-  final stored = band.latestStoredAt?.toLocal();
-  if (stored == null) return 'Letzter Bandwert —';
-  final pattern = dayLabelOf(stored) == todayLabel() ? 'HH:mm' : 'dd.MM HH:mm';
-  return 'Letzter Bandwert ${DateFormat(pattern, 'de_DE').format(stored)}';
-}
+String _bandStamp(BandSnapshot band) =>
+    g3DataThrough(band.latestStoredAt?.toLocal(), now: DateTime.now());
+
+/// Shared section chrome already adds 24 pt; shift it out of detail content's gutter.
+Widget _outsideGutter(Widget child) =>
+    Transform.translate(offset: const Offset(-16, 0), child: child);
 
 String _weightSourceLabel(G3WeightSource? source) => switch (source) {
   G3WeightSource.manual => 'manuell',
@@ -102,6 +107,7 @@ metrics.OBBodyRow _bodyRow(
       : null;
   final bounds = range == null ? null : _personalBounds(range);
   return metrics.OBBodyRow(
+    domain: g3MetricDomain(metric),
     state: metric == G3Metric.skinTempZ
         ? metrics.OBBodyState.deviation
         : value == null
@@ -272,17 +278,17 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: title.toUpperCase(),
+            domain: g3MetricDomain(metric),
+            subtitle: _longDate(widget.endDay),
+            backLabel: widget.backLabel,
+            onBack: () => Navigator.of(context).pop(),
+            onTrailing: () => _showExplanation(context, metric),
+          ),
           children: [
-            chrome.OBPageHeader.detail(
-              title: title.toUpperCase(),
-              subtitle: _longDate(widget.endDay),
-              backLabel: widget.backLabel,
-              onBack: () => Navigator.of(context).pop(),
-              onTrailing: () => _showExplanation(context, metric),
-            ),
-            const SizedBox(height: 12),
             if (_error)
               chrome.OBErrorBlock(
                 title: 'Verlauf konnte nicht geladen werden',
@@ -299,7 +305,8 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
               )
             else ...[
               metrics.OBLeadMetric(
-                label: metric == G3Metric.skinTempZ ? 'Abweichung' : title,
+                domain: g3MetricDomain(metric),
+                label: metric == G3Metric.skinTempZ ? 'Abweichung' : '',
                 state: value == null
                     ? metrics.OBLeadState.missing
                     : metric == G3Metric.skinTempZ || range == null
@@ -318,7 +325,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 unit: _unit(metric).isEmpty ? null : _unit(metric),
                 signed: metric == G3Metric.skinTempZ,
                 note: metric == G3Metric.skinTempZ
-                    ? 'Nacht zu ${_date(widget.endDay)}'
+                    ? g3NightOf(DateTime.parse(widget.endDay))
                     : range == null
                     ? _baseline?.status.phase == BaselinePhase.building
                           ? 'Basis im Aufbau'
@@ -346,10 +353,10 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                 scale: value == null ? null : _scale(metric, range),
                 title: 'Kein Messwert',
                 reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
-                onTap: () => _showExplanation(context, metric),
               ),
               const SizedBox(height: 10),
               OBTrendChart(
+                domain: g3MetricDomain(metric),
                 title: metric == G3Metric.skinTempZ
                     ? 'ABWEICHUNG · RELATIV'
                     : '${title.toUpperCase()}${_unit(metric).isEmpty ? '' : ' · ${_unit(metric)}'}',
@@ -364,21 +371,12 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : (_number(range.low, metric), _number(range.high, metric)),
                 zero: metric == G3Metric.skinTempZ ? 0 : null,
                 xLabels: _period == OBTrendPeriod.d7
-                    ? [
-                        for (final p in points)
-                          DateFormat(
-                            'E',
-                            'de_DE',
-                          ).format(DateTime.parse(p.day)),
-                      ]
+                    ? [for (final p in points) g3Weekday(DateTime.parse(p.day))]
                     : points.isEmpty
                     ? const []
                     : [
-                        DateFormat(
-                          'dd.MM',
-                          'de_DE',
-                        ).format(DateTime.parse(points.first.day)),
-                        DateFormat('dd.MM', 'de_DE').format(
+                        g3DateShort(DateTime.parse(points.first.day)),
+                        g3DateShort(
                           DateTime.parse(points[points.length ~/ 2].day),
                         ),
                         _endLabel(widget.endDay),
@@ -391,20 +389,15 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : 'noch $remaining ${g3CountNoun(remaining, 'Tag', 'Tage')}',
                 onPeriod: _changePeriod,
               ),
-              if (remaining != null) ...[
-                const SizedBox(height: 10),
-                _InfoCard(
-                  title: 'Noch kein Verlauf',
-                  text:
-                      'Ein Verlauf braucht 7 Werte. Du hast $valueCount. Fehlende Tage bleiben leer.',
-                ),
-              ] else ...[
+              if (remaining == null) ...[
                 const SizedBox(height: 10),
                 if (metric != G3Metric.skinTempZ)
                   _Stats(metric: metric, points: points, range: range),
                 if (metric == G3Metric.hrv || metric == G3Metric.recovery) ...[
-                  chrome.OBSectionHeader(
-                    metric == G3Metric.hrv ? 'NÄCHTE' : 'LETZTE NACHT',
+                  _outsideGutter(
+                    chrome.OBSectionHeader(
+                      metric == G3Metric.hrv ? 'NÄCHTE' : 'LETZTE NACHT',
+                    ),
                   ),
                   chrome.OBPanel(
                     child: Column(
@@ -442,7 +435,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                   ),
                 ],
                 if (metric == G3Metric.rhr && _gaps(points).isNotEmpty) ...[
-                  const chrome.OBSectionHeader('LÜCKEN'),
+                  _outsideGutter(const chrome.OBSectionHeader('LÜCKEN')),
                   chrome.OBPanel(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -451,8 +444,8 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Text(
-                              '${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$1))}'
-                              '${gap.$1 == gap.$2 ? '' : '–${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(gap.$2))}'}'
+                              '${g3DateShort(DateTime.parse(gap.$1))}'
+                              '${gap.$1 == gap.$2 ? '' : '–${g3DateShort(DateTime.parse(gap.$2))}'}'
                               ' · ${gap.$3} ${g3CountNoun(gap.$3, 'Tag', 'Tage')} ohne Messwert',
                               style: g.t(14, 18, color: g.ink2),
                             ),
@@ -462,15 +455,6 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                   ),
                 ],
               ],
-              const SizedBox(height: 12),
-              _InfoCard(
-                title: metric == G3Metric.skinTempZ
-                    ? 'Was das ist'
-                    : 'Lücken bleiben leer',
-                text: metric == G3Metric.skinTempZ
-                    ? 'Relative Abweichung der Hauttemperatur von deiner Basis, in Sensor-Einheiten. Das ist keine Körpertemperatur.'
-                    : 'Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
-              ),
               if (widget.band != null)
                 chrome.OBFooterStamp(_bandStamp(widget.band!)),
             ],
@@ -633,58 +617,27 @@ class _Stats extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.text});
-  final String title, text;
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: g.pressed(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(LucideIcons.info, size: 20, color: g.ink),
-          const SizedBox(height: 14),
-          Text(title, style: g.t(18, 23, weight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Text(text, style: g.t(14, 19, color: g.ink2)),
-        ],
-      ),
-    );
-  }
-}
+void _showExplanation(
+  BuildContext context,
+  G3Metric metric,
+) => chrome.showOBInfoSheet(
+  context,
+  title: g3MetricName(metric),
+  paragraphs: [
+    metric == G3Metric.skinTempZ
+        ? 'Die Abweichung ist relativ zu deiner Basis. Sie zeigt keine Körpertemperatur. Tage ohne Messung bleiben leer.'
+        : metric == G3Metric.steps
+        ? 'Der Zähler im Band liefert die Schritte. Stunden ohne gespeicherte Messung bleiben leer.'
+        : 'Dein Normalbereich stammt aus gespeicherten Messungen. Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
+  ],
+);
 
-void _showExplanation(BuildContext context, G3Metric metric) {
-  showModalBottomSheet<void>(
-    context: context,
-    useSafeArea: true,
-    builder: (sheet) => chrome.OBSheet(
-      title: g3MetricName(metric),
-      subtitle: metric == G3Metric.skinTempZ
-          ? 'Die Abweichung ist relativ zu deiner Basis. Sie zeigt keine Körpertemperatur.'
-          : 'Dein Normalbereich stammt aus gespeicherten Messungen. Fehlende Tage bleiben leer.',
-      confirmLabel: 'Schließen',
-      onCancel: () => Navigator.pop(sheet),
-      onConfirm: () => Navigator.pop(sheet),
-      child: const SizedBox.shrink(),
-    ),
-  );
-}
-
-void _showWeightInfo(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  useSafeArea: true,
-  builder: (sheet) => chrome.OBSheet(
-    title: 'Gewicht',
-    subtitle:
-        'Der Verlauf zeigt deine datierten Einträge. Tage ohne Eintrag bleiben leer.',
-    confirmLabel: 'Schließen',
-    onCancel: () => Navigator.pop(sheet),
-    onConfirm: () => Navigator.pop(sheet),
-    child: const SizedBox.shrink(),
-  ),
+void _showWeightInfo(BuildContext context) => chrome.showOBInfoSheet(
+  context,
+  title: 'Gewicht',
+  paragraphs: const [
+    'Der Verlauf zeigt deine datierten Einträge. Tage ohne Eintrag bleiben leer.',
+  ],
 );
 
 /// Band-owned values plus the dated, manually recorded weight.
@@ -754,17 +707,22 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
-          children: [
-            chrome.OBPageHeader.detail(
-              title: 'MESSWERTE',
-              subtitle: 'Nacht zu ${_date(widget.endDay)}',
-              backLabel: 'Heute',
-              onBack: () => Navigator.pop(context),
-              onTrailing: () => _showExplanation(context, G3Metric.hrv),
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: 'MESSWERTE',
+            subtitle: g3NightOf(DateTime.parse(widget.endDay)),
+            backLabel: 'Heute',
+            onBack: () => Navigator.pop(context),
+            onTrailing: () => chrome.showOBInfoSheet(
+              context,
+              title: 'Messwerte',
+              paragraphs: const [
+                'Strich: letzter Wert. Ein grauer Bereich zeigt deinen Normalbereich, sobald er verlässlich ist. Farbe nur außerhalb davon.',
+              ],
             ),
-            const SizedBox(height: 12),
+          ),
+          children: [
             if (_error)
               chrome.OBErrorBlock(
                 title: 'Messwerte konnten nicht geladen werden',
@@ -803,7 +761,7 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                   ],
                 ),
               ),
-              const chrome.OBSectionHeader('EINGETRAGEN'),
+              _outsideGutter(const chrome.OBSectionHeader('EINGETRAGEN')),
               chrome.OBListRow(
                 icon: LucideIcons.scale,
                 title: 'Gewicht',
@@ -814,7 +772,7 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                       ),
                 value: _weight?.history.latest == null
                     ? '—'
-                    : '${_weight!.history.latest!.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
+                    : '${g3Number(_weight!.history.latest!.value, digits: 1)} kg',
                 onTap: () => pushInTab<void>(
                   context,
                   MaterialPageRoute<void>(
@@ -826,12 +784,6 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              const _InfoCard(
-                title: 'So liest du die Zeilen',
-                text:
-                    'Strich: letzter Wert. Ein grauer Bereich zeigt deinen Normalbereich, sobald er verlässlich ist. Farbe nur außerhalb davon.',
               ),
               if (widget.band != null)
                 chrome.OBFooterStamp(_bandStamp(widget.band!)),
@@ -916,17 +868,16 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: 'GEWICHT',
+            subtitle: _longDate(widget.endDay),
+            backLabel: widget.backLabel,
+            onBack: () => Navigator.pop(context),
+            onTrailing: () => _showWeightInfo(context),
+          ),
           children: [
-            chrome.OBPageHeader.detail(
-              title: 'GEWICHT',
-              subtitle: _longDate(widget.endDay),
-              backLabel: widget.backLabel,
-              onBack: () => Navigator.pop(context),
-              onTrailing: () => _showWeightInfo(context),
-            ),
-            const SizedBox(height: 12),
             if (_error)
               chrome.OBErrorBlock(
                 title: 'Gewicht konnte nicht geladen werden',
@@ -942,7 +893,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
               )
             else ...[
               metrics.OBLeadMetric(
-                label: 'Gewicht',
+                label: '',
                 state: metrics.OBLeadState.plain,
                 value: latest?.value,
                 digits: 1,
@@ -956,7 +907,6 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                     : null,
                 title: 'Noch kein Gewicht',
                 reason: 'Trage dein Gewicht ein, um einen Verlauf zu sehen.',
-                onTap: () => _showWeightInfo(context),
               ),
               const SizedBox(height: 10),
               OBTrendChart(
@@ -967,7 +917,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 min: lo,
                 max: hi,
                 xLabels: [
-                  DateFormat('dd.MM', 'de_DE').format(
+                  g3DateShort(
                     DateTime.parse(
                       g3DaysEnding(widget.endDay, history.days).first,
                     ),
@@ -998,14 +948,13 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                   if (mounted) _load();
                 },
               ),
-              const chrome.OBSectionHeader('EINTRÄGE'),
+              _outsideGutter(const chrome.OBSectionHeader('EINTRÄGE')),
               for (final entry in history.entries) ...[
                 chrome.OBListRow(
                   icon: LucideIcons.scale,
                   title: _date(entry.day),
                   subtitle: _weightSourceLabel(_weight!.sources[entry.day]),
-                  value:
-                      '${entry.value.toStringAsFixed(1).replaceAll('.', ',')} kg',
+                  value: '${g3Number(entry.value, digits: 1)} kg',
                   onTap: _weight!.sources[entry.day] == G3WeightSource.manual
                       ? () async {
                           await openG3WeightEntry(
@@ -1037,19 +986,14 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
 void _showWeightSourceInfo(
   BuildContext context, {
   required bool imported,
-}) => showModalBottomSheet<void>(
-  context: context,
-  useSafeArea: true,
-  builder: (sheet) => chrome.OBSheet(
-    title: imported ? 'Apple Health' : 'Quelle unbekannt',
-    subtitle: imported
+}) => chrome.showOBInfoSheet(
+  context,
+  title: imported ? 'Apple Health' : 'Quelle unbekannt',
+  paragraphs: [
+    imported
         ? 'Dieser Gewichtseintrag wurde aus Apple Health übernommen. Die Quelle bleibt am Eintrag sichtbar.'
         : 'Die Quelle dieses Gewichtseintrags ist nicht belegt. Er kann hier nicht als manueller Eintrag geändert werden.',
-    confirmLabel: 'Schließen',
-    onCancel: () => Navigator.pop(sheet),
-    onConfirm: () => Navigator.pop(sheet),
-    child: const SizedBox.shrink(),
-  ),
+  ],
 );
 
 Future<void> openG3WeightEntry(
@@ -1072,6 +1016,7 @@ Future<void> openG3WeightEntry(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    backgroundColor: Colors.transparent,
     builder: (_) => _WeightEntrySheet(repository: repository, base: base),
   );
 }
@@ -1170,7 +1115,7 @@ class _WeightEntrySheetState extends State<_WeightEntrySheet> {
     final g = G3.of(context);
     final timeLabel = _minute == null
         ? 'ohne Uhrzeit'
-        : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}';
+        : g3Clock(DateTime(2000, 1, 1, _minute! ~/ 60, _minute! % 60));
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: chrome.OBSheet(

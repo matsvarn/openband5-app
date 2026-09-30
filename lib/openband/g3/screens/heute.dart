@@ -8,7 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
 import '../../../notify/notification_center.dart';
@@ -20,13 +20,16 @@ import '../../journal_fields.dart'
     show journalFieldTitle, journalFieldUnitLabel;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../today_note.dart';
-import '../../training.dart' show OBSportIcon, obSport;
 import '../chrome.dart';
+import '../check_in.dart';
 import '../count_copy.dart';
 import '../day.dart';
+import '../g3_format.dart';
 import '../g3_theme.dart';
-import '../heute_parts.dart';
+import '../heute_parts.dart'
+    show OBYesNoKeys, OBRatingKeys, OBCountAnswer, OBNoteAnswer;
 import '../metrics.dart';
+import '../sport.dart';
 
 /// An armed bedtime reminder: its instant and the day whose note armed it.
 typedef ArmedBedtime = ({DateTime at, String day});
@@ -159,13 +162,14 @@ class OpenBandHeute extends StatefulWidget {
   final OpenBandController controller;
   final HeuteAnchor? initialAnchor;
   final HeuteReminder reminder;
-  final VoidCallback? onProfile, onBand, onConnect, onAddActivity;
+  final VoidCallback? onProfile, onBand, onDataStatus, onConnect, onAddActivity;
 
   /// Opens the journal on a day: a check-in answer's own day, which can be
   /// yesterday while Heute shows today.
   final ValueChanged<String>? onJournalDay;
   final ValueChanged<G3Metric>? onOpenMetric;
   final ValueChanged<G3Activity>? onOpenActivity;
+  final VoidCallback? onOpenAllMetrics;
   final VoidCallback? onOpenSleep;
   const OpenBandHeute({
     super.key,
@@ -174,11 +178,13 @@ class OpenBandHeute extends StatefulWidget {
     this.reminder = const NotificationHeuteReminder(),
     this.onProfile,
     this.onBand,
+    this.onDataStatus,
     this.onConnect,
     this.onAddActivity,
     this.onJournalDay,
     this.onOpenMetric,
     this.onOpenActivity,
+    this.onOpenAllMetrics,
     this.onOpenSleep,
   });
 
@@ -394,19 +400,11 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   // ---------------------------------------------------------------------
   // formatting
 
-  static String _clock(DateTime t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-  static String _hm(num minutes) {
-    final m = minutes.round();
-    return '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}';
-  }
+  static String _hm(num minutes) => g3Duration(minutes.round());
 
   static String _signedMinutes(int d) {
-    final s = d < 0 ? '−' : '+';
-    final a = d.abs();
-    return a < 60
-        ? '$s$a Min.'
-        : '$s${a ~/ 60}h${(a % 60).toString().padLeft(2, '0')}';
+    if (d.abs() < 60) return g3Signed(d, unit: 'Min.');
+    return '${d < 0 ? '−' : '+'}${g3Duration(d.abs())}';
   }
 
   static int _int(double v) => v.round();
@@ -473,7 +471,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             title: 'Band nicht verbunden',
             reason: stored == null
                 ? 'Noch keine Übertragung. Die Nacht liegt auf dem Band und kommt beim Verbinden.'
-                : 'Letzte Übertragung ${_relative(stored, now)}. Die Nacht liegt auf dem Band und kommt beim Verbinden.',
+                : 'Letzte Übertragung ${g3Relative(stored, now: now)}. Die Nacht liegt auf dem Band und kommt beim Verbinden.',
             retryLabel: 'Verbinden',
             onRetry: widget.onConnect,
           ),
@@ -523,15 +521,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           const SizedBox(height: 12),
           _pad(_steps(day, isToday)),
         ],
-        if (stored != null)
-          OBFooterStamp(
-            [
-              'Letzter Bandwert ${_relative(stored, now)}',
-              if (band.receivedAt != null)
-                'Übertragung ${_relative(band.receivedAt!, now)}',
-            ].join(' · '),
-            synthetic: synthetic,
-          ),
       ],
     ];
     if (day != null && (_data.checkIn != null || !isToday)) _jumpToAnchor();
@@ -555,16 +544,13 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               child: OBPageHeader.compact(
                 title: isToday
                     ? 'Heute'
-                    : DateFormat(
-                        'EEEE',
-                        'de_DE',
-                      ).format(DateTime.parse(c.selectedDay)),
+                    : g3DayShort(DateTime.parse(c.selectedDay)),
                 subtitle: [
-                  DateFormat('E dd.MM', 'de_DE')
-                      .format(DateTime.parse(c.selectedDay))
-                      .replaceAll('.,', '')
-                      .replaceFirst('. ', ' '),
-                  if (synthetic) 'Synthetische Daten',
+                  if (isToday)
+                    g3DayShort(DateTime.parse(c.selectedDay))
+                  else
+                    _selectedDayAge(c.selectedDay, c.now()),
+                  if (synthetic) 'SYNTHETISCHE DATEN',
                 ].join(' · '),
                 band: OBBandCapsule(
                   state: never
@@ -589,13 +575,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     child: child,
   );
 
-  String _relative(DateTime t, DateTime now) {
-    final d = dayLabelOf(t);
-    if (d == dayLabelOf(now)) return _clock(t);
-    if (d == dayLabelOf(DateTime(now.year, now.month, now.day - 1))) {
-      return 'gestern ${_clock(t)}';
-    }
-    return '${DateFormat('dd.MM.').format(t)} ${_clock(t)}';
+  String _selectedDayAge(String day, DateTime now) {
+    final selected = DateTime.parse(day);
+    final days = DateTime.utc(now.year, now.month, now.day)
+        .difference(DateTime.utc(selected.year, selected.month, selected.day))
+        .inDays;
+    return days == 1 ? 'gestern' : 'vor $days Tagen';
   }
 
   // ---------------------------------------------------------------------
@@ -609,20 +594,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   ) {
     final day = DateTime.parse(c.selectedDay);
     final now = c.now();
-    // Calendar days, not 24 h spans: a local span across a DST change is
-    // 23 or 25 h. UTC dates have none.
-    final ago = DateTime.utc(
-      now.year,
-      now.month,
-      now.day,
-    ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
-    final title = isToday ? 'Heute' : DateFormat('EEEE', 'de_DE').format(day);
-    final date = DateFormat('d. MMMM', 'de_DE').format(day);
+    final longDay = g3DayLong(day);
+    final title = isToday ? 'Heute' : longDay.split(', ').first;
+    final date = longDay.split(', ').last;
     final subtitle = isToday
-        ? DateFormat('EEEE, d. MMMM', 'de_DE').format(day)
-        : ago == 1
-        ? '$date · gestern'
-        : '$date · vor $ago Tagen';
+        ? longDay
+        : '$date · ${_selectedDayAge(c.selectedDay, now)}';
     return OBPageHeader.hub(
       title: title,
       subtitle: subtitle,
@@ -646,13 +623,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     return OBDateStrip(
       days: [
         for (final d in days)
-          (
-            DateFormat(
-              'E',
-              'de_DE',
-            ).format(DateTime.parse(d)).replaceAll('.', ''),
-            DateTime.parse(d).day.toString(),
-          ),
+          (g3Weekday(DateTime.parse(d)), DateTime.parse(d).day.toString()),
       ],
       selected: selected < 0 ? -1 : selected,
       onSelect: (i) => c.selectDay(days[i]),
@@ -677,19 +648,19 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             OBSyncKind.past,
             stored == null
                 ? 'Gespeicherter Tag'
-                : 'Gespeicherter Tag · Daten bis ${_clock(stored)}',
+                : 'Gespeicherter Tag · ${g3DataThrough(stored, now: now)}',
           )
         : stale
         ? (
             OBSyncKind.stale,
             stored == null
                 ? 'Getrennt · noch keine Daten'
-                : 'Getrennt · Daten bis ${_relative(stored, now)}',
+                : 'Getrennt · ${g3DataThrough(stored, now: now)}',
           )
         : (
             gap != null ? OBSyncKind.partial : OBSyncKind.live,
             [
-              if (stored != null) 'Daten bis ${_relative(stored, now)}',
+              if (stored != null) g3DataThrough(stored, now: now),
               if (day?.sleep.duration.value == null)
                 'keine Nacht'
               else
@@ -700,7 +671,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       kind: kind,
       text: text,
       synthetic: synthetic,
-      onTap: widget.onBand,
+      onTap: widget.onDataStatus,
     );
   }
 
@@ -717,6 +688,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     void open() => widget.onOpenMetric?.call(G3Metric.recovery);
     if (never) {
       lead = const OBLeadMetric(
+        domain: G3Domain.recovery,
+        glyph: LucideIcons.heartPulse,
         label: 'ERHOLUNG',
         note: 'kein Band',
         state: OBLeadState.missing,
@@ -732,6 +705,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       final delta = _int(value) - _int(range.median);
       final median = _int(range.median);
       lead = OBLeadMetric(
+        domain: G3Domain.recovery,
+        glyph: LucideIcons.heartPulse,
         label: 'ERHOLUNG',
         note: 'normal ${_int(range.low)}–${_int(range.high)}',
         state: state,
@@ -763,19 +738,20 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     } else if (value == null && phase == BaselinePhase.building) {
       final need = baseline?.status.nightsNeeded;
       lead = OBLeadMetric(
+        domain: G3Domain.recovery,
+        glyph: LucideIcons.heartPulse,
         label: 'ERHOLUNG',
-        note: 'Basis im Aufbau',
         state: OBLeadState.building,
         have: baseline?.status.nightsHave,
         need: need,
         title: 'Noch keine Erholung',
-        reason: need == null
-            ? 'Sie braucht eine Basis aus deinen Nächten.'
-            : 'Sie braucht $need ${g3CountNoun(need, 'Nacht', 'Nächte')} als Basis.',
+        reason: '',
         onTap: widget.onOpenMetric == null ? null : open,
       );
     } else if (value != null) {
       lead = OBLeadMetric(
+        domain: G3Domain.recovery,
+        glyph: LucideIcons.heartPulse,
         label: 'ERHOLUNG',
         note: phase == BaselinePhase.building ? 'Basis im Aufbau' : null,
         state: OBLeadState.plain,
@@ -790,6 +766,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       );
     } else {
       lead = OBLeadMetric(
+        domain: G3Domain.recovery,
+        glyph: LucideIcons.heartPulse,
         label: 'ERHOLUNG',
         note: stale ? 'nicht übertragen' : 'Keine Nacht',
         state: OBLeadState.missing,
@@ -833,6 +811,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final minutes = day?.sleep.duration.value;
     final goal = _data.sleepGoal;
     return OBSecondaryMetric(
+      domain: G3Domain.sleep,
+      glyph: LucideIcons.moon,
       label: 'SCHLAF',
       value: minutes == null ? null : _hm(minutes),
       aside: minutes == null
@@ -851,6 +831,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   Widget _strainMetric(OpenBandDay? day, bool isToday, bool stale) {
     final v = day?.strain.value;
     return OBSecondaryMetric(
+      domain: G3Domain.load,
+      glyph: LucideIcons.flame,
       label: 'BELASTUNG',
       value: v == null ? null : g3Number(v, digits: 1),
       aside: v == null
@@ -899,13 +881,18 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             : armed
             ? OBNoteState.reminded
             : OBNoteState.action,
-        headline: note.headline,
+        headline: note.headline.replaceAll(
+          'Heute früher ins Bett.',
+          'Früher ins Bett.',
+        ),
         reason: note.reason,
         actionTitle: armed
-            ? 'Erinnerung um ${_clock(action.reminderAt)}'
+            ? 'Erinnerung um ${g3Clock(action.reminderAt)}'
             : action?.label,
         actionSubtitle: armed
-            ? '15 Min. vor ${action.label.split(' ').first} · abbestellen'
+            ? '15 Min. vor ${g3Clock(action.reminderAt.add(const Duration(minutes: 15)))} · abbestellen'
+            : _data.plus?.needMinutes != null && _data.plus?.wake != null
+            ? 'Bedarf ${_hm(_data.plus!.needMinutes!)} · bis ${g3Clock(_data.plus!.wake!)}'
             : action?.sub,
         onRemind: remindable && !armed && !_remindBusy
             ? () => _arm(action)
@@ -942,7 +929,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final why = switch (result) {
       BedtimeReminderResult.scheduled => null,
       BedtimeReminderResult.passed =>
-        'Keine Erinnerung gestellt: ${_clock(action.reminderAt)} ist schon vorbei.',
+        'Keine Erinnerung gestellt: ${g3Clock(action.reminderAt)} ist schon vorbei.',
       BedtimeReminderResult.denied =>
         'Keine Erinnerung gestellt: Mitteilungen sind aus. In den iOS-Einstellungen erlauben.',
       BedtimeReminderResult.failed =>
@@ -1016,17 +1003,21 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
 
   Widget _activityRow(G3Activity a) {
     final g = G3.of(context);
-    final sport = obSport(a.sport);
     final unconfirmed = a.source == G3ActivitySource.auto && !a.confirmed;
     final end = a.end;
     final minutes = a.duration?.inMinutes;
     return OBActivityRow(
-      pictogram: OBSportIcon(sport.icon, size: 24, color: g.ink),
-      title: heuteSportLabel(a.sport),
+      domain: G3Domain.load,
+      pictogram: g3SportIcon(
+        a.sport,
+        size: 24,
+        color: g.domainHue(G3Domain.load),
+      ),
+      title: g3SportLabel(a.sport),
       subtitle: [
         end == null
-            ? 'seit ${_clock(a.start)}'
-            : '${_clock(a.start)}–${_clock(end)}',
+            ? 'seit ${g3Clock(a.start)}'
+            : '${g3Clock(a.start)}–${g3Clock(end)}',
         if (minutes != null) '$minutes Min.',
       ].join(' · '),
       unconfirmed: unconfirmed,
@@ -1051,7 +1042,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       builder: (sheet) => StatefulBuilder(
         builder: (sheet, setSheet) {
           final g = G3.of(sheet);
-          final meta = obSport(sport);
           Future<void> run(Future<void> Function() op) async {
             try {
               await op();
@@ -1074,8 +1064,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             title: 'Automatisch erkannt',
             subtitle: [
               a.end == null
-                  ? 'seit ${_clock(a.start)}'
-                  : '${_clock(a.start)}–${_clock(a.end!)}',
+                  ? 'seit ${g3Clock(a.start)}'
+                  : '${g3Clock(a.start)}–${g3Clock(a.end!)}',
               if (a.duration != null) '${a.duration!.inMinutes} Min.',
             ].join(' · '),
             cancelLabel: 'Ändern',
@@ -1092,16 +1082,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   onConfirm: () => Navigator.of(pick).pop(),
                   child: Column(
                     children: [
-                      for (final s in kHeuteSports)
+                      for (final s in g3QuickSportIds)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: OBListRow(
-                            leading: OBSportIcon(
-                              obSport(s).icon,
-                              size: 18,
-                              color: g.ink,
-                            ),
-                            title: heuteSportLabel(s),
+                            leading: g3SportIcon(s, size: 18, color: g.ink),
+                            title: g3SportLabel(s),
                             onTap: () => Navigator.of(pick).pop(s),
                           ),
                         ),
@@ -1134,12 +1120,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                       height: 44,
                       alignment: Alignment.center,
                       decoration: g.pressed(radius: 12, color: g.track),
-                      child: OBSportIcon(meta.icon, size: 24, color: g.ink),
+                      child: g3SportIcon(sport, size: 24, color: g.ink),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        heuteSportLabel(sport),
+                        g3SportLabel(sport),
                         style: g.t(17, 22, weight: FontWeight.w700),
                       ),
                     ),
@@ -1194,8 +1180,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final Widget card;
     if (_checkInLater) {
       card = OBCheckIn(
-        state: OBCheckInState.later,
-        progress: '${open.length} offen',
+        title: '',
+        index: ci.answered + 1,
+        total: ci.total,
+        answer: const SizedBox.shrink(),
+        onLater: () {},
+        later: true,
         onResume: () => setState(() => _checkInLater = false),
       );
     } else {
@@ -1210,10 +1200,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           : after.isEmpty
           ? null
           : after.last;
-      final question = heuteCheckInQuestion(q.key, _checkInTitle(q));
-      OBCheckInAsk ask(Widget answer) => OBCheckInAsk(
-        progress: '${ci.answered + 1} von ${ci.total}',
-        question: question,
+      final copy = g3CheckInCopy(q.key, _checkInTitle(q));
+      final question = copy.question;
+      OBCheckIn ask(Widget answer) => OBCheckIn(
+        title: question,
+        index: ci.answered + 1,
+        total: ci.total,
         target: _targetLabel(ci.day, q.targetDay),
         answered: last == null ? null : _answerText(last),
         onChange: last == null || widget.onJournalDay == null
@@ -1233,8 +1225,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         G3CheckInKind.rating => ask(
           OBRatingKeys(
             question: question,
-            low: heuteRatingCopy(q.key).low,
-            high: heuteRatingCopy(q.key).high,
+            low: copy.low,
+            high: copy.high,
             max: (field?.max ?? 5).round(),
             onRate: (v) => _answer(q, G3RatingAnswer(v)),
           ),
@@ -1266,7 +1258,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   static String? _targetLabel(String selected, String target) {
     if (target == selected) return null;
     if (target == g3DaysEnding(selected, 2).first) return 'zu gestern';
-    return 'zu ${DateFormat('d.M.').format(DateTime.parse(target))}';
+    return 'zu ${g3DateShort(DateTime.parse(target))}';
   }
 
   static String _answerText(G3CheckInQuestion q) {
@@ -1317,22 +1309,13 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final selected =
         _week ?? (building || recoveryEmpty ? _Week.sleep : _Week.recovery);
     return [
-      Padding(
-        padding: const EdgeInsets.only(right: 20),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Expanded(child: OBSectionHeader('WOCHE')),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: OBSegmented(
-                items: const ['Erholung', 'Schlaf', 'Belastung'],
-                selected: selected.index,
-                disabled: recoveryEmpty ? const {0} : const {},
-                onChanged: (i) => setState(() => _week = _Week.values[i]),
-              ),
-            ),
-          ],
+      OBSectionHeader(
+        'WOCHE',
+        trailing: OBSegmented(
+          items: const ['Erholung', 'Schlaf', 'Belastung'],
+          selected: selected.index,
+          disabled: recoveryEmpty ? const {0} : const {},
+          onChanged: (i) => setState(() => _week = _Week.values[i]),
         ),
       ),
       _pad(_weekBars(selected, isToday)),
@@ -1352,10 +1335,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final range = strip?.range;
     String dayName(int i, String d) => i == days.length - 1 && isToday
         ? 'Heute'
-        : DateFormat(
-            'E',
-            'de_DE',
-          ).format(DateTime.parse(d)).replaceAll('.', '');
+        : g3Weekday(DateTime.parse(d));
     G3Deviation dev(G3WeekValue v) {
       if (v.value == null || range == null || v.outOfRange != true) {
         return G3Deviation.none;
@@ -1392,6 +1372,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         final need = baseline?.status.nightsNeeded,
             left = baseline?.status.remaining;
         return OBWeekBars(
+          domain: G3Domain.recovery,
           bars: bars,
           max: 111,
           band: range == null ? null : (range.low, range.high),
@@ -1421,9 +1402,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         );
       case _Week.sleep:
         final goal = strip?.goal;
-        final recoveryEmpty = (_data.week[G3Metric.recovery]?.days ?? const [])
-            .every((d) => d.value == null);
         return OBWeekBars(
+          domain: G3Domain.sleep,
           bars: bars,
           max: 111 / 11 * 60,
           goal: goal,
@@ -1434,16 +1414,14 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               G3Legend.goal('Ziel ${_hm(goal)}')
             else
               const G3Legend.text('kein Schlafziel'),
-            if (recoveryEmpty)
-              const G3Legend.text('Erholung: noch keine Werte'),
           ],
         );
       case _Week.strain:
         return OBWeekBars(
+          domain: G3Domain.load,
           bars: bars,
           max: 21,
           emptyReason: empty ? 'Keine Belastung in dieser Woche' : null,
-          footer: const [G3Legend.text('Skala 0–21 · kein Normalbereich')],
         );
     }
   }
@@ -1454,7 +1432,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   Widget _night(OpenBandDay day, double? gap) {
     final s = day.sleep;
     final asleep = s.duration.value;
-    if (asleep == null) return const OBNightCard(state: OBNightState.missing);
+    if (asleep == null) {
+      return const OBNightCard(
+        domain: G3Domain.sleep,
+        state: OBNightState.missing,
+      );
+    }
     final onset = s.onset, wake = s.wake;
     final segments = <OBStageSegment>[];
     final gaps = <(double, double)>[];
@@ -1504,8 +1487,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       return _nightTotals(asleep, bed, totals);
     }
     return OBNightCard(
+      domain: G3Domain.sleep,
       state: gap != null ? OBNightState.gap : OBNightState.full,
-      note: gap != null ? '${gap.round()} Min. Lücke' : 'lückenlos',
+      note: gap != null ? '${gap.round()} Min. Lücke' : null,
       asleep: _hm(asleep),
       subtitle: bed == null
           ? null
@@ -1517,10 +1501,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       gaps: gaps,
       gapNote: firstGap == null
           ? null
-          : '${_clock(onset!.add(Duration(seconds: (firstGap.$1 * 60).round())))}–${_clock(onset.add(Duration(seconds: (firstGap.$2 * 60).round())))} ohne Daten · nicht aufgefüllt',
+          : '${g3Clock(onset!.add(Duration(seconds: (firstGap.$1 * 60).round())))}–${g3Clock(onset.add(Duration(seconds: (firstGap.$2 * 60).round())))} ohne Daten · nicht aufgefüllt',
       axis: onset == null || wake == null || mid == null
           ? ('', '', '')
-          : (_clock(onset), _clock(mid), _clock(wake)),
+          : (g3Clock(onset), g3Clock(mid), g3Clock(wake)),
       totals: totals,
       onTap: widget.onOpenSleep,
     );
@@ -1533,10 +1517,10 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   ) {
     final g = G3.of(context);
     Color color(OBStage s) => switch (s) {
-      OBStage.deep => g.stageDeep,
-      OBStage.light => g.stageLight,
-      OBStage.rem => g.stageRem,
-      OBStage.wake => g.wake,
+      OBStage.deep => g.stageFor(G3Domain.sleep, 3),
+      OBStage.light => g.stageFor(G3Domain.sleep, 2),
+      OBStage.rem => g.stageFor(G3Domain.sleep, 1),
+      OBStage.wake => g.stageFor(G3Domain.sleep, 0),
     };
     return Semantics(
       button: widget.onOpenSleep != null,
@@ -1547,7 +1531,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const G3LabelRow('NACHT', note: 'ohne Verlauf'),
+              const G3LabelRow(
+                'NACHT',
+                domain: G3Domain.sleep,
+                glyph: LucideIcons.moon,
+                note: 'ohne Verlauf',
+              ),
               const SizedBox(height: 4),
               G3ValueLine(
                 _hm(asleep),
@@ -1594,12 +1583,18 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           : null;
       final tap = widget.onOpenMetric == null ? null : () => open(metric);
       if (value == null) {
-        return OBBodyRow(state: OBBodyState.missing, name: name, onTap: tap);
+        return OBBodyRow(
+          domain: G3Domain.recovery,
+          state: OBBodyState.missing,
+          name: name,
+          onTap: tap,
+        );
       }
       final text = g3Number(value, digits: digits);
       if (range != null) {
         final pad = (range.high - range.low) * .6;
         return OBBodyRow(
+          domain: G3Domain.recovery,
           state: OBBodyState.range,
           name: name,
           value: text,
@@ -1617,6 +1612,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       // metric-defined scale, so no track is drawn from the value itself.
       final left = base?.status.remaining;
       return OBBodyRow(
+        domain: G3Domain.recovery,
         state: OBBodyState.building,
         name: name,
         value: text,
@@ -1646,6 +1642,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     rows.add(
       z == null
           ? OBBodyRow(
+              domain: G3Domain.recovery,
               state: OBBodyState.missing,
               name: 'Hauttemperatur',
               last: true,
@@ -1654,6 +1651,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   : () => open(G3Metric.skinTempZ),
             )
           : OBBodyRow(
+              domain: G3Domain.recovery,
               state: OBBodyState.deviation,
               name: 'Hauttemperatur',
               // Relative to the personal basis; never °C.
@@ -1668,21 +1666,17 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   : () => open(G3Metric.skinTempZ),
             ),
     );
-    final hrvBase = _data.ranges[G3Metric.hrv];
-    final building = hrvBase?.status.phase == BaselinePhase.building;
-    final left = hrvBase?.status.remaining;
     return OBPanel(
-      padding: const EdgeInsets.fromLTRB(18, 14, 16, 4),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           OBCardHeader(
             'KÖRPER',
-            note: building
-                ? (left == null
-                      ? 'Basis im Aufbau'
-                      : 'Basis: noch $left ${g3CountNoun(left, 'Nacht', 'Nächte')}')
-                : 'vergangene Nacht',
+            domain: G3Domain.recovery,
+            glyph: LucideIcons.personStanding,
+            note: 'vergangene Nacht',
+            onTap: widget.onOpenAllMetrics,
           ),
           ...rows,
         ],
@@ -1717,10 +1711,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     }
     final hourly = [for (final v in sums) v?.round()];
     return OBStepsCard(
+      domain: G3Domain.load,
       total: total,
-      note: last != null && isToday
-          ? 'Zähler im Band · bis ${_clock(last)}'
-          : 'Zähler im Band',
+      note: last != null && isToday ? 'bis ${g3Clock(last)}' : '',
       hourly: total == null ? const [] : hourly,
       goalLabel: null,
     );

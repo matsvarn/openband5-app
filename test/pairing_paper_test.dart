@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' as chrome;
 import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 
 Future<void> _pump(
@@ -91,7 +92,7 @@ void main() {
       matchesGoldenFile('openband_goldens/pairing-dark.png'),
     );
     expect(find.byTooltip('Zurück'), findsNothing);
-    expect(tester.getSize(find.byTooltip('Information')).height, 44);
+    expect(tester.getSize(find.bySemanticsLabel('Information')).height, 44);
     expect(find.text('WHOOP-App schließen'), findsOneWidget);
     expect(find.text('Verbinden'), findsOneWidget);
     expect(find.text('Später verbinden'), findsOneWidget);
@@ -110,12 +111,21 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(
-      tester.getSize(find.widgetWithText(FilledButton, 'Verbinden')).height,
+      tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('Verbinden'),
+                  matching: find.byType(GestureDetector),
+                )
+                .first,
+          )
+          .height,
       greaterThanOrEqualTo(48),
     );
     expect(
       tester
-          .getSize(find.widgetWithText(TextButton, 'Später verbinden'))
+          .getSize(find.widgetWithText(chrome.OBLink, 'Später verbinden'))
           .height,
       greaterThanOrEqualTo(44),
     );

@@ -222,6 +222,22 @@ const _families = {
 };
 
 void main() {
+  test('G3.1 shared variants have synthetic gallery specimens', () {
+    expect(
+      g3Specimens.keys,
+      containsAll([
+        'OBDayNote.sleep',
+        'OBActivityRow.compact',
+        'OBActivityRow.confirmation',
+        'OBCheckIn.shared',
+        'OBPageHeader.modal',
+        'OBSectionHeader.detail',
+        'G3DetailPage.section',
+        'OBSheet.independentClose',
+      ]),
+    );
+  });
+
   setUpAll(() async {
     for (final (family, path) in [
       ('Inter', 'assets/fonts/Inter/Inter.ttf'),
@@ -533,7 +549,7 @@ void main() {
         ),
       );
       expect(find.byType(OBZoneStrip), findsNothing);
-      expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
+      expect(find.text('Zonen nach Bestätigung'), findsNothing);
     });
 
     testWidgets('missing week values are hollow slots, not short bars', (
@@ -1037,7 +1053,7 @@ void main() {
     testWidgets('answered check-in change has a 44 pt target', (tester) async {
       await tester.pumpWidget(
         _app(
-          OBCheckIn(
+          G3CheckInPreview(
             state: OBCheckInState.answered,
             progress: '1 von 4',
             question: 'Frage?',
@@ -1139,11 +1155,21 @@ void main() {
         _app(
           Column(
             children: [
-              g3Specimens['OBPageHeader.hub']!(),
+              OBPageHeader.hub(
+                title: 'Heute',
+                subtitle: 'Dienstag, 29. September',
+                band: OBBandCapsule(
+                  state: OBBandState.live,
+                  battery: 64,
+                  onTap: () {},
+                ),
+                onProfile: () {},
+              ),
               OBPageHeader.detail(
                 title: 'ERHOLUNG',
                 backLabel: 'Heute',
                 onBack: () {},
+                onTrailing: () {},
               ),
             ],
           ),
@@ -1182,7 +1208,7 @@ void main() {
               ),
               SizedBox(
                 width: 361,
-                child: OBCheckIn(
+                child: G3CheckInPreview(
                   state: OBCheckInState.question,
                   progress: '1 von 4',
                   question: 'Gestern Abend Alkohol?',

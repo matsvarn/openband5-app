@@ -258,7 +258,7 @@ void main() {
     expect(find.text('K'), findsNothing);
     expect(find.text('F'), findsNothing);
     expect(find.byIcon(LucideIcons.pencil), findsOneWidget);
-    expect(find.byType(OBPageHeader), findsOneWidget);
+    expect(find.byType(G2PageHeader), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/meal-entry-detail.png'),

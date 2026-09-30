@@ -66,7 +66,7 @@ void main() {
                 color: p.canvas,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: OBPageHeader(
+                  child: G2PageHeader(
                     title: title,
                     subtitle: subtitle,
                     onBack: onBack,
@@ -96,7 +96,7 @@ void main() {
       onInfo: () => infos++,
       onDate: () => dates++,
     );
-    final header = tester.getRect(find.byType(OBPageHeader));
+    final header = tester.getRect(find.byType(G2PageHeader));
     final back = tester.getRect(find.byTooltip('Zurück'));
     final info = tester.getRect(find.byTooltip('Information'));
     final title = tester.getRect(find.text('MEDIKAMENTE'));
@@ -136,7 +136,7 @@ void main() {
       onInfo: () => infos++,
       onDate: () => dates++,
     );
-    final header = tester.getRect(find.byType(OBPageHeader));
+    final header = tester.getRect(find.byType(G2PageHeader));
     final back = tester.getRect(find.byTooltip('Zurück'));
     final info = tester.getRect(find.byTooltip('Information'));
     final title = tester.getRect(find.text('ERNÄHRUNGSZIELE'));
@@ -150,7 +150,7 @@ void main() {
     expect(title.height, 32);
     final lane = tester.getRect(
       find.descendant(
-        of: find.byType(OBPageHeader),
+        of: find.byType(G2PageHeader),
         matching: find.byWidgetPredicate(
           (w) => w is SizedBox && w.width == double.infinity,
         ),

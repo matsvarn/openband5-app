@@ -4,122 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'count_copy.dart';
+export 'check_in.dart' show OBCheckIn, OBInlineError;
+import 'band_parts.dart' show OBToggle;
+import 'chrome.dart' show OBIconButton, OBPillButton;
 import 'g3_theme.dart';
-
-class OBCheckIn extends StatelessWidget {
-  const OBCheckIn({
-    super.key,
-    required this.title,
-    required this.index,
-    required this.total,
-    required this.answer,
-    required this.onLater,
-    this.error,
-    this.onRetry,
-    this.retryLabel = 'Erneut speichern',
-    this.inlineLater = false,
-    this.footerLabel,
-  });
-  final String title;
-  final int index, total;
-  final Widget answer;
-  final VoidCallback onLater;
-  final String? error;
-  final VoidCallback? onRetry;
-  final String retryLabel;
-  final bool inlineLater;
-  final String? footerLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: g.pressed(radius: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.notebookPen, size: 20, color: g.ink),
-              const SizedBox(width: 8),
-              Expanded(child: Text('CHECK-IN', style: g.caps(size: 14))),
-              Text('$index von $total', style: g.t(13, 17, color: g.ink2)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              for (var i = 0; i < total; i++) ...[
-                if (i > 0) const SizedBox(width: 4),
-                Expanded(
-                  child: Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: i < index - 1
-                          ? g.ink
-                          : i == index - 1
-                          ? g.dark
-                                ? g.ink2
-                                : g.ink2.withValues(alpha: .45)
-                          : g.band,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(title, style: g.t(19, 24, weight: FontWeight.w700)),
-          const SizedBox(height: 12),
-          if (inlineLater)
-            Row(
-              children: [
-                Expanded(child: answer),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 72,
-                  child: TextButton(
-                    onPressed: onLater,
-                    child: const Text('Später'),
-                  ),
-                ),
-              ],
-            )
-          else
-            answer,
-          if (error != null) ...[
-            const SizedBox(height: 12),
-            OBInlineError(
-              message: error!,
-              onRetry: onRetry,
-              retryLabel: retryLabel,
-            ),
-          ],
-          if (!inlineLater)
-            Row(
-              children: [
-                if (footerLabel != null)
-                  Expanded(
-                    child: Text(
-                      footerLabel!,
-                      style: g.t(12, 16, color: g.muted),
-                    ),
-                  )
-                else
-                  const Spacer(),
-                TextButton(
-                  onPressed: onLater,
-                  child: Text('Später', style: g.t(14, 18, color: g.ink2)),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}
+import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind, OBMissingValue;
 
 class OBCheckInDone extends StatelessWidget {
   const OBCheckInDone({
@@ -180,15 +69,7 @@ class OBCheckInDone extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final answer in answers)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: g.pressed(radius: 14),
-                  child: Text(answer, style: g.t(12, 16, color: g.ink2)),
-                ),
+              for (final answer in answers) OBChip(OBChipKind.tag, answer),
             ],
           ),
           const SizedBox(height: 12),
@@ -208,12 +89,12 @@ class OBAnswerKey extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.selected = false,
-    this.icon,
+    this.rating = false,
   });
   final String label;
   final VoidCallback? onTap;
   final bool selected;
-  final IconData? icon;
+  final bool rating;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -223,41 +104,24 @@ class OBAnswerKey extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+        borderRadius: BorderRadius.circular(rating ? 16 : 24),
         child: Container(
-          constraints: BoxConstraints(minHeight: icon == null ? 44 : 58),
+          constraints: BoxConstraints(minHeight: rating ? 58 : 44),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: selected ? g.ink : g.canvas,
-            borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+            borderRadius: BorderRadius.circular(rating ? 16 : 24),
           ),
-          child: icon == null
-              ? Text(
-                  label,
-                  style: g.t(
-                    16,
-                    20,
-                    weight: FontWeight.w700,
-                    color: selected ? g.onInk : g.ink,
-                  ),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 22, color: selected ? g.onInk : g.ink),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      style: g.t(
-                        12,
-                        15,
-                        weight: FontWeight.w700,
-                        color: selected ? g.onInk : g.ink,
-                      ),
-                    ),
-                  ],
-                ),
+          child: Text(
+            label,
+            style: g.t(
+              rating ? 20 : 16,
+              20,
+              weight: FontWeight.w700,
+              color: selected ? g.onInk : g.ink,
+            ),
+          ),
         ),
       ),
     );
@@ -283,26 +147,24 @@ class OBStepper extends StatelessWidget {
       decoration: g.pressed(radius: 24),
       child: Row(
         children: [
-          IconButton(
-            tooltip: 'Weniger',
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            onPressed: value == null || value == 0
+          OBIconButton(
+            icon: LucideIcons.minus,
+            label: 'Weniger',
+            onTap: value == null || value == 0
                 ? null
                 : () => onChanged(value! - 1),
-            icon: const Icon(LucideIcons.minus),
           ),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  value == null
-                      ? '—'
-                      : value == 0
-                      ? 'Keins'
-                      : '$value',
-                  style: g.t(24, 28, weight: FontWeight.w700),
-                ),
+                if (value == null)
+                  const OBMissingValue(size: 24, lineHeight: 28)
+                else
+                  Text(
+                    value == 0 ? 'Keins' : '$value',
+                    style: g.t(24, 28, weight: FontWeight.w700),
+                  ),
                 if (value != null && value! > 0 && unit != null) ...[
                   const SizedBox(width: 5),
                   Text(unit!, style: g.t(13, 18, color: g.ink2)),
@@ -310,41 +172,11 @@ class OBStepper extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            tooltip: 'Mehr',
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            onPressed: value == max ? null : () => onChanged((value ?? 0) + 1),
-            icon: const Icon(LucideIcons.plus),
+          OBIconButton(
+            icon: LucideIcons.plus,
+            label: 'Mehr',
+            onTap: value == max ? null : () => onChanged((value ?? 0) + 1),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class OBInlineError extends StatelessWidget {
-  const OBInlineError({
-    super.key,
-    required this.message,
-    this.onRetry,
-    this.retryLabel = 'Erneut speichern',
-  });
-  final String message;
-  final VoidCallback? onRetry;
-  final String retryLabel;
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: g.pressed(),
-      child: Row(
-        children: [
-          Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
-          const SizedBox(width: 8),
-          Expanded(child: Text(message, style: g.t(13, 17))),
-          if (onRetry != null)
-            TextButton(onPressed: onRetry, child: Text(retryLabel)),
         ],
       ),
     );
@@ -397,11 +229,11 @@ class OBJournalEntryRow extends StatelessWidget {
             ),
           ),
           Text(value, style: g.t(17, 21, weight: FontWeight.w700)),
-          IconButton(
-            tooltip: '$title ändern',
-            onPressed: onEdit,
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            icon: Icon(LucideIcons.pencil, size: 14, color: g.muted),
+          OBIconButton(
+            icon: LucideIcons.pencil,
+            label: '$title ändern',
+            small: true,
+            onTap: onEdit,
           ),
         ],
       ),
@@ -418,7 +250,8 @@ class OBJournalDayRow extends StatelessWidget {
     this.chips = const [],
     this.count,
   });
-  final String title, summary;
+  final String title;
+  final String? summary;
   final VoidCallback onTap;
   final List<String> chips;
   final String? count;
@@ -444,38 +277,32 @@ class OBJournalDayRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           title,
-                          style: g.t(15, 19, weight: FontWeight.w700),
+                          style: g.t(
+                            15,
+                            19,
+                            weight: FontWeight.w700,
+                            color: chips.isEmpty ? g.muted : g.ink,
+                          ),
                         ),
                       ),
                       if (count != null)
                         Text(count!, style: g.t(12, 16, color: g.muted)),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  if (chips.isEmpty)
-                    Text(summary, style: g.t(13, 17, color: g.muted))
-                  else
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: [
-                        for (final chip in chips)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: g.chip,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              chip,
-                              style: g.t(11, 16, color: g.ink2),
-                            ),
-                          ),
-                      ],
-                    ),
+                  if (summary != null || chips.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    if (chips.isEmpty)
+                      Text(summary!, style: g.t(13, 17, color: g.muted))
+                    else
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: [
+                          for (final chip in chips)
+                            OBChip(OBChipKind.tag, chip),
+                        ],
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -556,7 +383,7 @@ class OBPatternGateRow extends StatelessWidget {
           SizedBox(
             width: narrow ? 66 : 96,
             child: count == null || minimum == null
-                ? Text('—', style: g.t(14, 18, color: g.muted))
+                ? const OBMissingValue(size: 14, lineHeight: 18)
                 : OBPatternProgress(
                     have: count!.clamp(0, minimum!),
                     need: minimum!,
@@ -565,15 +392,18 @@ class OBPatternGateRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              count == null || minimum == null
-                  ? '—'
-                  : count! < minimum!
-                  ? '$count von $minimum'
-                  : '$count · genug',
-              textAlign: TextAlign.end,
-              style: g.t(13, 17, color: g.ink2),
-            ),
+            child: count == null || minimum == null
+                ? const Align(
+                    alignment: Alignment.centerRight,
+                    child: OBMissingValue(size: 13, lineHeight: 17),
+                  )
+                : Text(
+                    count! < minimum!
+                        ? '$count von $minimum'
+                        : '$count · genug',
+                    textAlign: TextAlign.end,
+                    style: g.t(13, 17, color: g.ink2),
+                  ),
           ),
         ],
       ),
@@ -592,6 +422,7 @@ class OBPatternCard extends StatelessWidget {
     this.loading = false,
     this.onRetry,
     this.partial = false,
+    this.onOpen,
   });
   final String title, detail;
   final int? have;
@@ -599,107 +430,111 @@ class OBPatternCard extends StatelessWidget {
   final String? footer;
   final bool loading, partial;
   final VoidCallback? onRetry;
+  final VoidCallback? onOpen;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final awaiting = have != null && need != null && have! < need!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: g.raised(radius: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('MUSTER ›', style: g.caps())),
-              Text(
-                loading
-                    ? 'wird geladen'
-                    : onRetry != null
-                    ? 'nicht verfügbar'
-                    : partial
-                    ? 'Teilweise auswertbar'
-                    : awaiting
-                    ? 'noch kein Vergleich'
-                    : title,
-                style: g.t(13, 17, color: g.muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (loading)
-            Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  child: Text('…', style: g.t(18, 19, color: g.ink2)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Vergleich wird geladen.',
-                    style: g.t(14, 19, color: g.ink2),
+    return InkWell(
+      onTap: onOpen,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: g.raised(radius: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            G3LabelRow(
+              'MUSTER',
+              domain: G3Domain.neutral,
+              onTap: onOpen,
+              note: loading
+                  ? 'wird geladen'
+                  : onRetry != null
+                  ? 'nicht verfügbar'
+                  : partial
+                  ? 'Teilweise auswertbar'
+                  : awaiting
+                  ? 'noch kein Vergleich'
+                  : title,
+            ),
+            const SizedBox(height: 14),
+            if (loading)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    child: Text('…', style: g.t(18, 19, color: g.ink2)),
                   ),
-                ),
-              ],
-            )
-          else if (onRetry != null)
-            Row(
-              children: [
-                Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(detail, style: g.t(14, 19, color: g.ink2)),
-                ),
-                TextButton(onPressed: onRetry, child: const Text('Erneut')),
-              ],
-            )
-          else if (awaiting)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
-                          style: g.t(15, 19, weight: FontWeight.w700),
-                        ),
-                        Text(detail, style: g.t(13, 17, color: g.ink2)),
-                      ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Vergleich wird geladen.',
+                      style: g.t(14, 19, color: g.ink2),
                     ),
                   ),
-                ),
-              ],
-            )
-          else ...[
-            Text(
-              have == null ? '—' : title,
-              style: g.t(23, 27, weight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(detail, style: g.t(14, 19, color: g.ink2)),
+                ],
+              )
+            else if (onRetry != null)
+              Row(
+                children: [
+                  Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(detail, style: g.t(14, 19, color: g.ink2)),
+                  ),
+                  OBPillButton('Erneut', onPressed: onRetry),
+                ],
+              )
+            else if (awaiting)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
+                            style: g.t(15, 19, weight: FontWeight.w700),
+                          ),
+                          Text(detail, style: g.t(13, 17, color: g.ink2)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              if (have == null)
+                const OBMissingValue(size: 23, lineHeight: 27)
+              else
+                Text(title, style: g.t(23, 27, weight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(detail, style: g.t(14, 19, color: g.ink2)),
+            ],
+            if (!loading &&
+                onRetry == null &&
+                have != null &&
+                need != null) ...[
+              const SizedBox(height: 16),
+              OBPatternProgress(have: have!.clamp(0, need!), need: need!),
+            ],
+            if (!loading && onRetry == null) ...[
+              const SizedBox(height: 10),
+              Text(
+                footer ??
+                    (have == null || need == null
+                        ? '—'
+                        : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
+                style: g.t(13, 17, weight: FontWeight.w700),
+              ),
+            ],
           ],
-          if (!loading && onRetry == null && have != null && need != null) ...[
-            const SizedBox(height: 16),
-            OBPatternProgress(have: have!.clamp(0, need!), need: need!),
-          ],
-          if (!loading && onRetry == null) ...[
-            const SizedBox(height: 10),
-            Text(
-              footer ??
-                  (have == null || need == null
-                      ? '—'
-                      : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
-              style: g.t(13, 17, weight: FontWeight.w700),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
@@ -892,44 +727,8 @@ class OBSwitch extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
   final String label;
+
   @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Semantics(
-      label: label,
-      toggled: value,
-      button: true,
-      onTap: () => onChanged(!value),
-      child: GestureDetector(
-        excludeFromSemantics: true,
-        onTap: () => onChanged(!value),
-        child: SizedBox(
-          width: 46,
-          height: 44,
-          child: Center(
-            child: Container(
-              width: 46,
-              height: 28,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: value ? g.ink : g.track,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Align(
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: g.canvas,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      OBToggle(value: value, onChanged: onChanged, label: label);
 }

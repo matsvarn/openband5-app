@@ -414,7 +414,7 @@ class _OpenBandJournalState extends State<OpenBandJournal> {
           ),
           children: [
             if (widget.releaseReduced)
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Journal',
                 subtitle: '',
                 showBack: false,

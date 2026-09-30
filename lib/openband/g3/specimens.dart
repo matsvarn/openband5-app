@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../training.dart' show OBSportIcon;
 import 'charts.dart';
+import 'check_in.dart';
 import 'chrome.dart';
 import 'day.dart';
 import 'g3_theme.dart';
@@ -475,6 +476,8 @@ final Map<String, Widget Function()> g3Specimens = {
     subtitle: 'Di 29.09 · Synthetische Daten',
     band: OBBandCapsule(state: OBBandState.live, battery: 64, small: true),
   ),
+  'OBPageHeader.modal': () =>
+      const OBPageHeader.modal(title: 'NACHTRAGEN', onBack: _noop),
   'OBBandCapsule.live': () =>
       const OBBandCapsule(state: OBBandState.live, battery: 64),
   'OBBandCapsule.off': () => const OBBandCapsule(state: OBBandState.off),
@@ -556,6 +559,12 @@ final Map<String, Widget Function()> g3Specimens = {
     headline: 'Heute keine Notiz',
     reason: 'Ihr fehlt die Nacht. Sie erscheint, wenn alle Werte da sind.',
   ),
+  'OBDayNote.sleep': () => const OBDayNote(
+    state: OBNoteState.text,
+    heading: 'FÜR DIE NACHT',
+    headline: 'Heute früher ins Bett.',
+    reason: 'Dein Schlafbedarf liegt über deinem Ziel.',
+  ),
   'OBActivityRow.auto': () => const OBActivityRow(
     pictogram: _Run(),
     title: 'Lauf',
@@ -570,12 +579,47 @@ final Map<String, Widget Function()> g3Specimens = {
     strain: '+6,1',
     zoneMinutes: [0, 4, 19, 16, 3],
   ),
-  'OBCheckIn.question': () => const OBCheckIn(
+  'OBActivityRow.compact': () => const OBActivityRow(
+    pictogram: _Run(),
+    title: 'Lauf',
+    subtitle: 'Di 29.09 · 42 Min.',
+    compact: true,
+    onTap: _noop,
+  ),
+  'OBActivityRow.confirmation': () => const OBActivityRow(
+    pictogram: _Run(),
+    title: 'Lauf',
+    subtitle: '07:58–08:40 · 42 Min.',
+    unconfirmed: true,
+    strain: '+6,1',
+    confirmationFooter: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Sportart richtig?'),
+        OBActionSecondary('Stimmt', onPressed: _noop),
+      ],
+    ),
+  ),
+  'OBCheckIn.shared': () => const OBCheckIn(
+    title: 'Alkohol am Abend?',
+    index: 2,
+    total: 4,
+    target: 'zu gestern Abend',
+    answer: Row(
+      children: [
+        Expanded(child: OBActionSecondary('Nein', onPressed: _noop)),
+        SizedBox(width: 8),
+        Expanded(child: OBActionSecondary('Ja', onPressed: _noop)),
+      ],
+    ),
+    onLater: _noop,
+  ),
+  'OBCheckIn.question': () => const G3CheckInPreview(
     state: OBCheckInState.question,
     progress: '1 von 4',
     question: 'Gestern Abend Alkohol?',
   ),
-  'OBCheckIn.answered': () => const OBCheckIn(
+  'OBCheckIn.answered': () => const G3CheckInPreview(
     state: OBCheckInState.answered,
     progress: '2 von 4',
     answered: 'Alkohol gestern: Nein',
@@ -583,7 +627,7 @@ final Map<String, Widget Function()> g3Specimens = {
     onChange: _noop,
   ),
   'OBCheckIn.later': () =>
-      const OBCheckIn(state: OBCheckInState.later, progress: '4 offen'),
+      const G3CheckInPreview(state: OBCheckInState.later, progress: '4 offen'),
   'OBSegmented.week': () => _paperSegmented(
     const OBSegmented(items: ['Erholung', 'Schlaf', 'Belastung'], selected: 0),
   ),
@@ -708,6 +752,22 @@ final Map<String, Widget Function()> g3Specimens = {
     ),
   ),
   'OBSectionHeader.plain': () => const OBSectionHeader('WOCHE'),
+  'OBSectionHeader.detail': () => const Padding(
+    padding: EdgeInsets.symmetric(horizontal: 16),
+    child: OBSectionHeader.detail('MESSWERTE', trailing: Text('3')),
+  ),
+  'G3DetailPage.section': () => const SizedBox(
+    height: 180,
+    child: G3DetailPage(
+      header: OBPageHeader.detail(
+        title: 'DETAIL',
+        backLabel: 'Heute',
+        onBack: _noop,
+      ),
+      fullWidthSection: OBSectionHeader('VERLAUF'),
+      children: [Text('Werte für diesen Tag')],
+    ),
+  ),
   'OBListRow.default': () => const OBListRow(
     icon: LucideIcons.route,
     title: 'Strecke hinzufügen',
@@ -745,6 +805,12 @@ final Map<String, Widget Function()> g3Specimens = {
         ),
       ),
     ),
+  ),
+  'OBSheet.independentClose': () => const OBSheet(
+    title: 'Sportart',
+    onClose: _noop,
+    onCancel: _noop,
+    child: Text('Auswahl'),
   ),
   'OBEmptyState': () => const OBEmptyState(
     title: 'Noch keine Werte',

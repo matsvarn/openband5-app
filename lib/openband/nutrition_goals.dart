@@ -7,7 +7,7 @@ import '../state/app_state.dart';
 import 'calendar.dart';
 import 'confirm_sheet.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented;
+import 'health.dart' show G2Segmented;
 import 'journal_controls.dart';
 import 'local_repository.dart';
 import 'theme.dart';
@@ -328,7 +328,7 @@ class _OpenBandNutritionGoalsState extends State<OpenBandNutritionGoals> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: nutritionGoalsTitle(context),
               subtitle: '',
               onInfo: _info,
@@ -992,7 +992,7 @@ class _OpenBandNutritionGoalsEditorState
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: nutritionGoalsTitle(context),
                 subtitle: '',
                 onBack: _saving ? null : _leave,
@@ -1293,7 +1293,7 @@ class _OpenBandNutritionGoalsEditorState
                       .text(15, weight: FontWeight.w600)
                       .copyWith(height: 20 / 15),
                 ),
-                OBSegmented(
+                G2Segmented(
                   compact: true,
                   labels: const ['g', '%'],
                   selected: _percent ? 1 : 0,
@@ -1523,7 +1523,7 @@ class _OpenBandNutritionGoalHistoryState
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Zielverlauf', subtitle: ''),
+            const G2PageHeader(title: 'Zielverlauf', subtitle: ''),
             if (_error != null)
               OBCard(
                 child: Column(
@@ -1716,7 +1716,7 @@ class _GoalDatePageState extends State<_GoalDatePage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Gültig ab', subtitle: ''),
+            const G2PageHeader(title: 'Gültig ab', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(

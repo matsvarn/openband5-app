@@ -246,7 +246,7 @@ class _OpenBandLabsState extends State<OpenBandLabs> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Laborwerte',
               subtitle: '',
               onInfo: () => _labInfo(
@@ -449,7 +449,7 @@ class _OpenBandLabDetailState extends State<OpenBandLabDetail> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: title,
               subtitle: '',
               onInfo: () => _labInfo(
@@ -899,7 +899,7 @@ class _OpenBandLabEditorState extends State<OpenBandLabEditor> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: widget.existing == null
                     ? 'Wert hinzufügen'
                     : 'Wert bearbeiten',
@@ -1152,7 +1152,7 @@ class _OpenBandLabMarkersState extends State<OpenBandLabMarkers> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Eigene Marker', subtitle: ''),
+            const G2PageHeader(title: 'Eigene Marker', subtitle: ''),
             if (_error)
               OBCard(
                 child: Column(
@@ -1394,7 +1394,7 @@ class _OpenBandLabMarkerEditorState extends State<OpenBandLabMarkerEditor> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              const OBPageHeader(title: 'Eigener Marker', subtitle: ''),
+              const G2PageHeader(title: 'Eigener Marker', subtitle: ''),
               OBCard(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -1644,7 +1644,7 @@ class _LabChooserState extends State<_LabChooser> {
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(title: 'Marker', subtitle: ''),
+              child: G2PageHeader(title: 'Marker', subtitle: ''),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

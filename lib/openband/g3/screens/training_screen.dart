@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
@@ -8,7 +7,7 @@ import '../../domain.dart';
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../charts.dart'
     show OBHrTrace, OBTrendChart, OBTrendPeriod, OBZone, OBZoneRows;
-import '../day.dart' as day_widgets show OBWeekBar, OBWeekBars;
+import '../day.dart' as day_widgets show OBActivityRow, OBWeekBar, OBWeekBars;
 import '../chrome.dart'
     show
         OBBandCapsule,
@@ -18,8 +17,17 @@ import '../chrome.dart'
         OBActionPrimary,
         OBActionSecondary,
         OBPageHeader,
-        OBFooterStamp;
+        OBFooterStamp,
+        OBSheet,
+        OBLink,
+        OBPanel,
+        G3DetailPage,
+        OBSectionHeader,
+        showOBInfoSheet;
+import '../metrics.dart' show OBMissingValue;
 import '../g3_theme.dart';
+import '../g3_format.dart';
+import '../sport.dart' show g3QuickSportIds;
 import '../training_parts.dart';
 
 typedef TrainingAction = Future<void> Function();
@@ -29,6 +37,7 @@ class G3TrainingScreen extends StatefulWidget {
   final ValueChanged<String>? onStart;
   final TrainingAction? onManual;
   final VoidCallback? onProfile;
+  final VoidCallback? onBand, onDataStatus;
   final ScrollController? scrollController;
   const G3TrainingScreen({
     super.key,
@@ -36,6 +45,8 @@ class G3TrainingScreen extends StatefulWidget {
     this.onStart,
     this.onManual,
     this.onProfile,
+    this.onBand,
+    this.onDataStatus,
     this.scrollController,
   });
 
@@ -178,82 +189,65 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
   }
 
   Future<void> _start() async {
+    String? selectedSport;
+    var showAll = false;
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (c) {
-        final g = G3.of(c);
-        const sports = <String>[
-          'running',
-          'cycling',
-          'walking',
-          'hiking',
-          'weight_training',
-          'swimming',
-          'yoga',
-          'tennis',
-          'other',
-        ];
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Training starten',
-                  style: g.t(22, 28, weight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final sport in sports)
-                      ActionChip(
-                        avatar: trainingSportIcon(
-                          sport,
-                          size: 18,
-                          color: g.ink,
+      backgroundColor: Colors.transparent,
+      builder: (c) => StatefulBuilder(
+        builder: (c, update) => SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: OBSheet(
+              title: 'Training starten',
+              onCancel: () => Navigator.of(c).pop(),
+              onConfirm: selectedSport == null
+                  ? null
+                  : () => Navigator.of(c).pop(selectedSport),
+              confirmLabel: 'Starten',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GridView.count(
+                    crossAxisCount: 4,
+                    childAspectRatio: .9,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      for (final sport
+                          in showAll ? trainingSports : g3QuickSportIds.take(8))
+                        OBSportTile(
+                          sport: sport,
+                          selected: selectedSport == sport,
+                          onTap: () => update(() => selectedSport = sport),
                         ),
-                        label: Text(trainingSport(sport)),
-                        onPressed: () => Navigator.of(c).pop(sport),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  if (!showAll)
+                    OBLink(
+                      'Weitere …',
+                      onTap: () => update(() => showAll = true),
+                    ),
+                ],
+              ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
     if (mounted && selected != null) widget.onStart?.call(selected);
   }
 
   void _detectionHelp() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Aktivitätserkennung',
-                style: G3.of(c).t(22, 28, weight: FontWeight.w700),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Längere Bewegung mit erhöhtem Puls kann als Training vorgeschlagen werden. Du prüfst und bestätigst die Sportart, bevor Zonen erscheinen.',
-                style: G3.of(c).t(15, 21),
-              ),
-            ],
-          ),
-        ),
-      ),
+    showOBInfoSheet(
+      context,
+      title: 'Aktivitätserkennung',
+      paragraphs: const [
+        'Längere Bewegung mit erhöhtem Puls kann als Training vorgeschlagen werden. Du prüfst und bestätigst die Sportart, bevor Zonen erscheinen.',
+      ],
     );
   }
 
@@ -262,6 +256,8 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
       g3ActivityResultRoute(
         repository: widget.controller.repository,
         activity: activity,
+        latestStoredAt: widget.controller.band.latestStoredAt,
+        now: widget.controller.now(),
         onChanged: _reload,
       ),
     );
@@ -281,9 +277,9 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           final current = _day == todayLabel(widget.controller.now());
-          final stamp = data.day.calculatedAt;
-          final clock = current && stamp != null
-              ? DateFormat.Hm('de_DE').format(stamp)
+          final stamp = widget.controller.band.latestStoredAt;
+          final dataThrough = current && stamp != null
+              ? g3DataThrough(stamp, now: widget.controller.now())
               : null;
           final activities = data.activities
               .where((a) => dayLabelOf(a.start) == _day)
@@ -301,10 +297,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                 children: [
                   OBPageHeader.hub(
                     title: 'Training',
-                    subtitle: DateFormat(
-                      'EEEE, d. MMMM',
-                      'de_DE',
-                    ).format(DateTime.parse(_day)),
+                    subtitle: g3DayLong(DateTime.parse(_day)),
                     band: OBBandCapsule(
                       state: switch (widget.controller.band.connection) {
                         BandConnection.connected => OBBandState.live,
@@ -312,16 +305,18 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                         BandConnection.connecting => OBBandState.off,
                       },
                       battery: widget.controller.band.batteryPercent,
+                      onTap: widget.onBand,
                     ),
                     onTitle: _datePicker,
                     onProfile: widget.onProfile,
                   ),
                   OBSyncState(
-                    kind: clock == null ? OBSyncKind.never : OBSyncKind.partial,
-                    text: clock == null
-                        ? 'Noch kein Datenstand'
-                        : 'Daten bis $clock',
+                    kind: dataThrough == null
+                        ? OBSyncKind.never
+                        : OBSyncKind.partial,
+                    text: dataThrough ?? 'Noch kein Datenstand',
                     synthetic: data.day.synthetic,
+                    onTap: widget.onDataStatus,
                   ),
                   const SizedBox(height: 14),
                   Padding(
@@ -331,7 +326,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                       children: [
                         OBLoadLead(
                           value: data.day.strain.value,
-                          countTime: clock,
+                          countTime: dataThrough,
                           onTap: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) => G3LoadScreen(
@@ -369,9 +364,12 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                           ],
                         ),
                         const SizedBox(height: 20),
-                        Text(
-                          emptyWeek ? 'AKTIVITÄTEN' : 'HEUTE',
-                          style: g.caps(color: g.muted),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            emptyWeek ? 'AKTIVITÄTEN' : 'HEUTE',
+                            style: g.caps(color: g.muted),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         if (activities.isEmpty)
@@ -401,11 +399,9 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                                   style: g.t(13, 18, color: g.ink2),
                                 ),
                                 if (emptyWeek)
-                                  TextButton(
-                                    onPressed: _detectionHelp,
-                                    child: const Text(
-                                      'Wie die Erkennung arbeitet',
-                                    ),
+                                  OBLink(
+                                    'Wie die Erkennung arbeitet',
+                                    onTap: _detectionHelp,
                                   ),
                               ],
                             ),
@@ -432,14 +428,23 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                           ),
                           const SizedBox(height: 18),
                         ],
-                        Text('WOCHE', style: g.caps(color: g.muted)),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text('WOCHE', style: g.caps(color: g.muted)),
+                        ),
                         const SizedBox(height: 8),
                         _week(context, data.weekly.days, today: current),
                         const SizedBox(height: 20),
                         if (data.activities.any(
                           (a) => dayLabelOf(a.start) != _day,
                         )) ...[
-                          Text('ZULETZT', style: g.caps(color: g.muted)),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              'ZULETZT',
+                              style: g.caps(color: g.muted),
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           _recentCard(
                             context,
@@ -449,59 +454,9 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                                 .toList(),
                             _openActivity,
                           ),
-                          const SizedBox(height: 10),
-                          InkWell(
-                            onTap: () => Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => G3LoadScreen(
-                                  controller: widget.controller,
-                                  activity: activities.firstOrNull,
-                                  weekly: data.weekly,
-                                ),
-                              ),
-                            ),
-                            child: _card(
-                              context,
-                              Row(
-                                children: [
-                                  Icon(LucideIcons.activity, color: g.ink),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Belastung im Verlauf',
-                                          style: g.t(
-                                            14,
-                                            18,
-                                            weight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        Text(
-                                          '7, 30 und 90 Tage',
-                                          style: g.t(12, 16, color: g.ink2),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    LucideIcons.chevronRight,
-                                    size: 16,
-                                    color: g.muted,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
                         ],
                       ],
                     ),
-                  ),
-                  OBFooterStamp(
-                    clock == null ? 'Datenstand offen' : 'Daten bis $clock',
-                    synthetic: data.day.synthetic,
                   ),
                 ],
               ),
@@ -515,7 +470,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                     child: OBPageHeader.compact(
                       title: 'Training',
                       subtitle:
-                          '${DateFormat('E d.M.', 'de_DE').format(DateTime.parse(_day))} · ${data.day.synthetic ? 'Synthetische Daten' : 'Daten'}',
+                          '${g3DayShort(DateTime.parse(_day))}${data.day.synthetic ? ' · Synthetische Daten' : ''}',
                       band: OBBandCapsule(
                         small: true,
                         state:
@@ -524,6 +479,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                             ? OBBandState.live
                             : OBBandState.off,
                         battery: widget.controller.band.batteryPercent,
+                        onTap: widget.onBand,
                       ),
                       onProfile: widget.onProfile,
                     ),
@@ -537,11 +493,8 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
   }
 }
 
-Widget _card(BuildContext context, Widget child) => Container(
-  padding: const EdgeInsets.all(18),
-  decoration: G3.of(context).raised(),
-  child: child,
-);
+Widget _card(BuildContext context, Widget child) =>
+    OBPanel(padding: const EdgeInsets.all(18), child: child);
 
 Widget _error(BuildContext context, VoidCallback retry) {
   final g = G3.of(context);
@@ -569,13 +522,14 @@ Widget _week(
       .whereType<double>()
       .toList();
   return day_widgets.OBWeekBars(
+    domain: G3Domain.load,
     max: 21,
     bars: [
       for (final (index, point) in days.indexed)
         day_widgets.OBWeekBar(
           today && index == days.length - 1
               ? 'Heute'
-              : DateFormat.E('de_DE').format(DateTime.parse(point.day)),
+              : g3Weekday(DateTime.parse(point.day)),
           point.value,
           label: point.value == null ? null : trainingNumber(point.value),
           today: today && index == days.length - 1,
@@ -596,71 +550,25 @@ Widget _recentCard(
   BuildContext context,
   List<G3Activity> activities,
   ValueChanged<G3Activity> open,
-) {
-  final g = G3.of(context);
-  return _card(
-    context,
-    Column(
-      children: [
-        Row(
-          children: [
-            Expanded(child: Text('AKTIVITÄTEN', style: g.caps())),
-            Text('Belastung', style: g.t(12, 16, color: g.muted)),
-          ],
-        ),
-        const SizedBox(height: 12),
-        for (final a in activities)
-          InkWell(
-            onTap: () => open(a),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: g.track,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    alignment: Alignment.center,
-                    child: trainingSportIcon(a.sport, size: 20, color: g.ink),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          trainingSport(a.sport),
-                          style: g.t(14, 18, weight: FontWeight.w700),
-                        ),
-                        Text(
-                          '${DateFormat('E dd.MM', 'de_DE').format(a.start)}${a.source == G3ActivitySource.manual ? ' · nachgetragen' : ''}',
-                          style: g.t(12, 16, color: g.ink2),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        trainingNumber(a.strain, signed: true),
-                        style: g.t(15, 19, weight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(LucideIcons.chevronRight, size: 16, color: g.muted),
-                ],
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
-}
+) => Column(
+  children: [
+    for (final a in activities) ...[
+      day_widgets.OBActivityRow(
+        domain: G3Domain.load,
+        pictogram: trainingSportIcon(a.sport, color: G3.of(context).ink),
+        title: trainingSport(a.sport),
+        subtitle:
+            '${g3DayShort(a.start)} · ${g3Duration(a.duration?.inMinutes)}${a.source == G3ActivitySource.manual ? ' · nachgetragen' : ''}',
+        strain: a.strain == null
+            ? null
+            : trainingNumber(a.strain, signed: true),
+        zoneMinutes: a.zoneMinutes?.map((m) => m.round()).toList(),
+        onTap: () => open(a),
+      ),
+      const SizedBox(height: 10),
+    ],
+  ],
+);
 
 Widget _activityRow(
   BuildContext context,
@@ -669,119 +577,66 @@ Widget _activityRow(
   VoidCallback? confirm,
 ) {
   final g = G3.of(context);
-  return _card(
-    context,
-    Column(
-      children: [
-        InkWell(
-          onTap: open,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 52),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: g.track,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  alignment: Alignment.center,
-                  child: trainingSportIcon(a.sport, color: g.ink),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              trainingSport(a.sport),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: g.t(18, 22, weight: FontWeight.w700),
-                            ),
-                          ),
-                          if (!a.confirmed &&
-                              a.source == G3ActivitySource.auto) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: g.chip,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                'auto-erkannt',
-                                style: g.t(11, 14, color: g.ink2),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        '${DateFormat.Hm('de_DE').format(a.start)}–${a.end == null ? '—' : DateFormat.Hm('de_DE').format(a.end!)} · ${a.duration?.inMinutes ?? '—'} Min.',
-                        style: g.t(12, 16, color: g.ink2),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      trainingNumber(a.strain, signed: true),
-                      style: g.t(18, 22, weight: FontWeight.w700),
-                    ),
-                    Text('Belastung', style: g.t(11, 14, color: g.muted)),
-                  ],
-                ),
-                const SizedBox(width: 5),
-                Icon(LucideIcons.chevronRight, size: 17, color: g.muted),
-              ],
-            ),
-          ),
-        ),
-        if (!a.confirmed && a.source == G3ActivitySource.auto) ...[
-          Divider(color: g.line),
-          Row(
+  final pending = !a.confirmed && a.source == G3ActivitySource.auto;
+  return day_widgets.OBActivityRow(
+    domain: G3Domain.load,
+    pictogram: trainingSportIcon(a.sport, color: g.ink),
+    title: trainingSport(a.sport),
+    subtitle:
+        '${g3Clock(a.start)}–${a.end == null ? '—' : g3Clock(a.end!)} · ${g3Duration(a.duration?.inMinutes)}',
+    strain: a.strain == null ? null : trainingNumber(a.strain, signed: true),
+    zoneMinutes: !pending && a.zoneMinutes != null
+        ? a.zoneMinutes!.map((m) => m.round()).toList()
+        : null,
+    onTap: open,
+    confirmationFooter: pending
+        ? Column(
             children: [
-              Expanded(
-                child: Text(
-                  'Zonen nach Bestätigung',
-                  style: g.t(12, 16, color: g.ink2),
-                ),
-              ),
-              OBActionPrimary(
-                'Stimmt',
-                icon: LucideIcons.check,
-                onPressed: confirm,
-                height: 30,
+              Divider(color: g.line),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Sportart richtig?',
+                      style: g.t(12, 16, color: g.ink2),
+                    ),
+                  ),
+                  OBActionPrimary(
+                    'Stimmt',
+                    icon: LucideIcons.check,
+                    onPressed: confirm,
+                    height: 30,
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
-      ],
-    ),
+          )
+        : null,
   );
 }
 
-void _method(BuildContext context) => showModalBottomSheet<void>(
-  context: context,
-  builder: (c) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        'Trainingslast vergleicht die akute Last der letzten 7 Tage mit der gewohnten Last aus 6 Wochen. Grundlage ist tägliches TRIMP in einer eigenen Einheit.',
-        style: G3.of(c).t(16, 22),
-      ),
-    ),
-  ),
+void _method(BuildContext context) => showOBInfoSheet(
+  context,
+  title: 'Trainingslast',
+  paragraphs: const [
+    'Trainingslast vergleicht die akute Last der letzten 7 Tage mit der gewohnten Last aus 6 Wochen. Grundlage ist tägliches TRIMP in einer eigenen Einheit.',
+  ],
+);
+
+void _loadInfo(BuildContext context) => showOBInfoSheet(
+  context,
+  title: 'Belastung',
+  paragraphs: const [
+    'Die Tagesbelastung liegt auf einer festen Skala von 0 bis 21. Sie hat keinen persönlichen Bereich. Wenig Tragezeit kann den Wert kleiner und den Tag schwer vergleichbar machen.',
+  ],
+);
+
+void _resultInfo(BuildContext context) => showOBInfoSheet(
+  context,
+  title: 'Einheit',
+  paragraphs: const [
+    'Pulserholung ist der Pulsabfall in der ersten Minute nach Ende. Lücken im Pulssignal bleiben leer.',
+  ],
 );
 
 class G3SuggestionRoute extends StatelessWidget {
@@ -839,11 +694,15 @@ class G3SuggestionRoute extends StatelessWidget {
 Route<void> g3ActivityResultRoute({
   required OpenBandRepository repository,
   required G3Activity activity,
+  DateTime? latestStoredAt,
+  DateTime? now,
   VoidCallback? onChanged,
 }) => MaterialPageRoute<void>(
   builder: (_) => G3ActivityScreen(
     repository: repository,
     activity: activity,
+    latestStoredAt: latestStoredAt,
+    now: now,
     onChanged: onChanged,
   ),
 );
@@ -851,6 +710,7 @@ Route<void> g3ActivityResultRoute({
 class G3ActivityScreen extends StatefulWidget {
   final OpenBandRepository repository;
   final G3Activity activity;
+  final DateTime? latestStoredAt, now;
   final VoidCallback? onChanged;
   final String? initialSheet;
   final String? initialSportSelection;
@@ -859,6 +719,8 @@ class G3ActivityScreen extends StatefulWidget {
     super.key,
     required this.repository,
     required this.activity,
+    this.latestStoredAt,
+    this.now,
     this.onChanged,
     this.initialSheet,
     this.initialSportSelection,
@@ -871,6 +733,9 @@ class G3ActivityScreen extends StatefulWidget {
 
 class _G3ActivityScreenState extends State<G3ActivityScreen> {
   late G3Activity _activity = widget.activity;
+  late final Future<OpenBandDay> _day = widget.repository.readDay(
+    dayLabelOf(widget.activity.start),
+  );
   bool _busy = false;
 
   @override
@@ -925,67 +790,23 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
     final sport = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (c) => StatefulBuilder(
         builder: (c, update) {
-          final g = G3.of(c);
-          const sports = <String>[
-            'running',
-            'walking',
-            'cycling',
-            'hiking',
-            'intervals',
-            'weight_training',
-            'yoga',
-            'stretching',
-            'swimming',
-            'tennis',
-            'soccer',
-            'rowing',
-            'climbing',
-            'skiing',
-            'martial_arts',
-            'other',
-          ];
+          final sports = trainingSports;
           return SafeArea(
             child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              child: OBSheet(
+                title: 'Sportart ändern',
+                subtitle:
+                    'Erkannt: ${trainingSport(_activity.sport)} ${g3Clock(_activity.start)}–${_activity.end == null ? '—' : g3Clock(_activity.end!)}. Puls und Belastung bleiben gleich.',
+                onCancel: () => Navigator.of(c).pop(),
+                onConfirm: () => Navigator.of(c).pop(selected),
+                confirmLabel: 'Als ${trainingSport(selected)} speichern',
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: g.gap,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Sportart ändern',
-                            style: g.t(22, 28, weight: FontWeight.w700),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Schließen',
-                          onPressed: () => Navigator.of(c).pop(),
-                          icon: const Icon(LucideIcons.x),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      'Erkannt: ${trainingSport(_activity.sport)} ${DateFormat.Hm('de_DE').format(_activity.start)}–${_activity.end == null ? '—' : DateFormat.Hm('de_DE').format(_activity.end!)}. Puls und Belastung bleiben gleich.',
-                      style: g.t(13, 18, color: g.ink2),
-                    ),
-                    const SizedBox(height: 12),
                     GridView.count(
                       crossAxisCount: 4,
                       childAspectRatio: .94,
@@ -1003,58 +824,10 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    InkWell(
-                      onTap: () => Navigator.of(c).pop('dismiss'),
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        decoration: g.pressed(radius: 14),
-                        child: Row(
-                          children: [
-                            const Icon(LucideIcons.x, size: 18),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Kein Training',
-                                    style: g.t(14, 18, weight: FontWeight.w700),
-                                  ),
-                                  Text(
-                                    'Nicht als Aktivität zählen',
-                                    style: g.t(12, 16, color: g.ink2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(LucideIcons.chevronRight, size: 16),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OBActionSecondary(
-                            'Abbrechen',
-                            onPressed: () => Navigator.of(c).pop(),
-                            expand: true,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OBActionPrimary(
-                            'Als ${trainingSport(selected)} speichern',
-                            onPressed: () => Navigator.of(c).pop(selected),
-                            expand: true,
-                          ),
-                        ),
-                      ],
+                    OBActionSecondary(
+                      'Kein Training',
+                      onPressed: () => Navigator.of(c).pop('dismiss'),
+                      expand: true,
                     ),
                   ],
                 ),
@@ -1075,19 +848,18 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
   Future<void> _dismissSuggestion() async {
     final yes = await showModalBottomSheet<bool>(
       context: context,
+      backgroundColor: Colors.transparent,
       builder: (c) => SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: OBSheet(
+          title: 'Kein Training?',
+          onCancel: () => Navigator.of(c).pop(false),
+          onConfirm: () => Navigator.of(c).pop(true),
+          confirmLabel: 'Kein Training',
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Kein Training?',
-                style: G3.of(c).t(20, 24, weight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
               Text(
                 '${trainingSport(_activity.sport)} wird nicht als Aktivität gezählt.',
                 style: G3.of(c).t(14, 19),
@@ -1096,26 +868,6 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               Text(
                 'Deine Pulswerte und die Belastung des Tages bleiben gespeichert.',
                 style: G3.of(c).t(14, 19),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: OBActionSecondary(
-                      'Abbrechen',
-                      onPressed: () => Navigator.of(c).pop(false),
-                      expand: true,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OBActionPrimary(
-                      'Kein Training',
-                      onPressed: () => Navigator.of(c).pop(true),
-                      expand: true,
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
@@ -1145,6 +897,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
   Widget build(BuildContext context) {
     final g = G3.of(context), a = _activity;
     final duration = a.duration?.inMinutes;
+    final durationText = g3Duration(duration);
     final confirmed = a.confirmed || a.source != G3ActivitySource.auto;
     final zones = confirmed && a.zoneMinutes != null;
     final basis = a.zoneBasis;
@@ -1168,274 +921,260 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          controller: widget.scrollController,
-          padding: const EdgeInsets.only(top: 4, bottom: kOBTabBarContentInset),
+        child: G3DetailPage(
+          scrollController: widget.scrollController,
+          bottomInset: kOBTabBarContentInset,
+          header: OBPageHeader.detail(
+            title: 'EINHEIT',
+            domain: G3Domain.load,
+            backLabel: 'Training',
+            onBack: () => Navigator.of(context).maybePop(),
+            onTrailing: () => _resultInfo(context),
+          ),
           children: [
-            OBPageHeader.detail(
-              title: '',
-              backLabel: 'Training',
-              onBack: () => Navigator.of(context).maybePop(),
-              trailing: LucideIcons.ellipsis,
-              trailingLabel: 'Weitere Optionen',
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: g.domainTint(G3Domain.load),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  alignment: Alignment.center,
+                  child: trainingSportIcon(
+                    a.sport,
+                    size: 28,
+                    color: g.domainHue(G3Domain.load),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        trainingSport(a.sport),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: g.t(30, 34, weight: FontWeight.w700),
+                      ),
+                      Text(
+                        g3DayLong(a.start),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: g.t(13, 17, color: g.ink2),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 15),
-                  Row(
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: g.ink,
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        alignment: Alignment.center,
-                        child: trainingSportIcon(
-                          a.sport,
-                          size: 28,
-                          color: g.canvas,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              trainingSport(a.sport),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: g.t(30, 34, weight: FontWeight.w700),
-                            ),
-                            Text(
-                              DateFormat(
-                                'EEEE, d. MMMM',
-                                'de_DE',
-                              ).format(a.start),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: g.t(13, 17, color: g.ink2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                _figure(
+                  context,
+                  'DAUER',
+                  durationText.endsWith(' Min.')
+                      ? durationText.substring(0, durationText.length - 5)
+                      : durationText,
+                  unit: durationText.endsWith(' Min.') ? 'Min.' : null,
+                  sub: a.end == null
+                      ? null
+                      : '${g3Clock(a.start)}–${g3Clock(a.end!)}',
+                ),
+                Container(
+                  width: 1,
+                  height: 67,
+                  color: g.line,
+                  margin: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.textScalerOf(context).scale(1) > 1.3
+                        ? 4
+                        : 10,
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      _figure(
-                        context,
-                        'DAUER',
-                        duration == null ? '—' : '$duration',
-                        unit: duration == null ? null : 'Min.',
-                        sub: a.end == null
-                            ? null
-                            : '${DateFormat.Hm('de_DE').format(a.start)}–${DateFormat.Hm('de_DE').format(a.end!)}',
-                      ),
-                      Container(
-                        width: 1,
-                        height: 67,
-                        color: g.line,
-                        margin: EdgeInsets.symmetric(
-                          horizontal:
-                              MediaQuery.textScalerOf(context).scale(1) > 1.3
-                              ? 4
-                              : 10,
-                        ),
-                      ),
-                      _figure(
-                        context,
-                        'BELASTUNG',
-                        trainingNumber(a.strain, signed: true),
-                        sub: a.strain == null ? null : 'diese Einheit',
-                      ),
-                      Container(
-                        width: 1,
-                        height: 67,
-                        color: g.line,
-                        margin: EdgeInsets.symmetric(
-                          horizontal:
-                              MediaQuery.textScalerOf(context).scale(1) > 1.3
-                              ? 4
-                              : 10,
-                        ),
-                      ),
-                      _figure(context, 'STRECKE', '—', sub: '+ hinzufügen'),
-                    ],
+                ),
+                _figure(
+                  context,
+                  'BELASTUNG',
+                  trainingNumber(a.strain, signed: true),
+                  sub: a.strain == null ? null : 'diese Einheit',
+                ),
+                Container(
+                  width: 1,
+                  height: 67,
+                  color: g.line,
+                  margin: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.textScalerOf(context).scale(1) > 1.3
+                        ? 4
+                        : 10,
                   ),
-                  const SizedBox(height: 16),
-                  if (!confirmed) ...[
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                      decoration: g.pressed(radius: 18),
-                      child: Row(
+                ),
+                _figure(context, 'STRECKE', '—', sub: '+ hinzufügen'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!confirmed) ...[
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                decoration: g.pressed(radius: 18),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Auto-erkannt als ${trainingSport(a.sport)}',
-                                  style: g.t(14, 18, weight: FontWeight.w700),
-                                ),
-                                Text(
-                                  'Zonen nach Bestätigung',
-                                  style: g.t(12, 16, color: g.ink2),
-                                ),
-                              ],
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: _busy ? null : _sportPicker,
-                            child: const Text('Ändern'),
-                          ),
-                          OBActionPrimary(
-                            'Stimmt',
-                            icon: LucideIcons.check,
-                            height: 34,
-                            onPressed: _busy ? null : _confirm,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (a.hrTrace.isNotEmpty &&
-                      duration != null &&
-                      duration > 0) ...[
-                    OBHrTrace(
-                      samples: minutes,
-                      duration: duration.toDouble(),
-                      gaps: gaps,
-                      // The current activity read model has no stored bpm
-                      // edges. A max-HR formula would invent the bands.
-                      zoneEdges: const [],
-                      average: a.avgHr?.round().toString(),
-                      peak: a.maxHr?.round().toString(),
-                      axis: (
-                        DateFormat.Hm('de_DE').format(a.start),
-                        '',
-                        a.end == null
-                            ? '—'
-                            : DateFormat.Hm('de_DE').format(a.end!),
-                      ),
-                      signalShare: a.opticalShare == null
-                          ? null
-                          : '${(a.opticalShare! * 100).round()} %',
-                      signalSegments: signalSegmentsFromGaps(
-                        duration.toDouble(),
-                        gaps,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (zones) ...[
-                    OBZoneRows(
-                      zones: [
-                        for (var i = 4; i >= 0; i--)
-                          OBZone(i + 1, '', a.zoneMinutes![i].round()),
-                      ],
-                      basis: basis == null
-                          ? 'Grundlage unbekannt'
-                          : reserve
-                          ? '% Pulsreserve'
-                          : hfmax
-                          ? '% HFmax'
-                          : 'Grundlage unbekannt',
-                      source: basis == null
-                          ? 'Keine %-Angabe ohne bekannte Grundlage'
-                          : reserve
-                          ? 'Pulsreserve (Karvonen) · aus deinen Zonen'
-                          : hfmax
-                          ? 'HFmax ${basis.maxHr.round()} · ${_basisLabel(basis)}'
-                          : 'Keine %-Angabe ohne bekannte Grundlage',
-                      onBasis: () => showModalBottomSheet<void>(
-                        context: context,
-                        builder: (c) => Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            reserve
-                                ? 'Zonen sind Anteile der gespeicherten Pulsreserve.'
-                                : hfmax
-                                ? 'Zonen sind Anteile der gespeicherten maximalen Herzfrequenz.'
-                                : 'Die Grundlage dieser gespeicherten Zonen ist unbekannt.',
-                            style: G3.of(c).t(16, 22),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ] else if (!confirmed && basis != null)
-                    OBZoneRows(
-                      zones: [
-                        for (var i = 4; i >= 0; i--) OBZone(i + 1, '', null),
-                      ],
-                      basis: reserve
-                          ? '% Pulsreserve'
-                          : hfmax
-                          ? '% HFmax'
-                          : 'Grundlage unbekannt',
-                      source: 'Zonen nach Bestätigung',
-                    )
-                  else
-                    _card(
-                      context,
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text('ZEIT IN ZONEN', style: g.caps()),
-                          const SizedBox(height: 10),
                           Text(
-                            !confirmed
-                                ? 'Zonen nach Bestätigung'
-                                : 'Zonen nicht verfügbar',
-                            style: g.t(14, 19, weight: FontWeight.w700),
+                            'Auto-erkannt als ${trainingSport(a.sport)}',
+                            style: g.t(14, 18, weight: FontWeight.w700),
+                          ),
+                          Text(
+                            'Zonen nach Bestätigung',
+                            style: g.t(12, 16, color: g.ink2),
                           ),
                         ],
                       ),
                     ),
-                  const SizedBox(height: 10),
-                  _card(
-                    context,
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('PULSERHOLUNG', style: g.caps()),
-                        const SizedBox(height: 8),
-                        Text(
-                          a.hrRecoveryOneMinute == null
-                              ? '—'
-                              : '−${a.hrRecoveryOneMinute!.round()} /min in 1 Min.',
-                          style: g.t(
-                            25,
-                            29,
-                            weight: FontWeight.w700,
-                            color: a.hrRecoveryOneMinute == null
-                                ? g.gap
-                                : g.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          a.hrRecoveryOneMinute == null
-                              ? a.source == G3ActivitySource.manual &&
-                                        a.hrTrace.isEmpty
-                                    ? 'Kein Bandpuls in diesem Zeitraum.'
-                                    : 'Pulserholung nicht erfasst.'
-                              : 'Wie stark der Puls in der ersten Minute nach dem Ende fällt.',
-                          style: g.t(13, 18, color: g.ink2),
-                        ),
-                      ],
+                    if (!_busy) OBLink('Ändern', onTap: _sportPicker),
+                    OBActionPrimary(
+                      'Stimmt',
+                      icon: LucideIcons.check,
+                      height: 34,
+                      onPressed: _busy ? null : _confirm,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (a.hrTrace.isNotEmpty && duration != null && duration > 0) ...[
+              OBHrTrace(
+                domain: G3Domain.load,
+                samples: minutes,
+                duration: duration.toDouble(),
+                gaps: gaps,
+                // The current activity read model has no stored bpm
+                // edges. A max-HR formula would invent the bands.
+                zoneEdges: const [],
+                average: a.avgHr?.round().toString(),
+                peak: a.maxHr?.round().toString(),
+                axis: (
+                  g3Clock(a.start),
+                  '',
+                  a.end == null ? '—' : g3Clock(a.end!),
+                ),
+                signalShare: a.opticalShare == null
+                    ? null
+                    : '${(a.opticalShare! * 100).round()} %',
+                signalSegments: signalSegmentsFromGaps(
+                  duration.toDouble(),
+                  gaps,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (zones) ...[
+              OBZoneRows(
+                domain: G3Domain.load,
+                zones: [
+                  for (var i = 4; i >= 0; i--)
+                    OBZone(i + 1, '', a.zoneMinutes![i].round()),
+                ],
+                basis: basis == null
+                    ? 'Grundlage unbekannt'
+                    : reserve
+                    ? '% Pulsreserve'
+                    : hfmax
+                    ? '% HFmax'
+                    : 'Grundlage unbekannt',
+                source: basis == null
+                    ? 'Keine %-Angabe ohne bekannte Grundlage'
+                    : reserve
+                    ? 'Pulsreserve (Karvonen) · aus deinen Zonen'
+                    : hfmax
+                    ? 'HFmax ${basis.maxHr.round()} · ${_basisLabel(basis)}'
+                    : 'Keine %-Angabe ohne bekannte Grundlage',
+                onBasis: () => showOBInfoSheet(
+                  context,
+                  title: 'Zonengrundlage',
+                  paragraphs: [
+                    reserve
+                        ? 'Zonen sind Anteile der gespeicherten Pulsreserve.'
+                        : hfmax
+                        ? 'Zonen sind Anteile der gespeicherten maximalen Herzfrequenz.'
+                        : 'Die Grundlage dieser gespeicherten Zonen ist unbekannt.',
+                  ],
+                ),
+              ),
+            ] else if (!confirmed && basis != null)
+              OBZoneRows(
+                domain: G3Domain.load,
+                zones: [for (var i = 4; i >= 0; i--) OBZone(i + 1, '', null)],
+                basis: reserve
+                    ? '% Pulsreserve'
+                    : hfmax
+                    ? '% HFmax'
+                    : 'Grundlage unbekannt',
+                source: 'Zonen nach Bestätigung',
+              )
+            else
+              _card(
+                context,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('ZEIT IN ZONEN', style: g.caps()),
+                    const SizedBox(height: 10),
+                    Text(
+                      !confirmed
+                          ? 'Zonen nach Bestätigung'
+                          : 'Zonen nicht verfügbar',
+                      style: g.t(14, 19, weight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 10),
+            _card(
+              context,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('PULSERHOLUNG', style: g.caps()),
+                  const SizedBox(height: 8),
+                  Text(
+                    a.hrRecoveryOneMinute == null
+                        ? '—'
+                        : '${g3Signed(-a.hrRecoveryOneMinute!.round(), unit: '/min')} in 1 Min.',
+                    style: g.t(
+                      25,
+                      29,
+                      weight: FontWeight.w700,
+                      color: a.hrRecoveryOneMinute == null ? g.gap : g.ink,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  OBFooterStamp('Gespeicherte Bandwerte', synthetic: false),
+                  if (a.hrRecoveryOneMinute == null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      a.source == G3ActivitySource.manual && a.hrTrace.isEmpty
+                          ? 'Kein Bandpuls in diesem Zeitraum.'
+                          : 'Pulserholung nicht erfasst.',
+                      style: g.t(13, 18, color: g.ink2),
+                    ),
+                  ],
                 ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            FutureBuilder<OpenBandDay>(
+              future: _day,
+              builder: (context, snapshot) => OBFooterStamp(
+                g3DataThrough(
+                  widget.latestStoredAt,
+                  now: widget.now ?? DateTime.now(),
+                ),
+                synthetic: snapshot.data?.synthetic ?? false,
               ),
             ),
           ],
@@ -1513,23 +1252,24 @@ Widget _figure(
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.bottomLeft,
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  style: g.t(
-                    44,
-                    48,
-                    weight: FontWeight.w700,
-                    color: value == '—' ? g.gap : g.ink,
-                    tracking: -.04,
-                  ),
-                ),
+                child: value == '—'
+                    ? const OBMissingValue(size: 44, lineHeight: 48)
+                    : Text(
+                        value,
+                        maxLines: 1,
+                        style: g.t(
+                          44,
+                          48,
+                          weight: FontWeight.w700,
+                          tracking: -.04,
+                        ),
+                      ),
               ),
             ),
             if (unit != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 5),
-                child: Text('\u2009$unit', style: g.t(15, 18, color: g.ink2)),
+                child: Text(' $unit', style: g.t(15, 18, color: g.ink2)),
               ),
           ],
         ),
@@ -1554,12 +1294,14 @@ class G3LoadScreen extends StatefulWidget {
   final OpenBandController controller;
   final G3Activity? activity;
   final G3WeeklyLoad weekly;
+  final String backLabel;
   final OBTrendPeriod initialPeriod;
   const G3LoadScreen({
     super.key,
     required this.controller,
     required this.activity,
     required this.weekly,
+    this.backLabel = 'Training',
     this.initialPeriod = OBTrendPeriod.d30,
   });
 
@@ -1600,95 +1342,81 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
             final avg = present.isEmpty
                 ? null
                 : present.reduce((a, b) => a + b) / present.length;
-            return ListView(
-              padding: const EdgeInsets.only(
-                top: 4,
-                bottom: kOBTabBarContentInset,
+            final stamp = widget.controller.band.latestStoredAt;
+            return G3DetailPage(
+              bottomInset: kOBTabBarContentInset,
+              header: OBPageHeader.detail(
+                title: 'BELASTUNG',
+                domain: G3Domain.load,
+                backLabel: widget.backLabel,
+                onBack: () => Navigator.of(context).maybePop(),
+                onTrailing: () => _loadInfo(context),
+                subtitle: g3DayLong(
+                  DateTime.parse(widget.controller.selectedDay),
+                ),
+              ),
+              fullWidthSection: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const OBSectionHeader('HEUTE BISHER'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _card(
+                          context,
+                          Text(
+                            widget.activity == null
+                                ? 'Noch keine Aktivität heute.'
+                                : '${trainingSport(widget.activity!.sport)} · ${trainingNumber(widget.activity!.strain, signed: true)}',
+                            style: g.t(15, 20),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        OBTrainingLoad(
+                          load: widget.weekly,
+                          onMethod: () => _method(context),
+                        ),
+                        const SizedBox(height: 18),
+                        OBFooterStamp(
+                          g3DataThrough(stamp, now: widget.controller.now()),
+                          synthetic: widget.controller.day?.synthetic ?? false,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               children: [
-                OBPageHeader.detail(
-                  title: 'BELASTUNG',
-                  backLabel: 'Training',
-                  onBack: () => Navigator.of(context).maybePop(),
-                  subtitle: DateFormat(
-                    'EEEE, d. MMMM',
-                    'de_DE',
-                  ).format(DateTime.parse(widget.controller.selectedDay)),
+                OBLoadLead(
+                  value: widget.controller.day?.strain.value,
+                  countTime:
+                      widget.controller.selectedDay ==
+                              todayLabel(widget.controller.now()) &&
+                          stamp != null
+                      ? g3DataThrough(stamp, now: widget.controller.now())
+                      : null,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      OBLoadLead(
-                        value: widget.controller.day?.strain.value,
-                        countTime:
-                            widget.controller.selectedDay ==
-                                    todayLabel(widget.controller.now()) &&
-                                widget.controller.day?.calculatedAt != null
-                            ? DateFormat.Hm(
-                                'de_DE',
-                              ).format(widget.controller.day!.calculatedAt!)
-                            : null,
-                      ),
-                      const SizedBox(height: 10),
-                      if (snap.hasData)
-                        OBTrendChart(
-                          title: 'BELASTUNG · 0–21',
-                          period: period,
-                          values: values,
-                          min: 0,
-                          max: 21,
-                          xLabels: const ['', '', 'heute'],
-                          footLeft: avg == null
-                              ? 'Ø —'
-                              : 'Ø ${trainingNumber(avg)}',
-                          footRight: 'ohne persönlichen Bereich',
-                          onPeriod: (next) => setState(() {
-                            period = next;
-                            trend = _load();
-                          }),
-                        )
-                      else
-                        const Center(child: CircularProgressIndicator()),
-                      const SizedBox(height: 12),
-                      Text('HEUTE BISHER', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      _card(
-                        context,
-                        Text(
-                          widget.activity == null
-                              ? 'Noch keine Aktivität heute.'
-                              : '${trainingSport(widget.activity!.sport)} · ${trainingNumber(widget.activity!.strain, signed: true)}',
-                          style: g.t(15, 20),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      OBTrainingLoad(
-                        load: widget.weekly,
-                        onMethod: () => _method(context),
-                      ),
-                      const SizedBox(height: 12),
-                      _card(
-                        context,
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'So entsteht Belastung',
-                              style: g.t(17, 22, weight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Der Tageswert liegt auf einer Skala von 0 bis 21. Wenig Tragezeit macht einen Tag kleiner und schwer vergleichbar.',
-                              style: g.t(13, 18, color: g.ink2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(height: 10),
+                if (snap.hasData)
+                  OBTrendChart(
+                    domain: G3Domain.load,
+                    title: 'BELASTUNG · 0–21',
+                    period: period,
+                    values: values,
+                    min: 0,
+                    max: 21,
+                    xLabels: const ['', '', 'heute'],
+                    footLeft: avg == null ? 'Ø —' : 'Ø ${trainingNumber(avg)}',
+                    footRight: 'ohne persönlichen Bereich',
+                    onPeriod: (next) => setState(() {
+                      period = next;
+                      trend = _load();
+                    }),
+                  )
+                else
+                  const Center(child: CircularProgressIndicator()),
               ],
             );
           },

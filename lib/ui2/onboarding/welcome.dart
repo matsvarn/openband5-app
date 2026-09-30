@@ -25,6 +25,8 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../openband/alp_tokens.dart';
 import '../../openband/theme.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../ui2.dart';
 import 'pairing.dart' show OnboardingBypass;
 
@@ -667,26 +669,26 @@ class WelcomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final o = outcome;
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: g.page,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 32, 16, 32),
           children: [
-            Icon(LucideIcons.activity, size: 40, color: p.action),
+            Icon(LucideIcons.activity, size: 40, color: g.ink),
             const SizedBox(height: 20),
             Text(
               l?.welcomeHeadline ?? 'Your band, decoded here',
-              style: p.text(30, weight: FontWeight.w800, display: true),
+              style: g.t(30, 36, weight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             Text(
               l?.welcomeSubhead ??
                   'Every number is computed on this phone from the raw signal.',
-              style: p.text(15, color: p.muted),
+              style: g.t(15, 21, color: g.ink2),
             ),
             const SizedBox(height: 16),
             Row(
@@ -698,26 +700,18 @@ class WelcomeView extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: p.recoveryTint,
+                      color: g.chip,
                       borderRadius: BorderRadius.circular(AlpRadius.pill),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          LucideIcons.shieldCheck,
-                          size: 14,
-                          color: p.recoveryText,
-                        ),
+                        Icon(LucideIcons.shieldCheck, size: 14, color: g.ink),
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
                             l?.pillLocalNoCloud ?? 'Local · no cloud',
-                            style: p.text(
-                              13,
-                              weight: FontWeight.w600,
-                              color: p.recoveryText,
-                            ),
+                            style: g.t(13, 18, weight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -727,16 +721,17 @@ class WelcomeView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            OBAction(
+            chrome.OBActionPrimary(
               l?.welcomeSetUpMyBand ?? 'Band verbinden',
+              expand: true,
               onPressed: busy ? null : onNew,
             ),
             const SizedBox(height: 12),
-            OBAction(
+            chrome.OBActionSecondary(
               busy
                   ? (l?.welcomeImporting ?? 'Importing…')
                   : (l?.welcomeBringMyHistoryFirst ?? 'Daten importieren'),
-              secondary: true,
+              expand: true,
               onPressed: busy ? null : onImport,
             ),
             if (onSkip != null) ...[
@@ -746,7 +741,7 @@ class WelcomeView extends StatelessWidget {
                   onPressed: busy ? null : onSkip,
                   child: Text(
                     'Später verbinden',
-                    style: p.text(14, weight: FontWeight.w500, color: p.muted),
+                    style: g.t(14, 19, color: g.muted),
                   ),
                 ),
               ),
@@ -765,11 +760,11 @@ class WelcomeView extends StatelessWidget {
                       'Imported days sit alongside days this app measured and feed '
                       'the same baselines — but a day the band already measured is '
                       'never overwritten.',
-              style: p.text(13, color: p.muted),
+              style: g.t(13, 18, color: g.muted),
             ),
             if (busy) ...[
               const SizedBox(height: 24),
-              Center(child: CircularProgressIndicator(color: p.action)),
+              Center(child: CircularProgressIndicator(color: g.ink)),
             ],
             if (o != null) ...[const SizedBox(height: 24), ImportReport(o)],
           ],
@@ -800,12 +795,10 @@ class ImportReport extends StatelessWidget {
       );
     }
     final showLegacy =
-        o.days > 0 ||
-        o.journalRows > 0 ||
-        o.workouts > 0 ||
-        o.skippedDays > 0;
+        o.days > 0 || o.journalRows > 0 || o.workouts > 0 || o.skippedDays > 0;
     final vo2 = _vo2Cards(p, l);
-    final showRestore = o.restoredRows > 0 ||
+    final showRestore =
+        o.restoredRows > 0 ||
         o.unchangedRows > 0 ||
         o.restoreConflicts > 0 ||
         o.unreadableRows > 0 ||
@@ -1014,12 +1007,8 @@ class ImportReport extends StatelessWidget {
       if (o.pendingRecalculations > 0)
         count(
           o.pendingRecalculations,
-          de
-              ? '1 Neuberechnung ausstehend'
-              : '1 recalculation pending',
-          de
-              ? 'Neuberechnungen ausstehend'
-              : 'recalculations pending',
+          de ? '1 Neuberechnung ausstehend' : '1 recalculation pending',
+          de ? 'Neuberechnungen ausstehend' : 'recalculations pending',
         ),
     ];
     return _primaryCard(
@@ -1027,8 +1016,7 @@ class ImportReport extends StatelessWidget {
       l,
       title: title,
       body: [
-        for (final line in lines)
-          Text(line, style: _receiptLine(p, 15, 21)),
+        for (final line in lines) Text(line, style: _receiptLine(p, 15, 21)),
       ],
     );
   }
@@ -1133,10 +1121,7 @@ class ImportReport extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: _receiptLine(p, 18, 24, weight: FontWeight.w600),
-          ),
+          Text(title, style: _receiptLine(p, 18, 24, weight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(_sourceLabel(l), style: _receiptLine(p, 13, 18, color: p.muted)),
           if (body.isNotEmpty) ...[

@@ -1,20 +1,35 @@
 // Route targets Heute opens.
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui2/app_shell.dart' show pushInTab;
 import '../../controller.dart';
 import '../../domain.dart';
-import '../../metric_detail.dart';
+import 'training_screen.dart';
 import 'verlauf.dart';
 
+Future<void> openHeuteActivity(
+  BuildContext context,
+  OpenBandController controller,
+  G3Activity activity,
+) => pushInTab<void>(
+  context,
+  g3ActivityResultRoute(
+    repository: controller.repository,
+    activity: activity,
+    latestStoredAt: controller.band.latestStoredAt,
+    now: controller.now(),
+    onChanged: controller.refresh,
+  ),
+);
+
 /// Opens the detail for a Heute value.
-void openHeuteMetric(
+Future<void> openHeuteMetric(
   BuildContext context,
   OpenBandController controller,
   G3Metric metric,
-) {
+) async {
   if (metric != G3Metric.strain) {
-    openG3MetricDetail(
+    await openG3MetricDetail(
       context,
       metric,
       repository: controller.repository,
@@ -24,18 +39,29 @@ void openHeuteMetric(
     return;
   }
 
-  // Training owns the Belastung detail; retain its current route until then.
-  OpenBandMetricDetail.push(
-    context,
-    backText: 'Heute',
-    controller: controller,
-    metricKey: MetricKey.strain,
-    label: 'Belastung',
-    subtitle: 'heute bis jetzt',
-    unit: 'von 21',
-    icon: LucideIcons.flame,
-    digits: 1,
-    color: (p) => p.ink,
-    tint: (p) => p.line,
-  );
+  final day = controller.selectedDay;
+  final repo = controller.repository;
+  try {
+    final weekly = await repo.readWeeklyLoad(day);
+    final activities = [...await repo.readActivities(day)]
+      ..sort((a, b) => b.start.compareTo(a.start));
+    if (!context.mounted || controller.selectedDay != day) return;
+    await pushInTab<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => G3LoadScreen(
+          controller: controller,
+          activity: activities.firstOrNull,
+          weekly: weekly,
+          backLabel: 'Heute',
+        ),
+      ),
+    );
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Belastung konnte nicht geladen werden.')),
+      );
+    }
+  }
 }
