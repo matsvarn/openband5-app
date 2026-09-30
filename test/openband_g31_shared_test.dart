@@ -6,7 +6,12 @@ import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
+import 'package:openstrap_edge/openband/g3/heute_parts.dart'
+    show heuteSportLabel;
 import 'package:openstrap_edge/openband/g3/metrics.dart';
+import 'package:openstrap_edge/openband/g3/sport.dart';
+import 'package:openstrap_edge/openband/g3/training_parts.dart'
+    show trainingSport, trainingSportIcon;
 import 'package:openstrap_edge/openband/theme.dart'
     show OBChevron, openBandTheme;
 
@@ -18,6 +23,29 @@ Widget _frame(Widget child) => MaterialApp(
 );
 
 void main() {
+  test('Heute and Training resolve the same sport order and labels', () {
+    expect(g3SportIds.first, 'running');
+    expect(g3QuickSportIds, [...g3SportIds.take(8), 'other']);
+    for (final sport in g3Sports) {
+      expect(heuteSportLabel(sport.id), sport.label);
+      expect(trainingSport(sport.id), sport.label);
+    }
+    expect(g3SportLabel('weightlifting'), 'Kraft');
+    expect(g3SportLabel('detected'), 'Aktivität');
+  });
+
+  testWidgets('Heute and Training use the same sport pictogram', (
+    tester,
+  ) async {
+    for (final sport in ['running', 'yoga', 'detected']) {
+      final shared = g3SportIcon(sport, color: Colors.black);
+      final training = trainingSportIcon(sport, color: Colors.black);
+      expect(training.runtimeType, shared.runtimeType);
+      await tester.pumpWidget(_frame(shared));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   test('C-83 normalizes every audited date form', () {
     final tuesday = DateTime(2026, 9, 29, 9, 38);
     final monday = DateTime(2026, 9, 28, 9, 38);

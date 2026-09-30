@@ -20,13 +20,13 @@ import '../../journal_fields.dart'
     show journalFieldTitle, journalFieldUnitLabel;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../today_note.dart';
-import '../../training.dart' show OBSportIcon, obSport;
 import '../chrome.dart';
 import '../count_copy.dart';
 import '../day.dart';
 import '../g3_theme.dart';
 import '../heute_parts.dart';
 import '../metrics.dart';
+import '../sport.dart';
 
 /// An armed bedtime reminder: its instant and the day whose note armed it.
 typedef ArmedBedtime = ({DateTime at, String day});
@@ -1000,12 +1000,11 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
 
   Widget _activityRow(G3Activity a) {
     final g = G3.of(context);
-    final sport = obSport(a.sport);
     final unconfirmed = a.source == G3ActivitySource.auto && !a.confirmed;
     final end = a.end;
     final minutes = a.duration?.inMinutes;
     return OBActivityRow(
-      pictogram: OBSportIcon(sport.icon, size: 24, color: g.ink),
+      pictogram: g3SportIcon(a.sport, size: 24, color: g.ink),
       title: heuteSportLabel(a.sport),
       subtitle: [
         end == null
@@ -1035,7 +1034,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       builder: (sheet) => StatefulBuilder(
         builder: (sheet, setSheet) {
           final g = G3.of(sheet);
-          final meta = obSport(sport);
           Future<void> run(Future<void> Function() op) async {
             try {
               await op();
@@ -1080,11 +1078,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: OBListRow(
-                            leading: OBSportIcon(
-                              obSport(s).icon,
-                              size: 18,
-                              color: g.ink,
-                            ),
+                            leading: g3SportIcon(s, size: 18, color: g.ink),
                             title: heuteSportLabel(s),
                             onTap: () => Navigator.of(pick).pop(s),
                           ),
@@ -1118,7 +1112,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                       height: 44,
                       alignment: Alignment.center,
                       decoration: g.pressed(radius: 12, color: g.track),
-                      child: OBSportIcon(meta.icon, size: 24, color: g.ink),
+                      child: g3SportIcon(sport, size: 24, color: g.ink),
                     ),
                     const SizedBox(width: 12),
                     Expanded(

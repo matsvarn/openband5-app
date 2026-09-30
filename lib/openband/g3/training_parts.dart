@@ -2,84 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart';
-import '../training.dart' show OBSportIcon;
 import 'chrome.dart' show OBLink, OBPanel;
 import 'count_copy.dart';
 import 'g3_format.dart' show g3Signed;
 import 'g3_theme.dart';
+import 'sport.dart';
 import 'metrics.dart'
     show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind, OBMissingValue;
 
-const trainingSports = <String>[
-  'running',
-  'cycling',
-  'walking',
-  'hiking',
-  'weight_training',
-  'swimming',
-  'yoga',
-  'tennis',
-  'intervals',
-  'stretching',
-  'soccer',
-  'rowing',
-  'climbing',
-  'skiing',
-  'martial_arts',
-  'other',
-];
-
-String trainingSport(String sport) => switch (sport) {
-  'running' => 'Lauf',
-  'cycling' => 'Rad',
-  'hiking' => 'Wandern',
-  'walking' => 'Gehen',
-  'tennis' => 'Tennis',
-  'intervals' => 'Intervalle',
-  'stretching' => 'Dehnen',
-  'soccer' || 'football' => 'Fußball',
-  'rowing' => 'Rudern',
-  'climbing' => 'Klettern',
-  'skiing' => 'Ski',
-  'martial_arts' => 'Kampfsport',
-  'swimming' => 'Schwimmen',
-  'yoga' => 'Yoga',
-  'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
-  _ => sport == 'other' ? 'Sonstiges' : 'Aktivität',
-};
-
-String trainingSportIconName(String sport) => switch (sport) {
-  'running' => 'run',
-  'walking' => 'walk',
-  'cycling' => 'bike',
-  'hiking' => 'trekking',
-  'tennis' => 'ball-tennis',
-  'swimming' => 'swimming',
-  'strength' || 'weightlifting' || 'weight_training' => 'barbell',
-  'yoga' => 'yoga',
-  'intervals' => 'jump-rope',
-  'stretching' => 'stretching',
-  'soccer' || 'football' => 'ball-football',
-  'rowing' => 'kayak',
-  'climbing' => 'mountain',
-  'skiing' => 'ski-jumping',
-  'martial_arts' => 'karate',
-  _ => '',
-};
-
+final trainingSports = g3SportIds;
+String trainingSport(String sport) => g3SportLabel(sport);
 Widget trainingSportIcon(
   String sport, {
   double size = 24,
   required Color color,
-}) {
-  if (sport == 'yoga') {
-    return Icon(LucideIcons.flower2, size: size, color: color);
-  }
-  final name = trainingSportIconName(sport);
-  return name.isEmpty
-      ? Icon(LucideIcons.activity, size: size, color: color)
-      : OBSportIcon(name, size: size, color: color);
-}
+}) => g3SportIcon(sport, size: size, color: color);
 
 class OBSportTile extends StatelessWidget {
   final String sport;
