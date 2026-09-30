@@ -1,8 +1,9 @@
 // G3 display formats. Pass local DateTimes; these functions do not convert
 // time zones. Use g3DayLong for headings, g3DayShort for rows, g3NightOf for
 // sleep labels, g3DateShort for a date without weekday, and g3Relative for a
-// timestamp relative to a supplied clock. g3Duration takes whole minutes;
-// g3Signed adds a sign and an optional unit. Null values render as "—".
+// timestamp relative to a supplied clock. g3DataThrough supplies freshness
+// copy. g3Duration takes whole minutes; g3Signed adds a sign and optional
+// unit. Null durations and signed values render as "—".
 const _weekdays = [
   'Montag',
   'Dienstag',
@@ -50,6 +51,15 @@ String g3Relative(DateTime value, {required DateTime now}) {
   final yesterday = DateTime(now.year, now.month, now.day - 1);
   if (_sameDay(value, yesterday)) return 'gestern $clock';
   return '${g3DayShort(value)} $clock';
+}
+
+String g3DataThrough(DateTime? value, {required DateTime now}) {
+  if (value == null) return 'Datenstand unbekannt';
+  final clock = '${_two(value.hour)}:${_two(value.minute)}';
+  if (_sameDay(value, now)) return 'Daten bis $clock';
+  final yesterday = DateTime(now.year, now.month, now.day - 1);
+  if (_sameDay(value, yesterday)) return 'Daten bis gestern $clock';
+  return 'Daten bis ${g3DayShort(value)} $clock';
 }
 
 String g3Duration(int? minutes) {

@@ -188,6 +188,30 @@ class G3LabelRow extends StatelessWidget {
   }
 }
 
+/// An absent scalar at the same type size as the value it replaces.
+class OBMissingValue extends StatelessWidget {
+  final double size;
+  final double? lineHeight;
+  const OBMissingValue({super.key, required this.size, this.lineHeight});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Text(
+        '—',
+        style: g.t(
+          size,
+          lineHeight ?? size + 4,
+          weight: FontWeight.w700,
+          color: g.gap,
+        ),
+      ),
+    );
+  }
+}
+
 /// Big value with a small aside on the same baseline ("7h18 −27 Min.");
 /// the aside wraps under Dynamic Type instead of clipping.
 class G3ValueLine extends StatelessWidget {
@@ -332,6 +356,9 @@ class OBLeadMetric extends StatelessWidget {
   final bool signed;
   final VoidCallback? onTap;
 
+  /// Detail pages with an (i) key can keep the tap without a second arrow.
+  final bool showLabelArrow;
+
   const OBLeadMetric({
     super.key,
     required this.label,
@@ -356,6 +383,7 @@ class OBLeadMetric extends StatelessWidget {
     this.reason = 'Es fehlt die Nacht. Nichts wird geschätzt.',
     this.signed = false,
     this.onTap,
+    this.showLabelArrow = true,
   });
 
   bool get _missing =>
@@ -370,10 +398,7 @@ class OBLeadMetric extends StatelessWidget {
     final lead = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.2);
     Widget refusal(String t, String r) => Row(
       children: [
-        Text(
-          '—',
-          style: g.t(64, 72, weight: FontWeight.w700, color: g.gap),
-        ),
+        const OBMissingValue(size: 64, lineHeight: 72),
         const SizedBox(width: 16),
         Expanded(
           child: Column(
@@ -524,7 +549,7 @@ class OBLeadMetric extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            G3LabelRow(label, note: note, onTap: onTap),
+            G3LabelRow(label, note: note, onTap: onTap, arrow: showLabelArrow),
             ...body,
           ],
         ),
@@ -982,7 +1007,7 @@ class OBMetricCard extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: kG3CardPadding,
           decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -999,18 +1024,7 @@ class OBMetricCard extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    MediaQuery.withClampedTextScaling(
-                      maxScaleFactor: 1.3,
-                      child: Text(
-                        '—',
-                        style: g.t(
-                          34,
-                          38,
-                          weight: FontWeight.w700,
-                          color: g.gap,
-                        ),
-                      ),
-                    ),
+                    const OBMissingValue(size: 34, lineHeight: 38),
                     const SizedBox(width: 6),
                     Flexible(
                       child: Padding(

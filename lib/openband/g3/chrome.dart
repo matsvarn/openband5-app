@@ -9,6 +9,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron, OBLed;
+import 'g3_format.dart';
 import 'g3_theme.dart';
 import 'metrics.dart' show G3LabelRow;
 
@@ -41,6 +42,36 @@ class _Hit extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Text link with the shared inline chevron and a 44 pt tap target.
+class OBLink extends StatelessWidget {
+  final String label;
+  final String? semanticsLabel;
+  final VoidCallback onTap;
+  const OBLink(
+    this.label, {
+    super.key,
+    this.semanticsLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return _Hit(
+      label: semanticsLabel ?? label,
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: g.t(13, 16, weight: FontWeight.w700)),
+          const SizedBox(width: 2),
+          OBChevron(size: 12, color: g.muted),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +252,7 @@ class OBPageHeader extends StatelessWidget {
     switch (_kind) {
       case _Kind.hub:
         return Padding(
-          padding: const EdgeInsets.only(left: 24, right: 18, top: 4),
+          padding: const EdgeInsets.only(left: 24, right: 16, top: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -279,7 +310,7 @@ class OBPageHeader extends StatelessWidget {
         );
       case _Kind.detail:
         return Padding(
-          padding: const EdgeInsets.only(left: 16, right: 14, top: 2),
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 2),
           child: Row(
             children: [
               if (onBack == null)
@@ -352,7 +383,7 @@ class OBPageHeader extends StatelessWidget {
         // Opaque page tone: it floats over scrolled content, and a
         // translucent fill without blur shows that content as ghosts.
         return Container(
-          padding: const EdgeInsets.only(left: 16, right: 14, bottom: 4),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 4),
           decoration: BoxDecoration(
             color: g.page,
             border: Border(bottom: BorderSide(color: g.hairline)),
@@ -387,6 +418,36 @@ class OBPageHeader extends StatelessWidget {
 
 enum _Kind { hub, detail, compact }
 
+/// A detail header outside the 16 pt content gutter, followed by a 12 pt gap.
+/// [bottomInset] is scroll padding, so content can travel behind a tab bar.
+class G3DetailPage extends StatelessWidget {
+  final Widget header;
+  final List<Widget> children;
+  final double bottomInset;
+  const G3DetailPage({
+    super.key,
+    required this.header,
+    required this.children,
+    this.bottomInset = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: EdgeInsets.only(bottom: bottomInset),
+    children: [
+      header,
+      const SizedBox(height: 12),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      ),
+    ],
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sync line
 
@@ -406,6 +467,14 @@ class OBSyncState extends StatelessWidget {
     this.synthetic = false,
     this.onTap,
   });
+  OBSyncState.dataThrough({
+    super.key,
+    required this.kind,
+    required DateTime? storedAt,
+    required DateTime now,
+    this.synthetic = false,
+    this.onTap,
+  }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -420,7 +489,7 @@ class OBSyncState extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
           child: Padding(
-            padding: const EdgeInsets.only(left: 24, right: 22, top: 8),
+            padding: const EdgeInsets.only(left: 24, right: 16, top: 8),
             // The chevron is part of the text so both wrap as one unit; the
             // synthetic tag (gallery/synthetic only) yields to its own line.
             child: Row(
@@ -467,17 +536,7 @@ class OBSyncState extends StatelessWidget {
                           color: strong ? g.ink : g.muted,
                         ),
                       ),
-                      if (synthetic)
-                        Text(
-                          'SYNTHETISCHE DATEN',
-                          style: g.t(
-                            10,
-                            14,
-                            weight: FontWeight.w500,
-                            color: g.muted,
-                            tracking: .1,
-                          ),
-                        ),
+                      if (synthetic) const G3SyntheticLabel(),
                     ],
                   ),
                 ),
@@ -509,9 +568,9 @@ class OBSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Padding(
-      padding: const EdgeInsets.only(left: 24, right: 20),
+      padding: const EdgeInsets.only(left: 24, right: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Padding(
@@ -546,7 +605,7 @@ class OBSectionHeader extends StatelessWidget {
               child: Text(action!, style: g.t(13, 16, color: g.muted)),
             )
           else if (trailing != null)
-            Padding(padding: const EdgeInsets.only(bottom: 4), child: trailing),
+            Padding(padding: const EdgeInsets.only(top: 10), child: trailing),
         ],
       ),
     );
@@ -577,6 +636,12 @@ class OBFooterStamp extends StatelessWidget {
   final String text;
   final bool synthetic;
   const OBFooterStamp(this.text, {super.key, this.synthetic = false});
+  OBFooterStamp.dataThrough({
+    super.key,
+    required DateTime? storedAt,
+    required DateTime now,
+    this.synthetic = false,
+  }) : text = g3DataThrough(storedAt, now: now);
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -591,16 +656,7 @@ class OBFooterStamp extends StatelessWidget {
           ),
           if (synthetic) ...[
             const SizedBox(height: 4),
-            Text(
-              'SYNTHETISCHE DATEN',
-              style: g.t(
-                11,
-                14,
-                weight: FontWeight.w500,
-                color: g.muted,
-                tracking: .1,
-              ),
-            ),
+            const G3SyntheticLabel(),
           ],
         ],
       ),
@@ -610,6 +666,19 @@ class OBFooterStamp extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Panels, list rows, keys
+
+/// Show once per screen: on the tab root sync line or a detail footer.
+class G3SyntheticLabel extends StatelessWidget {
+  const G3SyntheticLabel({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return Text(
+      'SYNTHETISCHE DATEN',
+      style: g.t(11, 14, weight: FontWeight.w500, color: g.muted, tracking: .1),
+    );
+  }
+}
 
 class OBPanel extends StatelessWidget {
   final bool hero;
@@ -623,9 +692,7 @@ class OBPanel extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) => Container(
-    padding:
-        padding ??
-        EdgeInsets.symmetric(horizontal: hero ? 20 : 18, vertical: 16),
+    padding: padding ?? kG3CardPadding,
     decoration: G3
         .of(context)
         .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
@@ -660,7 +727,7 @@ class OBListRow extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: kG3CardPadding,
           decoration: g.raised(),
           child: Row(
             children: [
@@ -1054,6 +1121,7 @@ class OBSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final close = onCancel ?? () => Navigator.of(context).maybePop();
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
       decoration: BoxDecoration(
@@ -1096,7 +1164,7 @@ class OBSheet extends StatelessWidget {
               _Hit(
                 label: 'Schließen',
                 width: 44,
-                onTap: onCancel,
+                onTap: close,
                 child: Container(
                   width: 32,
                   height: 32,
@@ -1114,31 +1182,75 @@ class OBSheet extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           child,
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: OBActionSecondary(
-                  cancelLabel,
-                  onPressed: onCancel,
-                  expand: true,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OBActionPrimary(
-                  confirmLabel,
-                  onPressed: onConfirm,
-                  expand: true,
-                ),
-              ),
-            ],
-          ),
+          if (onCancel != null || onConfirm != null) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                if (onCancel != null)
+                  Expanded(
+                    child: OBActionSecondary(
+                      cancelLabel,
+                      onPressed: onCancel,
+                      expand: true,
+                    ),
+                  ),
+                if (onCancel != null && onConfirm != null)
+                  const SizedBox(width: 10),
+                if (onConfirm != null)
+                  Expanded(
+                    child: OBActionPrimary(
+                      confirmLabel,
+                      onPressed: onConfirm,
+                      expand: true,
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 }
+
+/// Shared explanation sheet. The route covers the floating tab bar.
+class OBInfoSheet extends StatelessWidget {
+  final String title;
+  final List<String> paragraphs;
+  const OBInfoSheet({super.key, required this.title, required this.paragraphs});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return OBSheet(
+      title: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < paragraphs.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            Text(paragraphs[i], style: g.t(14, 20, color: g.ink2)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> showOBInfoSheet(
+  BuildContext context, {
+  required String title,
+  required List<String> paragraphs,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useRootNavigator: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (_) => SafeArea(
+    top: false,
+    child: OBInfoSheet(title: title, paragraphs: paragraphs),
+  ),
+);
 
 // ---------------------------------------------------------------------------
 // Empty and error blocks
@@ -1161,7 +1273,7 @@ class OBEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: kG3CardPadding,
       decoration: g.pressed(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

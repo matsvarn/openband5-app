@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
+import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
+import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart';
 import 'package:openstrap_edge/openband/theme.dart'
     show OBChevron, openBandTheme;
@@ -32,6 +34,13 @@ void main() {
     );
     expect(g3DayLong(DateTime(2026, 9, 1)), 'Dienstag, 1. September');
     expect(g3DayShort(DateTime(2025, 9, 23)), 'Di 23.09');
+    expect(g3DataThrough(tuesday, now: tuesday), 'Daten bis 09:38');
+    expect(g3DataThrough(monday, now: tuesday), 'Daten bis gestern 09:38');
+    expect(
+      g3DataThrough(DateTime(2026, 9, 22, 9, 38), now: tuesday),
+      'Daten bis Di 22.09 09:38',
+    );
+    expect(g3DataThrough(null, now: tuesday), 'Datenstand unbekannt');
   });
 
   test('C-84 uses compact durations, Unicode signs and spaced units', () {
@@ -71,6 +80,23 @@ void main() {
     expect(find.byType(OBChevron), findsOneWidget);
     await tester.tap(find.text('KÖRPER'));
     expect(taps, 2);
+  });
+
+  testWidgets('detail leads can use an info tap without a duplicate arrow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        OBLeadMetric(
+          label: 'HRV',
+          state: OBLeadState.normal,
+          value: 42,
+          onTap: () {},
+          showLabelArrow: false,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsNothing);
   });
 
   testWidgets('shared rows and empty action show arrows only when tappable', (
@@ -156,5 +182,111 @@ void main() {
       ),
     );
     expect(find.byIcon(LucideIcons.user), findsNothing);
+  });
+
+  testWidgets('shared links have a 44 pt target and invoke their handler', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(_frame(OBLink('Methode', onTap: () => taps++)));
+    final target = find.bySemanticsLabel('Methode');
+    expect(tester.getSize(target).height, 44);
+    expect(find.byType(OBChevron), findsOneWidget);
+    await tester.tap(target);
+    expect(taps, 1);
+  });
+
+  testWidgets('detail header and shared card contents follow one gutter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 230,
+              child: G3DetailPage(
+                header: Container(
+                  key: const ValueKey('header'),
+                  height: 44,
+                  color: Colors.transparent,
+                ),
+                children: [
+                  Container(
+                    key: const ValueKey('content'),
+                    height: 40,
+                    color: Colors.transparent,
+                  ),
+                ],
+              ),
+            ),
+            const OBPanel(hero: true, child: Text('hero')),
+            const OBPanel(child: Text('normal')),
+            const OBSectionHeader('ABSCHNITT', trailing: Text('3')),
+            const OBSettingsRow(label: 'Version', value: '1.2'),
+          ],
+        ),
+      ),
+    );
+    final header = tester.getRect(find.byKey(const ValueKey('header')));
+    final content = tester.getRect(find.byKey(const ValueKey('content')));
+    expect(content.top - header.bottom, 12);
+    expect(content.left - header.left, 16);
+    expect(
+      tester.getRect(find.text('hero')).left,
+      tester.getRect(find.text('normal')).left,
+    );
+    expect(
+      tester.getRect(find.byType(OBSectionHeader)).right -
+          tester.getRect(find.text('3')).right,
+      16,
+    );
+    expect(
+      tester.getRect(find.byType(OBSettingsRow)).right -
+          tester.getRect(find.text('1.2')).right,
+      0,
+    );
+  });
+
+  testWidgets('explanation sheet has one close key and no dead actions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showOBInfoSheet(
+              context,
+              title: 'Methode',
+              paragraphs: const ['Erster Satz.', 'Zweiter Satz.'],
+            ),
+            child: const Text('Öffnen'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Öffnen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Methode'), findsOneWidget);
+    expect(find.text('Erster Satz.'), findsOneWidget);
+    expect(find.text('Zweiter Satz.'), findsOneWidget);
+    expect(find.text('Abbrechen'), findsNothing);
+    expect(find.text('Speichern'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('Schließen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Methode'), findsNothing);
+  });
+
+  testWidgets('missing values and synthetic labels use shared styles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        const Column(children: [OBMissingValue(size: 36), G3SyntheticLabel()]),
+      ),
+    );
+    expect(tester.widget<Text>(find.text('—')).style!.color, G3(false).gap);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
   });
 }

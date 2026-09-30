@@ -5,7 +5,9 @@ import '../../data/day_label.dart';
 import '../domain.dart';
 import '../theme.dart' show OBChevron, OBLed, obTime;
 import 'chrome.dart' show OBActionPrimary, OBActionSecondary;
+import 'g3_format.dart';
 import 'g3_theme.dart';
+import 'metrics.dart' show OBMissingValue;
 
 class OBSetupHeader extends StatelessWidget {
   final String title;
@@ -200,16 +202,20 @@ class OBSettingsRow extends StatelessWidget {
                   if (value != null) ...[
                     const SizedBox(width: 8),
                     Flexible(
-                      child: Text(
-                        value!,
-                        textAlign: TextAlign.end,
-                        style: g.t(
-                          15,
-                          20,
-                          weight: onTap == null
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                          color: onTap == null ? g.ink : g.ink2,
+                      fit: FlexFit.tight,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          value!,
+                          textAlign: TextAlign.end,
+                          style: g.t(
+                            15,
+                            20,
+                            weight: onTap == null
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: onTap == null ? g.ink : g.ink2,
+                          ),
                         ),
                       ),
                     ),
@@ -220,7 +226,7 @@ class OBSettingsRow extends StatelessWidget {
                   ],
                   if (onTap != null && trailing == null) ...[
                     const SizedBox(width: 8),
-                    Icon(LucideIcons.chevronRight, size: 14, color: g.gap),
+                    OBChevron(size: 14, color: g.gap),
                   ],
                 ],
               ),
@@ -309,9 +315,7 @@ class OBFrontierCard extends StatelessWidget {
         dayLabelOf(stored) == todayLabel(now) &&
         !stored.isAfter(now);
     final age = sameDay ? now.difference(stored).inMinutes : 0;
-    final ageText = age >= 60
-        ? '${age ~/ 60} h ${(age % 60).toString().padLeft(2, '0')}'
-        : '$age Min.';
+    final ageText = g3Duration(age);
     final storedDay = stored == null
         ? ''
         : bandFrontierDayPrefix(
@@ -589,7 +593,7 @@ class OBBandHero extends StatelessWidget {
         ? 'heute'
         : dayLabelOf(stored) == dayLabelOf(yesterday)
         ? 'gestern'
-        : '${stored.day.toString().padLeft(2, '0')}.${stored.month.toString().padLeft(2, '0')}.';
+        : g3DateShort(stored);
     final age = stored == null || stored.isAfter(now)
         ? null
         : now.difference(stored);
@@ -597,9 +601,7 @@ class OBBandHero extends StatelessWidget {
         ? 'Datenstand unbekannt'
         : age == null
         ? 'auf dem iPhone gespeichert'
-        : age.inHours > 0
-        ? 'vor ${age.inHours} h'
-        : 'vor ${age.inMinutes} Min.';
+        : 'vor ${g3Duration(age.inMinutes)}';
     final status =
         faultLabel ??
         switch (issue) {
@@ -610,7 +612,7 @@ class OBBandHero extends StatelessWidget {
         };
     return Container(
       decoration: g.raised(),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+      padding: kG3CardPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -622,7 +624,7 @@ class OBBandHero extends StatelessWidget {
                     Text('DATEN BIS', style: g.caps()),
                     if (onStatus != null) ...[
                       const SizedBox(width: 4),
-                      Icon(LucideIcons.chevronRight, size: 12, color: g.muted),
+                      OBChevron(size: 12, color: g.muted),
                     ],
                   ],
                 ),
@@ -805,16 +807,10 @@ class _HeroFact extends StatelessWidget {
               ],
             ),
           )
+        else if (value == '—')
+          const OBMissingValue(size: 36, lineHeight: 40)
         else
-          Text(
-            value,
-            style: g.t(
-              36,
-              40,
-              weight: FontWeight.w700,
-              color: value == '—' ? g.gap : g.ink,
-            ),
-          ),
+          Text(value, style: g.t(36, 40, weight: FontWeight.w700)),
         if (detail != null) Text(detail!, style: g.t(12, 17, color: g.muted)),
         if (label == 'AKKU') ...[
           const SizedBox(height: 6),

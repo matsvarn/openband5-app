@@ -10,7 +10,8 @@ import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron;
 import 'chrome.dart' show OBActionSecondary, OBPillButton;
 import 'g3_theme.dart';
-import 'metrics.dart' show G3LabelRow, G3ValueLine, OBChip, OBChipKind;
+import 'metrics.dart'
+    show G3LabelRow, G3ValueLine, OBChip, OBChipKind, OBMissingValue;
 
 // ---------------------------------------------------------------------------
 // Für heute
@@ -67,10 +68,10 @@ class OBDayNote extends StatelessWidget {
     }
     final hasAction = state != OBNoteState.text && actionTitle != null;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 18, 14),
+      padding: kG3CardPadding,
       decoration: BoxDecoration(
         color: g.note,
-        borderRadius: BorderRadius.circular(AlpRadius.hero),
+        borderRadius: BorderRadius.circular(AlpRadius.card),
         boxShadow: g.noteShadow,
       ),
       child: Column(
@@ -290,7 +291,7 @@ class OBActivityRow extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: kG3CardPadding,
           decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -591,7 +592,7 @@ class OBWeekBars extends StatelessWidget {
     final plotHeight = h - (labelsBelow ? 0.0 : 18.0);
     double y(double v) => h - (v / max).clamp(0.0, 1.0) * plotHeight;
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+      padding: kG3CardPadding,
       decoration: g.raised(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -925,13 +926,7 @@ class OBNightCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                MediaQuery.withClampedTextScaling(
-                  maxScaleFactor: 1.3,
-                  child: Text(
-                    '—',
-                    style: g.t(36, 42, weight: FontWeight.w700, color: g.gap),
-                  ),
-                ),
+                const OBMissingValue(size: 36, lineHeight: 42),
                 const SizedBox(width: 8),
                 Flexible(
                   child: Padding(
@@ -1213,7 +1208,7 @@ class OBStepsCard extends StatelessWidget {
     return Semantics(
       label: 'Schritte ${total == null ? 'nicht übertragen' : g3Count(total)}',
       child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+        padding: kG3CardPadding,
         decoration: g.raised(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1225,13 +1220,7 @@ class OBStepsCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (total == null) ...[
-                  MediaQuery.withClampedTextScaling(
-                    maxScaleFactor: 1.3,
-                    child: Text(
-                      '—',
-                      style: g.t(36, 42, weight: FontWeight.w700, color: g.gap),
-                    ),
-                  ),
+                  const OBMissingValue(size: 36, lineHeight: 42),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Padding(

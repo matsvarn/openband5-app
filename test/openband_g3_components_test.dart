@@ -1139,11 +1139,21 @@ void main() {
         _app(
           Column(
             children: [
-              g3Specimens['OBPageHeader.hub']!(),
+              OBPageHeader.hub(
+                title: 'Heute',
+                subtitle: 'Dienstag, 29. September',
+                band: OBBandCapsule(
+                  state: OBBandState.live,
+                  battery: 64,
+                  onTap: () {},
+                ),
+                onProfile: () {},
+              ),
               OBPageHeader.detail(
                 title: 'ERHOLUNG',
                 backLabel: 'Heute',
                 onBack: () {},
+                onTrailing: () {},
               ),
             ],
           ),
