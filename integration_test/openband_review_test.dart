@@ -1010,6 +1010,7 @@ void main() {
         double? scale,
         bool release = false,
         bool failRead = false,
+        bool showControls = false,
       }) async {
         final g3 = scenario == SyntheticScenario.g3Sample ||
             scenario == SyntheticScenario.g3Building;
@@ -1036,7 +1037,7 @@ void main() {
           OpenBandGallery(
             key: UniqueKey(),
             repository: repository,
-            showControls: false,
+            showControls: showControls,
             initialBrightness: brightness,
             initialTextScale: scale,
             releaseReduced: release,
@@ -20540,7 +20541,7 @@ void main() {
       binding.reportData!['flow'] = kOpenBandReviewFlow;
       if (kOpenBandReviewFlow == 'release') {
         Future<void> chooseG3Scenario(String label) async {
-          await tester.tap(find.byType(g3chrome.OBBandCapsule).first);
+          await tester.tap(find.text('Synthetische Galerie'));
           await tester.pumpAndSettle();
           final choice = find.text(label);
           final sheetScroll = find.descendant(
@@ -20555,6 +20556,18 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.tap(choice);
+          await tester.pumpAndSettle();
+          final gallery = tester.widget<OpenBandGallery>(
+            find.byType(OpenBandGallery),
+          );
+          await tester.pumpWidget(OpenBandGallery(
+            key: gallery.key,
+            repository: gallery.repository,
+            initialBrightness: gallery.initialBrightness,
+            initialTextScale: gallery.initialTextScale,
+            releaseReduced: gallery.releaseReduced,
+            showControls: false,
+          ));
           await tester.pumpAndSettle();
           expect(find.textContaining('29. September'), findsWidgets);
         }
@@ -20584,6 +20597,7 @@ void main() {
             release: true,
             scenario: SyntheticScenario.g3Sample,
             brightness: brightness,
+            showControls: true,
           );
           await chooseG3Scenario('G3 · Tagesblatt');
           for (final domain in ['home', 'sleep', 'workout', 'wellness']) {
@@ -20692,15 +20706,15 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byType(BottomSheet), findsOneWidget);
           await capture('g3-training-sport-picker-$suffix');
-          await tester.tap(
-            find.ancestor(
-              of: find.descendant(
-                of: find.byType(BottomSheet),
-                matching: find.text('Lauf'),
-              ),
-              matching: find.byType(ActionChip),
-            ),
-          );
+          await tester.tap(find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Lauf'),
+          ));
+          await tester.pumpAndSettle();
+          await tester.tap(find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Starten'),
+          ));
           await tester.pumpAndSettle();
           expect(find.byType(G3LiveRun), findsOneWidget);
           await capture('g3-training-live-$suffix');
@@ -20713,7 +20727,7 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(
             find.descendant(
-              of: find.byType(AlertDialog),
+              of: find.byType(BottomSheet),
               matching: find.text('Verwerfen'),
             ),
           );
@@ -20735,6 +20749,7 @@ void main() {
         await mount(
           release: true,
           scenario: SyntheticScenario.g3Building,
+          showControls: true,
         );
         await chooseG3Scenario('G3 · Basis im Aufbau');
         await capture('g3-heute-baseline-building');
@@ -20742,7 +20757,7 @@ void main() {
         expect(find.textContaining('Basis: noch 3 Nächte'), findsWidgets);
         await capture('g3-heute-baseline-building-scrolled');
 
-        await mount(scenario: SyntheticScenario.g3Sample);
+        await mount(scenario: SyntheticScenario.g3Sample, showControls: true);
         await chooseG3Scenario('G3 · Tagesblatt');
         expect(find.bySemanticsLabel('Gesundheit'), findsOneWidget);
         await capture('g3-development-shell');
@@ -20795,7 +20810,7 @@ void main() {
           expect(find.text('Noch nicht verbunden. Band nah ans iPhone halten.'),
               findsOneWidget);
           await capture('release-pairing-$suffix');
-          final pairAction = find.byType(OBAction).first;
+          final pairAction = find.byType(g3chrome.OBActionPrimary).first;
           await tester.tap(pairAction);
           await tester.pumpAndSettle();
           expect(pairingActions, greaterThan(0));
