@@ -34,12 +34,13 @@ class G3SleepScreen extends StatefulWidget {
     this.reminder,
     this.onProfile,
     this.onBand,
+    this.onDataStatus,
   });
   final OpenBandController controller;
   final bool asTab;
   final ScrollController? scrollController;
   final SleepBedtimeReminder? reminder;
-  final VoidCallback? onProfile, onBand;
+  final VoidCallback? onProfile, onBand, onDataStatus;
   @override
   State<G3SleepScreen> createState() => _G3SleepScreenState();
 }
@@ -295,7 +296,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                               : 'lückenlos'}',
                     synthetic: controller.day?.synthetic == true,
                     onTap:
-                        widget.onBand ??
+                        widget.onDataStatus ??
                         (controller.loadError == null
                             ? null
                             : controller.refresh),

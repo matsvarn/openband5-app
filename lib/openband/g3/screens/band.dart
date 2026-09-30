@@ -31,6 +31,7 @@ class G3BandScreen extends StatefulWidget {
   final Future<void> Function()? onReconnect;
   final VoidCallback? onStatus;
   final VoidCallback? onBack;
+  final String backLabel;
   final OBBandIssue? issue;
   final OBBandIssue? Function()? readIssue;
   final BandStatus? status;
@@ -52,6 +53,7 @@ class G3BandScreen extends StatefulWidget {
     this.onReconnect,
     this.onStatus,
     this.onBack,
+    this.backLabel = 'Profil',
     this.issue,
     this.readIssue,
     this.status,
@@ -278,7 +280,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
                 name == null || name.isEmpty || name.toLowerCase() == 'band'
                 ? null
                 : name,
-            backLabel: 'Profil',
+            backLabel: widget.backLabel,
             onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
             onTrailing: _explain,
             trailingLabel: 'Über das Band',

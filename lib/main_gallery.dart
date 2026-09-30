@@ -232,17 +232,22 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         onProfile: widget.releaseReduced
             ? () => _openSyntheticProfile(c, backLabel: 'Heute')
             : () => _options(context),
-        onBand: () => showBandStatus(c, controller, null),
+        onBand: () => _openSyntheticBand(c, 'Heute'),
+        onDataStatus: () => showBandStatus(c, controller, null),
         onConnect: () => _useScenario(SyntheticScenario.g3Sample),
         onOpenMetric: (m) => openHeuteMetric(c, controller, m),
         onOpenActivity: (activity) =>
             openHeuteActivity(c, controller, activity),
+        onOpenSleep: () => c.findAncestorStateOfType<AppShellState>()?.select(
+          ShellDomain.sleep,
+        ),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.sleep => G3SleepScreen(
         controller: controller,
         asTab: true,
-        onBand: () => showBandStatus(c, controller, null),
+        onBand: () => _openSyntheticBand(c, 'Schlaf'),
+        onDataStatus: () => showBandStatus(c, controller, null),
         onProfile: () => _openSyntheticProfile(c, backLabel: 'Schlaf'),
       ),
       ShellDomain.workout =>
@@ -288,6 +293,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               )
             : G3TrainingScreen(
                 controller: controller,
+                onBand: () => _openSyntheticBand(c, 'Training'),
+                onDataStatus: () => showBandStatus(c, controller, null),
                 onProfile: () =>
                     _openSyntheticProfile(c, backLabel: 'Training'),
                 onStart: (type) {
@@ -311,7 +318,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         widget.releaseReduced
             ? G3JournalScreen(
                 controller: controller,
-                onBand: () => showBandStatus(c, controller, null),
+                onBand: () => _openSyntheticBand(c, 'Journal'),
+                onDataStatus: () => showBandStatus(c, controller, null),
                 onProfile: () => _openSyntheticProfile(c, backLabel: 'Journal'),
                 onEdit: (day) async {
                   await Navigator.of(c).push(
@@ -451,6 +459,24 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       SnackBar(
         content: Text('Galerie: Barcode-Scan nicht verfügbar · $meal · $day'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _openSyntheticBand(BuildContext context, String backLabel) {
+    pushInTab(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => G3BandScreen(
+          band: controller.band,
+          backLabel: backLabel,
+          now: _clock,
+          clock: () => _clock,
+          readDiagnostics: controller.repository.readBandDiagnostics,
+          databaseSize: '4,2 GB',
+          synthetic: true,
+          onStatus: () => showBandStatus(context, controller, null),
+        ),
       ),
     );
   }

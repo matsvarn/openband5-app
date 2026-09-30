@@ -109,6 +109,7 @@ class _Harness {
   final opened = <G3Metric>[];
   int allMetricsOpens = 0;
   int bandOpens = 0;
+  int dataStatusOpens = 0;
 }
 
 final _connected = BandSnapshot(
@@ -142,6 +143,7 @@ Future<_Harness> _pump(
           reminder: h.reminder,
           onConnect: () => h.connects++,
           onBand: () => h.bandOpens++,
+          onDataStatus: () => h.dataStatusOpens++,
           onOpenMetric: h.opened.add,
           onOpenAllMetrics: () => h.allMetricsOpens++,
           onJournalDay: h.journalDays.add,
@@ -251,11 +253,12 @@ void main() {
     expect(find.descendant(of: find.byType(OBLeadMetric), matching: find.byType(OBChevron)), findsNothing);
   });
 
-  testWidgets('band capsule and sync line use the same callback', (tester) async {
+  testWidgets('band capsule and sync line use separate callbacks', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
     await tester.tap(find.byType(OBBandCapsule).first);
     await tester.tap(find.byType(OBSyncState));
-    expect(h.bandOpens, 2);
+    expect(h.bandOpens, 1);
+    expect(h.dataStatusOpens, 1);
   });
 
   testWidgets('building baseline: tiles instead of a score, week opens on Schlaf', (tester) async {

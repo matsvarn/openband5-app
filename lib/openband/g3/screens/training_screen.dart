@@ -37,6 +37,7 @@ class G3TrainingScreen extends StatefulWidget {
   final ValueChanged<String>? onStart;
   final TrainingAction? onManual;
   final VoidCallback? onProfile;
+  final VoidCallback? onBand, onDataStatus;
   final ScrollController? scrollController;
   const G3TrainingScreen({
     super.key,
@@ -44,6 +45,8 @@ class G3TrainingScreen extends StatefulWidget {
     this.onStart,
     this.onManual,
     this.onProfile,
+    this.onBand,
+    this.onDataStatus,
     this.scrollController,
   });
 
@@ -302,6 +305,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                         BandConnection.connecting => OBBandState.off,
                       },
                       battery: widget.controller.band.batteryPercent,
+                      onTap: widget.onBand,
                     ),
                     onTitle: _datePicker,
                     onProfile: widget.onProfile,
@@ -312,6 +316,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                         : OBSyncKind.partial,
                     text: dataThrough ?? 'Noch kein Datenstand',
                     synthetic: data.day.synthetic,
+                    onTap: widget.onDataStatus,
                   ),
                   const SizedBox(height: 14),
                   Padding(
@@ -474,6 +479,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                             ? OBBandState.live
                             : OBBandState.off,
                         battery: widget.controller.band.batteryPercent,
+                        onTap: widget.onBand,
                       ),
                       onProfile: widget.onProfile,
                     ),

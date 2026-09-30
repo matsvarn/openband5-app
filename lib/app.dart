@@ -4,6 +4,7 @@ import 'openband/domain.dart';
 import 'openband/local_repository.dart';
 import 'openband/health.dart';
 import 'openband/g3/screens/verlauf.dart';
+import 'openband/g3/screens/band.dart';
 import 'openband/g3/screens/journal_screen.dart';
 import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
@@ -685,6 +686,28 @@ class _ShellState extends State<_Shell> {
     persistOpenBandTab(reduced: kOpenBandReleaseReduced, name: d.name);
   }
 
+  void _openBand(BuildContext context, String backLabel) {
+    pushInTab(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => G3BandScreen(
+          band: _day.band,
+          backLabel: backLabel,
+          now: _day.now(),
+          clock: _day.now,
+          bandUpdates: _app,
+          readBand: _dailyRepository.readBand,
+          readDiagnostics: _dailyRepository.readBandDiagnostics,
+          deviceName: _app!.strapName,
+          readStatus: () => _app!.engine.bandStatus,
+          onStatus: () =>
+              showBandStatus(context, _day, () => _app!.openSession()),
+          onReconnect: _app!.syncNow,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _app?.removeListener(_sourceChanged);
@@ -726,7 +749,9 @@ class _ShellState extends State<_Shell> {
               builder: (_) => const ProfileHome(backLabel: 'Heute'),
             ),
           ),
-          onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
+          onBand: () => _openBand(c, 'Heute'),
+          onDataStatus: () =>
+              showBandStatus(c, _day, () => _app!.openSession()),
           onConnect: () => _app!.openSession(),
           onAddActivity: () => _go(ShellDomain.workout),
           onJournalDay: (day) async {
@@ -759,7 +784,9 @@ class _ShellState extends State<_Shell> {
         ShellDomain.sleep => G3SleepScreen(
           controller: _day,
           asTab: true,
-          onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
+          onBand: () => _openBand(c, 'Schlaf'),
+          onDataStatus: () =>
+              showBandStatus(c, _day, () => _app!.openSession()),
           onProfile: () => pushInTab(
             c,
             MaterialPageRoute<void>(
@@ -824,6 +851,9 @@ class _ShellState extends State<_Shell> {
                 )
               : G3TrainingScreen(
                   controller: _day,
+                  onBand: () => _openBand(c, 'Training'),
+                  onDataStatus: () =>
+                      showBandStatus(c, _day, () => _app!.openSession()),
                   onStart: (type) => _startActivity(c, type),
                   onManual: () async {
                     final saved = await Navigator.of(c).push<G3ManualSaved>(
@@ -875,7 +905,8 @@ class _ShellState extends State<_Shell> {
           reduced
               ? G3JournalScreen(
                   controller: _day,
-                  onBand: () =>
+                  onBand: () => _openBand(c, 'Journal'),
+                  onDataStatus: () =>
                       showBandStatus(c, _day, () => _app!.openSession()),
                   onProfile: () => pushInTab(
                     c,

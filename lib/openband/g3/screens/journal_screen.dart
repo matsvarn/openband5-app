@@ -100,6 +100,7 @@ class G3JournalScreen extends StatefulWidget {
     this.onEdit,
     this.onProfile,
     this.onBand,
+    this.onDataStatus,
     this.onBack,
     this.scrollController,
   });
@@ -107,6 +108,7 @@ class G3JournalScreen extends StatefulWidget {
   final FutureOr<void> Function(String day)? onEdit;
   final VoidCallback? onProfile;
   final VoidCallback? onBand;
+  final VoidCallback? onDataStatus;
   final VoidCallback? onBack;
   final ScrollController? scrollController;
   @override
@@ -708,6 +710,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                   storedAt: storedAt,
                   now: widget.controller.now(),
                   synthetic: widget.controller.day?.synthetic == true,
+                  onTap: widget.onDataStatus,
                 ),
                 OBSectionHeader(
                   sectionDay,

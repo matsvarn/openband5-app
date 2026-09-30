@@ -162,7 +162,7 @@ class OpenBandHeute extends StatefulWidget {
   final OpenBandController controller;
   final HeuteAnchor? initialAnchor;
   final HeuteReminder reminder;
-  final VoidCallback? onProfile, onBand, onConnect, onAddActivity;
+  final VoidCallback? onProfile, onBand, onDataStatus, onConnect, onAddActivity;
 
   /// Opens the journal on a day: a check-in answer's own day, which can be
   /// yesterday while Heute shows today.
@@ -178,6 +178,7 @@ class OpenBandHeute extends StatefulWidget {
     this.reminder = const NotificationHeuteReminder(),
     this.onProfile,
     this.onBand,
+    this.onDataStatus,
     this.onConnect,
     this.onAddActivity,
     this.onJournalDay,
@@ -670,7 +671,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       kind: kind,
       text: text,
       synthetic: synthetic,
-      onTap: widget.onBand,
+      onTap: widget.onDataStatus,
     );
   }
 

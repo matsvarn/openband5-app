@@ -24,8 +24,10 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
     show OBSettingsRow, OBToggle;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show OBBandCapsule, OBInfoSheet;
+    show OBBandCapsule, OBInfoSheet, OBSyncState;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -1097,24 +1099,49 @@ void main() {
     expect(changed?.remindersEnabled, isFalse);
   });
 
-  testWidgets('Schlaf and Heute band capsules open the same data sheet', (
+  testWidgets(
+    'each release tab opens Band from its capsule and Datenstand from its sync line',
+    (tester) async {
+      await pumpReducedGallery(tester);
+      // The shared Datenstand card has a separate narrow-width layout issue.
+      tester.view.physicalSize = const Size(480, 852);
+      await tester.pumpAndSettle();
+
+      for (final (tab, label) in [
+        ('home', 'Heute'),
+        ('sleep', 'Schlaf'),
+        ('workout', 'Training'),
+        ('wellness', 'Journal'),
+      ]) {
+        await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(OBBandCapsule).hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.byType(G3BandScreen), findsOneWidget);
+        expect(find.bySemanticsLabel('Zurück zu $label'), findsOneWidget);
+        Navigator.of(tester.element(find.byType(G3BandScreen))).pop();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(OBSyncState).hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.text('Dein Datenstand'), findsOneWidget);
+        expect(find.text('Übertragung fortsetzen'), findsNothing);
+        Navigator.of(tester.element(find.text('Dein Datenstand'))).pop();
+        await tester.pumpAndSettle();
+      }
+    },
+  );
+
+  testWidgets('release Heute Schlaf secondary opens the Schlaf tab', (
     tester,
   ) async {
     await pumpReducedGallery(tester);
-    // The shared Datenstand card has a separate narrow-width layout issue.
-    tester.view.physicalSize = const Size(480, 852);
+    final sleep = find.byWidgetPredicate(
+      (w) => w is OBSecondaryMetric && w.label == 'SCHLAF',
+    );
+    expect(tester.widget<OBSecondaryMetric>(sleep).onTap, isNotNull);
+    await tester.tap(sleep);
     await tester.pumpAndSettle();
-
-    for (final tab in ['home', 'sleep']) {
-      await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byType(OBBandCapsule).hitTestable());
-      await tester.pumpAndSettle();
-      expect(find.text('Dein Datenstand'), findsOneWidget);
-      expect(find.text('Übertragung fortsetzen'), findsNothing);
-      Navigator.of(tester.element(find.text('Dein Datenstand'))).pop();
-      await tester.pumpAndSettle();
-    }
+    expect(find.byType(G3SleepScreen), findsOneWidget);
   });
 
   testWidgets('each gallery tab passes its name to the profile back action', (
