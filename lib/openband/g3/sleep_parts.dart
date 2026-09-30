@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../domain.dart'
     show G3SleepNeedClamp, NightSignalReading, NightSignalSeries;
-import '../theme.dart' show OBChevron;
-import 'chrome.dart' show OBPanel, OBPillButton;
+import 'chrome.dart' show OBLink, OBPanel, OBPillButton;
 import 'count_copy.dart';
+import 'g3_format.dart';
 import 'g3_theme.dart';
-import 'metrics.dart' show G3LabelRow;
+import 'metrics.dart' show G3LabelRow, OBMissingValue;
 
 class _SleepTapCard extends StatelessWidget {
   const _SleepTapCard({required this.child, this.onTap, this.hero = false});
@@ -25,19 +25,11 @@ class _SleepTapCard extends StatelessWidget {
   );
 }
 
-String obSleepDuration(num? minutes) {
-  if (minutes == null) return '—';
-  final value = minutes.round();
-  return value >= 60
-      ? '${value ~/ 60}h${(value % 60).toString().padLeft(2, '0')}'
-      : '$value Min.';
-}
+String obSleepDuration(num? minutes) => g3Duration(minutes?.round());
 
 String _sleepAdjustment(num? minutes) {
   if (minutes == null) return '—';
-  final rounded = minutes.round();
-  if (rounded == 0) return '0 Min.';
-  return '${rounded > 0 ? '+' : '−'} ${obSleepDuration(rounded.abs())}';
+  return g3Signed(minutes.round(), unit: 'Min.');
 }
 
 String obSleepClock(DateTime? time) => time == null
@@ -223,7 +215,7 @@ class OBBedtimeLead extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (noFreeNight) ...[
-            Container(width: 60, height: 6, color: g.gap),
+            const OBMissingValue(size: 68, lineHeight: 72),
             const SizedBox(height: 14),
             Text(
               'Noch keine freie Nacht',
@@ -241,15 +233,17 @@ class OBBedtimeLead extends StatelessWidget {
               children: [
                 MediaQuery.withClampedTextScaling(
                   maxScaleFactor: 1.2,
-                  child: Text(
-                    obSleepClock(shown),
-                    style: g.t(
-                      68,
-                      72,
-                      weight: FontWeight.w700,
-                      tracking: -.045,
-                    ),
-                  ),
+                  child: shown == null
+                      ? const OBMissingValue(size: 68, lineHeight: 72)
+                      : Text(
+                          obSleepClock(shown),
+                          style: g.t(
+                            68,
+                            72,
+                            weight: FontWeight.w700,
+                            tracking: -.045,
+                          ),
+                        ),
                 ),
                 if (wake != null)
                   Padding(
@@ -306,20 +300,13 @@ class OBSleepLead extends StatelessWidget {
           G3LabelRow(
             'SCHLAF',
             note: goalMinutes == null ? 'kein Ziel' : null,
-            arrow: onGoal != null,
+            onTap: onGoal,
           ),
           const SizedBox(height: 8),
           if (minutes == null) ...[
             Row(
               children: [
-                Container(
-                  width: 60,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: g.gap,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
+                const OBMissingValue(size: 34, lineHeight: 39),
                 const SizedBox(width: 12),
                 Text(
                   'Keine Nacht erkannt',
@@ -491,7 +478,6 @@ class OBSriLead extends StatelessWidget {
         children: [
           G3LabelRow(
             'SRI',
-            arrow: false,
             note: value == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
@@ -499,10 +485,12 @@ class OBSriLead extends StatelessWidget {
                 : 'aus 7 Nächten',
           ),
           const SizedBox(height: 7),
-          Text(
-            value == null ? '—' : value!.round().toString(),
-            style: g.t(72, 76, weight: FontWeight.w700),
-          ),
+          value == null
+              ? const OBMissingValue(size: 72, lineHeight: 76)
+              : Text(
+                  value!.round().toString(),
+                  style: g.t(72, 76, weight: FontWeight.w700),
+                ),
           Text(
             gate ??
                 (value == null
@@ -576,7 +564,7 @@ class OBSleepWindows extends StatelessWidget {
         children: [
           G3LabelRow(
             detail ? 'IM BETT JE NACHT' : 'REGELMÄSSIGKEIT',
-            arrow: !detail && onTap != null,
+            onTap: detail ? null : onTap,
             note: regularity == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
@@ -590,10 +578,12 @@ class OBSleepWindows extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  regularity == null ? '—' : regularity!.round().toString(),
-                  style: g.t(38, 42, weight: FontWeight.w700),
-                ),
+                regularity == null
+                    ? const OBMissingValue(size: 38, lineHeight: 42)
+                    : Text(
+                        regularity!.round().toString(),
+                        style: g.t(38, 42, weight: FontWeight.w700),
+                      ),
                 const SizedBox(width: 6),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
@@ -697,7 +687,7 @@ class OBSocialJetlag extends StatelessWidget {
         children: [
           G3LabelRow(
             'SOZIALE ZEITVERSCHIEBUNG',
-            arrow: onTap != null,
+            onTap: onTap,
             note: minutes == null ? null : '7 Nächte',
           ),
           const SizedBox(height: 6),
@@ -705,10 +695,12 @@ class OBSocialJetlag extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.end,
             spacing: 8,
             children: [
-              Text(
-                obSleepDuration(minutes?.abs()),
-                style: g.t(34, 40, weight: FontWeight.w700),
-              ),
+              minutes == null
+                  ? const OBMissingValue(size: 34, lineHeight: 40)
+                  : Text(
+                      obSleepDuration(minutes!.abs()),
+                      style: g.t(34, 40, weight: FontWeight.w700),
+                    ),
               if (minutes != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 5),
@@ -750,20 +742,18 @@ class OBSleepDebtLead extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow(
-            'SCHLAFSCHULD',
-            note: minutes == null ? null : '3 Wochen',
-            arrow: false,
-          ),
+          G3LabelRow('SCHLAFSCHULD', note: minutes == null ? null : '3 Wochen'),
           const SizedBox(height: 8),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
             spacing: 12,
             children: [
-              Text(
-                obSleepDuration(rounded?.abs()),
-                style: g.t(72, 76, weight: FontWeight.w700),
-              ),
+              rounded == null
+                  ? const OBMissingValue(size: 72, lineHeight: 76)
+                  : Text(
+                      obSleepDuration(rounded.abs()),
+                      style: g.t(72, 76, weight: FontWeight.w700),
+                    ),
               if (minutes != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 9),
@@ -807,7 +797,7 @@ class OBSleepDebt extends StatelessWidget {
         children: [
           G3LabelRow(
             detail ? 'FREI UND ÜBLICH' : 'SCHLAFSCHULD',
-            arrow: !detail && onTap != null,
+            onTap: detail ? null : onTap,
             note: detail ? 'Stunden Schlaf' : 'frei gegen üblich',
           ),
           if (!detail) ...[
@@ -816,10 +806,12 @@ class OBSleepDebt extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.end,
               spacing: 8,
               children: [
-                Text(
-                  obSleepDuration(minutes?.abs()),
-                  style: g.t(34, 40, weight: FontWeight.w700),
-                ),
+                minutes == null
+                    ? const OBMissingValue(size: 34, lineHeight: 40)
+                    : Text(
+                        obSleepDuration(minutes!.abs()),
+                        style: g.t(34, 40, weight: FontWeight.w700),
+                      ),
                 if (minutes != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 5),
@@ -970,7 +962,6 @@ class OBPlanBreakdown extends StatelessWidget {
         children: [
           G3LabelRow(
             'RECHNUNG',
-            arrow: false,
             note: bedtime == null
                 ? null
                 : 'gerundet von ${obSleepClock(bedtime)}',
@@ -1088,19 +1079,9 @@ class OBInlineNotice extends StatelessWidget {
             ),
           ),
           if (action != null && onAction != null)
-            TextButton(
-              onPressed: onAction,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(action!),
-                  if (actionChevron) ...[
-                    const SizedBox(width: 3),
-                    OBChevron(size: 12),
-                  ],
-                ],
-              ),
-            ),
+            actionChevron
+                ? OBLink(action!, onTap: onAction!)
+                : OBPillButton(action!, onPressed: onAction),
         ],
       ),
     );

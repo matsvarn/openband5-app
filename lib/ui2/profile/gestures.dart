@@ -21,6 +21,8 @@ import 'package:provider/provider.dart';
 import '../../gestures/device_action.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/theme.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'profile.dart';
@@ -73,6 +75,7 @@ class BandGesturesView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     // Enum order, filtered to this phone: nothing first (it is the default and
     // the way back out), then the in-app actions, then whatever the OS offered.
@@ -88,26 +91,22 @@ class BandGesturesView extends StatelessWidget {
     final noPhoneActions = !offered.any((a) => a.isNative);
 
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: IconButtonTheme(
-                data: IconButtonThemeData(
-                  style: IconButton.styleFrom(
-                    backgroundColor: p.card,
-                    foregroundColor: p.ink,
-                    minimumSize: const Size(44, 44),
-                    shape: const CircleBorder(),
-                  ),
-                ),
-                child: OBPageHeader(
-                  title: l?.gesturesNavTitle ?? 'Double-tap',
-                  subtitle: '',
-                ),
+            chrome.OBPageHeader.detail(
+              title: (l?.gesturesNavTitle ?? 'Double-tap').toUpperCase(),
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Einstellungen'
+                  : 'Settings',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.gesturesNavTitle ?? 'Double-tap',
+                l?.gesturesSectionBody ??
+                    'The app must be connected and awake.',
               ),
             ),
             Expanded(
@@ -143,7 +142,7 @@ class BandGesturesView extends StatelessWidget {
                   if (noPhoneActions) ...[
                     const SizedBox(height: 16),
                     _explanation(
-                      p,
+                      c,
                       l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
                       l?.gesturesNoPhoneActionsBody ??
                           'Ringing your phone and the flashlight are missing '
@@ -161,16 +160,17 @@ class BandGesturesView extends StatelessWidget {
     );
   }
 
-  Widget _explanation(OB p, String title, String body) => OBCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: p.text(17, weight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Text(body, style: p.text(14, color: p.muted)),
-      ],
-    ),
-  );
+  Widget _explanation(BuildContext c, String title, String body) =>
+      chrome.OBPanel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: G3.of(c).t(17, 22, weight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(body, style: G3.of(c).t(14, 20, color: G3.of(c).ink2)),
+          ],
+        ),
+      );
 }
 
 /// One choice. Label, what it does, and a tick when it is the live mapping.
@@ -189,7 +189,7 @@ class _ActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final inactiveLine = Localizations.localeOf(c).languageCode == 'de'
         ? 'Gespeichert. In dieser Version ohne Wirkung.'
@@ -215,14 +215,15 @@ class _ActionRow extends StatelessWidget {
                   children: [
                     Text(
                       action.localizedLabel(c),
-                      style: p.text(
+                      style: g.t(
                         15,
-                        weight: selected ? FontWeight.w600 : FontWeight.w500,
+                        20,
+                        weight: selected ? FontWeight.w700 : FontWeight.w500,
                       ),
                     ),
                     if (inactive) ...[
                       const SizedBox(height: 2),
-                      Text(inactiveLine, style: p.text(13, color: p.muted)),
+                      Text(inactiveLine, style: g.t(13, 18, color: g.muted)),
                     ],
                   ],
                 ),
@@ -231,7 +232,7 @@ class _ActionRow extends StatelessWidget {
               Icon(
                 selected ? LucideIcons.check : LucideIcons.circle,
                 size: 18,
-                color: selected ? p.ink : p.gap,
+                color: selected ? g.ink : g.gap,
               ),
             ],
           ),

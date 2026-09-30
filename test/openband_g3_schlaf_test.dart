@@ -178,13 +178,13 @@ void main() {
     await tester.tap(find.text('Ziel öffnen'));
     await tester.pumpAndSettle();
     expect(find.text('Ziel wählen'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButton<int>));
+    await tester.tap(find.text('Ziel wählen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('5h00').last);
+    await tester.tap(find.text('5h').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Ziel speichern'));
     await tester.pumpAndSettle();
-    expect(find.text('5h00'), findsOneWidget);
+    expect(find.text('5h'), findsOneWidget);
     expect(
       find.textContaining('Deine Auswahl bleibt erhalten'),
       findsOneWidget,
