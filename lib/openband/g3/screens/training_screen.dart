@@ -1420,8 +1420,44 @@ class G3LoadScreen extends StatefulWidget {
 class _G3LoadScreenState extends State<G3LoadScreen> {
   late OBTrendPeriod period = widget.initialPeriod;
   late Future<G3Trend> trend = _load();
-  late final Future<List<G3Activity>> activities = widget.controller.repository
+  late Future<List<G3Activity>> activities = widget.controller.repository
       .readActivities(widget.controller.selectedDay);
+
+  late String _selectedDay = widget.controller.selectedDay;
+  late Future<G3WeeklyLoad> weekly = Future.value(widget.weekly);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_dayChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant G3LoadScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_dayChanged);
+      widget.controller.addListener(_dayChanged);
+      _readDay();
+    }
+  }
+
+  void _readDay() {
+    _selectedDay = widget.controller.selectedDay;
+    trend = _load();
+    activities = widget.controller.repository.readActivities(_selectedDay);
+    weekly = widget.controller.repository.readWeeklyLoad(_selectedDay);
+  }
+
+  void _dayChanged() {
+    if (_selectedDay != widget.controller.selectedDay) setState(_readDay);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_dayChanged);
+    super.dispose();
+  }
 
   Future<G3Trend> _load() => widget.controller.repository.readTrend(
     G3Metric.strain,
@@ -1441,13 +1477,17 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
       body: SafeArea(
         bottom: false,
         child: FutureBuilder<G3Trend>(
+          key: ValueKey('trend:$_selectedDay'),
           future: trend,
           builder: (context, snap) {
             if (snap.hasError) {
               return _error(context, () => setState(() => trend = _load()));
             }
             final points = snap.data?.points ?? const <MetricPoint>[];
-            final values = [for (final p in points) p.partial ? null : p.value];
+            final values = [
+              for (final p in points)
+                p.partial || p.value?.isFinite != true ? null : p.value,
+            ];
             final present = values.whereType<double>().toList();
             final avg = present.isEmpty
                 ? null
@@ -1485,13 +1525,14 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
               fullWidthSection: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const OBSectionHeader('HEUTE BISHER'),
+                  OBSectionHeader(current ? 'HEUTE BISHER' : 'AKTIVITÄTEN'),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         FutureBuilder<List<G3Activity>>(
+                          key: ValueKey('activities:$_selectedDay'),
                           future: activities,
                           builder: (context, snapshot) {
                             if (snapshot.hasError) {
@@ -1511,7 +1552,9 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                                 children: [
                                   if (snapshot.data!.isEmpty)
                                     Text(
-                                      'Noch keine Aktivität heute.',
+                                      current
+                                          ? 'Noch keine Aktivität heute.'
+                                          : 'Keine Aktivität an diesem Tag.',
                                       style: g.t(15, 20),
                                     ),
                                   for (final (index, activity)
@@ -1538,9 +1581,13 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                           },
                         ),
                         const SizedBox(height: 12),
-                        OBTrainingLoad(
-                          load: widget.weekly,
-                          onMethod: () => _method(context),
+                        FutureBuilder<G3WeeklyLoad>(
+                          key: ValueKey('weekly:$_selectedDay'),
+                          future: weekly,
+                          builder: (context, snapshot) => OBTrainingLoad(
+                            load: snapshot.data,
+                            onMethod: () => _method(context),
+                          ),
                         ),
                         OBFooterStamp(
                           g3DataThrough(stamp, now: widget.controller.now()),

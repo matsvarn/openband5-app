@@ -924,19 +924,25 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                 size: 18,
                                 color: g.muted,
                               ),
-                              Icon(
-                                LucideIcons.moon,
-                                size: 18,
-                                color: g.domainHue(G3Domain.sleep),
-                              ),
-                              Text(
-                                'Einschlafen',
-                                style: g.t(
-                                  15,
-                                  19,
-                                  weight: FontWeight.w700,
-                                  color: g.domainHue(G3Domain.sleep),
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    LucideIcons.moon,
+                                    size: 18,
+                                    color: g.domainHue(G3Domain.sleep),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Einschlafen',
+                                    style: g.t(
+                                      15,
+                                      19,
+                                      weight: FontWeight.w700,
+                                      color: g.domainHue(G3Domain.sleep),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -946,6 +952,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                           need:
                               pattern.historyNeed?.need ??
                               pattern.pairedMinimum,
+                          showFooter: pattern.pattern.pairedN > 0,
                           footer:
                               pattern.yesNights != null &&
                                   pattern.noNights != null

@@ -503,12 +503,12 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                               'normal ${_number(range.low, metric)}–${_number(range.high, metric)}',
                               domain: g3MetricDomain(metric),
                             ),
-                          if (summary?.below != null)
+                          if ((summary?.below ?? 0) > 0)
                             G3Legend.mark(
                               '${summary!.below} darunter',
                               G3Deviation.worse,
                             ),
-                          if (summary?.above != null)
+                          if ((summary?.above ?? 0) > 0)
                             G3Legend.mark(
                               '${summary!.above} darüber',
                               G3Deviation.better,
