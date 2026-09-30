@@ -21,7 +21,7 @@ Everything here is source and analyzer evidence. Nothing was run on a simulator 
 | ID | Rank | Finding | Evidence (short) | Action |
 |---|---|---|---|---|
 | DC-1 | P1 | Legacy `ui2` screen cluster (Home, Health, Wellness and their details) is unreachable | See [DC-1](#dc-1--legacy-ui2-screen-cluster-p1) | Delete in this branch |
-| DC-2 | P1 | 380 localization keys have no consumer | `\.key\b` has zero hits outside `lib/l10n` | Delete from the six ARBs in this branch |
+| DC-2 | P1 | 380 localization keys have no consumer (1,043 after DC-1/DC-4) | `\.key\b` has zero hits outside `lib/l10n` | Delete from the six ARBs in this branch |
 | DEP-1 | P1 | `cupertino_icons` and `fl_chart` are unused direct dependencies | 0 imports in lib/test/tool/integration_test; no native registration; scratch removal analyzed clean | Remove in this branch |
 | DC-3 | P2 | Orphaned v2 cloud-import cluster | `lib/cloud/cloud_import.dart` (312) is imported only by `test/import_data_safety_test.dart:20`; `backend_client.dart` (146) only by it | Delete in this branch |
 | DC-4 | P2 | `lib/openband` dead options, adapters and helpers (~255 lines) | DOB-01…10 below | Delete in this branch |
@@ -36,7 +36,7 @@ Everything here is source and analyzer evidence. Nothing was run on a simulator 
 | STR-1 | P2 | 32 owned files over 1,500 lines | [Structure](#3-structure) | Split three with an obvious seam in this branch |
 | STR-2 | P2 | Business logic in widgets | Top ten below | Report; move when the feature is next edited |
 | STR-3 | P2 | Telemetry futures escape their `try/catch` | `lib/telemetry/telemetry_service.dart:84–86,154,175,214,225,236,360` | Decision (fixing changes failure behaviour) |
-| LINT-1 | P2 | Cheap guards with zero or one hit | `cancel_subscriptions` 0, `close_sinks` 0, `strict-casts` 1 | Enable in this branch |
+| LINT-1 | P2 | Cheap guards with zero or one hit | `cancel_subscriptions` 0, `close_sinks` 0, `strict-casts` 1 in lib/test, 1 more in `tool/` | Enable the first two in this branch; `strict-casts` after the tooling fix |
 | DEP-2 | P2 | 28 direct packages have newer resolvable majors | `flutter pub outdated`; no OSV advisory for any resolved version | Decision per package |
 | STR-4 | P3 | 72 `build()` bodies over 150 lines | Top: `sleep_editor.dart:511` (542 lines, depth 11) | Report |
 | STR-5 | P3 | Process-wide mutable state | 13 sites, all intentional services | Report only |
@@ -69,11 +69,11 @@ Every other screen in the cluster is constructed only from inside it:
 | `ReadinessDetail` (`readiness_detail.dart`) | `home_screen.dart:1587,1608` | 442 |
 | `DayStepsDetail` (`day_steps.dart:234–468`) | `metric_detail.dart:946,1539` | 235 |
 
-About 9,300 source lines. Tests still construct them, which is why the analyzer is clean. Stays live and must be kept: `home_screen.dart:1–1235` helpers (`repoOf`, `unitsOf`, `HomeData`; `training_manual.dart:7` imports them), the spec/chrome parts of `metric_detail.dart` used by the component gallery (`DayNav`, `Legend`, `MonoTable`, `investigateRow`), `DriverRow` (`gallery.dart:572`), `rough_night.dart`, `driver_breakdown.dart`, `DayTimeline`, `MonthGrid`, `bandLabel` (`day_steps.dart:469–489`). The `mascot_wellness` images (102,754 bytes, three densities) are used only by `WellnessScreen:199`.
+About 9,300 source lines. Tests still construct them, which is why the analyzer is clean. Stays live and must be kept: `home_screen.dart:1–1235` helpers (`repoOf`, `unitsOf`, `HomeData`; `training_manual.dart:7` imports them), the spec/chrome parts of `metric_detail.dart` used by the component gallery (`DayNav`, `Legend`, `MonoTable`, `investigateRow`), `DriverRow` (`gallery.dart:572`), `rough_night.dart`, `driver_breakdown.dart`, `DayTimeline`, `MonthGrid`, `bandLabel` (`day_steps.dart:469–489`). The `mascot_wellness` images stay: besides `WellnessScreen:199`, `test/start_session_card_test.dart:99` renders them through the live `StartCard`.
 
-### DC-2 · 380 unused localization keys (P1)
+### DC-2 · unused localization keys (P1)
 
-`l10n.yaml` generates from `lib/l10n/app_en.arb`. The generated `app_localizations*.dart` files are not tracked. For each key, `\.KEY\b` (including null-aware access) has zero hits outside `lib/l10n` across code, tests, tools, native code and registries. Examples: `appTitle`, `actionSettings`, `pairingFindMyBand`, `alarmArmedFor`, `profileSetupAgeLabel`, `devicePickerPrivacyNote`. Removing them deletes 3,826 tracked ARB lines across six locales, plus ~4,200 generated lines. More keys become unused once DC-1 is gone; the implementation recounts after DC-1.
+`l10n.yaml` generates from `lib/l10n/app_en.arb`. The generated `app_localizations*.dart` files are not tracked. For each key, `\.KEY\b` (including null-aware access) has zero hits outside `lib/l10n` across code, tests, tools, native code and registries. Examples: `appTitle`, `actionSettings`, `pairingFindMyBand`, `alarmArmedFor`, `profileSetupAgeLabel`, `devicePickerPrivacyNote`. At the base that is 3,826 tracked ARB lines across six locales, plus ~4,200 generated lines. Recounted after DC-1, DC-3 and DC-4, 1,043 of the 2,425 English keys have no consumer; this branch removes them with their `@key` metadata from all six ARBs (10,887 ARB lines). Every removed key was checked again with `\.(key)\b` over `lib`, `test`, `tool` and `integration_test`: 0 hits.
 
 ### DC-3 · orphaned cloud import (P2)
 
@@ -199,7 +199,7 @@ Baseline: 0 issues with `flutter_lints` 6.0.0, which already enables `use_build_
 |---|---:|---:|---:|---:|---|
 | `cancel_subscriptions` | 0 | 0 | 0 | 0 | free guard |
 | `close_sinks` | 0 | 0 | 0 | 0 | free guard |
-| `strict-casts` | 1 | 1 | 0 | 0 | `telemetry_service.dart:354`, one explicit type |
+| `strict-casts` | 1 | 1 | 0 | 0 | `telemetry_service.dart:354`, one explicit type; whole-repo analysis adds `tool/g3_review_test.dart:165` |
 | `always_declare_return_types` | 1 | 0 | 0 | 1 | test only |
 | `only_throw_errors` | 4 | 4 | 0 | 0 | rethrows of caught `Object`; not bugs |
 | `prefer_final_locals` | 17 | 14 | 2 | 1 | style; touches other owners' files |
@@ -215,7 +215,7 @@ Baseline: 0 issues with `flutter_lints` 6.0.0, which already enables `use_build_
 | `avoid_redundant_argument_values` | 971 | 199 | 106 | 666 | style |
 | `unreachable_from_main` | 1 | 0 | 0 | 1 | entry libraries only |
 
-Enabled in this branch: `cancel_subscriptions`, `close_sinks`, `strict-casts`. They cost one annotation and catch leaked streams and implicit `dynamic` downcasts in code that is still being written. Worth a focused follow-up: `unawaited_futures` (61 sites to triage one by one) and `discarded_futures` (it found STR-3). The rest are style, or large boundary passes that belong to their own change.
+Enabled in this branch: `cancel_subscriptions` and `close_sinks`, which cost nothing and catch leaked streams and sinks in new code. `strict-casts` also flags `tool/g3_review_test.dart:165`, where a `Map<dynamic, dynamic>` from JSON is spread into a `Map<String, dynamic>`. That file is Paper harness tooling owned by the test-suite audit, so `strict-casts` waits until that line has an explicit cast; the lib change is then `params[k] = v as Object` at `telemetry_service.dart:354`. Worth a focused follow-up: `unawaited_futures` (61 sites to triage one by one) and `discarded_futures` (it found STR-3). The rest are style, or large boundary passes that belong to their own change.
 
 ## Decisions for Mats
 
@@ -232,7 +232,7 @@ Enabled in this branch: `cancel_subscriptions`, `close_sinks`, `strict-casts`. T
 
 - Storage (`lib/data`, `lib/compute`): DUP-1 and DUP-2 need a coherent served-row projection and a policy for versioned `metric_series`. `putMetricSeriesValue` (`data/db.dart:13419`) has no caller. Large files: `data/db.dart` 16,071, `compute/derivation_engine.dart` 9,073, `data/local_repository_impl.dart` 4,531, `compute/onehz_pipeline.dart` 1,955, `compute/substrate.dart` 1,513.
 - Reliability (`lib/ble`, `lib/sync`): `ble/ble_engine.dart` 8,619, `ble/ble_state.dart` 2,082, `ble/adapters/_registry.dart` 1,674. Lint counts in their code: `discarded_futures` 12, `unawaited_futures` 3, `strict-inference` 31, `avoid_catches_without_on_clauses` 316. The native background arm/start futures at `state/app_state.dart:2786,2789` are unawaited; ownership of their failure handling sits with reliability.
-- Test suite: deleting DC-1 removes golden cases and PNGs from `test/ui2_home_health_golden_test.dart`; this branch lists every removed PNG in its PR. `test/hrs_link_test.dart:31` `kBpmOnlyWithContact` is unreachable. The full Paper harness run fails 38 tests on the base; the cause is unexamined.
+- Test suite: `tool/g3_review_test.dart:165` blocks `strict-casts` (see LINT-1). `test/ui2_home_health_golden_test.dart` covered only DC-1 screens and is deleted; it had no tracked PNGs. `test/hrs_link_test.dart:31` `kBpmOnlyWithContact` is unreachable. The full Paper harness run fails 38 tests on the base; the cause is unexamined.
 
 ### Retired Ponytail ceilings
 
