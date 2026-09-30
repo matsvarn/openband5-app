@@ -90,6 +90,7 @@ lib/firebase_options.dart
 # Local agent worktrees and execution ledgers.
 /.worktrees/
 /.superpowers/
+/.amp/portals/
 
 .codegraph/
 

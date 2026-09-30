@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+SECONDS=0
+
+# Match .github/workflows/test.yml and docs/openband5/DEVELOPMENT.md.
+flutter_version=3.41.6
+flutter_home="$HOME/.local/share/flutter/$flutter_version"
+
+echo "[${SECONDS}s] Checking system prerequisites"
+missing=()
+for package in curl git unzip xz-utils libglu1-mesa libsqlite3-dev fontconfig; do
+  if [[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)" != 'install ok installed' ]]; then
+    missing+=("$package")
+  fi
+done
+if (( ${#missing[@]} )); then
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+
+echo "[${SECONDS}s] Installing Flutter $flutter_version if missing"
+if [[ ! -x "$flutter_home/bin/flutter" ]]; then
+  mkdir -p "$(dirname "$flutter_home")"
+  checkout=$(mktemp -d "$(dirname "$flutter_home")/.install-XXXXXX")
+  trap 'rm -rf "$checkout"' EXIT
+  git clone --quiet --depth 1 --branch "$flutter_version" \
+    https://github.com/flutter/flutter.git "$checkout"
+  mv "$checkout" "$flutter_home"
+  trap - EXIT
+fi
+export PATH="$flutter_home/bin:$PATH"
+
+# Make the SDK available in both login shells and Amp's command runner.
+sudo ln -sfn "$flutter_home/bin/flutter" /usr/local/bin/flutter
+sudo ln -sfn "$flutter_home/bin/dart" /usr/local/bin/dart
+
+echo "[${SECONDS}s] Caching Flutter test and web artifacts"
+flutter config --no-analytics
+dart --disable-analytics
+flutter precache --linux --web --no-android --no-ios --no-macos --no-windows --no-fuchsia
+
+echo "[${SECONDS}s] Resolving locked dependencies"
+flutter pub get --enforce-lockfile
+[[ -f .env ]] || cp -- .env.example .env
+
+echo "[${SECONDS}s] Setup complete"
+flutter --version

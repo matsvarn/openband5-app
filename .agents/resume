@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# Toolchains and dependencies belong in setup, never in the wake-up path.
+command -v flutter
+command -v dart
