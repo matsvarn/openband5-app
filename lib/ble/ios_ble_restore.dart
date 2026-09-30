@@ -14,7 +14,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../sync/background_sync.dart';
+import '../sync/file_log.dart';
 import '../sync/headless_gate.dart';
+import '../sync/band_ownership.dart';
+import 'ble_engine.dart';
 
 class IosBleRestore {
   static const _ch = MethodChannel('openstrap/ble_restore');
@@ -24,12 +27,43 @@ class IosBleRestore {
   /// band, so we skip it — the foreground session is already draining.
   static bool foregroundActive = false;
 
+  @visibleForTesting
+  static Future<void> Function(String) logSink = FileLog.write;
+
+  @visibleForTesting
+  static bool Function()? debugBandLinkHeld;
+
+  @visibleForTesting
+  static Duration handoffTimeout = const Duration(seconds: 40);
+
+  @visibleForTesting
+  static Duration handoffPoll = const Duration(milliseconds: 500);
+
+  @visibleForTesting
+  static DateTime Function() handoffNow = DateTime.now;
+
   /// Register the wake handler and tell native Flutter is ready. Call once at startup.
   static Future<void> init() async {
     if (!Platform.isIOS) return;
+    registerHandler();
+    try {
+      await _ch.invokeMethod('ready');
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  static void registerHandler() {
     _ch.setMethodCallHandler((call) async {
+      if (call.method == 'log') {
+        if (call.arguments is String) {
+          // Native lines carry their own timestamp and [ble-restore] tag.
+          await logSink(call.arguments as String);
+        }
+        return null;
+      }
       if (call.method != 'wake') return null;
-      if (foregroundActive) {
+      if (foregroundActive || BandOwnership.foregroundIntent) {
+        await _waitForForegroundLink();
         await _done();
         return null;
       }
@@ -48,9 +82,6 @@ class IosBleRestore {
       });
       return null;
     });
-    try {
-      await _ch.invokeMethod('ready');
-    } catch (_) {}
   }
 
   /// Tell native whether the app currently owns the live connection (via
@@ -139,6 +170,27 @@ class IosBleRestore {
     try {
       await _ch.invokeMethod('releaseCentralForPicker');
     } catch (_) {}
+  }
+
+  static Future<void> _waitForForegroundLink() async {
+    bool held() => debugBandLinkHeld?.call() ?? BleEngine.anyBandLinkHeld;
+    if (held()) return;
+    final started = handoffNow();
+    final deadline = started.add(handoffTimeout);
+    while (!held() && handoffNow().isBefore(deadline)) {
+      final remaining = deadline.difference(handoffNow());
+      await Future<void>.delayed(
+        remaining < handoffPoll ? remaining : handoffPoll,
+      );
+    }
+    final elapsed = handoffNow().difference(started);
+    await logSink(
+      held()
+          ? '[ble-restore] foreground link taken over after '
+                '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s'
+          : '[ble-restore] foreground link not taken over within '
+                '${handoffTimeout.inSeconds}s',
+    );
   }
 
   static Future<void> _done() async {

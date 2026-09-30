@@ -905,6 +905,16 @@ class BleEngine {
   Future<void> Function()? debugDeviceConnect;
 
   @visibleForTesting
+  Future<void> Function(Duration timeout)? debugDeviceConnectWithTimeout;
+
+  @visibleForTesting
+  Future<bool> Function(BluetoothDevice device, List<Guid> services)?
+      debugSystemConnected;
+
+  @visibleForTesting
+  DateTime Function()? debugConnectNow;
+
+  @visibleForTesting
   Stream<BluetoothConnectionState> Function()? debugConnectionStates;
 
   @visibleForTesting
@@ -1080,6 +1090,12 @@ class BleEngine {
       _phase != BleConnState.idle &&
       _phase != BleConnState.error;
 
+  /// A claimed engine must have a connected peripheral, not just an in-flight
+  /// connect, before the restore central can safely release its own link.
+  static bool get anyBandLinkHeld => _bandOwners.values.any(
+    (engine) => engine.holdsBandLink && engine._session?.connected == true,
+  );
+
   /// Test-only view of the per-peripheral single-owner claim.
   @visibleForTesting
   static bool get bandClaimed => _bandOwners.isNotEmpty;
@@ -1097,6 +1113,8 @@ class BleEngine {
   }
 
   // ── transport state machine ─────────────────────────────────────────────────
+  final LinkEpisodeTracker _linkEpisodes = LinkEpisodeTracker();
+
   BleConnState _phase = BleConnState.idle;
   _Session? _session;
 
@@ -1898,7 +1916,7 @@ class BleEngine {
   // Explicit, observable "band reboot" signal (see CounterRegressionDetector
   // doc). Re-seeded from the durable counter_hw cursor on each connect, same
   // pattern as _recordGate's frontierTs seed below.
-  CounterRegressionDetector _counterRegression = CounterRegressionDetector();
+  final CounterRegressionDetector _counterRegression = CounterRegressionDetector();
   // Firmware-aware R24 decoder (see openstrap_protocol's
   // FirmwareAwareR24Decoder doc): tries the original hardware-validated
   // decoder first, falls back to newer-firmware layouts only if that fails,
@@ -2058,6 +2076,10 @@ class BleEngine {
   }
 
   void _setPhase(BleConnState p) {
+    if (p == BleConnState.listening && _phase != BleConnState.listening) {
+      final recovered = _linkEpisodes.ready();
+      if (recovered != null) _log(recovered);
+    }
     _phase = p;
     state.connection = connStringFor(p);
     onState(state);
@@ -2357,9 +2379,31 @@ class BleEngine {
   /// `disconnect()` ever released it, which nothing calls on this path. Every
   /// later background drain then saw a non-null owner and yielded forever.
   Future<void> _failConnect() async {
+    final episode = _linkEpisodes.connectFailed();
+    if (episode != null) _log(episode);
     await _teardownSession(intentional: true);
     _releaseBand();
     _setPhase(BleConnState.idle);
+  }
+
+  Future<void> _connectAttempt(BluetoothDevice device, Duration timeout) async {
+    final now = debugConnectNow ?? DateTime.now;
+    final started = now();
+    try {
+      if (debugDeviceConnectWithTimeout case final connect?) {
+        await connect(timeout);
+      } else if (debugDeviceConnect case final connect?) {
+        await connect();
+      } else {
+        await device.connect(timeout: timeout, autoConnect: false);
+      }
+    } finally {
+      final elapsed = now().difference(started);
+      if (elapsed > timeout + const Duration(seconds: 5)) {
+        _log('[LINK] connect attempt took ${elapsed.inSeconds}s for a '
+            '${timeout.inSeconds}s timeout — the process was suspended during it');
+      }
+    }
   }
 
   Future<bool> _doConnect(BluetoothDevice device, {String? generationHint}) async {
@@ -2375,6 +2419,7 @@ class BleEngine {
     session.subs.add(
       (debugConnectionStates?.call() ?? device.connectionState).listen((s) {
         if (s == BluetoothConnectionState.connected) {
+          if (!session.connected) _linkEpisodes.linkUp();
           session.connected = true;
           session.sawConnected = true;
         } else if (s == BluetoothConnectionState.disconnected) {
@@ -2390,13 +2435,35 @@ class BleEngine {
     );
 
     try {
-      if (debugDeviceConnect case final connect?) {
-        await connect();
-      } else {
-        await device.connect(
-          timeout: const Duration(seconds: 20),
-          autoConnect: false,
-        );
+      try {
+        await _connectAttempt(device, const Duration(seconds: 20));
+      } catch (error) {
+        final isFbpTimeout = error is FlutterBluePlusException &&
+            error.platform == ErrorPlatform.fbp &&
+            (error.code == FbpErrorCode.timeout.index ||
+                (error.description?.toLowerCase().contains('timed out') ?? false));
+        if (!isFbpTimeout) rethrow;
+        var recovered = false;
+        try {
+          final services = kBandRegistry
+              .map((entry) => Guid(entry.service))
+              .toSet()
+              .toList();
+          final systemConnected = debugSystemConnected != null
+              ? await debugSystemConnected!(device, services)
+              : (await FlutterBluePlus.systemDevices(services))
+                  .any((connected) => connected.remoteId == device.remoteId);
+          if (systemConnected) {
+            _log('[LINK] connect timed out but peripheral is system-connected; '
+                're-attaching once with a 5s timeout.');
+            await _connectAttempt(device, const Duration(seconds: 5));
+            recovered = true;
+          }
+        } catch (reattachError) {
+          _log('[LINK] system-link recovery did not complete: $reattachError');
+        }
+        // Preserve the original error's adapter/blocker classification.
+        if (!recovered) rethrow;
       }
     } catch (e) {
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
@@ -2420,6 +2487,7 @@ class BleEngine {
     // connect() resolved without throwing => the link is up. Set this explicitly
     // rather than racing the connectionState stream's `connected` emission, so
     // the setup below (discover/subscribe/SET_CLOCK → bond) is never skipped.
+    if (!session.connected) _linkEpisodes.linkUp();
     session.connected = true;
     session.sawConnected = true;
 
@@ -2607,9 +2675,7 @@ class BleEngine {
       // Re-seed the counter-regression watch from the durable counter_hw
       // cursor so a reboot is caught even across the reconnect it usually
       // causes, instead of only within a single unbroken connection.
-      _counterRegression = CounterRegressionDetector(
-        seedCounter: await cursorReader?.call('counter_hw'),
-      );
+      _counterRegression.reseed(await cursorReader?.call('counter_hw'));
       _firmwareDecoder = FirmwareAwareR24Decoder();
 
       // Heartbeat: keep the link alive (~10s LINK_VALID). Owned by the session, so a
@@ -3985,6 +4051,11 @@ class BleEngine {
         LinkDownAction.ignoreStaleSession) {
       return; // a stale session's stream
     }
+    final reason = session.device.disconnectReason;
+    _log(_linkEpisodes.linkDown(
+      reason: reason == null ? 'unknown' : '${reason.code}/${reason.description}',
+      lastRxAt: lastRxAt,
+    ));
     final wasIntentional = session.intentionalClose;
     session.connected = false;
     if (!wasIntentional &&
@@ -4000,7 +4071,6 @@ class BleEngine {
     }
     _drain?.onLinkDown();
     if (!wasIntentional) {
-      final reason = session.device.disconnectReason;
       _feedReconnectDetectors(
         timedOut: isTimeoutDisconnect(reason?.description),
       );
@@ -4799,7 +4869,7 @@ class BleEngine {
     // Explicit, observable band-reboot signal — see CounterRegressionDetector.
     // 0 is _counterFromInner's fallback for a too-short frame, not a real
     // counter value, so it's excluded to avoid a false regression report.
-    if (counter > 0 && _counterRegression.feed(counter)) {
+    if (counter > 0 && _counterRegression.feed(counter, recType: recType)) {
       _log(
         '[SYNC] Record counter regressed (band likely rebooted): '
         'counter=$counter, regressions_total=${_counterRegression.regressions}. '
