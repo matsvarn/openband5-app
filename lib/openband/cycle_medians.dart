@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'cycle.dart';
 import 'domain.dart';
+import 'g3/g3_format.dart' show g3Clock;
 import 'health.dart';
 import 'journal_controls.dart';
 import 'settings_controls.dart';
@@ -872,7 +873,7 @@ bool _sharedRelativeWindow(List<CycleMedianContributor> contributors) {
       end.day != named.day) {
     return null;
   }
-  return (_hhmm(start), _hhmm(end));
+  return (g3Clock(start), g3Clock(end));
 }
 
 (int, int, int, int)? _relativeWindow(CycleMedianContributor c) {
@@ -960,17 +961,14 @@ String? _windowUtc(DateTime? start, DateTime? end, String asOfDay) {
       needYear ? 'd. MMM y' : 'd. MMM',
       'de_DE',
     ).format(date);
-    return '$day, ${_hhmm(at)}';
+    return '$day, ${g3Clock(at)}';
   }
 
   if (from.year == to.year && from.month == to.month && from.day == to.day) {
-    return '${stamp(from)}–${_hhmm(to)} UTC';
+    return '${stamp(from)}–${g3Clock(to)} UTC';
   }
   return '${stamp(from)}–${stamp(to)} UTC';
 }
-
-String _hhmm(DateTime at) =>
-    '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
 
 String _quality(CycleNightMetric metric) {
   if (metric.confidenceUnreadable) return 'Qualitätswert —';
