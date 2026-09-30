@@ -1,6 +1,5 @@
 // companion_client.dart — the ONLY network client for the slim companion backend
-// (openstrap-companion). Distinct from backend_client.dart, which is the one-shot
-// existing-user IMPORT client. This carries the OPT-IN, consent-gated channels:
+// (openstrap-companion). This carries the OPT-IN, consent-gated channels:
 //   • POST /consent        — record a grant/revoke (called when a toggle flips)
 //   • POST /telemetry      — a batch of crash/error/device records
 //   • POST /health/upload  — the full local .db (gzipped), once/day on Wi-Fi+charge
@@ -8,7 +7,7 @@
 //
 // Everything is anchored to an anonymous install id (device_id); no account
 // required. The base URL is a build-time `COMPANION_URL` define (the public repo
-// bakes in nothing) with an optional runtime override, mirroring BackendClient.
+// bakes in nothing) with an optional runtime override.
 
 import 'dart:convert';
 

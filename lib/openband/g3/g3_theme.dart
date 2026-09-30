@@ -162,40 +162,6 @@ class G3 {
           AlpColor.zone4,
           AlpColor.zone5,
         ];
-  List<Color> zoneTintsFor(G3Domain domain) => domain == G3Domain.load
-      ? loadZoneTints
-      : dark
-      ? const [
-          Color(0xFF262624),
-          Color(0xFF2B2B28),
-          Color(0xFF31312E),
-          Color(0xFF393935),
-          Color(0xFF44443F),
-        ]
-      : const [
-          Color(0xFFEEEEEA),
-          Color(0xFFE8E8E3),
-          Color(0xFFE1E1DB),
-          Color(0xFFD8D8D2),
-          Color(0xFFCDCDC7),
-        ];
-
-  List<Color> get zoneTints => zoneTintsFor(G3Domain.neutral);
-  List<Color> get loadZoneTints => dark
-      ? const [
-          AlpColor.darkZoneTint1,
-          AlpColor.darkZoneTint2,
-          AlpColor.darkZoneTint3,
-          AlpColor.darkZoneTint4,
-          AlpColor.darkZoneTint5,
-        ]
-      : const [
-          AlpColor.zoneTint1,
-          AlpColor.zoneTint2,
-          AlpColor.zoneTint3,
-          AlpColor.zoneTint4,
-          AlpColor.zoneTint5,
-        ];
 
   /// Mark (pointer, bar, dot) for a deviation; null keeps it neutral.
   Color? mark(G3Deviation d) => switch (d) {

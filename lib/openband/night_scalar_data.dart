@@ -59,7 +59,6 @@ const List<double?> kNightScalarPaperSkinTempC = [
 
 const double kNightScalarPaperSkinTempSdSelected = 0.4;
 const double kNightScalarPaperSkinTempCSelected = 33.2;
-const double kNightScalarPaperSkinTempCOffset = 32.8;
 
 const String kNightScalarPaperDay = '2026-09-15';
 

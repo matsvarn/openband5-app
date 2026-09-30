@@ -10,6 +10,7 @@ import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron;
 import 'chrome.dart' show OBActionSecondary, OBPillButton;
 import 'g3_theme.dart';
+import 'heute_parts.dart' show OBYesNoKeys;
 import 'metrics.dart'
     show G3LabelRow, G3ValueLine, OBChip, OBChipKind, OBMissingValue;
 
@@ -461,23 +462,7 @@ class G3CheckInPreview extends StatelessWidget {
     final g = G3.of(context);
     Widget buttons() => Row(
       children: [
-        Expanded(
-          child: OBActionSecondary(
-            'Nein',
-            onPressed: onNo,
-            height: 40,
-            expand: true,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OBActionSecondary(
-            'Ja',
-            onPressed: onYes,
-            height: 40,
-            expand: true,
-          ),
-        ),
+        Expanded(child: OBYesNoKeys(onYes: onYes, onNo: onNo)),
         Semantics(
           button: true,
           label: 'Später',

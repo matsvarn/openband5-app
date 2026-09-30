@@ -827,7 +827,7 @@ final Map<String, Widget Function()> g3Specimens = {
     samples: _hr,
     duration: 42,
     gaps: [(21.0, 21.67)],
-    zoneEdges: [93, 111.6, 130.2, 148.8, 167.4, 186],
+
     average: '148',
     peak: '176',
     axis: ('07:58', '08:19', '08:40'),

@@ -19,7 +19,6 @@ dependencies:
   # Pinned to what flutter_localizations (this SDK) requires — see its own
   # pubspec.lock entry, don't drift it independently.
   intl: ^0.20.2
-  cupertino_icons: ^1.0.8
 
   # The single icon family behind lib/ui2. One pack, one stroke weight, one
   # optical size — replacing the five-pack mix the old design system blended
@@ -499,9 +498,6 @@ dependencies:
   provider: ^6.1.2
   shared_preferences: ^2.3.3
 
-  # Charts (for the future server-analytics view).
-  fl_chart: ^0.69.2
-
   # Interactive maps for GPS workout routes (run/ride/walk). Raster tiles are
   # fetched on demand from CARTO (basemaps.cartocdn.com) — OSM data, but served
   # by CARTO rather than tile.openstreetmap.org, whose tile-usage policy does
@@ -559,7 +555,7 @@ dependencies:
   #   • battery_plus       — phone battery + charging state (upload gate)
   #   • connectivity_plus  — Wi-Fi check (only upload the heavy .db on unmetered)
   #   • uuid               — stable anonymous install id (the device_id anchor)
-  device_info_plus: ^10.1.2   # capped <11 by `health`
+  device_info_plus: ^10.1.2   # health 12.2.1 allows >=9 <12
   battery_plus: ^6.1.0
   connectivity_plus: ^6.1.0
   uuid: ^4.5.1

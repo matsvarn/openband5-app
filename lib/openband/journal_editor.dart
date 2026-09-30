@@ -3,19 +3,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
 import '../ai/journal_ai.dart' show kJournalPresetTags;
-import '../data/day_label.dart';
 import '../data/journal_fields.dart';
-import '../state/app_state.dart';
 import 'alp_tokens.dart';
 import 'confirm_sheet.dart';
 import 'domain.dart';
 import 'journal_controls.dart';
 import 'journal_fields.dart';
 import 'journal_value_editor.dart';
-import 'local_repository.dart';
 import 'theme.dart';
 
 const _tagLabels = <String, String>{
@@ -36,30 +32,6 @@ const _tagLabels = <String, String>{
 };
 
 String journalTagLabel(String tag) => _tagLabels[tag] ?? tag;
-
-/// Notification/legacy route: captures [date] or local today once.
-class OpenBandJournalEditorRoute extends StatefulWidget {
-  final String? date;
-  const OpenBandJournalEditorRoute({super.key, this.date});
-
-  @override
-  State<OpenBandJournalEditorRoute> createState() =>
-      _OpenBandJournalEditorRouteState();
-}
-
-class _OpenBandJournalEditorRouteState
-    extends State<OpenBandJournalEditorRoute> {
-  late final String day = widget.date ?? todayLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    return OpenBandJournalEditor(
-      repository: LocalOpenBandRepository(app),
-      day: day,
-    );
-  }
-}
 
 class OpenBandJournalEditor extends StatefulWidget {
   final OpenBandRepository repository;

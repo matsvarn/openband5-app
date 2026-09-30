@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'cycle.dart';
 import 'domain.dart';
+import 'g3/count_copy.dart';
 import 'journal_controls.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
@@ -707,10 +708,10 @@ String _sameDayDetail(CycleComparisonSameDay sameDay) {
   }
 }
 
-String _nightCount(int n) => n == 1 ? '1 Nacht' : '$n Nächte';
+String _nightCount(int n) => '$n ${g3CountNoun(n, 'Nacht', 'Nächte')}';
 
 String _cycleCount(int n) =>
-    n == 1 ? '1 früherer Zyklus' : '$n frühere Zyklen';
+    '$n ${g3CountNoun(n, 'früherer Zyklus', 'frühere Zyklen')}';
 
 String _formatSigned(double value, {required int digits}) {
   final scale = digits == 0 ? 1 : List.filled(digits, 10).fold(1, (a, b) => a * b);

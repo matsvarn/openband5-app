@@ -139,7 +139,7 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
   List<SleepPlanDayObservation> sleepPlanObservations = const [];
   bool failSleepPlanRead = false;
   DateTime Function() sleepPlanNow = DateTime.now;
-  bool failSetupEvaluation = false;
+
   bool failSleepGoalRead = false;
   bool failSleepGoalWrite = false;
   Future<void>? sleepGoalWriteBarrier;
@@ -3299,9 +3299,6 @@ class SyntheticOpenBandRepository implements OpenBandRepository {
 
   @override
   Future<SetupEvaluation> readSetupEvaluation(String day) async {
-    if (failSetupEvaluation) {
-      throw const FormatException('Stored day result is unreadable.');
-    }
     if (setupEvaluation != null) {
       return SetupEvaluation(
         day: day,
