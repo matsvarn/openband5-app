@@ -45,7 +45,38 @@ These scores were measured before registering G3.1. They compare the current app
 
 Median of the 18 G3.1 scores: **14.30%**. A score measures rendered difference, not product correctness or clinical validity.
 
-## App differences to route
+## After the alignment round — 30 September 2026
+
+Measured on `openband5/g31-paper` at `074f7060`, same harness, same references. Every four-panel report was inspected in light; Schlaf and Training also in dark.
+
+| Frame | Before | After |
+| --- | ---: | ---: |
+| `heute-hell` / `-dunkel` | 19.67% / 14.91% | 8.99% / 7.22% |
+| `schlaf-hell` / `-dunkel` | 18.11% / 15.00% | 12.29% / 9.84% |
+| `training-hell` / `-dunkel` | 16.44% / 14.91% | 11.91% / 9.89% |
+| `journal-hell` / `-dunkel` | 16.58% / 10.22% | 8.58% / 6.67% |
+| `verlauf-erholung-30-tage-hell` / `-dunkel` | 17.34% / 17.11% | 7.29% / 5.93% |
+| `verlauf-hrv-hell` / `-dunkel` | 13.69% / 11.36% | 9.36% / 7.26% |
+| `schlaf-nachtverlauf-hell` / `-dunkel` | 11.90% / 8.66% | 10.85% / 7.86% |
+| `training-lauf-ergebnis-hell` / `-dunkel` | 11.61% / 10.08% | 9.47% / 8.32% |
+| `training-belastung-hell` / `-dunkel` | 9.83% / 7.34% | 10.47% / 8.15% |
+
+Median of the 18 scores: **8.79%** (before: 14.30%). All nine screens now have the boards' sections, order, header style and copy. What still differs is listed below; the rest is synthetic trace shape, font rasterisation and the status bar.
+
+The Belastung detail scores slightly higher than before although it is structurally closer: it gained the statistics card and the activity rows the board has, and the board's "Übriger Tag" row is deliberately absent, which shifts everything below it.
+
+### Deliberate deviations from the boards
+
+The app shows only what its data layer provides and keeps every function reachable.
+
+- **Belastung detail:** no "Übriger Tag · +3,3" row. The app has no derived non-activity load, and Belastung is not additive, so it is not computed as a difference.
+- **Einheit:** no "Strecke hinzufügen" and no "Notiz" row, and no "+ hinzufügen" under STRECKE: the app has no function to store either. No percentage range per zone row: the zone edges are not stored with the session. The header keeps ⓘ for a confirmed session, because the explanation is its only action.
+- **Training root:** the sync line has no "· Puls lückenlos"; day-level pulse coverage is not known. The week footer says "ohne Belastungswert", not "ohne Bandpuls", because the reason for a missing day is not stored.
+- **Schlaf root:** "Zeiten ändern ›" sits in the NACHT card footer (the board has no entry point for correcting sleep times). The empty nap row carries a chevron, because it opens the week history. Atemfrequenz shows the empty scale while its baseline is still building.
+- **Nachtverlauf:** no "Ø Schlaf" and no "Optisches Signal verwertbar" row; the night data carries neither value.
+- **Journal:** caffeine reads "Ja", not "1 Getränk"; the field is stored as yes/no.
+
+## App differences found before the alignment round
 
 No app code was changed for this review. These are the first responsible source locations, with the visible consequence:
 
