@@ -28,8 +28,16 @@ class FileLog {
     if (_init) return;
     _init = true;
     try {
-      final dir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+      // getExternalStorageDirectory() is Android-only and THROWS on iOS, which
+      // used to land in the catch below and disable the log on iPhone
+      // entirely. Documents is pulled with the rest of the app container.
+      Directory? dir;
+      if (Platform.isAndroid) {
+        try {
+          dir = await getExternalStorageDirectory();
+        } catch (_) {}
+      }
+      dir ??= await getApplicationDocumentsDirectory();
       _file = File('${dir.path}/openstrap_sync.log');
     } catch (_) {
       _file = null;
@@ -37,6 +45,8 @@ class FileLog {
   }
 
   static Future<void> write(String line) async {
+    // Stamp at call time: the awaits below can reorder and delay the write.
+    final at = DateTime.now().toIso8601String();
     await _ensure();
     final f = _file;
     if (f == null) return;
@@ -44,7 +54,7 @@ class FileLog {
       if (_writesSinceCheck++ % _sizeCheckEvery == 0) {
         await _rotateIfNeeded(f);
       }
-      await f.writeAsString('$line\n', mode: FileMode.append);
+      await f.writeAsString('$at $line\n', mode: FileMode.append);
     } catch (_) {}
   }
 
