@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../../ble/ble_state.dart' show BandCondition, BandStatus;
 import '../../domain.dart';
+import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../../theme.dart' show obTime;
 import '../band_parts.dart';
 import '../chrome.dart' as chrome;
@@ -262,6 +263,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             chrome.OBPageHeader.detail(
@@ -277,7 +279,12 @@ class _G3BandScreenState extends State<G3BandScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 40),
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  14,
+                  16,
+                  kOBTabBarContentInset,
+                ),
                 children: [
                   if (b == null)
                     OBSettingsGroup(

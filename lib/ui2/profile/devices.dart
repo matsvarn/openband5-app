@@ -375,6 +375,7 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -385,7 +386,12 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
           else
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
                 children: [
                   for (final sig in _signals) ...[
                     Section(
@@ -1466,6 +1472,7 @@ class MyDevicesView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -1476,7 +1483,12 @@ class MyDevicesView extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+              padding: EdgeInsets.fromLTRB(
+                S.x4,
+                0,
+                S.x4,
+                tabRouteBottomInset(c, S.x10),
+              ),
               children: [
                 // FIRST, in the tier-2 slot the missing band would occupy —
                 // not appended under the phone. Someone who has just forgotten
@@ -2496,6 +2508,7 @@ class DeviceDetailView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(c),
         child: Column(children: [
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: S.x4),
@@ -2503,7 +2516,12 @@ class DeviceDetailView extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+              padding: EdgeInsets.fromLTRB(
+                S.x4,
+                0,
+                S.x4,
+                tabRouteBottomInset(c, S.x10),
+              ),
               children: [
                 Center(
                   child: Container(

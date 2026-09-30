@@ -16,6 +16,16 @@ Future<T?> pushInTab<T>(BuildContext context, Route<T> route) =>
 Future<T?> pushFullScreen<T>(BuildContext context, Route<T> route) =>
     Navigator.of(context, rootNavigator: true).push(route);
 
+/// Tab routes scroll behind the floating bar. Explicit ListView padding does
+/// not read MediaQuery padding, so give their last item room to clear the bar.
+bool hasFloatingTabBar(BuildContext context) =>
+    context.findAncestorWidgetOfExactType<AppShell>()?.releaseStyle == true;
+
+double tabRouteBottomInset(BuildContext context, double ordinaryInset) =>
+    hasFloatingTabBar(context) && ordinaryInset < kOBTabBarContentInset
+    ? kOBTabBarContentInset
+    : ordinaryInset;
+
 enum ShellDomain {
   home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),
@@ -141,24 +151,11 @@ class AppShellState extends State<AppShell> {
                         children: [
                           for (final domain in ShellDomain.values)
                             if (_built.contains(domain))
-                              Padding(
-                                padding: EdgeInsets.only(
-                                  bottom:
-                                      widget.releaseStyle &&
-                                          _observers[domain]!.coversRoot
-                                      ? tabBottom +
-                                            kOBTabBarHeight +
-                                            kOBTabBarBannerGap
-                                      : 0,
-                                ),
-                                child: Navigator(
-                                  key: _keys[domain],
-                                  observers: [_observers[domain]!],
-                                  onGenerateRoute: (_) =>
-                                      MaterialPageRoute<void>(
-                                        builder: (c) =>
-                                            widget.builder(c, domain),
-                                      ),
+                              Navigator(
+                                key: _keys[domain],
+                                observers: [_observers[domain]!],
+                                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                                  builder: (c) => widget.builder(c, domain),
                                 ),
                               )
                             else
@@ -177,7 +174,7 @@ class AppShellState extends State<AppShell> {
                     bottom: tabBottom + kOBTabBarHeight + kOBTabBarBannerGap,
                     child: widget.banner!,
                   ),
-                if (widget.releaseStyle)
+                if (widget.releaseStyle && !_observers[_current]!.hasPopup)
                   Positioned(
                     left: kOBTabBarHorizontalInset,
                     right: kOBTabBarHorizontalInset,
@@ -265,18 +262,24 @@ class AppShellState extends State<AppShell> {
 class _TabObserver extends NavigatorObserver {
   final VoidCallback changed;
   int depth = 0;
+  Route<dynamic>? _topRoute;
   final _exitingRoutes = <Route<dynamic>>{};
   bool get coversRoot => depth > 1 || _exitingRoutes.isNotEmpty;
+  bool get hasPopup =>
+      _topRoute is PopupRoute<dynamic> ||
+      _exitingRoutes.any((route) => route is PopupRoute<dynamic>);
   _TabObserver(this.changed);
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth++;
+    _topRoute = route;
     changed();
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    _topRoute = previousRoute;
     if (previousRoute != null && route is TransitionRoute<dynamic>) {
       _exitingRoutes.add(route);
       route.completed.then((_) {
@@ -290,6 +293,7 @@ class _TabObserver extends NavigatorObserver {
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    if (identical(_topRoute, route)) _topRoute = previousRoute;
     changed();
   }
 }

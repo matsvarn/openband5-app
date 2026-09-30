@@ -8,6 +8,7 @@ import '../../../data/day_label.dart';
 import '../../../data/journal_fields.dart';
 import '../../../ui2/app_shell.dart' show pushInTab;
 import '../../domain.dart';
+import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../charts.dart';
 import '../chrome.dart' as chrome;
 import '../count_copy.dart';
@@ -270,8 +271,9 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: title.toUpperCase(),
@@ -751,8 +753,9 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: 'MESSWERTE',
@@ -912,8 +915,9 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: 'GEWICHT',

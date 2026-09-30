@@ -1086,8 +1086,9 @@ class G3JournalPatternScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
           children: [
             OBPageHeader.detail(
               title: 'MUSTER',
@@ -1337,8 +1338,9 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 36),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, kOBTabBarContentInset),
           children: [
             OBPageHeader.detail(
               title: 'ANPASSEN',

@@ -1597,8 +1597,9 @@ class _SleepDetail extends StatelessWidget {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 30),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: title,

@@ -11,6 +11,7 @@ import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
 import 'release_scope.dart';
 import '../state/app_state.dart';
+import '../ui2/app_shell.dart';
 import '../ui2/profile/band_notifications.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
@@ -519,6 +520,7 @@ class NotificationSettingsView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
+        bottom: !hasFloatingTabBar(context),
         child: Column(
           children: [
             Padding(
@@ -540,7 +542,12 @@ class NotificationSettingsView extends StatelessWidget {
             Expanded(
               child: ListView(
                 cacheExtent: 2500,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  tabRouteBottomInset(context, 24),
+                ),
                 children: [
                   if (loadError != null) ...[
                     OBSettingsErrorCard(

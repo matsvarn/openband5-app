@@ -26,6 +26,7 @@ import '../../openband/screens.dart' show showBandStatus;
 import '../../data/day_label.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/scale.dart';
+import '../../openband/tab_bar.dart' show kOBTabBarContentInset;
 import '../../openband/theme.dart';
 import '../../compute/profile.dart' show PersonalProfile, ageOnDate;
 import '../../state/app_state.dart';
@@ -711,6 +712,7 @@ class ProfileHomeView extends StatelessWidget {
       key: const ValueKey('profile-screen'),
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             Padding(
@@ -755,7 +757,12 @@ class ProfileHomeView extends StatelessWidget {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  kOBTabBarContentInset,
+                ),
                 children: [
                   OBSettingsGroup(
                     children: [

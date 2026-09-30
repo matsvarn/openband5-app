@@ -102,7 +102,11 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
   void _reload() {
     _day = widget.controller.selectedDay;
     _revision = widget.controller.refreshRequest;
-    if (mounted) setState(() => _data = _read());
+    if (mounted) {
+      setState(() {
+        _data = _read();
+      });
+    }
   }
 
   Future<_TrainingData> _read() async {

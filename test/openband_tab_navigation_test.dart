@@ -7,6 +7,7 @@ import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:openstrap_edge/ui2/profile/settings.dart' show MoreSettingsView;
 
 Widget _shell(
   GlobalKey<AppShellState> key, {
@@ -30,12 +31,20 @@ Widget _shell(
                 builder: (_) => Scaffold(
                   appBar: AppBar(title: Text('Detail ${domain.name}')),
                   body: ListView(
+                    padding: const EdgeInsets.only(
+                      bottom: kOBTabBarContentInset,
+                    ),
                     children: [
                       Text('Content ${domain.name}'),
                       const SizedBox(height: 1000),
-                      TextButton(
-                        onPressed: () {},
-                        child: Text('Last ${domain.name} action'),
+                      Card(
+                        key: ValueKey('last-${domain.name}-card'),
+                        child: SizedBox(
+                          height: 80,
+                          child: Center(
+                            child: Text('Last ${domain.name} card'),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -57,6 +66,16 @@ Widget _shell(
             onPressed: () =>
                 showOpenBandJournalInfo(context, title: 'Root sheet'),
             child: const Text('Open sheet'),
+          ),
+          TextButton(
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              builder: (_) => const SizedBox(
+                height: 180,
+                child: Center(child: Text('Tab sheet')),
+              ),
+            ),
+            child: const Text('Open tab sheet'),
           ),
         ],
       ),
@@ -98,26 +117,59 @@ void main() {
     expect(find.byType(OBTabBar), findsOneWidget);
   });
 
-  testWidgets('last detail action can scroll above the floating bar', (
+  testWidgets('detail scroll reaches the screen bottom and clears the bar', (
     tester,
   ) async {
     await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
     await tester.tap(find.text('Open home detail'));
     await tester.pumpAndSettle();
-    final lastAction = find.text('Last home action');
-    await tester.scrollUntilVisible(
-      lastAction,
-      400,
-      scrollable: find.byType(Scrollable).last,
+    final scrollable = find.byType(Scrollable).last;
+    expect(
+      tester.getRect(scrollable).bottom,
+      greaterThan(tester.getRect(find.byType(OBTabBar)).top),
     );
+    tester
+        .state<ScrollableState>(scrollable)
+        .position
+        .jumpTo(
+          tester.state<ScrollableState>(scrollable).position.maxScrollExtent,
+        );
     await tester.pumpAndSettle();
     expect(
-      tester.getRect(lastAction).bottom,
+      tester.getRect(find.byKey(const ValueKey('last-home-card'))).bottom,
       lessThan(tester.getRect(find.byType(OBTabBar)).top),
     );
   });
 
-  testWidgets('covered tab root keeps its inset during detail pop animation', (
+  testWidgets('settings last row clears the floating tab bar', (tester) async {
+    final key = GlobalKey<AppShellState>();
+    var resetTapped = false;
+    await tester.pumpWidget(_shell(key));
+    key.currentState!.open(
+      ShellDomain.home,
+      MoreSettingsView(releaseReduced: true, onReset: () => resetTapped = true),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.descendant(
+      of: find.byType(MoreSettingsView),
+      matching: find.byType(Scrollable),
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pumpAndSettle();
+
+    final lastRow = find.text('Reset all data');
+    expect(lastRow.hitTestable(), findsOneWidget);
+    expect(
+      tester.getRect(lastRow).bottom,
+      lessThan(tester.getRect(find.byType(OBTabBar)).top),
+    );
+    await tester.tap(lastRow);
+    expect(resetTapped, isTrue);
+  });
+
+  testWidgets('covered tab root keeps its layout during detail pop animation', (
     tester,
   ) async {
     await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
@@ -136,7 +188,7 @@ void main() {
     expect(tester.getSize(root), beforePop);
 
     await tester.pumpAndSettle();
-    expect(tester.getSize(root).height, greaterThan(beforePop.height));
+    expect(tester.getSize(root), beforePop);
   });
 
   testWidgets('kept notification detail opens inside its owning tab', (
@@ -203,6 +255,25 @@ void main() {
     await rootKey.currentState!.maybePop();
     await tester.pumpAndSettle();
     expect(rootKey.currentState!.canPop(), isFalse);
+  });
+
+  testWidgets('a tab modal covers and disables the floating bar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_shell(GlobalKey<AppShellState>()));
+    final barCenter = tester.getCenter(find.byType(OBTabBar));
+    await tester.tap(find.text('Open tab sheet'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tab sheet'), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsNothing);
+    expect(find.byType(ModalBarrier).hitTestable(), findsWidgets);
+    expect(
+      tester.getRect(find.byType(BottomSheet)).contains(barCenter),
+      isTrue,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
   });
 
   testWidgets('system back pops the inner detail before the shell', (

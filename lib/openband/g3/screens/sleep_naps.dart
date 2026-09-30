@@ -6,6 +6,7 @@ import '../../../data/day_label.dart';
 import '../../controller.dart';
 import '../../domain.dart';
 import '../../naps.dart';
+import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart' as chrome;
 import '../g3_theme.dart';
 import '../sleep_parts.dart';
@@ -116,8 +117,9 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
     return Scaffold(
       backgroundColor: g.page,
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 112),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
           children: [
             chrome.OBPageHeader.detail(
               title: 'NICKERCHEN',
