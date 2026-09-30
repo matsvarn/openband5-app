@@ -133,7 +133,12 @@ class OBTrainingLoad extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               column('AKUT · 7 TAGE', ready ? acute : null),
-              SizedBox(height: 55, child: VerticalDivider(color: g.line)),
+              Container(
+                width: 1,
+                height: 55,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: g.line,
+              ),
               column('GEWOHNT · 6 WOCHEN', ready ? usual : null),
             ],
           ),

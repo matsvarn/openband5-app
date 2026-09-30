@@ -20,9 +20,10 @@ import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/day.dart'
     show OBActivityRow, OBWeekBars;
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
-import 'package:openstrap_edge/openband/g3/metrics.dart' show G3Scale;
+import 'package:openstrap_edge/openband/g3/metrics.dart'
+    show G3Scale, G3LabelRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show OBActionPrimary, OBActionSecondary, OBSheet;
+    show OBActionPrimary, OBActionSecondary, OBSheet, OBPanel;
 import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
     as g3chrome
@@ -1603,11 +1604,18 @@ void main() {
       tester.widget<OBHrTrace>(find.byType(OBHrTrace)).domain,
       G3Domain.load,
     );
-    await tester.ensureVisible(find.byType(OBZoneRows));
-    expect(
-      tester.widget<OBZoneRows>(find.byType(OBZoneRows)).domain,
-      G3Domain.load,
+    await tester.ensureVisible(find.text('ZEIT IN ZONEN'));
+    final zonesHeader = find.ancestor(
+      of: find.text('ZEIT IN ZONEN'),
+      matching: find.byType(G3LabelRow),
     );
+    expect(tester.widget<G3LabelRow>(zonesHeader).domain, G3Domain.load);
+    expect(find.text('90–100 %'), findsNothing);
+    await tester.ensureVisible(find.text('Grundlage'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Grundlage'));
+    await tester.pumpAndSettle();
+    expect(find.text('Zonengrundlage'), findsOneWidget);
 
     final run = ValueNotifier(const LiveRun(elapsedSec: 60, heartRate: 142));
     addTearDown(run.dispose);
@@ -1751,6 +1759,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('bestätigt'), findsOneWidget);
       expect(find.byIcon(LucideIcons.ellipsis), findsNothing);
+      final durationLabelTop = tester.getTopLeft(find.text('DAUER')).dy;
+      for (final label in ['BELASTUNG', 'STRECKE']) {
+        expect(tester.getTopLeft(find.text(label)).dy, durationLabelTop);
+      }
+      final stats = find
+          .ancestor(of: find.text('STRECKE'), matching: find.byType(OBPanel))
+          .first;
+      double baseline(String value) {
+        final text = find.descendant(of: stats, matching: find.text(value));
+        final paragraph = tester.renderObject<RenderParagraph>(text);
+        return paragraph
+            .localToGlobal(
+              Offset(
+                0,
+                paragraph.getDryBaseline(
+                  paragraph.constraints,
+                  TextBaseline.alphabetic,
+                )!,
+              ),
+            )
+            .dy;
+      }
+
+      expect(baseline('+6,1'), closeTo(baseline('42'), 0.1));
+      expect(baseline('—'), closeTo(baseline('42'), 0.1));
       await tester.ensureVisible(find.text('Quelle und Berechnung'));
       await tester.pumpAndSettle();
       expect(
@@ -1766,6 +1799,34 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('result source remains reachable at 375 pt and 2× text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _repo(SyntheticScenario.g3Sample);
+    await repo.confirmSuggestion(
+      (await repo.readActivities('2026-09-29')).single.id,
+    );
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(
+        MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: G3ActivityScreen(repository: repo, activity: activity),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Quelle und Berechnung'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Quelle und Berechnung'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Pulserholung ist'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('week exceptions keep partial values off the chart', (
     tester,

@@ -6,8 +6,7 @@ import '../../controller.dart';
 import '../../domain.dart';
 import '../../theme.dart' show OBChevron;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
-import '../charts.dart'
-    show OBHrTrace, OBTrendChart, OBTrendPeriod, OBZone, OBZoneRows;
+import '../charts.dart' show OBHrTrace, OBTrendChart, OBTrendPeriod;
 import '../day.dart' as day_widgets show OBActivityRow, OBWeekBar, OBWeekBars;
 import '../chrome.dart'
     show
@@ -1028,12 +1027,13 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
             FutureBuilder<OpenBandDay>(
               future: _day,
-              builder: (context, day) => _card(
-                context,
-                Row(
+              builder: (context, day) => OBPanel(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _figure(
                       context,
@@ -1061,7 +1061,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             if (!confirmed) ...[
               Container(
                 padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
@@ -1098,6 +1098,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
             if (a.hrTrace.isNotEmpty && duration != null && duration > 0) ...[
               OBHrTrace(
                 domain: G3Domain.load,
+                plotHeight: 110,
                 samples: minutes,
                 duration: duration.toDouble(),
                 gaps: gaps,
@@ -1128,11 +1129,9 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               const SizedBox(height: 10),
             ],
             if (zones) ...[
-              OBZoneRows(
-                domain: G3Domain.load,
-                zones: [
-                  for (var i = 4; i >= 0; i--)
-                    OBZone(i + 1, '', a.zoneMinutes![i].round()),
+              _TrainingZones(
+                minutes: [
+                  for (var i = 4; i >= 0; i--) a.zoneMinutes![i].round(),
                 ],
                 basis: basis == null
                     ? 'Grundlage unbekannt'
@@ -1161,9 +1160,8 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                 ),
               ),
             ] else if (!confirmed && basis != null)
-              OBZoneRows(
-                domain: G3Domain.load,
-                zones: [for (var i = 4; i >= 0; i--) OBZone(i + 1, '', null)],
+              _TrainingZones(
+                minutes: const [null, null, null, null, null],
                 basis: reserve
                     ? '% Pulsreserve'
                     : hfmax
@@ -1194,13 +1192,20 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const G3LabelRow(
-                    'PULSERHOLUNG',
-                    domain: G3Domain.load,
-                    glyph: LucideIcons.flame,
-                    note: 'nach dem Ende',
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: G3LabelRow(
+                          'PULSERHOLUNG',
+                          domain: G3Domain.load,
+                          glyph: LucideIcons.flame,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('nach dem Ende', style: g.t(13, 16, color: g.muted)),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
@@ -1235,9 +1240,9 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                     ),
                   ],
                   if (a.priorHrrCount != null && a.priorHrrCount! < 3) ...[
-                    const SizedBox(height: 16),
-                    Divider(height: 1, color: g.line),
                     const SizedBox(height: 12),
+                    Divider(height: 1, color: g.line),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         const G3Dashed(width: 16, height: 10, radius: 2),
@@ -1260,7 +1265,6 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               title: 'Quelle und Berechnung',
               onTap: () => _resultInfo(context),
             ),
-            const SizedBox(height: 18),
             FutureBuilder<OpenBandDay>(
               future: _day,
               builder: (context, snapshot) => OBFooterStamp(
@@ -1273,6 +1277,121 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TrainingZones extends StatelessWidget {
+  final List<int?> minutes;
+  final String basis, source;
+  final VoidCallback? onBasis;
+  const _TrainingZones({
+    required this.minutes,
+    required this.basis,
+    required this.source,
+    this.onBasis,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    final longest = minutes.fold(1, (a, b) => (b ?? 0) > a ? b! : a);
+    return OBPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: G3LabelRow(
+                  'ZEIT IN ZONEN',
+                  domain: G3Domain.load,
+                  glyph: LucideIcons.flame,
+                ),
+              ),
+              Text(basis, style: g.t(13, 16, color: g.muted)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, value) in minutes.indexed)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 26),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 28,
+                            child: Text(
+                              'Z${5 - index}',
+                              style: g.t(14, 18, weight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(5),
+                              child: Container(
+                                height: 10,
+                                color: g.track,
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: (value ?? 0) / longest,
+                                  heightFactor: 1,
+                                  child: ColoredBox(
+                                    color: g.zonesFor(G3Domain.load)[4 - index],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              value == null ? '—' : '$value Min.',
+                              textAlign: TextAlign.right,
+                              style: g.t(
+                                14,
+                                18,
+                                weight: FontWeight.w700,
+                                color: value == null ? g.gap : g.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Divider(height: 1, color: g.line),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      right: onBasis == null
+                          ? 0
+                          : 88 * MediaQuery.textScalerOf(context).scale(1),
+                    ),
+                    child: Text(source, style: g.t(12, 16, color: g.muted)),
+                  ),
+                ],
+              ),
+              if (onBasis != null)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: OBLink(
+                    'Grundlage',
+                    semanticsLabel: 'Grundlage der Zonen',
+                    onTap: onBasis!,
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1528,7 +1647,6 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                           load: widget.weekly,
                           onMethod: () => _method(context),
                         ),
-                        const SizedBox(height: 18),
                         OBFooterStamp(
                           g3DataThrough(stamp, now: widget.controller.now()),
                           synthetic: widget.controller.day?.synthetic ?? false,
@@ -1552,6 +1670,7 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                 if (snap.hasData)
                   OBTrendChart(
                     domain: G3Domain.load,
+                    plotHeight: 142,
                     title: '$periodDays TAGE',
                     period: period,
                     values: values,
