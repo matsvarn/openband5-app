@@ -1,59 +1,114 @@
-# Interruption-trial runbook — the controlled zero-loss proof
+# Interruption trial — the controlled zero-loss proof
 
-The capture claim is "a night of data that survives disconnection and app
-relaunch." This is the scripted version of that claim. Run it against the
-build that carries durable `raw_blob` + cursor persistence (algo 92+).
+The capture claim is "a night of data that survives disconnection and app relaunch". This runbook is its scripted proof. Run it against a signed release build installed in place on the owner's iPhone. Pulled databases, logs and screenshots go to `~/Library/Application Support/OpenBand5Lab/trial-<date>/` and never into Git. No band command beyond the app's normal sync is sent: no firmware, R22, force-trim or pointer command.
 
-## Setup
+Record every result, including a failure, as a finding. Do not retest until it passes.
 
-- iPhone with the build under test installed; WHOOP 5.0 charged and worn.
-- Note the pre-trial state: `sqlite3 <db> "SELECT MAX(rec_ts) FROM
-  decoded_onehz"` and the newest `band_backlog` row (if the cursor columns
-  exist).
+## Roles and timing
 
-## The four interruptions
+The operator (Mac) runs every command. Mats does the physical steps. The four interruptions take about 2 h 30 min; the overnight capture runs until the next morning.
 
-Do each during an ACTIVE sync (the transfer progress visible), unless noted:
+| Step | Mats does | Duration |
+| --- | --- | --- |
+| I1 Out of range | Walks away with the band, leaves the unlocked phone at the Mac, and stays far enough away that the link drops (another floor or outside) | 20 min |
+| I2 Bluetooth off | Back at the phone: opens OpenBand; while the transfer runs, Control Centre → Bluetooth off, waits 30 s, Bluetooth on | 2 min |
+| — | Walks away again to build a backlog | 10 min |
+| I3 Force-quit | Back at the phone: opens OpenBand; while the transfer runs, swipes the app away, waits 10 s, reopens it | 2 min |
+| — | Walks away again | 10 min |
+| I4 Lock | Back at the phone: opens OpenBand; while the transfer runs, locks the phone and leaves it locked | 60 min |
+| Night | Wears the band as usual; the phone stays on the night stand, app not force-quit | overnight |
 
-1. **Bluetooth off** — Control Centre BT off mid-transfer, wait 30 s, BT on.
-   Expect: reconnect, resume from the last committed counter, no re-flood.
-2. **Force-quit** — swipe-kill the app mid-transfer, relaunch.
-   Expect: reconnect + resume; committed data survives.
-3. **Lock/background 1 h** — lock the phone mid-transfer for an hour.
-   Expect: the headless gate (`HeadlessSyncGate.tryRun`) either completes or
-   cleanly skips; on unlock, normal sync resumes. No stuck latch.
-4. **Out of range** — leave the band out of BLE range ≥20 min, return.
-   Expect: reconnect, drain resumes.
+"While the transfer runs" means the Band screen shows data arriving (the backlog after 10–20 min apart takes tens of seconds). If the transfer has already finished, note it and carry on; the interruption then tests an idle link, not a transfer.
 
-Then let one normal overnight capture run.
+## Setup (operator)
+
+```sh
+cd <edge worktree>
+LAB="$HOME/Library/Application Support/OpenBand5Lab"
+DEVICE="iPhone von Mats"; BUNDLE=dev.matsvarn.openband5
+git rev-parse HEAD                      # the build commit, recorded with the result
+xcrun devicectl device info processes --device "$DEVICE" | grep -i openband   # OpenBand PID only
+```
+
+1. Stop **only** the OpenBand process (`xcrun devicectl device process terminate --device "$DEVICE" --pid <pid>`), then pull the before copy: `tool/pull_device_db.sh trial-pre`. The script copies Documents (db, -wal, -shm) plus the field log from `Library/Application Support`.
+2. `sqlite3 "<pre>/Documents/openstrap.db" "PRAGMA integrity_check"` must print `ok`.
+3. Relaunch: `xcrun devicectl device process launch --device "$DEVICE" $BUNDLE`. Wait until the Band screen shows connected, and note `T0 = date +%s`.
+4. Write each interruption's start and end (`date +%s`) into `trial-<date>/times.txt` while Mats performs it.
+
+## What the field log must show
+
+`openstrap_sync.log` from the after pull, per interruption:
+
+| Interruption | Required lines |
+| --- | --- |
+| I1 | `[LINK] down reason=…`, `[LINK] unreachable since <I1 start ±1 min>`, `[ble-restore] armed pending connect …` or `Backgrounded — no live connection; armed iOS restore recovery`, later `[LINK] reachable again after …`, then `Backlog drained`/`Reconnect backlog drained` |
+| I2 | `[LINK] down …` at the toggle, a reconnect within about 1 min of Bluetooth on, backlog drained; no `Session start failed` loop |
+| I3 | `===== SESSION START =====` after relaunch, `[BACKLOG] … current_read=` continuing from the last committed second, backlog drained |
+| I4 | Either `[bgsync]`/`[ble-restore]` lines with a completed or skipped headless drain, or the live link held (`Backgrounded — holding live connection`). On unlock a sync resumes; no lease stays held without a session. |
+| All | No `[LINK] connect attempt took …` without a later `reachable again`; no `syncDone watchdog fired` unless followed by a successful reconnect |
+
+A missing required line is a finding, even if the data checks pass.
 
 ## After the trial — verify, don't eyeball
 
-Pull the database (devicectl app data container → `Documents/openstrap.db`)
-into `~/Library/Application Support/OpenBand5Lab/<trial-date>/` and run:
+After the night, stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
 
 ```sh
-python3 tool/verify_capture.py <db>
-dart run tool/replay_check.dart <db>
+PRE="<pre>/Documents/openstrap.db"; POST="<post>/Documents/openstrap.db"
+sqlite3 "$POST" "PRAGMA integrity_check"                  # ok
+python3 tool/key_retention.py "$PRE" "$POST"               # RETAINED, exit 0
+python3 tool/verify_capture.py "$POST"                     # VERDICT: CLEAN
+dart run tool/replay_check.dart "$POST"                    # exit 0
 ```
 
-Pass criteria — all of them, not most:
+Run the queries below on a scratch copy of the after database, or with `?mode=ro`. `T0` is the relaunch time. `T1` is the start of the after pull minus 15 min, so that the last seconds still waiting in band flash don't count as loss.
 
-- `verify_capture.py` verdict CLEAN: no duplicate `rec_ts`, every blobbed
-  record decoded, no ledger violations created after the fix boundary, no
-  truncated blob frames.
-- `replay_check.dart` exit 0: every replayed second matches its stored row —
-  hr, centi-°C skin temp, step count — and no replayed second lacks a row.
-- Coverage honesty: the interruption windows appear as `rec_ts` GAPS in the
-  gap list — gaps are the honest record of a lost link; a filled gap would
-  mean fabrication, which is worse than loss.
-- `band_backlog` gained a row per connect; `wrap_count` did not advance
-  during the trial; `current_read_ts`/`read_page` moved monotonically.
-- Strain/readiness for trial days show real values or honest absence — never
-  a gap-spanning invention.
+```sql
+-- Z1 Zero loss: every second the band counted between T0 and T1 is stored.
+--    Gen5 counters are contiguous per charge epoch; a hole is a lost second.
+WITH w AS (SELECT counter, LAG(counter) OVER (ORDER BY counter) pc
+           FROM decoded_onehz WHERE rec_ts BETWEEN :T0 AND :T1)
+SELECT COUNT(*) AS seconds,
+       COALESCE(SUM(CASE WHEN counter - pc > 1 THEN counter - pc - 1 END), 0) AS missing,
+       COALESCE(SUM(counter - pc > 1), 0) AS holes
+FROM w;                                                     -- missing = 0
+
+-- Z2 No duplicates inside the window.
+SELECT COUNT(*) - COUNT(DISTINCT rec_ts) FROM decoded_onehz
+ WHERE rec_ts BETWEEN :T0 AND :T1;                         -- 0
+
+-- Z3 Commit-before-ACK: no batch acknowledged before it was committed.
+SELECT COUNT(*) FROM sync_ledger
+ WHERE created_at >= :T0 * 1000 AND acked_at < created_at; -- 0
+
+-- Z4 The band handed everything over: newest cursor at the live edge,
+--    flash never wrapped during the trial.
+SELECT datetime(ts,'unixepoch','localtime'), read_page, trim_page, wrap_count,
+       datetime(current_read_ts,'unixepoch','localtime')
+FROM band_backlog WHERE ts >= :T0 ORDER BY ts;
+-- one row per connect; wrap_count constant; read_page/current_read_ts never go back;
+-- the last current_read_ts is within minutes of the pull.
+
+-- Z5 The band's own view of each interruption (events 11/12 = connection up/down).
+SELECT datetime(ts,'unixepoch','localtime'), event_id, name FROM band_events
+ WHERE ts BETWEEN :T0 AND :T1 AND event_id IN (9,10,11,12,14) ORDER BY ts;
+
+-- Z6 Coverage honesty: gaps over 60 s. Each must start at a band WRIST_OFF
+--    (Z5) or lie inside a recorded interruption window; nothing fills them.
+WITH g AS (SELECT rec_ts, LAG(rec_ts) OVER (ORDER BY rec_ts) p FROM decoded_onehz
+           WHERE rec_ts BETWEEN :T0 AND :T1)
+SELECT datetime(p,'unixepoch','localtime'), datetime(rec_ts,'unixepoch','localtime'), rec_ts - p
+FROM g WHERE rec_ts - p > 60 ORDER BY p;
+```
+
+Pass criteria, all of them:
+
+- integrity `ok` on both copies; `key_retention.py` RETAINED; `verify_capture.py` CLEAN; `replay_check.dart` exit 0.
+- Z1 `missing = 0`, Z2 `0`, Z3 `0`, Z4 as described.
+- Z6: every gap is explained by a WRIST_OFF or is absent. An interruption normally leaves **no** gap, because the band stores to flash and the backlog fills the time on reconnect. A gap that a later drain did not fill is loss, and Z1 must show it.
+- Every required log line above is present.
+- Strain, recovery and sleep for the trial days show real values or honest absence, never a value bridging a gap.
 
 ## What to record
 
-Per `IMPLEMENTATION_VERIFICATION.md` convention: trial date, build commit,
-each interruption's time and observed reconnect behavior, the verifier
-outputs verbatim, and any failure as a FINDING, not a retest-until-pass.
+In `IMPLEMENTATION_VERIFICATION.md`, record the trial date, build commit, each interruption's start and end time, the reconnect time observed in the log (`reachable again after …`), the verifier outputs verbatim, the Z1–Z6 results, and every failure as a finding. Keep `times.txt`, both pulls and the outputs under `OpenBand5Lab/trial-<date>/`.
