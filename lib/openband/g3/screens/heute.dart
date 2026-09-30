@@ -1212,7 +1212,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             : () => widget.onJournalDay!(last.targetDay),
         onLater: () => setState(() => _checkInLater = true),
         answer: answer,
-        inlineLater: q.kind == G3CheckInKind.yesNo,
       );
       final field = q.field;
       card = switch (q.kind) {
