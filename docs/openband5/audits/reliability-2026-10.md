@@ -126,16 +126,16 @@ Since `5402dbb7` the iOS field log lives in `Library/Application Support`, so pr
 **F15 · Events 11/12 are unnamed in the protocol package.** Owner: protocol repository.
 They show as `EVENT_11`/`EVENT_12`. `research/decode_events.py` names them BLE_CONNECTION_UP/DOWN. These events are the single most useful outage record, so they deserve a verified name.
 
-## Detection and reporting today
+## Detection and reporting
 
-| Question | Answer |
-| --- | --- |
-| Connected band goes silent | Keep-alive command about once a minute (band console "Command Link Valid"). `isLinkStale` (30 s with live stream, 90 s without) is evaluated on resume and foreground catch-up only. A dead link otherwise ends with the OS supervision timeout (seconds). |
-| Link lost, app in foreground | "Verbindet …" during the attempt, then "Band nicht erreichbar · Letzter Versuch HH:MM" after the first failed 20 s attempt (PR #17). |
-| Link lost, app in background | Nothing visible. In-app quiet tier after 12 h without a record; OS notification after 48 h (F8). |
-| Does reconnect give up? | No, except the bond-refusal pause. The iOS restore central stays armed until a wake is acknowledged; after F1 an acknowledged wake has either handed the link over or timed out. |
-| Backoff too far? | No: cap 30 s. On iOS the effective rate in the background is set by process suspension, not by the policy. |
-| Battery | Foreground: a connect attempt about every 40–56 s while unreachable. Background: one short CPU wake per iOS wake, plus the free pending connect. No new cost from this branch; F1 keeps the process up to 40 s longer on a restore wake that lands during the reconnect loop. |
+| Question | Audited base (`61dcdd29`) | This branch |
+| --- | --- | --- |
+| Connected band goes silent | Keep-alive command about once a minute (band console "Command Link Valid"). `isLinkStale` (30 s with live stream, 90 s without) is evaluated on resume and foreground catch-up only. A dead link otherwise ends with the OS supervision timeout (seconds). | Unchanged; the drop is now logged as `[LINK] down reason=… after … last_rx=…`. |
+| Link lost, app in foreground | "Verbindet …" during the attempt, then "Band nicht erreichbar · Letzter Versuch HH:MM" after the first failed 20 s attempt (PR #17), advising a Bluetooth toggle. | Same timing; the card advises a double tap (D2). `[LINK] unreachable since …` in the log. |
+| Link lost, app in background | Nothing visible. In-app quiet tier after 12 h without a record; OS notification after 48 h, and the check did not run while the reconnect loop owned the band (F8). | Notification after 3 h, at most every 12 h, unless the band was last seen off the wrist or charging (D1). |
+| Does reconnect give up? | No, except the bond-refusal pause. | Unchanged. |
+| Backoff too far? | No: cap 30 s. On iOS the effective rate in the background is set by process suspension, not by the policy. | In the iOS background the engine keeps one pending connect for up to 20 min instead (D3). |
+| Battery | Foreground: a connect attempt about every 40–56 s while unreachable. Background: one short CPU wake per iOS wake, plus the free pending connect. | Fewer background wakes (D3). A restore wake that lands during the reconnect loop can keep the process up to 80 awake polls (40 s) longer (F1). |
 
 ## Decisions (approved by Mats, 30 September 2026, and built)
 
