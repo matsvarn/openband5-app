@@ -44,9 +44,17 @@ class FileLog {
     }
   }
 
-  static Future<void> write(String line) async {
-    // Stamp at call time: the awaits below can reorder and delay the write.
+  // Appends run one at a time. Unserialised, two in-flight appends each open
+  // the file at the same end offset and overwrite each other's line.
+  static Future<void> _tail = Future<void>.value();
+
+  static Future<void> write(String line) {
+    // Stamp at call time: the queue below can delay the write.
     final at = DateTime.now().toIso8601String();
+    return _tail = _tail.then((_) => _append('$at $line\n'));
+  }
+
+  static Future<void> _append(String text) async {
     await _ensure();
     final f = _file;
     if (f == null) return;
@@ -54,7 +62,7 @@ class FileLog {
       if (_writesSinceCheck++ % _sizeCheckEvery == 0) {
         await _rotateIfNeeded(f);
       }
-      await f.writeAsString('$at $line\n', mode: FileMode.append);
+      await f.writeAsString(text, mode: FileMode.append);
     } catch (_) {}
   }
 
