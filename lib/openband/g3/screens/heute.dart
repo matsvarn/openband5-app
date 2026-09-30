@@ -889,7 +889,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
             ? 'Erinnerung um ${g3Clock(action.reminderAt)}'
             : action?.label,
         actionSubtitle: armed
-            ? '15 Min. vor ${action.label.split(' ').first} · abbestellen'
+            ? '15 Min. vor ${g3Clock(action.reminderAt.add(const Duration(minutes: 15)))} · abbestellen'
             : _data.plus?.needMinutes != null && _data.plus?.wake != null
             ? 'Bedarf ${_hm(_data.plus!.needMinutes!)} · bis ${g3Clock(_data.plus!.wake!)}'
             : action?.sub,

@@ -371,10 +371,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : (_number(range.low, metric), _number(range.high, metric)),
                 zero: metric == G3Metric.skinTempZ ? 0 : null,
                 xLabels: _period == OBTrendPeriod.d7
-                    ? [
-                        for (final p in points)
-                          g3DayShort(DateTime.parse(p.day)).split(' ').first,
-                      ]
+                    ? [for (final p in points) g3Weekday(DateTime.parse(p.day))]
                     : points.isEmpty
                     ? const []
                     : [
@@ -1118,7 +1115,7 @@ class _WeightEntrySheetState extends State<_WeightEntrySheet> {
     final g = G3.of(context);
     final timeLabel = _minute == null
         ? 'ohne Uhrzeit'
-        : '${(_minute! ~/ 60).toString().padLeft(2, '0')}:${(_minute! % 60).toString().padLeft(2, '0')}';
+        : g3Clock(DateTime(2000, 1, 1, _minute! ~/ 60, _minute! % 60));
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: chrome.OBSheet(
