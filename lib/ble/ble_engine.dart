@@ -907,6 +907,13 @@ class BleEngine {
   @visibleForTesting
   Stream<BluetoothConnectionState> Function()? debugConnectionStates;
 
+  @visibleForTesting
+  Future<BleBlocker?> debugClassifyRadioError(Object error) async =>
+      (await _classifyRadioError(error)).blocker;
+
+  @visibleForTesting
+  BluetoothAdapterState get debugLastAdapterState => _lastAdapterState;
+
   void _listenToAdapter() {
     if (_disposed) return;
     _adapterStateSub = _adapterStateStream().listen(
@@ -2245,12 +2252,8 @@ class BleEngine {
   Future<({BleBlocker? blocker, BluetoothAdapterState adapter})>
       _classifyRadioError(Object error) async {
     final adapter = await _readAdapterState(freshOnly: true);
-    final knownAdapter = adapter == BluetoothAdapterState.unknown
-        ? _lastAdapterState
-        : adapter;
-    final blocker =
-        classifyBleBlocker(adapterState: knownAdapter.name, error: error);
-    if (blocker != null) _noteBlocker(blocker, knownAdapter.name);
+    final blocker = classifyBleBlocker(adapterState: adapter.name, error: error);
+    if (blocker != null) _noteBlocker(blocker, adapter.name);
     return (blocker: blocker, adapter: adapter);
   }
 
@@ -2411,6 +2414,7 @@ class BleEngine {
       await _failConnect();
       return false;
     }
+    _onAdapterState(BluetoothAdapterState.on);
     _clearBlocker('on (connect succeeded)');
 
     // connect() resolved without throwing => the link is up. Set this explicitly

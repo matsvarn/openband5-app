@@ -387,6 +387,89 @@ void main() {
     }
   }
 
+  test('cached off does not re-latch after a successful radio connect', () async {
+    final adapter = _Adapter(BluetoothAdapterState.off);
+    var failProbe = false;
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: () => failProbe
+          ? Stream.error(StateError('adapter probe failed'))
+          : adapter.freshStream(),
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    engine.debugDeviceConnect = () async {};
+    engine.debugConnectionStates = () => const Stream.empty();
+    // The radio connect succeeds; unsupported host GATT discovery stops setup.
+    expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(engine.bluetoothBlocker, isNull);
+
+    failProbe = true;
+    engine.debugDeviceConnect = () async =>
+        throw TimeoutException('Timed out after 20s');
+    expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(engine.bluetoothBlocker, isNull);
+    expect(engine.state.lastConnectFailedAt, isNotNull);
+    expect(engine.bandStatus.condition, BandCondition.unreachable);
+  });
+
+  test('a successful radio connect records on as the cached adapter state',
+      () async {
+    final adapter = _Adapter(BluetoothAdapterState.off);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    engine.debugDeviceConnect = () async {};
+    engine.debugConnectionStates = () => const Stream.empty();
+    expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(engine.bluetoothBlocker, isNull);
+
+    expect(engine.debugLastAdapterState, BluetoothAdapterState.on);
+  });
+
+  test('a failed probe with cached off classifies a plain timeout as no blocker',
+      () async {
+    final adapter = _Adapter(BluetoothAdapterState.off);
+    final unknownAdapter = _Adapter(BluetoothAdapterState.unknown);
+    var failProbe = false;
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: () => failProbe
+          ? unknownAdapter.freshStream()
+          : adapter.freshStream(),
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+      await unknownAdapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    failProbe = true;
+    expect(
+      await engine.debugClassifyRadioError(TimeoutException('Timed out after 20s')),
+      isNull,
+    );
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+  });
+
   test('a blocker from the adapter clears when the adapter turns on', () async {
     final adapter = _Adapter(BluetoothAdapterState.unauthorized);
     final engine = BleEngine(
