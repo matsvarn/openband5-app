@@ -76,7 +76,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('ERSTE ÜBERTRAGUNG'), findsOneWidget);
+      expect(find.text('ÜBERTRAGUNG'), findsOneWidget);
       expect(find.text('Schritt 2 von 3'), findsOneWidget);
       expect(find.text('Verbindung'), findsOneWidget);
       expect(find.text('AUF DEM IPHONE'), findsOneWidget);
@@ -491,6 +491,11 @@ void main() {
     );
     expect(find.text('Auswertung nicht geladen'), findsOneWidget);
     expect(find.text('Bandstatus nicht geladen'), findsNothing);
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Erneut versuchen')),
+      alignment: .5,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pump();
     expect(retries, greaterThan(1));
@@ -511,6 +516,7 @@ void main() {
     await tester.pump();
     expect(find.text('Verbunden'), findsNothing);
     expect(find.text('Bandstatus nicht geladen'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('07:12'), 120);
     expect(find.text('07:12'), findsOneWidget);
     await _unmount(tester);
   });
@@ -597,6 +603,7 @@ void main() {
     expect(done, isTrue);
     slow.complete(_eval(SetupEvalState.complete));
     await tester.pump();
+    await tester.scrollUntilVisible(find.text('07:12'), 120);
     expect(find.text('07:12'), findsOneWidget);
     expect(maxInflight, 1);
     await _unmount(tester);
@@ -638,6 +645,7 @@ void main() {
     expect(done, isTrue);
     slow.complete(_eval(SetupEvalState.complete));
     await tester.pump();
+    await tester.scrollUntilVisible(find.text('07:12'), 120);
     expect(find.text('07:12'), findsOneWidget);
     expect(find.text('bis 06:54'), findsWidgets);
     expect(maxInflight, 1);
@@ -656,7 +664,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byTooltip('Zurück'));
+    await tester.tap(find.text('Zurück'));
     expect(backed, isTrue);
   });
 
@@ -668,7 +676,7 @@ void main() {
         locale: const Locale('en'),
       ),
     );
-    expect(find.text('FIRST TRANSFER'), findsOneWidget);
+    expect(find.text('TRANSFER'), findsOneWidget);
     await tester.tap(find.text('Continue'));
     await tester.pump();
     expect(done, isTrue);

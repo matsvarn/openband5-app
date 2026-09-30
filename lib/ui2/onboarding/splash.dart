@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../openband/g3/g3_theme.dart';
 
 import '../ui2.dart';
 
@@ -45,27 +46,29 @@ class _BootSplashState extends State<BootSplash> {
       _gone = true;
       return widget.child;
     }
-    return Stack(children: [
-      widget.child,
-      Positioned.fill(
-        // `IgnorePointer` blocks touch and NOT semantics, so while the user saw
-        // only the splash a screen reader was walking the whole live app
-        // underneath it. `BlockSemantics` is the half that was missing.
-        child: BlockSemantics(
-          child: IgnorePointer(
-            ignoring: widget.ready,
-            child: AnimatedOpacity(
-              opacity: widget.ready ? 0 : 1,
-              duration: motion(c, Motion.slow),
-              onEnd: () {
-                if (widget.ready && mounted) setState(() => _gone = true);
-              },
-              child: const _Cover(),
+    return Stack(
+      children: [
+        widget.child,
+        Positioned.fill(
+          // `IgnorePointer` blocks touch and NOT semantics, so while the user saw
+          // only the splash a screen reader was walking the whole live app
+          // underneath it. `BlockSemantics` is the half that was missing.
+          child: BlockSemantics(
+            child: IgnorePointer(
+              ignoring: widget.ready,
+              child: AnimatedOpacity(
+                opacity: widget.ready ? 0 : 1,
+                duration: motion(c, Motion.slow),
+                onEnd: () {
+                  if (widget.ready && mounted) setState(() => _gone = true);
+                },
+                child: const _Cover(),
+              ),
             ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -74,18 +77,21 @@ class _Cover extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     // Material, not ColoredBox: the cover sits at MaterialApp.home, above every
     // route, so its own text has no Material ancestor to inherit from and debug
     // builds painted the missing-Material underline right across the wordmark.
     return Material(
-      color: p.bg,
+      color: g.page,
       child: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(LucideIcons.activity, size: 44, color: p.on(C.green)),
-          const SizedBox(height: S.x4),
-          Text('OpenStrap', style: F.t2.copyWith(color: p.ink)),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(LucideIcons.activity, size: 44, color: g.ink),
+            const SizedBox(height: S.x4),
+            Text('OpenBand 5', style: g.t(24, 30, weight: FontWeight.w700)),
+          ],
+        ),
       ),
     );
   }

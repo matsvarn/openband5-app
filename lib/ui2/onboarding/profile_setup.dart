@@ -21,7 +21,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../state/app_state.dart';
 import '../../state/units_controller.dart';
 import '../screens/home_screen.dart' show monthShortName, weekdayShortName;
-import '../../openband/health.dart';
+import '../../openband/g3/band_parts.dart' show OBSetupHeader, OBStepProgress;
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../../openband/theme.dart';
 import '../ui2.dart';
 
@@ -89,6 +91,30 @@ class ProfileSetupView extends StatefulWidget {
 }
 
 class _ProfileSetupViewState extends State<ProfileSetupView> {
+  void _explain() => showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (sheet) => SafeArea(
+      child: chrome.OBSheet(
+        title: AppLocalizations.of(sheet)?.profileSetupTitle ?? 'About you',
+        cancelLabel: Localizations.localeOf(sheet).languageCode == 'de'
+            ? 'Schließen'
+            : 'Close',
+        confirmLabel: Localizations.localeOf(sheet).languageCode == 'de'
+            ? 'Verstanden'
+            : 'Got it',
+        onCancel: () => Navigator.pop(sheet),
+        onConfirm: () => Navigator.pop(sheet),
+        child: chrome.OBPanel(
+          child: Text(
+            AppLocalizations.of(sheet)?.profileSetupBody ??
+                'These details personalize your estimates. Leave any of them blank and only the metrics that need it stay unavailable.',
+            style: G3.of(sheet).t(14, 20),
+          ),
+        ),
+      ),
+    ),
+  );
   late final UnitsController _u =
       widget.units ?? UnitsController.seed(UnitSystem.metric);
   late String? _sex = (widget.initial['sex'] as String?)?.toLowerCase();
@@ -134,34 +160,37 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
   @override
   Widget build(BuildContext c) {
     final p = OB.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     final sexes = _sexes(c);
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: g.page,
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           children: [
-            Text(
-              l?.profileSetupTitle ?? 'About you',
-              style: p.text(30, weight: FontWeight.w800, display: true),
+            OBSetupHeader(
+              title: l?.profileSetupTitle ?? 'About you',
+              onInfo: _explain,
             ),
+            const OBStepProgress(step: 3),
             const SizedBox(height: 12),
             Text(
               l?.profileSetupBody ??
                   'These details personalize your estimates. Leave any of them '
                       'blank and only the metrics that need it stay unavailable.',
-              style: p.text(15, color: p.muted),
+              style: g.t(15, 21, color: g.ink2),
             ),
             const SizedBox(height: 24),
             Text(
               l?.profileSetupSexHeader ?? 'SEX',
-              style: p.text(13, weight: FontWeight.w600, color: p.muted),
+              style: g.caps(color: g.muted),
             ),
             const SizedBox(height: 8),
-            OBSegmented(
-              labels: [for (final e in sexes) e.$2],
+            chrome.OBSegmented(
+              items: [for (final e in sexes) e.$2],
               selected: sexes.indexWhere((e) => e.$1 == _sex),
+              expand: true,
               onChanged: (i) => setState(() => _sex = sexes[i].$1),
             ),
             // Which constants that choice actually gets. Calories average the
@@ -199,7 +228,7 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
             ),
             // Max HR is never entered: it is estimated (Tanaka, 208 − 0.7·age)
             // in lib/compute/hr_max.dart. A note, not a field.
-            OBCard(
+            chrome.OBPanel(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -216,8 +245,9 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
               ),
             ),
             const SizedBox(height: 20),
-            OBAction(
+            chrome.OBActionPrimary(
               l?.actionContinue ?? 'Continue',
+              expand: true,
               onPressed: _sex == null ? null : _continue,
             ),
             if (_sex == null) ...[
@@ -242,51 +272,43 @@ class _Field extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = OB.of(c);
+    final g = G3.of(c);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: OBCard(
+      child: chrome.OBPanel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    label,
-                    style: p.text(13, weight: FontWeight.w600, color: p.muted),
-                  ),
+                  child: Text(label, style: g.caps(color: g.muted)),
                 ),
                 Text(
                   AppLocalizations.of(c)?.profileSetupOptional ?? 'OPTIONAL',
-                  style: p.text(11, color: p.muted),
+                  style: g.caps(color: g.muted),
                 ),
               ],
             ),
             TextField(
               controller: controller,
               keyboardType: TextInputType.number,
-              style: p.text(24, weight: FontWeight.w700, display: true),
+              style: g.t(24, 30, weight: FontWeight.w700),
               decoration: InputDecoration(
                 hintText: unit,
-                hintStyle: p.text(
-                  24,
-                  weight: FontWeight.w700,
-                  display: true,
-                  color: p.line,
-                ),
+                hintStyle: g.t(24, 30, color: g.gap),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
                 enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: p.line),
+                  borderSide: BorderSide(color: g.hairline),
                 ),
                 focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: p.action),
+                  borderSide: BorderSide(color: g.ink),
                 ),
               ),
             ),
             const SizedBox(height: 4),
-            Text(consequence, style: p.text(13, color: p.muted)),
+            Text(consequence, style: g.t(13, 18, color: g.muted)),
           ],
         ),
       ),
