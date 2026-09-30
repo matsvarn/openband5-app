@@ -8,6 +8,23 @@ import 'count_copy.dart';
 import 'g3_theme.dart';
 import 'metrics.dart' show G3LabelRow;
 
+class _SleepTapCard extends StatelessWidget {
+  const _SleepTapCard({required this.child, this.onTap, this.hero = false});
+  final Widget child;
+  final VoidCallback? onTap;
+  final bool hero;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: onTap != null,
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: OBPanel(hero: hero, child: child),
+    ),
+  );
+}
+
 String obSleepDuration(num? minutes) {
   if (minutes == null) return '—';
   final value = minutes.round();
@@ -280,16 +297,16 @@ class OBSleepLead extends StatelessWidget {
     final difference = minutes == null || goalMinutes == null
         ? null
         : (minutes! - goalMinutes!).round();
-    return OBPanel(
+    return _SleepTapCard(
+      onTap: onGoal,
       hero: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           G3LabelRow(
             'SCHLAF',
-            note: goalMinutes == null
-                ? 'kein Ziel'
-                : 'Ziel ${obSleepDuration(goalMinutes)}',
+            note: goalMinutes == null ? 'kein Ziel' : null,
+            arrow: onGoal != null,
           ),
           const SizedBox(height: 8),
           if (minutes == null) ...[
@@ -474,6 +491,7 @@ class OBSriLead extends StatelessWidget {
         children: [
           G3LabelRow(
             'SRI',
+            arrow: false,
             note: value == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
@@ -551,12 +569,14 @@ class OBSleepWindows extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return OBPanel(
+    return _SleepTapCard(
+      onTap: detail ? null : onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           G3LabelRow(
             detail ? 'IM BETT JE NACHT' : 'REGELMÄSSIGKEIT',
+            arrow: !detail && onTap != null,
             note: regularity == null
                 ? gate == null
                       ? 'nicht für diesen Tag'
@@ -656,11 +676,6 @@ class OBSleepWindows extends StatelessWidget {
             padding: EdgeInsets.only(top: 5),
             child: OBSleepClockAxis(startHour: 21, endHour: 10, leftInset: 42),
           ),
-          if (onTap != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: onTap, child: const Text('Ansehen')),
-            ),
         ],
       ),
     );
@@ -675,12 +690,14 @@ class OBSocialJetlag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return OBPanel(
+    return _SleepTapCard(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           G3LabelRow(
             'SOZIALE ZEITVERSCHIEBUNG',
+            arrow: onTap != null,
             note: minutes == null ? null : '7 Nächte',
           ),
           const SizedBox(height: 6),
@@ -714,11 +731,6 @@ class OBSocialJetlag extends StatelessWidget {
                     : 'Schlafmitte an Arbeitstagen gegenüber Sa und So, ohne Kalender.'),
             style: g.t(12, 16, color: g.ink2),
           ),
-          if (onTap != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: onTap, child: const Text('Methode')),
-            ),
         ],
       ),
     );
@@ -738,7 +750,11 @@ class OBSleepDebtLead extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          G3LabelRow('SCHLAFSCHULD', note: minutes == null ? null : '3 Wochen'),
+          G3LabelRow(
+            'SCHLAFSCHULD',
+            note: minutes == null ? null : '3 Wochen',
+            arrow: false,
+          ),
           const SizedBox(height: 8),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.end,
@@ -784,12 +800,14 @@ class OBSleepDebt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return OBPanel(
+    return _SleepTapCard(
+      onTap: detail ? null : onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           G3LabelRow(
             detail ? 'FREI UND ÜBLICH' : 'SCHLAFSCHULD',
+            arrow: !detail && onTap != null,
             note: detail ? 'Stunden Schlaf' : 'frei gegen üblich',
           ),
           if (!detail) ...[
@@ -844,11 +862,6 @@ class OBSleepDebt extends StatelessWidget {
                     : 'Perzentil freien Schlafs, kein gemessener Bedarf.'),
             style: g.t(12, 16, color: g.ink2),
           ),
-          if (onTap != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(onPressed: onTap, child: const Text('Methode')),
-            ),
         ],
       ),
     );
@@ -957,6 +970,7 @@ class OBPlanBreakdown extends StatelessWidget {
         children: [
           G3LabelRow(
             'RECHNUNG',
+            arrow: false,
             note: bedtime == null
                 ? null
                 : 'gerundet von ${obSleepClock(bedtime)}',

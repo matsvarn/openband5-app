@@ -11,6 +11,9 @@ import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_goal.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBPanel, OBPageHeader;
+import 'package:openstrap_edge/openband/g3/day.dart' show OBWeekBars;
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
@@ -159,6 +162,161 @@ Future<void> _root(WidgetTester tester, SleepNight night) async {
 void main() {
   setUpAll(() => initializeDateFormatting('de_DE'));
 
+  testWidgets(
+    'sleep overview cards open from their bodies and detail labels are inert',
+    (tester) async {
+      var opened = 0;
+      await _card(
+        tester,
+        Column(
+          children: [
+            OBSleepWindows(
+              windows: const [],
+              regularity: 72,
+              onTap: () => opened++,
+            ),
+            OBSocialJetlag(minutes: 30, onTap: () => opened++),
+            OBSleepDebt(minutes: 20, onTap: () => opened++),
+          ],
+        ),
+      );
+      for (final label in [
+        'REGELMÄSSIGKEIT',
+        'SOZIALE ZEITVERSCHIEBUNG',
+        'SCHLAFSCHULD',
+      ]) {
+        final panel = find
+            .ancestor(of: find.text(label), matching: find.byType(OBPanel))
+            .first;
+        await tester.tapAt(tester.getBottomLeft(panel) + const Offset(30, -24));
+      }
+      expect(opened, 3);
+      expect(find.text('Ansehen'), findsNothing);
+      expect(find.text('Methode'), findsNothing);
+
+      await _card(
+        tester,
+        const OBSleepWindows(windows: [], regularity: 72, detail: true),
+      );
+      await tester.tap(find.text('IM BETT JE NACHT'));
+      expect(opened, 3);
+    },
+  );
+
+  testWidgets(
+    'sleep header routes profile and band when callbacks are supplied',
+    (tester) async {
+      final controller = OpenBandController(
+        repository: _repo(),
+        initialDay: '2026-09-29',
+      );
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      var profile = 0;
+      var band = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: G3SleepScreen(
+            controller: controller,
+            onProfile: () => profile++,
+            onBand: () => band++,
+            reminder: MemorySleepBedtimeReminder(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Profil'));
+      await tester.tap(find.bySemanticsLabel('Band getrennt'));
+      expect(profile, 1);
+      expect(band, 1);
+    },
+  );
+
+  testWidgets('sleep lead opens goal setup from the card body', (tester) async {
+    var opened = 0;
+    await _card(
+      tester,
+      OBSleepLead(minutes: 438, goalMinutes: 465, onGoal: () => opened++),
+    );
+    final panel = find
+        .ancestor(of: find.text('SCHLAF'), matching: find.byType(OBPanel))
+        .first;
+    await tester.tapAt(tester.getBottomRight(panel) - const Offset(24, 24));
+    expect(opened, 1);
+    expect(find.text('Ziel 7h45'), findsOneWidget);
+  });
+
+  testWidgets('sleep detail info keys show their method explanation', (
+    tester,
+  ) async {
+    final repo = _repo();
+    final pages = <Widget>[
+      G3SleepRegularity(repository: repo, day: '2026-09-29'),
+      G3SleepDebtDetail(repository: repo, day: '2026-09-29'),
+      G3SleepTonight(
+        repository: repo,
+        day: '2026-09-29',
+        now: () => DateTime(2026, 9, 29, 10),
+        reminder: MemorySleepBedtimeReminder(),
+      ),
+    ];
+    for (final page in pages) {
+      await tester.pumpWidget(
+        MaterialApp(theme: openBandTheme(Brightness.light), home: page),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Erklärung'));
+      await tester.pumpAndSettle();
+      expect(find.text('Verstanden'), findsOneWidget);
+      await tester.tap(find.text('Verstanden'));
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets(
+    'night phase method lives in the sheet and the overview uses shared week bars',
+    (tester) async {
+      final start = DateTime(2026, 9, 28, 23, 10);
+      await _root(
+        tester,
+        SleepNight(
+          onset: start,
+          wake: start.add(const Duration(hours: 7, minutes: 44)),
+          duration: const DayMetric(438),
+          bedMinutes: 464,
+          segments: [
+            NightSegment(
+              start,
+              start.add(const Duration(hours: 7, minutes: 44)),
+              NightStage.light,
+            ),
+          ],
+        ),
+      );
+      expect(find.textContaining('Phasen aus Puls'), findsNothing);
+      expect(find.text('lückenlos'), findsNothing);
+      await Scrollable.ensureVisible(
+        tester.element(find.text('Methode')),
+        alignment: .5,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Methode'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Tief ist am unsichersten'), findsOneWidget);
+      await tester.tap(find.text('Verstanden'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('LETZTE 7 NÄCHTE'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(OBWeekBars), findsOneWidget);
+      expect(find.text('+ Eintragen'), findsNothing);
+    },
+  );
+
   testWidgets('plan shows source rows without claiming the goal is need', (
     tester,
   ) async {
@@ -194,11 +352,7 @@ void main() {
 
     await _card(
       tester,
-      const OBPlanBreakdown(
-        debt: 0,
-        bonus: 0,
-        napCredit: 15,
-      ),
+      const OBPlanBreakdown(debt: 0, bonus: 0, napCredit: 15),
     );
     expect(find.text('0 Min.'), findsNWidgets(2));
     expect(find.text('− 15 Min.'), findsOneWidget);
@@ -391,7 +545,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('HRV · MS'),
+      find.text('HRV · ms'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
@@ -655,7 +809,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Atmung'));
+    await tester.tap(find.text('Atemfrequenz'));
     await tester.pumpAndSettle();
     expect(find.text('14,2'), findsOneWidget);
     expect(find.text('16,6'), findsOneWidget);
@@ -889,6 +1043,14 @@ void main() {
       expect(find.text('7h44'), findsOneWidget);
       expect(find.text('Band hat aufgezeichnet 23:10–06:54'), findsOneWidget);
       expect(find.textContaining('vorher'), findsNothing);
+      final header = find.byType(OBPageHeader).last;
+      final firstPanel = find.byType(OBPanel).first;
+      expect(tester.getTopLeft(header).dx, 0);
+      expect(tester.getTopLeft(firstPanel).dx, 16);
+      expect(
+        tester.getTopLeft(firstPanel).dy - tester.getBottomLeft(header).dy,
+        closeTo(12, 1),
+      );
       final bar = find.byKey(const ValueKey('sleep-window-bar'));
       final left = tester.getTopLeft(bar).dx;
       final width = tester.getSize(bar).width;
@@ -904,16 +1066,21 @@ void main() {
           tester.getCenter(find.byKey(ValueKey('sleep-window-tick-$hour'))).dx,
           closeTo(x, 1.5),
         );
-        expect(tester.getCenter(find.text(label)).dx, closeTo(x, 1.5));
+        if (hour != 8) {
+          expect(
+            tester.getCenter(find.text(label)).dx,
+            closeTo((x - 17).clamp(left, left + width - 34) + 17, 1.5),
+          );
+        }
       }
-      await tester.tap(find.text('+ 5').first);
+      await tester.tap(find.text('+5 Min.').first);
       await tester.pumpAndSettle();
       expect(find.text('7h39 · vorher 7h44'), findsOneWidget);
       expect(
         find.text('Band hat aufgezeichnet 23:10–06:54 · vorher 23:10–06:54'),
         findsOneWidget,
       );
-      await tester.tap(find.text('− 5').first);
+      await tester.tap(find.text('−5 Min.').first);
       await tester.pumpAndSettle();
       expect(find.text('7h44'), findsOneWidget);
       expect(find.textContaining('vorher'), findsNothing);

@@ -31,11 +31,14 @@ class G3SleepScreen extends StatefulWidget {
     this.asTab = false,
     this.scrollController,
     this.reminder,
+    this.onProfile,
+    this.onBand,
   });
   final OpenBandController controller;
   final bool asTab;
   final ScrollController? scrollController;
   final SleepBedtimeReminder? reminder;
+  final VoidCallback? onProfile, onBand;
   @override
   State<G3SleepScreen> createState() => _G3SleepScreenState();
 }
@@ -266,8 +269,10 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                           ? chrome.OBBandState.live
                           : chrome.OBBandState.off,
                       battery: controller.band.batteryPercent,
+                      onTap: widget.onBand,
                     ),
                     onTitle: () => chooseOpenBandDay(context, controller),
+                    onProfile: widget.onProfile,
                   ),
                   chrome.OBSyncState(
                     kind:
@@ -290,9 +295,11 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                                     : 'noch offen'
                               : 'lückenlos'}',
                     synthetic: controller.day?.synthetic == true,
-                    onTap: controller.loadError == null
-                        ? null
-                        : controller.refresh,
+                    onTap:
+                        widget.onBand ??
+                        (controller.loadError == null
+                            ? null
+                            : controller.refresh),
                   ),
                   const SizedBox(height: 14),
                   if (controller.loadError != null)
@@ -393,8 +400,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       ),
                     ),
                   ],
-                  const SizedBox(height: 18),
-                  _section('IN DER NACHT'),
+                  const chrome.OBSectionHeader('IN DER NACHT'),
                   _inset(_nightFacts(controller.day, current.baselines)),
                   const SizedBox(height: 8),
                   _inset(
@@ -419,8 +425,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       onTap: _editSleep,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  _section('RHYTHMUS · 7 NÄCHTE'),
+                  const chrome.OBSectionHeader('RHYTHMUS · 7 NÄCHTE'),
                   FutureBuilder<G3SleepPlus>(
                     future: current.plus,
                     builder: (context, plusSnap) {
@@ -515,9 +520,9 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       );
                     },
                   ),
-                  const SizedBox(height: 18),
-                  _section(
+                  chrome.OBSectionHeader(
                     'NICKERCHEN',
+                    action: 'Eintragen',
                     onAction: () => showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
@@ -535,19 +540,18 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       chrome.OBListRow(
                         icon: LucideIcons.moon,
                         title: naps.data?.sessions.isEmpty == true
-                            ? 'Heute noch keins'
+                            ? selected == todayLabel(controller.now())
+                                  ? 'Heute noch keins'
+                                  : 'Keins erkannt'
                             : 'Nickerchen',
-                        subtitle:
-                            naps.data?.sessions.isEmpty == true &&
-                                selected == todayLabel(controller.now())
-                            ? 'Daten bis ${obSleepClock(controller.band.latestStoredAt)}'
+                        subtitle: naps.data?.sessions.isEmpty == true
+                            ? 'Noch keins erkannt'
                             : 'Erkannte und eingetragene Ruhezeiten',
                         onTap: () => _push(G3SleepNaps(controller: controller)),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  _section('LETZTE 7 NÄCHTE'),
+                  const chrome.OBSectionHeader('LETZTE 7 NÄCHTE'),
                   FutureBuilder<List<MetricPoint>>(
                     future: current.history,
                     builder: (context, history) =>
@@ -587,7 +591,9 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                             : chrome.OBBandState.off,
                         battery: controller.band.batteryPercent,
                         small: true,
+                        onTap: widget.onBand,
                       ),
+                      onProfile: widget.onProfile,
                     ),
                   ),
                 ),
@@ -602,24 +608,6 @@ class _G3SleepScreenState extends State<G3SleepScreen>
     padding: const EdgeInsets.symmetric(horizontal: 16),
     child: child,
   );
-  Widget _section(String title, {VoidCallback? onAction}) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-    child: Builder(
-      builder: (context) => Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: G3.of(context).caps(color: G3.of(context).muted),
-            ),
-          ),
-          if (onAction != null)
-            TextButton(onPressed: onAction, child: const Text('+ Eintragen')),
-        ],
-      ),
-    ),
-  );
-
   Widget _night(
     BuildContext context,
     SleepNight night, {
@@ -681,21 +669,27 @@ class _G3SleepScreenState extends State<G3SleepScreen>
           Row(
             children: [
               Text('NACHT', style: g.caps()),
-              const Spacer(),
-              Text(
-                duration == null
-                    ? closed
-                          ? 'Band getragen'
-                          : 'noch offen'
-                    : corrected
-                    ? 'korrigiert'
-                    : night.unobservedMinutes != null &&
-                          night.unobservedMinutes! >=
-                              kSleepGapSignificantMinutes
-                    ? '${obSleepDuration(night.unobservedMinutes)} Lücke'
-                    : 'lückenlos',
-                style: g.t(12, 16, color: g.muted),
-              ),
+              if (duration == null ||
+                  corrected ||
+                  (night.unobservedMinutes != null &&
+                      night.unobservedMinutes! >=
+                          kSleepGapSignificantMinutes)) ...[
+                const Spacer(),
+                Text(
+                  duration == null
+                      ? closed
+                            ? 'Band getragen'
+                            : 'noch offen'
+                      : corrected
+                      ? 'korrigiert'
+                      : night.unobservedMinutes != null &&
+                            night.unobservedMinutes! >=
+                                kSleepGapSignificantMinutes
+                      ? '${obSleepDuration(night.unobservedMinutes)} Lücke'
+                      : '',
+                  style: g.t(12, 16, color: g.muted),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -789,33 +783,16 @@ class _G3SleepScreenState extends State<G3SleepScreen>
               ),
             ]),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Phasen aus Puls und Bewegung geschätzt. Tief ist am unsichersten.',
-                    style: g.t(12, 16, color: g.muted),
-                  ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => _showSleepMethod(
+                  context,
+                  'Schlafphasen',
+                  'Phasen aus Puls und Bewegung geschätzt. Tief ist am unsichersten. Fehlende Daten werden nicht aufgefüllt.',
                 ),
-                TextButton(
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (dialog) => AlertDialog(
-                      title: const Text('Schlafphasen'),
-                      content: const Text(
-                        'Das Band schätzt die Schlafphasen aus Puls und Bewegung. Fehlende Daten werden nicht aufgefüllt.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialog),
-                          child: const Text('Schließen'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  child: const Text('Methode ›'),
-                ),
-              ],
+                child: const Text('Methode'),
+              ),
             ),
           ],
         ],
@@ -829,9 +806,9 @@ class _G3SleepScreenState extends State<G3SleepScreen>
       builder: (context, snapshot) {
         final g = G3.of(context);
         final values = [
-          ('HRV · MS', day?.hrv.value, 0),
+          ('HRV · ms', day?.hrv.value, 0),
           ('RUHEPULS', day?.restingHr.value, 0),
-          ('ATMUNG', day?.respiration.value, 1),
+          ('ATEMFREQUENZ', day?.respiration.value, 1),
         ];
         String basis(int index) {
           final baseline = snapshot.data?.elementAtOrNull(index);
@@ -934,10 +911,11 @@ class _G3SleepScreenState extends State<G3SleepScreen>
         button: true,
         label: 'Heute Nacht öffnen',
         child: Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.fromLTRB(20, 14, 18, 14),
           decoration: BoxDecoration(
             color: g.note,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: g.noteShadow,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -994,10 +972,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                           ],
                         ),
                       ),
-                      TextButton(
-                        onPressed: onTap,
-                        child: const Text('Erinnern'),
-                      ),
+                      chrome.OBPillButton('Ansehen', onPressed: onTap),
                     ],
                   ),
                 ),
@@ -1014,105 +989,37 @@ class _G3SleepScreenState extends State<G3SleepScreen>
     List<MetricPoint>? points,
     int? goalMinutes,
   ) {
-    final g = G3.of(context);
     final values = points ?? const <MetricPoint>[];
     final measured = values.where((point) => point.value != null).toList();
     final average = measured.length == 7
         ? measured.map((point) => point.value!).reduce((a, b) => a + b) / 7
         : null;
-    return chrome.OBPanel(
-      child: Column(
-        children: [
-          SizedBox(
-            height: 130,
-            child: Stack(
-              children: [
-                if (goalMinutes != null)
-                  Positioned(
-                    key: const ValueKey('sleep-goal-line'),
-                    left: 0,
-                    right: 0,
-                    top: 94 - (goalMinutes / 600 * 70).clamp(0, 70),
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < 64; i++)
-                          Expanded(
-                            child: Container(
-                              height: 1,
-                              margin: const EdgeInsets.only(right: 2),
-                              color: g.muted,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (final point in values)
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            point.value == null
-                                ? const G3Dashed(height: 60)
-                                : Container(
-                                    height: (point.value! / 600 * 70).clamp(
-                                      8,
-                                      70,
-                                    ),
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: point == values.last
-                                          ? g.ink
-                                          : g.bar,
-                                      borderRadius: const BorderRadius.vertical(
-                                        top: Radius.circular(4),
-                                      ),
-                                    ),
-                                  ),
-                            const SizedBox(height: 6),
-                            Text(
-                              point == values.last
-                                  ? 'Heute'
-                                  : DateFormat('EE', 'de_DE')
-                                        .format(DateTime.parse(point.day))
-                                        .replaceAll('.', ''),
-                              style: g.t(11, 15, color: g.muted),
-                            ),
-                            Text(
-                              obSleepDuration(point.value),
-                              style: g.t(11, 15, weight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
+    return day_parts.OBWeekBars(
+      bars: [
+        for (final point in values)
+          day_parts.OBWeekBar(
+            point == values.last
+                ? 'Heute'
+                : DateFormat(
+                    'EE',
+                    'de_DE',
+                  ).format(DateTime.parse(point.day)).replaceAll('.', ''),
+            point.value,
+            label: obSleepDuration(point.value),
+            today: point == values.last,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  goalMinutes == null
-                      ? 'kein Ziel gesetzt'
-                      : '---- Ziel ${obSleepDuration(goalMinutes)}',
-                  style: g.t(11, 15, color: g.muted),
-                ),
-              ),
-              Text(
-                average == null ? 'Ø —' : 'Ø ${obSleepDuration(average)}',
-                style: g.t(11, 15, color: g.muted),
-              ),
-            ],
-          ),
-        ],
-      ),
+      ],
+      max: 600,
+      goal: goalMinutes?.toDouble(),
+      labelsBelow: true,
+      footer: [
+        goalMinutes == null
+            ? const day_parts.G3Legend.text('kein Ziel gesetzt')
+            : day_parts.G3Legend.goal('Ziel ${obSleepDuration(goalMinutes)}'),
+        day_parts.G3Legend.text(
+          average == null ? 'Ø —' : 'Ø ${obSleepDuration(average)}',
+        ),
+      ],
     );
   }
 }
@@ -1142,6 +1049,11 @@ class _G3SleepRegularityState extends State<G3SleepRegularity> {
   Widget build(BuildContext context) => _SleepDetail(
     title: 'REGELMÄSSIGKEIT',
     subtitle: 'letzte 7 Nächte',
+    onInfo: () => _showSleepMethod(
+      context,
+      'Regelmäßigkeit',
+      'Der Schlafregelmäßigkeitsindex vergleicht Schlaf und Wachsein Minute für Minute über aufeinanderfolgende Tage. Dafür braucht es sieben bewertete Nächte. Die soziale Zeitverschiebung vergleicht die Schlafmitte an Arbeitstagen und freien Tagen.',
+    ),
     child: FutureBuilder<G3SleepPlus>(
       future: _plus,
       builder: (context, snap) {
@@ -1233,6 +1145,11 @@ class _G3SleepDebtDetailState extends State<G3SleepDebtDetail> {
   Widget build(BuildContext context) => _SleepDetail(
     title: 'SCHLAFSCHULD',
     subtitle: 'frei gegen üblich',
+    onInfo: () => _showSleepMethod(
+      context,
+      'Schlafschuld',
+      'Verglichen werden das 75. Perzentil der freien Nächte und der Median der letzten sieben Nächte. Die angezeigten Wochenendnächte können von der Auswertung ausgeschlossen sein.',
+    ),
     child: FutureBuilder<G3SleepPlus>(
       future: _plus,
       builder: (context, snap) {
@@ -1485,6 +1402,11 @@ class _G3SleepTonightState extends State<G3SleepTonight>
   @override
   Widget build(BuildContext context) => _SleepDetail(
     title: 'HEUTE NACHT',
+    onInfo: () => _showSleepMethod(
+      context,
+      'Schlafbedarf',
+      'Der persönliche Schlafbedarf beginnt mit dem 75. Perzentil deiner freien Nächte. Positive Schlafschuld und Belastung erhöhen ihn; Nickerchen senken ihn. Das Schlafziel gehört nicht zur Rechnung.',
+    ),
     subtitle:
         '${DateFormat('EE', 'de_DE').format(DateTime.parse(widget.day)).replaceAll('.', '')} → ${DateFormat('EE dd.MM', 'de_DE').format(_followingDay).replaceFirst('.', '')}',
     child: FutureBuilder<G3SleepPlus>(
@@ -1587,10 +1509,16 @@ class _G3SleepTonightState extends State<G3SleepTonight>
 }
 
 class _SleepDetail extends StatelessWidget {
-  const _SleepDetail({required this.title, required this.child, this.subtitle});
+  const _SleepDetail({
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.onInfo,
+  });
   final String title;
   final String? subtitle;
   final Widget child;
+  final VoidCallback? onInfo;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -1606,6 +1534,7 @@ class _SleepDetail extends StatelessWidget {
               subtitle: subtitle,
               backLabel: 'Schlaf',
               onBack: () => Navigator.of(context).pop(),
+              onTrailing: onInfo,
             ),
             const SizedBox(height: 18),
             child,
@@ -1617,17 +1546,16 @@ class _SleepDetail extends StatelessWidget {
 }
 
 void _showSleepMethod(BuildContext context, String title, String text) {
-  showDialog<void>(
+  showModalBottomSheet<void>(
     context: context,
-    builder: (dialog) => AlertDialog(
-      title: Text(title),
-      content: Text(text),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialog),
-          child: const Text('Schließen'),
-        ),
-      ],
+    backgroundColor: Colors.transparent,
+    builder: (sheet) => chrome.OBSheet(
+      title: title,
+      cancelLabel: 'Zurück',
+      confirmLabel: 'Verstanden',
+      onCancel: () => Navigator.pop(sheet),
+      onConfirm: () => Navigator.pop(sheet),
+      child: Text(text, style: G3.of(sheet).t(14, 20)),
     ),
   );
 }
