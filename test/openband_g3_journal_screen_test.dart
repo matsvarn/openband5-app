@@ -919,6 +919,27 @@ void main() {
     },
   );
 
+  testWidgets('pattern detail omits the footer when there are zero pairs', (
+    tester,
+  ) async {
+    const model = CaffeineSleepPattern(
+      kind: CaffeineSleepPatternKind.unavailable,
+      pairedN: 0,
+      endDay: '2026-09-29',
+      startDay: '2026-08-31',
+      nights: 30,
+      algoVersion: 1,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: const G3JournalPatternScreen(pattern: G3JournalPattern(model)),
+      ),
+    );
+    expect(find.text('Noch kein Muster'), findsOneWidget);
+    expect(find.textContaining('0 Paare ·'), findsNothing);
+  });
+
   testWidgets(
     'paired refusal shows known side counts without calling it a side refusal',
     (tester) async {
