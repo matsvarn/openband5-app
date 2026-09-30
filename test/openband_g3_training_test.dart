@@ -1269,10 +1269,36 @@ void main() {
     expect(find.text('Tag läuft'), findsOneWidget);
     expect(find.text('TRIMP'), findsNothing);
     expect(find.text('Tägliches TRIMP · eigene Einheit'), findsNothing);
-    expect(find.text('AKUT · 7 TAGE'), findsOneWidget);
-    expect(find.text('GEWOHNT · 6 WOCHEN'), findsOneWidget);
+    expect(find.text('AKUT · 7 T.'), findsOneWidget);
+    expect(find.text('GEWOHNT · 6 WO.'), findsOneWidget);
     await tester.tap(find.text('Methode'));
     expect(opened, isTrue);
+  });
+
+  testWidgets('load period labels and values align at 375 pt', (tester) async {
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      _app(
+        const Center(
+          child: OBTrainingLoad(load: G3WeeklyLoad([], atl: 64, ctl: 51)),
+        ),
+      ),
+    );
+    for (final label in ['AKUT · 7 T.', 'GEWOHNT · 6 WO.']) {
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(
+        paragraph.size.height,
+        lessThanOrEqualTo(paragraph.preferredLineHeight * 1.2),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+    }
+    expect(
+      tester.getTopLeft(find.text('64')).dy,
+      tester.getTopLeft(find.text('51')).dy,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('load period labels fit at large text on a narrow phone', (
@@ -1292,8 +1318,8 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('AKUT · 7 TAGE'), findsOneWidget);
-    expect(find.text('GEWOHNT · 6 WOCHEN'), findsOneWidget);
+    expect(find.text('AKUT · 7 T.'), findsOneWidget);
+    expect(find.text('GEWOHNT · 6 WO.'), findsOneWidget);
   });
 
   testWidgets('load detail explains scale and has no dead lead chevron', (
