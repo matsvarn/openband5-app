@@ -194,6 +194,50 @@ Future<void> showProfileInfoSheet(
   ),
 );
 
+class ProfileNotice extends StatelessWidget {
+  const ProfileNotice(
+    this.title,
+    this.body, {
+    super.key,
+    required this.icon,
+    this.action,
+    this.onAction,
+  });
+
+  final String title;
+  final String body;
+  final IconData icon;
+  final String? action;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return chrome.OBPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: g.ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(title, style: g.t(16, 20, weight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(body, style: g.t(14, 19, color: g.ink2)),
+          if (action != null) ...[
+            const SizedBox(height: 12),
+            chrome.OBActionSecondary(action!, onPressed: onAction),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// The one way into the profile stack. Home's avatar calls this — profile is
 /// a pushed route, never a sixth tab.
 void openProfile(BuildContext c) => goto(c, const ProfileHome());

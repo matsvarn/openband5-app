@@ -492,7 +492,7 @@ class _DataScreenState extends State<DataScreen> {
                   ],
                   if (_note != null && _note!.isNotEmpty) ...[
                     const SizedBox(height: S.x5),
-                    StatusCard(
+                    ProfileNotice(
                       _noteFailed
                           ? (l?.dataThatDidNotWork ?? 'That did not work')
                           : (l?.actionDone ?? 'Done'),
@@ -504,7 +504,7 @@ class _DataScreenState extends State<DataScreen> {
                   ],
                   if (app.importRollupError != null) ...[
                     const SizedBox(height: S.x5),
-                    StatusCard(
+                    ProfileNotice(
                       l?.welcomeSummariesDidNotTitle ??
                           'The days landed, the summaries did not',
                       l?.dataSummariesDidNotBodyShort(
@@ -514,10 +514,12 @@ class _DataScreenState extends State<DataScreen> {
                               'cross-day summaries over them threw '
                               '(${app.importRollupError}), so trends and insights '
                               'still describe the data you had before.',
-                      fix:
+                      action:
                           l?.dataReanalyzeEverything ?? 'Re-analyze everything',
                       icon: LucideIcons.triangleAlert,
-                      onFix: _busy ? null : () => _run(() => _reanalyze(app)),
+                      onAction: _busy
+                          ? null
+                          : () => _run(() => _reanalyze(app)),
                     ),
                   ],
                   // The onboarding report, not a second copy of it. This

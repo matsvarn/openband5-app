@@ -32,7 +32,8 @@ import '../../openband/g3/g3_theme.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
-import 'profile.dart' show SetRow, settingsGroup, showProfileInfoSheet;
+import 'profile.dart'
+    show ProfileNotice, SetRow, settingsGroup, showProfileInfoSheet;
 
 /// One row's worth of the picker.
 class RelayApp {
@@ -132,9 +133,10 @@ class BandNotificationsView extends StatelessWidget {
         child: Column(
           children: [
             chrome.OBPageHeader.detail(
-              title: (l?.bandNotifNavTitle ?? 'Band notifications')
-                  .toUpperCase(),
-              subtitle: l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ',
+              title: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'MITTEILUNGEN'
+                  : 'NOTIFICATIONS',
+              subtitle: 'Band',
               backLabel: Localizations.localeOf(c).languageCode == 'de'
                   ? 'Einstellungen'
                   : 'Settings',
@@ -155,7 +157,7 @@ class BandNotificationsView extends StatelessWidget {
                 ),
                 children: [
                   if (!supported)
-                    StatusCard(
+                    ProfileNotice(
                       l?.bandNotifUnsupportedTitle ?? 'This phone cannot do it',
                       l?.bandNotifUnsupportedBody ??
                           'Reading which app posted a notification is an Android '
@@ -200,25 +202,25 @@ class BandNotificationsView extends StatelessWidget {
                     ]),
                     if (enabled && !granted) ...[
                       const SizedBox(height: S.x4),
-                      StatusCard(
+                      ProfileNotice(
                         l?.bandNotifPermissionTitle ??
                             'Android needs to let us see notifications',
                         l?.bandNotifPermissionBody ??
                             'The permission says which app posted, and that is all '
                                 'this uses it for. The names stay on this phone and '
                                 'nothing leaves it.',
-                        fix:
+                        action:
                             l?.bandNotifGrantAccess ??
                             'Grant notification access',
                         icon: LucideIcons.shieldCheck,
-                        onFix: onGrant,
+                        onAction: onGrant,
                       ),
                     ],
                     if (enabled && granted) ...[
                       if (apps.isEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: S.x4),
-                          child: StatusCard(
+                          child: ProfileNotice(
                             l?.bandNotifEmptyTitle ??
                                 'No app has notified you yet',
                             // Absence with its reason, not an empty list: this
@@ -241,7 +243,7 @@ class BandNotificationsView extends StatelessWidget {
                         ),
                     ],
                     const SizedBox(height: S.x4),
-                    StatusCard(
+                    ProfileNotice(
                       l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
                       l?.bandNotifOneBuzzBody ??
                           'Repeat posts from the same app are ignored for four '

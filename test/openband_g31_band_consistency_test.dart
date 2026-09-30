@@ -12,6 +12,7 @@ import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
+import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
@@ -107,6 +108,7 @@ void main() {
       onToggleDay: (_, _) async {},
       onSetDayTime: (_, _, _) async {},
     ),
+    'band-notifications': const BandNotificationsView(supported: false),
     'gestures': const BandGesturesView(
       chosen: DeviceAction.none,
       supported: {DeviceAction.none},
