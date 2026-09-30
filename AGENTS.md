@@ -233,19 +233,28 @@ visual bugs — check whether removed wrapper widgets were load-bearing.
 
 ## 5. How to review this repo
 
-**CI does run on PRs.** `.github/workflows/test.yml` runs `flutter analyze` +
-`flutter test` on every pull request and on push to `main`. Two lanes:
+**CI does run on PRs.** `.github/workflows/test.yml` runs on every pull
+request and on push to `main`, in three jobs:
 
-- `test` (Ubuntu): `flutter test --no-pub --concurrency=1 --exclude-tags golden`
-  — every non-golden assertion, including inside files that also carry goldens.
-- `goldens` (local macOS 27, manual CI dispatch): `flutter test --no-pub
-  --concurrency=1 --tags golden` — the ~600 `test/openband_goldens/` PNGs were
-  rendered on this machine's font stack and the comparator is exact-match.
-  Hosted `macos-latest` runners rasterize text sub-1% differently (544 diffs
-  measured), so the golden lane runs locally on the baking platform until a
-  matching runner exists; the CI job is gated to `workflow_dispatch`. Tests
-  that call `matchesGoldenFile` carry `tags: const ['golden']`; the tag is on
-  the test, never the file — tag new golden tests the same way.
+- `analyze` (Ubuntu): the sibling-pin guard, then `flutter analyze`.
+- `test` (Ubuntu, three shards): `bash tool/test_shard.sh INDEX 3
+  --concurrency=4 --exclude-tags golden` — every non-golden test. The script
+  deals test FILES round-robin (`flutter test --total-shards` splits tests
+  inside files, so every shard would still compile everything).
+- `goldens` (`xcode-27`, GitHub's macOS 27 arm64 image): `flutter test --no-pub
+  --tags golden` with the exact-match comparator — every golden-tagged test,
+  its non-pixel assertions included. The `test/openband_goldens/` PNGs were
+  rendered on macOS 27; older macOS rasterizes text sub-1% differently (544
+  diffs measured on `macos-latest`) and Ubuntu about 2.4%, so the golden lane
+  only runs on macOS 27. Tests that call `matchesGoldenFile` carry
+  `tags: const ['golden']`; the tag is on the test, never the file — tag new
+  golden tests the same way, or they run (and fail) on Ubuntu.
+
+Locally, `flutter test --no-pub --exclude-tags golden` (default concurrency) and
+`flutter test --no-pub --tags golden` reproduce the two test lanes on macOS 27.
+`test/flutter_test_config.dart` gives every test process its own SQLite
+directory, so files may run in parallel; do not reintroduce a fixed database
+path outside `getDatabasesPath()`.
 
 `test/flutter_test_config.dart` pins the process timezone to Europe/Berlin for
 every file (libc `setenv`/`tzset`); the fixtures and goldens model a Berlin
