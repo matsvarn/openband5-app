@@ -16,12 +16,12 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPageHeader, OBSegmented;
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBBandCapsule, OBCardHeader, OBPageHeader, OBSegmented, OBSyncState;
 import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
-import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow, OBLeadMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
-import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
+import 'package:openstrap_edge/openband/theme.dart' show OBChevron, openBandTheme;
 
 Map _json(String name) =>
     jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync()) as Map;
@@ -106,6 +106,8 @@ class _Harness {
   int connects = 0;
   final journalDays = <String>[];
   final opened = <G3Metric>[];
+  int allMetricsOpens = 0;
+  int bandOpens = 0;
 }
 
 final _connected = BandSnapshot(
@@ -138,7 +140,9 @@ Future<_Harness> _pump(
           controller: h.controller,
           reminder: h.reminder,
           onConnect: () => h.connects++,
+          onBand: () => h.bandOpens++,
           onOpenMetric: h.opened.add,
+          onOpenAllMetrics: () => h.allMetricsOpens++,
           onJournalDay: h.journalDays.add,
           onAddActivity: () {},
         ),
@@ -196,9 +200,9 @@ void main() {
     expect(find.text('normal 58–78'), findsOneWidget);
     expect(find.text('über deinem Median 68'), findsOneWidget);
     expect(find.text('22:20 ins Bett'), findsOneWidget);
-    expect(find.text('für 8h05 Schlafbedarf bis 06:54'), findsOneWidget);
+    expect(find.text('Bedarf 8h05 · bis 06:54'), findsOneWidget);
     expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
-    expect(find.text('Daten bis 09:37 · Nacht lückenlos'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Daten bis 09:37 · Nacht lückenlos');
     expect(find.textContaining('Letzter Bandwert'), findsNothing);
     expect(find.text('lückenlos'), findsNothing);
     expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
@@ -210,6 +214,26 @@ void main() {
     expect(_hasText(tester, (s) => s.contains('+0,4')), isTrue);
   });
 
+  testWidgets('Körper header opens Messwerte; absent recovery has no chevron', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    final bodyHeader = find.byWidgetPredicate((widget) => widget is OBCardHeader && widget.label == 'KÖRPER');
+    await tester.tap(find.descendant(of: bodyHeader, matching: find.text('KÖRPER')));
+    expect(h.allMetricsOpens, 1);
+
+    await _pump(tester, _Harness(
+      _Repo(SyntheticScenario.g3Sample, empty: true),
+      const BandSnapshot(connection: BandConnection.disconnected),
+    ));
+    expect(find.descendant(of: find.byType(OBLeadMetric), matching: find.byType(OBChevron)), findsNothing);
+  });
+
+  testWidgets('band capsule and sync line use the same callback', (tester) async {
+    final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected));
+    await tester.tap(find.byType(OBBandCapsule).first);
+    await tester.tap(find.byType(OBSyncState));
+    expect(h.bandOpens, 2);
+  });
+
   testWidgets('building baseline: tiles instead of a score, week opens on Schlaf', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Building), _connected), size: const Size(393, 3000));
     expect(find.text('Noch keine Erholung'), findsOneWidget);
@@ -218,7 +242,7 @@ void main() {
     expect(find.text('Basis im Aufbau'), findsNothing);
     expect(find.textContaining('Sie braucht 14 Nächte'), findsNothing);
     expect(find.text('vergangene Nacht'), findsOneWidget);
-    expect(find.text('Heute früher ins Bett.'), findsOneWidget);
+    expect(find.text('Früher ins Bett.'), findsOneWidget);
     expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
     expect(find.text('Erholung: noch keine Werte'), findsNothing);
@@ -254,7 +278,7 @@ void main() {
 
   testWidgets('never connected: no value, one real connect action', (tester) async {
     final h = await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample, empty: true), const BandSnapshot()));
-    expect(find.text('Noch kein Band verbunden'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Noch kein Band verbunden');
     expect(find.text('Noch keine Werte'), findsOneWidget);
     expect(find.text('ERHOLUNG'), findsOneWidget);
     expect(find.text('SCHLAF'), findsNothing);
@@ -270,7 +294,7 @@ void main() {
         BandSnapshot(batteryPercent: 64, latestStoredAt: DateTime(2026, 9, 28, 23, 10), receivedAt: DateTime(2026, 9, 28, 23, 10)),
       ),
     );
-    expect(find.text('Getrennt · Daten bis gestern 23:10'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Getrennt · Daten bis gestern 23:10');
     expect(find.text('Band nicht verbunden'), findsOneWidget);
     expect(find.text('Keine Erholung für heute'), findsOneWidget);
     expect(find.text('Heute keine Notiz'), findsOneWidget);
@@ -542,7 +566,7 @@ void main() {
     await h.controller.selectDay('2026-09-27');
     await tester.pumpAndSettle();
     expect(find.text('Sonntag'), findsOneWidget);
-    expect(find.text('Gespeicherter Tag'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Gespeicherter Tag');
     expect(find.text('FÜR HEUTE'), findsNothing);
     expect(find.text('CHECK-IN'), findsNothing);
     expect(find.text('Heute'), findsNothing, reason: 'no "Heute" week label on a past day');
@@ -590,12 +614,12 @@ void main() {
     final h = await _pump(tester, _Harness(repo, _connected));
     await h.controller.selectDay('2026-09-27');
     await tester.pumpAndSettle();
-    expect(find.text('Gespeicherter Tag · Daten bis 23:58'), findsOneWidget);
+    expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Gespeicherter Tag · Daten bis So 27.09 23:58');
     expect(find.textContaining('Letzter Bandwert'), findsNothing);
     await tester.drag(find.byType(ListView), const Offset(0, -900));
     await tester.pumpAndSettle();
     expect(find.text('So 27.09'), findsOneWidget);
-    expect(find.text('vor 2 Tagen · Synthetische Daten'), findsOneWidget);
+    expect(find.text('vor 2 Tagen · SYNTHETISCHE DATEN'), findsOneWidget);
   });
 
   testWidgets('scrolled: the compact header is opaque, content does not show through', (tester) async {

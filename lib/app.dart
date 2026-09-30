@@ -724,7 +724,7 @@ class _ShellState extends State<_Shell> {
             c,
             MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
           ),
-          onBand: () => _app!.openSession(),
+          onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
           onConnect: () => _app!.openSession(),
           onAddActivity: () => _go(ShellDomain.workout),
           onJournalDay: (day) async {
@@ -739,12 +739,30 @@ class _ShellState extends State<_Shell> {
             _day.refresh();
           },
           onOpenMetric: (m) => openHeuteMetric(c, _day, m),
+          onOpenAllMetrics: () => pushInTab(
+            c,
+            MaterialPageRoute<void>(
+              builder: (_) => G3AllMetrics(
+                repository: _day.repository,
+                endDay: _day.selectedDay,
+                band: _day.band,
+              ),
+            ),
+          ),
           onOpenActivity: (activity) =>
               unawaited(openHeuteActivity(c, _day, activity)),
           onOpenSleep: () => _go(ShellDomain.sleep),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
-        ShellDomain.sleep => G3SleepScreen(controller: _day, asTab: true),
+        ShellDomain.sleep => G3SleepScreen(
+          controller: _day,
+          asTab: true,
+          onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
+          onProfile: () => pushInTab(
+            c,
+            MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
+          ),
+        ),
         ShellDomain.workout =>
           !reduced
               ? Column(
