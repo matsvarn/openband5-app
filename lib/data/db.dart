@@ -13807,12 +13807,14 @@ class LocalDb {
   static String localDayLabelNow() => todayLabel();
 
   static Future<void> refreshComputeFreshness() async {
-    final raw = await rawStats();
+    final db = await instance;
+    final latestRawTs = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT MAX(rec_ts) FROM decoded_onehz WHERE rec_ts > 0',
+    ));
     final recent = await recentDayResults(30);
     final rolling = await baseline('rolling');
     final cross = await baseline('crossday');
     final today = localDayLabelNow();
-    final latestRawTs = (raw['max_rec_ts'] as num?)?.toInt();
     final todayWake = await wakeDayFeatures(today);
     String? latestOvernightDay;
     int? latestOvernightComputedAt;
@@ -13870,8 +13872,6 @@ class LocalDb {
         'latest_raw_day': latestRawTs == null
             ? null
             : _localDayLabelFromEpoch(latestRawTs),
-        'decoded_onehz': raw['decoded_onehz'],
-        'decoded_rr': raw['decoded_rr'],
       }),
     );
     await putComputeFreshness(
