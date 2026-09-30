@@ -1450,6 +1450,8 @@ void main() {
     await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
     await tester.pumpAndSettle();
     expect((await repo.readActivities('2026-09-29')).single.confirmed, isFalse);
+    expect(find.text('Sportart richtig?'), findsOneWidget);
+    expect(find.text('Zonen nach Bestätigung'), findsNothing);
     await tester.tap(find.text('Stimmt'));
     await tester.pumpAndSettle();
     expect((await repo.readActivities('2026-09-29')).single.confirmed, isTrue);
