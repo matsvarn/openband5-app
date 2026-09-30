@@ -553,6 +553,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   if (synthetic) 'SYNTHETISCHE DATEN',
                 ].join(' · '),
                 band: OBBandCapsule(
+                  bandStatus: c.bandStatus,
                   state: never
                       ? OBBandState.none
                       : disconnected
@@ -604,6 +605,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       title: title,
       subtitle: subtitle,
       band: OBBandCapsule(
+        bandStatus: c.bandStatus,
         state: never
             ? OBBandState.none
             : disconnected

@@ -70,6 +70,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
   BandDiagnostics? _diagnostics;
   OBBandIssue? _issue;
   BandStatus? _status;
+  bool _reconnecting = false;
   late DateTime _now;
   Timer? _clockTick;
   int _readVersion = 0;
@@ -191,8 +192,16 @@ class _G3BandScreenState extends State<G3BandScreen> {
   }
 
   Future<void> _reconnect() async {
-    await widget.onReconnect?.call();
-    if (mounted) await _refreshBand();
+    if (_reconnecting || widget.onReconnect == null) return;
+    setState(() => _reconnecting = true);
+    try {
+      await widget.onReconnect!();
+    } finally {
+      if (mounted) {
+        await _refreshBand();
+        if (mounted) setState(() => _reconnecting = false);
+      }
+    }
   }
 
   void _help() {
@@ -237,18 +246,30 @@ class _G3BandScreenState extends State<G3BandScreen> {
     final localizedFault = fault == null
         ? null
         : localizedBandStatus(context, fault);
+    final connecting =
+        _reconnecting ||
+        rawStatus?.condition == BandCondition.connecting ||
+        (rawStatus == null && b?.connection == BandConnection.connecting);
+    final unreachable = localizedFault?.condition == BandCondition.unreachable;
     final disconnected =
+        connecting ||
         localizedFault != null ||
         issue != null ||
         b?.connection == BandConnection.disconnected;
     final stored = diagnostics?.lastStoredSampleAt ?? b?.latestStoredAt;
-    final issueTitle =
-        localizedFault?.title ??
-        switch (issue) {
-          OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
-          null => 'Nicht verbunden',
-        };
-    final issueBody = localizedFault == null
+    final issueTitle = connecting
+        ? 'Verbindet …'
+        : localizedFault?.title ??
+              switch (issue) {
+                OBBandIssue.bluetoothOff => 'Bluetooth ist ausgeschaltet',
+                null => 'Nicht verbunden',
+              };
+    final failedAt = localizedFault?.lastConnectFailedAt?.toLocal();
+    final issueBody = connecting
+        ? 'Verbindung wird hergestellt · bis zu 20 Sekunden.'
+        : unreachable
+        ? '${failedAt == null ? 'Letzter Versuch fehlgeschlagen.' : 'Letzter Versuch: ${g3DateShort(failedAt)}, ${g3Clock(failedAt)} Uhr.'}\nBand in Reichweite und am Handgelenk? Bluetooth in den iPhone-Einstellungen aus- und wieder einschalten. Band kurz auf das Ladegerät legen.'
+        : localizedFault == null
         ? switch (issue) {
             OBBandIssue.bluetoothOff =>
               'Ohne Bluetooth erreicht das iPhone das Band nicht. Gespeichertes bleibt erhalten.',
@@ -258,7 +279,11 @@ class _G3BandScreenState extends State<G3BandScreen> {
                   : 'Band näher ans iPhone bringen. Was seit ${g3Relative(stored, now: _now)} gemessen wurde, kommt beim Verbinden.',
           }
         : [localizedFault.reason, ?localizedFault.fix].join('\n\n');
-    final action = localizedFault?.condition == BandCondition.bluetoothOff
+    final action = connecting
+        ? 'Verbindet …'
+        : unreachable
+        ? 'Erneut verbinden'
+        : localizedFault?.condition == BandCondition.bluetoothOff
         ? 'Bluetooth einschalten'
         : localizedFault != null
         ? 'Hilfe'
@@ -267,7 +292,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
             null => 'Verbinden',
           };
     final helpIsPrimary =
-        localizedFault != null || issue == OBBandIssue.bluetoothOff;
+        (localizedFault != null && !unreachable) ||
+        issue == OBBandIssue.bluetoothOff;
     final name = widget.deviceName?.trim();
     return Scaffold(
       backgroundColor: g.page,
@@ -312,12 +338,16 @@ class _G3BandScreenState extends State<G3BandScreen> {
                 title: issueTitle,
                 body: issueBody,
                 action: action,
-                onAction: helpIsPrimary
+                onAction: connecting
+                    ? null
+                    : helpIsPrimary
                     ? _help
                     : widget.onReconnect == null
                     ? null
                     : _reconnect,
-                onHelp: helpIsPrimary ? null : _help,
+                onHelp: connecting || helpIsPrimary || unreachable
+                    ? null
+                    : _help,
               ),
             ],
             if (b?.transfer == TransferState.receiving ||

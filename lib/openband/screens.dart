@@ -2018,13 +2018,20 @@ Future<void> showBandStatus(
                             const SizedBox(height: 14),
                             OBSettingsGroup(
                               children: [
-                                OBSettingsRow(
-                                  label: 'Verbindung',
-                                  stackAtLargeText: true,
-                                  detail: batteryPercent == null
-                                      ? 'Akku —'
-                                      : 'Akku $batteryPercent %${batteryObservedAt == null ? '' : ' · gemessen ${obTime(batteryObservedAt)}'}',
-                                  value: bandConnectionLabel(b.connection),
+                                ListenableBuilder(
+                                  listenable: controller,
+                                  builder: (c, _) => OBSettingsRow(
+                                    label: 'Verbindung',
+                                    stackAtLargeText: true,
+                                    detail: batteryPercent == null
+                                        ? 'Akku —'
+                                        : 'Akku $batteryPercent %${batteryObservedAt == null ? '' : ' · gemessen ${obTime(batteryObservedAt)}'}',
+                                    value: bandStatusLabel(
+                                      c,
+                                      b.connection,
+                                      controller.bandStatus,
+                                    ),
+                                  ),
                                 ),
                                 OBSettingsRow(
                                   label: 'Aktualität',

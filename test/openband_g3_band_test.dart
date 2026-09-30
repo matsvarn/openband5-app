@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,7 +15,13 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show OBActionPrimary, OBActionSecondary, OBPanel, OBSheet;
+    show
+        OBActionPrimary,
+        OBActionSecondary,
+        OBPanel,
+        OBSheet,
+        OBBandCapsule,
+        OBBandState;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -689,9 +696,88 @@ void main() {
         now: DateTime(2026, 9, 29, 9, 41),
       ),
     );
-    expect(find.text('Verbindet …'), findsOneWidget);
+    expect(find.text('Verbindet …'), findsWidgets);
     expect(find.text('Nicht verbunden'), findsNothing);
     expect(find.text('Verbinden'), findsNothing);
+  });
+
+  testWidgets('retry stays visible, then names an unreachable band with time', (
+    tester,
+  ) async {
+    final updates = ValueNotifier<int>(0);
+    final finish = Completer<void>();
+    final failedAt = DateTime(2026, 9, 30, 0, 3);
+    var status = bandStatusFor(connection: 'disconnected');
+    var attempts = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: failedAt,
+        bandUpdates: updates,
+        readStatus: () => status,
+        onReconnect: () async {
+          attempts++;
+          status = bandStatusFor(connection: 'connecting');
+          updates.value++;
+          await finish.future;
+          status = bandStatusFor(
+            connection: 'disconnected',
+            lastConnectFailedAt: failedAt,
+          );
+          updates.value++;
+        },
+      ),
+    );
+    await tester.tap(find.text('Verbinden'));
+    await tester.pump();
+    expect(find.text('Verbindet …'), findsWidgets);
+    expect(find.text('Verbinden'), findsNothing);
+    expect(find.text('Bluetooth ist ausgeschaltet'), findsNothing);
+    expect(attempts, 1);
+
+    finish.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Band nicht erreichbar'), findsWidgets);
+    expect(find.textContaining('30.09, 00:03 Uhr'), findsOneWidget);
+    expect(find.text('Erneut verbinden'), findsOneWidget);
+    expect(find.text('Bluetooth ist ausgeschaltet'), findsNothing);
+    updates.dispose();
+  });
+
+  testWidgets('real adapter-off status alone shows Bluetooth off', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 30),
+        status: bandStatusFor(
+          connection: 'disconnected',
+          blocker: BleBlocker.adapterOff,
+        ),
+      ),
+    );
+    expect(find.text('Bluetooth ist ausgeschaltet'), findsWidgets);
+    expect(find.text('Band nicht erreichbar'), findsNothing);
+  });
+
+  testWidgets('header capsule names the failed connection', (tester) async {
+    await pump(
+      tester,
+      Scaffold(
+        body: OBBandCapsule(
+          state: OBBandState.off,
+          bandStatus: bandStatusFor(
+            connection: 'disconnected',
+            lastConnectFailedAt: DateTime(2026, 9, 30, 9, 39),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('nicht erreichbar'), findsOneWidget);
+    expect(find.text('getrennt'), findsNothing);
   });
 
   testWidgets('date sheet commits only a confirmed selection', (tester) async {
@@ -1156,6 +1242,12 @@ void main() {
       ),
     );
     addTearDown(controller.dispose);
+    controller.updateBandStatus(
+      bandStatusFor(
+        connection: 'disconnected',
+        lastConnectFailedAt: DateTime(2026, 9, 29, 9, 40),
+      ),
+    );
     await pump(
       tester,
       Builder(
@@ -1171,6 +1263,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('3 Bandseiten ungelesen'), findsOneWidget);
+    expect(find.text('Band nicht erreichbar'), findsOneWidget);
     expect(find.textContaining('Akku 67 %'), findsOneWidget);
     expect(find.textContaining('2 Sek. aufgezeichnet'), findsOneWidget);
     expect(find.textContaining('Anteil unbekannt'), findsOneWidget);
@@ -1178,6 +1271,9 @@ void main() {
     expect(find.textContaining('24 h: 100 %'), findsNothing);
     expect(find.text('letzter gespeicherter Wert vor 3 Min.'), findsOneWidget);
     expect(find.text('Noch kein Empfang'), findsNothing);
+    controller.updateBandStatus(bandStatusFor(connection: 'connecting'));
+    await tester.pump();
+    expect(find.text('Verbindet …'), findsOneWidget);
   });
 
   testWidgets('data status dates the stored frontier from yesterday', (
@@ -1454,6 +1550,34 @@ void main() {
       );
     }, tags: const ['golden']);
   }
+
+  testWidgets('unreachable band golden', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(393, 852);
+    addTearDown(tester.view.reset);
+    await pump(
+      tester,
+      RepaintBoundary(
+        key: const ValueKey('capture'),
+        child: G3BandScreen(
+          band: BandSnapshot(
+            connection: BandConnection.disconnected,
+            latestStoredAt: DateTime(2026, 9, 29, 23, 41),
+          ),
+          now: DateTime(2026, 9, 30, 9, 41),
+          status: bandStatusFor(
+            connection: 'disconnected',
+            lastConnectFailedAt: DateTime(2026, 9, 30, 9, 39),
+          ),
+          onReconnect: () async {},
+        ),
+      ),
+    );
+    await expectLater(
+      find.byKey(const ValueKey('capture')),
+      matchesGoldenFile('openband_goldens/g3-band-unreachable.png'),
+    );
+  }, tags: const ['golden']);
 }
 
 class _DiagnosticsRepository extends SyntheticOpenBandRepository {

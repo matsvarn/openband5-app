@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../ble/band_status_l10n.dart' show localizedBandStatus;
+import '../../ble/ble_state.dart' show BandCondition, BandStatus;
 
 import '../../data/day_label.dart';
 import '../domain.dart';
@@ -436,6 +438,21 @@ String bandConnectionLabel(BandConnection connection) => switch (connection) {
   BandConnection.connecting => 'Verbindet …',
   BandConnection.disconnected => 'Nicht verbunden',
 };
+
+String bandStatusLabel(
+  BuildContext context,
+  BandConnection connection,
+  BandStatus? status,
+) {
+  if (status == null) return bandConnectionLabel(connection);
+  if (status.isFault) return localizedBandStatus(context, status).title;
+  return switch (status.condition) {
+    BandCondition.connected => 'Verbunden',
+    BandCondition.connecting => 'Verbindet …',
+    BandCondition.scanning => 'Sucht …',
+    _ => 'Nicht verbunden',
+  };
+}
 
 class OBToggle extends StatelessWidget {
   final bool value;

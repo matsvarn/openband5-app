@@ -264,6 +264,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                     title: 'Schlaf',
                     subtitle: g3NightOf(DateTime.parse(selected)),
                     band: chrome.OBBandCapsule(
+                      bandStatus: controller.bandStatus,
                       state:
                           controller.band.connection == BandConnection.connected
                           ? chrome.OBBandState.live
@@ -581,6 +582,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                       subtitle:
                           '${g3NightOf(DateTime.parse(selected))}${controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
                       band: chrome.OBBandCapsule(
+                        bandStatus: controller.bandStatus,
                         state:
                             controller.band.connection ==
                                 BandConnection.connected

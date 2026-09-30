@@ -689,6 +689,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     title: 'Journal',
                     subtitle: g3DayLong(DateTime.parse(day)),
                     band: OBBandCapsule(
+                      bandStatus: widget.controller.bandStatus,
                       state: band.connection == BandConnection.connected
                           ? OBBandState.live
                           : storedAt == null
@@ -908,6 +909,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     subtitle:
                         '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
                     band: OBBandCapsule(
+                      bandStatus: widget.controller.bandStatus,
                       state: band.connection == BandConnection.connected
                           ? OBBandState.live
                           : storedAt == null
