@@ -265,4 +265,138 @@ void main() {
       expect(taps, 1);
     });
   }
+
+  for (final (values, below, above) in [
+    ([65.0, 70.0], 0, 0),
+    ([50.0, 51.0], 2, 0),
+    ([90.0], 0, 1),
+  ]) {
+    testWidgets('review 1 recovery legend omits zero marks $below/$above', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          G3MetricDetail(
+            metric: G3Metric.recovery,
+            repository: _ReviewRepo(points: values),
+            endDay: '2026-09-29',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final marks = tester
+          .widgetList<G3Legend>(find.byType(G3Legend))
+          .map((w) => w.text)
+          .toList();
+      expect(marks, isNot(contains('0 darüber')));
+      expect(marks, isNot(contains('0 darunter')));
+      if (below > 0) expect(marks, contains('$below darunter'));
+      if (above > 0) expect(marks, contains('$above darüber'));
+    });
+  }
+
+  testWidgets(
+    'review 2 historical sleep week has weekday and no today emphasis',
+    (tester) async {
+      final c = await _controller(tester, _ReviewRepo(), day: '2026-09-27');
+      await tester.pumpWidget(_app(G3SleepScreen(controller: c)));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byType(OBWeekBars), 250);
+      final bars = tester.widget<OBWeekBars>(find.byType(OBWeekBars));
+      expect(bars.bars.last.day, 'So');
+      expect(bars.bars.any((b) => b.today), isFalse);
+    },
+  );
+
+  testWidgets('review 2 historical regularity window has weekday', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(G3SleepRegularity(repository: _ReviewRepo(), day: '2026-09-27')),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(OBSleepWindows), 250);
+    expect(
+      tester
+          .widget<OBSleepWindows>(find.byType(OBSleepWindows))
+          .windows
+          .last
+          .day,
+      'So',
+    );
+  });
+
+  testWidgets('review 3 historical load has neutral date copy', (tester) async {
+    final c = await _controller(tester, _ReviewRepo(), day: '2026-09-27');
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: c,
+          activity: null,
+          weekly: const G3WeeklyLoad([]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('HEUTE BISHER').evaluate().isEmpty
+          ? find.text('AKTIVITÄTEN')
+          : find.text('HEUTE BISHER'),
+      250,
+    );
+    expect(find.text('AKTIVITÄTEN'), findsOneWidget);
+    expect(find.text('Keine Aktivität an diesem Tag.'), findsOneWidget);
+    expect(find.text('heute läuft'), findsNothing);
+  });
+
+  testWidgets(
+    'review 3 mounted load reloads activities after selected day changes',
+    (tester) async {
+      final c = await _controller(tester, _ReviewRepo());
+      await tester.pumpWidget(
+        _app(
+          G3LoadScreen(
+            controller: c,
+            activity: null,
+            weekly: const G3WeeklyLoad([]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await c.selectDay('2026-09-27');
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byType(OBTrainingLoad), 250);
+      expect(find.text('Keine Aktivität an diesem Tag.'), findsOneWidget);
+      expect(find.byType(OBActivityRow), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'review 4 night metric tiles are plain and header opens signals',
+    (tester) async {
+      final c = await _controller(tester, _ReviewRepo());
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      await tester.pumpWidget(
+        _app(G3SleepScreen(controller: c, scrollController: scroll)),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('HRV · ms'), 250);
+      for (final label in ['HRV · ms', 'RUHEPULS', 'ATEMFREQUENZ']) {
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+        expect(find.byType(G3SleepNightSignals), findsNothing);
+      }
+      scroll.jumpTo(0);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('NACHT'));
+      await tester.pumpAndSettle();
+      expect(find.byType(G3SleepNightSignals), findsOneWidget);
+      await tester.tap(find.text('HRV').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Atemfrequenz'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

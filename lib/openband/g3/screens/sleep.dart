@@ -84,11 +84,14 @@ class _SleepReads {
   static Future<List<OBSleepWindow>> _windows(
     OpenBandRepository repo,
     String endDay,
+    String today,
   ) {
     final date = DateTime.parse(endDay);
     Future<OBSleepWindow> read(int i) async {
       final day = dayLabelOf(DateTime(date.year, date.month, date.day - i));
-      final label = i == 0 ? 'Heute' : g3Weekday(DateTime.parse(day));
+      final label = i == 0 && endDay == today
+          ? 'Heute'
+          : g3Weekday(DateTime.parse(day));
       try {
         final night = (await repo.readDay(day)).sleep;
         return (
@@ -447,6 +450,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                                 G3SleepRegularity(
                                   repository: controller.repository,
                                   day: selected,
+                                  now: controller.now,
                                 ),
                               ),
                             ),
@@ -760,66 +764,47 @@ class _G3SleepScreenState extends State<G3SleepScreen>
               for (final (i, value) in values.indexed) ...[
                 if (i > 0) Container(width: 1, height: 38, color: g.line),
                 Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _push(
-                      G3SleepNightSignals(
-                        repository: controller.repository,
-                        day: controller.selectedDay,
-                        initialKind: [
-                          NightSignalKind.hrv,
-                          NightSignalKind.pulse,
-                          NightSignalKind.respiration,
-                        ][i],
-                        storedAt: controller.band.latestStoredAt,
-                        now: controller.now,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            value.$1,
-                            style: g.t(
-                              10,
-                              14,
-                              weight: FontWeight.w700,
-                              color: g.domainHue(G3Domain.recovery),
-                            ),
+                  child: Padding(
+                    padding: EdgeInsets.only(left: i == 0 ? 0 : 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          value.$1,
+                          style: g.t(
+                            10,
+                            14,
+                            weight: FontWeight.w700,
+                            color: g.domainHue(G3Domain.recovery),
                           ),
-                          const SizedBox(height: 3),
-                          value.$2 == null
-                              ? const OBMissingValue(size: 22, lineHeight: 27)
-                              : Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: value.$2!
-                                            .toStringAsFixed(value.$3)
-                                            .replaceAll('.', ','),
-                                        style: g.t(
-                                          22,
-                                          27,
-                                          weight: FontWeight.w700,
-                                        ),
+                        ),
+                        const SizedBox(height: 3),
+                        value.$2 == null
+                            ? const OBMissingValue(size: 22, lineHeight: 27)
+                            : Text.rich(
+                                TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: value.$2!
+                                          .toStringAsFixed(value.$3)
+                                          .replaceAll('.', ','),
+                                      style: g.t(
+                                        22,
+                                        27,
+                                        weight: FontWeight.w700,
                                       ),
-                                      if (i > 0)
-                                        TextSpan(
-                                          text: ' /min',
-                                          style: g.t(11, 15, color: g.muted),
-                                        ),
-                                    ],
-                                  ),
+                                    ),
+                                    if (i > 0)
+                                      TextSpan(
+                                        text: ' /min',
+                                        style: g.t(11, 15, color: g.muted),
+                                      ),
+                                  ],
                                 ),
-                          const SizedBox(height: 5),
-                          _miniScale(
-                            snapshot.data?.elementAtOrNull(i),
-                            value.$2,
-                          ),
-                        ],
-                      ),
+                              ),
+                        const SizedBox(height: 5),
+                        _miniScale(snapshot.data?.elementAtOrNull(i), value.$2),
+                      ],
                     ),
                   ),
                 ),
@@ -866,12 +851,15 @@ class _G3SleepScreenState extends State<G3SleepScreen>
       bars: [
         for (final point in values)
           day_parts.OBWeekBar(
-            point == values.last
+            point == values.last &&
+                    controller.selectedDay == todayLabel(controller.now())
                 ? 'Heute'
                 : g3Weekday(DateTime.parse(point.day)),
             point.value,
             label: obSleepDuration(point.value),
-            today: point == values.last,
+            today:
+                point == values.last &&
+                controller.selectedDay == todayLabel(controller.now()),
           ),
       ],
       max: 600,
@@ -891,9 +879,11 @@ class G3SleepRegularity extends StatefulWidget {
     super.key,
     required this.repository,
     required this.day,
+    this.now,
   });
   final OpenBandRepository repository;
   final String day;
+  final DateTime Function()? now;
   @override
   State<G3SleepRegularity> createState() => _G3SleepRegularityState();
 }
@@ -905,6 +895,7 @@ class _G3SleepRegularityState extends State<G3SleepRegularity> {
   late final Future<List<OBSleepWindow>> _windows = _SleepReads._windows(
     widget.repository,
     widget.day,
+    todayLabel(widget.now?.call() ?? DateTime.now()),
   );
 
   @override
