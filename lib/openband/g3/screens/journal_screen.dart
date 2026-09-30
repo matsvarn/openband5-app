@@ -11,7 +11,6 @@ import '../../controller.dart';
 import '../../day_picker.dart';
 import '../../domain.dart';
 import '../../local_repository.dart';
-import '../../journal_controls.dart' show kJournalMoodIcons;
 import '../../journal_fields.dart' show journalFieldIcon;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart'
@@ -33,26 +32,17 @@ import '../chrome.dart'
         OBSheet,
         showOBInfoSheet;
 import '../count_copy.dart';
+import '../check_in.dart' show OBCheckIn, OBInlineError, g3CheckInCopy;
 import '../g3_format.dart';
 import '../g3_theme.dart';
-import '../journal_parts.dart';
+import '../journal_parts.dart' hide OBCheckIn, OBInlineError;
 import '../metrics.dart' show OBMissingValue;
 
 const _questions = <_Question>[
-  _Question(
-    'alcohol_evening',
-    'Gestern Abend Alkohol?',
-    'Alkohol',
-    _Answer.yesNo,
-  ),
-  _Question(
-    'caffeine_late',
-    'Gestern nach 14 Uhr Koffein?',
-    'Koffein nach 14 Uhr',
-    _Answer.yesNo,
-  ),
-  _Question('mood', 'Wie ist deine Stimmung heute?', 'Stimmung', _Answer.scale),
-  _Question('', 'Noch etwas zu gestern?', 'Notiz', _Answer.note),
+  _Question('alcohol_evening', 'Alkohol', _Answer.yesNo),
+  _Question('caffeine_late', 'Koffein nach 14 Uhr', _Answer.yesNo),
+  _Question('mood', 'Stimmung', _Answer.scale),
+  _Question('', 'Notiz', _Answer.note),
 ];
 
 String _patternFooter(G3JournalPattern result) {
@@ -84,15 +74,23 @@ String _patternFooter(G3JournalPattern result) {
 String _nightsOrDash(int? count) =>
     count == null ? '—' : '$count ${g3CountNoun(count, 'Nacht', 'Nächte')}';
 
+String _ratingFooter(_Question question) {
+  final copy = g3CheckInCopy(question.key, question.title);
+  if (copy.low == '1' && copy.high == '5') return 'Skala 1–5';
+  return '1 ${copy.low} · 5 ${copy.high}';
+}
+
 enum _Answer { yesNo, amount, scale, note }
 
 enum JournalAnswerSaveResult { saved, failed, conflict }
 
 class _Question {
-  const _Question(this.key, this.prompt, this.title, this.kind, {this.checkIn});
-  final String key, prompt, title;
+  const _Question(this.key, this.title, this.kind, {this.checkIn, this.target});
+  final String key, title;
   final _Answer kind;
   final G3CheckInQuestion? checkIn;
+  final String? target;
+  String get prompt => g3CheckInCopy(key, title).question;
 }
 
 class G3JournalScreen extends StatefulWidget {
@@ -130,32 +128,33 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
   final Map<String, Object?> _drafts = {};
   final Map<String, String> _saveErrors = {};
 
+  String? _targetText(String key, String targetDay, String openDay) {
+    if (openDay != dayLabelOf(widget.controller.now())) {
+      final day = g3DayShort(DateTime.parse(targetDay));
+      return key == 'alcohol_evening' ? '$day · abends' : day;
+    }
+    if (targetDay == openDay) return null;
+    return g3CheckInCopy(key, key).target ??
+        g3DayShort(DateTime.parse(targetDay));
+  }
+
   _Question _typedQuestion(G3CheckInQuestion question, String openDay) {
     final preset = question.key == kG3CheckInNoteKey
         ? _questions.last
         : _questions.where((q) => q.key == question.key).firstOrNull;
     final title = preset?.title ?? question.label;
-    final today = openDay == dayLabelOf(widget.controller.now());
-    final prompt = today
-        ? preset?.prompt ?? question.label
-        : switch (question.key) {
-            'alcohol_evening' =>
-              'Alkohol am ${g3DayShort(DateTime.parse(question.targetDay))}?',
-            'caffeine_late' =>
-              'Koffein nach 14 Uhr am ${g3DayShort(DateTime.parse(question.targetDay))}?',
-            'mood' =>
-              'Wie war deine Stimmung am ${g3DayShort(DateTime.parse(question.targetDay))}?',
-            kG3CheckInNoteKey =>
-              'Notiz zu ${g3DayShort(DateTime.parse(question.targetDay))}?',
-            _ =>
-              '${question.label} · ${g3DayShort(DateTime.parse(question.targetDay))}',
-          };
-    return _Question(question.key, prompt, title, switch (question.kind) {
-      G3CheckInKind.yesNo => _Answer.yesNo,
-      G3CheckInKind.quantity => _Answer.amount,
-      G3CheckInKind.rating => _Answer.scale,
-      G3CheckInKind.freeNote => _Answer.note,
-    }, checkIn: question);
+    return _Question(
+      question.key,
+      title,
+      switch (question.kind) {
+        G3CheckInKind.yesNo => _Answer.yesNo,
+        G3CheckInKind.quantity => _Answer.amount,
+        G3CheckInKind.rating => _Answer.scale,
+        G3CheckInKind.freeNote => _Answer.note,
+      },
+      checkIn: question,
+      target: _targetText(question.key, question.targetDay, openDay),
+    );
   }
 
   List<_Question> _questionsFor(
@@ -172,19 +171,12 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       if (snap != null)
         for (final f in snap.fields)
           if (f.custom && !f.hidden)
-            _Question(
-              f.key,
-              openDay == dayLabelOf(widget.controller.now()) || history
-                  ? f.label
-                  : '${f.label} · ${g3DayShort(DateTime.parse(openDay))}',
-              f.label,
-              switch (f.kind) {
-                JournalFieldKind.yesNo => _Answer.yesNo,
-                JournalFieldKind.rating => _Answer.scale,
-                JournalFieldKind.dose ||
-                JournalFieldKind.duration => _Answer.amount,
-              },
-            ),
+            _Question(f.key, f.label, switch (f.kind) {
+              JournalFieldKind.yesNo => _Answer.yesNo,
+              JournalFieldKind.rating => _Answer.scale,
+              JournalFieldKind.dose ||
+              JournalFieldKind.duration => _Answer.amount,
+            }, target: history ? null : _targetText(f.key, openDay, openDay)),
     ];
   }
 
@@ -536,7 +528,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
               Expanded(
                 child: OBAnswerKey(
                   label: '$i',
-                  icon: kJournalMoodIcons[i - 1],
+                  rating: true,
                   selected: draft == i,
                   onTap: _saving ? null : () => _save(q, i),
                 ),
@@ -678,6 +670,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 if (widget.onBack != null)
                   OBPageHeader.detail(
                     title: 'JOURNAL',
+                    domain: G3Domain.neutral,
                     subtitle: g3DayLong(DateTime.parse(day)),
                     backLabel: 'Journal',
                     onBack: widget.onBack,
@@ -745,13 +738,14 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                         )
                       : OBCheckIn(
                           title: current.prompt,
+                          target: current.target,
                           index: count + 1,
                           total: questions.length,
                           answer: _answer(current),
                           onLater: _next,
                           inlineLater: current.kind == _Answer.yesNo,
                           footerLabel: current.kind == _Answer.scale
-                              ? '1 schlecht · 5 sehr gut'
+                              ? _ratingFooter(current)
                               : null,
                           error: _editing ? null : currentError,
                           retryLabel:
@@ -1041,6 +1035,7 @@ class G3JournalPatternScreen extends StatelessWidget {
           bottomInset: kOBTabBarContentInset,
           header: OBPageHeader.detail(
             title: 'MUSTER',
+            domain: G3Domain.neutral,
             subtitle: 'Koffein nach 14 Uhr · Einschlafen',
             backLabel: 'Journal',
             onBack: () => Navigator.pop(context),
@@ -1291,6 +1286,7 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
           bottomInset: kOBTabBarContentInset,
           header: OBPageHeader.detail(
             title: 'ANPASSEN',
+            domain: G3Domain.neutral,
             subtitle: 'Fragen im Check-in',
             backLabel: 'Journal',
             onBack: () => Navigator.pop(context),
@@ -1626,7 +1622,6 @@ class G3JournalAnswerSheet extends StatefulWidget {
        _question = _Question(
          definition.key,
          definition.label,
-         definition.label,
          switch (definition.kind) {
            JournalFieldKind.yesNo => _Answer.yesNo,
            JournalFieldKind.rating => _Answer.scale,
@@ -1743,7 +1738,7 @@ class _AnswerEditSheetState extends State<G3JournalAnswerSheet> {
                       Expanded(
                         child: OBAnswerKey(
                           label: '$value',
-                          icon: kJournalMoodIcons[value - 1],
+                          rating: true,
                           selected:
                               _draft == value || _draft == value.toDouble(),
                           onTap: _saving

@@ -89,12 +89,12 @@ class OBAnswerKey extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.selected = false,
-    this.icon,
+    this.rating = false,
   });
   final String label;
   final VoidCallback? onTap;
   final bool selected;
-  final IconData? icon;
+  final bool rating;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -104,41 +104,24 @@ class OBAnswerKey extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+        borderRadius: BorderRadius.circular(rating ? 16 : 24),
         child: Container(
-          constraints: BoxConstraints(minHeight: icon == null ? 44 : 58),
+          constraints: BoxConstraints(minHeight: rating ? 58 : 44),
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: selected ? g.ink : g.canvas,
-            borderRadius: BorderRadius.circular(icon == null ? 24 : 16),
+            borderRadius: BorderRadius.circular(rating ? 16 : 24),
           ),
-          child: icon == null
-              ? Text(
-                  label,
-                  style: g.t(
-                    16,
-                    20,
-                    weight: FontWeight.w700,
-                    color: selected ? g.onInk : g.ink,
-                  ),
-                )
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 22, color: selected ? g.onInk : g.ink),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      style: g.t(
-                        12,
-                        15,
-                        weight: FontWeight.w700,
-                        color: selected ? g.onInk : g.ink,
-                      ),
-                    ),
-                  ],
-                ),
+          child: Text(
+            label,
+            style: g.t(
+              rating ? 20 : 16,
+              20,
+              weight: FontWeight.w700,
+              color: selected ? g.onInk : g.ink,
+            ),
+          ),
         ),
       ),
     );
@@ -462,6 +445,7 @@ class OBPatternCard extends StatelessWidget {
           children: [
             G3LabelRow(
               'MUSTER',
+              domain: G3Domain.neutral,
               onTap: onOpen,
               note: loading
                   ? 'wird geladen'
