@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
@@ -8,7 +7,9 @@ import '../../domain.dart';
 import '../../naps.dart';
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart' as chrome;
+import '../g3_format.dart';
 import '../g3_theme.dart';
+import '../metrics.dart' show OBMissingValue;
 import '../sleep_parts.dart';
 
 class G3SleepNaps extends StatefulWidget {
@@ -22,20 +23,12 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
   late Future<List<NapDay>> _week = _readWeek();
   String? _error;
 
-  void _info() => showDialog<void>(
-    context: context,
-    builder: (dialog) => AlertDialog(
-      title: const Text('Nickerchen'),
-      content: const Text(
-        'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialog).pop(),
-          child: const Text('Schließen'),
-        ),
-      ],
-    ),
+  void _info() => chrome.showOBInfoSheet(
+    context,
+    title: 'Nickerchen',
+    paragraphs: const [
+      'Das Band schätzt Schlaf am Tag aus Puls und Bewegung. Kurzes Dösen kann fehlen. Eigene Einträge sind gekennzeichnet.',
+    ],
   );
 
   Future<List<NapDay>> _readWeek() {
@@ -118,20 +111,16 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, kOBTabBarContentInset),
+        child: chrome.G3DetailPage(
+          bottomInset: kOBTabBarContentInset,
+          header: chrome.OBPageHeader.detail(
+            title: 'NICKERCHEN',
+            subtitle: g3DayLong(DateTime.parse(selected)),
+            backLabel: 'Schlaf',
+            onBack: () => Navigator.of(context).pop(),
+            onTrailing: _info,
+          ),
           children: [
-            chrome.OBPageHeader.detail(
-              title: 'NICKERCHEN',
-              subtitle: DateFormat(
-                'EEEE, dd. MMMM',
-                'de_DE',
-              ).format(DateTime.parse(selected)),
-              backLabel: 'Schlaf',
-              onBack: () => Navigator.of(context).pop(),
-              onTrailing: _info,
-            ),
-            const SizedBox(height: 18),
             FutureBuilder<List<NapDay>>(
               future: _week,
               builder: (context, snapshot) {
@@ -184,14 +173,7 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                           if (total == 0 && sessions.isEmpty)
                             Row(
                               children: [
-                                Container(
-                                  width: 60,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: g.gap,
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
+                                const OBMissingValue(size: 34, lineHeight: 39),
                                 const SizedBox(width: 12),
                                 Text(
                                   'Keine Nickerchen',
@@ -204,10 +186,19 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                               crossAxisAlignment: WrapCrossAlignment.end,
                               spacing: 10,
                               children: [
-                                Text(
-                                  obSleepDuration(total),
-                                  style: g.t(92, 98, weight: FontWeight.w700),
-                                ),
+                                total == null
+                                    ? const OBMissingValue(
+                                        size: 92,
+                                        lineHeight: 98,
+                                      )
+                                    : Text(
+                                        obSleepDuration(total),
+                                        style: g.t(
+                                          92,
+                                          98,
+                                          weight: FontWeight.w700,
+                                        ),
+                                      ),
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
                                   child: SizedBox(
@@ -271,7 +262,7 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                               ? 'Noch keins'
                               : 'Noch nicht beurteilbar',
                           subtitle: days.first.judged
-                              ? 'Daten bis ${obSleepClock(widget.controller.band.latestStoredAt)}'
+                              ? 'Noch keins erkannt'
                               : 'Daten fehlen',
                           onTap: () => _edit(),
                         )
@@ -294,15 +285,18 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
                     ],
                     for (final day in days)
                       for (final rejected in day.rejected)
-                        TextButton(
-                          onPressed: () => _restore(day.day, rejected),
-                          child: Text(
-                            '${obSleepClock(rejected.start)}–${obSleepClock(rejected.end)} wiederherstellen',
-                          ),
+                        chrome.OBLink(
+                          '${obSleepClock(rejected.start)}–${obSleepClock(rejected.end)} wiederherstellen',
+                          onTap: () => _restore(day.day, rejected),
                         ),
                   ],
                 );
               },
+            ),
+            chrome.OBFooterStamp.dataThrough(
+              storedAt: widget.controller.band.latestStoredAt,
+              now: widget.controller.now(),
+              synthetic: widget.controller.day?.synthetic == true,
             ),
           ],
         ),
@@ -311,17 +305,14 @@ class _G3SleepNapsState extends State<G3SleepNaps> {
   }
 
   Widget _row(String day, NapSession nap) {
-    final label = DateFormat(
-      'EE dd.MM',
-      'de_DE',
-    ).format(DateTime.parse(day)).replaceFirst('.', '');
+    final label = g3DayShort(DateTime.parse(day));
     final time = '${obSleepClock(nap.start)}–${obSleepClock(nap.end)}';
     return chrome.OBListRow(
       icon: LucideIcons.moon,
       title: '$label · $time',
       subtitle: nap.source == NapSource.manual
           ? 'eingetragen'
-          : 'auto-erkannt${nap.durationMin == null ? '' : ' · ${nap.durationMin} Min. gelegen'}',
+          : 'auto-erkannt${nap.durationMin == null ? '' : ' · ${g3Duration(nap.durationMin)} gelegen'}',
       value: obSleepDuration(nap.durationMin),
       onTap: () => _edit(day: day, session: nap),
     );

@@ -2,8 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../domain.dart';
-import '../chrome.dart' show OBActionPrimary, OBActionSecondary, OBErrorBlock;
+import '../chrome.dart'
+    show
+        OBActionPrimary,
+        OBActionSecondary,
+        OBErrorBlock,
+        OBLink,
+        OBListRow,
+        OBSheet;
+import '../g3_format.dart';
 import '../g3_theme.dart';
+import '../metrics.dart' show OBMissingValue;
 import '../sleep_parts.dart';
 
 /// Goal editing is a sheet over the current night. Reads and writes use the
@@ -94,21 +103,16 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
 
   Future<void> _remove() async {
     if (_busy) return;
-    final yes = await showDialog<bool>(
+    final yes = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
-        title: const Text('Ziel entfernen?'),
-        content: const Text('Ab diesem Tag gilt kein eigenes Schlafziel.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialog).pop(false),
-            child: const Text('Abbrechen'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialog).pop(true),
-            child: const Text('Entfernen'),
-          ),
-        ],
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (dialog) => OBSheet(
+        title: 'Ziel entfernen?',
+        confirmLabel: 'Entfernen',
+        onCancel: () => Navigator.of(dialog).pop(false),
+        onConfirm: () => Navigator.of(dialog).pop(true),
+        child: const Text('Ab diesem Tag gilt kein eigenes Schlafziel.'),
       ),
     );
     if (!mounted || yes != true) return;
@@ -131,243 +135,221 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
     }
   }
 
+  Future<void> _chooseGoal() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheet) => OBSheet(
+        title: 'Ziel wählen',
+        child: SizedBox(
+          height: 360,
+          child: ListView.builder(
+            itemCount: 21,
+            itemBuilder: (context, index) {
+              final minutes = 300 + index * 15;
+              return OBListRow(
+                icon: LucideIcons.moon,
+                title: g3Duration(minutes),
+                onTap: () => Navigator.of(sheet).pop(minutes),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    if (mounted && selected != null) _set(selected);
+  }
+
+  void _showHistory(List<MetricPoint> points) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => OBSheet(
+      title: 'Letzte 7 Nächte',
+      child: Column(
+        children: [
+          for (final point in points)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: Row(
+                children: [
+                  Expanded(child: Text(g3DayShort(DateTime.parse(point.day)))),
+                  Text(obSleepDuration(point.value)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Container(
-      decoration: BoxDecoration(
-        color: g.canvas,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: g.noteShadow,
-      ),
-      padding: EdgeInsets.fromLTRB(20, 8, 20, bottom + 24),
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
       child: FutureBuilder<SleepGoalSnapshot>(
         future: _goal,
         builder: (context, snapshot) {
           final saved = snapshot.data?.targetMinutes;
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: g.bar,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
+          return OBSheet(
+            title: saved == null ? 'Schlafziel festlegen' : 'Schlafziel',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  saved == null
+                      ? 'Noch kein Ziel. Es zeigt nur den Abstand deiner Nächte. Bedarf und Bettzeit rechnen ohne Ziel.'
+                      : 'Vergleiche deine Nächte mit deinem eigenen Ziel.',
+                  style: g.t(14, 19, color: g.ink2),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      saved == null ? 'Schlafziel festlegen' : 'Schlafziel',
-                      style: g.t(20, 25, weight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Schließen',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(LucideIcons.x),
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(44, 44),
-                      backgroundColor: g.track,
-                      foregroundColor: g.ink,
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                saved == null
-                    ? 'Noch kein Ziel. Es zeigt nur den Abstand deiner Nächte. Bedarf und Bettzeit rechnen ohne Ziel.'
-                    : 'Vergleiche deine Nächte mit deinem eigenen Ziel.',
-                style: g.t(14, 19, color: g.ink2),
-              ),
-              const SizedBox(height: 22),
-              Text('ZIEL PRO NACHT', style: g.caps(color: g.muted)),
-              const SizedBox(height: 9),
-              Container(
-                height: 88,
-                alignment: Alignment.center,
-                decoration: g.pressed(radius: 15),
-                child: snapshot.hasError
-                    ? Text('—', style: g.t(52, 58, weight: FontWeight.w700))
-                    : snapshot.data == null
-                    ? const CircularProgressIndicator.adaptive()
-                    : _draft == null
-                    ? DropdownButton<int>(
-                        icon: const Icon(LucideIcons.chevronDown),
-                        hint: Text(
+                const SizedBox(height: 22),
+                Text('ZIEL PRO NACHT', style: g.caps(color: g.muted)),
+                const SizedBox(height: 9),
+                Container(
+                  height: 88,
+                  alignment: Alignment.center,
+                  decoration: g.pressed(radius: 15),
+                  child: snapshot.hasError
+                      ? const OBMissingValue(size: 52, lineHeight: 58)
+                      : snapshot.data == null
+                      ? const CircularProgressIndicator.adaptive()
+                      : _draft == null
+                      ? OBActionSecondary(
                           'Ziel wählen',
-                          style: g.t(21, 25, weight: FontWeight.w700),
-                        ),
-                        value: null,
-                        items: [
-                          for (var minutes = 300; minutes <= 600; minutes += 15)
-                            DropdownMenuItem(
-                              value: minutes,
-                              child: Text(obSleepDuration(minutes)),
-                            ),
-                        ],
-                        onChanged: _busy
-                            ? null
-                            : (value) {
-                                if (value != null) _set(value);
-                              },
-                      )
-                    : Text(
-                        obSleepDuration(_draft),
-                        key: const ValueKey('g3-sleep-goal-value'),
-                        style: g.t(
-                          48,
-                          55,
-                          weight: FontWeight.w700,
-                          tracking: -.04,
-                        ),
-                      ),
-              ),
-              const SizedBox(height: 10),
-              FutureBuilder<List<MetricPoint>>(
-                future: _history,
-                builder: (context, history) {
-                  final points =
-                      history.data?.where((p) => p.value != null).toList() ??
-                      const <MetricPoint>[];
-                  final average = points.length == 7
-                      ? points.map((p) => p.value!).reduce((a, b) => a + b) / 7
-                      : null;
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          average == null
-                              ? 'Ø — · noch keine 7 Nächte'
-                              : saved == null
-                              ? 'Start: dein Ø der letzten 7 Nächte'
-                              : 'Ø ${obSleepDuration(average)} in 7 Nächten',
+                          onPressed: _busy ? null : _chooseGoal,
+                        )
+                      : Text(
+                          obSleepDuration(_draft),
+                          key: const ValueKey('g3-sleep-goal-value'),
                           style: g.t(
-                            13,
-                            17,
-                            weight: FontWeight.w600,
-                            color: g.ink2,
+                            48,
+                            55,
+                            weight: FontWeight.w700,
+                            tracking: -.04,
                           ),
                         ),
-                      ),
-                      if (average != null)
-                        TextButton(
-                          onPressed: () => showDialog<void>(
-                            context: context,
-                            builder: (dialog) => AlertDialog(
-                              title: const Text('Letzte 7 Nächte'),
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (final point in points)
-                                    Row(
-                                      children: [
-                                        Expanded(child: Text(point.day)),
-                                        Text(obSleepDuration(point.value)),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(dialog),
-                                  child: const Text('Schließen'),
-                                ),
-                              ],
+                ),
+                const SizedBox(height: 10),
+                FutureBuilder<List<MetricPoint>>(
+                  future: _history,
+                  builder: (context, history) {
+                    final points =
+                        history.data?.where((p) => p.value != null).toList() ??
+                        const <MetricPoint>[];
+                    final average = points.length == 7
+                        ? points.map((p) => p.value!).reduce((a, b) => a + b) /
+                              7
+                        : null;
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            average == null
+                                ? 'Ø — · noch keine 7 Nächte'
+                                : saved == null
+                                ? 'Start: dein Ø der letzten 7 Nächte'
+                                : 'Ø ${obSleepDuration(average)} in 7 Nächten',
+                            style: g.t(
+                              13,
+                              17,
+                              weight: FontWeight.w600,
+                              color: g.ink2,
                             ),
                           ),
-                          child: const Text('Verlauf ›'),
                         ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OBActionSecondary(
-                      '− 15 Min.',
-                      expand: true,
-                      onPressed: _busy || _draft == null
-                          ? null
-                          : () => _set(_draft! - 15),
+                        if (average != null)
+                          OBLink('Verlauf', onTap: () => _showHistory(points)),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OBActionSecondary(
+                        '−15 Min.',
+                        expand: true,
+                        onPressed: _busy || _draft == null
+                            ? null
+                            : () => _set(_draft! - 15),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OBActionSecondary(
-                      '+ 15 Min.',
-                      expand: true,
-                      onPressed: _busy || _draft == null
-                          ? null
-                          : () => _set(_draft! + 15),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OBActionSecondary(
+                        '+15 Min.',
+                        expand: true,
+                        onPressed: _busy || _draft == null
+                            ? null
+                            : () => _set(_draft! + 15),
+                      ),
                     ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  OBErrorBlock(
+                    title: 'Speichern fehlgeschlagen',
+                    reason: _error!,
+                    retryLabel: _failedRemove
+                        ? 'Erneut entfernen'
+                        : 'Erneut speichern',
+                    onRetry: _failedRemove ? _remove : _save,
                   ),
                 ],
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 14),
-                OBErrorBlock(
-                  title: 'Speichern fehlgeschlagen',
-                  reason: _error!,
-                  retryLabel: _failedRemove
-                      ? 'Erneut entfernen'
-                      : 'Erneut speichern',
-                  onRetry: _failedRemove ? _remove : _save,
-                ),
-              ],
-              if (snapshot.hasError) ...[
-                const SizedBox(height: 14),
-                OBErrorBlock(
-                  title: 'Schlafziel nicht geladen',
-                  reason: 'Bitte erneut versuchen.',
-                  onRetry: () => setState(() => _goal = _read()),
-                ),
-              ],
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: OBActionSecondary(
-                      'Abbrechen',
-                      expand: true,
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OBActionPrimary(
-                      saved == null ? 'Ziel speichern' : 'Speichern',
-                      expand: true,
-                      onPressed:
-                          _busy ||
-                              snapshot.data == null ||
-                              _draft == null ||
-                              _draft == saved
-                          ? null
-                          : _save,
-                    ),
+                if (snapshot.hasError) ...[
+                  const SizedBox(height: 14),
+                  OBErrorBlock(
+                    title: 'Schlafziel nicht geladen',
+                    reason: 'Bitte erneut versuchen.',
+                    onRetry: () => setState(() => _goal = _read()),
                   ),
                 ],
-              ),
-              if (saved != null) ...[
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _busy ? null : _remove,
-                  child: const Text('Schlafziel entfernen'),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OBActionSecondary(
+                        'Abbrechen',
+                        expand: true,
+                        onPressed: _busy
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OBActionPrimary(
+                        saved == null ? 'Ziel speichern' : 'Speichern',
+                        expand: true,
+                        onPressed:
+                            _busy ||
+                                snapshot.data == null ||
+                                _draft == null ||
+                                _draft == saved
+                            ? null
+                            : _save,
+                      ),
+                    ),
+                  ],
                 ),
+                if (saved != null) ...[
+                  const SizedBox(height: 8),
+                  OBActionSecondary(
+                    'Schlafziel entfernen',
+                    expand: true,
+                    onPressed: _busy ? null : _remove,
+                  ),
+                ],
               ],
-            ],
+            ),
           );
         },
       ),
