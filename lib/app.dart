@@ -722,7 +722,9 @@ class _ShellState extends State<_Shell> {
           controller: _day,
           onProfile: () => pushInTab(
             c,
-            MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
+            MaterialPageRoute<void>(
+              builder: (_) => const ProfileHome(backLabel: 'Heute'),
+            ),
           ),
           onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
           onConnect: () => _app!.openSession(),
@@ -760,7 +762,9 @@ class _ShellState extends State<_Shell> {
           onBand: () => showBandStatus(c, _day, () => _app!.openSession()),
           onProfile: () => pushInTab(
             c,
-            MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
+            MaterialPageRoute<void>(
+              builder: (_) => const ProfileHome(backLabel: 'Schlaf'),
+            ),
           ),
         ),
         ShellDomain.workout =>
@@ -863,7 +867,7 @@ class _ShellState extends State<_Shell> {
                   onProfile: () => pushInTab(
                     c,
                     MaterialPageRoute<void>(
-                      builder: (_) => const ProfileHome(),
+                      builder: (_) => const ProfileHome(backLabel: 'Training'),
                     ),
                   ),
                 ),
@@ -876,7 +880,7 @@ class _ShellState extends State<_Shell> {
                   onProfile: () => pushInTab(
                     c,
                     MaterialPageRoute<void>(
-                      builder: (_) => const ProfileHome(),
+                      builder: (_) => const ProfileHome(backLabel: 'Journal'),
                     ),
                   ),
                   onEdit: (day) async {

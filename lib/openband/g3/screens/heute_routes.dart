@@ -16,6 +16,8 @@ Future<void> openHeuteActivity(
   g3ActivityResultRoute(
     repository: controller.repository,
     activity: activity,
+    latestStoredAt: controller.band.latestStoredAt,
+    now: controller.now(),
     onChanged: controller.refresh,
   ),
 );
@@ -51,6 +53,7 @@ Future<void> openHeuteMetric(
           controller: controller,
           activity: activities.firstOrNull,
           weekly: weekly,
+          backLabel: 'Heute',
         ),
       ),
     );

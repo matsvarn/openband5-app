@@ -15,6 +15,7 @@ import 'openband/journal.dart';
 import 'openband/journal_editor.dart';
 import 'openband/domain.dart';
 import 'openband/g3/screens/band.dart';
+import 'openband/g3/chrome.dart' show showOBInfoSheet;
 import 'openband/nutrition_route.dart';
 import 'openband/run_live.dart';
 import 'openband/session.dart';
@@ -229,14 +230,21 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         controller: controller,
         reminder: _heuteReminder,
         onProfile: widget.releaseReduced
-            ? () => _openSyntheticProfile(c)
+            ? () => _openSyntheticProfile(c, backLabel: 'Heute')
             : () => _options(context),
-        onBand: () => _options(context),
+        onBand: () => showBandStatus(c, controller, null),
         onConnect: () => _useScenario(SyntheticScenario.g3Sample),
         onOpenMetric: (m) => openHeuteMetric(c, controller, m),
+        onOpenActivity: (activity) =>
+            openHeuteActivity(c, controller, activity),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
-      ShellDomain.sleep => G3SleepScreen(controller: controller, asTab: true),
+      ShellDomain.sleep => G3SleepScreen(
+        controller: controller,
+        asTab: true,
+        onBand: () => showBandStatus(c, controller, null),
+        onProfile: () => _openSyntheticProfile(c, backLabel: 'Schlaf'),
+      ),
       ShellDomain.workout =>
         !widget.releaseReduced
             ? Column(
@@ -280,6 +288,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               )
             : G3TrainingScreen(
                 controller: controller,
+                onProfile: () =>
+                    _openSyntheticProfile(c, backLabel: 'Training'),
                 onStart: (type) {
                   if (type != 'running') return;
                   _openSyntheticRun(c, type);
@@ -301,8 +311,8 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         widget.releaseReduced
             ? G3JournalScreen(
                 controller: controller,
-                onBand: () => showBandStatus(c, controller, () {}),
-                onProfile: () => _openSyntheticProfile(c),
+                onBand: () => showBandStatus(c, controller, null),
+                onProfile: () => _openSyntheticProfile(c, backLabel: 'Journal'),
                 onEdit: (day) async {
                   await Navigator.of(c).push(
                     MaterialPageRoute<void>(
@@ -445,11 +455,15 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
     );
   }
 
-  void _openSyntheticProfile(BuildContext context) {
+  void _openSyntheticProfile(
+    BuildContext context, {
+    String backLabel = 'Heute',
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (profileContext) => ProfileHomeView(
           releaseReduced: true,
+          backLabel: backLabel,
           stats: const ProfileStats(
             name: 'Mats',
             sources: 1,
@@ -464,6 +478,13 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
           band: widget.repository.band,
           bandName: 'WHOOP 5.0',
           languageLabel: 'Deutsch',
+          onLanguage: () => showOBInfoSheet(
+            profileContext,
+            title: 'Sprache',
+            paragraphs: const [
+              'Die synthetische Galerie zeigt Deutsch. Die App bietet die Sprachauswahl im Profil.',
+            ],
+          ),
           onBand: () => Navigator.of(profileContext).push(
             MaterialPageRoute<void>(
               builder: (_) => G3BandScreen(

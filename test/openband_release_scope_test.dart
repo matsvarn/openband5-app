@@ -23,6 +23,8 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
     show OBSettingsRow, OBToggle;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBBandCapsule, OBInfoSheet;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
@@ -499,6 +501,19 @@ void main() {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(393, 852);
     addTearDown(tester.view.reset);
+  }
+
+  Future<void> pumpReducedGallery(WidgetTester tester) async {
+    phone(tester);
+    final repository = (await tester.runAsync(loadGalleryRepository))!;
+    await tester.pumpWidget(
+      OpenBandGallery(
+        repository: repository,
+        showControls: false,
+        releaseReduced: true,
+      ),
+    );
+    await tester.pumpAndSettle();
   }
 
   testWidgets('release Messwerte keeps band metrics and weight', (
@@ -1076,6 +1091,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(changed?.workoutIdleEnabled, isFalse);
     expect(changed?.remindersEnabled, isFalse);
+  });
+
+  testWidgets('Schlaf and Heute band capsules open the same data sheet', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+    // The shared Datenstand card has a separate narrow-width layout issue.
+    tester.view.physicalSize = const Size(480, 852);
+    await tester.pumpAndSettle();
+
+    for (final tab in ['home', 'sleep']) {
+      await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(OBBandCapsule).hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.text('Dein Datenstand'), findsOneWidget);
+      expect(find.text('Übertragung fortsetzen'), findsNothing);
+      Navigator.of(tester.element(find.text('Dein Datenstand'))).pop();
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('each gallery tab passes its name to the profile back action', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+
+    for (final (tab, label) in [
+      ('home', 'Heute'),
+      ('sleep', 'Schlaf'),
+      ('workout', 'Training'),
+      ('wellness', 'Journal'),
+    ]) {
+      await tester.tap(find.byKey(ValueKey('ob-tab-$tab')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Profil'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfileHomeView), findsOneWidget);
+      expect(
+        tester.widget<ProfileHomeView>(find.byType(ProfileHomeView)).backLabel,
+        label,
+      );
+      if (tab == 'sleep') {
+        await tester.tap(find.byKey(const ValueKey('profile-band')));
+        await tester.pumpAndSettle();
+        expect(find.byType(G3BandScreen), findsOneWidget);
+        await tester.tap(find.bySemanticsLabel('Zurück zu Profil'));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.bySemanticsLabel('Zurück zu $label'));
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('gallery profile language row opens its explanation', (
+    tester,
+  ) async {
+    await pumpReducedGallery(tester);
+    await tester.tap(find.bySemanticsLabel('Profil'));
+    await tester.pumpAndSettle();
+
+    final language = find.ancestor(
+      of: find.text('Sprache'),
+      matching: find.byType(OBSettingsRow),
+    );
+    await tester.ensureVisible(language);
+    await tester.tap(language);
+    await tester.pumpAndSettle();
+    expect(find.byType(OBInfoSheet), findsOneWidget);
+    expect(find.text('Sprache'), findsWidgets);
   });
 
   testWidgets('reduced gallery opens Profile and deterministic Data receipts', (

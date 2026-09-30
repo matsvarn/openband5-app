@@ -233,10 +233,16 @@ void main() {
   ) async {
     final repo = _repo(SyntheticScenario.g3Sample);
     final activity = (await repo.readActivities(_day)).single;
+    final storedAt = DateTime(2026, 9, 29, 9, 38);
+    final now = DateTime(2026, 9, 29, 9, 41);
     final controller = OpenBandController(
       repository: repo,
       initialDay: _day,
-      now: () => DateTime(2026, 9, 29, 9, 41),
+      band: BandSnapshot(
+        connection: BandConnection.connected,
+        latestStoredAt: storedAt,
+      ),
+      now: () => now,
     );
     addTearDown(controller.dispose);
     await controller.refresh();
@@ -272,6 +278,11 @@ void main() {
           .id,
       activity.id,
     );
+    final result = tester.widget<G3ActivityScreen>(
+      find.byType(G3ActivityScreen),
+    );
+    expect(result.latestStoredAt, storedAt);
+    expect(result.now, now);
     expect(find.text('Training root'), findsNothing);
     expect(
       tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
@@ -320,6 +331,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(G3LoadScreen), findsOneWidget);
+    expect(
+      tester.widget<G3LoadScreen>(find.byType(G3LoadScreen)).backLabel,
+      'Heute',
+    );
     expect(find.text('Training root'), findsNothing);
     expect(
       tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
