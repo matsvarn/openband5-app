@@ -146,6 +146,19 @@ class _LoadDetailsRepo extends _RecentTrainingRepo {
       ], const G3Baseline(BaselineStatus(BaselinePhase.none)));
 }
 
+class _WeeklyLoadRepo extends _RecentTrainingRepo {
+  Completer<G3WeeklyLoad>? gate;
+  bool fail = false;
+
+  @override
+  Future<G3WeeklyLoad> readWeeklyLoad(String endDay) async {
+    if (fail) throw StateError('weekly read failed');
+    return gate == null
+        ? G3WeeklyLoad([MetricPoint(endDay, 8)], atl: 72, ctl: 55)
+        : await gate!.future;
+  }
+}
+
 SyntheticOpenBandRepository _repo(SyntheticScenario scenario) =>
     SyntheticOpenBandRepository.fromMaps(
       _fixture('day-summary'),
@@ -1357,6 +1370,113 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('AKUT · 7 TAGE'), findsOneWidget);
     expect(find.text('GEWOHNT · 6 WOCHEN'), findsOneWidget);
+  });
+
+  Future<OpenBandController> loadController(
+    WidgetTester tester,
+    _WeeklyLoadRepo repo,
+  ) async {
+    tester.view.physicalSize = const Size(393, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 10),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: controller,
+          activity: null,
+          weekly: const G3WeeklyLoad(
+            [MetricPoint('2026-09-29', 9.4)],
+            atl: 64,
+            ctl: 51,
+          ),
+        ),
+      ),
+    );
+    return controller;
+  }
+
+  Finder loadText(String text) => find.descendant(
+    of: find.byType(OBTrainingLoad),
+    matching: find.text(text),
+  );
+
+  testWidgets('load detail first frame keeps supplied weekly figures', (
+    tester,
+  ) async {
+    await loadController(tester, _WeeklyLoadRepo());
+    expect(loadText('64'), findsOneWidget);
+    expect(loadText('51'), findsOneWidget);
+    expect(find.text('Trainingslast noch nicht berechnet'), findsNothing);
+  });
+
+  testWidgets('load detail keeps same-week figures during a held read', (
+    tester,
+  ) async {
+    final repo = _WeeklyLoadRepo();
+    final controller = await loadController(tester, repo);
+    await tester.pumpAndSettle();
+    repo.gate = Completer<G3WeeklyLoad>();
+    await controller.selectDay('2026-09-28');
+    await tester.pump();
+    expect(find.text('Trainingslast noch nicht berechnet'), findsNothing);
+    expect(loadText('64'), findsOneWidget);
+    expect(loadText('51'), findsOneWidget);
+    repo.gate!.complete(const G3WeeklyLoad([], atl: 72, ctl: 55));
+    await tester.pumpAndSettle();
+    expect(loadText('72'), findsOneWidget);
+    expect(loadText('55'), findsOneWidget);
+    repo.gate = Completer<G3WeeklyLoad>();
+    await controller.selectDay('2026-09-30');
+    await tester.pump();
+    expect(loadText('72'), findsOneWidget);
+    expect(loadText('55'), findsOneWidget);
+    repo.gate!.complete(const G3WeeklyLoad([], atl: 74, ctl: 56));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets(
+    'load detail shows progress for another week until absence is known',
+    (tester) async {
+      final repo = _WeeklyLoadRepo();
+      final controller = await loadController(tester, repo);
+      await tester.pumpAndSettle();
+      repo.gate = Completer<G3WeeklyLoad>();
+      await controller.selectDay('2026-09-27');
+      await tester.pump();
+      expect(find.text('Trainingslast noch nicht berechnet'), findsNothing);
+      expect(loadText('64'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      repo.gate!.complete(const G3WeeklyLoad([]));
+      await tester.pumpAndSettle();
+      expect(find.text('Trainingslast noch nicht berechnet'), findsOneWidget);
+    },
+  );
+
+  testWidgets('load detail weekly error offers a working retry', (
+    tester,
+  ) async {
+    final repo = _WeeklyLoadRepo();
+    final controller = await loadController(tester, repo);
+    await tester.pumpAndSettle();
+    repo.fail = true;
+    await controller.selectDay('2026-09-28');
+    await tester.pumpAndSettle();
+    expect(find.text('Trainingslast noch nicht berechnet'), findsNothing);
+    expect(find.text('Training konnte nicht geladen werden.'), findsOneWidget);
+    repo.fail = false;
+    await tester.tap(find.text('Erneut laden'));
+    await tester.pumpAndSettle();
+    expect(find.text('Training konnte nicht geladen werden.'), findsNothing);
+    expect(loadText('72'), findsOneWidget);
+    expect(loadText('55'), findsOneWidget);
   });
 
   testWidgets('load detail explains scale and has no dead lead chevron', (
