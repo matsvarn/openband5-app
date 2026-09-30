@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/notify/fired_keys.dart';
@@ -761,7 +760,11 @@ void main() {
       ),
     );
 
-    final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
+    final values = [
+      find.textContaining('18.09 07:42'),
+      find.text('64 %'),
+      find.text('4,2 GB'),
+    ];
     final labels = [
       find.text('DATEN BIS'),
       find.text('AKKU'),
@@ -829,7 +832,7 @@ void main() {
       expect(find.text('Status unbekannt'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
       expect(find.text('zuletzt 64 %'), findsOneWidget);
-      expect(find.text('07:42'), findsOneWidget);
+      expect(find.textContaining('18.09 07:42'), findsOneWidget);
     },
   );
 
@@ -1106,10 +1109,7 @@ void main() {
         matching: find.byType(OBSettingsRow),
       );
       expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(LucideIcons.chevronRight),
-        ),
+        find.descendant(of: row, matching: find.byType(OBChevron)),
         findsOneWidget,
       );
       await tester.ensureVisible(row);

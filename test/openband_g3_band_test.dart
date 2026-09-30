@@ -13,7 +13,8 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPanel;
+import 'package:openstrap_edge/openband/g3/chrome.dart'
+    show OBActionPrimary, OBActionSecondary, OBPanel, OBSheet;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -239,6 +240,7 @@ void main() {
         releaseReduced: true,
         languageLabel: 'Deutsch',
         stats: const ProfileStats(),
+        now: DateTime(2026, 9, 29, 9, 41),
         band: const BandSnapshot(connection: BandConnection.connected),
         diagnostics: BandDiagnostics(
           lastStoredSampleAt: DateTime(2026, 9, 29, 9, 38),
@@ -272,7 +274,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('zuletzt 67 % · gestern · 09:37'), findsOneWidget);
+    expect(find.text('zuletzt 67 % · gestern 09:37'), findsOneWidget);
   });
 
   testWidgets('profile distinguishes denied from unknown notifications', (
@@ -347,6 +349,14 @@ void main() {
     expect(find.text('1'), findsNWidgets(3));
     expect(find.text('Nicht lesbar'), findsOneWidget);
     expect(find.text('abgelehnt, nichts geschätzt'), findsOneWidget);
+    await tester.tap(find.text('Details'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('12 übernommen · 4 übersprungen · 1 abgelehnt'),
+      findsOneWidget,
+    );
+    await tester.tap(find.bySemanticsLabel('Schließen').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Fertig'));
     expect(closed, 1);
     expect(tester.takeException(), isNull);
@@ -406,6 +416,26 @@ void main() {
     }
   });
 
+  testWidgets('older backup uses the shared short date beside a failed note', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      DataScreenView(
+        now: DateTime(2026, 9, 29, 9, 41),
+        lastBackupAt: DateTime(2026, 9, 22, 3),
+        note: 'Zu wenig Speicherplatz.',
+        noteFailed: true,
+        backupFailed: true,
+      ),
+    );
+    expect(find.text('22.09'), findsOneWidget);
+    expect(
+      find.textContaining('Die Sicherung von 22.09 03:00 bleibt erhalten.'),
+      findsOneWidget,
+    );
+  });
+
   for (final (outcome, title) in [
     (const ImportOutcome(source: 'Sicherung', restoredRows: 3), 'Übernommen'),
     (const ImportOutcome(source: 'Sicherung', unchangedRows: 3), 'Unverändert'),
@@ -429,11 +459,7 @@ void main() {
           body: G3RestoreReceiptSheet(outcome: outcome, onClose: () {}),
         ),
       );
-      expect(find.byKey(const ValueKey('restore-title')), findsOneWidget);
-      expect(
-        tester.widget<Text>(find.byKey(const ValueKey('restore-title'))).data,
-        title,
-      );
+      expect(tester.widget<OBSheet>(find.byType(OBSheet)).title, title);
     });
   }
 
@@ -707,7 +733,7 @@ void main() {
     await tester.tap(find.text('16'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-09-15');
-    await tester.tap(find.byTooltip('Schließen'));
+    await tester.tap(find.bySemanticsLabel('Schließen'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-09-15');
     await tester.tap(find.text('Datum öffnen'));
@@ -829,16 +855,16 @@ void main() {
         .first;
     final lastRow = tester.getRect(selectedCell);
     final viewport = tester.getRect(find.byType(ListView).last);
-    final footer = tester.getRect(find.byType(FilledButton).first);
+    final footer = tester.getRect(find.byType(OBActionSecondary));
     expect(lastRow.top, greaterThanOrEqualTo(viewport.top));
     expect(lastRow.bottom, lessThanOrEqualTo(viewport.bottom));
     expect(lastRow.bottom, lessThan(footer.top));
     expect(
-      tester.getRect(find.byType(FilledButton).last).bottom,
+      tester.getRect(find.byType(OBActionPrimary)).bottom,
       lessThanOrEqualTo(778),
     );
     await tester.tap(find.text('31'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Ansehen'));
+    await tester.tap(find.widgetWithText(OBActionPrimary, 'Ansehen'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-08-31');
     expect(tester.takeException(), isNull);
@@ -906,10 +932,10 @@ void main() {
         final viewport = tester.getRect(find.byType(ListView).last);
         final selected = tester.getRect(find.text(last));
         final card = tester.getRect(find.byType(OBPanel).first);
-        final confirm = find.widgetWithText(FilledButton, action);
+        final confirm = find.widgetWithText(OBActionPrimary, action);
         final confirmRect = tester.getRect(confirm);
         final todayRect = tester.getRect(
-          find.widgetWithText(FilledButton, 'Zu heute'),
+          find.widgetWithText(OBActionSecondary, 'Zu heute'),
         );
         expect(
           card.top,
@@ -1070,7 +1096,7 @@ void main() {
 
   test('data status heading follows the selected local day', () {
     final now = DateTime(2026, 9, 18, 9, 41);
-    expect(bandStatusValuesHeading('2026-09-15', now), 'WERTE FÜR 15.09.');
+    expect(bandStatusValuesHeading('2026-09-15', now), 'WERTE FÜR 15.09');
     expect(bandStatusValuesHeading('2026-09-18', now), 'WERTE FÜR HEUTE');
   });
 
@@ -1195,7 +1221,8 @@ void main() {
     );
     await tester.tap(find.text('Datenstand öffnen'));
     await tester.pumpAndSettle();
-    expect(find.text('bis gestern · 09:38'), findsNWidgets(2));
+    expect(find.text('bis gestern · 09:38'), findsOneWidget);
+    expect(find.text('Daten bis gestern 09:38'), findsOneWidget);
   });
 
   testWidgets('data status scrolls past its buttons at large text', (

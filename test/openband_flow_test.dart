@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/openband/controller.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBActionPrimary;
 import 'package:openstrap_edge/openband/daily_activity.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/screens.dart';
@@ -388,7 +389,7 @@ void main() {
       await tester.drag(find.byType(ListView).last, const Offset(0, -220));
       await tester.pumpAndSettle();
       expect(find.text('7h02'), findsOneWidget);
-      await tester.tap(find.byTooltip('Schließen'));
+      await tester.tap(find.bySemanticsLabel('Schließen'));
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-15');
       await tester.tap(find.text(obDayTitle('2026-09-15')));
@@ -416,7 +417,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('64 %'));
     await tester.pumpAndSettle();
-    expect(find.text('letzter Wert vor 1 h 59 Min.'), findsOneWidget);
+    expect(find.text('letzter Wert vor 1h59'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(BottomSheet),
@@ -425,7 +426,20 @@ void main() {
       findsNothing,
     );
     expect(find.text('Akku 64 % · gemessen 07:42'), findsOneWidget);
-    expect(find.text('bis 07:42'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('bis 07:42'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('Daten bis 07:42'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Auf dem iPhone gespeichert'), findsNothing);
     expect(find.text('Abdeckung'), findsOneWidget);
   });
@@ -658,7 +672,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
-      final previousDay = find.widgetWithText(FilledButton, 'Ansehen');
+      final previousDay = find.widgetWithText(OBActionPrimary, 'Ansehen');
       expect(previousDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(previousDay);
@@ -668,7 +682,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();
-      final selectedDay = find.widgetWithText(FilledButton, 'Ansehen');
+      final selectedDay = find.widgetWithText(OBActionPrimary, 'Ansehen');
       expect(selectedDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(selectedDay);
