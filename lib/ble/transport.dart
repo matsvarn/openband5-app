@@ -102,6 +102,7 @@ extension BleEngineTransport on BleEngine {
       } else {
         await FlutterBluePlus.startScan(withServices: wanted, timeout: timeout);
       }
+      _clearBlocker('on (scan accepted)');
       await FlutterBluePlus.isScanning.where((on) => on == false).first;
     } catch (e) {
       // Recheck the OS state after a thrown scan. Exception text alone can be
@@ -122,8 +123,6 @@ extension BleEngineTransport on BleEngine {
       // Per-band copy needs the per-entry discovery/label of D9; the registry
       // does not make it fixable on its own.
       _log('No band found (force-quit the official app; band must be free).');
-    } else {
-      _clearBlocker('on (scan reached radio)');
     }
     return found;
   }

@@ -2265,7 +2265,8 @@ class BleEngine {
       // Only the TRANSITION to on clears. A repeated `on` (every resume re-reads
       // the adapter) says nothing new, and would wipe a permission refusal that
       // Android reported in a scan error while the radio was already on. That
-      // one clears when a scan or connect reaches the radio.
+      // one clears once startScan returns, even with no device found, or when
+      // connect succeeds or throws an error that is not a phone-level blocker.
       _clearBlocker(adapter.name);
     }
   }
@@ -2390,7 +2391,9 @@ class BleEngine {
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
       // vanish into the reconnect loop as an ordinary failed attempt — retrying
       // silently forever against a stack that will never answer.
-      await _classifyRadioError(e);
+      if (await _classifyRadioError(e) == null) {
+        _clearBlocker('on (connect error without blocker)');
+      }
       _log('connect failed: $e');
       if (_lastAdapterState == BluetoothAdapterState.on && _blocker == null) {
         state.lastConnectFailedAt = DateTime.now();
