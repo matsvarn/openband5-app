@@ -28,17 +28,17 @@ abstract final class AlpColor {
   /// G2 Gerät: Schlaf-Spur.
   static const Color sleepTint = Color(0xFFE3E3DF);
 
-  /// G2 Gerät: Tiefschlaf, volle LED.
-  static const Color stageDeep = Color(0xFF1B1B1A);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color stageDeep = Color(0xFF3B2E8C);
 
-  /// G2 Gerät: Leichtschlaf.
-  static const Color stageLight = Color(0xFF6A6A66);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color stageLight = Color(0xFF8474D6);
 
-  /// G2 Gerät: REM.
-  static const Color stageRem = Color(0xFFAEAEA9);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color stageRem = Color(0xFFB7ACEB);
 
-  /// G2 Gerät: Wach.
-  static const Color wake = Color(0xFFC9C9C4);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color wake = Color(0xFFDAD5F2);
 
   /// G2 Gerät: Signal-Orange. Nur Erholung.
   static const Color recovery = Color(0xFFFF5A1A);
@@ -118,17 +118,17 @@ abstract final class AlpColor {
   /// G2 Gerät dunkel: Puls-Spur.
   static const Color darkPulseTint = Color(0xFF2E2E2B);
 
-  /// G2 Gerät dunkel: Wach.
-  static const Color darkWake = Color(0xFF4A4A45);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color darkWake = Color(0xFF3A3558);
 
-  /// G2 Gerät dunkel: Tiefschlaf.
-  static const Color darkStageDeep = Color(0xFFEDEDE9);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color darkStageDeep = Color(0xFFC9C0FA);
 
-  /// G2 Gerät dunkel: Leichtschlaf.
-  static const Color darkStageLight = Color(0xFF9A9A94);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color darkStageLight = Color(0xFF8A7BD9);
 
-  /// G2 Gerät dunkel: REM.
-  static const Color darkStageRem = Color(0xFF5E5E59);
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color darkStageRem = Color(0xFF584C9C);
 
   /// G2 Gerät: Warntext.
   static const Color warning = Color(0xFF7A4F00);
@@ -253,38 +253,65 @@ abstract final class AlpColor {
   /// G3 Tagesblatt: G3: Taste auf der Notiz.
   static const Color noteAction = Color(0xFFF5F5F2);
 
-  /// G3 Tagesblatt: G3: Zone 1, graue Rampe.
-  static const Color zone1 = Color(0xFFD2D2CC);
+  /// G3.1 Bereichsfarbe (domain-recovery).
+  static const Color domainRecovery = Color(0xFF1B6294);
 
-  /// G3 Tagesblatt: G3: Zone 2.
-  static const Color zone2 = Color(0xFFB4B4AE);
+  /// G3.1 Bereichsfarbe (domain-recovery-bar).
+  static const Color domainRecoveryBar = Color(0xFFA9C6DE);
 
-  /// G3 Tagesblatt: G3: Zone 3.
-  static const Color zone3 = Color(0xFF8A8A84);
+  /// G3.1 Bereichsfarbe (domain-recovery-tint).
+  static const Color domainRecoveryTint = Color(0xFFD9E7F2);
 
-  /// G3 Tagesblatt: G3: Zone 4.
-  static const Color zone4 = Color(0xFF55554F);
+  /// G3.1 Bereichsfarbe (domain-sleep).
+  static const Color domainSleep = Color(0xFF5F48C5);
 
-  /// G3 Tagesblatt: G3: Zone 5.
-  static const Color zone5 = Color(0xFF1B1B1A);
+  /// G3.1 Bereichsfarbe (domain-sleep-bar).
+  static const Color domainSleepBar = Color(0xFFC3B9EE);
 
-  /// G3 Tagesblatt: G3: Zonenband 1 im Pulsdiagramm.
-  static const Color zoneTint1 = Color(0xFFEEEEEA);
+  /// G3.1 Bereichsfarbe (domain-sleep-tint).
+  static const Color domainSleepTint = Color(0xFFE4E0F6);
 
-  /// G3 Tagesblatt: G3: Zonenband 2.
-  static const Color zoneTint2 = Color(0xFFE8E8E3);
+  /// G3.1 Bereichsfarbe (domain-load).
+  static const Color domainLoad = Color(0xFF9D376A);
 
-  /// G3 Tagesblatt: G3: Zonenband 3.
-  static const Color zoneTint3 = Color(0xFFE1E1DB);
+  /// G3.1 Bereichsfarbe (domain-load-bar).
+  static const Color domainLoadBar = Color(0xFFE3B3CB);
 
-  /// G3 Tagesblatt: G3: Zonenband 4.
-  static const Color zoneTint4 = Color(0xFFD8D8D2);
+  /// G3.1 Bereichsfarbe (domain-load-tint).
+  static const Color domainLoadTint = Color(0xFFF3DDE8);
 
-  /// G3 Tagesblatt: G3: Zonenband 5.
-  static const Color zoneTint5 = Color(0xFFCDCDC7);
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zone1 = Color(0xFFE8C3D5);
 
-  /// G3 Tagesblatt: G3: Spur einer Schlafphase im Hypnogramm.
-  static const Color hypnoLane = Color(0xFFEDEDE9);
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zone2 = Color(0xFFD99BBB);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zone3 = Color(0xFFC8729C);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zone4 = Color(0xFF9D376A);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zone5 = Color(0xFF6B1E45);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zoneTint1 = Color(0xFFF3EEEE);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zoneTint2 = Color(0xFFF1E7E9);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zoneTint3 = Color(0xFFECDCE2);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zoneTint4 = Color(0xFFE2CBD4);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color zoneTint5 = Color(0xFFD2BFC7);
+
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color hypnoLane = Color(0xFFF0EEF8);
 
   /// G3 Tagesblatt: G3 dunkel: zweite Tintenstufe für Fließtext und Meta.
   static const Color darkInk2 = Color(0xFFCFCFCA);
@@ -340,38 +367,65 @@ abstract final class AlpColor {
   /// G3 Tagesblatt: G3 dunkel: Taste auf der Notiz.
   static const Color darkNoteAction = Color(0xFFEDEDE9);
 
-  /// G3 Tagesblatt: G3 dunkel: Zone 1, graue Rampe.
-  static const Color darkZone1 = Color(0xFF3A3A36);
+  /// G3.1 dunkel: Bereichsfarbe (domain-recovery).
+  static const Color darkDomainRecovery = Color(0xFF6FB6E6);
 
-  /// G3 Tagesblatt: G3 dunkel: Zone 2.
-  static const Color darkZone2 = Color(0xFF55554F);
+  /// G3.1 dunkel: Bereichsfarbe (domain-recovery-bar).
+  static const Color darkDomainRecoveryBar = Color(0xFF35566E);
 
-  /// G3 Tagesblatt: G3 dunkel: Zone 3.
-  static const Color darkZone3 = Color(0xFF7C7C76);
+  /// G3.1 dunkel: Bereichsfarbe (domain-recovery-tint).
+  static const Color darkDomainRecoveryTint = Color(0xFF1B2B38);
 
-  /// G3 Tagesblatt: G3 dunkel: Zone 4.
-  static const Color darkZone4 = Color(0xFFAEAEA9);
+  /// G3.1 dunkel: Bereichsfarbe (domain-sleep).
+  static const Color darkDomainSleep = Color(0xFFA898F0);
 
-  /// G3 Tagesblatt: G3 dunkel: Zone 5.
-  static const Color darkZone5 = Color(0xFFEDEDE9);
+  /// G3.1 dunkel: Bereichsfarbe (domain-sleep-bar).
+  static const Color darkDomainSleepBar = Color(0xFF463C80);
 
-  /// G3 Tagesblatt: G3 dunkel: Zonenband 1 im Pulsdiagramm.
-  static const Color darkZoneTint1 = Color(0xFF262624);
+  /// G3.1 dunkel: Bereichsfarbe (domain-sleep-tint).
+  static const Color darkDomainSleepTint = Color(0xFF28233F);
 
-  /// G3 Tagesblatt: G3 dunkel: Zonenband 2.
-  static const Color darkZoneTint2 = Color(0xFF2B2B28);
+  /// G3.1 dunkel: Bereichsfarbe (domain-load).
+  static const Color darkDomainLoad = Color(0xFFE58AB7);
 
-  /// G3 Tagesblatt: G3 dunkel: Zonenband 3.
-  static const Color darkZoneTint3 = Color(0xFF31312E);
+  /// G3.1 dunkel: Bereichsfarbe (domain-load-bar).
+  static const Color darkDomainLoadBar = Color(0xFF6A3452);
 
-  /// G3 Tagesblatt: G3 dunkel: Zonenband 4.
-  static const Color darkZoneTint4 = Color(0xFF393935);
+  /// G3.1 dunkel: Bereichsfarbe (domain-load-tint).
+  static const Color darkDomainLoadTint = Color(0xFF3A2130);
 
-  /// G3 Tagesblatt: G3 dunkel: Zonenband 5.
-  static const Color darkZoneTint5 = Color(0xFF44443F);
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZone1 = Color(0xFF4E2A3F);
 
-  /// G3 Tagesblatt: G3 dunkel: Spur einer Schlafphase im Hypnogramm.
-  static const Color darkHypnoLane = Color(0xFF262624);
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZone2 = Color(0xFF733A5A);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZone3 = Color(0xFF9E5380);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZone4 = Color(0xFFC86A9B);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZone5 = Color(0xFFE58AB7);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZoneTint1 = Color(0xFF262122);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZoneTint2 = Color(0xFF2E2428);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZoneTint3 = Color(0xFF3A2A32);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZoneTint4 = Color(0xFF48313B);
+
+  /// G3.1 Belastung: Zone oder Pulsdiagramm-Band.
+  static const Color darkZoneTint5 = Color(0xFF543C47);
+
+  /// G3.1 Schlaf: Hypnogramm-Rampe.
+  static const Color darkHypnoLane = Color(0xFF232130);
 }
 
 abstract final class AlpText {
