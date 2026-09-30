@@ -269,6 +269,124 @@ void main() {
     },
   );
 
+  test('a connect timeout while turningOn keeps a latched adapterOff blocker',
+      () async {
+    final adapter = _Adapter(BluetoothAdapterState.off);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    adapter.report(BluetoothAdapterState.turningOn);
+
+    engine.debugDeviceConnect = () async =>
+        throw TimeoutException('Timed out after 20s');
+    engine.debugConnectionStates = () => const Stream.empty();
+    expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    expect(engine.state.lastConnectFailedAt, isNull);
+    expect(engine.bandStatus.condition, BandCondition.bluetoothOff);
+  });
+
+  test('an accepted scan while turningOn keeps a latched adapterOff blocker',
+      () async {
+    final adapter = _Adapter(BluetoothAdapterState.off);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    adapter.report(BluetoothAdapterState.turningOn);
+
+    engine.debugStartScan = () async {};
+    expect(await engine.scan(), isNull);
+    expect(engine.bluetoothBlocker, BleBlocker.adapterOff);
+    expect(engine.bandStatus.condition, BandCondition.bluetoothOff);
+  });
+
+  test('a connect timeout with only unknown keeps a latched permission blocker',
+      () async {
+    final adapter = _Adapter(BluetoothAdapterState.unknown);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    engine.debugStartScan = () async =>
+        throw Exception('Need android.permission.BLUETOOTH_SCAN');
+    await expectLater(engine.scan(), throwsA(isA<BleUnavailableException>()));
+    expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+    engine.debugDeviceConnect = () async =>
+        throw TimeoutException('Timed out after 20s');
+    engine.debugConnectionStates = () => const Stream.empty();
+    expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+    expect(engine.state.lastConnectFailedAt, isNull);
+  });
+
+  for (final probeFailure in ['timeout', 'error']) {
+    for (final operation in ['scan', 'connect']) {
+      test('$operation keeps the permission latch after a probe $probeFailure '
+          'with last-known on', () async {
+        final adapter = _Adapter(BluetoothAdapterState.on);
+        final unknownAdapter = _Adapter(BluetoothAdapterState.unknown);
+        var failProbe = false;
+        final engine = BleEngine(
+          onRecord: (_, _) async {},
+          onState: (_) {},
+          adapterStateStream: () => !failProbe
+              ? adapter.freshStream()
+              : probeFailure == 'timeout'
+                  ? unknownAdapter.freshStream()
+                  : Stream.error(StateError('adapter probe failed')),
+        );
+        addTearDown(() async {
+          engine.dispose();
+          await adapter.close();
+          await unknownAdapter.close();
+        });
+
+        engine.debugStartScan = () async =>
+            throw Exception('Need android.permission.BLUETOOTH_SCAN');
+        await expectLater(engine.scan(), throwsA(isA<BleUnavailableException>()));
+        expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+        failProbe = true;
+        if (operation == 'scan') {
+          engine.debugStartScan = () async {};
+          expect(await engine.scan(), isNull);
+        } else {
+          engine.debugDeviceConnect = () async =>
+              throw TimeoutException('Timed out after 20s');
+          engine.debugConnectionStates = () => const Stream.empty();
+          expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+        }
+        expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+        expect(engine.state.lastConnectFailedAt, isNull);
+      });
+    }
+  }
+
   test('a blocker from the adapter clears when the adapter turns on', () async {
     final adapter = _Adapter(BluetoothAdapterState.unauthorized);
     final engine = BleEngine(

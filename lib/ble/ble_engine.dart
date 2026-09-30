@@ -2222,28 +2222,36 @@ class BleEngine {
   /// never a verdict, so wait past it, but never longer than [_blockerProbe].
   static const Duration _blockerProbe = Duration(seconds: 2);
 
-  Future<BluetoothAdapterState> _readAdapterState() async {
+  /// With [freshOnly], a failed probe returns `unknown`, never a cached `on`.
+  Future<BluetoothAdapterState> _readAdapterState({bool freshOnly = false}) async {
     try {
       final s = await _adapterStateStream()
           .firstWhere((s) => s != BluetoothAdapterState.unknown)
           .timeout(_blockerProbe,
-              onTimeout: () => _lastAdapterState);
+              onTimeout: () => freshOnly
+                  ? BluetoothAdapterState.unknown
+                  : _lastAdapterState);
       if (s != BluetoothAdapterState.unknown) _onAdapterState(s);
       return s;
     } catch (e) {
       _log('[BLE] adapter state probe failed: $e');
-      return _lastAdapterState;
+      return freshOnly ? BluetoothAdapterState.unknown : _lastAdapterState;
     }
   }
 
   Future<BleBlocker?> _detectBlocker() async =>
       classifyBleBlocker(adapterState: (await _readAdapterState()).name);
 
-  Future<BleBlocker?> _classifyRadioError(Object error) async {
-    final adapter = await _readAdapterState();
-    final blocker = classifyBleBlocker(adapterState: adapter.name, error: error);
-    if (blocker != null) _noteBlocker(blocker, adapter.name);
-    return blocker;
+  Future<({BleBlocker? blocker, BluetoothAdapterState adapter})>
+      _classifyRadioError(Object error) async {
+    final adapter = await _readAdapterState(freshOnly: true);
+    final knownAdapter = adapter == BluetoothAdapterState.unknown
+        ? _lastAdapterState
+        : adapter;
+    final blocker =
+        classifyBleBlocker(adapterState: knownAdapter.name, error: error);
+    if (blocker != null) _noteBlocker(blocker, knownAdapter.name);
+    return (blocker: blocker, adapter: adapter);
   }
 
   Future<void> refreshBluetoothBlocker() async {
@@ -2265,8 +2273,8 @@ class BleEngine {
       // Only the TRANSITION to on clears. A repeated `on` (every resume re-reads
       // the adapter) says nothing new, and would wipe a permission refusal that
       // Android reported in a scan error while the radio was already on. That
-      // one clears once startScan returns, even with no device found, or when
-      // connect succeeds or throws an error that is not a phone-level blocker.
+      // one clears on a successful connect. Scan acceptance and non-blocker
+      // connect errors clear it only when a fresh adapter probe reports on.
       _clearBlocker(adapter.name);
     }
   }
@@ -2391,7 +2399,9 @@ class BleEngine {
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
       // vanish into the reconnect loop as an ordinary failed attempt — retrying
       // silently forever against a stack that will never answer.
-      if (await _classifyRadioError(e) == null) {
+      final radioError = await _classifyRadioError(e);
+      if (radioError.blocker == null &&
+          radioError.adapter == BluetoothAdapterState.on) {
         _clearBlocker('on (connect error without blocker)');
       }
       _log('connect failed: $e');
