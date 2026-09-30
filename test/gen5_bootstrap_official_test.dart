@@ -26,6 +26,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -114,7 +115,7 @@ class _Rig {
 
   int bondRemovals = 0;
 
-  _Rig() {
+  _Rig({bool adapterOn = false}) {
     engine = BleEngine(
       onRecord: (_, _) async {},
       onState: (s) {
@@ -124,6 +125,9 @@ class _Rig {
         }
       },
       log: logs.add,
+      adapterStateStream: adapterOn
+          ? () => Stream.value(BluetoothAdapterState.on)
+          : null,
     );
     engine.debugNativeNameReader = (remoteId) async {
       nativeNameQueries.add(remoteId);
@@ -617,9 +621,10 @@ void main() {
 
     test('timeout: no reply within five seconds', () {
       fakeAsync((async) {
-        final rig = _Rig(); // nothing answers
+        final rig = _Rig(adapterOn: true); // radio works; HELLO does not answer
         expect(_run(rig, async, elapse: const Duration(seconds: 10)), isFalse);
         expect(rig.engine.helloFailureCount, 1);
+        expect(rig.engine.state.lastConnectFailedAt, isNull);
         expectNothingAfterHello(rig);
       });
     });

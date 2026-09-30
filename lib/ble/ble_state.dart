@@ -106,7 +106,8 @@ class BleUnavailableException implements Exception {
 ///
 /// String matching is unavoidable: flutter_blue_plus surfaces the Android
 /// permission refusal as a platform exception whose text is the only signal.
-/// The adapter state is checked first because it is the reliable one.
+/// The adapter state decides radio-off/unsupported errors. Android may report
+/// a missing scan permission only in the exception even while the radio is on.
 BleBlocker? classifyBleBlocker({String? adapterState, Object? error}) {
   switch (adapterState) {
     case 'unauthorized':
@@ -125,6 +126,10 @@ BleBlocker? classifyBleBlocker({String? adapterState, Object? error}) {
       s.contains('denied')) {
     return BleBlocker.permissionDenied;
   }
+  // A cached "must be turned on" error during cold start cannot overrule a
+  // usable or still-initializing adapter. Nor can exception text prove that
+  // this phone has no BLE radio.
+  if (adapterState != null) return null;
   if (s.contains('adapter is off') ||
       s.contains('bluetooth must be turned on') ||
       s.contains('poweredoff') ||
@@ -180,6 +185,7 @@ enum BandCondition {
 
   /// Syncs complete carrying no sensor data — the band's clock has lost sync.
   clockLost,
+  unreachable,
 
   connected,
   connecting,
@@ -207,9 +213,10 @@ class BandStatus {
   /// into [reason]'s English text, carried separately so a UI layer can
   /// re-render the reason in another language without re-parsing it.
   final int? bondRefusals;
+  final DateTime? lastConnectFailedAt;
 
   const BandStatus(this.condition, this.title, this.reason,
-      {this.fix, this.bondRefusals});
+      {this.fix, this.bondRefusals, this.lastConnectFailedAt});
 
   /// True for the states that need to be shown. The four ordinary link states
   /// (connected/connecting/scanning/disconnected) are the app's normal
@@ -237,6 +244,7 @@ BandStatus bandStatusFor({
   bool strapNeedsReboot = false,
   bool syncClockLost = false,
   int bondRefusals = 0,
+  DateTime? lastConnectFailedAt,
 }) {
   const repairFix = 'Forget the band in the phone’s Bluetooth settings, '
       'then pair it again here';
@@ -320,6 +328,18 @@ BandStatus bandStatusFor({
           'sync. The app keeps resetting it on every connect.',
       fix: 'Leave the band connected for a few minutes; if nothing arrives '
           'by tomorrow, pair it again',
+    );
+  }
+  // The reconnect loop uses "connecting" while waiting through backoff too.
+  // A failed attempt stays visible until the next real connect clears its stamp.
+  if (lastConnectFailedAt != null &&
+      (connection == 'disconnected' || connection == 'connecting')) {
+    return BandStatus(
+      BandCondition.unreachable,
+      'Band not reachable',
+      'The last connection attempt did not reach the band.',
+      fix: 'Try connecting again',
+      lastConnectFailedAt: lastConnectFailedAt,
     );
   }
   switch (connection) {

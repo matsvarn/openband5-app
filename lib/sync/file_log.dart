@@ -3,6 +3,8 @@
 // Writes to the app's external files dir on Android so it can be pulled with a
 // plain `adb pull` (no run-as needed):
 //   /storage/emulated/0/Android/data/wtf.openstrap.openstrap_edge/files/openstrap_sync.log
+// On iOS the log lives in Application Support: Documents is shared through
+// Files and the log contains band identity and health-adjacent diagnostics.
 //
 // Bounded: rotates to a single .1 sibling at [_maxBytes] so a 24/7 headless
 // process can't grow it without limit, and appends WITHOUT a per-line fsync —
@@ -28,15 +30,56 @@ class FileLog {
     if (_init) return;
     _init = true;
     try {
-      final dir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
+      Directory? dir;
+      if (Platform.isAndroid) {
+        try {
+          dir = await getExternalStorageDirectory();
+        } catch (_) {}
+      } else if (Platform.isIOS) {
+        dir = await getApplicationSupportDirectory();
+        await dir.create(recursive: true);
+        await _moveOldIosLogs(dir);
+      }
+      dir ??= await getApplicationDocumentsDirectory();
       _file = File('${dir.path}/openstrap_sync.log');
     } catch (_) {
       _file = null;
     }
   }
 
-  static Future<void> write(String line) async {
+  static Future<void> _moveOldIosLogs(Directory destination) async {
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      for (final name in ['openstrap_sync.log', 'openstrap_sync.log.1']) {
+        final old = File('${documents.path}/$name');
+        if (!await old.exists()) continue;
+        try {
+          final target = File('${destination.path}/$name');
+          if (await target.exists()) {
+            await old.delete();
+          } else {
+            await old.rename(target.path);
+          }
+        } catch (_) {
+          try {
+            await old.delete();
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Appends run one at a time. Unserialised, two in-flight appends each open
+  // the file at the same end offset and overwrite each other's line.
+  static Future<void> _tail = Future<void>.value();
+
+  static Future<void> write(String line) {
+    // Stamp at call time: the queue below can delay the write.
+    final at = DateTime.now().toIso8601String();
+    return _tail = _tail.then((_) => _append('$at $line\n'));
+  }
+
+  static Future<void> _append(String text) async {
     await _ensure();
     final f = _file;
     if (f == null) return;
@@ -44,7 +87,7 @@ class FileLog {
       if (_writesSinceCheck++ % _sizeCheckEvery == 0) {
         await _rotateIfNeeded(f);
       }
-      await f.writeAsString('$line\n', mode: FileMode.append);
+      await f.writeAsString(text, mode: FileMode.append);
     } catch (_) {}
   }
 

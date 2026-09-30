@@ -577,6 +577,13 @@ void main() {
                 'android.permission.BLUETOOTH_SCAN')),
         BleBlocker.permissionDenied,
       );
+      expect(
+        classifyBleBlocker(
+          adapterState: 'on',
+          error: Exception('Need android.permission.BLUETOOTH_SCAN'),
+        ),
+        BleBlocker.permissionDenied,
+      );
     });
 
     test('adapter off and no-BLE-radio are their own states', () {
@@ -590,6 +597,11 @@ void main() {
     test('a usable stack and an ordinary band failure classify as null', () {
       expect(classifyBleBlocker(adapterState: 'on'), isNull);
       expect(classifyBleBlocker(adapterState: 'unknown'), isNull);
+      final earlyError = Exception('Bluetooth must be turned on');
+      expect(classifyBleBlocker(adapterState: 'unknown', error: earlyError), isNull);
+      expect(classifyBleBlocker(adapterState: 'on', error: earlyError), isNull);
+      expect(classifyBleBlocker(adapterState: 'off', error: earlyError),
+          BleBlocker.adapterOff);
       expect(classifyBleBlocker(adapterState: 'turningOn'), isNull);
       expect(classifyBleBlocker(), isNull);
       // The band-side failures must NOT be swallowed as phone blockers.
@@ -600,6 +612,20 @@ void main() {
   });
 
   group('bandStatusFor is one renderable state, not six booleans', () {
+    test('a failed attempt has its own dated state while adapter is usable', () {
+      final failedAt = DateTime(2026, 9, 30, 0, 2);
+      final status = bandStatusFor(
+          connection: 'disconnected', lastConnectFailedAt: failedAt);
+      expect(status.condition, BandCondition.unreachable);
+      expect(status.lastConnectFailedAt, failedAt);
+      expect(bandStatusFor(connection: 'connecting', lastConnectFailedAt: failedAt)
+          .condition, BandCondition.unreachable);
+      expect(bandStatusFor(connection: 'connecting').condition,
+          BandCondition.connecting);
+      expect(bandStatusFor(connection: 'disconnected',
+          blocker: BleBlocker.adapterOff,
+          lastConnectFailedAt: failedAt).condition, BandCondition.bluetoothOff);
+    });
     test('every fault names itself, says why, and offers a way out', () {
       final faults = [
         bandStatusFor(
@@ -657,6 +683,32 @@ void main() {
             .reason,
         contains('5'),
       );
+    });
+
+    test('specific band failures outrank an old unreachable attempt', () {
+      final failedAt = DateTime(2026, 9, 30, 0, 3);
+      for (final (flags, expected) in [
+        ((paused: true, repair: false, unresponsive: false, clock: false),
+            BandCondition.reconnectPaused),
+        ((paused: false, repair: true, unresponsive: false, clock: false),
+            BandCondition.repairNeeded),
+        ((paused: false, repair: false, unresponsive: true, clock: false),
+            BandCondition.strapUnresponsive),
+        ((paused: false, repair: false, unresponsive: false, clock: true),
+            BandCondition.clockLost),
+      ]) {
+        expect(
+          bandStatusFor(
+            connection: 'disconnected',
+            lastConnectFailedAt: failedAt,
+            autoReconnectPaused: flags.paused,
+            needsRepairGuide: flags.repair,
+            strapNeedsReboot: flags.unresponsive,
+            syncClockLost: flags.clock,
+          ).condition,
+          expected,
+        );
+      }
     });
 
     test('a data-flow flag outranks the plain link state', () {

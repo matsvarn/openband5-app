@@ -299,6 +299,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                     title: 'Training',
                     subtitle: g3DayLong(DateTime.parse(_day)),
                     band: OBBandCapsule(
+                      bandStatus: widget.controller.bandStatus,
                       state: switch (widget.controller.band.connection) {
                         BandConnection.connected => OBBandState.live,
                         BandConnection.disconnected => OBBandState.off,
@@ -472,6 +473,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                       subtitle:
                           '${g3DayShort(DateTime.parse(_day))}${data.day.synthetic ? ' · Synthetische Daten' : ''}',
                       band: OBBandCapsule(
+                        bandStatus: widget.controller.bandStatus,
                         small: true,
                         state:
                             widget.controller.band.connection ==

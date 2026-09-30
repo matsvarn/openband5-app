@@ -9,12 +9,16 @@
 // simulator path, so this proves the write is correct, not that any real
 // strap sends these exact bytes.
 
+import 'dart:async';
+
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
 import 'package:openstrap_edge/ble/ble_state.dart'
-    show acquireSecondaryLinkSlot, releaseSecondaryLinkSlot;
+    show BleBlocker, BleUnavailableException, acquireSecondaryLinkSlot,
+        releaseSecondaryLinkSlot;
 import 'package:openstrap_edge/ble/hrs_link.dart';
 import 'package:openstrap_edge/data/db.dart';
 
@@ -33,6 +37,33 @@ const List<int> kHrWithTwoRr = <int>[
 ];
 
 void main() {
+  test('HR scan ignores cold-start radio text with adapter on', () async {
+    HrsLink.debugAdapterStateStream =
+        () => Stream.value(BluetoothAdapterState.on);
+    HrsLink.debugStartScan =
+        () async => throw Exception('Bluetooth must be turned on');
+    addTearDown(() {
+      HrsLink.debugAdapterStateStream = null;
+      HrsLink.debugStartScan = null;
+    });
+
+    final results = <BandCandidate>[];
+    await HrsLink.scanFor(
+      kBleHrs,
+      owner: Object(),
+      onResults: results.addAll,
+    );
+    expect(results, isEmpty);
+
+    HrsLink.debugStartScan =
+        () async => throw Exception('Need android.permission.BLUETOOTH_SCAN');
+    await expectLater(
+      HrsLink.scanFor(kBleHrs, owner: Object(), onResults: (_) {}),
+      throwsA(isA<BleUnavailableException>()
+          .having((e) => e.blocker, 'blocker', BleBlocker.permissionDenied)),
+    );
+  });
+
   group('substrate write', () {
     const deviceId = 'hrs-0a1b2c3d';
 

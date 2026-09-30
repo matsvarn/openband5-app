@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../../ble/band_status_l10n.dart' show localizedBandStatus;
+import '../../ble/ble_state.dart' show BandCondition, BandStatus;
 
 import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron, OBLed;
@@ -81,6 +83,7 @@ enum OBBandState { live, off, none }
 
 class OBBandCapsule extends StatelessWidget {
   final OBBandState state;
+  final BandStatus? bandStatus;
 
   /// Battery percent from the band; null shows "—", never a guess.
   final int? battery;
@@ -92,13 +95,33 @@ class OBBandCapsule extends StatelessWidget {
     this.battery,
     this.small = false,
     this.onTap,
+    this.bandStatus,
   });
 
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final h = small ? 32.0 : 40.0;
-    final (Widget lead, String text) = switch (state) {
+    final status = bandStatus;
+    final statusText = switch (status?.condition) {
+      BandCondition.connecting => 'Verbindet …',
+      BandCondition.scanning => g3BandScanningLabel,
+      BandCondition.unreachable => 'nicht erreichbar',
+      BandCondition.bluetoothOff => 'Bluetooth aus',
+      BandCondition.bluetoothDenied => 'Bluetooth gesperrt',
+      _ when status?.isFault == true => localizedBandStatus(
+        context,
+        status!,
+      ).title,
+      _ => null,
+    };
+    final displayState = switch (status?.condition) {
+      BandCondition.connected => OBBandState.live,
+      null => state,
+      BandCondition.disconnected when state == OBBandState.none => state,
+      _ => OBBandState.off,
+    };
+    final (Widget lead, String text) = switch (displayState) {
       OBBandState.live => (
         OBLed(on: true, size: small ? 7 : 8),
         battery == null ? '—' : '$battery %',
@@ -112,17 +135,17 @@ class OBBandCapsule extends StatelessWidget {
             border: Border.all(color: g.muted, width: 1.5),
           ),
         ),
-        'getrennt',
+        statusText ?? 'getrennt',
       ),
       OBBandState.none => (
         Icon(LucideIcons.plus, size: 14, color: g.ink),
         'Band',
       ),
     };
-    final label = switch (state) {
+    final label = switch (displayState) {
       OBBandState.live =>
         'Band verbunden, Akku ${battery == null ? 'unbekannt' : '$battery Prozent'}',
-      OBBandState.off => 'Band getrennt',
+      OBBandState.off => statusText ?? 'Band getrennt',
       OBBandState.none => 'Band verbinden',
     };
     return _Hit(
