@@ -202,7 +202,7 @@ void main() {
     expect(find.text('über deinem Median 68'), findsOneWidget);
     expect(find.text('22:20 ins Bett'), findsOneWidget);
     expect(find.text('Bedarf 8h05 · bis 06:54'), findsOneWidget);
-    expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
+    expect(find.text('Zonen nach Bestätigung'), findsNothing);
     expect(tester.widget<OBSyncState>(find.byType(OBSyncState)).text, 'Daten bis 09:37 · Nacht lückenlos');
     expect(find.textContaining('Letzter Bandwert'), findsNothing);
     expect(find.text('lückenlos'), findsNothing);

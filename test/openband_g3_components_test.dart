@@ -549,7 +549,7 @@ void main() {
         ),
       );
       expect(find.byType(OBZoneStrip), findsNothing);
-      expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
+      expect(find.text('Zonen nach Bestätigung'), findsNothing);
     });
 
     testWidgets('missing week values are hollow slots, not short bars', (
