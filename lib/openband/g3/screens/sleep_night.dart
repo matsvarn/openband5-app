@@ -106,7 +106,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
             ),
             const SizedBox(height: 18),
             chrome.OBSegmented(
-              items: const ['Puls', 'HRV', 'Atmung'],
+              items: const ['Puls', 'HRV', 'Atemfrequenz'],
               selected: _kind.index,
               onChanged: _select,
               expand: true,
@@ -152,7 +152,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             Text(switch (_kind) {
                               NightSignalKind.pulse => 'RUHEPULS',
                               NightSignalKind.hrv => 'HRV',
-                              NightSignalKind.respiration => 'ATMUNG',
+                              NightSignalKind.respiration => 'ATEMFREQUENZ',
                             }, style: g.caps()),
                             const Spacer(),
                             Text(status(), style: g.t(12, 16, color: g.muted)),
@@ -220,7 +220,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             '${switch (_kind) {
                               NightSignalKind.pulse => 'PULS',
                               NightSignalKind.hrv => 'HRV',
-                              NightSignalKind.respiration => 'ATMUNG',
+                              NightSignalKind.respiration => 'ATEMFREQUENZ',
                             }} · NACHT',
                             style: g.caps(),
                           ),
