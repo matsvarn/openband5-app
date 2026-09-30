@@ -12,7 +12,15 @@ import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/g3/journal_parts.dart'
-    show OBCheckIn, OBPatternCard, OBPatternDotPlot, OBSwitch;
+    show
+        OBCheckIn,
+        OBCheckInDone,
+        OBJournalDayRow,
+        OBPatternCard,
+        OBPatternDotPlot,
+        OBSwitch;
+import 'package:openstrap_edge/openband/g3/metrics.dart'
+    show G3LabelRow, OBChip, OBChipKind;
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 
@@ -854,6 +862,13 @@ void main() {
       await mount(tester, settle: false);
       await tester.pump();
       expect(find.text('Vergleich wird geladen.'), findsOneWidget);
+      G3LabelRow patternLabel() => tester.widget<G3LabelRow>(
+        find.descendant(
+          of: find.byType(OBPatternCard),
+          matching: find.byType(G3LabelRow),
+        ),
+      );
+      expect(patternLabel().arrow, isFalse);
       patternRepo.pending = null;
       patternRepo.failPattern = true;
       pending.completeError(StateError('pattern read failed'));
@@ -863,6 +878,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Erneut'), findsOneWidget);
+      expect(patternLabel().arrow, isFalse);
       patternRepo.failPattern = false;
       patternRepo.partialPattern = true;
       await tester.ensureVisible(find.text('Erneut'));
@@ -870,6 +886,7 @@ void main() {
       await tester.tap(find.text('Erneut'));
       await tester.pumpAndSettle();
       expect(find.text('Teilweise auswertbar'), findsOneWidget);
+      expect(patternLabel().arrow, isTrue);
       expect(find.text('Vergleich konnte nicht geladen werden.'), findsNothing);
     },
   );
@@ -968,6 +985,56 @@ void main() {
     expect(find.text('Teilweise auswertbar'), findsOneWidget);
   });
 
+  testWidgets('negative pattern minutes use the typographic minus', (
+    tester,
+  ) async {
+    const model = CaffeineSleepPattern(
+      kind: CaffeineSleepPatternKind.meaningful,
+      pairedN: 12,
+      yesNights: 5,
+      noNights: 7,
+      delta: -27,
+      endDay: '2026-09-15',
+      startDay: '2026-08-17',
+      nights: 30,
+      algoVersion: 1,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: const G3JournalPatternScreen(pattern: G3JournalPattern(model)),
+      ),
+    );
+    expect(find.text('−27'), findsOneWidget);
+    expect(find.text('-27'), findsNothing);
+  });
+
+  testWidgets('Journal answer and history chips share the tag component', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: Scaffold(
+          body: Column(
+            children: [
+              const OBCheckInDone(total: 1, answers: ['Alkohol: Nein']),
+              OBJournalDayRow(
+                title: 'Gestern',
+                summary: null,
+                chips: const ['Alkohol: Nein'],
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    final chips = tester.widgetList<OBChip>(find.byType(OBChip)).toList();
+    expect(chips, hasLength(2));
+    expect(chips.every((chip) => chip.kind == OBChipKind.tag), isTrue);
+  });
+
   testWidgets(
     'history refusal names the producer count and unknown stays generic',
     (tester) async {
@@ -1050,10 +1117,9 @@ void main() {
     }
 
     expect((baseline('HEUTE') - baseline('Anpassen ›')).abs(), lessThan(1));
-    expect(
-      (baseline('HEUTE BEANTWORTET') - baseline('1 beantwortet')).abs(),
-      lessThan(1),
-    );
+    expect(find.text('BEANTWORTET'), findsOneWidget);
+    expect(find.text('HEUTE BEANTWORTET'), findsNothing);
+    expect(find.text('1 beantwortet'), findsNothing);
     final action = find.ancestor(
       of: find.text('Anpassen ›'),
       matching: find.byType(TextButton),
@@ -1078,6 +1144,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Di 29.09'), findsWidgets);
     expect(find.textContaining('Di 2909'), findsNothing);
+  });
+
+  testWidgets('Journal title opens the G3 day picker', (tester) async {
+    await mount(tester);
+    await tester.tap(find.text('Journal').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Datum wählen'), findsOneWidget);
+    expect(find.text('Gespeicherte Nächte'), findsOneWidget);
+  });
+
+  testWidgets('empty past days show a muted title without repeated summary', (
+    tester,
+  ) async {
+    await mount(tester);
+    expect(find.text('So 13.09'), findsOneWidget);
+    expect(find.text('nichts eingetragen'), findsNothing);
+  });
+
+  testWidgets('custom question row opens its sheet', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3JournalCustomize(repository: repo),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Eigene Frage'));
+    await tester.pumpAndSettle();
+    expect(find.byType(G3JournalNewQuestionSheet), findsOneWidget);
   });
 
   testWidgets('Journal detail info controls open explanations', (tester) async {

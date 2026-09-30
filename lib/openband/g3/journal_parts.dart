@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'count_copy.dart';
 import 'g3_theme.dart';
+import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind;
 
 class OBCheckIn extends StatelessWidget {
   const OBCheckIn({
@@ -180,15 +181,7 @@ class OBCheckInDone extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              for (final answer in answers)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: g.pressed(radius: 14),
-                  child: Text(answer, style: g.t(12, 16, color: g.ink2)),
-                ),
+              for (final answer in answers) OBChip(OBChipKind.tag, answer),
             ],
           ),
           const SizedBox(height: 12),
@@ -418,7 +411,8 @@ class OBJournalDayRow extends StatelessWidget {
     this.chips = const [],
     this.count,
   });
-  final String title, summary;
+  final String title;
+  final String? summary;
   final VoidCallback onTap;
   final List<String> chips;
   final String? count;
@@ -444,38 +438,32 @@ class OBJournalDayRow extends StatelessWidget {
                       Expanded(
                         child: Text(
                           title,
-                          style: g.t(15, 19, weight: FontWeight.w700),
+                          style: g.t(
+                            15,
+                            19,
+                            weight: FontWeight.w700,
+                            color: chips.isEmpty ? g.muted : g.ink,
+                          ),
                         ),
                       ),
                       if (count != null)
                         Text(count!, style: g.t(12, 16, color: g.muted)),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  if (chips.isEmpty)
-                    Text(summary, style: g.t(13, 17, color: g.muted))
-                  else
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: [
-                        for (final chip in chips)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: g.chip,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              chip,
-                              style: g.t(11, 16, color: g.ink2),
-                            ),
-                          ),
-                      ],
-                    ),
+                  if (summary != null || chips.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    if (chips.isEmpty)
+                      Text(summary!, style: g.t(13, 17, color: g.muted))
+                    else
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: [
+                          for (final chip in chips)
+                            OBChip(OBChipKind.tag, chip),
+                        ],
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -592,6 +580,7 @@ class OBPatternCard extends StatelessWidget {
     this.loading = false,
     this.onRetry,
     this.partial = false,
+    this.onOpen,
   });
   final String title, detail;
   final int? have;
@@ -599,107 +588,110 @@ class OBPatternCard extends StatelessWidget {
   final String? footer;
   final bool loading, partial;
   final VoidCallback? onRetry;
+  final VoidCallback? onOpen;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final awaiting = have != null && need != null && have! < need!;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: g.raised(radius: 22),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(child: Text('MUSTER ›', style: g.caps())),
-              Text(
-                loading
-                    ? 'wird geladen'
-                    : onRetry != null
-                    ? 'nicht verfügbar'
-                    : partial
-                    ? 'Teilweise auswertbar'
-                    : awaiting
-                    ? 'noch kein Vergleich'
-                    : title,
-                style: g.t(13, 17, color: g.muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (loading)
-            Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  child: Text('…', style: g.t(18, 19, color: g.ink2)),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Vergleich wird geladen.',
-                    style: g.t(14, 19, color: g.ink2),
+    return InkWell(
+      onTap: onOpen,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: g.raised(radius: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            G3LabelRow(
+              'MUSTER',
+              arrow: onOpen != null,
+              note: loading
+                  ? 'wird geladen'
+                  : onRetry != null
+                  ? 'nicht verfügbar'
+                  : partial
+                  ? 'Teilweise auswertbar'
+                  : awaiting
+                  ? 'noch kein Vergleich'
+                  : title,
+            ),
+            const SizedBox(height: 14),
+            if (loading)
+              Row(
+                children: [
+                  SizedBox(
+                    width: 18,
+                    child: Text('…', style: g.t(18, 19, color: g.ink2)),
                   ),
-                ),
-              ],
-            )
-          else if (onRetry != null)
-            Row(
-              children: [
-                Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(detail, style: g.t(14, 19, color: g.ink2)),
-                ),
-                TextButton(onPressed: onRetry, child: const Text('Erneut')),
-              ],
-            )
-          else if (awaiting)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
-                          style: g.t(15, 19, weight: FontWeight.w700),
-                        ),
-                        Text(detail, style: g.t(13, 17, color: g.ink2)),
-                      ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Vergleich wird geladen.',
+                      style: g.t(14, 19, color: g.ink2),
                     ),
                   ),
-                ),
-              ],
-            )
-          else ...[
-            Text(
-              have == null ? '—' : title,
-              style: g.t(23, 27, weight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(detail, style: g.t(14, 19, color: g.ink2)),
+                ],
+              )
+            else if (onRetry != null)
+              Row(
+                children: [
+                  Icon(LucideIcons.triangleAlert, size: 18, color: g.ink),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(detail, style: g.t(14, 19, color: g.ink2)),
+                  ),
+                  TextButton(onPressed: onRetry, child: const Text('Erneut')),
+                ],
+              )
+            else if (awaiting)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('$have', style: g.t(56, 56, weight: FontWeight.w700)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'von $need Tag-Nacht-${g3CountNoun(need!, 'Paar', 'Paaren')}',
+                            style: g.t(15, 19, weight: FontWeight.w700),
+                          ),
+                          Text(detail, style: g.t(13, 17, color: g.ink2)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              Text(
+                have == null ? '—' : title,
+                style: g.t(23, 27, weight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(detail, style: g.t(14, 19, color: g.ink2)),
+            ],
+            if (!loading &&
+                onRetry == null &&
+                have != null &&
+                need != null) ...[
+              const SizedBox(height: 16),
+              OBPatternProgress(have: have!.clamp(0, need!), need: need!),
+            ],
+            if (!loading && onRetry == null) ...[
+              const SizedBox(height: 10),
+              Text(
+                footer ??
+                    (have == null || need == null
+                        ? '—'
+                        : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
+                style: g.t(13, 17, weight: FontWeight.w700),
+              ),
+            ],
           ],
-          if (!loading && onRetry == null && have != null && need != null) ...[
-            const SizedBox(height: 16),
-            OBPatternProgress(have: have!.clamp(0, need!), need: need!),
-          ],
-          if (!loading && onRetry == null) ...[
-            const SizedBox(height: 10),
-            Text(
-              footer ??
-                  (have == null || need == null
-                      ? '—'
-                      : '$have von $need ${g3CountNoun(need!, 'Paar', 'Paaren')} · noch ${(need! - have!).clamp(0, need!)}'),
-              style: g.t(13, 17, weight: FontWeight.w700),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
