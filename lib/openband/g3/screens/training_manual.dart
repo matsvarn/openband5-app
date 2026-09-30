@@ -213,19 +213,26 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
           padding: const EdgeInsets.fromLTRB(0, 12, 0, 20),
           child: Column(
             children: [
-              OBPageHeader.modal(
-                title: 'NACHTRAGEN',
-                backLabel: step > 0 ? 'Zurück' : 'Abbrechen',
-                leadingIcon: step > 0 ? LucideIcons.chevronLeft : LucideIcons.x,
-                onBack: () {
-                  if (saving) return;
-                  if (step > 0) {
-                    setState(() => step--);
-                  } else {
-                    Navigator.of(context).maybePop();
-                  }
-                },
-              ),
+              if (saving)
+                SizedBox(
+                  height: 44,
+                  child: Center(child: Text('NACHTRAGEN', style: g.caps())),
+                )
+              else
+                OBPageHeader.modal(
+                  title: 'NACHTRAGEN',
+                  backLabel: step > 0 ? 'Zurück' : 'Abbrechen',
+                  leadingIcon: step > 0
+                      ? LucideIcons.chevronLeft
+                      : LucideIcons.x,
+                  onBack: () {
+                    if (step > 0) {
+                      setState(() => step--);
+                    } else {
+                      Navigator.of(context).maybePop();
+                    }
+                  },
+                ),
               Text(
                 'Schritt ${step + 1} von 3',
                 maxLines: 1,
