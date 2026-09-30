@@ -395,7 +395,7 @@ class _OpenBandCycleMediansState extends State<OpenBandCycleMedians> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                OBPageHeader(title: 'Zyklustage', subtitle: '', onInfo: _info),
+                G2PageHeader(title: 'Zyklustage', subtitle: '', onInfo: _info),
                 ..._body(p),
                 if (widget.synthetic) const _MediansSyntheticFooter(),
               ],

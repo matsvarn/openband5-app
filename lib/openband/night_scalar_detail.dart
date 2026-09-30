@@ -9,7 +9,7 @@ import '../data/day_label.dart';
 import '../ui2/app_shell.dart' show pushFullScreen;
 import 'controller.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented;
+import 'health.dart' show G2Segmented;
 import 'journal_controls.dart';
 import 'calendar_line.dart';
 import 'night_signals.dart';
@@ -795,7 +795,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: widget.label,
                 backText: widget.backText,
                 subtitle: '',
@@ -820,7 +820,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
                     if (!_temperature ||
                         snap?.hasComparableQuantity == true) ...[
                       const SizedBox(height: 20),
-                      OBSegmented(
+                      G2Segmented(
                         labels: const ['7 Nächte', '30 Nächte', '90 Nächte'],
                         selected: _nightOptions.indexOf(_nights),
                         onChanged: (i) {

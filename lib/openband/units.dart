@@ -135,7 +135,7 @@ class UnitsSettingsView extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: OBPageHeader(
+                child: G2PageHeader(
                   title: _s(context, 'Einheiten', 'Units'),
                   subtitle: '',
                   onBack: busy ? () {} : null,

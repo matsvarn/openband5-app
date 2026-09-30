@@ -196,7 +196,7 @@ class _OpenBandCycleMeasurementsState extends State<OpenBandCycleMeasurements> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: 'Messwerte', subtitle: '', onInfo: _info),
+            G2PageHeader(title: 'Messwerte', subtitle: '', onInfo: _info),
             ..._body(p),
             if (widget.synthetic) const _MeasurementsSyntheticFooter(),
           ],

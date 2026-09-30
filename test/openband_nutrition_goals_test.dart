@@ -190,7 +190,7 @@ void main() {
               home: Scaffold(
                 body: Center(
                   child: StatefulBuilder(
-                    builder: (context, setState) => OBSegmented(
+                    builder: (context, setState) => G2Segmented(
                       compact: true,
                       labels: const ['g', '%'],
                       selected: selected,
@@ -668,7 +668,7 @@ void main() {
       expect(makro.height, lessThan(50));
       expect(tester.getSize(find.text('g').first).width, greaterThan(8));
       expect(tester.getSize(find.text('%').first).width, greaterThan(8));
-      expect(tester.getSize(find.byType(OBSegmented)).width, 146);
+      expect(tester.getSize(find.byType(G2Segmented)).width, 146);
       expect(
         tester
             .getSize(find.byKey(const ValueKey('nutrition-goal-energy')))
@@ -689,7 +689,7 @@ void main() {
       );
       expect(narrowEnergy.style!.fontSize, 28);
       expect(tester.getSize(find.text('2000').first).height, lessThan(50));
-      expect(tester.getSize(find.byType(OBSegmented)).width, 102);
+      expect(tester.getSize(find.byType(G2Segmented)).width, 102);
       await expectLater(
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/nutrition-goal-editor-320.png'),

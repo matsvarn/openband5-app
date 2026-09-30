@@ -501,7 +501,7 @@ class _OpenBandCycleState extends State<OpenBandCycle> {
             key: const ValueKey('cycle-overview'),
             padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + inset),
             children: [
-              OBPageHeader(title: 'Zyklus', subtitle: '', onInfo: _info),
+              G2PageHeader(title: 'Zyklus', subtitle: '', onInfo: _info),
               _CycleDayRow(day: _day, onPick: _pickDay),
               const SizedBox(height: 12),
               if (_readError)
@@ -826,7 +826,7 @@ class _OpenBandCycleSettingsState extends State<OpenBandCycleSettings> {
           key: const ValueKey('cycle-settings'),
           padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + inset),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Zyklus',
               subtitle: '',
               onInfo: () => showOpenBandJournalInfo(
@@ -1189,7 +1189,7 @@ class _CycleStartEditorState extends State<_CycleStartEditor> {
           key: const ValueKey('cycle-start'),
           padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + inset),
           children: [
-            const OBPageHeader(title: 'Beginn', subtitle: ''),
+            const G2PageHeader(title: 'Beginn', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: OBSettingsValueRow(
@@ -1494,7 +1494,7 @@ class _CycleObservationEditorState extends State<_CycleObservationEditor> {
           key: const ValueKey('cycle-observation'),
           padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + inset),
           children: [
-            const OBPageHeader(title: 'Beobachtung', subtitle: ''),
+            const G2PageHeader(title: 'Beobachtung', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: OBSettingsValueRow(
@@ -1823,7 +1823,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
               key: const ValueKey('cycle-history'),
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               children: [
-                OBPageHeader(
+                G2PageHeader(
                   title: 'Verlauf',
                   subtitle: '',
                   onInfo: () => showOpenBandJournalInfo(
@@ -2328,7 +2328,7 @@ class _CycleDayPickerState extends State<_CycleDayPicker> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: widget.title, subtitle: ''),
+            G2PageHeader(title: widget.title, subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(

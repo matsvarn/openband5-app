@@ -116,7 +116,7 @@ import '../../notify/battery_forecast.dart';
 import '../../state/prefs.dart' show Prefs;
 import '../../sync/paired_device.dart' show cleanDeviceLabel;
 import '../../state/app_state.dart';
-import '../../openband/theme.dart' show OBPageHeader;
+import '../../openband/theme.dart' show G2PageHeader;
 import '../onboarding/pairing.dart' show PairingScreen;
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
@@ -1476,7 +1476,7 @@ class MyDevicesView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: OBPageHeader(
+            child: G2PageHeader(
               title: l?.devicesMySources ?? 'My sources',
               subtitle: '',
             ),

@@ -7,7 +7,7 @@ import '../data/journal_fields.dart';
 import 'calendar.dart';
 import 'calendar_line.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented;
+import 'health.dart' show G2Segmented;
 import 'journal_controls.dart';
 import 'journal_value_editor.dart';
 import 'settings_controls.dart';
@@ -269,7 +269,7 @@ class _OpenBandWeightState extends State<OpenBandWeight> {
           key: const ValueKey('weight-scroll'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Gewicht',
               subtitle: '',
               onInfo: _showInfo,
@@ -304,7 +304,7 @@ class _OpenBandWeightState extends State<OpenBandWeight> {
       ],
       if (latest != null) ...[
         const SizedBox(height: 12),
-        OBSegmented(
+        G2Segmented(
           labels: const ['7 Tage', '30 Tage', '90 Tage'],
           selected: const [7, 30, 90].indexOf(_days),
           onChanged: _selectDays,
@@ -602,7 +602,7 @@ class _WeightDatePageState extends State<_WeightDatePage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Datum', subtitle: ''),
+            const G2PageHeader(title: 'Datum', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 10),
               child: OBCalendar(

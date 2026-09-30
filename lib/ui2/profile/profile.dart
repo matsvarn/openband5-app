@@ -582,7 +582,7 @@ class ProfileHomeView extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title:
                     releaseReduced &&
                         Localizations.localeOf(c).languageCode == 'de'

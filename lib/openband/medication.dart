@@ -8,7 +8,7 @@ import '../data/day_label.dart';
 import 'alp_tokens.dart';
 import 'confirm_sheet.dart';
 import 'domain.dart';
-import 'health.dart' show OBSegmented;
+import 'health.dart' show G2Segmented;
 import 'journal_controls.dart';
 import 'notification_settings.dart';
 import 'settings_controls.dart';
@@ -240,7 +240,7 @@ class _OpenBandMedicationsState extends State<OpenBandMedications> {
           key: const ValueKey('medication-main'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Medikamente',
               subtitle: '',
               onInfo: _info,
@@ -560,7 +560,7 @@ class _MedicationRecordState extends State<_MedicationRecord> {
           key: const ValueKey('medication-record'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            const OBPageHeader(title: 'Einnahme', subtitle: ''),
+            const G2PageHeader(title: 'Einnahme', subtitle: ''),
             OBCard(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -599,7 +599,7 @@ class _MedicationRecordState extends State<_MedicationRecord> {
               ),
             ),
             const SizedBox(height: 12),
-            OBSegmented(
+            G2Segmented(
               labels: const ['Genommen', 'Ausgelassen'],
               selected: _selected,
               onChanged: _select,
@@ -788,7 +788,7 @@ class _MedicationHistoryState extends State<_MedicationHistory> {
           key: const ValueKey('medication-history'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Verlauf',
               subtitle: '',
               onInfo: () => showOpenBandJournalInfo(
@@ -978,7 +978,7 @@ class _MedicationPlansState extends State<_MedicationPlans> {
             key: const ValueKey('medication-plans'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Pläne',
                 subtitle: '',
                 onInfo: () => showOpenBandJournalInfo(
@@ -1096,7 +1096,7 @@ class _MedicationEnded extends StatelessWidget {
           key: const ValueKey('medication-ended'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(
+            G2PageHeader(
               title: 'Beendete Pläne',
               subtitle: '',
               onInfo: () => showOpenBandJournalInfo(
@@ -1367,7 +1367,7 @@ class _MedicationPlanEditorState extends State<_MedicationPlanEditor> {
             key: const ValueKey('medication-editor'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: title,
                 subtitle: '',
                 onBack: () async {
@@ -1662,7 +1662,7 @@ class _MedicationTimeEditorState extends State<_MedicationTimeEditor> {
           key: const ValueKey('medication-time'),
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
-            OBPageHeader(title: 'Zeit', subtitle: '', onBack: _discard),
+            G2PageHeader(title: 'Zeit', subtitle: '', onBack: _discard),
               OBCard(
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 child: _medStack(context)

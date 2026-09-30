@@ -213,7 +213,7 @@ ThemeData openBandTheme(Brightness brightness) {
   );
 }
 
-class OBPageHeader extends StatelessWidget {
+class G2PageHeader extends StatelessWidget {
   final String title, subtitle;
   final String backLabel;
 
@@ -226,7 +226,7 @@ class OBPageHeader extends StatelessWidget {
 
   /// Space under the header; Paper puts a day pill 4 pt below it.
   final double bottom;
-  const OBPageHeader({
+  const G2PageHeader({
     super.key,
     required this.title,
     required this.subtitle,

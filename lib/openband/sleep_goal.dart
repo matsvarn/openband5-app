@@ -114,7 +114,7 @@ class _OpenBandSleepGoalState extends State<OpenBandSleepGoal> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     children: [
-                      OBPageHeader(
+                      G2PageHeader(
                         title: 'Schlafziel',
                         backText: 'Schlaf',
                         subtitle: 'Ab ${obDate(widget.day)}',

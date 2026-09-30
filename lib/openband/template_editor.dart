@@ -530,7 +530,7 @@ class _OpenBandTemplateEditorState extends State<OpenBandTemplateEditor> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
+              child: G2PageHeader(
                 title: widget.template == null
                     ? 'Neue Vorlage'
                     : 'Vorlage bearbeiten',

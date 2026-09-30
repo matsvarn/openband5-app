@@ -218,10 +218,10 @@ void main() {
     await tester.tap(find.text('Nachtverlauf'));
     await tester.pumpAndSettle();
     expect(find.byType(OpenBandNightSignals), findsOneWidget);
-    final tabs = tester.widget<OBSegmented>(
+    final tabs = tester.widget<G2Segmented>(
       find.byWidgetPredicate(
         (widget) =>
-            widget is OBSegmented &&
+            widget is G2Segmented &&
             widget.labels.contains('Puls') &&
             widget.labels.contains('Atmung'),
       ),

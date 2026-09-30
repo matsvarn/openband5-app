@@ -149,7 +149,7 @@ void main() {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: const [
-              OBMetricCard(
+              G2MetricCard(
                 key: preciseKey,
                 label: 'Atmung präzise',
                 unit: '/min',
@@ -158,7 +158,7 @@ void main() {
                 color: Colors.blue,
                 digits: 1,
               ),
-              OBMetricCard(
+              G2MetricCard(
                 key: defaultKey,
                 label: 'Atmung Standard',
                 unit: '/min',
@@ -166,7 +166,7 @@ void main() {
                 icon: Icons.air,
                 color: Colors.blue,
               ),
-              OBMetricCard(
+              G2MetricCard(
                 key: missingKey,
                 label: 'Atmung fehlt',
                 unit: '/min',
@@ -175,7 +175,7 @@ void main() {
                 color: Colors.blue,
                 digits: 1,
               ),
-              OBMetricCard(
+              G2MetricCard(
                 key: roundedKey,
                 label: 'Atmung rundet',
                 unit: '/min',

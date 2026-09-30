@@ -176,7 +176,7 @@ Future<void> reviewMountImportReceipt(
             key: const ValueKey('import-receipt-scroll'),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              OBPageHeader(
+              G2PageHeader(
                 title: 'Datenimport',
                 subtitle: '',
                 onBack: () {},
@@ -5643,7 +5643,7 @@ void main() {
 
         Future<void> tapTab(String label) async {
           final tab = find.descendant(
-            of: find.byType(OBSegmented),
+            of: find.byType(G2Segmented),
             matching: find.text(label),
           );
           expect(tab.hitTestable(), findsOneWidget);
@@ -18905,10 +18905,10 @@ void main() {
               find.byType(OBNightSignalChart).evaluate().isNotEmpty,
           'Night signals did not load.',
         );
-        final nightTabs = tester.widget<OBSegmented>(
+        final nightTabs = tester.widget<G2Segmented>(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBSegmented &&
+                widget is G2Segmented &&
                 widget.labels.contains('Puls') &&
                 widget.labels.contains('HRV'),
           ),
@@ -19487,7 +19487,7 @@ void main() {
         }
 
         Future<void> tapCard(int index) async {
-          final cards = find.byType(OBMetricCard);
+          final cards = find.byType(G2MetricCard);
           await tester.ensureVisible(cards.at(index));
           await tester.pumpAndSettle();
           await tester.tap(cards.at(index));
@@ -19551,7 +19551,7 @@ void main() {
         }) {
           final cards = find.byWidgetPredicate(
             (widget) =>
-                widget is OBMetricCard &&
+                widget is G2MetricCard &&
                 (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
           );
           expect(cards, findsNWidgets(2));
@@ -19641,7 +19641,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
@@ -19794,19 +19794,19 @@ void main() {
         await openGallery(scale: 2, seed: seedPair);
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
         );
         await tester.pumpAndSettle();
-        expect(find.byType(OBMetricCard), findsNWidgets(2));
+        expect(find.byType(G2MetricCard), findsNWidgets(2));
         await capture('night-cards-overview-2x');
         await tester.tap(find.text('Gesundheit'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
@@ -19815,7 +19815,7 @@ void main() {
         expect(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBMetricCard &&
+                widget is G2MetricCard &&
                 (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
           ),
           findsNWidgets(2),
@@ -19834,15 +19834,15 @@ void main() {
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.byWidgetPredicate(
-            (widget) => widget is OBMetricCard && widget.label == 'HRV',
+            (widget) => widget is G2MetricCard && widget.label == 'HRV',
           ),
           200,
           scrollable: verticalScrollable().last,
         );
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.byType(OBMetricCard).at(1));
+        await tester.ensureVisible(find.byType(G2MetricCard).at(1));
         await tester.pumpAndSettle();
-        expect(find.byType(OBMetricCard), findsNWidgets(2));
+        expect(find.byType(G2MetricCard), findsNWidgets(2));
         expectCardValues(
           hrv: '48',
           rhr: '54',
@@ -20039,10 +20039,10 @@ void main() {
               find.byType(OBNightSignalChart).evaluate().isNotEmpty,
           'Night signals did not load.',
         );
-        final nightTabs = tester.widget<OBSegmented>(
+        final nightTabs = tester.widget<G2Segmented>(
           find.byWidgetPredicate(
             (widget) =>
-                widget is OBSegmented &&
+                widget is G2Segmented &&
                 widget.labels.contains('Puls') &&
                 widget.labels.contains('Atmung'),
           ),
@@ -20394,7 +20394,7 @@ void main() {
             if (expectSourceVisible) {
               expect(find.text('Quelle'), findsOneWidget);
             } else {
-              expect(find.byType(OBSegmented), findsOneWidget);
+              expect(find.byType(G2Segmented), findsOneWidget);
               expect(find.text('30 Nächte'), findsOneWidget);
             }
           }
