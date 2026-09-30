@@ -16111,11 +16111,28 @@ class LocalDb {
       if (free < minFreeBytes && requested == null) return 0;
       final db = await instance;
       await db.execute('VACUUM');
-      // Root pages move; invalidate the coach's cached allow-list immediately.
+      // VACUUM may renumber rowids in tables without an INTEGER PRIMARY KEY.
+      // Restart unfinished walks so no unvisited row falls behind their cursor.
+      await db.transaction((txn) async {
+        final states = await txn.query('compute_freshness',
+            where: 'key IN (?, ?)',
+            whereArgs: [kOneHzCompactCursorKey, kSamplePruneCursorKey]);
+        for (final state in states) {
+          final payload = jsonDecode(state['payload_json'] as String)
+              as Map<String, dynamic>;
+          if (payload['done'] == true) continue;
+          payload['cursor'] = 0;
+          await txn.update('compute_freshness', {
+            'payload_json': jsonEncode(payload),
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          }, where: 'key = ?', whereArgs: [state['key']]);
+        }
+        await txn.delete('compute_freshness', where: 'key = ?',
+            whereArgs: [kOneHzVacuumKey]);
+      });
+      // Root pages move; invalidate the coach's cached allow-list.
       await CoachDb.close();
       await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
-      await db.delete('compute_freshness', where: 'key = ?',
-          whereArgs: [kOneHzVacuumKey]);
       return free;
     } catch (_) {
       return 0; // Housekeeping cannot fail a successful derive.
