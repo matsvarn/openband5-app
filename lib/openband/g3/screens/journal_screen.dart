@@ -231,7 +231,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     try {
       final repo = widget.controller.repository;
       final date = DateTime.parse(day);
-      final days = [1, 2, 3, 4, 5]
+      final days = [1, 2, 3, 4]
           .map((n) => dayLabelOf(DateTime(date.year, date.month, date.day - n)))
           .toList();
       final checkIn = await repo.readCheckIn(day);
@@ -614,8 +614,40 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       if (_answered(day, q))
         q.kind == _Answer.note
             ? 'Notiz'
-            : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${_value(day, q)}',
+            : '${q.key == 'caffeine_late' ? 'Koffein' : q.title}: ${q.kind == _Answer.scale ? g3Number(day.metrics[q.key]?.value) : _value(day, q)}',
   ];
+
+  List<Widget> _historyRows(String selectedDay) {
+    final rows = <Widget>[];
+    var i = 0;
+    while (i < _history.length) {
+      final row = _history[i];
+      bool empty(JournalDaySnapshot d) =>
+          d.metrics.isEmpty && d.tags.isEmpty && d.note.trim().isEmpty;
+      if (!empty(row)) {
+        rows.add(_historyRow(row, selectedDay));
+        i++;
+        continue;
+      }
+      var end = i;
+      while (end + 1 < _history.length &&
+          empty(_history[end + 1]) &&
+          g3DaysEnding(_history[end].day, 2).first == _history[end + 1].day) {
+        end++;
+      }
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            '${g3DayShort(DateTime.parse(row.day))}${end == i ? '' : ' – ${g3DayShort(DateTime.parse(_history[end].day))}'} · leer',
+            style: G3.of(context).t(15, 19, color: G3.of(context).muted),
+          ),
+        ),
+      );
+      i = end + 1;
+    }
+    return rows;
+  }
 
   Widget _historyRow(JournalDaySnapshot row, String selectedDay) {
     final chips = _historyChips(row);
@@ -702,20 +734,26 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     onTitle: () =>
                         chooseOpenBandDay(context, widget.controller),
                   ),
-                OBSyncState.dataThrough(
+                OBSyncState(
+                  compact: true,
                   kind: storedAt == null
                       ? OBSyncKind.never
                       : band.connection == BandConnection.connected
                       ? OBSyncKind.live
                       : OBSyncKind.stale,
-                  storedAt: storedAt,
-                  now: widget.controller.now(),
+                  text:
+                      '${g3DataThrough(storedAt, now: widget.controller.now())}${widget.controller.day?.sleep.duration.value != null && widget.controller.day?.sleep.duration.readiness == MetricReadiness.available && widget.controller.day?.sleep.unobservedMinutes == 0 ? ' · Nacht lückenlos' : ''}',
                   synthetic: widget.controller.day?.synthetic == true,
                   onTap: widget.onDataStatus,
                 ),
                 OBSectionHeader(
                   sectionDay,
-                  trailing: OBLink('Anpassen', onTap: _openCustomize),
+                  trailingTopPadding: 0,
+                  trailing: OBLink(
+                    'Anpassen',
+                    bottomAligned: false,
+                    onTap: _openCustomize,
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -741,7 +779,9 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                           ],
                         )
                       : OBCheckIn(
-                          title: current.prompt,
+                          title: current.key == 'mood' && openDayIsToday
+                              ? 'Wie ist deine Stimmung heute?'
+                              : current.prompt,
                           target: current.target,
                           index: count + 1,
                           total: questions.length,
@@ -827,24 +867,18 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                                   (f) => f.key == q.key,
                                                 ),
                                           ),
+                                    last:
+                                        q ==
+                                        questions
+                                            .where((x) => _answered(snap, x))
+                                            .last,
                                     onEdit: () => _edit(q),
                                   ),
                             ],
                           ),
                         ),
                 ),
-                const OBSectionHeader('FRÜHERE TAGE'),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: OBPanel(
-                    child: Column(
-                      children: [
-                        for (final row in _history) _historyRow(row, day),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: pattern == null && _patternLoading
@@ -871,18 +905,43 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                             CaffeineSleepPatternKind.nonmeaningful =>
                               'Kein klares Muster',
                             CaffeineSleepPatternKind.insufficient =>
-                              'Noch zu wenige Nächte',
+                              'Noch kein Vergleich',
                             CaffeineSleepPatternKind.unavailable =>
                               'Noch kein Vergleich',
                           },
                           detail: 'Koffein nach 14 Uhr · folgende Nacht',
+                          relation: Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Icon(LucideIcons.coffee, size: 18, color: g.ink),
+                              Text(
+                                'Koffein nach 14 Uhr',
+                                style: g.t(15, 19, weight: FontWeight.w700),
+                              ),
+                              Icon(
+                                LucideIcons.arrowRight,
+                                size: 18,
+                                color: g.muted,
+                              ),
+                              Icon(LucideIcons.moon, size: 18, color: g.ink),
+                              Text(
+                                'Einschlafen',
+                                style: g.t(15, 19, weight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
                           have:
                               pattern.historyNeed?.have ??
                               pattern.pattern.pairedN,
                           need:
                               pattern.historyNeed?.need ??
                               pattern.pairedMinimum,
-                          footer: _patternFooter(pattern),
+                          footer:
+                              pattern.yesNights != null &&
+                                  pattern.noNights != null
+                              ? 'Ja ${pattern.yesNights} von ${pattern.perSideMinimum} · Nein ${pattern.noNights} von ${pattern.perSideMinimum}'
+                              : _patternFooter(pattern),
                           partial: pattern.pattern.partial,
                           onOpen: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
@@ -893,11 +952,21 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                         )
                       : const SizedBox.shrink(),
                 ),
+                const OBSectionHeader('FRÜHERE TAGE'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: OBPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [..._historyRows(day)],
+                    ),
+                  ),
+                ),
               ],
             ),
-            if (_scrollController.initialScrollOffset > 300 ||
+            if (_scrollController.initialScrollOffset > 100 ||
                 (_scrollController.hasClients &&
-                    _scrollController.offset > 300))
+                    _scrollController.offset > 100))
               Positioned(
                 top: 0,
                 left: 0,
