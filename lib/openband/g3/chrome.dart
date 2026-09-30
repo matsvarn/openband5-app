@@ -70,7 +70,7 @@ class OBLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return _Hit(
+    final target = _Hit(
       label: semanticsLabel ?? label,
       onTap: onTap,
       alignment: bottomAligned ? Alignment.bottomCenter : Alignment.center,
@@ -83,6 +83,91 @@ class OBLink extends StatelessWidget {
         ],
       ),
     );
+    if (!bottomAligned ||
+        context.findAncestorWidgetOfExactType<OBPanel>() == null) {
+      return target;
+    }
+    final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 13;
+    return _LinkTapArea(
+      overlap: (44 - lineHeight - 2).clamp(0, 26),
+      child: target,
+    );
+  }
+}
+
+// A footer occupies its text height; the rest of its target overlaps upward.
+class _LinkTapArea extends SingleChildRenderObjectWidget {
+  const _LinkTapArea({required this.overlap, required super.child});
+  final double overlap;
+  @override
+  RenderObject createRenderObject(BuildContext context) => _LinkTapBox(overlap);
+  @override
+  void updateRenderObject(BuildContext context, _LinkTapBox renderObject) =>
+      renderObject.overlap = overlap;
+}
+
+class _LinkTapBox extends RenderShiftedBox {
+  _LinkTapBox(this._overlap) : super(null);
+  double _overlap;
+  set overlap(double value) {
+    if (value == _overlap) return;
+    _overlap = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    child!.layout(constraints, parentUsesSize: true);
+    size = constraints.constrain(
+      Size(child!.size.width, child!.size.height - _overlap),
+    );
+    (child!.parentData! as BoxParentData).offset = Offset(0, -_overlap);
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final hit = result.addWithPaintOffset(
+      offset: Offset(0, -_overlap),
+      position: position,
+      hitTest: (result, position) => child!.hitTest(result, position: position),
+    );
+    if (hit) result.add(BoxHitTestEntry(this, position));
+    return hit;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      context.paintChild(child!, offset + Offset(0, -_overlap));
+}
+
+// Rows normally clip hit tests to their layout bounds. Route overlapping link
+// targets at the card level so two-link footers retain their full targets.
+class _PanelLinkTargets extends SingleChildRenderObjectWidget {
+  const _PanelLinkTargets({required super.child});
+  @override
+  RenderObject createRenderObject(BuildContext context) => _PanelLinkBox();
+}
+
+class _PanelLinkBox extends RenderProxyBox {
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    var hit = false;
+    void testLinks(RenderObject object) {
+      if (hit) return;
+      if (object is _LinkTapBox) {
+        hit = result.addWithPaintTransform(
+          transform: object.getTransformTo(this),
+          position: position,
+          hitTest: (result, position) =>
+              object.hitTest(result, position: position),
+        );
+      } else {
+        object.visitChildren(testLinks);
+      }
+    }
+
+    child?.visitChildren(testLinks);
+    return hit || super.hitTestChildren(result, position: position);
   }
 }
 
@@ -882,12 +967,14 @@ class OBPanel extends StatelessWidget {
     this.padding,
   });
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding ?? kG3CardPadding,
-    decoration: G3
-        .of(context)
-        .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
-    child: child,
+  Widget build(BuildContext context) => _PanelLinkTargets(
+    child: Container(
+      padding: padding ?? kG3CardPadding,
+      decoration: G3
+          .of(context)
+          .raised(radius: hero ? AlpRadius.hero : AlpRadius.card),
+      child: child,
+    ),
   );
 }
 

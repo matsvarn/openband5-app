@@ -924,10 +924,19 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                                 size: 18,
                                 color: g.muted,
                               ),
-                              Icon(LucideIcons.moon, size: 18, color: g.ink),
+                              Icon(
+                                LucideIcons.moon,
+                                size: 18,
+                                color: g.domainHue(G3Domain.sleep),
+                              ),
                               Text(
                                 'Einschlafen',
-                                style: g.t(15, 19, weight: FontWeight.w700),
+                                style: g.t(
+                                  15,
+                                  19,
+                                  weight: FontWeight.w700,
+                                  color: g.domainHue(G3Domain.sleep),
+                                ),
                               ),
                             ],
                           ),

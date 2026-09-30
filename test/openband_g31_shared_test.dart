@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
+import 'package:openstrap_edge/openband/g3/charts.dart' show OBZone, OBZoneRows;
 import 'package:openstrap_edge/openband/g3/check_in.dart';
 import 'package:openstrap_edge/openband/g3/journal_parts.dart' show OBAnswerKey;
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
@@ -80,23 +81,88 @@ void main() {
         .load();
   });
 
-  testWidgets('trailing link ends at card padding and keeps its target', (
-    tester,
-  ) async {
+  for (final twoLinks in [false, true]) {
+    testWidgets(
+      'card footer keeps compact spacing and full targets ($twoLinks)',
+      (tester) async {
+        var methodTaps = 0;
+        var editTaps = 0;
+        await tester.pumpWidget(
+          _frame(
+            OBPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(key: ValueKey('content'), height: 40),
+                  const SizedBox(height: 10),
+                  if (twoLinks)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        OBLink('Zeiten ändern', onTap: () => editTaps++),
+                        OBLink('Methode', onTap: () => methodTaps++),
+                      ],
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OBLink('Methode', onTap: () => methodTaps++),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+        final card = tester.getRect(find.byType(OBPanel));
+        final text = tester.getRect(find.text('Methode'));
+        final content = tester.getRect(find.byKey(const ValueKey('content')));
+        expect(text.top - content.bottom, 12);
+        expect(card.bottom - text.bottom, 18);
+        expect(tester.getSize(find.byType(OBLink).last).height, 18);
+        for (final label in [if (twoLinks) 'Zeiten ändern', 'Methode']) {
+          final target = find.descendant(
+            of: find.widgetWithText(OBLink, label),
+            matching: find.byType(GestureDetector),
+          );
+          final bounds = tester.getRect(target);
+          expect(bounds.height, 44);
+          await tester.tapAt(Offset(bounds.center.dx, bounds.top + 1));
+          await tester.tapAt(Offset(bounds.center.dx, bounds.bottom - 1));
+        }
+        expect(methodTaps, 2);
+        expect(editTaps, twoLinks ? 2 : 0);
+      },
+    );
+  }
+
+  testWidgets('zone footer keeps its overlapping basis target', (tester) async {
+    var taps = 0;
     await tester.pumpWidget(
       _frame(
-        OBPanel(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [OBLink('Methode', onTap: () {})],
-          ),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OBZoneRows(
+              zones: const [OBZone(1, '', 3)],
+              source: 'HFmax 186 · geschätzt aus Alter',
+              onBasis: () => taps++,
+            ),
+          ],
         ),
       ),
     );
-    final card = tester.getRect(find.byType(OBPanel));
-    final text = tester.getRect(find.text('Methode'));
+    final card = tester.getRect(find.byType(OBZoneRows));
+    final text = tester.getRect(find.text('Grundlage'));
     expect(card.bottom - text.bottom, 18);
-    expect(tester.getSize(find.byType(OBLink)).height, 44);
+    final target = find.descendant(
+      of: find.byType(OBLink),
+      matching: find.byType(GestureDetector),
+    );
+    final bounds = tester.getRect(target);
+    expect(bounds.height, 44);
+    await tester.tapAt(Offset(bounds.center.dx, bounds.top + 1));
+    await tester.tapAt(Offset(bounds.center.dx, bounds.bottom - 1));
+    expect(taps, 2);
   });
 
   testWidgets('sync keeps a 44 pt target and a 10 pt visual card gap', (
