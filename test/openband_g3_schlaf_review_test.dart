@@ -15,7 +15,13 @@ import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_naps.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
-    show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader, OBSectionHeader;
+    show
+        G3DetailPage,
+        OBInfoSheet,
+        OBListRow,
+        OBPanel,
+        OBPageHeader,
+        OBSectionHeader;
 import 'package:openstrap_edge/openband/g3/day.dart'
     show OBHypnogram, OBStageLegend, OBWeekBars;
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
@@ -26,7 +32,8 @@ import 'package:openstrap_edge/openband/naps.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
-import 'package:openstrap_edge/openband/theme.dart' show openBandTheme;
+import 'package:openstrap_edge/openband/theme.dart'
+    show OBChevron, openBandTheme;
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
 Map _fixture(String name) =>
@@ -451,7 +458,19 @@ void main() {
         tester.widget<OBWeekBars>(find.byType(OBWeekBars)).domain,
         G3Domain.sleep,
       );
-      expect(find.text('+ Eintragen'), findsOneWidget);
+      expect(find.text('Eintragen'), findsOneWidget);
+      expect(find.text('+ Eintragen'), findsNothing);
+      final napsHeader = find.ancestor(
+        of: find.text('NICKERCHEN'),
+        matching: find.byType(OBSectionHeader),
+      );
+      expect(
+        find.descendant(
+          of: napsHeader,
+          matching: find.byIcon(LucideIcons.plus),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -1436,6 +1455,45 @@ void main() {
   });
 
   for (final brightness in Brightness.values) {
+    testWidgets('sleep target labels do not overlap at 375 pt $brightness', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      for (final scale in [1.0, 1.3]) {
+        for (final goal in [300, 465, 600, 720]) {
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: openBandTheme(brightness),
+              home: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                child: Scaffold(
+                  body: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: OBSleepLead(minutes: 438, goalMinutes: goal),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final label = tester.getRect(
+            find.text('Ziel ${obSleepDuration(goal)}'),
+          );
+          expect(
+            label.left,
+            greaterThan(tester.getRect(find.text('0 h')).right),
+          );
+          expect(label.right, lessThan(tester.getRect(find.text('10 h')).left));
+          expect(tester.takeException(), isNull);
+        }
+      }
+    });
+
     testWidgets(
       'sleep navigation and all night segments fit 375×812 $brightness',
       (tester) async {
@@ -1479,6 +1537,9 @@ void main() {
           await tester.tap(find.text(segment).first);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
+          expect(find.textContaining('tiefster'), findsOneWidget);
+          expect(find.textContaining('Ø Schlaf'), findsNothing);
+          expect(find.text('Optisches Signal verwertbar'), findsNothing);
           await tester.drag(
             find.byType(Scrollable).first,
             const Offset(0, -350),
@@ -1511,6 +1572,14 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        final emptyNap = find.ancestor(
+          of: find.text('Noch keins erkannt'),
+          matching: find.byType(OBListRow),
+        );
+        expect(
+          find.descendant(of: emptyNap, matching: find.byType(OBChevron)),
+          findsOneWidget,
+        );
         await tester.tap(find.text('Noch keins erkannt'));
         await tester.pumpAndSettle();
         expect(find.byType(G3SleepNaps), findsOneWidget);

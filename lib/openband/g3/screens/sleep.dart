@@ -482,7 +482,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                   ),
                   chrome.OBSectionHeader(
                     'NICKERCHEN',
-                    action: '+ Eintragen',
+                    action: 'Eintragen',
                     onAction: () => showModalBottomSheet<void>(
                       context: context,
                       isScrollControlled: true,
@@ -497,22 +497,15 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                   FutureBuilder<NapDay>(
                     future: current.naps,
                     builder: (context, naps) => _inset(
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
+                      chrome.OBListRow(
+                        icon: LucideIcons.moon,
+                        title: naps.data?.sessions.isEmpty == true
+                            ? 'Noch keins erkannt'
+                            : 'Nickerchen',
+                        subtitle: naps.data?.sessions.isEmpty == true
+                            ? null
+                            : 'Erkannte und eingetragene Ruhezeiten',
                         onTap: () => _push(G3SleepNaps(controller: controller)),
-                        child: chrome.OBListRow(
-                          icon: LucideIcons.moon,
-                          title: naps.data?.sessions.isEmpty == true
-                              ? 'Noch keins erkannt'
-                              : 'Nickerchen',
-                          subtitle: naps.data?.sessions.isEmpty == true
-                              ? null
-                              : 'Erkannte und eingetragene Ruhezeiten',
-                          onTap: naps.data?.sessions.isEmpty == true
-                              ? null
-                              : () =>
-                                    _push(G3SleepNaps(controller: controller)),
-                        ),
                       ),
                     ),
                   ),

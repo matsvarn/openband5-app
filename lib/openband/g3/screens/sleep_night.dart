@@ -9,7 +9,7 @@ import '../count_copy.dart';
 import '../g3_format.dart';
 import '../g3_theme.dart';
 import '../metrics.dart'
-    show G3LabelRow, G3Scale, G3Tick, OBLeadMetric, OBLeadState, OBStatRow;
+    show G3LabelRow, G3Scale, G3Tick, OBLeadMetric, OBLeadState;
 import '../sleep_parts.dart';
 
 bool nightSignalHasUncoveredInterval(
@@ -232,16 +232,12 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                         note: _unit,
                       ),
                       const SizedBox(height: 14),
-                      OBStatRow([
-                        (
-                          'tiefster',
-                          lowest == null ? null : _number(lowest.value!),
-                          lowest == null
-                              ? null
-                              : 'um ${obSleepClock(recordedTime(lowest.at, night?.recordingTimezone))}',
-                        ),
-                        ('Ø Schlaf', null, _unit),
-                      ]),
+                      Text(
+                        lowest == null
+                            ? 'tiefster —'
+                            : 'tiefster ${_number(lowest.value!)} um ${obSleepClock(recordedTime(lowest.at, night?.recordingTimezone))}',
+                        style: g.t(15, 20),
+                      ),
                       const SizedBox(height: 12),
                       if (window != null &&
                           series != null &&
@@ -272,30 +268,6 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             ),
                           ),
                         ),
-                      const SizedBox(height: 14),
-                      Divider(height: 1, color: g.line),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Optisches Signal verwertbar',
-                              style: g.t(13, 17),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            '—',
-                            style: g.t(
-                              13,
-                              17,
-                              weight: FontWeight.w700,
-                              color: g.gap,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 );

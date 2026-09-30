@@ -423,34 +423,54 @@ class OBSleepLead extends StatelessWidget {
               },
             ),
             LayoutBuilder(
-              builder: (context, box) => SizedBox(
-                height: MediaQuery.textScalerOf(context).scale(16),
-                child: Stack(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('0 h', style: g.t(12, 16, color: g.muted)),
-                    ),
-                    if (goalMinutes != null)
-                      Positioned(
-                        left: (goalMinutes! / 600 * box.maxWidth - 40).clamp(
-                          0.0,
-                          box.maxWidth - 80,
-                        ),
-                        width: 80,
-                        child: Text(
-                          'Ziel ${obSleepDuration(goalMinutes)}',
-                          textAlign: TextAlign.center,
-                          style: g.t(12, 16, color: g.ink2),
-                        ),
+              builder: (context, box) {
+                final style = g.t(12, 16, color: g.ink2);
+                double labelWidth(String text) {
+                  final painter = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    textDirection: Directionality.of(context),
+                    textScaler: MediaQuery.textScalerOf(context),
+                  )..layout();
+                  final width = painter.width;
+                  painter.dispose();
+                  return width;
+                }
+
+                final label = goalMinutes == null
+                    ? null
+                    : 'Ziel ${obSleepDuration(goalMinutes)}';
+                final width = label == null ? 0.0 : labelWidth(label);
+                final left = label == null
+                    ? 0.0
+                    : ((goalMinutes! / 600).clamp(0.0, 1.0) * box.maxWidth -
+                              width -
+                              4)
+                          .clamp(
+                            labelWidth('0 h') + 8,
+                            box.maxWidth - labelWidth('10 h') - 8 - width,
+                          );
+                return SizedBox(
+                  height: MediaQuery.textScalerOf(context).scale(16),
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('0 h', style: g.t(12, 16, color: g.muted)),
                       ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Text('10 h', style: g.t(12, 16, color: g.muted)),
-                    ),
-                  ],
-                ),
-              ),
+                      if (label != null)
+                        Positioned(
+                          left: left,
+                          width: width,
+                          child: Text(label, style: style),
+                        ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text('10 h', style: g.t(12, 16, color: g.muted)),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ],
           if (goalMinutes == null && onGoal != null) ...[
