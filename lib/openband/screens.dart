@@ -1704,27 +1704,15 @@ double _textWidth(
 /// [BandSnapshot] does not carry, so none is drawn. Passive states retain their
 /// compact geometry; the interactive resume state guarantees a 44-point hit
 /// area and grows with text rather than shrinking its button below that.
-enum OBSyncActionState { pending }
-
 class G2SyncState extends StatelessWidget {
   final BandSnapshot band;
   final VoidCallback? onResume;
   final DateTime Function() now;
-  final bool showStoredTime;
-  final OBSyncActionState? actionState;
-  final String interruptedLabel;
-  final String pendingLabel;
-  final String resumeLabel;
   const G2SyncState({
     super.key,
     required this.band,
     this.onResume,
     required this.now,
-    this.showStoredTime = true,
-    this.actionState,
-    this.interruptedLabel = 'Unterbrochen',
-    this.pendingLabel = 'Verbindung wird hergestellt',
-    this.resumeLabel = 'Fortsetzen',
   });
 
   /// Whether the passive strip has something to say for [band].
@@ -1746,70 +1734,57 @@ class G2SyncState extends StatelessWidget {
       Color? iconColor,
       String? text,
       Widget? trailing,
-    ) = switch (actionState) {
-      OBSyncActionState.pending => (
+    ) = switch (band.transfer) {
+      TransferState.receiving => (
         LucideIcons.refreshCw,
         p.action,
-        pendingLabel,
-        const SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
+        'Band wird gelesen',
+        Text(
+          stored,
+          style: p.text(
+            13,
+            weight: FontWeight.w700,
+            display: true,
+            color: p.muted,
+          ),
         ),
       ),
-      null => switch (band.transfer) {
-        TransferState.receiving => (
-          LucideIcons.refreshCw,
-          p.action,
-          'Band wird gelesen',
-          Text(
-            stored,
-            style: p.text(
-              13,
-              weight: FontWeight.w700,
-              display: true,
-              color: p.muted,
-            ),
-          ),
-        ),
-        TransferState.interrupted => (
-          LucideIcons.bluetoothOff,
-          p.ink,
-          showStoredTime ? '$interruptedLabel · $stored' : interruptedLabel,
-          onResume == null
-              ? null
-              : TextButton(
-                  onPressed: onResume,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(44, 44),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    resumeLabel,
-                    textAlign: TextAlign.center,
-                    style: p.text(13, weight: FontWeight.w600, color: p.ink),
-                  ),
+      TransferState.interrupted => (
+        LucideIcons.bluetoothOff,
+        p.ink,
+        'Unterbrochen · $stored',
+        onResume == null
+            ? null
+            : TextButton(
+                onPressed: onResume,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-        ),
-        TransferState.idle => switch (band.receivedAt) {
-          final at? when now().difference(at).inMinutes.abs() <= 10 => (
-            LucideIcons.check,
-            p.led,
-            'Gespeichert $stored',
-            Text(
-              'vor ${now().difference(at).inMinutes.abs()} Min.',
-              style: p.text(13, weight: FontWeight.w500, color: p.muted),
-            ),
+                child: Text(
+                  'Fortsetzen',
+                  textAlign: TextAlign.center,
+                  style: p.text(13, weight: FontWeight.w600, color: p.ink),
+                ),
+              ),
+      ),
+      TransferState.idle => switch (band.receivedAt) {
+        final at? when now().difference(at).inMinutes.abs() <= 10 => (
+          LucideIcons.check,
+          p.led,
+          'Gespeichert $stored',
+          Text(
+            'vor ${now().difference(at).inMinutes.abs()} Min.',
+            style: p.text(13, weight: FontWeight.w500, color: p.muted),
           ),
-          _ => (null, null, null, null),
-        },
+        ),
+        _ => (null, null, null, null),
       },
     };
     if (icon == null) return const SizedBox.shrink();
     final actionable =
-        actionState != null ||
-        (band.transfer == TransferState.interrupted && onResume != null);
+        band.transfer == TransferState.interrupted && onResume != null;
     final stackAction =
         trailing != null && MediaQuery.textScalerOf(context).scale(13) > 18;
     final content = stackAction

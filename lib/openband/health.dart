@@ -858,7 +858,6 @@ class OBTrendCard extends StatelessWidget {
   final List<OBSourcedSample> samples;
   final double? baseline;
   final bool error;
-  final String Function(double?)? format;
   final bool sourced;
   final String? coverage;
   final String? axisStart;
@@ -878,7 +877,6 @@ class OBTrendCard extends StatelessWidget {
     required this.points,
     this.baseline,
     this.error = false,
-    this.format,
   }) : sourced = false,
        samples = const [],
        coverage = null,
@@ -903,7 +901,6 @@ class OBTrendCard extends StatelessWidget {
     this.selectedIndex,
     this.onSelect,
     this.plotKey,
-    this.format,
     this.bars = false,
   }) : nights = 0,
        baseline = null,
@@ -932,12 +929,7 @@ class OBTrendCard extends StatelessWidget {
         ? ('$countCaption · teilweise', p.muted)
         : observed < nights
         ? (countCaption, p.muted)
-        : (
-            format != null && baseline != null && last != null
-                ? _durationStatus(last, baseline!)
-                : obMetricStatus(last, baseline, unit: unit),
-            p.smallText(color),
-          );
+        : (obMetricStatus(last, baseline, unit: unit), p.smallText(color));
     return OBCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,7 +956,7 @@ class OBTrendCard extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                format?.call(last) ?? obNumber(last),
+                obNumber(last),
                 style: p.text(28, weight: FontWeight.w800, display: true),
               ),
               const SizedBox(width: 4),
@@ -1031,7 +1023,7 @@ class OBTrendCard extends StatelessWidget {
     final shown = idx != null && idx >= 0 && idx < pts.length ? pts[idx] : null;
     final raw = shown?.value;
     final value = _trendFinite(raw) ? raw : null;
-    final valueText = format?.call(value) ?? obNumber(value);
+    final valueText = obNumber(value);
     final dateText = shown?.caption;
     final bounds = bars
         ? _sourcedBarBounds([for (final pt in pts) pt.value])
@@ -1074,7 +1066,7 @@ class OBTrendCard extends StatelessWidget {
       if (!_trendFinite(pt.value)) {
         return day.isEmpty ? 'kein Wert' : '$day, kein Wert';
       }
-      final number = format?.call(pt.value) ?? obNumber(pt.value);
+      final number = obNumber(pt.value);
       return day.isEmpty ? '$number $unit' : '$day, $number $unit';
     }
 
@@ -1252,13 +1244,6 @@ class OBTrendCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String _durationStatus(double value, double baseline) {
-  final d = (value - baseline).round();
-  if (d == 0) return 'wie Basis';
-  return '${d > 0 ? '+' : '−'}${obGapMinutes(d.abs())} '
-      '${d > 0 ? 'über' : 'unter'} Basis';
 }
 
 String obMetricStatus(double? value, double? baseline, {String unit = ''}) {

@@ -6,23 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'chrome.dart' show OBActionSecondary;
-import 'check_in.dart' show g3CheckInCopy;
 import 'g3_theme.dart';
 import 'sport.dart';
 
 String heuteSportLabel(String sport) => g3SportLabel(sport);
-final kHeuteSports = g3QuickSportIds;
-
-/// Question copy for a check-in key; the day it belongs to is shown apart
-/// ("zu gestern"), so questions do not say "gestern" themselves.
-String heuteCheckInQuestion(String key, String title) =>
-    g3CheckInCopy(key, title).question;
-
-/// Question and end labels for a check-in rating key.
-({String question, String low, String high}) heuteRatingCopy(String key) {
-  final copy = g3CheckInCopy(key, key);
-  return (question: copy.question, low: copy.low, high: copy.high);
-}
 
 /// One check-in question in the Heute card: header with progress (and the
 /// answer's day when it is not the selected day), the last answer with its
@@ -184,25 +171,20 @@ class OBYesNoKeys extends StatelessWidget {
   );
 }
 
-/// 1…[max] keys with the end labels under them.
+/// 1…[max] keys for the named question.
 class OBRatingKeys extends StatelessWidget {
-  final String question, low, high;
+  final String question;
   final int max;
-  final bool showLegend;
   final ValueChanged<int>? onRate;
   const OBRatingKeys({
     super.key,
     required this.question,
-    required this.low,
-    required this.high,
     this.max = 5,
-    this.showLegend = true,
     this.onRate,
   });
 
   @override
   Widget build(BuildContext context) {
-    final g = G3.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -226,14 +208,6 @@ class OBRatingKeys extends StatelessWidget {
             ],
           ],
         ),
-        if (showLegend)
-          Row(
-            children: [
-              Text(low, style: g.t(12, 16, color: g.muted)),
-              const Spacer(),
-              Text(high, style: g.t(12, 16, color: g.muted)),
-            ],
-          ),
       ],
     );
   }

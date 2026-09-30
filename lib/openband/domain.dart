@@ -386,7 +386,7 @@ class SleepDraft {
     required this.wake,
     this.recordingTimezone,
   });
-  Duration get timeInBed => wake.difference(onset);
+
   SleepDraft withTimes(DateTime start, DateTime end) => SleepDraft(
     id: id,
     day: day,

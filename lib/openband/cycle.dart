@@ -83,26 +83,6 @@ class OpenBandCycle extends StatefulWidget {
     );
   }
 
-  static Future<void> pushSettings(
-    BuildContext context, {
-    required OpenBandRepository repository,
-    required String day,
-    DateTime Function()? now,
-    bool synthetic = false,
-  }) {
-    return Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => OpenBandCycle(
-          repository: repository,
-          day: day,
-          now: now,
-          synthetic: synthetic,
-          settingsOnly: true,
-        ),
-      ),
-    );
-  }
-
   @override
   State<OpenBandCycle> createState() => _OpenBandCycleState();
 }

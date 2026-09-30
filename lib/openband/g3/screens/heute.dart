@@ -1229,9 +1229,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         G3CheckInKind.rating => ask(
           OBRatingKeys(
             question: question,
-            showLegend: false,
-            low: copy.low,
-            high: copy.high,
             max: (field?.max ?? 5).round(),
             onRate: (v) => _answer(q, G3RatingAnswer(v)),
           ),
