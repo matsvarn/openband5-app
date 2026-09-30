@@ -9,7 +9,7 @@ import '../alp_tokens.dart';
 import '../theme.dart' show OB, OBBezel;
 
 /// Shared card interior. Hero cards change radius, not text alignment.
-const kG3CardPadding = EdgeInsets.symmetric(horizontal: 18, vertical: 16);
+const kG3CardPadding = EdgeInsets.all(18);
 
 /// Colour marks only a value outside the caller's personal normal range.
 /// The widgets never decide this; the caller passes it.

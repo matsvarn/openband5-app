@@ -1148,7 +1148,8 @@ class OBMetricCard extends StatelessWidget {
 class OBStatRow extends StatelessWidget {
   /// (label, value, unit); a null value renders "—".
   final List<(String, String?, String?)> items;
-  const OBStatRow(this.items, {super.key});
+  final G3Domain domain;
+  const OBStatRow(this.items, {super.key, this.domain = G3Domain.neutral});
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -1177,7 +1178,7 @@ class OBStatRow extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            label,
+                            label.toUpperCase(),
                             style: g.t(
                               11,
                               14,
@@ -1225,24 +1226,25 @@ class OBStatRow extends StatelessWidget {
 }
 
 class OBDayValueRow extends StatelessWidget {
+  final G3Domain domain;
   final String date;
-
-  /// Source or reason line ("Apple Health · Waage"); null omits it.
-  final String? note;
-  final String? value;
-  final String? unit;
-
-  /// Bar share 0…1; null (with a null value) renders the dashed gap.
+  final String? note, value, unit;
   final double? share;
-  final bool last;
+  final bool last, showBar;
+  final VoidCallback? onTap;
+  final G3Deviation? deviation;
   const OBDayValueRow({
     super.key,
     required this.date,
     required this.value,
+    this.domain = G3Domain.neutral,
     this.note,
     this.unit,
     this.share,
     this.last = false,
+    this.showBar = true,
+    this.onTap,
+    this.deviation,
   });
 
   @override
@@ -1250,76 +1252,90 @@ class OBDayValueRow extends StatelessWidget {
     final g = G3.of(context);
     final gap = value == null;
     final barMissing = gap || share?.isFinite != true;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      decoration: BoxDecoration(
-        border: last ? null : Border(bottom: BorderSide(color: g.line)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(date, style: g.t(14, 18, weight: FontWeight.w500)),
-                if (gap)
-                  Text(
-                    note ?? 'keine Daten',
-                    style: g.t(13, 16, weight: FontWeight.w500, color: g.ink2),
-                  )
-                else if (note != null)
-                  Text(note!, style: g.t(12, 16, color: g.muted)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          if (barMissing)
-            const G3Dashed(width: 110, height: 8, radius: 4)
-          else
-            Container(
-              width: 110,
-              height: 8,
-              alignment: Alignment.centerLeft,
-              decoration: BoxDecoration(
-                color: g.track,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: FractionallySizedBox(
-                widthFactor: share!.clamp(0.0, 1.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: g.bar,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 64,
-            child: Text.rich(
-              TextSpan(
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          border: last ? null : Border(bottom: BorderSide(color: g.line)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextSpan(
-                    text: value ?? '—',
-                    style: g.t(
-                      17,
-                      21,
-                      weight: FontWeight.w700,
-                      color: gap ? g.gap : g.ink,
-                    ),
-                  ),
-                  if (!gap && unit != null)
-                    TextSpan(
-                      text: ' $unit',
+                  Text(date, style: g.t(15, 19, weight: FontWeight.w700)),
+                  if (gap || note != null)
+                    Text(
+                      note ?? 'keine Daten',
                       style: g.t(12, 16, color: g.muted),
                     ),
                 ],
               ),
-              textAlign: TextAlign.right,
             ),
-          ),
-        ],
+            if (showBar) ...[
+              const SizedBox(width: 12),
+              if (barMissing)
+                const G3Dashed(width: 110, height: 8, radius: 4)
+              else
+                Container(
+                  width: 110,
+                  height: 8,
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    color: g.track,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: FractionallySizedBox(
+                    widthFactor: share!.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: g.domainBar(domain),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 64,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: value ?? '—',
+                      style: g.t(
+                        17,
+                        21,
+                        weight: FontWeight.w700,
+                        color: gap
+                            ? g.gap
+                            : deviation == G3Deviation.worse
+                            ? g.worseText
+                            : deviation == G3Deviation.better
+                            ? g.betterText
+                            : g.ink,
+                      ),
+                    ),
+                    if (!gap && unit != null)
+                      TextSpan(
+                        text: ' $unit',
+                        style: g.t(12, 16, color: g.muted),
+                      ),
+                  ],
+                ),
+                textAlign: TextAlign.right,
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 12),
+              OBChevron(size: 12, color: g.muted),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -43,13 +43,13 @@ G3CheckInCopy g3CheckInCopy(String key, String title) => switch (key) {
     question: 'Wie ist deine Stimmung?',
     target: null,
     low: 'schlecht',
-    high: 'gut',
+    high: 'sehr gut',
   ),
   'sleep_quality' => (
     question: 'Wie hast du geschlafen?',
     target: null,
     low: 'schlecht',
-    high: 'gut',
+    high: 'sehr gut',
   ),
   'energy' => (
     question: 'Wie viel Energie hast du?',
@@ -109,7 +109,7 @@ class OBCheckIn extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: g.pressed(radius: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -123,29 +123,6 @@ class OBCheckIn extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              for (var i = 0; i < total; i++) ...[
-                if (i > 0) const SizedBox(width: 4),
-                Expanded(
-                  child: Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: i < index - 1
-                          ? g.ink
-                          : i == index - 1
-                          ? g.dark
-                                ? g.ink2
-                                : g.ink2.withValues(alpha: .45)
-                          : g.band,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 14),
           if (later) ...[
             Text(laterText, style: g.t(13, 17, color: g.ink2)),
             if (onResume != null)
@@ -214,7 +191,16 @@ class OBCheckIn extends StatelessWidget {
                     )
                   else
                     const Spacer(),
-                  OBPillButton('Später', onPressed: onLater),
+                  TextButton(
+                    onPressed: onLater,
+                    style: TextButton.styleFrom(
+                      foregroundColor: g.ink2,
+                      minimumSize: const Size(44, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 0),
+                      textStyle: g.t(13, 18, weight: FontWeight.w700),
+                    ),
+                    child: const Text('Später'),
+                  ),
                 ],
               ),
           ],

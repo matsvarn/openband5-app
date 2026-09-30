@@ -191,15 +191,20 @@ class OBJournalEntryRow extends StatelessWidget {
     required this.onEdit,
     this.subtitle,
     this.icon,
+    this.last = false,
   });
   final String title, value;
   final String? subtitle;
   final IconData? icon;
   final VoidCallback onEdit;
+  final bool last;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    return Padding(
+    return Container(
+      decoration: BoxDecoration(
+        border: last ? null : Border(bottom: BorderSide(color: g.line)),
+      ),
       padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(
         children: [
@@ -233,6 +238,7 @@ class OBJournalEntryRow extends StatelessWidget {
             icon: LucideIcons.pencil,
             label: '$title ändern',
             small: true,
+            plain: true,
             onTap: onEdit,
           ),
         ],
@@ -423,8 +429,10 @@ class OBPatternCard extends StatelessWidget {
     this.onRetry,
     this.partial = false,
     this.onOpen,
+    this.relation,
   });
   final String title, detail;
+  final Widget? relation;
   final int? have;
   final int? need;
   final String? footer;
@@ -485,7 +493,14 @@ class OBPatternCard extends StatelessWidget {
                   OBPillButton('Erneut', onPressed: onRetry),
                 ],
               )
-            else if (awaiting)
+            else if (relation != null) ...[
+              relation!,
+              const SizedBox(height: 8),
+              Text(
+                '$title · $have von $need Paaren',
+                style: g.t(14, 19, weight: FontWeight.w700),
+              ),
+            ] else if (awaiting)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -516,7 +531,8 @@ class OBPatternCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(detail, style: g.t(14, 19, color: g.ink2)),
             ],
-            if (!loading &&
+            if (relation == null &&
+                !loading &&
                 onRetry == null &&
                 have != null &&
                 need != null) ...[

@@ -4,10 +4,11 @@
 // Painters sit behind RepaintBoundary. Gaps stay gaps: a null value or a
 // listed gap is drawn hollow and dashed, never interpolated.
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'chrome.dart' show OBLink, OBSegmented;
 import 'g3_theme.dart';
-import 'metrics.dart' show OBMissingValue;
+import 'metrics.dart' show OBMissingValue, G3LabelRow;
 
 void _dash(
   Canvas canvas,
@@ -539,6 +540,11 @@ enum OBTrendMark { none, better, worse, outside }
 
 class OBTrendChart extends StatelessWidget {
   final G3Domain domain;
+  final IconData? glyph;
+  final String? headerNote;
+  final Widget? footer;
+  final bool showPeriod;
+  final double? median;
   final String title;
   final OBTrendPeriod period;
   final List<double?> values;
@@ -556,6 +562,11 @@ class OBTrendChart extends StatelessWidget {
   const OBTrendChart({
     super.key,
     this.domain = G3Domain.neutral,
+    this.glyph,
+    this.headerNote,
+    this.footer,
+    this.showPeriod = true,
+    this.median,
     required this.title,
     required this.period,
     required this.values,
@@ -597,18 +608,29 @@ class OBTrendChart extends StatelessWidget {
                       ? null
                       : (i) => onPeriod!(OBTrendPeriod.values[i]),
                 );
+                final label = G3LabelRow(
+                  title,
+                  domain: domain,
+                  glyph:
+                      glyph ??
+                      switch (domain) {
+                        G3Domain.recovery => LucideIcons.heartPulse,
+                        G3Domain.sleep => LucideIcons.moon,
+                        G3Domain.load => LucideIcons.flame,
+                        G3Domain.neutral => null,
+                      },
+                  note: headerNote,
+                );
+                if (!showPeriod) return SizedBox(height: 44, child: label);
                 if (narrow) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(title, style: g.caps()),
-                      selector,
-                    ],
+                    children: [label, selector],
                   );
                 }
                 return Row(
                   children: [
-                    Expanded(child: Text(title, style: g.caps())),
+                    Expanded(child: label),
                     selector,
                   ],
                 );
@@ -696,21 +718,28 @@ class OBTrendChart extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: g.line)),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    footLeft ?? '',
-                    style: g.t(12, 16, color: g.ink2),
-                  ),
+            child:
+                footer ??
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        footLeft ?? '',
+                        style: g.t(12, 16, color: g.ink2),
+                      ),
+                    ),
+                    if (footRight != null)
+                      Text(
+                        footRight!,
+                        style: g.t(
+                          12,
+                          16,
+                          weight: FontWeight.w500,
+                          color: g.muted,
+                        ),
+                      ),
+                  ],
                 ),
-                if (footRight != null)
-                  Text(
-                    footRight!,
-                    style: g.t(12, 16, weight: FontWeight.w500, color: g.muted),
-                  ),
-              ],
-            ),
           ),
         ],
       ),
@@ -751,6 +780,16 @@ class _TrendPainter extends CustomPainter {
       );
     }
     canvas.drawLine(Offset(0, h), Offset(w, h), Paint()..color = g.hairline);
+    if (c.median != null) {
+      _dash(
+        canvas,
+        Path()
+          ..moveTo(0, y(c.median!))
+          ..lineTo(w, y(c.median!)),
+        g.muted,
+        width: 1,
+      );
+    }
     if (c.zero != null) {
       _dash(
         canvas,

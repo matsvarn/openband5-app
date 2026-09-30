@@ -80,6 +80,54 @@ void main() {
         .load();
   });
 
+  testWidgets('trailing link ends at card padding and keeps its target', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        OBPanel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [OBLink('Methode', onTap: () {})],
+          ),
+        ),
+      ),
+    );
+    final card = tester.getRect(find.byType(OBPanel));
+    final text = tester.getRect(find.text('Methode'));
+    expect(card.bottom - text.bottom, 18);
+    expect(tester.getSize(find.byType(OBLink)).height, 44);
+  });
+
+  testWidgets('recent-day chevron requires a tap handler', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        const OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsNothing);
+    await tester.pumpWidget(
+      _frame(
+        OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+          onTap: () => taps++,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsOneWidget);
+    await tester.tap(find.text('Di 29.09'));
+    expect(taps, 1);
+  });
+
   test('Band frontier prefixes use the shared short date format', () {
     final now = DateTime(2026, 9, 29, 10);
     expect(bandFrontierDayPrefix(DateTime(2026, 9, 29, 9), now), '');
@@ -135,7 +183,7 @@ void main() {
     expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');
     expect(g3CheckInCopy('caffeine_late', '').question, 'Koffein nach 14 Uhr?');
     expect(g3CheckInCopy('mood', '').low, 'schlecht');
-    expect(g3CheckInCopy('mood', '').high, 'gut');
+    expect(g3CheckInCopy('mood', '').high, 'sehr gut');
     expect(g3CheckInCopy('custom', 'Meine Frage?').question, 'Meine Frage?');
   });
 

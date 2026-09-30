@@ -21,11 +21,13 @@ class _Hit extends StatelessWidget {
   final VoidCallback? onTap;
   final Widget child;
   final double? width;
+  final Alignment alignment;
   const _Hit({
     required this.label,
     required this.onTap,
     required this.child,
     this.width,
+    this.alignment = Alignment.center,
   });
   @override
   Widget build(BuildContext context) => Semantics(
@@ -40,7 +42,11 @@ class _Hit extends StatelessWidget {
       child: SizedBox(
         width: width,
         height: 44,
-        child: Center(widthFactor: width == null ? 1 : null, child: child),
+        child: Align(
+          alignment: alignment,
+          widthFactor: width == null ? 1 : null,
+          child: child,
+        ),
       ),
     ),
   );
@@ -49,12 +55,14 @@ class _Hit extends StatelessWidget {
 /// Text link with the shared inline chevron and a 44 pt tap target.
 class OBLink extends StatelessWidget {
   final String label;
+  final bool bottomAligned;
   final String? semanticsLabel;
   final VoidCallback onTap;
   const OBLink(
     this.label, {
     super.key,
     this.semanticsLabel,
+    this.bottomAligned = true,
     required this.onTap,
   });
 
@@ -64,6 +72,7 @@ class OBLink extends StatelessWidget {
     return _Hit(
       label: semanticsLabel ?? label,
       onTap: onTap,
+      alignment: bottomAligned ? Alignment.bottomCenter : Alignment.center,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -182,13 +191,14 @@ class OBBandCapsule extends StatelessWidget {
 class OBIconButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool small;
+  final bool small, plain;
   final VoidCallback? onTap;
   const OBIconButton({
     super.key,
     required this.icon,
     required this.label,
     this.small = false,
+    this.plain = false,
     this.onTap,
   });
   @override
@@ -203,7 +213,7 @@ class OBIconButton extends StatelessWidget {
       child: Container(
         width: s,
         height: s,
-        decoration: g.raised(radius: s / 2),
+        decoration: plain ? null : g.raised(radius: s / 2),
         child: Icon(icon, size: small ? 16 : 18, color: g.ink),
       ),
     );
@@ -373,7 +383,7 @@ class OBPageHeader extends StatelessWidget {
         );
       case _Kind.detail:
         return Padding(
-          padding: const EdgeInsets.only(left: 16, right: 16, top: 2),
+          padding: const EdgeInsets.only(left: 16, right: 16),
           child: Row(
             children: [
               if (onBack == null)
