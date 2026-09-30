@@ -217,6 +217,7 @@ void main() {
       expect(find.text('Sportart richtig?'), findsOneWidget);
       expect(find.text('Belastung'), findsNothing);
       expect(find.byType(OBChevron), findsNothing);
+      expect(find.bySemanticsLabel('Lauf, Di. 29.09'), findsOneWidget);
     },
   );
 

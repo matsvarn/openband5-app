@@ -1,10 +1,7 @@
 // Heute-only parts. The typed G3 check-in asks yes/no, 1–5 ratings, counts
 // (with an explicit "Keins") and a free note, some about yesterday. The
-// shared OBCheckIn Baustein has no place for the answer's day (its progress
-// label overflows at 200 % text), so Heute renders every kind in
-// [OBCheckInAsk], the same Baustein language with a "zu gestern" line.
-// ponytail: the Journal's check-in parts (OBStepper, OBTextField) are not on
-// this stack; swap the count and note controls for them at integration.
+// The shared OBCheckIn is ready for both tabs. Heute still uses OBCheckInAsk
+// until its area pass migrates the answer controls.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 

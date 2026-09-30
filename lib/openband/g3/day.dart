@@ -297,8 +297,9 @@ class OBActivityRow extends StatelessWidget {
     final g = G3.of(context);
     return Semantics(
       button: onTap != null,
-      label:
-          '$title, $subtitle${unconfirmed ? ', automatisch erkannt' : ''}, Belastung ${strain ?? 'unbekannt'}',
+      label: compact
+          ? '$title, $subtitle'
+          : '$title, $subtitle${unconfirmed ? ', automatisch erkannt' : ''}, Belastung ${strain ?? 'unbekannt'}',
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -322,7 +323,19 @@ class OBActivityRow extends StatelessWidget {
                         radius: 10,
                         color: g.domainTint(domain),
                       ),
-                      child: SizedBox(width: 20, height: 20, child: pictogram),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: domain == G3Domain.neutral
+                            ? pictogram
+                            : ColorFiltered(
+                                colorFilter: ColorFilter.mode(
+                                  g.domainHue(domain),
+                                  BlendMode.srcIn,
+                                ),
+                                child: pictogram,
+                              ),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
