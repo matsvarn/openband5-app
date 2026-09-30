@@ -16,7 +16,7 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/notification_center.dart' show BedtimeReminderResult;
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPageHeader;
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPageHeader, OBSegmented;
 import 'package:openstrap_edge/openband/g3/day.dart' show OBStepsCard;
 import 'package:openstrap_edge/openband/g3/metrics.dart' show OBBodyRow;
 import 'package:openstrap_edge/openband/g3/screens/heute.dart';
@@ -199,8 +199,10 @@ void main() {
     expect(find.text('für 8h05 Schlafbedarf bis 06:54'), findsOneWidget);
     expect(find.text('Zonen nach Bestätigung'), findsOneWidget);
     expect(find.text('Daten bis 09:37 · Nacht lückenlos'), findsOneWidget);
-    // One instant for both: the footer's last band value is latestStoredAt.
-    expect(find.text('Letzter Bandwert 09:37 · Übertragung 09:38'), findsOneWidget);
+    expect(find.textContaining('Letzter Bandwert'), findsNothing);
+    expect(find.text('lückenlos'), findsNothing);
+    expect(find.text('SYNTHETISCHE DATEN'), findsOneWidget);
+    expect(tester.widget<OBStepsCard>(find.byType(OBStepsCard)).note, startsWith('bis '));
     // The design day stores its stage timeline: no totals-only fallback.
     expect(find.text('ohne Verlauf'), findsNothing);
     expect(_hasText(tester, (s) => s.contains('°C')), isFalse);
@@ -212,16 +214,33 @@ void main() {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Building), _connected), size: const Size(393, 3000));
     expect(find.text('Noch keine Erholung'), findsOneWidget);
     expect(find.text('11 von 14 Nächten'), findsOneWidget);
-    expect(find.text('Basis: noch 3 Nächte'), findsWidgets);
+    expect(find.text('Basis: noch 3 Nächte'), findsNWidgets(4));
+    expect(find.text('Basis im Aufbau'), findsNothing);
+    expect(find.textContaining('Sie braucht 14 Nächte'), findsNothing);
+    expect(find.text('vergangene Nacht'), findsOneWidget);
     expect(find.text('Heute früher ins Bett.'), findsOneWidget);
     expect(find.text('Schlaf 27 Min. unter Ziel, Erholung ab Nacht 14.'), findsOneWidget);
     expect(find.text('Erholung'), findsOneWidget, reason: 'offered but disabled');
-    expect(find.text('Erholung: noch keine Werte'), findsOneWidget);
+    expect(find.text('Erholung: noch keine Werte'), findsNothing);
     // HRV 48 without a basis: no scale invented from the value (36…60).
     expect(_hasText(tester, (s) => s == '48 ms'), isTrue);
     expect(find.text('36'), findsNothing);
     expect(find.text('60'), findsNothing);
     expect(_inBody('Basis: noch 3 Nächte'), findsNWidgets(3), reason: 'HRV, Ruhepuls, Atemfrequenz');
+  });
+
+  testWidgets('week footer keeps legends and omits overview explanations', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));
+    final segments = find.byType(OBSegmented);
+    expect(find.textContaining('dein Normalbereich'), findsWidgets);
+    await tester.ensureVisible(segments);
+    await tester.tap(find.descendant(of: segments, matching: find.text('Belastung')));
+    await tester.pumpAndSettle();
+    expect(find.text('Skala 0–21 · kein Normalbereich'), findsNothing);
+    await tester.tap(find.descendant(of: segments, matching: find.text('Schlaf')));
+    await tester.pumpAndSettle();
+    expect(find.text('Ziel 7h45'), findsWidgets);
+    expect(find.text('Erholung: noch keine Werte'), findsNothing);
   });
 
   testWidgets('no basis at all: body values without a scale, "kein Normalbereich"', (tester) async {
@@ -566,13 +585,17 @@ void main() {
     }
   });
 
-  testWidgets('a past day: "Daten bis" and "Letzter Bandwert" are its last stored sample', (tester) async {
+  testWidgets('a past day keeps its stored timestamp in the sync line', (tester) async {
     final repo = _Repo(SyntheticScenario.g3Sample)..lastSamples['2026-09-27'] = DateTime(2026, 9, 27, 23, 58);
-    final h = await _pump(tester, _Harness(repo, _connected), size: const Size(393, 3000));
+    final h = await _pump(tester, _Harness(repo, _connected));
     await h.controller.selectDay('2026-09-27');
     await tester.pumpAndSettle();
     expect(find.text('Gespeicherter Tag · Daten bis 23:58'), findsOneWidget);
-    expect(find.text('Letzter Bandwert 27.09. 23:58 · Übertragung 09:38'), findsOneWidget);
+    expect(find.textContaining('Letzter Bandwert'), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(find.text('So 27.09'), findsOneWidget);
+    expect(find.text('vor 2 Tagen · Synthetische Daten'), findsOneWidget);
   });
 
   testWidgets('scrolled: the compact header is opaque, content does not show through', (tester) async {

@@ -391,14 +391,7 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     : 'noch $remaining ${g3CountNoun(remaining, 'Tag', 'Tage')}',
                 onPeriod: _changePeriod,
               ),
-              if (remaining != null) ...[
-                const SizedBox(height: 10),
-                _InfoCard(
-                  title: 'Noch kein Verlauf',
-                  text:
-                      'Ein Verlauf braucht 7 Werte. Du hast $valueCount. Fehlende Tage bleiben leer.',
-                ),
-              ] else ...[
+              if (remaining == null) ...[
                 const SizedBox(height: 10),
                 if (metric != G3Metric.skinTempZ)
                   _Stats(metric: metric, points: points, range: range),
@@ -462,15 +455,6 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                   ),
                 ],
               ],
-              const SizedBox(height: 12),
-              _InfoCard(
-                title: metric == G3Metric.skinTempZ
-                    ? 'Was das ist'
-                    : 'Lücken bleiben leer',
-                text: metric == G3Metric.skinTempZ
-                    ? 'Relative Abweichung der Hauttemperatur von deiner Basis, in Sensor-Einheiten. Das ist keine Körpertemperatur.'
-                    : 'Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
-              ),
               if (widget.band != null)
                 chrome.OBFooterStamp(_bandStamp(widget.band!)),
             ],
@@ -663,8 +647,10 @@ void _showExplanation(BuildContext context, G3Metric metric) {
     builder: (sheet) => chrome.OBSheet(
       title: g3MetricName(metric),
       subtitle: metric == G3Metric.skinTempZ
-          ? 'Die Abweichung ist relativ zu deiner Basis. Sie zeigt keine Körpertemperatur.'
-          : 'Dein Normalbereich stammt aus gespeicherten Messungen. Fehlende Tage bleiben leer.',
+          ? 'Die Abweichung ist relativ zu deiner Basis. Sie zeigt keine Körpertemperatur. Tage ohne Messung bleiben leer.'
+          : metric == G3Metric.steps
+          ? 'Der Zähler im Band liefert die Schritte. Stunden ohne gespeicherte Messung bleiben leer.'
+          : 'Dein Normalbereich stammt aus gespeicherten Messungen. Tage ohne Messung werden nicht geschätzt und zählen nicht zum Durchschnitt.',
       confirmLabel: 'Schließen',
       onCancel: () => Navigator.pop(sheet),
       onConfirm: () => Navigator.pop(sheet),

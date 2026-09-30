@@ -10,11 +10,14 @@ import 'package:openstrap_edge/openband/alp_tokens.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
+import 'package:openstrap_edge/openband/g3/day.dart' show OBActivityRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBListRow;
 import 'package:openstrap_edge/openband/g3/chrome.dart' show OBFormField;
 import 'package:openstrap_edge/openband/g3/metrics.dart'
-    show G3Scale, OBBodyRow, OBBodyState, OBChip, OBLeadMetric, OBLeadState;
+    show G3Scale, OBBodyRow, OBBodyState, OBChip, OBLeadMetric, OBLeadState, OBSecondaryMetric;
 import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
+import 'package:openstrap_edge/openband/g3/screens/training_screen.dart'
+    show G3ActivityScreen, G3LoadScreen;
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/tab_bar.dart';
@@ -218,6 +221,103 @@ void main() {
     );
   });
 
+  testWidgets('Heute activity opens its own result inside the Heute tab', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities(_day)).single;
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: _day,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          releaseStyle: true,
+          domains: const [ShellDomain.home, ShellDomain.workout],
+          builder: (context, domain) => domain == ShellDomain.home
+              ? Scaffold(
+                  body: OBActivityRow(
+                    pictogram: const SizedBox(),
+                    title: 'Lauf',
+                    subtitle: '07:58–08:40',
+                    onTap: () =>
+                        openHeuteActivity(context, controller, activity),
+                  ),
+                )
+              : const Scaffold(body: Text('Training root')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lauf'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(G3ActivityScreen), findsOneWidget);
+    expect(
+      tester
+          .widget<G3ActivityScreen>(find.byType(G3ActivityScreen))
+          .activity
+          .id,
+      activity.id,
+    );
+    expect(find.text('Training root'), findsNothing);
+    expect(
+      tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
+      ShellDomain.home,
+    );
+  });
+
+  testWidgets('Heute Belastung opens the G3 load detail inside its tab', (
+    tester,
+  ) async {
+    final controller = OpenBandController(
+      repository: _repo(SyntheticScenario.g3Sample),
+      initialDay: _day,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          releaseStyle: true,
+          domains: const [ShellDomain.home, ShellDomain.workout],
+          builder: (context, domain) => domain == ShellDomain.home
+              ? Scaffold(
+                  body: OBSecondaryMetric(
+                    label: 'BELASTUNG',
+                    value: '9,4',
+                    start: '0',
+                    end: '21',
+                    onTap: () =>
+                        openHeuteMetric(context, controller, G3Metric.strain),
+                  ),
+                )
+              : const Scaffold(body: Text('Training root')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+      of: find.byType(OBSecondaryMetric),
+      matching: find.byType(OBChevron),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(G3LoadScreen), findsOneWidget);
+    expect(find.text('Training root'), findsNothing);
+    expect(
+      tester.widget<OBTabBar>(find.byType(OBTabBar)).selected,
+      ShellDomain.home,
+    );
+  });
+
   testWidgets('missing HRV refuses a value and names the missing input', (
     tester,
   ) async {
@@ -249,6 +349,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 Wert · Verlauf ab 7'), findsOneWidget);
     expect(find.text('1 Werte · Verlauf ab 7'), findsNothing);
+    expect(find.text('Noch kein Verlauf'), findsNothing);
+    expect(find.text('Lücken bleiben leer'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('Erklärung'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Tage ohne Messung werden nicht geschätzt'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('metric chart keeps unit case and detail delta chip is visible', (
