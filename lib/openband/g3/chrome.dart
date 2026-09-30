@@ -873,70 +873,76 @@ class OBSectionHeader extends StatelessWidget {
         left: _insideDetailPage ? 8 : 24,
         right: _insideDetailPage ? 0 : 16,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 18, bottom: 8),
-              child: Row(
-                children: [
-                  if (glyph != null) ...[
-                    Icon(glyph, size: 16, color: g.domainHue(domain)),
-                    const SizedBox(width: 6),
-                  ],
-                  Flexible(
-                    child: Text(
-                      text,
-                      style: g.caps(
-                        color: domain == G3Domain.neutral
-                            ? g.muted
-                            : g.domainHue(domain),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (action != null && onAction != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: _Hit(
-                label: action!,
-                onTap: onAction,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Row(
-                    children: [
-                      Icon(LucideIcons.plus, size: 14, color: g.ink),
-                      const SizedBox(width: 2),
-                      Text(
-                        action!,
-                        style: g.t(13, 16, weight: FontWeight.w700),
-                      ),
-                    ],
+      child: trailing != null && action == null
+          ? Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _title(g),
+                Padding(
+                  padding: EdgeInsets.only(top: trailingTopPadding),
+                  child: Transform.translate(
+                    offset: Offset(0, 5 - trailingTopPadding / 2),
+                    child: trailing!,
                   ),
                 ),
-              ),
+              ],
             )
-          else if (action != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(action!, style: g.t(13, 16, color: g.muted)),
-            )
-          else if (trailing case final trailing?)
-            Padding(
-              padding: EdgeInsets.only(top: trailingTopPadding),
-              child: Transform.translate(
-                offset: Offset(0, 5 - trailingTopPadding / 2),
-                child: trailing,
-              ),
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(child: _title(g)),
+                if (action != null && onAction != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: _Hit(
+                      label: action!,
+                      onTap: onAction,
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          children: [
+                            Icon(LucideIcons.plus, size: 14, color: g.ink),
+                            const SizedBox(width: 2),
+                            Text(
+                              action!,
+                              style: g.t(13, 16, weight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else if (action != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(action!, style: g.t(13, 16, color: g.muted)),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
+
+  Widget _title(G3 g) => Padding(
+    padding: const EdgeInsets.only(top: 18, bottom: 8),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (glyph != null) ...[
+          Icon(glyph, size: 16, color: g.domainHue(domain)),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            style: g.caps(
+              color: domain == G3Domain.neutral ? g.muted : g.domainHue(domain),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class OBCardHeader extends StatelessWidget {
@@ -1280,7 +1286,20 @@ class OBSegmented extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    Widget seg(int i) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final bold = MediaQuery.boldTextOf(context);
+    TextStyle style(int i) => DefaultTextStyle.of(context).style.merge(
+      g.t(
+        12,
+        14,
+        weight: bold || i == selected ? FontWeight.w700 : FontWeight.w500,
+        color: i == selected ? g.ink : (disabled.contains(i) ? g.gap : g.ink2),
+      ),
+    );
+    final lineHeight = scaler.scale(12) * 14 / 12;
+    final height = (lineHeight + 30).clamp(44.0, double.infinity);
+    final trackHeight = (lineHeight + 16).clamp(30.0, double.infinity);
+    Widget seg(int i, {bool expanded = false}) {
       final on = i == selected;
       final off = disabled.contains(i);
       final child = Container(
@@ -1288,17 +1307,9 @@ class OBSegmented extends StatelessWidget {
           horizontal: horizontalPadding,
           vertical: 5,
         ),
-        alignment: expand ? Alignment.center : null,
+        alignment: expanded ? Alignment.center : null,
         decoration: on ? g.raised(radius: 12) : null,
-        child: Text(
-          items[i],
-          style: g.t(
-            12,
-            14,
-            weight: on ? FontWeight.w700 : FontWeight.w500,
-            color: on ? g.ink : (off ? g.gap : g.ink2),
-          ),
-        ),
+        child: Text(items[i], style: style(i)),
       );
       final tap = Semantics(
         button: true,
@@ -1322,29 +1333,25 @@ class OBSegmented extends StatelessWidget {
           ),
         ),
       );
-      return expand ? Expanded(child: tap) : tap;
+      return expanded ? Expanded(child: tap) : tap;
     }
 
-    if (!expand) {
-      final widths = <double>[];
-      for (var i = 0; i < items.length; i++) {
-        final on = i == selected;
-        final off = disabled.contains(i);
-        final style = g.t(
-          12,
-          14,
-          weight: on ? FontWeight.w700 : FontWeight.w500,
-          color: on ? g.ink : (off ? g.gap : g.ink2),
-        );
-        final painter = TextPainter(
-          text: TextSpan(text: items[i], style: style),
-          textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
-        )..layout();
-        widths.add(painter.width + 2 * horizontalPadding);
-      }
+    final widths = <double>[];
+    for (var i = 0; i < items.length; i++) {
+      final textStyle = style(i);
+      final painter = TextPainter(
+        text: TextSpan(text: items[i], style: textStyle),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+      )..layout();
+      widths.add(
+        (painter.width + 2 * horizontalPadding).clamp(44.0, double.infinity),
+      );
+      painter.dispose();
+    }
+    Widget natural() {
       final visualWidth = widths.fold<double>(0, (sum, item) => sum + item);
-      final width = visualWidth < 44 ? 44.0 : visualWidth;
+      final width = visualWidth + 6;
       var left = 0.0;
       final visuals = <Widget>[];
       final targets = <Widget>[];
@@ -1363,28 +1370,16 @@ class OBSegmented extends StatelessWidget {
                 vertical: 5,
               ),
               decoration: on ? g.raised(radius: 12) : null,
-              child: Text(
-                items[i],
-                style: g.t(
-                  12,
-                  14,
-                  weight: on ? FontWeight.w700 : FontWeight.w500,
-                  color: on ? g.ink : (off ? g.gap : g.ink2),
-                ),
-              ),
+              child: Text(items[i], style: style(i)),
             ),
           ),
         );
-        final targetWidth = itemWidth < 44 ? 44.0 : itemWidth;
         targets.add(
           Positioned(
-            left: (left + (itemWidth - targetWidth) / 2).clamp(
-              0.0,
-              (width - targetWidth).clamp(0.0, width),
-            ),
+            left: left + 3,
             top: 0,
-            width: targetWidth,
-            height: 44,
+            width: itemWidth,
+            height: height,
             child: Semantics(
               button: true,
               selected: on,
@@ -1399,42 +1394,69 @@ class OBSegmented extends StatelessWidget {
         );
         left += itemWidth;
       }
-      return SizedBox(
-        width: width,
-        height: 44,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 7,
-              height: 30,
-              child: DecoratedBox(decoration: g.pressed(radius: 15)),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          if (width > constraints.maxWidth) {
+            return DecoratedBox(
+              decoration: g.pressed(radius: 15),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Wrap(
+                  children: [for (var i = 0; i < items.length; i++) seg(i)],
+                ),
+              ),
+            );
+          }
+          return SizedBox(
+            width: width,
+            height: height,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 7,
+                  height: trackHeight,
+                  child: DecoratedBox(decoration: g.pressed(radius: 15)),
+                ),
+                ExcludeSemantics(child: Stack(children: visuals)),
+                ...targets,
+              ],
             ),
-            ExcludeSemantics(child: Stack(children: visuals)),
-            ...targets,
-          ],
-        ),
+          );
+        },
       );
     }
 
-    return SizedBox(
-      height: 44,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 7,
-            height: 30,
-            child: DecoratedBox(decoration: g.pressed(radius: 15)),
+    if (!expand) return natural();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (widths.any(
+          (width) => width > constraints.maxWidth / items.length,
+        )) {
+          return natural();
+        }
+        return SizedBox(
+          height: height,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 7,
+                height: trackHeight,
+                child: DecoratedBox(decoration: g.pressed(radius: 15)),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  for (var i = 0; i < items.length; i++) seg(i, expanded: true),
+                ],
+              ),
+            ],
           ),
-          Row(
-            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-            children: [for (var i = 0; i < items.length; i++) seg(i)],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
