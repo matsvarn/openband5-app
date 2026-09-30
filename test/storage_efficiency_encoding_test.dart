@@ -227,7 +227,7 @@ void main() {
     await db.delete('decoded_onehz');
     await LocalDb.importFromDbFile(path);
     expect(await read(), before);
-    expect((await db.query('decoded_onehz')).single['onehz_enc'], 1);
+    expect((await db.query('decoded_onehz')).single['onehz_enc'], isNull);
     // A backup without the marker carries the original doubles.
     final backup = await databaseFactory.openDatabase('${temp.path}/legacy.db');
     await backup.execute(

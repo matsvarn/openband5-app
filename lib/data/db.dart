@@ -566,6 +566,8 @@ class LocalDb {
   static Future<Database> _open() async {
     final dir = await getDatabasesPath();
     final path = p.join(dir, dbName);
+    // No onDowngrade: an older build cannot open this live schema. Exports
+    // decode compact sensor values so older builds can safely import them.
     return openDatabase(
       path,
       onConfigure: (db) async {
@@ -10927,8 +10929,29 @@ class LocalDb {
     final dest = p.join(tmp.path, 'openstrap_export_$stamp.db');
     final f = File(dest);
     if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
-    await db.execute('VACUUM INTO ?', [dest]);
-    return dest;
+    try {
+      await db.execute('VACUUM INTO ?', [dest]);
+      final out = await openDatabase(dest);
+      try {
+        await _decodeExportOneHz(out);
+      } finally {
+        await out.close();
+      }
+      return dest;
+    } catch (_) {
+      await deleteDatabase(dest);
+      rethrow;
+    }
+  }
+
+  /// Exports carry physical units even when an older importer drops the marker.
+  /// Decode only the destination, atomically, before publishing its path.
+  static Future<void> _decodeExportOneHz(Database out) async {
+    final values = _compactOneHzColumns.map((c) => '$c = $c / 10000.0').join(', ');
+    await out.transaction((txn) async {
+      await txn.rawUpdate('UPDATE decoded_onehz SET $values, onehz_enc = NULL '
+          'WHERE onehz_enc = 1');
+    });
   }
 
   static Future<int> databaseFileBytes() async {
@@ -11046,31 +11069,37 @@ class LocalDb {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final dest = p.join(tmp.path, 'openstrap_days_$stamp.db');
     await deleteDatabase(dest);
-    final out = await openDatabase(
-      dest,
-      // `version:` is MANDATORY here. Without it sqflite throws
-      // ArgumentError('onCreate must be null if no version is specified')
-      // before opening anything — so this whole export path (Profile → Data
-      // history → Export) had never once produced a file.
-      version: schemaVersion,
-      onCreate: (db, _) async {
-        await _createSamples(db);
-        await _createDecodedStore(db);
-        await db.execute('CREATE INDEX idx_samples_ts ON samples(ts)');
-        await _createEvents(db);
-        await _createBandSignals(db);
-        await _createDerived(db);
-        await _createDayResult(db);
-        await _createUserTables(db);
-        await _createSyncState(db);
-        await _createSyncCursor(db);
-        await _createComputeState(db);
-        await _createPrimitiveArtifacts(db);
-        await _createLiveCoverage(db);
-        await _createOpenBandStrengthRuntime(db);
-        await _ensureStrengthSetIdentity(db);
-      },
-    );
+    late final Database out;
+    try {
+      out = await openDatabase(
+        dest,
+        // `version:` is MANDATORY here. Without it sqflite throws
+        // ArgumentError('onCreate must be null if no version is specified')
+        // before opening anything — so this whole export path (Profile → Data
+        // history → Export) had never once produced a file.
+        version: schemaVersion,
+        onCreate: (db, _) async {
+          await _createSamples(db);
+          await _createDecodedStore(db);
+          await db.execute('CREATE INDEX idx_samples_ts ON samples(ts)');
+          await _createEvents(db);
+          await _createBandSignals(db);
+          await _createDerived(db);
+          await _createDayResult(db);
+          await _createUserTables(db);
+          await _createSyncState(db);
+          await _createSyncCursor(db);
+          await _createComputeState(db);
+          await _createPrimitiveArtifacts(db);
+          await _createLiveCoverage(db);
+          await _createOpenBandStrengthRuntime(db);
+          await _ensureStrengthSetIdentity(db);
+        },
+      );
+    } catch (_) {
+      await deleteDatabase(dest);
+      rethrow;
+    }
 
     // Every source read on the export path is PAGED on rowid. A day-ranged
     // `SELECT *` over `decoded_onehz` is 86,400 rows, and sqflite materialises
@@ -11229,48 +11258,55 @@ class LocalDb {
       );
     }
 
-    for (final dayId in sorted) {
-      final (startSec, endSec) = _localDayWindow(dayId);
-      await copyRawRange(startSec, endSec);
-      await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
-      await copyRows('metric_series', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows(
-        'metric_series_version',
-        where: 'date = ?',
-        whereArgs: [dayId],
-      );
-      await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows(
-        'sleep_session_candidates',
-        where: 'day_id = ?',
-        whereArgs: [dayId],
-      );
-      await copyRows(
-        'wake_day_features',
-        where: 'day_id = ?',
-        whereArgs: [dayId],
-      );
+    try {
+      for (final dayId in sorted) {
+        final (startSec, endSec) = _localDayWindow(dayId);
+        await copyRawRange(startSec, endSec);
+        await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
+        await copyRows('metric_series', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'metric_series_version',
+          where: 'date = ?',
+          whereArgs: [dayId],
+        );
+        await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'sleep_session_candidates',
+          where: 'day_id = ?',
+          whereArgs: [dayId],
+        );
+        await copyRows(
+          'wake_day_features',
+          where: 'day_id = ?',
+          whereArgs: [dayId],
+        );
+      }
+      // Custom journal field definitions are not day-scoped, so they ride along
+      // whole. Without them an exported day carries numbers under keys like
+      // `custom_magnesium` with no label, no unit and no idea what scale they
+      // are on — the values survive the export and their meaning does not.
+      await copyRows('journal_field_def');
+      // Plans are not day-scoped; definitions and revision history ride along
+      // so exported dose rows keep their identity. Per-day dose rows follow.
+      for (final dayId in sorted) {
+        await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
+      }
+      await copyRows('med_def');
+      await copyRows('med_plan_revision');
+      // Head measurement date selects the id. Every revision of that id is
+      // copied, including a deleted head, so a later restore still has the removal.
+      await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
+      await _decodeExportOneHz(out);
+      await out.close();
+      return dest;
+    } catch (_) {
+      await out.close();
+      await deleteDatabase(dest);
+      rethrow;
     }
-    // Custom journal field definitions are not day-scoped, so they ride along
-    // whole. Without them an exported day carries numbers under keys like
-    // `custom_magnesium` with no label, no unit and no idea what scale they
-    // are on — the values survive the export and their meaning does not.
-    await copyRows('journal_field_def');
-    // Plans are not day-scoped; definitions and revision history ride along
-    // so exported dose rows keep their identity. Per-day dose rows follow.
-    for (final dayId in sorted) {
-      await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
-    }
-    await copyRows('med_def');
-    await copyRows('med_plan_revision');
-    // Head measurement date selects the id. Every revision of that id is
-    // copied, including a deleted head, so a later restore still has the removal.
-    await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
-    await out.close();
-    return dest;
   }
 
   static Future<int> deleteDays(Set<String> dayIds) async {
