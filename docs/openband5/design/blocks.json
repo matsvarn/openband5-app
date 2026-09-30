@@ -192,7 +192,7 @@
     {
       "name": "OBPageHeader.detail",
       "paperNode": "3ER6-0",
-      "widget": "OBPageHeader",
+      "widget": "G2PageHeader",
       "variant": "detail",
       "file": "theme.dart",
       "usedIn": [
@@ -266,7 +266,7 @@
     {
       "name": "OBMetricCard",
       "paperNode": "3ESH-0",
-      "widget": "OBMetricCard",
+      "widget": "G2MetricCard",
       "file": "screens.dart",
       "replaces": "MetricCard",
       "usedIn": [
@@ -490,7 +490,7 @@
     {
       "name": "OBSegmented",
       "paperNode": "3EZE-0",
-      "widget": "OBSegmented",
+      "widget": "G2Segmented",
       "file": "health.dart",
       "usedIn": [
         "3ISM-0",
@@ -646,7 +646,7 @@
     },
     {
       "name": "OBSyncState",
-      "widget": "OBSyncState",
+      "widget": "G2SyncState",
       "implemented": "screens.dart",
       "note": "Stored frontier and real transfer state only; no invented progress track. Interactive states use44-point targets; large text stacks the action. FirstSync adds actual resume pending/failure state without changing storage or BLE ownership.",
       "paperNode": "3I3P-0",
@@ -778,7 +778,7 @@
     {
       "name": "OBSegmented.night",
       "paperNode": "3K9K-0",
-      "widget": "OBSegmented",
+      "widget": "G2Segmented",
       "file": "health.dart",
       "variant": "night",
       "usedIn": [
@@ -1170,7 +1170,7 @@
       "paperNode": "5LZD-0",
       "paperNodeDark": "5M33-0",
       "usedIn": [],
-      "widget": "OBCheckIn",
+      "widget": "G3CheckInPreview",
       "file": "g3/day.dart",
       "variant": "OBCheckInState.answered"
     },
@@ -1180,7 +1180,7 @@
       "paperNode": "5M07-0",
       "paperNodeDark": "5M3X-0",
       "usedIn": [],
-      "widget": "OBCheckIn",
+      "widget": "G3CheckInPreview",
       "file": "g3/day.dart",
       "variant": "OBCheckInState.later"
     },
@@ -1193,7 +1193,7 @@
         "5OST-0",
         "5Q4B-0"
       ],
-      "widget": "OBCheckIn",
+      "widget": "G3CheckInPreview",
       "file": "g3/day.dart",
       "variant": "OBCheckInState.question"
     },
@@ -2157,7 +2157,7 @@
       "design": "G3",
       "paperNode": "6JE9-0",
       "widget": "OBCheckIn",
-      "file": "g3/journal_parts.dart",
+      "file": "g3/check_in.dart",
       "usedIn": [
         "5T4H-0"
       ]
@@ -2257,7 +2257,7 @@
       "design": "G3",
       "paperNode": "6JIR-0",
       "widget": "OBInlineError",
-      "file": "g3/journal_parts.dart",
+      "file": "g3/check_in.dart",
       "usedIn": [
         "5WHJ-0"
       ]
