@@ -408,111 +408,160 @@ String healthSyncSub(
 /// IMMEDIATELY, with no dialog in the way, and only then says what had already
 /// been sent: a revocation you have to confirm is a revocation that can be
 /// mis-tapped into staying on.
+Future<bool?> _settingsChoice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String cancelLabel,
+  required String confirmLabel,
+}) => showModalBottomSheet<bool>(
+  context: context,
+  useRootNavigator: true,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheet) {
+    final largeText = MediaQuery.textScalerOf(sheet).scale(15) > 22;
+    final cancel = chrome.OBActionSecondary(
+      cancelLabel,
+      expand: true,
+      onPressed: () => Navigator.pop(sheet, false),
+    );
+    final confirm = chrome.OBActionPrimary(
+      confirmLabel,
+      expand: true,
+      onPressed: () => Navigator.pop(sheet, true),
+    );
+    return chrome.OBSheet(
+      title: title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheet).height * .5,
+            ),
+            child: SingleChildScrollView(
+              child: Text(body, style: G3.of(sheet).t(14, 20)),
+            ),
+          ),
+          const SizedBox(height: 18),
+          if (largeText) ...[
+            cancel,
+            const SizedBox(height: 10),
+            confirm,
+          ] else
+            Row(
+              children: [
+                Expanded(child: cancel),
+                const SizedBox(width: 10),
+                Expanded(child: confirm),
+              ],
+            ),
+        ],
+      ),
+    );
+  },
+);
+
+Future<void> _settingsNotice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String closeLabel,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useRootNavigator: true,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  builder: (sheet) => chrome.OBSheet(
+    title: title,
+    confirmLabel: closeLabel,
+    onConfirm: () => Navigator.pop(sheet),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(sheet).height * .55,
+      ),
+      child: SingleChildScrollView(
+        child: Text(body, style: G3.of(sheet).t(14, 20)),
+      ),
+    ),
+  ),
+);
+
 Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
   if (app.healthShareConsent) {
     await app.setHealthShareConsent(false);
     final last = await HealthUploader.instance.lastUploadAt();
     if (!c.mounted) return;
     final l = AppLocalizations.of(c);
-    await showDialog<void>(
-      context: c,
-      builder: (d) => AlertDialog(
-        title: Text(l?.settingsHealthShareOffTitle ?? 'Contribution off'),
-        content: Text(
-          last == null
-              ? (l?.settingsHealthShareOffNeverUploaded ??
-                    'Nothing was ever uploaded. Nothing will be.')
-              // What we KNOW, not what we hope: the revocation is posted
-              // once, unawaited, with no retry queue, so offline it never
-              // arrives and nothing here can tell.
-              : (l?.settingsHealthShareOffDetail(
-                      last.toLocal().toString().split('.').first,
-                    ) ??
-                    'Nothing further will be uploaded.\n\n'
-                        'One copy of your database was uploaded on '
-                        '${last.toLocal().toString().split('.').first}. The server '
-                        'keeps only the most recent copy per device. We tried to '
-                        'tell it your consent is withdrawn — that message is sent '
-                        'once and is not retried, so if this phone is offline it '
-                        'will not have arrived, and we cannot show you that the copy '
-                        'is gone either.'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(d).pop(),
-            child: Text(l?.settingsOk ?? 'OK'),
-          ),
-        ],
-      ),
+    final localLast = last?.toLocal();
+    final lastLabel = localLast == null
+        ? null
+        : '${MaterialLocalizations.of(c).formatMediumDate(localLast)} '
+              '${MaterialLocalizations.of(c).formatTimeOfDay(TimeOfDay.fromDateTime(localLast))}';
+    await _settingsNotice(
+      c,
+      title: l?.settingsHealthShareOffTitle ?? 'Contribution off',
+      body: last == null
+          ? (l?.settingsHealthShareOffNeverUploaded ??
+                'Nothing was ever uploaded. Nothing will be.')
+          // What we KNOW, not what we hope: the revocation is posted
+          // once, unawaited, with no retry queue, so offline it never
+          // arrives and nothing here can tell.
+          : (l?.settingsHealthShareOffDetail(lastLabel!) ??
+                'Nothing further will be uploaded.\n\n'
+                    'One copy of your database was uploaded on '
+                    '$lastLabel. The server '
+                    'keeps only the most recent copy per device. We tried to '
+                    'tell it your consent is withdrawn — that message is sent '
+                    'once and is not retried, so if this phone is offline it '
+                    'will not have arrived, and we cannot show you that the copy '
+                    'is gone either.'),
+      closeLabel: l?.settingsOk ?? 'OK',
     );
     return;
   }
   final l = AppLocalizations.of(c);
-  final ok = await showDialog<bool>(
-    context: c,
-    builder: (d) => AlertDialog(
-      title: Text(
-        l?.settingsHealthShareOnTitle ?? 'Contribute your health data?',
-      ),
-      content: Text(
+  final ok = await _settingsChoice(
+    c,
+    title: l?.settingsHealthShareOnTitle ?? 'Contribute your health data?',
+    body:
         l?.settingsHealthShareOnBody ??
-            'Once a day, on Wi-Fi and while charging, a compressed copy of your '
-                'ENTIRE database is uploaded — every derived day and every raw sensor '
-                'row the band has sent. It is used to improve the algorithms.\n\n'
-                'It is not anonymous in any meaningful sense: it is your whole health '
-                'history. You can switch this off at any time, and nothing further '
-                'is sent from that moment.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(false),
-          child: Text(l?.settingsNo ?? 'No'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(true),
-          child: Text(l?.settingsContribute ?? 'Contribute'),
-        ),
-      ],
-    ),
+        'Once a day, on Wi-Fi and while charging, a compressed copy of your '
+            'ENTIRE database is uploaded — every derived day and every raw sensor '
+            'row the band has sent. It is used to improve the algorithms.\n\n'
+            'It is not anonymous in any meaningful sense: it is your whole health '
+            'history. You can switch this off at any time, and nothing further '
+            'is sent from that moment.',
+    cancelLabel: l?.settingsNo ?? 'No',
+    confirmLabel: l?.settingsContribute ?? 'Contribute',
   );
   if (ok == true) await app.setHealthShareConsent(true);
 }
 
 Future<void> _confirmReset(BuildContext c, AppState app) async {
   final l = AppLocalizations.of(c);
-  final ok = await showDialog<bool>(
-    context: c,
-    builder: (d) => AlertDialog(
-      title: Text(l?.settingsResetTitle ?? 'Delete everything?'),
-      // Enumerated, because the previous wording ("every measured day, session
-      // and profile field") was false in about twenty places: it deleted the
-      // derived days and left the labs, the meals, the doses, the breathing
-      // sessions, the logged sets, the baselines, the consent flags, the
-      // install id, the stored API key and the home-screen widget standing.
-      // It now removes all of that, so it can say so.
-      content: Text(
+  // Enumerated because a reset deletes the raw and derived records, profile,
+  // preferences, reminders, and stored backups.
+  final ok = await _settingsChoice(
+    c,
+    title: l?.settingsResetTitle ?? 'Delete everything?',
+    body:
         l?.settingsResetBody ??
-            'This deletes, permanently and with no copy anywhere else:\n\n'
-                '· every measured day, sleep, workout and route\n'
-                '· every lab result, meal, medication dose, habit, breathing session '
-                'and logged set\n'
-                '· your journal, cycle log and rolling baselines\n'
-                '· your profile, every preference and any stored AI key\n'
-                '· the home-screen widget and every scheduled reminder\n\n'
-                'The band is unpaired, and it cannot re-send history it has already '
-                'handed over. Export from Your data first if you want a copy.',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(false),
-          child: Text(l?.settingsResetKeepData ?? 'Keep my data'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(d).pop(true),
-          child: Text(l?.settingsResetDeleteEverything ?? 'Delete everything'),
-        ),
-      ],
-    ),
+        'This deletes, permanently and with no copy anywhere else:\n\n'
+            '· every measured day, sleep, workout and route\n'
+            '· every lab result, meal, medication dose, habit, breathing session '
+            'and logged set\n'
+            '· your journal, cycle log and rolling baselines\n'
+            '· your profile, every preference and any stored AI key\n'
+            '· the home-screen widget and every scheduled reminder\n\n'
+            'The band is unpaired, and it cannot re-send history it has already '
+            'handed over. Export from Your data first if you want a copy.',
+    cancelLabel: l?.settingsResetKeepData ?? 'Keep my data',
+    confirmLabel: l?.settingsResetDeleteEverything ?? 'Delete everything',
   );
   if (ok != true) return;
   await app.resetAllData();

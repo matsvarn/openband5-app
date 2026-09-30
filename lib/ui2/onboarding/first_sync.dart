@@ -6,7 +6,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +15,7 @@ import '../../openband/g3/band_parts.dart';
 import '../../openband/g3/chrome.dart' show OBActionSecondary, OBErrorBlock;
 import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/g3_format.dart';
 import '../../openband/local_repository.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
@@ -336,7 +336,7 @@ class FirstSyncView extends StatelessWidget {
                               'Die Übertragung stoppte, bevor ein Wert gespeichert wurde. Band nah ans iPhone halten und fortsetzen.',
                               'The transfer stopped before a value was stored. Keep the band near the phone and resume.',
                             )
-                          : '${_s(context, 'Bis', 'Until')} ${bandFrontierDayPrefix(band!.latestStoredAt!, now, de: Localizations.localeOf(context).languageCode == 'de')}${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
+                          : '${_s(context, 'Bis', 'Until')} ${_storedTime(context, band!.latestStoredAt!, now)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
                       action: _s(context, 'Fortsetzen', 'Resume'),
                       actionIcon: LucideIcons.refreshCw,
                       onAction: onResume,
@@ -682,12 +682,15 @@ class OBSetupStatusCard extends StatelessWidget {
 
 String _frontier(BuildContext context, DateTime? stored, DateTime now) {
   if (stored == null) return '—';
+  if (_german(context)) return g3DataThrough(stored, now: now);
+  return 'until ${_storedTime(context, stored, now)}';
+}
+
+String _storedTime(BuildContext context, DateTime stored, DateTime now) {
+  if (_german(context)) return g3Relative(stored, now: now);
   final time = obTime(stored);
-  final sameDay = dayLabelOf(stored) == todayLabel(now);
-  final dated = sameDay
-      ? time
-      : '${DateFormat(_german(context) ? 'd.M.' : 'd MMM', _german(context) ? 'de_DE' : 'en').format(stored)} $time';
-  return '${_s(context, 'bis', 'until')} $dated';
+  if (dayLabelOf(stored) == todayLabel(now)) return time;
+  return '${MaterialLocalizations.of(context).formatMediumDate(stored)} $time';
 }
 
 bool _stackStatusRows(BuildContext context) =>

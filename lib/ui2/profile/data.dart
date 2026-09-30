@@ -29,6 +29,7 @@ import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/g3/g3_theme.dart';
+import '../../openband/g3/g3_format.dart';
 import '../../openband/g3/band_parts.dart'
     show OBBandActionNotice, OBToggle, OBSettingsRow;
 import '../../openband/g3/chrome.dart' as chrome;
@@ -690,7 +691,7 @@ class DataScreenView extends StatelessWidget {
                               child: Text(
                                 lastBackupAt == null
                                     ? '—'
-                                    : _backupTime(lastBackupAt!),
+                                    : obTime(lastBackupAt),
                                 key: const ValueKey('data-last-backup'),
                                 style: g.t(
                                   92,
@@ -744,7 +745,7 @@ class DataScreenView extends StatelessWidget {
                       title: de ? 'Sicherung fehlgeschlagen' : 'Backup failed',
                       body: lastBackupAt == null
                           ? '$note ${de ? 'Noch keine erfolgreiche Sicherung vorhanden.' : 'No successful backup exists yet.'}'
-                          : '$note ${de ? 'Die Sicherung von' : 'The backup from'} $backupDay ${_backupTime(lastBackupAt!)} ${de ? 'bleibt erhalten.' : 'remains available.'}',
+                          : '$note ${de ? 'Die Sicherung von' : 'The backup from'} $backupDay ${obTime(lastBackupAt)} ${de ? 'bleibt erhalten.' : 'remains available.'}',
                       action: de ? 'Erneut versuchen' : 'Try again',
                       actionIcon: LucideIcons.refreshCw,
                       onAction: onBackupNow,
@@ -945,7 +946,7 @@ class DataScreenView extends StatelessWidget {
   }
 
   Widget _sectionLabel(BuildContext c, String label) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 20, 0, 8),
+    padding: const EdgeInsets.fromLTRB(8, 18, 0, 8),
     child: Text(
       label.toUpperCase(),
       style: G3.of(c).caps(color: G3.of(c).muted),
@@ -981,14 +982,11 @@ String _stamp(DateTime t) {
       '${two(t.hour)}:${two(t.minute)}';
 }
 
-String _backupTime(DateTime t) =>
-    '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-
 String _backupDay(DateTime t, DateTime now, bool de) {
   if (dayLabelOf(t) == todayLabel(now)) return de ? 'heute' : 'today';
   final yesterday = DateTime(now.year, now.month, now.day - 1);
   if (dayLabelOf(t) == dayLabelOf(yesterday)) {
     return de ? 'gestern' : 'yesterday';
   }
-  return '${t.day.toString().padLeft(2, '0')}.${t.month.toString().padLeft(2, '0')}.';
+  return g3DateShort(t);
 }

@@ -21,8 +21,8 @@
 
 import 'package:flutter/material.dart';
 import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_format.dart';
 import '../../openband/g3/g3_theme.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -553,14 +553,14 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   };
 
   String _dateLabel(BuildContext c, DateTime at) {
-    final locale = Localizations.localeOf(c).languageCode;
-    return DateFormat.MMMMEEEEd(locale).format(at);
+    if (Localizations.localeOf(c).languageCode == 'de') return g3DayLong(at);
+    return MaterialLocalizations.of(c).formatFullDate(at);
   }
 
   static String _hhmm(DateTime d) => _hhmmOf(d.hour, d.minute);
 
   static String _hhmmOf(int hour, int minute) =>
-      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+      obTime(DateTime(2000, 1, 1, hour, minute));
 
   static const _weekdaysDe = [
     'Montag',
