@@ -1244,11 +1244,13 @@ class G3JournalPatternScreen extends StatelessWidget {
                       ),
                       need: pattern.historyNeed?.need ?? pattern.pairedMinimum,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      _patternFooter(pattern),
-                      style: g.t(13, 17, weight: FontWeight.w700),
-                    ),
+                    if (p.pairedN > 0) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        _patternFooter(pattern),
+                        style: g.t(13, 17, weight: FontWeight.w700),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Divider(color: g.hairline),
                     OBPatternGateRow(

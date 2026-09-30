@@ -1425,10 +1425,14 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
 
   late String _selectedDay = widget.controller.selectedDay;
   late Future<G3WeeklyLoad> weekly = Future.value(widget.weekly);
+  late G3WeeklyLoad _weeklyValue;
+  late String _weeklyValueDay;
 
   @override
   void initState() {
     super.initState();
+    _weeklyValue = widget.weekly;
+    _weeklyValueDay = _selectedDay;
     widget.controller.addListener(_dayChanged);
   }
 
@@ -1438,6 +1442,8 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_dayChanged);
       widget.controller.addListener(_dayChanged);
+      _weeklyValue = widget.weekly;
+      _weeklyValueDay = widget.controller.selectedDay;
       _readDay();
     }
   }
@@ -1446,7 +1452,33 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
     _selectedDay = widget.controller.selectedDay;
     trend = _load();
     activities = widget.controller.repository.readActivities(_selectedDay);
-    weekly = widget.controller.repository.readWeeklyLoad(_selectedDay);
+    weekly = _readWeekly();
+  }
+
+  Future<G3WeeklyLoad> _readWeekly() {
+    final day = _selectedDay;
+    late final Future<G3WeeklyLoad> request;
+    request = widget.controller.repository.readWeeklyLoad(day).then((load) {
+      if (mounted && identical(weekly, request)) {
+        _weeklyValue = load;
+        _weeklyValueDay = day;
+      }
+      return load;
+    });
+    // A read can fail before the next frame's FutureBuilder subscribes.
+    request.ignore();
+    return request;
+  }
+
+  bool get _canKeepWeekly {
+    DateTime weekOf(String label) {
+      final day = DateTime.parse(label);
+      return DateTime(day.year, day.month, day.day - day.weekday + 1);
+    }
+
+    return _weeklyValue.atl?.isFinite == true &&
+        _weeklyValue.ctl?.isFinite == true &&
+        weekOf(_weeklyValueDay) == weekOf(_selectedDay);
   }
 
   void _dayChanged() {
@@ -1584,10 +1616,33 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                         FutureBuilder<G3WeeklyLoad>(
                           key: ValueKey('weekly:$_selectedDay'),
                           future: weekly,
-                          builder: (context, snapshot) => OBTrainingLoad(
-                            load: snapshot.data,
-                            onMethod: () => _method(context),
-                          ),
+                          initialData: widget.weekly,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState !=
+                                ConnectionState.done) {
+                              if (_canKeepWeekly) {
+                                return OBTrainingLoad(
+                                  load: _weeklyValue,
+                                  onMethod: () => _method(context),
+                                );
+                              }
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            if (snapshot.hasError) {
+                              return _error(
+                                context,
+                                () => setState(() {
+                                  weekly = _readWeekly();
+                                }),
+                              );
+                            }
+                            return OBTrainingLoad(
+                              load: snapshot.data,
+                              onMethod: () => _method(context),
+                            );
+                          },
                         ),
                         OBFooterStamp(
                           g3DataThrough(stamp, now: widget.controller.now()),
