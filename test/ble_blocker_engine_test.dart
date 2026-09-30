@@ -129,7 +129,7 @@ void main() {
   });
 
   test(
-    'scan permission error survives adapter on; stale off text does not',
+    'a scan permission error survives a repeated adapter on',
     () async {
       final adapter = _Adapter(BluetoothAdapterState.on);
       final engine = BleEngine(
@@ -156,14 +156,56 @@ void main() {
       );
       expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
 
+      // A resume re-reads an adapter that is still on: the refusal stands.
       adapter.report(BluetoothAdapterState.on);
-      await Future<void>.delayed(Duration.zero);
+      await engine.refreshBluetoothBlocker();
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+      // Stale "off" text with the radio on is not a second blocker.
       engine.debugStartScan = () async =>
           throw Exception('Bluetooth must be turned on');
       expect(await engine.scan(), isNull);
-      expect(engine.bluetoothBlocker, isNull);
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
     },
   );
+
+  test('stale off text with the adapter on sets no blocker', () async {
+    final adapter = _Adapter(BluetoothAdapterState.on);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    engine.debugStartScan = () async =>
+        throw Exception('Bluetooth must be turned on');
+    expect(await engine.scan(), isNull);
+    expect(engine.bluetoothBlocker, isNull);
+  });
+
+  test('a blocker from the adapter clears when the adapter turns on', () async {
+    final adapter = _Adapter(BluetoothAdapterState.unauthorized);
+    final engine = BleEngine(
+      onRecord: (_, _) async {},
+      onState: (_) {},
+      adapterStateStream: adapter.freshStream,
+    );
+    addTearDown(() async {
+      engine.dispose();
+      await adapter.close();
+    });
+
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+    adapter.report(BluetoothAdapterState.on);
+    await engine.refreshBluetoothBlocker();
+    expect(engine.bluetoothBlocker, isNull);
+  });
 
   test('connect timeout is dated only with adapter on', () async {
     for (final radio in [BluetoothAdapterState.on, BluetoothAdapterState.off]) {

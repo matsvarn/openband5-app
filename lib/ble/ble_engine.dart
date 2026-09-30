@@ -2255,11 +2255,17 @@ class BleEngine {
         _lastAdapterState != BluetoothAdapterState.unknown) {
       return;
     }
+    final previous = _lastAdapterState;
     _lastAdapterState = adapter;
     final blocker = classifyBleBlocker(adapterState: adapter.name);
     if (blocker != null) {
       _noteBlocker(blocker, adapter.name);
-    } else if (adapter == BluetoothAdapterState.on) {
+    } else if (adapter == BluetoothAdapterState.on &&
+        previous != BluetoothAdapterState.on) {
+      // Only the TRANSITION to on clears. A repeated `on` (every resume re-reads
+      // the adapter) says nothing new, and would wipe a permission refusal that
+      // Android reported in a scan error while the radio was already on. That
+      // one clears when a scan or connect reaches the radio.
       _clearBlocker(adapter.name);
     }
   }
