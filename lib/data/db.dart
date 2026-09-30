@@ -1300,6 +1300,7 @@ class LocalDb {
         }
         if (oldV < 69) {
           await _ensureOneHzEncoding(db);
+          await _ensureBandEventDeviceIndex(db);
         }
       },
       onOpen: (db) async {
@@ -8968,6 +8969,15 @@ class LocalDb {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)');
   }
 
+  static Future<void> _ensureBandEventDeviceIndex(Database db) async {
+    // Mid-ladder creators can still see the pre-device-key table. Rung 69 and
+    // the every-open repair also run this after the device column exists.
+    if ((await _columnsOf(db, 'band_events')).contains('device_id')) {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_band_events_device_ts '
+          'ON band_events(device_id, ts)');
+    }
+  }
+
   // band_events / band_battery — structured local history for device-state
   // signals that were previously only ephemeral or raw-only. Additive beside
   // the upload-queue `events` table.
@@ -8987,6 +8997,7 @@ class LocalDb {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_band_events_ts ON band_events(ts, event_id)',
     );
+    await _ensureBandEventDeviceIndex(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS band_battery (
         device_id TEXT NOT NULL DEFAULT '$kPrimaryDeviceId',
