@@ -13,6 +13,15 @@ FlutterBluePlusException timeout() => FlutterBluePlusException(
   'Timed out after 20s',
 );
 
+class TestBluetoothDevice extends BluetoothDevice {
+  TestBluetoothDevice() : super.fromId('AA:BB:CC:DD:EE:FF');
+
+  bool linkUp = false;
+
+  @override
+  bool get isConnected => linkUp;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -130,6 +139,44 @@ void main() {
     );
   }
 
+  for (final duringProbe in [false, true]) {
+    test(
+      'timer keeps an own link ${duringProbe ? "arriving during the probe" : "without waiting for the connect future"}',
+      () {
+        fakeAsync((async) {
+          final e = engine([]);
+          final device = TestBluetoothDevice()..linkUp = !duringProbe;
+          final pending = Completer<void>();
+          var completed = false;
+          var disconnects = 0;
+          var probes = 0;
+          e.debugDeviceConnectWithTimeout = (_) => pending.future;
+          e.debugSystemConnected = (_, _) async {
+            probes++;
+            device.linkUp = true;
+            return false;
+          };
+          e.debugDeviceDisconnect = ({bool queue = true}) async =>
+              disconnects++;
+          unawaited(
+            e
+                .debugConnectAttempt(device, const Duration(seconds: 20))
+                .then((_) => completed = true),
+          );
+          async.flushMicrotasks();
+          async.elapse(const Duration(seconds: 20));
+          expect(completed, isTrue);
+          expect(disconnects, 0);
+          expect(probes, duringProbe ? 1 : 0);
+          async.elapse(const Duration(seconds: 6));
+          expect(disconnects, 0);
+          pending.complete();
+          async.flushMicrotasks();
+        });
+      },
+    );
+  }
+
   test('connect completing before the owned timer never probes or cancels', () {
     fakeAsync((async) {
       final e = engine([]);
@@ -223,6 +270,7 @@ void main() {
           final states = StreamController<BluetoothConnectionState>.broadcast();
           e.debugConnectionStates = () => states.stream;
           addTearDown(states.close);
+          final device = TestBluetoothDevice();
           var linkUp = false;
           var completed = false;
           Object? failure;
@@ -232,9 +280,10 @@ void main() {
             disconnects.add(queue);
             pending.complete();
             await cancellation.future;
-            linkUp = survivesCancellation;
+            linkUp = true; // The restore central remains connected.
+            device.linkUp = survivesCancellation;
             states.add(
-              linkUp
+              device.isConnected
                   ? BluetoothConnectionState.connected
                   : BluetoothConnectionState.disconnected,
             );

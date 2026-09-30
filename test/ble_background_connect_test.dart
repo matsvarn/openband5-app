@@ -19,6 +19,15 @@ Future<bool> finishConnect(WidgetTester tester, Future<bool> connect) async {
   return result!;
 }
 
+class TestBluetoothDevice extends BluetoothDevice {
+  TestBluetoothDevice() : super.fromId('AA:BB:CC:DD:EE:FF');
+
+  bool linkUp = false;
+
+  @override
+  bool get isConnected => linkUp;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -106,7 +115,7 @@ void main() {
     },
   );
 
-  testWidgets('foreground return keeps a link ahead of the session listener', (
+  testWidgets('foreground system-only link completes within five seconds', (
     tester,
   ) async {
     final logs = <String>[];
@@ -120,20 +129,118 @@ void main() {
     };
     final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
     await tester.pump();
-    e.setBackground(false);
+    try {
+      e.setBackground(false);
+      await tester.pump();
+      expect(cancels.where((queue) => !queue), isEmpty);
+      expect(
+        logs,
+        isNot(contains(contains('background connect already landed'))),
+        reason: 'a system-only link must wait for this central to connect',
+      );
+      await tester.pump(const Duration(seconds: 4));
+      pending.complete();
+      await tester.pump();
+      await finishConnect(tester, connect);
+      expect(logs, contains(contains('[BOOT gen5]')));
+      expect(logs, isNot(contains(startsWith('connect failed:'))));
+      expect(
+        logs,
+        contains(
+          '[LINK] foreground — background connect already landed, keeping it',
+        ),
+      );
+    } finally {
+      if (!pending.isCompleted) pending.complete();
+      await finishConnect(tester, connect);
+    }
+  });
+
+  testWidgets(
+    'foreground system-only link cancels within five seconds and releases lock',
+    (tester) async {
+      final logs = <String>[];
+      final e = engine(logs)..setBackground(true);
+      final pending = Completer<void>();
+      final cancels = <bool>[];
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
+      e.debugSystemConnected = (_, _) async => true;
+      // Native cancellation need not settle a stuck connect future.
+      e.debugDeviceDisconnect = ({bool queue = true}) async =>
+          cancels.add(queue);
+      final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+      await tester.pump();
+      try {
+        e.setBackground(false);
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 4));
+        expect(cancels.where((queue) => !queue), isEmpty);
+        await tester.pump(const Duration(seconds: 1));
+        expect(cancels.where((queue) => !queue), hasLength(1));
+        expect(await finishConnect(tester, connect), isFalse);
+        expect(e.holdsBandLink, isFalse);
+        expect(BleEngine.bandClaimed, isFalse);
+        expect(logs, isNot(contains(contains('[BOOT gen5]'))));
+        var nextAttemptRan = false;
+        e.debugDeviceConnectWithTimeout = (_) async {
+          nextAttemptRan = true;
+          throw StateError('next foreground attempt');
+        };
+        expect(
+          await finishConnect(tester, e.connectToRemoteId('AA:BB:CC:DD:EE:FF')),
+          isFalse,
+        );
+        expect(nextAttemptRan, isTrue);
+        // A late result from the cancelled attempt must not affect its successor.
+        pending.complete();
+        await tester.pump(const Duration(minutes: 20));
+        expect(cancels.where((queue) => !queue), hasLength(1));
+        expect(logs, isNot(contains(contains('[BOOT gen5]'))));
+      } finally {
+        if (!pending.isCompleted) pending.complete();
+        await finishConnect(tester, connect);
+      }
+    },
+  );
+
+  testWidgets('post-cancel system-only link fails without gen5 bootstrap', (
+    tester,
+  ) async {
+    final logs = <String>[];
+    final e = engine(logs)..setBackground(true);
+    final pending = Completer<void>();
+    final cancellation = Completer<void>();
+    var systemUp = false;
+    e.debugDeviceConnectWithTimeout = (_) => pending.future;
+    e.debugSystemConnected = (_, _) async => systemUp;
+    e.debugDeviceDisconnect = ({bool queue = true}) async {
+      if (!queue) {
+        pending.complete();
+        await cancellation.future;
+        systemUp = true;
+      }
+    };
+    final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
     await tester.pump();
-    expect(cancels.where((queue) => !queue), isEmpty);
-    pending.complete();
-    await tester.pump();
-    await finishConnect(tester, connect);
-    expect(logs, contains(contains('[BOOT gen5]')));
-    expect(logs, isNot(contains(startsWith('connect failed:'))));
-    expect(
-      logs,
-      contains(
-        '[LINK] foreground — background connect already landed, keeping it',
-      ),
-    );
+    try {
+      e.setBackground(false);
+      await tester.pump();
+      cancellation.complete();
+      await tester.pump();
+      expect(await finishConnect(tester, connect), isFalse);
+      expect(logs, isNot(contains(contains('[BOOT gen5]'))));
+      expect(
+        logs,
+        contains(
+          'connect failed: Bad state: background pending connect cancelled',
+        ),
+      );
+      expect(e.holdsBandLink, isFalse);
+    } finally {
+      if (!pending.isCompleted) pending.complete();
+      if (!cancellation.isCompleted) cancellation.complete();
+      await finishConnect(tester, connect);
+    }
   });
 
   for (final foregroundReturn in [true, false]) {
@@ -150,6 +257,7 @@ void main() {
           final states = StreamController<BluetoothConnectionState>.broadcast();
           e.debugConnectionStates = () => states.stream;
           addTearDown(states.close);
+          final device = TestBluetoothDevice();
           var linkUp = false;
           e.debugDeviceConnectWithTimeout = (_) => pending.future;
           e.debugSystemConnected = (_, _) async => linkUp;
@@ -158,6 +266,7 @@ void main() {
             if (!queue) {
               await cancellation.future;
               linkUp = survivesCancellation;
+              device.linkUp = survivesCancellation;
               states.add(
                 linkUp
                     ? BluetoothConnectionState.connected
@@ -165,7 +274,7 @@ void main() {
               );
             }
           };
-          final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+          final connect = e.connect(device);
           await tester.pump();
           Future<void>? disconnect;
           try {

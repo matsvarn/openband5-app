@@ -522,6 +522,8 @@ class _PendingConnect {
   final BluetoothDevice device;
   bool cancelled = false;
   bool connected = false;
+  late final Future<void> connect;
+  final cancellationDone = Completer<void>();
   Future<void>? cancellation;
   Future<void>? disconnect;
 }
@@ -2410,8 +2412,12 @@ class BleEngine {
 
   _PendingConnect? _backgroundPendingConnect;
 
-  Future<bool> _connectLinkUp(BluetoothDevice device) async {
-    if (_session?.connected == true || device.isConnected) return true;
+  bool _ownLinkUp(_PendingConnect pending) =>
+      pending.connected ||
+      pending.device.isConnected ||
+      _session?.connected == true;
+
+  Future<bool> _systemLinkUp(BluetoothDevice device) async {
     try {
       final services = kBandRegistry
           .map((entry) => Guid(entry.service))
@@ -2422,7 +2428,7 @@ class BleEngine {
           : (await FlutterBluePlus.systemDevices(
               services,
             )).any((connected) => connected.remoteId == device.remoteId);
-      return systemConnected || _session?.connected == true || device.isConnected;
+      return systemConnected;
     } catch (error) {
       _log('[LINK] system-link probe failed: $error');
       return false;
@@ -2433,18 +2439,28 @@ class BleEngine {
     pending.cancelled = true;
     // Skip FBP's global operation queue so cancellation never waits behind F.
     return pending.disconnect ??=
-        _disconnectDevice(pending.device, queue: false).catchError((
-          Object error,
-        ) {
-          _log('[LINK] pending connect cancellation failed: $error');
-        });
+        _disconnectDevice(pending.device, queue: false)
+            .catchError((Object error) {
+              _log('[LINK] pending connect cancellation failed: $error');
+            })
+            .whenComplete(() => pending.cancellationDone.complete());
   }
 
   void _cancelBackgroundPendingConnect(String reason) {
     final pending = _backgroundPendingConnect;
     if (pending == null || pending.cancellation != null) return;
     pending.cancellation = () async {
-      if (await _connectLinkUp(pending.device) || pending.connected) {
+      if (!_ownLinkUp(pending) && await _systemLinkUp(pending.device)) {
+        // iOS may report only the restore central's link. Give FBP time to adopt it.
+        try {
+          await pending.connect.timeout(const Duration(seconds: 5));
+        } catch (error) {
+          _log(
+            '[LINK] $reason — system-link recovery did not complete: $error',
+          );
+        }
+      }
+      if (_ownLinkUp(pending)) {
         _log('[LINK] $reason — background connect already landed, keeping it');
         return;
       }
@@ -2472,7 +2488,7 @@ class BleEngine {
       // FBP cancels the peripheral BEFORE throwing its own timeout. Keep that
       // deadline out of the way; our timer must probe before any cancellation.
       const platformTimeout = Duration(hours: 24);
-      final connect =
+      final connect = pending.connect =
           (debugDeviceConnectWithTimeout != null
                   ? debugDeviceConnectWithTimeout!(platformTimeout)
                   : debugDeviceConnect != null
@@ -2484,14 +2500,24 @@ class BleEngine {
               .then((_) {
                 pending.connected = true;
               });
-      await connect.timeout(
+      // Cancellation must end this attempt even if the native future never settles.
+      await Future.any([connect, pending.cancellationDone.future]).timeout(
         timeout,
         onTimeout: () async {
           timerExpired = true;
-          if (await _connectLinkUp(device) || pending.connected) {
+          if (_ownLinkUp(pending)) {
             _log(
               '[LINK] connect timer expired but the link is up — keeping it',
             );
+            return;
+          }
+          final systemLinkUp = await _systemLinkUp(device);
+          // The native callback may arrive while the system probe is in flight.
+          if (_ownLinkUp(pending) || systemLinkUp) {
+            _log(
+              '[LINK] connect timer expired but the link is up — keeping it',
+            );
+            if (_ownLinkUp(pending)) return;
             try {
               await connect.timeout(const Duration(seconds: 5));
               return;
@@ -2503,6 +2529,7 @@ class BleEngine {
               _log('[LINK] system-link recovery did not complete: $error');
             }
           }
+          if (_ownLinkUp(pending)) return;
           await _cancelConnect(pending);
           // Consume late errors without waiting indefinitely for connect. The
           // post-cancel probe below decides whether the attempt can still succeed.
@@ -2512,8 +2539,7 @@ class BleEngine {
       await pending.cancellation;
       await pending.disconnect;
       if (pending.cancelled) {
-        final linkUp = await _connectLinkUp(device);
-        if (!linkUp || !pending.connected) {
+        if (!pending.connected || !device.isConnected) {
           if (timerExpired) {
             throw FlutterBluePlusException(
               ErrorPlatform.fbp,
