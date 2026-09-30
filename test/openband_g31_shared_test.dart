@@ -143,7 +143,7 @@ void main() {
           mainAxisSize: MainAxisSize.min,
           children: [
             OBZoneRows(
-              zones: const [OBZone(1, '', 3)],
+              zones: const [OBZone(2, '', 3), OBZone(1, '', null)],
               source: 'HFmax 186 · geschätzt aus Alter',
               onBasis: () => taps++,
             ),
@@ -153,6 +153,12 @@ void main() {
     );
     final card = tester.getRect(find.byType(OBZoneRows));
     final text = tester.getRect(find.text('Grundlage'));
+    expect(
+      tester.getCenter(find.text('Z1')).dy -
+          tester.getCenter(find.text('Z2')).dy,
+      26,
+    );
+    expect(find.text('—'), findsOneWidget);
     expect(card.bottom - text.bottom, 18);
     final target = find.descendant(
       of: find.byType(OBLink),

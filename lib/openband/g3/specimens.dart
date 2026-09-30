@@ -836,6 +836,8 @@ final Map<String, Widget Function()> g3Specimens = {
     signalSegments: [(1260, false), (40, true), (1220, false)],
   ),
   'OBZoneRows': () => const OBZoneRows(
+    domain: G3Domain.load,
+    ranges: ['90–100 %', '80–90 %', '70–80 %', '60–70 %', '50–60 %'],
     zones: [
       OBZone(5, '90–100 %', 3),
       OBZone(4, '80–90 %', 16),

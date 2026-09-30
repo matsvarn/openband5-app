@@ -501,92 +501,99 @@ class OBZoneRows extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          for (final (i, z) in zones.indexed)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 28),
-              child: Row(
+          Stack(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    width: ranges == null ? 28 : 100,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 28,
-                          child: Text(
-                            'Z${z.index}',
-                            style: g.t(14, 18, weight: FontWeight.w700),
-                          ),
-                        ),
-                        if (ranges != null && i < ranges!.length)
-                          Flexible(
-                            child: Text(
-                              ranges![i],
-                              style: g.t(12, 16, color: g.muted),
+                  for (final (i, z) in zones.indexed)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 26),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: ranges == null ? 28 : 100,
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 28,
+                                  child: Text(
+                                    'Z${z.index}',
+                                    style: g.t(14, 18, weight: FontWeight.w700),
+                                  ),
+                                ),
+                                if (ranges != null && i < ranges!.length)
+                                  Flexible(
+                                    child: Text(
+                                      ranges![i],
+                                      style: g.t(12, 16, color: g.muted),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      height: 10,
-                      alignment: Alignment.centerLeft,
-                      decoration: BoxDecoration(
-                        color: g.track,
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: FractionallySizedBox(
-                        widthFactor: (z.minutes ?? 0) / longest,
-                        child: Container(
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: g.zonesFor(domain)[z.index - 1],
-                            borderRadius: BorderRadius.circular(3),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(5),
+                              child: Container(
+                                height: 10,
+                                color: g.track,
+                                alignment: Alignment.centerLeft,
+                                child: FractionallySizedBox(
+                                  widthFactor: (z.minutes ?? 0) / longest,
+                                  heightFactor: 1,
+                                  child: ColoredBox(
+                                    color: g.zonesFor(domain)[z.index - 1],
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 52,
+                            child: Text(
+                              z.minutes == null ? '—' : '${z.minutes} Min.',
+                              textAlign: TextAlign.right,
+                              style: g.t(
+                                14,
+                                18,
+                                weight: FontWeight.w700,
+                                color: z.minutes == null ? g.gap : g.ink,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 52,
-                    child: Text(
-                      z.minutes == null ? '—' : '${z.minutes} Min.',
-                      textAlign: TextAlign.right,
-                      style: g.t(
-                        14,
-                        18,
-                        weight: FontWeight.w700,
-                        color: z.minutes == null ? g.gap : g.ink,
+                  if (source.isNotEmpty || onBasis != null) ...[
+                    const SizedBox(height: 8),
+                    Divider(height: 1, color: g.line),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: EdgeInsets.only(
+                        right: onBasis == null
+                            ? 0
+                            : 88 * MediaQuery.textScalerOf(context).scale(1),
                       ),
+                      child: Text(source, style: g.t(12, 16, color: g.muted)),
                     ),
-                  ),
+                  ],
                 ],
               ),
-            ),
-          if (source.isNotEmpty || onBasis != null)
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.only(top: 10),
-              decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: g.line)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Text(source, style: g.t(12, 16, color: g.muted)),
+              if (onBasis != null)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: OBLink(
+                    'Grundlage',
+                    semanticsLabel: 'Grundlage der Zonen',
+                    onTap: onBasis!,
                   ),
-                  if (onBasis != null)
-                    OBLink(
-                      'Grundlage',
-                      semanticsLabel: 'Grundlage der Zonen',
-                      onTap: onBasis!,
-                    ),
-                ],
-              ),
-            ),
+                ),
+            ],
+          ),
         ],
       ),
     );

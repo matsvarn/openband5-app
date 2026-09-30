@@ -1605,6 +1605,7 @@ void main() {
       G3Domain.load,
     );
     await tester.ensureVisible(find.text('ZEIT IN ZONEN'));
+    expect(find.byType(OBZoneRows), findsOneWidget);
     final zonesHeader = find.ancestor(
       of: find.text('ZEIT IN ZONEN'),
       matching: find.byType(G3LabelRow),
