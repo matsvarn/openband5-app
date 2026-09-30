@@ -78,7 +78,7 @@ void main() {
     final db = await LocalDb.instance;
     final rows = await db.query(
       'decoded_onehz',
-      columns: ['rec_ts', 'dyn_accel_g'],
+      columns: ['rec_ts', LocalDb.decodedOneHzProjection],
       orderBy: 'rec_ts ASC',
     );
     expect(rows.length, 2);

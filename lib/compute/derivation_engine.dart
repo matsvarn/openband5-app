@@ -5787,14 +5787,15 @@ class DerivationEngine {
   /// runs under iOS's CPU watchdog (invariant 11).
   Future<void> _runStorageHousekeeping() async {
     try {
-    // Superseded generations of the recomputable per-day intermediates. Runs
-    // after derivation, outside the decoded-retention policy and off the path to a
-    // durable commit.
-    final stale = await LocalDb.pruneSupersededIntermediates();
-    if (stale > 0) {
-      _log('pruned $stale superseded intermediate rows');
-    }
+      // Superseded generations of the recomputable per-day intermediates. Runs
+      // after derivation, outside the decoded-retention policy and off the path to a
+      // durable commit.
+      final stale = await LocalDb.pruneSupersededIntermediates();
+      if (stale > 0) {
+        _log('pruned $stale superseded intermediate rows');
+      }
       await LocalDb.pruneSupersededDayResults();
+      await LocalDb.compactLegacyOneHz();
       final reencoded = await LocalDb.reencodeLegacyDayResults();
       if (reencoded > 0) {
         _log('re-encoded $reencoded legacy day bundles');

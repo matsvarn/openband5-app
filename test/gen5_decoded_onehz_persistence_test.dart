@@ -140,8 +140,11 @@ void main() {
     expect(rows.first['counter'], sample.counter);
     // MT-12: the aux temperature channels and the band's signal-quality figure
     // reach SQLite. Channel index, not a body part — nothing reads them.
-    expect(rows.first['temp_ch2_c'], 24.7);
-    expect(rows.first['temp_ch3_c'], 26.5);
+    final decoded = (await LocalDb.decodedOneHzBatchByRecTsRange(
+      limit: 1, fromRecTs: recTs, toRecTs: recTs,
+    )).single;
+    expect(decoded['temp_ch2_c'], 24.7);
+    expect(decoded['temp_ch3_c'], 26.5);
     expect(rows.first['signal_quality_logvar'], isNotNull);
     // The record's own sub-second, and the band's own wake/sleep envelope
     // (raw 2-bit code, 0 = wake here). Both were decoded and dropped by the

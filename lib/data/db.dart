@@ -508,7 +508,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 68;
+  static const int schemaVersion = 69;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -590,6 +590,11 @@ class LocalDb {
           await db.rawQuery('PRAGMA journal_mode=WAL');
         } catch (_) {
           /* keep the default journal — this is a perf tweak, not a requirement */
+        }
+        try {
+          await db.rawQuery('PRAGMA journal_size_limit=16777216');
+        } catch (_) {
+          /* non-fatal */
         }
         try {
           await db.execute('PRAGMA synchronous=NORMAL');
@@ -1293,6 +1298,9 @@ class LocalDb {
           // blobs inflated) and before the next derive, which has to see them.
           await repairBoundaryCollisions(db);
         }
+        if (oldV < 69) {
+          await _ensureOneHzEncoding(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1388,6 +1396,7 @@ class LocalDb {
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
+    await _ensureOneHzEncoding(db);
     await _ensureDayResultSkippedColumn(db);
     await _ensureDayResultPartialColumn(db);
     await _ensureDayResultSourceColumn(db);
@@ -7365,6 +7374,7 @@ class LocalDb {
         temp_ch3_c REAL,
         signal_quality_logvar REAL,
         dyn_accel_g REAL,
+        onehz_enc INTEGER,
         PRIMARY KEY (device_id, ts_ms)
       )
     ''');
@@ -8156,6 +8166,7 @@ class LocalDb {
           batch,
           r,
           null,
+          legacyEncoding: true, // schema-68 recovery precedes the v69 column
           deviceFamily: c['fam'] as String?,
           deviceId: deviceId,
           beatClock: beatClock,
@@ -8439,6 +8450,26 @@ class LocalDb {
   /// Returns the number of batch operations added, so a caller committing a
   /// large offload can chunk the batch to bound the native argument-list size
   /// (see [commitSyncBatch]).
+  static const _compactOneHzColumns = [
+    'ax', 'ay', 'az', 'temp_ch2_c', 'temp_ch3_c', 'dyn_accel_g',
+  ];
+
+  static Future<void> _ensureOneHzEncoding(Database db) =>
+      _addColumnIfMissing(db, 'decoded_onehz', 'onehz_enc', 'INTEGER');
+
+  /// Decode the per-row storage representation at the SQL read boundary.
+  static String get decodedOneHzProjection => _compactOneHzColumns.map((c) =>
+      'CASE WHEN onehz_enc = 1 THEN $c / 10000.0 ELSE $c END AS $c'
+  ).join(', ');
+
+  static bool _canCompactOneHz(double? value) {
+    if (value == null) return true;
+    if (!value.isFinite || (value * 10000).abs() > 9007199254740991) {
+      return false;
+    }
+    return (value * 10000).round() / 10000.0 == value;
+  }
+
   static int _queueDecodedOneHz(
     Batch batch,
     RawRecord raw,
@@ -8458,6 +8489,7 @@ class LocalDb {
     // opposite default would let a forgotten argument write every row at
     // ('', 0), where REPLACE collapses the entire store to ONE row.
     bool preDeviceKey = false,
+    bool legacyEncoding = false,
     BeatClock? beatClock,
   }) {
     final decoded = _decodeOneHzSample(raw, preferred: sample);
@@ -8482,6 +8514,12 @@ class LocalDb {
       }
       return 0;
     }
+    final compact = !preDeviceKey && !legacyEncoding && [
+      decoded.ax, decoded.ay, decoded.az,
+      decoded.tempCh2C, decoded.tempCh3C, decoded.dynAccelG,
+    ].every(_canCompactOneHz);
+    num? stored(double? value) => compact && value != null
+        ? (value * 10000).round() : value;
     final recTs = _recTsFrom(raw, decoded);
     final ambient = decoded.ambientRaw == 0 ? null : decoded.ambientRaw;
     // This record was already moved back a second by its successor
@@ -8535,9 +8573,9 @@ class LocalDb {
       // nullable): a null must land in the DB as NULL. Zeroing invented a real
       // 0 g gravity vector, a real ADC count of 0, a 0-step second and a 0 °C
       // skin temperature for every record that simply did not carry the field.
-      'ax': decoded.ax,
-      'ay': decoded.ay,
-      'az': decoded.az,
+      'ax': stored(decoded.ax),
+      'ay': stored(decoded.ay),
+      'az': stored(decoded.az),
       'spo2_red_raw': decoded.spo2RedRaw,
       'spo2_ir_raw': decoded.spo2IrRaw,
       'skin_temp_raw': decoded.skinTempRaw,
@@ -8550,8 +8588,8 @@ class LocalDb {
       'hr_alt': decoded.hrAlt,
       // MT-12 — gen5's second/third temperature channels and its own
       // signal-quality figure. Stored, unnamed, unread. See Sample.tempCh2C.
-      'temp_ch2_c': decoded.tempCh2C,
-      'temp_ch3_c': decoded.tempCh3C,
+      'temp_ch2_c': stored(decoded.tempCh2C),
+      'temp_ch3_c': stored(decoded.tempCh3C),
       'signal_quality_logvar': decoded.signalQualityLogVar,
       // OMITTED when null, unlike the three above: this column is newer than
       // the mid-ladder `_backfillDecodedStore`, which writes through this map
@@ -8560,7 +8598,8 @@ class LocalDb {
       // onUpgrade's single transaction and quarantines the database. Only a
       // gen5 record carries a value, and no gen5 record is in a pre-v11
       // `raw_records`, so omitting-when-null loses nothing.
-      'dyn_accel_g': ?decoded.dynAccelG,
+      'dyn_accel_g': ?stored(decoded.dynAccelG),
+      'onehz_enc': ?(compact ? 1 : null),
       // The record's own sub-second. Omitted-when-null for the same
       // mid-ladder-backfill reason as `dyn_accel_g` directly above.
       'ts_subsec': ?decoded.tsSubsec,
@@ -10211,7 +10250,7 @@ class LocalDb {
     final db = await instance;
     if (afterRecTs == null || afterCounter == null) {
       return db.rawQuery(
-        'SELECT counter, rec_ts, hr, ax, ay, az, '
+        'SELECT counter, rec_ts, hr, $decodedOneHzProjection, '
         'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
         'step_count, step_cadence, activity_class, skin_temp_c, '
         'on_wrist, hr_valid, hr_alt, device_family, device_id, '
@@ -10223,7 +10262,7 @@ class LocalDb {
       );
     }
     return db.rawQuery(
-      'SELECT counter, rec_ts, hr, ax, ay, az, '
+      'SELECT counter, rec_ts, hr, $decodedOneHzProjection, '
       'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
       'step_count, step_cadence, activity_class, skin_temp_c, '
       'on_wrist, hr_valid, hr_alt, device_family, device_id, '
@@ -15942,18 +15981,83 @@ class LocalDb {
   /// the caller's job — see `AppState._maybeReclaimDiskSpace`, which runs it
   /// only on a foreground heavy derive with nothing else in flight.
   static Future<int> vacuumIfBloated({int minFreeBytes = 64 << 20}) async {
-    final free = await freelistBytes();
-    if (free < minFreeBytes) return 0;
+    try {
+      final free = await freelistBytes();
+      final requested = await computeFreshness(kOneHzVacuumKey);
+      if (free < minFreeBytes && requested == null) return 0;
+      final db = await instance;
+      await db.execute('VACUUM');
+      // Root pages move; invalidate the coach's cached allow-list immediately.
+      await CoachDb.close();
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      await db.delete('compute_freshness', where: 'key = ?',
+          whereArgs: [kOneHzVacuumKey]);
+      return free;
+    } catch (_) {
+      return 0; // Housekeeping cannot fail a successful derive.
+    }
+  }
+
+  static const kOneHzCompactCursorKey = 'onehz_compact';
+  static const kOneHzVacuumKey = 'onehz_compact_vacuum';
+
+  /// Walk a bounded slice of the ledger, committing values and progress together.
+  /// Rowid includes NULL record timestamps and late-arriving historical seconds.
+  /// Non-exact rows advance the cursor too, but remain in their legacy encoding.
+  static Future<int> compactLegacyOneHz({
+    int batchSize = 2000,
+    int maxBatches = 100,
+    Duration timeBudget = const Duration(seconds: 1),
+  }) async {
+    if (batchSize < 1 || maxBatches < 1) return 0;
     final db = await instance;
-    await db.execute('VACUUM');
-    // VACUUM rewrites the file and renumbers every btree root page. CoachDb
-    // caches the root pages of its allow-listed views to decide what a coach
-    // query is allowed to touch, and nothing else calls CoachDb.close() — so
-    // after this ran, every valid coach query started failing its own guard
-    // ("Query reaches storage outside the coach views") for the rest of the
-    // process. The invariant belongs to whoever moves the pages.
-    await CoachDb.close();
-    return free;
+    final clock = Stopwatch()..start();
+    var converted = 0;
+    for (var batch = 0; batch < maxBatches; batch++) {
+      if (clock.elapsed >= timeBudget) break;
+      final count = await db.transaction((txn) async {
+        final state = await txn.query('compute_freshness',
+            where: 'key = ?', whereArgs: [kOneHzCompactCursorKey]);
+        final payload = state.isEmpty ? <String, dynamic>{} :
+            jsonDecode(state.first['payload_json'] as String) as Map<String, dynamic>;
+        if (payload['done'] == true) return null;
+        final cursor = (payload['cursor'] as num?)?.toInt() ?? 0;
+        final rows = await txn.rawQuery(
+          'SELECT rowid AS id FROM decoded_onehz WHERE rowid > ? '
+          'ORDER BY rowid LIMIT ?', [cursor, batchSize]);
+        final last = rows.isEmpty ? cursor : rows.last['id'] as int;
+        var changed = 0;
+        if (rows.isNotEmpty) {
+          final exact = _compactOneHzColumns.map((c) =>
+              '($c IS NULL OR (ABS($c * 10000) <= 9007199254740991 '
+              'AND $c = CAST(ROUND($c * 10000) AS INTEGER) / 10000.0))'
+          ).join(' AND ');
+          final values = _compactOneHzColumns.map((c) =>
+              '$c = CAST(ROUND($c * 10000) AS INTEGER)').join(', ');
+          changed = await txn.rawUpdate(
+            'UPDATE decoded_onehz SET $values, onehz_enc = 1 '
+            'WHERE rowid > ? AND rowid <= ? AND onehz_enc IS NULL AND $exact',
+            [cursor, last]);
+        }
+        final done = rows.length < batchSize;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await txn.insert('compute_freshness', {
+          'key': kOneHzCompactCursorKey,
+          'payload_json': jsonEncode({'cursor': last, 'done': done}),
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        if (done) {
+          await txn.insert('compute_freshness', {
+            'key': kOneHzVacuumKey, 'payload_json': '{"requested":true}',
+            'updated_at': now,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return changed;
+      });
+      if (count == null) break;
+      converted += count;
+    }
+    return converted;
   }
 
   /// Keep the served generation, one predecessor, and the latest complete
