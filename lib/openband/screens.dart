@@ -2049,11 +2049,6 @@ Future<void> showBandStatus(
                             ),
                           ],
                         ),
-                        Text(
-                          'Verbindung, Aktualität, Abdeckung und Auswertung sind vier getrennte Dinge.',
-                          style: g.t(14, 19, color: g.ink2),
-                        ),
-                        const SizedBox(height: 14),
                         OBFrontierCard(
                           storedAt: stored,
                           now: controller.now(),
@@ -2066,7 +2061,6 @@ Future<void> showBandStatus(
                         ),
                         const SizedBox(height: 14),
                         OBSettingsGroup(
-                          inset: true,
                           children: [
                             OBSettingsRow(
                               label: 'Verbindung',

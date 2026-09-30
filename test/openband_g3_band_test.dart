@@ -13,6 +13,7 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/day_picker.dart';
 import 'package:openstrap_edge/openband/g3/band_parts.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' show OBPanel;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/band_restore.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -470,6 +471,27 @@ void main() {
     expect(caption.bottom, lessThan(track.top));
   });
 
+  testWidgets('Band info explains the screen before opening Datenstand', (
+    tester,
+  ) async {
+    var statusOpens = 0;
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.connected),
+        now: DateTime(2026, 9, 29, 9, 41),
+        onStatus: () => statusOpens++,
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Über das Band'));
+    await tester.pumpAndSettle();
+    expect(find.text('Über das Band'), findsOneWidget);
+    expect(statusOpens, 0);
+    await tester.tap(find.text('Datenstand öffnen'));
+    await tester.pumpAndSettle();
+    expect(statusOpens, 1);
+  });
+
   testWidgets('band detail follows live observations and clock', (
     tester,
   ) async {
@@ -692,9 +714,58 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('16'));
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('ansehen'));
+    await tester.tap(find.text('Ansehen'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-09-16');
+  });
+
+  testWidgets('selected night dot agrees with its stored preview', (
+    tester,
+  ) async {
+    final repository = SyntheticOpenBandRepository.fromMaps(
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/day-summary.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      jsonDecode(
+            File(
+              'docs/openband5/assets/fixtures/sleep-detail.json',
+            ).readAsStringSync(),
+          )
+          as Map,
+      scenario: SyntheticScenario.g3Sample,
+    );
+    final controller = OpenBandController(
+      repository: repository,
+      initialDay: '2026-09-29',
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await pump(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => chooseOpenBandDay(context, controller),
+            child: const Text('Datum öffnen'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Datum öffnen'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is Semantics &&
+            (w.properties.label ?? '').contains(
+              'Dienstag, 29. September 2026, Schlafwert vorhanden',
+            ),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('large text opens with the selected date above its footer', (
@@ -767,7 +838,7 @@ void main() {
       lessThanOrEqualTo(778),
     );
     await tester.tap(find.text('31'));
-    await tester.tap(find.widgetWithText(FilledButton, '31. August ansehen'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Ansehen'));
     await tester.pumpAndSettle();
     expect(controller.selectedDay, '2026-08-31');
     expect(tester.takeException(), isNull);
@@ -803,8 +874,8 @@ void main() {
     for (final size in [const Size(375, 812), const Size(360, 780)]) {
       tester.view.physicalSize = size;
       for (final (day, last, action) in [
-        ('2026-09-29', '29', '29. September ansehen'),
-        ('2026-08-31', '31', '31. August ansehen'),
+        ('2026-09-29', '29', 'Ansehen'),
+        ('2026-08-31', '31', 'Ansehen'),
       ]) {
         final controller = OpenBandController(
           repository: repository,
@@ -834,7 +905,7 @@ void main() {
         await tester.pumpAndSettle();
         final viewport = tester.getRect(find.byType(ListView).last);
         final selected = tester.getRect(find.text(last));
-        final card = tester.getRect(find.byType(OBCard).first);
+        final card = tester.getRect(find.byType(OBPanel).first);
         final confirm = find.widgetWithText(FilledButton, action);
         final confirmRect = tester.getRect(confirm);
         final todayRect = tester.getRect(

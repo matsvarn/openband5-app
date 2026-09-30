@@ -229,19 +229,27 @@ void main() {
       ];
       for (final (index, development, release) in legacyTabs) {
         expect(domainForTab(index), development, reason: 'tab $index');
-        expect(releaseDomainForTab(index, reduced: false), development,
-            reason: 'development tab $index');
-        expect(releaseDomainForTab(index, reduced: true), release,
-            reason: 'release tab $index');
+        expect(
+          releaseDomainForTab(index, reduced: false),
+          development,
+          reason: 'development tab $index',
+        );
+        expect(
+          releaseDomainForTab(index, reduced: true),
+          release,
+          reason: 'release tab $index',
+        );
         expect(
           shellDomainForRestore(
-              reduced: false, savedName: '', legacyTab: index),
+            reduced: false,
+            savedName: '',
+            legacyTab: index,
+          ),
           development,
           reason: 'development saved tab $index',
         );
         expect(
-          shellDomainForRestore(
-              reduced: true, savedName: '', legacyTab: index),
+          shellDomainForRestore(reduced: true, savedName: '', legacyTab: index),
           release,
           reason: 'release saved tab $index',
         );
@@ -302,8 +310,7 @@ void main() {
       expect((screen! as G3SuggestionRoute).focusId, id);
       // A payload from a build that carried no id still reviews everything.
       expect(
-        (screenForRoute(kRouteWorkoutSuggestion)! as G3SuggestionRoute)
-            .focusId,
+        (screenForRoute(kRouteWorkoutSuggestion)! as G3SuggestionRoute).focusId,
         isNull,
       );
     });
@@ -312,12 +319,18 @@ void main() {
       for (final d in ShellDomain.values) {
         expect(
           shellDomainForRestore(
-              reduced: false, savedName: d.name, legacyTab: -1),
+            reduced: false,
+            savedName: d.name,
+            legacyTab: -1,
+          ),
           d,
         );
         expect(
           shellDomainForRestore(
-              reduced: true, savedName: d.name, legacyTab: -1),
+            reduced: true,
+            savedName: d.name,
+            legacyTab: -1,
+          ),
           d == ShellDomain.health ? ShellDomain.home : d,
         );
       }
@@ -411,7 +424,8 @@ void main() {
       tester,
     ) async {
       _tallView(tester);
-      const reason = 'The phone is withholding the Bluetooth radio from '
+      const reason =
+          'The phone is withholding the Bluetooth radio from '
           'OpenBand 5, so nothing can be scanned or connected. This is not '
           'the band — walking closer to it will not help.';
       const fix = 'Open Settings → OpenBand 5 and allow Bluetooth';
@@ -428,10 +442,13 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Bluetooth is switched off for this app'), findsOneWidget);
+      expect(
+        find.text('Bluetooth is switched off for this app'),
+        findsOneWidget,
+      );
       expect(find.text(fix), findsOneWidget);
       expect(find.text(reason), findsNothing);
-      await tester.tap(find.byTooltip('Information'));
+      await tester.tap(find.bySemanticsLabel('Information'));
       await tester.pumpAndSettle();
       expect(find.text(reason), findsOneWidget);
       // The state this used to land in.
