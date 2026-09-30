@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
+import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
 import 'package:openstrap_edge/notify/fired_keys.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
@@ -1030,8 +1031,9 @@ void main() {
     expect(find.byKey(const ValueKey('notif-alarm-latch')), findsOneWidget);
   });
 
-  testWidgets('release idle-workout switch changes its own preference',
-      (tester) async {
+  testWidgets('release idle-workout switch changes its own preference', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390 * 3, 2400 * 3);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1312,6 +1314,9 @@ void main() {
   test('kept reminder routes and workout suggestion each claim once', () async {
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(quietEnabled: false).save();
+    // FiredKeyStore prunes dated claims after 14 days, so a fixed fixture date
+    // ages out. Use the current local day.
+    final day = todayLabel();
     final center = NotificationCenter.instance;
     final previousReduced = center.releaseReduced;
     final previousSink = center.presentSink;
@@ -1326,15 +1331,15 @@ void main() {
     });
     center.releaseReduced = true;
     const store = FiredKeyStore();
-    const suggestionId = '2026-09-15:1750000000';
-    const suggestionKey = '$suggestionId:auto_workout';
+    final suggestionId = '$day:1750000000';
+    final suggestionKey = '$suggestionId:auto_workout';
     final suggestion = NotificationEvent(
       dedupeKey: suggestionKey,
       category: NotifCategory.reminders,
       priority: NotifPriority.normal,
       title: 'Did you work out?',
       body: 'We spotted ~20 min of elevated activity. Tap to log it.',
-      date: '2026-09-15',
+      date: day,
       route: workoutSuggestionRoute(suggestionId),
     );
     expect(await center.emit(suggestion, allowPermissionPrompt: false), isTrue);
@@ -1345,13 +1350,13 @@ void main() {
         center.emit(event, allowPermissionPrompt: false);
     expect(
       await emitReal(
-        const NotificationEvent(
+        NotificationEvent(
           dedupeKey: 'alarm_fired:1750000000',
           category: NotifCategory.reminders,
           priority: NotifPriority.critical,
           title: 'Alarm',
           body: 'Your strap alarm just fired.',
-          date: '2026-09-15',
+          date: day,
           route: '/today',
         ),
       ),
@@ -1359,15 +1364,15 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: '2026-09-15:sync_stale',
+        NotificationEvent(
+          dedupeKey: '$day:sync_stale',
           category: NotifCategory.device,
           priority: NotifPriority.normal,
           title: "Your band hasn't synced in a while",
           body:
               'No new data for about 12 hours. Open OpenStrap to '
               'reconnect — background sync may have stalled.',
-          date: '2026-09-15',
+          date: day,
           route: '/today',
         ),
       ),
@@ -1375,13 +1380,13 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
-          dedupeKey: '2026-09-15:exception:medical',
+        NotificationEvent(
+          dedupeKey: '$day:exception:medical',
           category: NotifCategory.health,
           priority: NotifPriority.critical,
           title: 'Something changed',
           body: 'A health exception needs a look.',
-          date: '2026-09-15',
+          date: day,
           route: '/heart',
         ),
       ),
@@ -1389,7 +1394,7 @@ void main() {
     );
     expect(
       await emitReal(
-        const NotificationEvent(
+        NotificationEvent(
           dedupeKey: 'w123:workout_idle',
           category: NotifCategory.reminders,
           priority: NotifPriority.normal,
@@ -1397,7 +1402,7 @@ void main() {
           body:
               'Nothing above resting effort has been recorded. If the '
               'session is over, open the app to finish it.',
-          date: '2026-09-15',
+          date: day,
           route: kRouteWorkoutIdle,
         ),
       ),
@@ -1405,14 +1410,14 @@ void main() {
     );
     expect(await store.hasFired(suggestionKey), isTrue);
     expect(await store.hasFired('alarm_fired:1750000000'), isTrue);
-    expect(await store.hasFired('2026-09-15:sync_stale'), isTrue);
-    expect(await store.hasFired('2026-09-15:exception:medical'), isTrue);
+    expect(await store.hasFired('$day:sync_stale'), isTrue);
+    expect(await store.hasFired('$day:exception:medical'), isTrue);
     expect(await store.hasFired('w123:workout_idle'), isTrue);
     expect(shown, [
       suggestionKey,
       'alarm_fired:1750000000',
-      '2026-09-15:sync_stale',
-      '2026-09-15:exception:medical',
+      '$day:sync_stale',
+      '$day:exception:medical',
       'w123:workout_idle',
     ]);
     expect(
