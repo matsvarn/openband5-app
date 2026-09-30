@@ -399,4 +399,39 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  for (final invalid in [double.nan, double.infinity]) {
+    testWidgets('review 5 nonfinite night metrics show missing $invalid', (
+      tester,
+    ) async {
+      final c = await _controller(tester, _ReviewRepo(nightValue: invalid));
+      await tester.pumpWidget(_app(G3SleepScreen(controller: c)));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('HRV · ms'), 250);
+      expect(find.textContaining('NaN'), findsNothing);
+      expect(find.textContaining('Infinity'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('review 6 strain statistics discard only nonfinite points', (
+    tester,
+  ) async {
+    final c = await _controller(
+      tester,
+      _ReviewRepo(points: [2, double.nan, 8]),
+    );
+    await tester.pumpWidget(
+      _app(
+        G3LoadScreen(
+          controller: c,
+          activity: null,
+          weekly: const G3WeeklyLoad([]),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ø 5,0 · 28 Tage ohne Belastungswert'), findsOneWidget);
+    expect(find.text('2,0–8,0'), findsOneWidget);
+  });
 }

@@ -1484,7 +1484,10 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
               return _error(context, () => setState(() => trend = _load()));
             }
             final points = snap.data?.points ?? const <MetricPoint>[];
-            final values = [for (final p in points) p.partial ? null : p.value];
+            final values = [
+              for (final p in points)
+                p.partial || p.value?.isFinite != true ? null : p.value,
+            ];
             final present = values.whereType<double>().toList();
             final avg = present.isEmpty
                 ? null

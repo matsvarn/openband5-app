@@ -779,7 +779,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                           ),
                         ),
                         const SizedBox(height: 3),
-                        value.$2 == null
+                        value.$2 == null || !value.$2!.isFinite
                             ? const OBMissingValue(size: 22, lineHeight: 27)
                             : Text.rich(
                                 TextSpan(
@@ -803,7 +803,10 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                                 ),
                               ),
                         const SizedBox(height: 5),
-                        _miniScale(snapshot.data?.elementAtOrNull(i), value.$2),
+                        _miniScale(
+                          snapshot.data?.elementAtOrNull(i),
+                          value.$2?.isFinite == true ? value.$2 : null,
+                        ),
                       ],
                     ),
                   ),
