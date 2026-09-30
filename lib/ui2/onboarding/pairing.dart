@@ -395,22 +395,10 @@ class PairingView extends StatelessWidget {
                     const SizedBox(height: 10),
                     // Never disabled mid-scan: the escape hatch must not make
                     // someone wait out a scan they already chose to leave.
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: onSkip,
-                        style: TextButton.styleFrom(
-                          foregroundColor: p.muted,
-                          minimumSize: const Size(44, 44),
-                        ),
-                        child: Text(
-                          _s(c, 'Später verbinden', 'Connect later'),
-                          style: p.text(
-                            15,
-                            weight: FontWeight.w600,
-                            color: p.muted,
-                          ),
-                        ),
+                    Center(
+                      child: chrome.OBLink(
+                        _s(c, 'Später verbinden', 'Connect later'),
+                        onTap: onSkip!,
                       ),
                     ),
                   ],

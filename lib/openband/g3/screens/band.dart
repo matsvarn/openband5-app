@@ -7,10 +7,11 @@ import '../../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../../ble/ble_state.dart' show BandCondition, BandStatus;
 import '../../domain.dart';
 import '../../tab_bar.dart' show kOBTabBarContentInset;
-import '../../theme.dart' show obTime;
 import '../band_parts.dart';
 import '../chrome.dart' as chrome;
+import '../g3_format.dart';
 import '../g3_theme.dart';
+import '../metrics.dart' show OBMissingValue;
 
 /// A read-only view of the latest band observation. Production injects the
 /// existing AppState notifier and repository read; no BLE work happens here.
@@ -212,28 +213,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
               'Band näher ans iPhone bringen und die Verbindung erneut versuchen.',
           }
         : [localized.reason, ?localized.fix].join('\n\n');
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(title, style: G3.of(c).t(20, 24, weight: FontWeight.w700)),
-              const SizedBox(height: 10),
-              Text(text, style: G3.of(c).t(14, 20)),
-              const SizedBox(height: 18),
-              chrome.OBActionSecondary(
-                'Schließen',
-                onPressed: () => Navigator.pop(c),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    chrome.showOBInfoSheet(context, title: title, paragraphs: [text]);
   }
 
   @override
@@ -273,7 +253,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
             null =>
               stored == null
                   ? 'Band näher ans iPhone bringen. Noch kein bestätigter Datenstand liegt vor.'
-                  : 'Band näher ans iPhone bringen. Was seit ${obTime(stored)} gemessen wurde, kommt beim Verbinden.',
+                  : 'Band näher ans iPhone bringen. Was seit ${g3Relative(stored, now: _now)} gemessen wurde, kommt beim Verbinden.',
           }
         : [localizedFault.reason, ?localizedFault.fix].join('\n\n');
     final action = localizedFault?.condition == BandCondition.bluetoothOff
@@ -291,150 +271,148 @@ class _G3BandScreenState extends State<G3BandScreen> {
       backgroundColor: g.page,
       body: SafeArea(
         bottom: false,
-        child: Column(
+        child: chrome.G3DetailPage(
+          header: chrome.OBPageHeader.detail(
+            title: 'BAND',
+            subtitle:
+                name == null || name.isEmpty || name.toLowerCase() == 'band'
+                ? null
+                : name,
+            backLabel: 'Profil',
+            onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
+            onTrailing: _explain,
+            trailingLabel: 'Über das Band',
+          ),
+          bottomInset: kOBTabBarContentInset,
           children: [
-            chrome.OBPageHeader.detail(
-              title: 'BAND',
-              subtitle:
-                  name == null || name.isEmpty || name.toLowerCase() == 'band'
-                  ? null
-                  : name,
-              backLabel: 'Profil',
-              onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
-              onTrailing: _explain,
-              trailingLabel: 'Über das Band',
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  14,
-                  16,
-                  kOBTabBarContentInset,
-                ),
+            if (b == null)
+              OBSettingsGroup(
                 children: [
-                  if (b == null)
-                    OBSettingsGroup(
-                      children: [
-                        OBSettingsRow(
-                          label: 'Bandstatus —',
-                          detail: 'Noch kein Bandstatus geladen.',
-                          onTap: widget.onDevices == null ? null : _openDevices,
+                  OBSettingsRow(
+                    label: 'Bandstatus —',
+                    detail: 'Noch kein Bandstatus geladen.',
+                    onTap: widget.onDevices == null ? null : _openDevices,
+                  ),
+                ],
+              )
+            else
+              OBBandHero(
+                band: b,
+                diagnostics: diagnostics,
+                now: _now,
+                onStatus: widget.onStatus,
+                issue: issue,
+                faultLabel: localizedFault?.title,
+              ),
+            if (b != null && disconnected) ...[
+              const SizedBox(height: 12),
+              OBBandActionNotice(
+                title: issueTitle,
+                body: issueBody,
+                action: action,
+                onAction: helpIsPrimary
+                    ? _help
+                    : widget.onReconnect == null
+                    ? null
+                    : _reconnect,
+                onHelp: helpIsPrimary ? null : _help,
+              ),
+            ],
+            if (b?.transfer == TransferState.receiving ||
+                b?.transfer == TransferState.interrupted) ...[
+              const SizedBox(height: 12),
+              if (b!.transfer == TransferState.receiving)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.lockKeyhole, size: 16, color: g.muted),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen. App währenddessen offen lassen.',
+                          style: g.t(13, 19, color: g.ink2),
                         ),
-                      ],
-                    )
-                  else
-                    OBBandHero(
-                      band: b,
-                      diagnostics: diagnostics,
-                      now: _now,
-                      onStatus: widget.onStatus,
-                      issue: issue,
-                      faultLabel: localizedFault?.title,
-                    ),
-                  if (b != null && disconnected) ...[
-                    const SizedBox(height: 12),
-                    OBBandActionNotice(
-                      title: issueTitle,
-                      body: issueBody,
-                      action: action,
-                      onAction: helpIsPrimary
-                          ? _help
-                          : widget.onReconnect == null
-                          ? null
-                          : _reconnect,
-                      onHelp: helpIsPrimary ? null : _help,
-                    ),
-                  ],
-                  if (b?.transfer == TransferState.receiving ||
-                      b?.transfer == TransferState.interrupted) ...[
-                    const SizedBox(height: 12),
-                    if (b!.transfer == TransferState.receiving)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              LucideIcons.lockKeyhole,
-                              size: 16,
-                              color: g.muted,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen. App währenddessen offen lassen.',
-                                style: g.t(13, 19, color: g.ink2),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      OBSettingsGroup(
-                        children: [
-                          OBSettingsRow(
-                            label: 'Übertragung unterbrochen',
-                            detail:
-                                'Bereits gespeicherte Abschnitte bleiben erhalten.',
-                            onTap: widget.onReconnect == null
-                                ? null
-                                : _reconnect,
-                          ),
-                        ],
-                      ),
-                  ],
-                  if (!disconnected) ...[
-                    const SizedBox(height: 24),
-                    Text('GERÄT', style: g.caps(color: g.muted)),
-                    const SizedBox(height: 8),
-                    OBSettingsGroup(
-                      children: [
-                        OBSettingsRow(
-                          label: 'Modell',
-                          value: diagnostics?.model ?? '—',
-                        ),
-                        OBSettingsRow(
-                          label: 'Firmware',
-                          value: diagnostics?.firmwareVersion ?? '—',
-                        ),
-                        if (diagnostics?.deviceFamily != null)
-                          OBSettingsRow(
-                            label: 'Gerätefamilie',
-                            value: diagnostics!.deviceFamily!,
-                          ),
-                        OBSettingsRow(
-                          label: 'Datenbankdatei',
-                          value: widget.databaseSize ?? '—',
-                        ),
-                      ],
-                    ),
-                    if (widget.onDevices != null) ...[
-                      const SizedBox(height: 24),
-                      Text('AM BAND', style: g.caps(color: g.muted)),
-                      const SizedBox(height: 8),
-                      OBSettingsGroup(
-                        children: [
-                          OBSettingsRow(
-                            label: 'Band verwalten',
-                            detail: 'Alarm, Akkumeldung und Kopplung',
-                            onTap: _openDevices,
-                          ),
-                        ],
                       ),
                     ],
-                  ],
-                  if (widget.synthetic) ...[
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        'SYNTHETISCHE DATEN',
-                        style: g.caps(color: g.muted, size: 11),
-                      ),
+                  ),
+                )
+              else
+                OBSettingsGroup(
+                  children: [
+                    OBSettingsRow(
+                      label: 'Übertragung unterbrochen',
+                      detail:
+                          'Bereits gespeicherte Abschnitte bleiben erhalten.',
+                      onTap: widget.onReconnect == null ? null : _reconnect,
                     ),
                   ],
+                ),
+            ],
+            if (!disconnected) ...[
+              const SizedBox(height: 18),
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text('GERÄT', style: g.caps(color: g.muted)),
+              ),
+              const SizedBox(height: 8),
+              OBSettingsGroup(
+                children: [
+                  OBSettingsRow(
+                    label: 'Modell',
+                    value: diagnostics?.model,
+                    trailing: diagnostics?.model == null
+                        ? const OBMissingValue(size: 15, lineHeight: 20)
+                        : null,
+                  ),
+                  OBSettingsRow(
+                    label: 'Firmware',
+                    value: diagnostics?.firmwareVersion,
+                    trailing: diagnostics?.firmwareVersion == null
+                        ? const OBMissingValue(size: 15, lineHeight: 20)
+                        : null,
+                  ),
+                  if (diagnostics?.deviceFamily != null)
+                    OBSettingsRow(
+                      label: 'Gerätefamilie',
+                      value: diagnostics!.deviceFamily!,
+                    ),
+                  OBSettingsRow(
+                    label: 'Datenbankdatei',
+                    value: widget.databaseSize,
+                    trailing: widget.databaseSize == null
+                        ? const OBMissingValue(size: 15, lineHeight: 20)
+                        : null,
+                  ),
                 ],
               ),
-            ),
+              if (widget.onDevices != null) ...[
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text('AM BAND', style: g.caps(color: g.muted)),
+                ),
+                const SizedBox(height: 8),
+                OBSettingsGroup(
+                  children: [
+                    OBSettingsRow(
+                      label: 'Band verwalten',
+                      detail: 'Alarm, Akkumeldung und Kopplung',
+                      onTap: _openDevices,
+                    ),
+                  ],
+                ),
+              ],
+            ],
+            if (widget.synthetic) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: Text(
+                  'SYNTHETISCHE DATEN',
+                  style: g.caps(color: g.muted, size: 11),
+                ),
+              ),
+            ],
           ],
         ),
       ),

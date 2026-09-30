@@ -92,6 +92,32 @@ void main() {
     expect(find.bySemanticsLabel('Zurück zu Training'), findsOneWidget);
   });
 
+  testWidgets('profile identity and band affordances follow their routes', (
+    tester,
+  ) async {
+    const identity = ValueKey('profile-identity');
+    const band = ValueKey('profile-band');
+    Finder chevron(Key key) =>
+        find.descendant(of: find.byKey(key), matching: find.byType(OBChevron));
+    await pump(
+      tester,
+      const ProfileHomeView(releaseReduced: true, languageLabel: 'Deutsch'),
+    );
+    expect(chevron(identity), findsNothing);
+    expect(chevron(band), findsNothing);
+    await pump(
+      tester,
+      ProfileHomeView(
+        releaseReduced: true,
+        languageLabel: 'Deutsch',
+        onEdit: () {},
+        onBand: () {},
+      ),
+    );
+    expect(chevron(identity), findsOneWidget);
+    expect(chevron(band), findsOneWidget);
+  });
+
   final cases = <String, Widget>{
     'settings': MoreSettingsView(
       releaseReduced: true,

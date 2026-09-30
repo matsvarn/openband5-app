@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/g3_theme.dart';
 import '../ui2.dart';
 
@@ -63,10 +64,11 @@ class BirthDateField extends StatelessWidget {
               ),
             ),
             if (value != null)
-              IconButton(
-                tooltip: l?.profileBirthDateClear ?? 'Clear birth date',
-                onPressed: () => onChanged(null),
-                icon: Icon(LucideIcons.x, color: g.muted),
+              chrome.OBIconButton(
+                icon: LucideIcons.x,
+                label: l?.profileBirthDateClear ?? 'Clear birth date',
+                onTap: () => onChanged(null),
+                small: true,
               ),
           ],
         ),

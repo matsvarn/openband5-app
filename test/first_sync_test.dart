@@ -211,8 +211,8 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('Bis gestern · 09:28'), findsOneWidget);
-    expect(find.text('bis gestern · 09:28'), findsOneWidget);
+    expect(find.textContaining('Bis gestern 09:28'), findsOneWidget);
+    expect(find.text('Daten bis gestern 09:28'), findsOneWidget);
   });
 
   testWidgets(
@@ -682,7 +682,7 @@ void main() {
     expect(done, isTrue);
   });
 
-  testWidgets('non-today stored frontier includes the date', (tester) async {
+  testWidgets('yesterday stored frontier names the day', (tester) async {
     await tester.pumpWidget(
       _frame(
         FirstSyncView(
@@ -695,7 +695,7 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('14.9.'), findsOneWidget);
+    expect(find.textContaining('Daten bis gestern 22:10'), findsOneWidget);
     expect(find.textContaining('22:10'), findsWidgets);
   });
 }

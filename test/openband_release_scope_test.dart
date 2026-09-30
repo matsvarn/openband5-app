@@ -776,7 +776,11 @@ void main() {
       ),
     );
 
-    final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
+    final values = [
+      find.textContaining('18.09 07:42'),
+      find.text('64 %'),
+      find.text('4,2 GB'),
+    ];
     final labels = [
       find.text('DATEN BIS'),
       find.text('AKKU'),
@@ -844,7 +848,7 @@ void main() {
       expect(find.text('Status unbekannt'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
       expect(find.text('zuletzt 64 %'), findsOneWidget);
-      expect(find.text('07:42'), findsOneWidget);
+      expect(find.textContaining('18.09 07:42'), findsOneWidget);
     },
   );
 

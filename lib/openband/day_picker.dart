@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
+import 'g3/g3_format.dart';
 import 'g3/g3_theme.dart';
 import 'g3/chrome.dart' as chrome;
 import 'calendar.dart';
@@ -18,10 +18,7 @@ Future<void> chooseOpenBandDay(
     isScrollControlled: true,
     useSafeArea: true,
     barrierColor: Colors.black.withValues(alpha: .38),
-    backgroundColor: G3.of(context).canvas,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (_) =>
         FractionallySizedBox(heightFactor: 1, child: _DayPicker(controller)),
   );
@@ -72,16 +69,13 @@ class _DayPickerState extends State<_DayPicker> {
     useRootNavigator: true,
     useSafeArea: true,
     isScrollControlled: true,
+    backgroundColor: Colors.transparent,
     builder: (c) => SafeArea(
-      child: chrome.OBSheet(
+      child: chrome.OBInfoSheet(
         title: 'Gespeicherte Nächte',
-        cancelLabel: 'Schließen',
-        confirmLabel: 'Verstanden',
-        onCancel: () => Navigator.pop(c),
-        onConfirm: () => Navigator.pop(c),
-        child: const Text(
+        paragraphs: const [
           'Ein gefüllter Punkt zeigt einen gespeicherten Schlafwert. Die Nacht gehört zum Tag des Aufwachens. Deine Auswahl gilt erst nach Bestätigung. Fehlende Werte bleiben offen.',
-        ),
+        ],
       ),
     ),
   );
@@ -93,297 +87,240 @@ class _DayPickerState extends State<_DayPicker> {
     final now = widget.controller.now();
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = dayLabelOf(selected);
-    final previous = DateTime(selected.year, selected.month, selected.day - 1);
     final largeText = MediaQuery.textScalerOf(context).scale(15) > 22;
     return Scaffold(
-      backgroundColor: p.canvas,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 5,
-                margin: EdgeInsets.only(top: 10, bottom: largeText ? 8 : 16),
-                decoration: BoxDecoration(
-                  color: p.muted.withValues(alpha: .5),
-                  borderRadius: BorderRadius.circular(4),
+        child: chrome.OBSheet(
+          title: 'Datum wählen',
+          child: Expanded(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Gespeicherte Nächte',
+                        style: p.text(14, color: p.muted),
+                      ),
+                    ),
+                    chrome.OBIconButton(
+                      icon: LucideIcons.info,
+                      label: 'Gespeicherte Schlafwerte',
+                      onTap: _info,
+                      small: true,
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Datum wählen',
-                      style: g.t(
-                        20,
-                        24,
-                        weight: FontWeight.w700,
-                        tracking: -.02,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Schließen',
-                    onPressed: () => Navigator.pop(context),
-                    icon: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: g.chip,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(LucideIcons.x, size: 16, color: g.ink),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, largeText ? 4 : 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Gespeicherte Nächte',
-                      style: p.text(14, color: p.muted),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Gespeicherte Schlafwerte',
-                    onPressed: _info,
-                    icon: const Icon(LucideIcons.info, size: 20),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 32),
-                children: [
-                  chrome.OBPanel(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      largeText ? 8 : 14,
-                      16,
-                      largeText ? 8 : 16,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        FutureBuilder<OpenBandDay>(
-                          future: preview,
-                          builder: (c, selectedSnapshot) => FutureBuilder<Set<String>>(
-                            future: days,
-                            builder: (c, snapshot) => Column(
-                              children: [
-                                MediaQuery(
-                                  data: MediaQuery.of(context).copyWith(
-                                    textScaler: largeText
-                                        ? const TextScaler.linear(1.5)
-                                        : MediaQuery.textScalerOf(context),
-                                  ),
-                                  child: OBCalendar(
-                                    month: month,
-                                    selected: selected,
-                                    now: now,
-                                    allowFuture: false,
-                                    showAvailability: true,
-                                    instrumentHeader: true,
-                                    selectedCellKey: _selectedCellKey,
-                                    nights: {
-                                      ...?snapshot.data,
-                                      // The preview and calendar must agree even
-                                      // when a stored day is absent from the
-                                      // repository's bulk availability index.
-                                      if (selectedSnapshot
-                                              .data
-                                              ?.sleep
-                                              .duration
-                                              .value !=
-                                          null)
-                                        selectedDay,
-                                    },
-                                    onSelect: _select,
-                                    onPrevMonth: () => setState(
-                                      () => month = DateTime(
-                                        month.year,
-                                        month.month - 1,
-                                      ),
-                                    ),
-                                    onNextMonth: () => setState(
-                                      () => month = DateTime(
-                                        month.year,
-                                        month.month + 1,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (snapshot.hasError)
-                                  TextButton(
-                                    onPressed: () => setState(
-                                      () => days = widget.controller.repository
-                                          .sleepDays(),
-                                    ),
-                                    child: const Text(
-                                      'Datenpunkte erneut laden',
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(0, largeText ? 0 : 10, 0, 32),
+                    children: [
+                      chrome.OBPanel(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          largeText ? 8 : 14,
+                          16,
+                          largeText ? 8 : 16,
                         ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _AvailabilityLegend(
-                              filled: true,
-                              label: 'Schlafwert vorhanden',
+                            FutureBuilder<OpenBandDay>(
+                              future: preview,
+                              builder: (c, selectedSnapshot) => FutureBuilder<Set<String>>(
+                                future: days,
+                                builder: (c, snapshot) => Column(
+                                  children: [
+                                    MediaQuery(
+                                      data: MediaQuery.of(context).copyWith(
+                                        textScaler: largeText
+                                            ? const TextScaler.linear(1.5)
+                                            : MediaQuery.textScalerOf(context),
+                                      ),
+                                      child: OBCalendar(
+                                        month: month,
+                                        selected: selected,
+                                        now: now,
+                                        allowFuture: false,
+                                        showAvailability: true,
+                                        instrumentHeader: true,
+                                        selectedCellKey: _selectedCellKey,
+                                        nights: {
+                                          ...?snapshot.data,
+                                          // The preview and calendar must agree even
+                                          // when a stored day is absent from the
+                                          // repository's bulk availability index.
+                                          if (selectedSnapshot
+                                                  .data
+                                                  ?.sleep
+                                                  .duration
+                                                  .value !=
+                                              null)
+                                            selectedDay,
+                                        },
+                                        onSelect: _select,
+                                        onPrevMonth: () => setState(
+                                          () => month = DateTime(
+                                            month.year,
+                                            month.month - 1,
+                                          ),
+                                        ),
+                                        onNextMonth: () => setState(
+                                          () => month = DateTime(
+                                            month.year,
+                                            month.month + 1,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (snapshot.hasError)
+                                      chrome.OBLink(
+                                        'Datenpunkte erneut laden',
+                                        onTap: () => setState(
+                                          () => days = widget
+                                              .controller
+                                              .repository
+                                              .sleepDays(),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            _AvailabilityLegend(
-                              filled: false,
-                              label: 'kein Schlafwert',
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 16,
+                              runSpacing: 8,
+                              children: [
+                                _AvailabilityLegend(
+                                  filled: true,
+                                  label: 'Schlafwert vorhanden',
+                                ),
+                                _AvailabilityLegend(
+                                  filled: false,
+                                  label: 'kein Schlafwert',
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FutureBuilder<OpenBandDay>(
-                    future: preview,
-                    builder: (c, snapshot) {
-                      final ready =
-                          snapshot.connectionState == ConnectionState.done;
-                      final night = ready ? snapshot.data?.sleep : null;
-                      return Semantics(
-                        liveRegion: true,
-                        child: chrome.OBPanel(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Row(
+                      ),
+                      const SizedBox(height: 12),
+                      FutureBuilder<OpenBandDay>(
+                        future: preview,
+                        builder: (c, snapshot) {
+                          final ready =
+                              snapshot.connectionState == ConnectionState.done;
+                          final night = ready ? snapshot.data?.sleep : null;
+                          return Semantics(
+                            liveRegion: true,
+                            child: chrome.OBPanel(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
                                 children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          DateFormat(
-                                            'EEEE, d. MMMM',
-                                            'de_DE',
-                                          ).format(selected),
-                                          style: p.text(
-                                            15,
-                                            weight: FontWeight.w700,
-                                          ),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              g3DayLong(selected),
+                                              style: p.text(
+                                                15,
+                                                weight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              !ready
+                                                  ? 'Wird geladen …'
+                                                  : snapshot.hasError
+                                                  ? 'Schlafwert konnte nicht geladen werden.'
+                                                  : night?.duration.value ==
+                                                        null
+                                                  ? 'Kein gespeicherter Schlafwert'
+                                                  : 'Schlaf · ${g3NightOf(selected)}',
+                                              style: p.text(12, color: p.muted),
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          !ready
-                                              ? 'Wird geladen …'
-                                              : snapshot.hasError
-                                              ? 'Schlafwert konnte nicht geladen werden.'
-                                              : night?.duration.value == null
-                                              ? 'Kein gespeicherter Schlafwert'
-                                              : 'Schlaf · Nacht ${DateFormat('E', 'de_DE').format(previous)} → ${DateFormat('E', 'de_DE').format(selected)}',
-                                          style: p.text(12, color: p.muted),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        night?.duration.value == null
+                                            ? '—'
+                                            : g3Duration(
+                                                night!.duration.value!.round(),
+                                              ),
+                                        style: p.text(
+                                          22,
+                                          weight: FontWeight.w700,
+                                          display: true,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    night?.duration.value == null
-                                        ? '—'
-                                        : obDuration(night!.duration.value),
-                                    style: p.text(
-                                      22,
-                                      weight: FontWeight.w700,
-                                      display: true,
+                                  if (snapshot.hasError)
+                                    chrome.OBLink(
+                                      'Erneut laden',
+                                      onTap: () => _select(selected),
                                     ),
-                                  ),
                                 ],
                               ),
-                              if (snapshot.hasError)
-                                TextButton(
-                                  onPressed: () => _select(selected),
-                                  child: const Text('Erneut laden'),
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                10,
-                16,
-                MediaQuery.paddingOf(context).bottom + 16,
-              ),
-              child: Column(
-                children: [
-                  if (largeText)
-                    Column(
-                      children: [
-                        OBAction(
+                ),
+                if (widget.controller.day?.synthetic == true)
+                  Text(
+                    'SYNTHETISCHE DATEN',
+                    textAlign: TextAlign.center,
+                    style: g.caps(color: g.muted, size: 11),
+                  ),
+                const SizedBox(height: 10),
+                if (largeText) ...[
+                  chrome.OBActionSecondary(
+                    'Zu heute',
+                    expand: true,
+                    onPressed: () => Navigator.pop(context, dayLabelOf(today)),
+                  ),
+                  const SizedBox(height: 10),
+                  chrome.OBActionPrimary(
+                    'Ansehen',
+                    expand: true,
+                    onPressed: () => Navigator.pop(context, selectedDay),
+                  ),
+                ] else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: chrome.OBActionSecondary(
                           'Zu heute',
-                          secondary: true,
+                          expand: true,
                           onPressed: () =>
                               Navigator.pop(context, dayLabelOf(today)),
                         ),
-                        const SizedBox(height: 10),
-                        OBAction(
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: chrome.OBActionPrimary(
                           'Ansehen',
+                          expand: true,
                           onPressed: () => Navigator.pop(context, selectedDay),
                         ),
-                      ],
-                    )
-                  else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OBAction(
-                            'Zu heute',
-                            secondary: true,
-                            onPressed: () =>
-                                Navigator.pop(context, dayLabelOf(today)),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OBAction(
-                            'Ansehen',
-                            onPressed: () =>
-                                Navigator.pop(context, selectedDay),
-                          ),
-                        ),
-                      ],
-                    ),
-                  if (widget.controller.day?.synthetic == true) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'SYNTHETISCHE DATEN',
-                      textAlign: TextAlign.center,
-                      style: g.caps(color: g.muted, size: 11),
-                    ),
-                  ],
-                ],
-              ),
+                      ),
+                    ],
+                  ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
