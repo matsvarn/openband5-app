@@ -97,10 +97,10 @@ Fix: every native line is forwarded over the channel, with its native timestamp,
 **F7 · Field log too short for an overnight incident.** Fixed.
 `lib/sync/file_log.dart:24` rotates at 2 MB into one `.1` file. At the measured 1.8 MB per 13 h the pair keeps about a day. Raised to 6 MB. Together with F6 that is about three days.
 
-**F8 · Nothing outside the app says the band has been silent for hours.** Not built: decision for Mats (D1).
-`lib/sync/sync_policy.dart:729-730`: the in-app quiet tier starts at 12 h, and the OS notification only at 48 h. The 13-hour outage produced no notification.
+**F8 · Nothing outside the app says the band has been silent for hours.** Fixed by D1.
+`lib/sync/sync_policy.dart:729-730`: the in-app quiet tier started at 12 h and the OS notification only at 48 h. The check also never ran while the reconnect loop owned the band (`lib/sync/background_sync.dart` skip branch, `lib/sync/ios_bg_task.dart` foreground-pull branch). The 13-hour outage produced no notification.
 
-**F9 · The unreachable copy recommends actions that did not help.** Owner: code quality (`lib/openband/g3/screens/band.dart:276`); decision D2.
+**F9 · The unreachable copy recommends actions that did not help.** Fixed by D2 (`lib/openband/g3/screens/band.dart:276`, code-quality file, changed with Mats's approval).
 The card says "Bluetooth … aus- und wieder einschalten. Band kurz auf das Ladegerät legen." The Bluetooth toggle and an iPhone restart did not help. The one observed recovery followed a double tap on the band (n = 1).
 
 **F10 · "Band nicht erreichbar" shows only the last attempt, not since when.** Owner: code quality (`lib/openband/g3/screens/band.dart:270`) and storage (`lib/data/models.dart:372`, `DeviceState.lastConnectFailedAt`).
@@ -109,10 +109,13 @@ The first failure of an episode is overwritten by every later attempt. F5 logs "
 **F11 · The reconnect loop's foreground intent blocks every headless entry point.** Owner: code quality (`lib/state/app_state.dart:5302`, `:5361-5365`).
 While the loop runs, BGAppRefresh/BGProcessing wakes skip headless sync as well (`lib/sync/ios_bg_task.dart:72` → `runHeadlessSync` → skipped). With F1 the restore wake now waits for the loop to take the link. It cannot shorten the loop's backoff wait (up to 36 s), because the loop lives in `AppState`. Recommended there: let a restore wake cut the backoff wait short (a one-shot "reconnect now" hook), so the link is taken over at once.
 
-**F12 · Reconnect policy on iOS.** No change; decision D3.
-`lib/ble/ble_state.dart:382` (2 s → 30 s cap, ±20 % jitter) plus the 20 s connect timeout gives one attempt about every 40–56 s in the foreground, indefinitely. It never gives up except on bond refusal, and the cap is not too far. In the background the process is suspended, and in practice there was one attempt per iOS wake (14 timeouts in 3.5 h). The CPU cost is those wakes; the radio cost of a pending CoreBluetooth connect is small. The native restore central already keeps a no-timeout pending connect between wakes. That, not the Dart loop, is what can bring the band back while the phone sleeps.
+**F12 · Reconnect policy on iOS.** Changed by D3.
+`lib/ble/ble_state.dart:382` (2 s → 30 s cap, ±20 % jitter) plus the 20 s connect timeout gives one attempt about every 40–56 s in the foreground, indefinitely. It never gives up except on bond refusal, and the cap is not too far. In the background the process is suspended, and in practice there was one attempt per iOS wake (14 timeouts in 3.5 h). The CPU cost is those wakes; the radio cost of a pending CoreBluetooth connect is small. The native restore central already keeps a no-timeout pending connect between wakes. That, not the Dart loop, is what can bring the band back while the phone sleeps. With D3 the foreground engine now does the same in the background, so the band's return lands directly in the engine that drains it.
 
 ### P3
+
+**F16 · The reconnect supervisor measures an attempt in wall-clock time.** Owner: code quality (`lib/state/app_state.dart` `_superviseReconnect`).
+`superviseReconnect` (`lib/sync/sync_policy.dart:909`) restarts a loop whose attempt has run 25 min. After an iOS suspension longer than that it starts a second loop behind the still-pending connect, as it could before with 20 s attempts. The second loop waits on the engine's lock and reuses the link once it comes up, so it is harmless, but the post-connect block runs twice. Recommended: pass the engine's "background pending connect in flight" state into the supervisor.
 
 **F13 · `tool/pull_device_db.sh` copies only `Documents`.** Fixed for the trial.
 Since `5402dbb7` the iOS field log lives in `Library/Application Support`, so pre/post pulls miss it. The script now also pulls `openstrap_sync.log` and `.1` from there.
@@ -134,15 +137,16 @@ They show as `EVENT_11`/`EVENT_12`. `research/decode_events.py` names them BLE_C
 | Backoff too far? | No: cap 30 s. On iOS the effective rate in the background is set by process suspension, not by the policy. |
 | Battery | Foreground: a connect attempt about every 40–56 s while unreachable. Background: one short CPU wake per iOS wake, plus the free pending connect. No new cost from this branch; F1 keeps the process up to 40 s longer on a restore wake that lands during the reconnect loop. |
 
-## Decisions for Mats
+## Decisions (approved by Mats, 30 September 2026, and built)
 
-- **D1 · Silent-band notification.** Proposed: one notification after 3 h without a stored record while the band was last seen on the wrist, repeated at most every 12 h, going through `NotificationCenter.emit`, and no notification during quiet hours. Today it is 48 h. User-visible behaviour, so not built.
-- **D2 · Unreachable copy.** Replace "Bluetooth aus/ein … Ladegerät" with "Doppeltippe auf das Band. Hilft das nicht, leg es kurz aufs Ladegerät." It rests on one observed recovery. Recommended, because the current advice demonstrably did not help. Needs the code-quality owner.
-- **D3 · iOS reconnect.** Proposed: while backgrounded, drop the Dart 20 s cycle and rely on one no-timeout pending connect. That means fewer wakes and the same radio cost, but it changes reconnect behaviour, so it needs a device trial first.
-- **D4 · Evidence next time.** When the band is unreachable: note the time, then double-tap it. Before and after the tap, scan with nRF Connect on a second device. Leave the app running so the backlog brings the band console along.
+- **D1 · Silent-band notification.** After 3 h without a stored record, one notification ("Keine neuen Banddaten · Seit HH:MM Uhr kam nichts mehr an. Doppeltippe auf das Band und öffne OpenBand."), repeated at most every 12 h. None while the band was last seen off the wrist or on the charger, and none during quiet hours. It runs through `NotificationCenter.emit`, and also while the reconnect loop owns the band.
+- **D2 · Unreachable copy.** "Doppeltippe auf das Band. Hilft das nicht, leg es kurz aufs Ladegerät." replaces the Bluetooth-toggle advice. It rests on one observed recovery.
+- **D3 · iOS reconnect.** While backgrounded, the foreground engine's connect stays pending for up to 20 min (below the supervisor's 25 min) instead of 20 s. Returning to the foreground or disconnecting cancels it first. Headless drainers and Android keep 20 s.
+- **D4 · Evidence next time.** CAPTURE_TRIAL.md, "If the band stops connecting": note the time, scan from a second device, double-tap, scan again, pull after the backlog.
 
 ## Still unproven
 
 - Why the band did not become connectable after 23:54 (H4 vs H5), and what caused the 0x08 drop.
+- D1 and D3 are proven on the unit surface only; iOS suspension, a Bluetooth wake from a pending connect and notification delivery need the device.
 - F1/F2 are proven on the unit surface and by code reading. That the 13:18 drop was exactly this race rests on the band's 0x13 and the lease timing; the lossy 0.9.33 log and the missing native log cannot confirm it.
 - Whether a double tap reliably restores a stuck band (n = 1).
