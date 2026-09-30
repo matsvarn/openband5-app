@@ -426,7 +426,7 @@ String bandFrontierDayPrefix(DateTime stored, DateTime now, {bool de = true}) {
       dayLabelOf(DateTime(now.year, now.month, now.day - 1))) {
     return de ? 'gestern · ' : 'yesterday · ';
   }
-  return '${stored.day.toString().padLeft(2, '0')}.${stored.month.toString().padLeft(2, '0')}. · ';
+  return '${g3DateShort(stored)} · ';
 }
 
 enum OBBandIssue { bluetoothOff }

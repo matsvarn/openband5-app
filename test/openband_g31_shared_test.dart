@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
 import 'package:openstrap_edge/openband/g3/check_in.dart';
-import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
+import 'package:openstrap_edge/openband/g3/band_parts.dart'
+    show OBSettingsRow, bandFrontierDayPrefix;
 import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
@@ -24,6 +25,56 @@ Widget _frame(Widget child) => MaterialApp(
 );
 
 void main() {
+  test('Band frontier prefixes use the shared short date format', () {
+    final now = DateTime(2026, 9, 29, 10);
+    expect(bandFrontierDayPrefix(DateTime(2026, 9, 29, 9), now), '');
+    expect(bandFrontierDayPrefix(DateTime(2026, 9, 28, 9), now), 'gestern · ');
+    expect(
+      bandFrontierDayPrefix(DateTime(2026, 9, 28, 9), now, de: false),
+      'yesterday · ',
+    );
+    expect(bandFrontierDayPrefix(DateTime(2026, 8, 1, 9), now), '01.08 · ');
+  });
+
+  testWidgets('sheet close and secondary action invoke independent callbacks', (
+    tester,
+  ) async {
+    var closed = 0;
+    var canceled = 0;
+    await tester.pumpWidget(
+      _frame(
+        OBSheet(
+          title: 'Band',
+          child: const Text('Details'),
+          onClose: () => closed++,
+          onCancel: () => canceled++,
+        ),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('Schließen'));
+    expect(closed, 1);
+    expect(canceled, 0);
+    await tester.tap(find.text('Abbrechen'));
+    expect(closed, 1);
+    expect(canceled, 1);
+  });
+
+  testWidgets('detail section header aligns with the page gutter', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        const G3DetailPage(
+          header: SizedBox(height: 44),
+          children: [OBSectionHeader.detail('MESSWERTE', trailing: Text('7'))],
+        ),
+      ),
+    );
+    final page = tester.getRect(find.byType(G3DetailPage));
+    expect(tester.getRect(find.text('MESSWERTE')).left, page.left + 24);
+    expect(tester.getRect(find.text('7')).right, page.right - 16);
+  });
+
   test('check-in question copy keeps the target day separate', () {
     expect(g3CheckInCopy('alcohol_evening', '').question, 'Alkohol am Abend?');
     expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');

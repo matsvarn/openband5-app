@@ -609,6 +609,7 @@ class OBSectionHeader extends StatelessWidget {
   final String? action;
   final VoidCallback? onAction;
   final Widget? trailing;
+  final bool _insideDetailPage;
   const OBSectionHeader(
     this.text, {
     super.key,
@@ -617,12 +618,26 @@ class OBSectionHeader extends StatelessWidget {
     this.action,
     this.onAction,
     this.trailing,
-  });
+  }) : _insideDetailPage = false;
+
+  /// Use in [G3DetailPage.children], which already have a 16 pt gutter.
+  const OBSectionHeader.detail(
+    this.text, {
+    super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
+    this.action,
+    this.onAction,
+    this.trailing,
+  }) : _insideDetailPage = true;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     return Padding(
-      padding: const EdgeInsets.only(left: 24, right: 16),
+      padding: EdgeInsets.only(
+        left: _insideDetailPage ? 8 : 24,
+        right: _insideDetailPage ? 0 : 16,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1189,7 +1204,7 @@ class OBSheet extends StatelessWidget {
   final String? subtitle;
   final Widget child;
   final String cancelLabel, confirmLabel;
-  final VoidCallback? onCancel, onConfirm;
+  final VoidCallback? onCancel, onConfirm, onClose;
   const OBSheet({
     super.key,
     required this.title,
@@ -1199,11 +1214,12 @@ class OBSheet extends StatelessWidget {
     this.confirmLabel = 'Speichern',
     this.onCancel,
     this.onConfirm,
+    this.onClose,
   });
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
-    final close = onCancel ?? () => Navigator.of(context).maybePop();
+    final close = onClose ?? onCancel ?? () => Navigator.of(context).maybePop();
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 34),
       decoration: BoxDecoration(
