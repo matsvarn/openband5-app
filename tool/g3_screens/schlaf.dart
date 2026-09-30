@@ -311,6 +311,17 @@ class _PaperRepo extends SyntheticOpenBandRepository {
   }
 
   @override
+  Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    if (g31 && metric == G3Metric.rhr) {
+      return const G3Baseline(
+        BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(52, 58, 53),
+      );
+    }
+    return super.readPersonalRange(metric, day);
+  }
+
+  @override
   Future<SleepGoalSnapshot> readSleepGoal(String day) async =>
       state == 'no_goal' ? const SleepGoalSnapshot() : super.readSleepGoal(day);
 
@@ -511,7 +522,12 @@ class _PaperSleepFrameState extends State<_PaperSleepFrame> {
   Widget build(BuildContext context) {
     final name = widget.name;
     final content = name.contains('nachtverlauf')
-        ? G3SleepNightSignals(repository: repo, day: controller.selectedDay)
+        ? G3SleepNightSignals(
+            repository: repo,
+            day: controller.selectedDay,
+            storedAt: controller.band.latestStoredAt,
+            now: controller.now,
+          )
         : name.contains('regelmaessigkeit')
         ? G3SleepRegularity(repository: repo, day: controller.selectedDay)
         : name.contains('schlafschuld')
