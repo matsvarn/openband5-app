@@ -134,7 +134,10 @@ jobs:
         run: flutter pub get
 
       - name: Test (golden)
-        run: flutter test --no-pub --concurrency=3 --tags golden --reporter=expanded
+        run: |
+          cores=$(sysctl -n hw.ncpu)
+          echo "cores: $cores"
+          flutter test --no-pub --concurrency="$cores" --tags golden --reporter=expanded
 
       - name: Upload golden failures
         if: failure()
