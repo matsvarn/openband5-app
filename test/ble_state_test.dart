@@ -577,6 +577,13 @@ void main() {
                 'android.permission.BLUETOOTH_SCAN')),
         BleBlocker.permissionDenied,
       );
+      expect(
+        classifyBleBlocker(
+          adapterState: 'on',
+          error: Exception('Need android.permission.BLUETOOTH_SCAN'),
+        ),
+        BleBlocker.permissionDenied,
+      );
     });
 
     test('adapter off and no-BLE-radio are their own states', () {
@@ -676,6 +683,32 @@ void main() {
             .reason,
         contains('5'),
       );
+    });
+
+    test('specific band failures outrank an old unreachable attempt', () {
+      final failedAt = DateTime(2026, 9, 30, 0, 3);
+      for (final (flags, expected) in [
+        ((paused: true, repair: false, unresponsive: false, clock: false),
+            BandCondition.reconnectPaused),
+        ((paused: false, repair: true, unresponsive: false, clock: false),
+            BandCondition.repairNeeded),
+        ((paused: false, repair: false, unresponsive: true, clock: false),
+            BandCondition.strapUnresponsive),
+        ((paused: false, repair: false, unresponsive: false, clock: true),
+            BandCondition.clockLost),
+      ]) {
+        expect(
+          bandStatusFor(
+            connection: 'disconnected',
+            lastConnectFailedAt: failedAt,
+            autoReconnectPaused: flags.paused,
+            needsRepairGuide: flags.repair,
+            strapNeedsReboot: flags.unresponsive,
+            syncClockLost: flags.clock,
+          ).condition,
+          expected,
+        );
+      }
     });
 
     test('a data-flow flag outranks the plain link state', () {
