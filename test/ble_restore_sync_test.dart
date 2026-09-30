@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/file_log.dart';
+import 'package:openstrap_edge/sync/headless_gate.dart';
 
 Future<void> nativeCall(String method, [Object? arguments]) async {
   await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -27,9 +31,8 @@ void main() {
     held = false;
     BandOwnership.resetForTest();
     IosBleRestore.foregroundActive = false;
-    IosBleRestore.handoffTimeout = const Duration(seconds: 40);
+    IosBleRestore.handoffMaxPolls = 80;
     IosBleRestore.handoffPoll = const Duration(milliseconds: 500);
-    IosBleRestore.handoffNow = () => TestWidgetsFlutterBinding.instance.clock.now();
     IosBleRestore.debugBandLinkHeld = () => held;
     IosBleRestore.logSink = (line) async {
       logs.add(line);
@@ -47,10 +50,9 @@ void main() {
   tearDown(() {
     BandOwnership.resetForTest();
     IosBleRestore.foregroundActive = false;
-    IosBleRestore.handoffNow = DateTime.now;
     IosBleRestore.debugBandLinkHeld = null;
     IosBleRestore.logSink = FileLog.write;
-    IosBleRestore.handoffTimeout = const Duration(seconds: 40);
+    IosBleRestore.handoffMaxPolls = 80;
     IosBleRestore.handoffPoll = const Duration(milliseconds: 500);
     backgroundSyncLogSink = FileLog.write;
     const MethodChannel('openstrap/ble_restore').setMethodCallHandler(null);
@@ -71,12 +73,12 @@ void main() {
         await tester.pump();
         expect(calls, isNot(contains('syncDone')));
         await tester.pump(const Duration(milliseconds: 500));
-        expect(calls, isEmpty);
+        expect(calls, ['wakeAck']);
         held = true;
         await tester.pump(const Duration(milliseconds: 500));
         await wake;
-        expect(calls, ['syncDone']);
-        expect(logs, contains(contains('taken over after 1.0s')));
+        expect(calls, ['wakeAck', 'syncDone']);
+        expect(logs, contains(contains('taken over after 2 polls')));
       },
     );
   }
@@ -84,24 +86,81 @@ void main() {
     tester,
   ) async {
     IosBleRestore.foregroundActive = true;
-    IosBleRestore.handoffTimeout = const Duration(seconds: 2);
+    IosBleRestore.handoffMaxPolls = 4;
     final wake = nativeCall('wake');
     await tester.pump();
-    expect(calls, isEmpty);
+    expect(calls, ['wakeAck']);
     for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(milliseconds: 500));
     }
-    expect(calls, isEmpty);
+    expect(calls, ['wakeAck']);
     await tester.pump(const Duration(milliseconds: 500));
     await wake;
-    expect(calls, ['syncDone']);
-    expect(logs, contains(contains('not taken over within 2s')));
+    expect(calls, ['wakeAck', 'syncDone']);
+    expect(logs, contains(contains('not taken over after 4 polls')));
   });
+  test('suspension does not spend the awake poll budget', () {
+    fakeAsync((async) {
+      IosBleRestore.foregroundActive = true;
+      IosBleRestore.handoffMaxPolls = 4;
+      var completed = false;
+      unawaited(nativeCall('wake').then((_) => completed = true));
+      async.flushMicrotasks();
+      for (var i = 0; i < 3; i++) {
+        // Advance the clock without running timers, matching suspension.
+        // Resume then runs one overdue poll.
+        async.elapseBlocking(const Duration(hours: 3));
+        async.elapse(Duration.zero);
+        expect(
+          calls,
+          isNot(contains('syncDone')),
+          reason: 'only ${i + 1} awake polls ran',
+        );
+        expect(completed, isFalse);
+      }
+      async.elapseBlocking(const Duration(hours: 3));
+      async.elapse(Duration.zero);
+      expect(completed, isTrue);
+      expect(calls, ['wakeAck', 'syncDone']);
+      expect(logs, contains(contains('not taken over after 4 polls')));
+    });
+  });
+  test(
+    'headless wake acknowledges before starting work and completing',
+    () async {
+      final lease = BandOwnership.tryAcquireHeadless()!;
+      addTearDown(() => BandOwnership.release(lease));
+      backgroundSyncLogSink = (line) async {
+        expect(calls, ['wakeAck']);
+        logs.add(line);
+      };
+      await nativeCall('wake');
+      expect(logs, contains(contains('[bgsync] skipped — foreground')));
+      expect(calls, ['wakeAck', 'syncDone']);
+    },
+  );
+  test(
+    'busy headless gate leaves an unaccepted wake to the native watchdog',
+    () async {
+      final pending = Completer<void>();
+      final running = HeadlessSyncGate.tryRun<void>(
+        'other_wake',
+        () => pending.future,
+      );
+      try {
+        await nativeCall('wake');
+        expect(calls, isEmpty);
+      } finally {
+        pending.complete();
+        await running;
+      }
+    },
+  );
   testWidgets('already-held link releases native immediately', (tester) async {
     IosBleRestore.foregroundActive = true;
     held = true;
     await nativeCall('wake');
-    expect(calls, ['syncDone']);
+    expect(calls, ['wakeAck', 'syncDone']);
   });
   test('native log keeps its timestamp and reaches field log', () async {
     const line =

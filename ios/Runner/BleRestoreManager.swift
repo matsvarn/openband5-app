@@ -52,6 +52,8 @@ private struct ArmState {
   var peripheral: CBPeripheral?
   /// True between a wake's `didConnect` and Dart's `syncDone` for THIS band.
   var handedOff = false
+  /// Dart owns an acknowledged handoff until syncDone, even across suspension.
+  var wakeAcknowledged = false
   /// Set after this band's wake-sync completes; suppresses re-arming until Dart
   /// explicitly re-arms it on the next disconnect. Not a timer, not a cooldown.
   var idleAfterSync = false
@@ -187,6 +189,7 @@ class BleRestoreManager: NSObject {
           self.bandUUID = uuid
           var s = self.state(uuid)
           s.handedOff = false
+          s.wakeAcknowledged = false
           s.idleAfterSync = false   // explicit (re-)arm request from Dart
           self.arms[uuid] = s
           self.logArmState(uuid)
@@ -254,6 +257,7 @@ class BleRestoreManager: NSObject {
           var st = self.state(uuid)
           st.appOwnsBand = false
           st.handedOff = false
+          st.wakeAcknowledged = false
           st.idleAfterSync = false
           self.arms[uuid] = st
           self.logArmState(uuid)
@@ -299,6 +303,12 @@ class BleRestoreManager: NSObject {
           self.channel?.invokeMethod("wake", arguments: nil)
         }
         result(nil)
+      case "wakeAck":
+        for uuid in Array(self.arms.keys) where self.arms[uuid]?.handedOff == true {
+          self.arms[uuid]?.wakeAcknowledged = true
+          self.log("[ble-restore] wake acknowledged for \(uuid.uuidString)")
+        }
+        result(nil)
       case "syncDone":
         self.log("[ble-restore] syncDone received")
         // Dart finished the headless drain. Go idle (no re-arm) until the next explicit
@@ -306,6 +316,7 @@ class BleRestoreManager: NSObject {
         if let s = call.arguments as? String, let uuid = UUID(uuidString: s) {
           var st = self.state(uuid)
           st.handedOff = false
+          st.wakeAcknowledged = false
           st.idleAfterSync = true
           self.arms[uuid] = st
           self.logArmState(uuid)
@@ -314,6 +325,7 @@ class BleRestoreManager: NSObject {
           for uuid in Array(self.arms.keys) where self.arms[uuid]?.handedOff == true {
             var st = self.state(uuid)
             st.handedOff = false
+            st.wakeAcknowledged = false
             st.idleAfterSync = true
             self.arms[uuid] = st
             self.logArmState(uuid)
@@ -429,14 +441,18 @@ class BleRestoreManager: NSObject {
       wakeQueuedBeforeReady = true
       log("[ble-restore] wake queued (Flutter not ready)")
     }
-    // Watchdog: if Dart never calls syncDone (crash), clear the handoff so we don't get
-    // stuck, and go idle (await an explicit re-arm) so we don't loop. Not a sync cadence —
-    // just a failsafe to release the in-flight state.
+    // Only an unacknowledged wake may expire. Once Dart accepts it, Dart
+    // ends the handoff with syncDone; suspension must not consume its budget.
     DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
       guard let self = self, self.state(uuid).handedOff else { return }
+      if self.state(uuid).wakeAcknowledged {
+        self.log("[ble-restore] syncDone watchdog skipped — Dart acknowledged handoff \(uuid.uuidString)")
+        return
+      }
       self.log("[ble-restore] syncDone watchdog fired — releasing handoff, going idle")
       var s = self.state(uuid)
       s.handedOff = false
+      s.wakeAcknowledged = false
       s.idleAfterSync = true
       self.arms[uuid] = s
       self.logArmState(uuid)
@@ -555,6 +571,7 @@ extension BleRestoreManager: CBCentralManagerDelegate {
     }
     log("[ble-restore] didConnect \(uuid.uuidString) — handing off to flutter_blue_plus")
     arms[uuid]?.handedOff = true
+    arms[uuid]?.wakeAcknowledged = false
     logArmState(uuid)
     signalWake(uuid)
   }

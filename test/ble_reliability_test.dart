@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
@@ -21,74 +23,216 @@ void main() {
       log: logs.add,
       adapterStateStream: () => Stream.value(BluetoothAdapterState.on),
     );
+    e.debugDeviceDisconnect = ({bool queue = true}) async {};
     e.debugConnectionStates = () => const Stream.empty();
     addTearDown(e.dispose);
     return e;
   }
 
-  test('timeout re-attaches once for 5s and continues normal setup', () async {
-    final logs = <String>[];
-    final e = engine(logs);
-    final attempts = <Duration>[];
-    e.debugDeviceConnectWithTimeout = (duration) async {
-      attempts.add(duration);
-      if (attempts.length == 1) throw timeout();
-    };
-    e.debugSystemConnected = (device, services) async {
-      expect(device.remoteId.str, 'AA:BB:CC:DD:EE:FF');
-      expect(
-        services.toSet(),
-        kBandRegistry.map((b) => Guid(b.service)).toSet(),
+  final device = BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF');
+
+  for (final linkUp in [true, false]) {
+    test(
+      linkUp
+          ? 'owned timer probes before cancellation and keeps a landed link'
+          : 'owned timer cancels an absent link once with the timeout shape',
+      () {
+        fakeAsync((async) {
+          final logs = <String>[];
+          final e = engine(logs);
+          final pending = Completer<void>();
+          final attempts = <Duration>[];
+          final disconnects = <bool>[];
+          final cancelsBeforeProbe = <bool>[];
+          var probes = 0;
+          var completed = false;
+          Object? failure;
+          e.debugDeviceConnectWithTimeout = (duration) {
+            attempts.add(duration);
+            // Model FBP's own timer and cancel-before-throw, rather than
+            // injecting a timeout error and bypassing that cancellation.
+            return pending.future.timeout(
+              duration,
+              onTimeout: () async {
+                await e.debugDeviceDisconnect!(queue: false);
+                throw timeout();
+              },
+            );
+          };
+          e.debugDeviceDisconnect = ({bool queue = true}) async {
+            disconnects.add(queue);
+            if (!pending.isCompleted) {
+              pending.completeError(StateError('native connect cancelled'));
+            }
+          };
+          e.debugSystemConnected = (device, services) async {
+            probes++;
+            cancelsBeforeProbe.addAll(disconnects);
+            expect(device.remoteId.str, 'AA:BB:CC:DD:EE:FF');
+            expect(
+              services.toSet(),
+              kBandRegistry.map((b) => Guid(b.service)).toSet(),
+            );
+            return linkUp;
+          };
+          unawaited(
+            e
+                .debugConnectAttempt(device, const Duration(seconds: 20))
+                .then(
+                  (_) => completed = true,
+                  onError: (Object error) {
+                    failure = error;
+                  },
+                ),
+          );
+          async.flushMicrotasks();
+          async.elapse(const Duration(seconds: 20));
+          expect(probes, 1);
+          expect(
+            cancelsBeforeProbe,
+            isEmpty,
+            reason: 'probe must precede any cancel',
+          );
+          expect(attempts, [const Duration(hours: 24)]);
+          if (linkUp) {
+            expect(disconnects, isEmpty);
+            pending.complete();
+            async.flushMicrotasks();
+            expect(completed, isTrue);
+            expect(failure, isNull);
+            expect(disconnects, isEmpty);
+            expect(
+              logs,
+              contains(
+                '[LINK] connect timer expired but the link is up — keeping it',
+              ),
+            );
+          } else {
+            expect(completed, isFalse);
+            expect(disconnects, [false]);
+            expect(
+              failure,
+              isA<FlutterBluePlusException>()
+                  .having((e) => e.platform, 'platform', ErrorPlatform.fbp)
+                  .having((e) => e.function, 'function', 'connect')
+                  .having((e) => e.code, 'code', FbpErrorCode.timeout.index)
+                  .having(
+                    (e) => e.description,
+                    'description',
+                    'Timed out after 20s',
+                  ),
+            );
+          }
+          async.elapse(const Duration(seconds: 6));
+          expect(disconnects, linkUp ? isEmpty : [false]);
+        });
+      },
+    );
+  }
+
+  test('connect completing before the owned timer never probes or cancels', () {
+    fakeAsync((async) {
+      final e = engine([]);
+      final pending = Completer<void>();
+      var probes = 0;
+      var disconnects = 0;
+      var completed = false;
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
+      e.debugSystemConnected = (_, _) async {
+        probes++;
+        return true;
+      };
+      e.debugDeviceDisconnect = ({bool queue = true}) async {
+        disconnects++;
+      };
+      unawaited(
+        e
+            .debugConnectAttempt(device, const Duration(seconds: 20))
+            .then((_) => completed = true),
       );
-      return true;
-    };
-    // Real setup is reached; this desktop host has no GATT peripheral.
-    await e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
-    expect(attempts, [const Duration(seconds: 20), const Duration(seconds: 5)]);
-    expect(logs, contains(contains('[BOOT gen5]')));
-    expect(logs, isNot(contains(startsWith('connect failed:'))));
-    expect(logs, contains(contains('system-connected')));
+      async.flushMicrotasks();
+      pending.complete();
+      async.flushMicrotasks();
+      expect(completed, isTrue);
+      async.elapse(const Duration(seconds: 26));
+      expect(probes, 0);
+      expect(disconnects, 0);
+    });
   });
 
   test(
-    'timeout without a system link keeps the existing failure path',
-    () async {
-      final logs = <String>[];
-      final e = engine(logs);
-      var probes = 0;
-      var attempts = 0;
-      e.debugDeviceConnect = () async {
-        attempts++;
-        throw timeout();
-      };
-      e.debugSystemConnected = (_, _) async {
-        probes++;
-        return false;
-      };
-      expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
-      expect(probes, 1);
-      expect(attempts, 1);
-      expect(e.state.lastConnectFailedAt, isNotNull);
-      expect(e.bluetoothBlocker, isNull);
+    'landed link recovery gives the pending future only five more seconds',
+    () {
+      fakeAsync((async) {
+        final e = engine([]);
+        final pending = Completer<void>();
+        final disconnects = <bool>[];
+        Object? failure;
+        e.debugDeviceConnectWithTimeout = (_) => pending.future;
+        e.debugSystemConnected = (_, _) async => true;
+        e.debugDeviceDisconnect = ({bool queue = true}) async {
+          disconnects.add(queue);
+          pending.completeError(StateError('native connect cancelled'));
+        };
+        unawaited(
+          e.debugConnectAttempt(device, const Duration(seconds: 20)).catchError(
+            (Object error) {
+              failure = error;
+            },
+          ),
+        );
+        async.flushMicrotasks();
+        async.elapse(const Duration(seconds: 24));
+        expect(disconnects, isEmpty);
+        expect(failure, isNull);
+        async.elapse(const Duration(seconds: 1));
+        expect(disconnects, [false]);
+        expect(
+          failure,
+          isA<FlutterBluePlusException>().having(
+            (e) => e.code,
+            'code',
+            FbpErrorCode.timeout.index,
+          ),
+        );
+      });
     },
   );
 
-  test(
-    'failed re-attach is bounded to one and preserves timeout classification',
-    () async {
-      final e = engine([]);
-      var attempts = 0;
-      e.debugDeviceConnect = () async {
-        attempts++;
-        throw timeout();
+  test('successful connect wins a race with timer cancellation', () {
+    fakeAsync((async) {
+      final logs = <String>[];
+      final e = engine(logs);
+      final pending = Completer<void>();
+      final disconnects = <bool>[];
+      var completed = false;
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
+      e.debugSystemConnected = (_, _) async => false;
+      e.debugDeviceDisconnect = ({bool queue = true}) async {
+        disconnects.add(queue);
+        // The connection arrives while native is handling cancellation.
+        pending.complete();
       };
-      e.debugSystemConnected = (_, _) async => true;
-      expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
-      expect(attempts, 2);
-      expect(e.state.lastConnectFailedAt, isNotNull);
-      expect(e.bluetoothBlocker, isNull);
-    },
-  );
+      unawaited(
+        e
+            .debugConnectAttempt(device, const Duration(minutes: 20))
+            .then((_) => completed = true),
+      );
+      async.flushMicrotasks();
+      async.elapse(const Duration(minutes: 19));
+      expect(disconnects, isEmpty);
+      expect(completed, isFalse);
+      async.elapse(const Duration(minutes: 1));
+      expect(disconnects, [false]);
+      expect(completed, isTrue);
+      expect(
+        logs,
+        contains(
+          '[LINK] background connect completed after cancellation — keeping it',
+        ),
+      );
+    });
+  });
 
   test('non-timeout errors never probe or re-attach', () async {
     final e = engine([]);
@@ -103,33 +247,36 @@ void main() {
       probes++;
       return true;
     };
-    expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+    expect(await e.connectToRemoteId(device.remoteId.str), isFalse);
     expect(probes, 0);
   });
 
-  test(
-    'suspension logs wall duration for both initial and re-attach attempts',
-    () async {
+  test('suspension keeps the link and logs the attempt wall duration', () {
+    fakeAsync((async) {
       final logs = <String>[];
       final e = engine(logs);
-      var now = DateTime(2026, 9, 30);
-      e.debugConnectNow = () => now;
-      e.debugDeviceConnectWithTimeout = (duration) async {
-        now = now.add(duration + const Duration(seconds: 6));
-        throw timeout();
-      };
+      e.debugConnectNow = async.getClock(DateTime(2026, 9, 30)).now;
+      final pending = Completer<void>();
+      var completed = false;
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
       e.debugSystemConnected = (_, _) async => true;
-      await e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+      unawaited(
+        e
+            .debugConnectAttempt(device, const Duration(seconds: 20))
+            .then((_) => completed = true),
+      );
+      async.flushMicrotasks();
+      async.elapseBlocking(const Duration(hours: 3));
+      async.elapse(Duration.zero);
+      pending.complete();
+      async.flushMicrotasks();
+      expect(completed, isTrue);
       expect(
         logs,
-        contains(contains('connect attempt took 26s for a 20s timeout')),
+        contains(contains('connect attempt took 10800s for a 20s timeout')),
       );
-      expect(
-        logs,
-        contains(contains('connect attempt took 11s for a 5s timeout')),
-      );
-    },
-  );
+    });
+  });
 
   test('failed connect episodes log first and tenth attempts', () async {
     final logs = <String>[];
@@ -137,7 +284,7 @@ void main() {
     e.debugDeviceConnect = () async => throw timeout();
     e.debugSystemConnected = (_, _) async => false;
     for (var i = 0; i < 10; i++) {
-      await e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+      await e.connectToRemoteId(device.remoteId.str);
     }
     expect(
       logs.where((s) => s.startsWith('[LINK] unreachable since')),

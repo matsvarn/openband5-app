@@ -521,7 +521,9 @@ class _PendingConnect {
 
   final BluetoothDevice device;
   bool cancelled = false;
+  bool connected = false;
   Future<void>? cancellation;
+  Future<void>? disconnect;
 }
 
 /// All per-connection resources. A fresh one is built on every connect and torn
@@ -2408,61 +2410,132 @@ class BleEngine {
 
   _PendingConnect? _backgroundPendingConnect;
 
+  Future<bool> _connectLinkUp(BluetoothDevice device) async {
+    if (_session?.connected == true || device.isConnected) return true;
+    try {
+      final services = kBandRegistry
+          .map((entry) => Guid(entry.service))
+          .toSet()
+          .toList();
+      final systemConnected = debugSystemConnected != null
+          ? await debugSystemConnected!(device, services)
+          : (await FlutterBluePlus.systemDevices(
+              services,
+            )).any((connected) => connected.remoteId == device.remoteId);
+      return systemConnected || _session?.connected == true || device.isConnected;
+    } catch (error) {
+      _log('[LINK] system-link probe failed: $error');
+      return false;
+    }
+  }
+
+  Future<void> _cancelConnect(_PendingConnect pending) {
+    pending.cancelled = true;
+    // Skip FBP's global operation queue so cancellation never waits behind F.
+    return pending.disconnect ??=
+        _disconnectDevice(pending.device, queue: false).catchError((
+          Object error,
+        ) {
+          _log('[LINK] pending connect cancellation failed: $error');
+        });
+  }
+
   void _cancelBackgroundPendingConnect(String reason) {
     final pending = _backgroundPendingConnect;
-    if (pending == null || pending.cancelled || _session?.connected == true) {
-      return;
-    }
-    pending.cancelled = true;
-    _log('[LINK] $reason — cancelling the background pending connect');
-    // FBP's default queue waits behind connect's global mutex. Skip it here
-    // specifically to cancel the pending CoreBluetooth connection.
-    pending.cancellation = _disconnectDevice(pending.device, queue: false)
-        .catchError((Object error) {
-      _log('[LINK] pending connect cancellation failed: $error');
-    });
+    if (pending == null || pending.cancellation != null) return;
+    pending.cancellation = () async {
+      if (await _connectLinkUp(pending.device) || pending.connected) {
+        _log('[LINK] $reason — background connect already landed, keeping it');
+        return;
+      }
+      _log('[LINK] $reason — cancelling the background pending connect');
+      await _cancelConnect(pending);
+    }();
     unawaited(pending.cancellation);
   }
+
+  @visibleForTesting
+  Future<void> debugConnectAttempt(BluetoothDevice device, Duration timeout) =>
+      _connectAttempt(device, timeout);
 
   Future<void> _connectAttempt(BluetoothDevice device, Duration timeout) async {
     final now = debugConnectNow ?? DateTime.now;
     final started = now();
-    final pending = timeout == kIosBackgroundConnectTimeout
-        ? _PendingConnect(device)
-        : null;
-    if (pending != null) {
+    final pending = _PendingConnect(device);
+    final background = timeout == kIosBackgroundConnectTimeout;
+    if (background) {
       _backgroundPendingConnect = pending;
       _log('[LINK] background pending connect (up to 20 min)');
     }
     try {
-      if (debugDeviceConnectWithTimeout case final connect?) {
-        await connect(timeout);
-      } else if (debugDeviceConnect case final connect?) {
-        await connect();
-      } else {
-        await device.connect(timeout: timeout, autoConnect: false);
-      }
-      if (pending?.cancelled == true) {
-        throw StateError('background pending connect cancelled');
+      // FBP cancels the peripheral BEFORE throwing its own timeout. Keep that
+      // deadline out of the way; our timer must probe before any cancellation.
+      const platformTimeout = Duration(hours: 24);
+      final connect =
+          (debugDeviceConnectWithTimeout != null
+                  ? debugDeviceConnectWithTimeout!(platformTimeout)
+                  : debugDeviceConnect != null
+                  ? debugDeviceConnect!()
+                  : device.connect(
+                      timeout: platformTimeout,
+                      autoConnect: false,
+                    ))
+              .then((_) {
+                pending.connected = true;
+              });
+      await connect.timeout(
+        timeout,
+        onTimeout: () async {
+          if (await _connectLinkUp(device) || pending.connected) {
+            _log(
+              '[LINK] connect timer expired but the link is up — keeping it',
+            );
+            try {
+              await connect.timeout(const Duration(seconds: 5));
+              return;
+            } catch (error) {
+              _log('[LINK] system-link recovery did not complete: $error');
+            }
+          }
+          await _cancelConnect(pending);
+          if (pending.connected) return;
+          // The timeout listener already consumes late errors; also observe the
+          // cancellation completion without keeping the operation lock parked.
+          unawaited(connect.catchError((Object _) {}));
+          throw FlutterBluePlusException(
+            ErrorPlatform.fbp,
+            'connect',
+            FbpErrorCode.timeout.index,
+            'Timed out after ${timeout.inSeconds}s',
+          );
+        },
+      );
+      if (pending.cancelled) {
+        _log(
+          '[LINK] background connect completed after cancellation — keeping it',
+        );
       }
     } catch (_) {
-      // A cancellation must not take F2's timeout re-attach route, even if
-      // the native completion races the cancellation request.
-      if (pending?.cancelled == true) {
-        throw StateError('background pending connect cancelled');
+      if (pending.cancelled && !pending.connected) {
+        // Keep our timeout exception intact for the existing failure classifier.
+        // Only a native failure after foreground/disconnect cancellation is a
+        // cancellation failure.
+        if (pending.cancellation != null) {
+          throw StateError('background pending connect cancelled');
+        }
       }
       rethrow;
     } finally {
-      if (pending != null) {
-        await pending.cancellation;
-        if (identical(_backgroundPendingConnect, pending)) {
-          _backgroundPendingConnect = null;
-        }
+      await pending.cancellation;
+      if (identical(_backgroundPendingConnect, pending)) {
+        _backgroundPendingConnect = null;
       }
       final elapsed = now().difference(started);
       if (elapsed > timeout + const Duration(seconds: 5)) {
-        _log('[LINK] connect attempt took ${elapsed.inSeconds}s for a '
-            '${timeout.inSeconds}s timeout — the process was suspended during it');
+        _log(
+          '[LINK] connect attempt took ${elapsed.inSeconds}s for a '
+          '${timeout.inSeconds}s timeout — the process was suspended during it',
+        );
       }
     }
   }
@@ -2496,43 +2569,14 @@ class BleEngine {
     );
 
     try {
-      try {
-        await _connectAttempt(
-          device,
-          connectTimeoutFor(
-            ios: debugIsIOS ?? Platform.isIOS,
-            background: _backgrounded,
-            backgroundDrainer: isBackgroundDrainer,
-          ),
-        );
-      } catch (error) {
-        final isFbpTimeout = error is FlutterBluePlusException &&
-            error.platform == ErrorPlatform.fbp &&
-            (error.code == FbpErrorCode.timeout.index ||
-                (error.description?.toLowerCase().contains('timed out') ?? false));
-        if (!isFbpTimeout) rethrow;
-        var recovered = false;
-        try {
-          final services = kBandRegistry
-              .map((entry) => Guid(entry.service))
-              .toSet()
-              .toList();
-          final systemConnected = debugSystemConnected != null
-              ? await debugSystemConnected!(device, services)
-              : (await FlutterBluePlus.systemDevices(services))
-                  .any((connected) => connected.remoteId == device.remoteId);
-          if (systemConnected) {
-            _log('[LINK] connect timed out but peripheral is system-connected; '
-                're-attaching once with a 5s timeout.');
-            await _connectAttempt(device, const Duration(seconds: 5));
-            recovered = true;
-          }
-        } catch (reattachError) {
-          _log('[LINK] system-link recovery did not complete: $reattachError');
-        }
-        // Preserve the original error's adapter/blocker classification.
-        if (!recovered) rethrow;
-      }
+      await _connectAttempt(
+        device,
+        connectTimeoutFor(
+          ios: debugIsIOS ?? Platform.isIOS,
+          background: _backgrounded,
+          backgroundDrainer: isBackgroundDrainer,
+        ),
+      );
     } catch (e) {
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
       // vanish into the reconnect loop as an ordinary failed attempt — retrying

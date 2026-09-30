@@ -6,6 +6,19 @@ import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
 import 'package:openstrap_edge/sync/sync_policy.dart';
 
+// Stream cancellation may complete outside the widget clock's zone. Flush that
+// boundary, then advance fake timers; never await a parked connect blindly.
+Future<bool> finishConnect(WidgetTester tester, Future<bool> connect) async {
+  bool? result;
+  unawaited(connect.then((value) => result = value));
+  for (var i = 0; i < 5 && result == null; i++) {
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump(const Duration(seconds: 16));
+  }
+  expect(result, isNotNull, reason: 'connect must release the operation lock');
+  return result!;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -18,7 +31,10 @@ void main() {
       adapterStateStream: () => Stream.value(BluetoothAdapterState.on),
     );
     e.debugIsIOS = true;
-    e.debugConnectionStates = () => const Stream.empty();
+    e.debugSystemConnected = (_, _) async => false;
+    final states = StreamController<BluetoothConnectionState>.broadcast();
+    e.debugConnectionStates = () => states.stream;
+    addTearDown(states.close);
     e.debugDeviceDisconnect = ({bool queue = true}) async {};
     addTearDown(e.dispose);
     return e;
@@ -78,9 +94,7 @@ void main() {
           throw StateError('synthetic connect failure');
         };
         expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
-        expect(attempts, [
-          drainer ? const Duration(seconds: 20) : const Duration(minutes: 20),
-        ]);
+        expect(attempts, [const Duration(hours: 24)]);
         expect(
           logs.where(
             (line) =>
@@ -91,6 +105,56 @@ void main() {
       }
     },
   );
+
+  for (final landedBeforeProbe in [true, false]) {
+    testWidgets(
+      landedBeforeProbe
+          ? 'foreground return keeps a link ahead of the session listener'
+          : 'successful connect keeps the link when cancellation loses the race',
+      (tester) async {
+        final logs = <String>[];
+        final e = engine(logs)..setBackground(true);
+        final pending = Completer<void>();
+        final cancels = <bool>[];
+        e.debugDeviceConnectWithTimeout = (_) => pending.future;
+        e.debugSystemConnected = (_, _) async => landedBeforeProbe;
+        e.debugDeviceDisconnect = ({bool queue = true}) async {
+          cancels.add(queue);
+        };
+        final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+        await tester.pump();
+        try {
+          e.setBackground(false);
+          await tester.pump();
+          expect(
+            cancels.where((queue) => !queue),
+            hasLength(landedBeforeProbe ? 0 : 1),
+          );
+          pending.complete();
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 16));
+          await finishConnect(tester, connect);
+          expect(logs, contains(contains('[BOOT gen5]')));
+          expect(logs, isNot(contains(startsWith('connect failed:'))));
+          expect(
+            logs,
+            contains(
+              contains(
+                landedBeforeProbe
+                    ? 'foreground — background connect already landed, keeping it'
+                    : 'background connect completed after cancellation — keeping it',
+              ),
+            ),
+          );
+        } finally {
+          if (!pending.isCompleted) pending.complete();
+          await tester.pump();
+          await tester.pump(const Duration(seconds: 16));
+          await finishConnect(tester, connect);
+        }
+      },
+    );
+  }
 
   for (final foregroundReturn in [true, false]) {
     test(
@@ -144,7 +208,7 @@ void main() {
               ),
             );
             e.debugDeviceConnectWithTimeout = (timeout) async {
-              expect(timeout, const Duration(seconds: 20));
+              expect(timeout, const Duration(hours: 24));
               throw StateError('next foreground attempt');
             };
             expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);

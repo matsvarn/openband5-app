@@ -34,13 +34,10 @@ class IosBleRestore {
   static bool Function()? debugBandLinkHeld;
 
   @visibleForTesting
-  static Duration handoffTimeout = const Duration(seconds: 40);
+  static int handoffMaxPolls = 80;
 
   @visibleForTesting
   static Duration handoffPoll = const Duration(milliseconds: 500);
-
-  @visibleForTesting
-  static DateTime Function() handoffNow = DateTime.now;
 
   /// Register the wake handler and tell native Flutter is ready. Call once at startup.
   static Future<void> init() async {
@@ -63,6 +60,7 @@ class IosBleRestore {
       }
       if (call.method != 'wake') return null;
       if (foregroundActive || BandOwnership.foregroundIntent) {
+        await _ackWake();
         await _waitForForegroundLink();
         await _done();
         return null;
@@ -72,6 +70,7 @@ class IosBleRestore {
       // wake — matching the old private-_busy semantics (no syncDone signal;
       // the running entry point completes its own cycle).
       await HeadlessSyncGate.tryRun<void>('ble_restore_wake', () async {
+        await _ackWake();
         try {
           await runHeadlessSync();
         } catch (e) {
@@ -175,22 +174,22 @@ class IosBleRestore {
   static Future<void> _waitForForegroundLink() async {
     bool held() => debugBandLinkHeld?.call() ?? BleEngine.anyBandLinkHeld;
     if (held()) return;
-    final started = handoffNow();
-    final deadline = started.add(handoffTimeout);
-    while (!held() && handoffNow().isBefore(deadline)) {
-      final remaining = deadline.difference(handoffNow());
-      await Future<void>.delayed(
-        remaining < handoffPoll ? remaining : handoffPoll,
-      );
+    var polls = 0;
+    while (!held() && polls < handoffMaxPolls) {
+      await Future<void>.delayed(handoffPoll);
+      polls++;
     }
-    final elapsed = handoffNow().difference(started);
     await logSink(
       held()
-          ? '[ble-restore] foreground link taken over after '
-                '${(elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s'
-          : '[ble-restore] foreground link not taken over within '
-                '${handoffTimeout.inSeconds}s',
+          ? '[ble-restore] foreground link taken over after $polls polls'
+          : '[ble-restore] foreground link not taken over after $polls polls',
     );
+  }
+
+  static Future<void> _ackWake() async {
+    try {
+      await _ch.invokeMethod('wakeAck');
+    } catch (_) {}
   }
 
   static Future<void> _done() async {
