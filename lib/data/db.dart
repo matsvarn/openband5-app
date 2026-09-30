@@ -13119,7 +13119,7 @@ class LocalDb {
     }
   }
 
-  static Future<Map<String, dynamic>> schemaHealth() async {
+  static Future<Map<String, dynamic>> schemaHealth({DateTime? now}) async {
     final db = await instance;
     Future<bool> hasTable(String name) async {
       final rows = await db.rawQuery(
@@ -13285,9 +13285,10 @@ class LocalDb {
       'hidden',
     ]);
 
-    final integrity = await db.rawQuery('PRAGMA integrity_check');
-    final integrityOk =
-        integrity.isNotEmpty && integrity.first.values.first == 'ok';
+    final integrityOk = await _integrityHealth(
+      db, (now ?? DateTime.now()).millisecondsSinceEpoch,
+      cacheAvailable: !missingTables.contains('compute_freshness'),
+    );
 
     return {
       'ok': missingTables.isEmpty && missingColumns.isEmpty && integrityOk,
@@ -13295,6 +13296,68 @@ class LocalDb {
       'missing_columns': missingColumns,
       'integrity_ok': integrityOk,
     };
+  }
+
+  static const kIntegrityHealthKey = 'schema_integrity';
+
+  /// Test seam for PRAGMA results and scheduled-check observations.
+  @visibleForTesting
+  static Future<List<String>> Function(String pragma)? debugIntegrityCheck;
+
+  static Future<bool> _integrityHealth(Database db, int nowMs, {
+    required bool cacheAvailable,
+  }) async {
+    Future<List<String>> check(DatabaseExecutor executor, String pragma) async {
+      final seam = debugIntegrityCheck;
+      if (seam != null) return seam(pragma);
+      return (await executor.rawQuery(pragma))
+          .expand((row) => row.values).map((value) => value.toString()).toList();
+    }
+    bool isOk(List<String> result) => result.isNotEmpty && result.every((v) => v == 'ok');
+    // A broken schema cannot persist bookkeeping; still report both checks.
+    if (!cacheAvailable) return isOk(await check(db, 'PRAGMA integrity_check'));
+    // Serialize the cache read and update so simultaneous callers cannot both
+    // start a large check against the same expired timestamp.
+    return db.transaction((txn) async {
+      final rows = await txn.query('compute_freshness',
+          where: 'key = ?', whereArgs: [kIntegrityHealthKey]);
+      Map<String, dynamic> cached = const {};
+      if (rows.isNotEmpty) {
+        try {
+          cached = (jsonDecode(rows.single['payload_json'] as String) as Map)
+              .cast<String, dynamic>();
+        } catch (_) { /* unreadable bookkeeping requires a fresh check */ }
+      }
+      final checkedAt = (cached['checked_at_ms'] as num?)?.toInt();
+      final fullCheckedAt = (cached['full_checked_at_ms'] as num?)?.toInt();
+      final fullDue = fullCheckedAt == null ||
+          nowMs - fullCheckedAt >= const Duration(days: 7).inMilliseconds;
+      final quickDue = checkedAt == null ||
+          nowMs - checkedAt >= const Duration(hours: 24).inMilliseconds;
+      if (!fullDue && !quickDue && cached['integrity_ok'] is bool) {
+        return cached['integrity_ok'] as bool;
+      }
+      final pragma = fullDue ? 'PRAGMA integrity_check' : 'PRAGMA quick_check';
+      final result = await check(txn, pragma);
+      final checkOk = isOk(result);
+      // quick_check omits index validation, so it cannot clear a known failure
+      // from the last full check. A later full success can clear that failure.
+      final fullOk = fullDue ? checkOk : cached['full_integrity_ok'] as bool?;
+      final verdict = checkOk && fullOk != false;
+      await txn.insert('compute_freshness', {
+        'key': kIntegrityHealthKey,
+        'payload_json': jsonEncode({
+          'checked_at_ms': nowMs,
+          'full_checked_at_ms': fullDue ? nowMs : fullCheckedAt,
+          'integrity_ok': verdict,
+          'full_integrity_ok': fullOk,
+          'result': result,
+          'full_result': fullDue ? result : cached['full_result'],
+        }),
+        'updated_at': nowMs,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return verdict;
+    });
   }
 
   static Future<Map<String, dynamic>?> syncLedgerSummary([
