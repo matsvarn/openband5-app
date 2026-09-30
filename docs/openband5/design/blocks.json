@@ -531,7 +531,7 @@
       "name": "OBGapNotice",
       "paperNode": "3F0E-0",
       "widget": "CorrectionBanner",
-      "file": "screens.dart",
+      "file": "screens_sleep.dart",
       "replaces": "CorrectionBanner (partly)",
       "usedIn": []
     },
@@ -539,7 +539,7 @@
       "name": "OBSleepHero",
       "paperNode": "3G8S-0",
       "widget": "OpenBandSleep",
-      "file": "screens.dart",
+      "file": "screens_sleep.dart",
       "usedIn": [
         "3G8S-0"
       ],
