@@ -187,6 +187,88 @@ void main() {
     expect(engine.bluetoothBlocker, isNull);
   });
 
+  test(
+    'an accepted scan with no device clears a latched permission blocker',
+    () async {
+      final adapter = _Adapter(BluetoothAdapterState.on);
+      final engine = BleEngine(
+        onRecord: (_, _) async {},
+        onState: (_) {},
+        adapterStateStream: adapter.freshStream,
+      );
+      addTearDown(() async {
+        engine.dispose();
+        await adapter.close();
+      });
+
+      engine.debugStartScan = () async =>
+          throw Exception('Need android.permission.BLUETOOTH_SCAN');
+      await expectLater(engine.scan(), throwsA(isA<BleUnavailableException>()));
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+      engine.debugStartScan = () async {};
+      expect(await engine.scan(), isNull);
+      expect(engine.bluetoothBlocker, isNull);
+    },
+  );
+
+  test(
+    'a connect timeout with adapter on clears a latched permission blocker',
+    () async {
+      final adapter = _Adapter(BluetoothAdapterState.on);
+      final engine = BleEngine(
+        onRecord: (_, _) async {},
+        onState: (_) {},
+        adapterStateStream: adapter.freshStream,
+      );
+      addTearDown(() async {
+        engine.dispose();
+        await adapter.close();
+      });
+
+      engine.debugStartScan = () async =>
+          throw Exception('Need android.permission.BLUETOOTH_SCAN');
+      await expectLater(engine.scan(), throwsA(isA<BleUnavailableException>()));
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+      engine.debugDeviceConnect = () async =>
+          throw TimeoutException('Timed out after 20s');
+      engine.debugConnectionStates = () => const Stream.empty();
+      expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+      expect(engine.bluetoothBlocker, isNull);
+      expect(engine.state.lastConnectFailedAt, isNotNull);
+      expect(engine.bandStatus.condition, BandCondition.unreachable);
+    },
+  );
+
+  test(
+    'a connect permission error keeps the latch without an unreachable stamp',
+    () async {
+      final adapter = _Adapter(BluetoothAdapterState.on);
+      final engine = BleEngine(
+        onRecord: (_, _) async {},
+        onState: (_) {},
+        adapterStateStream: adapter.freshStream,
+      );
+      addTearDown(() async {
+        engine.dispose();
+        await adapter.close();
+      });
+
+      engine.debugStartScan = () async =>
+          throw Exception('Need android.permission.BLUETOOTH_SCAN');
+      await expectLater(engine.scan(), throwsA(isA<BleUnavailableException>()));
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+
+      engine.debugDeviceConnect = () async =>
+          throw Exception('Need android.permission.BLUETOOTH_CONNECT');
+      engine.debugConnectionStates = () => const Stream.empty();
+      expect(await engine.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
+      expect(engine.bluetoothBlocker, BleBlocker.permissionDenied);
+      expect(engine.state.lastConnectFailedAt, isNull);
+    },
+  );
+
   test('a blocker from the adapter clears when the adapter turns on', () async {
     final adapter = _Adapter(BluetoothAdapterState.unauthorized);
     final engine = BleEngine(
