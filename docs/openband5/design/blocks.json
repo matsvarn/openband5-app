@@ -56,15 +56,15 @@
     "5E7U-0": "G2 · 12 · Datum wählen · Dunkel (lib/openband/day_picker.dart)",
     "5DJX-0": "G2 · 15 · Nickerchen · Hell (lib/openband/naps.dart)",
     "5F18-0": "G2 · 15 · Nickerchen · Dunkel (lib/openband/naps.dart)",
-    "5OIV-0": "G3 Heute · Hell",
-    "5ONU-0": "G3 Heute · Dunkel",
-    "5OST-0": "G3 Heute · gescrollt · Hell",
-    "5Q4B-0": "G3 Heute · Basis im Aufbau · Hell",
-    "5QH9-0": "G3 Heute · Basis im Aufbau · Dunkel",
-    "5QMC-0": "G3 Heute · Vergangener Tag · Hell",
-    "5QRH-0": "G3 Heute · Noch kein Band · Hell",
-    "5QUE-0": "G3 Heute · Band getrennt · Hell",
-    "5QYJ-0": "G3 Heute · Nacht mit Lücke · Hell",
+    "5OIV-0": "G3 Heute · Hell (lib/openband/g3/screens/heute.dart)",
+    "5ONU-0": "G3 Heute · Dunkel (lib/openband/g3/screens/heute.dart)",
+    "5OST-0": "G3 Heute · gescrollt · Hell (lib/openband/g3/screens/heute.dart)",
+    "5Q4B-0": "G3 Heute · Basis im Aufbau · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QH9-0": "G3 Heute · Basis im Aufbau · Dunkel (lib/openband/g3/screens/heute.dart)",
+    "5QMC-0": "G3 Heute · Vergangener Tag · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QRH-0": "G3 Heute · Noch kein Band · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QUE-0": "G3 Heute · Band getrennt · Hell (lib/openband/g3/screens/heute.dart)",
+    "5QYJ-0": "G3 Heute · Nacht mit Lücke · Hell (lib/openband/g3/screens/heute.dart)",
     "5R5F-0": "G3 Verlauf · Erholung 30 T · Hell",
     "5RBJ-0": "G3 Verlauf · Erholung 30 T · Dunkel",
     "5RHN-0": "G3 Verlauf · HRV · Hell",
@@ -1027,9 +1027,7 @@
       "design": "G3",
       "paperNode": "5MNY-0",
       "paperNodeDark": "5MQP-0",
-      "usedIn": [
-        "5Q4B-0"
-      ],
+      "usedIn": [],
       "widget": "OBBodyRow",
       "file": "g3/metrics.dart",
       "variant": "OBBodyState.plain"
@@ -2019,6 +2017,18 @@
       "usedIn": [],
       "widget": "OBZoneRows",
       "file": "g3/charts.dart"
+    },
+    {
+      "name": "OBCheckInAsk",
+      "design": "G3",
+      "paperNode": "none:OBCheckInAsk",
+      "widget": "OBCheckInAsk",
+      "file": "g3/heute_parts.dart",
+      "usedIn": [
+        "5OST-0",
+        "5Q4B-0"
+      ],
+      "notes": "Heute check-in for the typed G3 questions: yes/no (OBYesNoKeys), 1–5 rating (OBRatingKeys), count with explicit Keins (OBCountAnswer) and note (OBNoteAnswer), with a 'zu gestern' line when the answer belongs to the previous day. Paper's OBCheckIn has no slot for the answer's day, so this has no Paper node; requested as a Baustein variant on Bausteine · G3. Count and note controls swap to the Journal's parts at integration."
     }
   ],
   "openBlocks": [],

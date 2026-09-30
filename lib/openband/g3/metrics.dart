@@ -586,14 +586,21 @@ class OBSecondaryMetric extends StatelessWidget {
                   mutedStyle,
                 ).clamp(0.0, w / 2);
                 final endWidth = labelWidth(end, mutedStyle).clamp(0.0, w / 2);
+                // The goal label keeps [gap] to both end labels: it shifts
+                // away from them and shortens; with no room left it is
+                // omitted, never drawn overlapping.
+                const gap = 8.0;
                 final goalAt = goal?.$1;
                 final goalText = goal?.$2;
-                final goalSpace = (w - startWidth - endWidth - 8).clamp(0.0, w);
+                final goalSpace = (w - startWidth - endWidth - 2 * gap).clamp(
+                  0.0,
+                  w,
+                );
                 final goalWidth = goalText == null
                     ? 0.0
                     : labelWidth(goalText, goalStyle).clamp(0.0, goalSpace);
-                final goalMinLeft = startWidth + 4;
-                final goalMaxLeft = w - endWidth - 4 - goalWidth;
+                final goalMinLeft = startWidth + gap;
+                final goalMaxLeft = w - endWidth - gap - goalWidth;
                 final showGoal =
                     goalText != null &&
                     goalAt?.isFinite == true &&

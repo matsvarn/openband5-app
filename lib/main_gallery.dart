@@ -20,6 +20,8 @@ import 'openband/template_editor.dart';
 import 'openband/templates.dart';
 import 'openband/session.dart';
 import 'openband/release_scope.dart';
+import 'openband/g3/screens/heute.dart';
+import 'openband/g3/screens/heute_routes.dart';
 import 'openband/screens.dart';
 import 'openband/synthetic_repository.dart';
 import 'notify/notification_prefs.dart';
@@ -89,12 +91,36 @@ class OpenBandGallery extends StatefulWidget {
 }
 
 class _OpenBandGalleryState extends State<OpenBandGallery> {
+  final _heuteReminder = MemoryHeuteReminder();
+  static const _day = '2026-09-15', _g3Day = '2026-09-29';
+  static final _dayNow = DateTime(2026, 9, 18, 9, 41);
+  static final _g3Now = DateTime(2026, 9, 29, 9, 41);
+  DateTime _clock = _dayNow;
   late final controller = OpenBandController(
     repository: widget.repository,
-    initialDay: '2026-09-15',
+    initialDay: _day,
     band: widget.repository.band,
-    now: () => DateTime(2026, 9, 18, 9, 41),
+    now: () => _clock,
   );
+
+  /// The G3 scenarios hold 29.09 only: the gallery clock and the selected
+  /// day follow them so Heute shows that day as today with its note and
+  /// check-in. Other scenarios keep the 18.09 clock.
+  void _useScenario(SyntheticScenario scenario) {
+    widget.repository.scenario = scenario;
+    final g3 =
+        scenario == SyntheticScenario.g3Sample ||
+        scenario == SyntheticScenario.g3Building;
+    _clock = g3 ? _g3Now : _dayNow;
+    controller.updateBand(widget.repository.band);
+    if (g3 && controller.selectedDay != _g3Day) {
+      controller.selectDay(_g3Day);
+    } else if (!g3 && controller.selectedDay == _g3Day) {
+      controller.selectDay(_day);
+    } else {
+      controller.refresh();
+    }
+  }
   late bool dark = widget.initialBrightness == Brightness.dark;
   late double? scale = widget.initialTextScale;
   @override
@@ -190,27 +216,15 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       if (domain == ShellDomain.health) controller.refresh();
     },
     builder: (c, domain) => switch (domain) {
-      ShellDomain.home => OpenBandOverview(
+      ShellDomain.home => OpenBandHeute(
         controller: controller,
-        reduced: widget.releaseReduced,
+        reminder: _heuteReminder,
         onProfile: widget.releaseReduced
             ? () => _openSyntheticProfile(c)
             : () => _options(context),
-        onNutrition: widget.releaseReduced
-            ? null
-            : () => Navigator.of(c).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => OpenBandNutritionRoute(
-                    controller: controller,
-                    onBarcode: _syntheticBarcode,
-                  ),
-                ),
-              ),
-        onSync: () {
-          widget.repository.scenario = SyntheticScenario.complete;
-          controller.updateBand(widget.repository.band);
-          controller.refresh();
-        },
+        onBand: () => _options(context),
+        onConnect: () => _useScenario(SyntheticScenario.g3Sample),
+        onOpenMetric: (m) => openHeuteMetric(c, controller, m),
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
       ShellDomain.sleep => OpenBandSleep(controller: controller, asTab: true),
@@ -403,9 +417,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               }),
               selected: scenario == widget.repository.scenario,
               onTap: () {
-                widget.repository.scenario = scenario;
-                controller.updateBand(widget.repository.band);
-                controller.refresh();
+                _useScenario(scenario);
                 Navigator.pop(c);
               },
             ),

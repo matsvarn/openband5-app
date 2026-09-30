@@ -586,7 +586,8 @@ class OBWeekBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     const h = 111.0;
-    double y(double v) => h - (v / max).clamp(0.0, 1.0) * h;
+    final plotHeight = h - (labelsBelow ? 0.0 : 18.0);
+    double y(double v) => h - (v / max).clamp(0.0, 1.0) * plotHeight;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
       decoration: g.raised(),
@@ -641,6 +642,7 @@ class OBWeekBars extends StatelessWidget {
                                   const SizedBox(height: 4),
                                 ],
                                 Container(
+                                  key: ValueKey('week-bar-${b.day}'),
                                   width: 24,
                                   height: h - y(b.value!),
                                   decoration: BoxDecoration(
@@ -691,7 +693,10 @@ class OBWeekBars extends StatelessWidget {
                   right: 0,
                   top: h,
                   height: 1,
-                  child: ColoredBox(color: g.hairline),
+                  child: ColoredBox(
+                    key: const ValueKey('week-baseline'),
+                    color: g.hairline,
+                  ),
                 ),
               ],
             ),
