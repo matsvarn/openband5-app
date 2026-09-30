@@ -21,7 +21,18 @@ class Prefs {
   static Future<void> ensureLoaded() async {
     try {
       _sp ??= await SharedPreferences.getInstance();
-    } catch (_) {/* reads fall back to defaults */}
+    } catch (_) {
+      /* reads fall back to defaults */
+    }
+  }
+
+  /// Drop the cached instance so a test's fresh `setMockInitialValues` is
+  /// honoured by the next [ensureLoaded].
+  static void debugReset() {
+    assert(() {
+      _sp = null;
+      return true;
+    }());
   }
 
   /// Whether storage is actually available, i.e. whether a `getX` default is
@@ -69,6 +80,16 @@ class Prefs {
   static Future<bool> setBoolAcked(String key, bool value) async {
     try {
       return await _sp?.setBool(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Acknowledged string write for choices whose UI must not claim a value
+  /// that the platform refused to persist.
+  static Future<bool> setStringAcked(String key, String value) async {
+    try {
+      return await _sp?.setString(key, value) ?? false;
     } catch (_) {
       return false;
     }

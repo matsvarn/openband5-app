@@ -77,14 +77,10 @@ String routePath(String route) => Uri.tryParse(route)?.path ?? route;
 /// The bout/record id a deep link carries, or null when it carries none.
 String? routeId(String route) => Uri.tryParse(route)?.queryParameters['id'];
 
-/// The medication reminder. Lands on Wellness, where the Medication tab's
-/// checklist is the thing that records the dose.
-///
-/// CEILING, and it is a real one: `WellnessScreen` holds its sub-tab in
-/// private state with no constructor argument, so this lands on Wellness with
-/// Medication one tap away in the sub-tab row rather than on the checklist
-/// itself. Adding `initialTab` to that screen is the whole fix — see the note
-/// on `screenForRoute` in app.dart.
+/// The medication reminder. Lands on Journal (ShellDomain.wellness) and pushes
+/// the canonical OpenBand medications screen — the same pattern as `/water`.
+/// Generic lock-screen payload stays `/meds`; unknown paths still fall through
+/// to Today.
 const String kRouteMeds = '/meds';
 
 /// Emitted by the battery forecast and the device alerts. Profile is reached

@@ -34,11 +34,13 @@ import 'package:share_plus/share_plus.dart';
 import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../data/journal_fields.dart';
-import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
 import '../../ai/nightly_sweep.dart' show SweepFinding;
 import '../../compute/findings.dart';
 import '../../models/metric.dart';
+import '../../openband/domain.dart' as ob;
+import '../../openband/nutrition.dart';
+import '../../openband/theme.dart';
 import '../activity/catalogue.dart';
 import '../activity/live.dart';
 import '../activity/picker.dart' show ActivityPicker, ActivityRow;
@@ -472,8 +474,7 @@ Map<String, Widget> _chartCases() {
 
 /// Nutrition and Wellness. Every one of these is a widget the screens compose
 /// from, captured with the state that is easiest to get wrong: a day whose
-/// energy is a floor rather than a total, an occasion with no numbers, a dose
-/// that has not come due yet.
+/// energy is a floor rather than a total, an occasion with no numbers.
 Map<String, Widget> _nutritionAndWellnessCases() {
   const bare = FoodEntry(
       id: 'a', date: '2026-08-14', meal: 'dinner', label: 'Dinner');
@@ -487,17 +488,51 @@ Map<String, Widget> _nutritionAndWellnessCases() {
       carbsG: 62,
       fatG: 9,
       confirmed: true);
+  const meals = ob.DayMeals(
+    day: '2026-08-14',
+    entries: [
+      ob.MealEntry(
+        id: 'b',
+        meal: 'breakfast',
+        label: 'Porridge and berries',
+        kcal: 420,
+        proteinG: 14,
+        carbsG: 62,
+        fatG: 9,
+        confirmed: true,
+      ),
+      ob.MealEntry(id: 'a', meal: 'dinner', label: 'Dinner'),
+    ],
+    kcal: ob.NutrientSum(420, 1, 1),
+    proteinG: ob.NutrientSum(14, 1, 1),
+    carbsG: ob.NutrientSum(62, 1, 1),
+    fatG: ob.NutrientSum(9, 1, 1),
+  );
+  Widget alpin(Widget child) => Theme(
+        data: openBandTheme(Brightness.light),
+        child: child,
+      );
   return {
-    // A day that summed past an unknown: the number is a FLOOR and says so.
-    'day_energy_floor': DayEnergyCard(
-      day: rollupDay('2026-08-14', const [known, bare], today: '2026-08-15'),
-      burned: const Metric(
-          value: 2350, unit: 'kcal', confidence: .6, tier: MetricTier.estimate),
+    'day_energy_floor': alpin(const OBMacroBars(meals: meals)),
+    'meal_row': alpin(
+      const Column(
+        children: [
+          OBMealSection(
+            meal: 'breakfast',
+            label: 'Frühstück',
+            entries: [
+              ob.MealEntry(
+                id: 'b',
+                meal: 'breakfast',
+                label: 'Porridge and berries',
+                kcal: 420,
+              ),
+            ],
+          ),
+          OBMealSection(meal: 'dinner', label: 'Abend', entries: []),
+        ],
+      ),
     ),
-    'meal_row': const Column(children: [
-      MealRow(meal: 'breakfast', entries: [known]),
-      MealRow(meal: 'dinner', entries: []),
-    ]),
     'food_row': const Surface(
         pad: EdgeInsets.symmetric(horizontal: S.x4),
         child: Column(children: [
@@ -539,11 +574,6 @@ Map<String, Widget> _nutritionAndWellnessCases() {
               detail: '68 ms against a 14-night mean of 61'),
           DriverRow(
               label: 'Slept 52 minutes short', detail: '7h 08m against 8h 00m'),
-        ])),
-    'med_row': Surface(
-        pad: const EdgeInsets.symmetric(horizontal: S.x4),
-        child: Column(children: [
-          for (final s in _medSlots) MedRow(slot: s),
         ])),
   };
 }
@@ -614,29 +644,6 @@ final _bare = ActivityResult(
   start: DateTime(2026, 8, 13, 22, 5),
   duration: Motion.tick * 900,
 );
-
-const _medDef = MedDef(
-    key: 'custom_d',
-    label: 'Vitamin D',
-    doseValue: 2000,
-    doseUnit: 'IU',
-    schedule: [MedSchedule(480, [1, 2, 3, 4, 5, 6, 7])]);
-
-/// Taken, missed and not-yet-due, side by side — the third is the one that
-/// must never read as a failure.
-const _medSlots = <MedSlot>[
-  MedSlot(def: _medDef, date: '2026-08-14', slotMin: 480, state: DoseState.taken),
-  MedSlot(
-      def: MedDef(key: 'custom_m', label: 'Magnesium', doseValue: 300, doseUnit: 'mg'),
-      date: '2026-08-14',
-      slotMin: 780,
-      state: DoseState.missed),
-  MedSlot(
-      def: MedDef(key: 'custom_z', label: 'Zinc'),
-      date: '2026-08-14',
-      slotMin: 1260,
-      state: DoseState.upcoming),
-];
 
 // ══════════════════ the rest of the vocabulary ══════════════════
 //

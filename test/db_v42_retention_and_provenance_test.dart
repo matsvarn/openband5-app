@@ -412,6 +412,14 @@ void main() {
       wrapCount: 2,
       freeRecords: 90000,
       deviceFamily: 'gen5',
+      // The GET_DATA_RANGE read cursor — where the next drain resumes, the
+      // oldest retained page, and the trim boundary. Persisted per connect so
+      // the backlog-reachability question is answered from a series, not the
+      // last reading.
+      readPage: 41,
+      rawOldPage: 3,
+      currentReadTs: 1780000000,
+      trimTs: 1748000000,
     );
     await LocalDb.putBandBacklog(ts: 1800, wrapCount: 3, freeRecords: 80000);
 
@@ -424,6 +432,14 @@ void main() {
     // Unknown provenance is NULL, never 'gen4'.
     expect(rows.first['device_family'], isNull);
     expect(rows.last['device_family'], 'gen5');
+    // Cursor columns persist — and stay NULL on a reply that did not carry
+    // them rather than defaulting to 0 (a zeroed cursor is a claim).
+    expect(rows.last['read_page'], 41);
+    expect(rows.last['raw_old_page'], 3);
+    expect(rows.last['current_read_ts'], 1780000000);
+    expect(rows.last['trim_ts'], 1748000000);
+    expect(rows.first['read_page'], isNull);
+    expect(rows.first['current_read_ts'], isNull);
   });
 
   // Old-schema exports: the whole ladder, end to end.

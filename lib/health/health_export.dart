@@ -322,7 +322,14 @@ class HealthExporter {
   }
 
   /// True on iOS/macOS (Apple Health); false on Android (Health Connect).
-  static bool get isApple => Platform.isIOS || Platform.isMacOS;
+  static bool get isApple =>
+      debugIsAppleOverride ?? (Platform.isIOS || Platform.isMacOS);
+
+  /// Test seam: the delete-then-write gate reads `delete == false`
+  /// differently per store, and a macOS test host would otherwise only ever
+  /// exercise the HealthKit branch.
+  @visibleForTesting
+  static bool? debugIsAppleOverride;
 
   /// Display name of the platform health store.
   static String get storeName => isApple ? 'Apple Health' : 'Health Connect';

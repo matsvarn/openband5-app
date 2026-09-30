@@ -1,0 +1,67 @@
+{
+  "synthetic": true,
+  "date": "2026-09-17",
+  "paperFile": "01M2KDQRH0A9K3N46EWHMBF61D",
+  "images": [
+    {
+      "file": "overview-paper.png",
+      "source": "build/ui-review/visual-comparison-20260917/paper-overview.png",
+      "sha256": "407031d91ac275b8924a3240be789a82a7277cc95951b570c4fd298809b72ec3"
+    },
+    {
+      "file": "overview-before.png",
+      "source": "build/ui-review/20260917-111347/overview-complete-light.png",
+      "sha256": "9c35746fd04791e1a7775002c01dce90dd9b925357deed5297d5b99465d04e16"
+    },
+    {
+      "file": "overview-after.png",
+      "source": "build/ui-review/20260917-115451/overview-complete-light.png",
+      "sha256": "acdfe6235d3a14d4f9a9aaa3cc379352d4b663df1fa65e1c36aab874857c7bf7"
+    },
+    {
+      "file": "calendar-paper.png",
+      "source": "build/ui-review/visual-comparison-20260917/paper-calendar.png",
+      "sha256": "da48942d3736169e9ee85177e995fd2ee32e52a8d0fc93fa001d652dcb458996"
+    },
+    {
+      "file": "calendar-before.png",
+      "source": "build/ui-review/20260917-111347/date-selection.png",
+      "sha256": "f0fa233922e1f4d1867777917aa3a9a5a61664eeeece0e0dabc82f9c0d4c5bf6"
+    },
+    {
+      "file": "calendar-after.png",
+      "source": "build/ui-review/20260917-115451/date-selection.png",
+      "sha256": "16dd0836ca5a2f6e4b7268cd6f698240fbdbca8852ac3b9e0598b52eb4de771c"
+    },
+    {
+      "file": "preview-paper.png",
+      "source": "build/ui-review/visual-comparison-20260917/paper-preview.png",
+      "sha256": "0d13b8952a4e05994ee07179b836bfcf4e36e268c8fbbe14cee46a5de8293460"
+    },
+    {
+      "file": "preview-before.png",
+      "source": "build/ui-review/20260917-111347/correction-preview.png",
+      "sha256": "56916ddd0107d633140fa9e8bc30af7cd20daa1084abc8d8e8ac848ab41633c9"
+    },
+    {
+      "file": "preview-after.png",
+      "source": "build/ui-review/20260917-115451/correction-preview.png",
+      "sha256": "95fe20fbe7b1dbed8264d081241ad847a7aef6021ebfb19116a3b660af844097"
+    },
+    {
+      "file": "complete-paper.png",
+      "source": "build/ui-review/visual-comparison-20260917/paper-complete.png",
+      "sha256": "806801e94784aac44d432d5305f160f93a8f46a4985fea58b2ff73646b64502a"
+    },
+    {
+      "file": "complete-before.png",
+      "source": "build/ui-review/20260917-111347/correction-complete.png",
+      "sha256": "84ff4282e141d0ead6cb16608a5e5915daa963bacb482b4c4a91cf233282f1b3"
+    },
+    {
+      "file": "complete-after.png",
+      "source": "build/ui-review/20260917-115451/correction-complete.png",
+      "sha256": "28f013869ad50bb2821207282505c27dd473d53b5421429980b759fa2dc8becc"
+    }
+  ]
+}

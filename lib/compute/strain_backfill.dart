@@ -38,7 +38,10 @@ import 'derivation_engine.dart' show kAlgoVersion, rawRetentionDays;
 
 /// `compute_freshness` key marking the rescale as already applied. Bumped with
 /// the algo version so a future rescale is a new one-shot rather than a no-op.
-const String kStrainRescaleKey = 'strain_rescale_v63';
+/// v92: the quiet-waking level moved from the population constant to the
+/// user's measured personal level (edge#226) — a stored score priced at 0.20
+/// is on a different baseline than one priced at the trait median.
+const String kStrainRescaleKey = 'strain_rescale_v92';
 
 class StrainBackfillResult {
   /// Days whose `metric_series` strain was rewritten (trends / v_daily).
@@ -62,6 +65,14 @@ class StrainBackfillResult {
 /// Rebuild one day's headline strain from its stored TRIMP and the wake window
 /// the pipeline actually priced it over ([wakeMinutes] = `strain_curve.length`).
 ///
+/// [quietHrr] is the user's personal quiet-waking level — the median of every
+/// measured `quiet_waking_hrr` day. A stable trait is legitimately estimated
+/// across the WHOLE measured window here (not strictly-before the day): the
+/// earliest days have no prior measured days at all, and their alternative is
+/// the population constant, not a better personal estimate. Null ⇒ the day is
+/// skipped — its stored value was honestly scored at the population level and
+/// there is no personal measurement to move it to.
+///
 /// Returns null when the day cannot be rescaled — no TRIMP to rescale from, or
 /// no wake window to price the baseline over. A day that cannot be rescaled is
 /// LEFT ALONE: an un-rescalable day must not silently become 0, which is a
@@ -69,15 +80,19 @@ class StrainBackfillResult {
 double? rescaledStrain({
   required double? trimp,
   required double? wakeMinutes,
+  required double? quietHrr,
   required bool female,
 }) {
-  if (trimp == null || wakeMinutes == null || wakeMinutes <= 0) return null;
+  if (trimp == null ||
+      wakeMinutes == null ||
+      wakeMinutes <= 0 ||
+      quietHrr == null) {
+    return null;
+  }
   return ana.strainScore(
     trimp,
     wakeMinutes: wakeMinutes,
-    // Reference level, not this user's — see onehz_pipeline's
-    // `strainMetric` for why, and edge#226 for the fix.
-    quietHrr: ana.quietWakingHrr,
+    quietHrr: quietHrr,
     female: female,
   );
 }
@@ -101,6 +116,22 @@ Future<StrainBackfillResult> backfillStrainScale({
     await _markDone();
     return none;
   }
+
+  // ONE personal level for the whole rescale (see rescaledStrain): the median
+  // of every measured quiet-waking day. Days that predate the metric have no
+  // strictly-before values, so per-day resolution would leave them on the
+  // population constant this rescale exists to remove.
+  final quietHrr = ana.median(
+    [for (final r in await LocalDb.metricSeries('quiet_waking_hrr'))
+        if (r['value'] is num) (r['value'] as num).toDouble()],
+  );
+
+  // No measured quiet-waking day yet → NOTHING can be rescaled, and marking
+  // done would freeze every stored day at the population-priced value this
+  // pass exists to remove. Return un-done: the first v92+ derive writes
+  // `quiet_waking_hrr`, and the next launch retries for real. Until then the
+  // retry costs two indexed queries per launch.
+  if (quietHrr == null) return none;
 
   final trimpBy = await _byDate('trimp');
 
@@ -176,6 +207,7 @@ Future<StrainBackfillResult> backfillStrainScale({
       wakeMinutes: _curveLength(
         series is Map ? series['strain_curve'] : null,
       )?.toDouble(),
+      quietHrr: quietHrr,
       female: female,
     );
     if (next == null) {

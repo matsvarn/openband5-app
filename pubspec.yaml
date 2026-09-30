@@ -6,7 +6,7 @@ publish_to: 'none'
 # Watch App" targets in ios/Runner.xcodeproj/project.pbxproj — they aren't wired
 # to FLUTTER_BUILD_NAME/FLUTTER_BUILD_NUMBER. See guides/IOS_INSTALLATION.md
 # "Version Numbers".
-version: 0.9.29+65
+version: 0.9.31+67
 
 environment:
   sdk: ^3.11.4
@@ -248,7 +248,12 @@ dependencies:
       # protocol, true — protocol's PR#47 merged as b8430e4 before #48/#50
       # landed. So `fe1464d` carries ZeTime, wearfit and ringconn together;
       # nothing from this branch's own repin is lost by moving to it.
-      ref: fe1464db98b84ac4d3ce6175d54ada11356d6c62
+      #
+      # REPIN @ 0df79ff4 (v92): GET_DATA_RANGE now decodes the band's read
+      # cursor — `pages_behind` gains `read_page`/`raw_old_page`, the reply
+      # gains `trim_ts`/`current_read_ts` — persisted to `band_backlog` for
+      # the backlog-reachability decision. No record decode changes.
+      ref: 0df79ff49a358c3fbb20586ef67d4b30d9ef123e
   openstrap_analytics:
     git:
       url: https://github.com/matsvarn/openband5-analytics.git
@@ -424,7 +429,14 @@ dependencies:
       # `irregularBeatScreen` feeds the stored 24 h and sleep irregular-rhythm
       # screens (onehz_pipeline.dart) — both are real, if narrow, output
       # changes, not NaN/±inf-only rejections.
-      ref: 1fa8144a5e3b728ce91eeed6ecbc15d482933b44
+      #
+      # REPIN @ 9b827a9 (v92): measured gen5 skin-temp settle band (250
+      # centi-°C; seven real gen5 nights, clean ≥0.94 settled, cold-segment
+      # night 0.855) — `nightlySkinTemp` stops refusing every gen5 night.
+      #
+      # REPIN @ 2503ca1 (v93): sleep-cycle per-minute RMSSD no longer diffs
+      # across a dropped out-of-range beat (NaN slot preserves adjacency).
+      ref: 2503ca127f78847def0db6f363f000431789d254
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
@@ -641,6 +653,8 @@ flutter:
     - docs/openband5/assets/fixtures/day-summary.json
     - docs/openband5/assets/fixtures/sleep-detail.json
     - docs/openband5/assets/fixtures/additional-flows.json
+    - docs/openband5/assets/fixtures/run-detail.json
+    - assets/icons/sport/
     - assets/images/
     - assets/images/2.0x/
     - assets/images/3.0x/
@@ -659,6 +673,9 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter/Inter.ttf
+    - family: Inter Tight
+      fonts:
+        - asset: assets/fonts/InterTight/InterTight[wght].ttf
     - family: Barlow Condensed
       fonts:
         - asset: assets/fonts/BarlowCondensed/BarlowCondensed-Bold.ttf

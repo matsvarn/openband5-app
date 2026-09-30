@@ -87,7 +87,8 @@ class CoachDb {
     'sleep_override', 'sleep_session_candidates', 'wake_day_features',
     'workout_suggestions', 'workout_route', 'live_coverage',
     // raw / decoded substrate
-    'raw_records', 'raw_archive', 'decoded_onehz', 'decoded_rr', 'samples',
+    'raw_records', 'raw_archive', 'raw_blob', 'decoded_onehz', 'decoded_rr',
+    'samples',
     'events', 'band_events', 'band_battery',
     'device_coverage', 'signal_priority',
     // sync / compute bookkeeping

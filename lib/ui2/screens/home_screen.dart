@@ -386,16 +386,44 @@ Map<String, dynamic>? staleReasonOf(Map<String, dynamic> insights) =>
 /// someone their food log is gone.
 StatusCard? dbRebuiltCard(DbRebuild? r, [AppLocalizations? l]) {
   if (r == null) return null;
-  final saved = r.salvaged.entries.where((e) => e.value > 0).toList()
+  // Entry-id counts from the VO2 merge, not tables. A positive count was not
+  // recovered. Zero says nothing, so it is not an empty table either.
+  const withheldKeys = {'manual_vo2_conflict', 'manual_vo2_corrupt'};
+  final tables = r.salvaged.entries.where(
+    (e) => !withheldKeys.contains(e.key),
+  );
+  final saved = tables.where((e) => e.value > 0).toList()
     ..sort((a, b) => b.value.compareTo(a.value));
-  final lost = r.salvaged.entries.where((e) => e.value == 0).toList();
+  final conflict = r.salvaged['manual_vo2_conflict'] ?? 0;
+  final corrupt = r.salvaged['manual_vo2_corrupt'] ?? 0;
+  // A zero inserted count beside withheld ids, or an interrupted read, is not
+  // an empty manual_vo2 table.
+  final lost = tables.where((e) {
+    if (e.value != 0) return false;
+    if (e.key == 'manual_vo2' && (conflict > 0 || corrupt > 0)) return false;
+    return true;
+  }).toList();
   final savedList = saved.map((e) => '${e.key} ${thousands(e.value)}').join(' · ');
   final lostList = lost.map((e) => e.key).join(' · ');
+  final withheldParts = [
+    if (conflict > 0)
+      l?.homeDbRebuiltVo2Conflicts(conflict) ??
+          (conflict == 1 ? '1 VO₂max conflict' : '$conflict VO₂max conflicts'),
+    if (corrupt > 0)
+      l?.homeDbRebuiltVo2Unreadable(corrupt) ??
+          (corrupt == 1
+              ? '1 unreadable VO₂max entry'
+              : '$corrupt unreadable VO₂max entries'),
+  ];
+  final withheld = withheldParts.isEmpty
+      ? ''
+      : ' ${l?.homeDbRebuiltNotRecovered(withheldParts.join(', ')) ?? 'Not recovered: ${withheldParts.join(', ')}.'}';
   return StatusCard(
     l?.homeDbRebuiltTitle ?? 'Your database was rebuilt to start the app',
     '${r.cause}\n\n'
         '${saved.isEmpty ? (l?.homeDbRebuiltNothingRecovered ?? 'Nothing could be read back.') : (l?.homeDbRebuiltRecovered(savedList) ?? 'Recovered: $savedList.')}'
         '${lost.isEmpty ? '' : ' ${l?.homeDbRebuiltEmpty(lostList) ?? 'Empty: $lostList.'}'}'
+        '$withheld'
         '\n\n${l?.homeDbRebuiltKept(r.quarantinePath) ?? 'The original file is kept at ${r.quarantinePath} — nothing was deleted.'}',
     icon: LucideIcons.databaseBackup,
   );

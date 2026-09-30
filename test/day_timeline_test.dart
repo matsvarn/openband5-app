@@ -133,6 +133,48 @@ void main() {
       );
     });
 
+    test('a hidden custom field keeps its stored label and unit', () {
+      const hidden = JournalFieldSpec(
+        key: 'custom_magnesium',
+        label: 'Magnesium',
+        kind: JournalFieldKind.dose,
+        unit: 'mg',
+        max: 1000,
+        step: 50,
+        hasTime: true,
+        custom: true,
+        hidden: true,
+      );
+      final m = dayMoments(
+        timeline: {'day_start': _day},
+        journal: const {
+          'custom_magnesium': JournalMetricValue(400, atMinuteOfDay: 14 * 60 + 15),
+        },
+        fields: [hidden],
+      );
+      expect(m, hasLength(1));
+      expect(m.single.title, 'Magnesium');
+      expect(m.single.detail, contains('mg'));
+      expect(m.single.at, _at(14, 15));
+    });
+
+    test('an unknown journal key stays the raw identity', () {
+      final m = dayMoments(
+        timeline: {'day_start': _day},
+        journal: const {
+          'custom_gone': JournalMetricValue(9, atMinuteOfDay: 8 * 60),
+        },
+      );
+      expect(m.single.title, 'custom_gone');
+      expect(m.single.title, isNot(contains(' ')));
+      expect(
+        dayNotes(
+          journal: const {'custom_gone': JournalMetricValue(9)},
+        ).single.title,
+        'custom_gone',
+      );
+    });
+
     test('a journal row is read off tags_json, not tags', () {
       final n = dayNotes(journalRows: const [
         {'date': '2026-08-14', 'tags_json': '["travel","late meal"]', 'note': ''},

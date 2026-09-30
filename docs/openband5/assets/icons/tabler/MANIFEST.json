@@ -1,0 +1,60 @@
+{
+  "tablerVersion": "3.46.0",
+  "published": "2026-07-28",
+  "source": "https://registry.npmjs.org/@tabler/icons/-/icons-3.46.0.tgz (icons/outline)",
+  "license": "MIT",
+  "grid": "24, stroke 2, round caps/joins — same grammar as Lucide",
+  "generatedAt": "2026-09-18",
+  "icons": [
+    "ball-basketball",
+    "ball-football",
+    "ball-tennis",
+    "ball-volleyball",
+    "barbell",
+    "bike",
+    "bow",
+    "fish",
+    "golf",
+    "horse",
+    "ice-skating",
+    "jump-rope",
+    "karate",
+    "kayak",
+    "mountain",
+    "ping-pong",
+    "run",
+    "sailboat",
+    "ski-jumping",
+    "stretching",
+    "stretching-2",
+    "swimming",
+    "sword",
+    "treadmill",
+    "trekking",
+    "walk",
+    "wheelchair",
+    "yoga"
+  ],
+  "missing": [
+    {
+      "requested": "rowing",
+      "alternative": "kayak"
+    },
+    {
+      "requested": "boxing",
+      "alternative": "karate"
+    },
+    {
+      "requested": "meditation",
+      "alternative": "yoga"
+    },
+    {
+      "requested": "climbing",
+      "alternative": "mountain"
+    },
+    {
+      "requested": "dance",
+      "alternative": null
+    }
+  ]
+}

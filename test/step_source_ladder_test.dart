@@ -10,8 +10,11 @@
 //
 // So: rank per span, gait density decides whether a band span outranks the
 // phone at all, overlaps are counted ONCE, and the on-chip counter — a
-// whole-day cumulative total with no window behind it — enters only when no
-// span source covered the day.
+// whole-day cumulative total with no window behind it — is PRIMARY on a gen5
+// day: the day's steps are the counter plus only the windowed share that
+// fell outside band-recorded time, unless the windowed total is larger still
+// (all of it measured). The Sep-22 audit caught the inverse: 2–83 minutes of
+// windowed coverage suppressing counters of 6,187–16,348 steps.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
@@ -70,6 +73,8 @@ Substrate _sub(List<int> counters, {int step = 600, String? family = 'gen5'}) {
   Substrate sub, {
   required int liveStepsReal,
   required int liveStepsFromStrap,
+  int liveStepsUncovered = 0,
+  int liveStepsUncoveredStrap = 0,
 }) {
   final bundle = <String, dynamic>{};
   final scalars = <String, dynamic>{};
@@ -87,6 +92,8 @@ Substrate _sub(List<int> counters, {int step = 600, String? family = 'gen5'}) {
     dataNowSec: sub.tsSec.last + 1,
     liveStepsReal: liveStepsReal,
     liveStepsFromStrap: liveStepsFromStrap,
+    liveStepsUncovered: liveStepsUncovered,
+    liveStepsUncoveredStrap: liveStepsUncoveredStrap,
   );
   return ((bundle['steps'] as Map).cast<String, dynamic>(), scalars);
 }
@@ -210,8 +217,7 @@ void main() {
     });
   });
 
-  group('the gen5 on-chip counter is a whole-day FALLBACK, not a day-winner',
-      () {
+  group('the gen5 on-chip counter is PRIMARY on a gen5 day', () {
     // A cumulative counter advancing 622 over the day. `step: 600` keeps each
     // delta inside hardwareStepsFromCounter's plausibility budget.
     final gen5 = _sub([0, 300, 622]);
@@ -287,6 +293,80 @@ void main() {
       expect(steps['source'], isNull);
       expect(steps['tier'], isNull);
       expect(steps['by_source'], isEmpty);
+    });
+  });
+
+  group('counter-primary reconciliation (the Sep-22 audit defect)', () {
+    // A counter reaching 6,187 in deltas that stay inside the plausibility
+    // budget (each ≤ gap×5 steps/s at step: 600).
+    final counted6187 = _sub([0, 1500, 3000, 4500, 6187]);
+
+    test('a sliver of windowed coverage does NOT suppress the all-day '
+        'counter', () {
+      // The measured bug: 87 windowed steps (a few minutes of strap coverage)
+      // outranked the counter's 6,187 whole-day count and the day published
+      // 87. The counter is primary now.
+      final (steps, scalars) = _derive(
+        counted6187,
+        liveStepsReal: 87,
+        liveStepsFromStrap: 87,
+      );
+      expect(scalars['steps'], 6187.0);
+      expect(steps['value'], 6187);
+      expect(steps['source'], 'strap_counter');
+      expect(steps['by_source'], {'strap_counter': 6187});
+      expect(steps['real_measured'], 87,
+          reason: 'the windowed figure stays disclosed, just not published');
+      expect(steps['band_measured'], 6187);
+    });
+
+    test('covered windowed steps are dropped, never double-counted', () {
+      // Counter 6,187 AND a strap-windowed 87 inside band-recorded time:
+      // the union is the counter alone — the covered span is already in it.
+      final (steps, _) = _derive(
+        counted6187,
+        liveStepsReal: 87,
+        liveStepsFromStrap: 87,
+        liveStepsUncovered: 0,
+      );
+      expect(steps['value'], 6187, reason: '87 covered + 6187 ≠ 6274');
+    });
+
+    test('windowed steps OUTSIDE band-recorded time fill the counter\'s '
+        'hole', () {
+      // Band charged for two phone-covered hours: the counter saw 5,000
+      // band-worn steps, the phone measured 2,000 while the band recorded
+      // nothing. The honest union is 7,000, named both ways.
+      final (steps, _) = _derive(
+        _sub([0, 2500, 5000]),
+        liveStepsReal: 2000,
+        liveStepsFromStrap: 0,
+        liveStepsUncovered: 2000,
+      );
+      expect(steps['value'], 7000);
+      expect(steps['source'], 'mixed');
+      expect(steps['by_source'], {'strap_counter': 5000, 'phone': 2000});
+      expect(steps['windowed_uncovered'], 2000);
+      expect(
+        steps['inputs_used'],
+        ['band_step_counter', 'phone_pedometer'],
+      );
+    });
+
+    test('a windowed total that still exceeds the union wins — all of it '
+        'is measured', () {
+      // Counter under-read across a dropped reset delta: windowed resolution
+      // measured 8,000 across the day, counter+uncovered can only account
+      // for 7,000. Publishing 7,000 would discard measured steps.
+      final (steps, _) = _derive(
+        _sub([0, 1000, 2000]),
+        liveStepsReal: 8000,
+        liveStepsFromStrap: 3000,
+        liveStepsUncovered: 5000,
+      );
+      expect(steps['value'], 8000);
+      expect(steps['by_source'], {'strap': 3000, 'phone': 5000});
+      expect(steps['band_measured'], 2000);
     });
   });
 }

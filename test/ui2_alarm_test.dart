@@ -15,15 +15,22 @@ import 'package:openstrap_edge/ui2/profile/alarm.dart';
 void main() {
   group('what the screen may claim', () {
     test('an unconfirmed alarm never says it will fire', () {
-      // The band confirms separately (event 56) and might never do so; after a
-      // relaunch there is no live confirmation at all, only the epoch on disk.
+      // Historical 56 does not establish the current arm, before or after
+      // restart. No view state may claim confirmation with this source.
       for (final s in [AlarmArmState.unknown, AlarmArmState.pending]) {
         final view = AlarmScreenView(state: s, armedAt: DateTime(2026, 8, 22));
         expect(AlarmScreenView.stateLabel(s), isNot(contains('Confirmed')));
         expect(view.state, s);
       }
-      expect(AlarmScreenView.stateLabel(AlarmArmState.confirmed),
-          contains('Confirmed'));
+      expect(AlarmScreenView.stateLabel(AlarmArmState.unknown),
+          'Not confirmed');
+      for (final s in AlarmArmState.values) {
+        expect(AlarmScreenView.stateLabel(s), isNot('Confirmed'));
+      }
+      expect(AlarmScreenView.stateLabel(AlarmArmState.offPending),
+          isNot(contains('Confirmed')));
+      expect(AlarmScreenView.stateLabel(AlarmArmState.offUnknown),
+          isNot(contains('Confirmed')));
     });
   });
 }

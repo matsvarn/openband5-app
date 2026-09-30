@@ -11,7 +11,14 @@
 //   - the alarm bodies are generation-specific, and the gen4 forms are
 //     hardware-verified, so the gen5 additions must not disturb them.
 
+import 'dart:async';
 import 'dart:typed_data';
+
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:openstrap_edge/state/alarm_cancel.dart';
+import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/sync/headless_gate.dart';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -91,11 +98,22 @@ class _Wire {
   final BandProfile band;
   late final BleEngine engine;
 
-  _Wire({required this.band}) {
+  _Wire({
+    required this.band,
+    Decoded? Function(int seq, int opcode)? replyTo,
+    Future<void> Function(int opcode)? beforeReply,
+  }) {
     engine = BleEngine(onRecord: (_, _) async {}, onState: (_) {});
     engine.debugInstallFakeLink(
       onWrite: (f) async {
         frames.add(f);
+        final parsed = parseFrame(f, profile: band);
+        if (parsed != null) {
+          final inner = parsed.inner;
+          await beforeReply?.call(inner[2]);
+          final reply = replyTo?.call(inner[1], inner[2]);
+          if (reply != null) engine.debugAbsorbDecoded(reply);
+        }
         return true;
       },
       band: band,
@@ -116,6 +134,69 @@ class _Wire {
   /// [lastCommand] truncated to [length]: `buildFrame` pads the inner out to a
   /// 4-byte boundary, so trailing zeros are envelope, not body.
   List<int> lastCommandOf(int length) => lastCommand.sublist(0, length);
+}
+
+/// Readback replies go through the pinned parser, not fabricated decoded
+/// fields. SET epoch is read only in this test harness to echo the actual wire.
+class _AlarmReadWire {
+  final BandProfile band;
+  final String mode;
+  final bool off;
+  final bool holdGet;
+  final bool drift;
+  final entered = Completer<void>();
+  final release = Completer<void>();
+  final slots = <int>[];
+  final opcodes = <int>[];
+  final requests = <int>[];
+  int? strapEpoch;
+  late final BleEngine engine;
+  _AlarmReadWire({this.band = BandProfile.gen5, this.mode = 'ok',
+    this.off = false, this.holdGet = false, this.drift = false}) {
+    engine = BleEngine(onRecord: (_, _) async {}, onState: (_) {});
+    engine.alarmReadTimeout = Duration(milliseconds: holdGet ? 500 : 25);
+    engine.debugInstallFakeLink(band: band, onWrite: (frame) async {
+      final inner = parseFrame(frame, profile: band)!.inner;
+      final seq = inner[1], op = inner[2];
+      opcodes.add(op);
+      if (op == Cmd.getClock && mode != 'noClock' && mode != 'staleClock') {
+        engine.debugAbsorbDecoded(Decoded('cmd_response', {'clock_epoch': _wallNow() - (drift ? 2 : 0)}));
+      }
+      if (op == Cmd.setAlarmTime) {
+        strapEpoch = ByteData.sublistView(inner).getUint32(band.isGen5 ? 5 : 4, Endian.little);
+      }
+      if (op != Cmd.getAlarmTime) {
+        reply(seq, op, const [], status: mode == 'disableFailure' && op == Cmd.disableAlarm ? 0 : 1);
+        return true;
+      }
+      final slot = band.isGen5 ? inner[4] : 1;
+      slots.add(slot);
+      requests.add(seq);
+      if (holdGet && !entered.isCompleted) {
+        entered.complete();
+        await release.future;
+      }
+      if (mode == 'writeFailed') return false;
+      if (mode == 'timeout') return true;
+      final body = Uint8List(band.isGen5 ? 8 : 7);
+      body[0] = band.isGen5 ? 4 : 1;
+      if (band.isGen5) body[1] = off && !(mode == 'activeSlot4' && slot == 4) ? 0 : 1;
+      ByteData.sublistView(body).setUint32(band.isGen5 ? 2 : 1,
+        (strapEpoch ?? 123) + (mode == 'mismatch' ? 1 : 0), Endian.little);
+      reply(mode == 'zero' ? 0 : mode == 'wrongSeq' ? seq - 1 : seq, op,
+        mode == 'short' ? [4] : body,
+        status: mode == 'failure' ? 0 : mode == 'unsupported' ? 3 : 1);
+      return true;
+    });
+    if (mode != 'noClock') {
+      engine.debugAbsorbDecoded(Decoded('cmd_response', {'clock_epoch': _wallNow() - (drift ? 2 : 0)}));
+    }
+  }
+  void reply(int seq, int opcode, List<int> body, {int status = 1}) {
+    final r = parseCommandResponse(Uint8List.fromList(
+      [PacketType.commandResponse, 0x55, opcode, seq, status, ...body]), profile: band)!;
+    engine.debugAbsorbDecoded(Decoded('cmd_response', {'opcode': r.opcode, ...r.decoded}));
+  }
 }
 
 void main() {
@@ -287,6 +368,323 @@ void main() {
     });
   });
 
+  group('current alarm readback (real engine and pinned response decoder)', () {
+    setUp(() { SharedPreferences.setMockInitialValues({}); AlarmOwner.resetForTest();
+      HeadlessSyncGate.resetForTest(); });
+    DateTime target() => DateTime.now().add(const Duration(days: 1));
+    for (final band in [BandProfile.gen4, BandProfile.gen5]) {
+      test('$band stored seconds match the actual SET RTC frame', () async {
+        final w = _AlarmReadWire(band: band, drift: band.isGen5);
+        final when = target();
+        final r = await w.engine.applyAlarmIntent(when: when);
+        expect(r.readback.state, AlarmReadbackState.storedSeconds);
+        expect(r.readback.isCurrent, isTrue);
+        expect(r.readback.wallEpoch, when.millisecondsSinceEpoch ~/ 1000);
+        if (band.isGen5) expect(w.strapEpoch, isNot(r.readback.wallEpoch));
+        expect(w.slots, [1]);
+        expect(w.opcodes.indexOf(Cmd.setAlarmTime), lessThan(w.opcodes.indexOf(Cmd.getAlarmTime)));
+      });
+      test('$band matching raw fallback without RTC mapping stays unknown', () async {
+        final w = _AlarmReadWire(band: band, mode: 'noClock');
+        final when = target();
+        final r = await w.engine.applyAlarmIntent(when: when);
+        expect(w.engine.clockRef, isNull);
+        expect(w.strapEpoch, when.millisecondsSinceEpoch ~/ 1000);
+        expect(r.armed, when, reason: 'the fallback write is retained');
+        expect(r.readback.state, AlarmReadbackState.unknown);
+        expect(r.failure, isNull, reason: 'missing mapping is not command failure');
+      });
+    }
+    for (final mode in ['noClock', 'staleClock', 'mismatch', 'wrongSeq', 'zero', 'failure', 'unsupported', 'short', 'timeout', 'writeFailed']) {
+      test('$mode remains written but unverified', () async {
+        final w = _AlarmReadWire(mode: mode);
+        final when = target();
+        final r = await w.engine.applyAlarmIntent(when: when);
+        expect(r.armed, when);
+        expect(r.readback.state, AlarmReadbackState.unknown);
+        expect(r.failure, isNull, reason: 'GET failure is not command failure');
+      });
+    }
+    test('all-off requires all six gen5 slots, not one slot', () async {
+      final w = _AlarmReadWire(off: true);
+      final r = await w.engine.applyAlarmIntent();
+      expect(r.readback.state, AlarmReadbackState.allSlotsInactive);
+      expect(r.readback.isCurrent, isTrue);
+      expect(w.slots, [1, 2, 3, 4, 5, 6]);
+      expect(w.requests.toSet(), hasLength(6));
+      final incomplete = _AlarmReadWire(off: true, mode: 'activeSlot4');
+      expect((await incomplete.engine.applyAlarmIntent()).readback.state, AlarmReadbackState.unknown);
+      expect(incomplete.slots, [1, 2, 3, 4]);
+      final gen4 = _AlarmReadWire(band: BandProfile.gen4, off: true);
+      expect((await gen4.engine.applyAlarmIntent()).readback.state, AlarmReadbackState.unknown);
+      expect(gen4.slots, isEmpty);
+    });
+    test('inactive slot flags need no wall/RTC mapping', () async {
+      final w = _AlarmReadWire(off: true, mode: 'noClock');
+      final r = await w.engine.applyAlarmIntent();
+      expect(w.engine.clockRef, isNull);
+      expect(r.readback.state, AlarmReadbackState.allSlotsInactive);
+      expect(w.slots, [1, 2, 3, 4, 5, 6]);
+    });
+    test('read-only retries GET without another SET; unsolicited replay cannot verify', () async {
+      final w = _AlarmReadWire();
+      final when = target();
+      final first = await w.engine.applyAlarmIntent(when: when);
+      final oldSeq = w.requests.single;
+      final second = await w.engine.applyAlarmIntent(when: when, readOnly: true);
+      expect(second.readback.state, AlarmReadbackState.storedSeconds);
+      expect(first.readback.isCurrent, isFalse);
+      expect(w.requests.last, isNot(oldSeq));
+      expect(w.opcodes.where((op) => op == Cmd.setAlarmTime), hasLength(1));
+      final restored = _AlarmReadWire();
+      restored.reply(oldSeq, Cmd.getAlarmTime, [4, 1, 1, 2, 3, 4, 0, 0]);
+      expect((await restored.engine.applyAlarmIntent(when: when, readOnly: true)).readback.state,
+        AlarmReadbackState.unknown, reason: 'no SET mapping for this session / restart');
+    });
+    test('older GET replay cannot satisfy a newer in-flight GET', () async {
+      final w = _AlarmReadWire();
+      final when = target();
+      await w.engine.applyAlarmIntent(when: when);
+      final oldSeq = w.requests.single;
+      final body = Uint8List(8)..[0] = 4..[1] = 1;
+      ByteData.sublistView(body).setUint32(2, w.strapEpoch!, Endian.little);
+      w.engine.debugWriteHook = (frame) async {
+        final inner = parseFrame(frame, profile: BandProfile.gen5)!.inner;
+        expect(inner[2], Cmd.getAlarmTime);
+        expect(inner[1], isNot(oldSeq));
+        w.reply(oldSeq, Cmd.getAlarmTime, body);
+        return true;
+      };
+      final r = await w.engine.applyAlarmIntent(when: when, readOnly: true);
+      expect(r.readback.state, AlarmReadbackState.unknown);
+    });
+    test('GET is inside the SET operation lock, before queued DISABLE', () async {
+      final w = _AlarmReadWire(holdGet: true);
+      final set = w.engine.applyAlarmIntent(when: target());
+      await w.entered.future;
+      final disable = w.engine.disableAlarm();
+      await Future<void>.delayed(Duration.zero);
+      expect(w.opcodes, isNot(contains(Cmd.disableAlarm)));
+      w.release.complete();
+      final result = await set;
+      await disable;
+      expect(w.opcodes.last, Cmd.disableAlarm);
+      expect(result.readback.isCurrent, isFalse);
+    });
+    test('GET sequence wrap abstains instead of accepting a replay alias', () async {
+      final w = _AlarmReadWire();
+      final when = target();
+      await w.engine.applyAlarmIntent(when: when);
+      for (var i = 1; i < 96; i++) {
+        expect((await w.engine.applyAlarmIntent(when: when, readOnly: true)).readback.state,
+          AlarmReadbackState.storedSeconds);
+      }
+      expect((await w.engine.applyAlarmIntent(when: when, readOnly: true)).readback.state,
+        AlarmReadbackState.unknown);
+      expect(w.requests.toSet(), hasLength(96));
+    });
+    test('changed clock or device session invalidates readback evidence', () async {
+      final w = _AlarmReadWire();
+      final r = await w.engine.applyAlarmIntent(when: target());
+      await w.engine.setClock();
+      expect(r.readback.isCurrent, isFalse);
+      final r2 = await w.engine.applyAlarmIntent(when: target());
+      w.engine.debugInstallFakeLink(band: BandProfile.gen5, onWrite: (_) async => true);
+      expect(r2.readback.isCurrent, isFalse);
+    });
+    test('AppState exposes typed current storage only, never persists proof or trusts history', () async {
+      final w = _AlarmReadWire();
+      final app = AppState.forTesting(engine: w.engine);
+      addTearDown(app.dispose);
+      app.device.connection = 'connected';
+      await app.setAlarm(target());
+      expect(app.alarmReadbackState, AlarmReadbackState.storedSeconds);
+      expect(app.alarmConfirmed, isFalse);
+      app.debugHandleAlarmEvent(56);
+      app.debugHandleAlarmEvent(59);
+      await AlarmOwner.load();
+      expect(app.alarmReadbackState, AlarmReadbackState.storedSeconds,
+        reason: 'history is not a new current readback observation');
+      expect((await AlarmOwner.load()).confirmed, isFalse);
+      final sets = w.opcodes.where((op) => op == Cmd.setAlarmTime).length;
+      await app.debugOnAlarmGraceElapsed(DateTime.fromMillisecondsSinceEpoch(app.alarmEpoch! * 1000));
+      expect(w.opcodes.where((op) => op == Cmd.setAlarmTime), hasLength(sets));
+      AlarmOwner.resetForTest();
+      expect(app.alarmReadbackState, AlarmReadbackState.unknown);
+      final offWire = _AlarmReadWire(off: true);
+      final offApp = AppState.forTesting(engine: offWire.engine);
+      addTearDown(offApp.dispose);
+      offApp.device.connection = 'connected';
+      await offApp.disableAlarm();
+      expect(offApp.alarmReadbackState, AlarmReadbackState.allSlotsInactive);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+      expect(offApp.alarmDisableOutstanding, isTrue);
+    });
+
+    test('a refused DISABLE can still read all slots already inactive', () async {
+      final w = _AlarmReadWire(off: true, mode: 'disableFailure');
+      final app = AppState.forTesting(engine: w.engine);
+      addTearDown(app.dispose);
+      app.device.connection = 'connected';
+      await app.disableAlarm();
+      expect(app.alarmReadbackState, AlarmReadbackState.allSlotsInactive);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+      expect(w.slots, [1, 2, 3, 4, 5, 6]);
+    });
+    test('new intent while GET held cannot publish old generation evidence', () async {
+      final w = _AlarmReadWire(holdGet: true);
+      final old = await AlarmOwner.choose(AlarmDesired.manual, when: target());
+      final pending = AlarmOwner.reconcile(w.engine);
+      await w.entered.future;
+      final off = await AlarmOwner.choose(AlarmDesired.off);
+      w.release.complete();
+      await pending;
+      expect(AlarmOwner.readbackFor(w.engine, old.generation).state, AlarmReadbackState.unknown);
+      expect(AlarmOwner.readbackFor(w.engine, off.generation).state, AlarmReadbackState.unknown);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+    });
+    test('revoked lease during GET cannot publish proof or continue slot reads', () async {
+      final w = _AlarmReadWire(holdGet: true, off: true);
+      final completed = Completer<AlarmOperationResult>();
+      final run = HeadlessSyncGate.tryRun('readback', () async {
+        completed.complete(await w.engine.applyAlarmIntent());
+      }, ceiling: const Duration(milliseconds: 30));
+      await w.entered.future;
+      await run;
+      w.release.complete();
+      final r = await completed.future;
+      expect(r.readback.state, AlarmReadbackState.unknown);
+      expect(w.slots, [1]);
+    });
+  });
+
+  group('whole alarm operation ownership (real engine, synthetic GATT only)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      AlarmOwner.resetForTest();
+      HeadlessSyncGate.resetForTest();
+    });
+    Decoded ack(int seq, int opcode) => Decoded('cmd_response', {
+      'opcode': opcode, 'req_seq': seq, 'cmd_status': CommandAwaiter.statusSuccess,
+    });
+    List<int> opcodes(_Wire w) => [for (final f in w.frames)
+      parseFrame(f, profile: w.band)!.inner[2]];
+
+    test('direct DISABLE cannot interleave SET clock preparation', () async {
+      final held = Completer<void>();
+      final entered = Completer<void>();
+      final wire = _Wire(band: BandProfile.gen5, replyTo: ack,
+        beforeReply: (op) async {
+          if (op == Cmd.setClock) { entered.complete(); await held.future; }
+        });
+      final set = wire.engine.setAlarm(DateTime.now().add(const Duration(days: 1)));
+      await entered.future;
+      final disable = wire.engine.disableAlarm();
+      await Future<void>.delayed(Duration.zero);
+      expect(opcodes(wire), [Cmd.setClock]);
+      held.complete();
+      await Future.wait([set, disable]);
+      expect(opcodes(wire), [Cmd.setClock, Cmd.getClock, Cmd.setAlarmTime, Cmd.disableAlarm]);
+    });
+
+    test('held weekly SET / cancel / 59 / late SET / restart ends DISABLE', () async {
+      final held = Completer<void>();
+      final entered = Completer<void>();
+      final wire = _Wire(band: BandProfile.gen5, replyTo: ack,
+        beforeReply: (op) async {
+          if (op == Cmd.setClock) { entered.complete(); await held.future; }
+        });
+      final now = DateTime.now();
+      await AlarmOwner.choose(AlarmDesired.weekly, schedule: [
+        AlarmScheduleEntry(weekday: (now.weekday % 7), hour: 7, minute: 0, enabled: true),
+      ]);
+      final weekly = AlarmOwner.reconcile(wire.engine);
+      await entered.future;
+      final off = await AlarmOwner.choose(AlarmDesired.off);
+      final cancel = AlarmOwner.reconcile(wire.engine);
+      final observation = AlarmConfirmation()..requestDisable(10);
+      observation.onEvent(59, 20, eventTsSec: 1);
+      expect(observation.isDisableOutstanding, isTrue);
+      expect(opcodes(wire), [Cmd.setClock]);
+      held.complete();
+      await Future.wait([weekly, cancel]);
+      expect(opcodes(wire), [Cmd.setClock, Cmd.getClock, Cmd.setAlarmTime,
+        Cmd.getAlarmTime, Cmd.disableAlarm, Cmd.getAlarmTime]);
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString(AlarmOwner.intentKey)!;
+      AlarmOwner.resetForTest();
+      SharedPreferences.setMockInitialValues({AlarmOwner.intentKey: raw});
+      final restored = await AlarmOwner.load();
+      expect(restored.generation, off.generation);
+      expect(restored.desired, AlarmDesired.off);
+      expect(restored.armedEpoch, isNull, reason: 'late SET did not persist its epoch');
+      await AlarmOwner.reconcile(wire.engine);
+      expect(opcodes(wire).where((op) => op != Cmd.getAlarmTime).last, Cmd.disableAlarm);
+      expect(opcodes(wire).where((op) => op == Cmd.setAlarmTime), hasLength(1));
+    });
+
+    test('in-flight headless persistence cannot overtake newer foreground intent', () async {
+      final intent = await AlarmOwner.choose(AlarmDesired.manual,
+        when: DateTime.now().add(const Duration(days: 1)));
+      final held = Completer<void>();
+      final entered = Completer<void>();
+      final orphanDone = Completer<void>();
+      AlarmOwner.debugWrite = (p, key, value) async {
+        if (!entered.isCompleted) { entered.complete(); await held.future; }
+        return p.setString(key, value);
+      };
+      final run = HeadlessSyncGate.tryRun('persist', () async {
+        expect(await AlarmOwner.observe(intent, epoch: 123), isFalse);
+        expect(await AlarmOwner.observe(intent, epoch: 456), isFalse);
+        orphanDone.complete();
+      }, ceiling: const Duration(milliseconds: 30));
+      await entered.future;
+      await run;
+      final off = AlarmOwner.choose(AlarmDesired.off);
+      held.complete();
+      await off;
+      await orphanDone.future;
+      final wire = _Wire(band: BandProfile.gen5, replyTo: ack);
+      await AlarmOwner.reconcile(wire.engine);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+      expect((await AlarmOwner.load()).generation, intent.generation + 1);
+      expect(opcodes(wire), [Cmd.disableAlarm, Cmd.getAlarmTime]);
+      expect((await AlarmOwner.load()).armedEpoch, isNot(456));
+    });
+
+    test('revoked headless clock continuation cannot SET or persist after handoff', () async {
+      final held = Completer<void>();
+      final entered = Completer<void>();
+      final orphanDone = Completer<void>();
+      final oldWire = _Wire(band: BandProfile.gen5, replyTo: ack,
+        beforeReply: (op) async {
+          if (op == Cmd.setClock) { entered.complete(); await held.future; }
+        });
+      await AlarmOwner.choose(AlarmDesired.manual,
+        when: DateTime.now().add(const Duration(days: 1)));
+      final run = HeadlessSyncGate.tryRun('test', () async {
+        await AlarmOwner.reconcile(oldWire.engine);
+        // Simulate a late caller trying to mark a result after revocation.
+        final old = await AlarmOwner.load();
+        expect(await AlarmOwner.observe(old, epoch: 123), isFalse);
+        orphanDone.complete();
+      }, ceiling: const Duration(milliseconds: 30));
+      await entered.future;
+      await run;
+      await orphanDone.future;
+      final wire = _Wire(band: BandProfile.gen5, replyTo: ack);
+      final off = await AlarmOwner.choose(AlarmDesired.off);
+      await AlarmOwner.reconcile(wire.engine);
+      final before = (await AlarmOwner.load()).encode();
+      held.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      expect(opcodes(oldWire), [Cmd.setClock], reason: 'no GET_CLOCK or SET after revocation');
+      expect(opcodes(wire), [Cmd.disableAlarm, Cmd.getAlarmTime]);
+      expect((await AlarmOwner.load()).generation, off.generation);
+      expect((await AlarmOwner.load()).encode(), before);
+    });
+  });
+
   group('P1 — alarm bodies are generation-correct', () {
     test('gen4 forms are byte-identical (hardware-verified — do not change)',
         () {
@@ -314,17 +712,31 @@ void main() {
           AlarmPayloads.gen5Slot);
     });
 
+    Decoded disableAck(int seq, int opcode) => Decoded('cmd_response', {
+          'opcode': opcode,
+          'req_seq': seq,
+          'cmd_status': CommandAwaiter.statusSuccess,
+        });
+
     test('the engine writes the gen4 alarm bodies unchanged', () async {
-      final w = _Wire(band: BandProfile.gen4);
-      await w.engine.disableAlarm();
+      final w = _Wire(
+        band: BandProfile.gen4,
+        replyTo: (seq, opcode) =>
+            opcode == Cmd.disableAlarm ? disableAck(seq, opcode) : null,
+      );
+      expect(await w.engine.disableAlarm(), AlarmDisableOutcome.written);
       expect(w.lastCommandOf(2), <int>[Cmd.disableAlarm, 0x01]);
       await w.engine.getAlarm();
       expect(w.lastCommandOf(2), <int>[Cmd.getAlarmTime, 0x01]);
     });
 
     test('the engine writes the gen5 alarm bodies', () async {
-      final w = _Wire(band: BandProfile.gen5);
-      await w.engine.disableAlarm();
+      final w = _Wire(
+        band: BandProfile.gen5,
+        replyTo: (seq, opcode) =>
+            opcode == Cmd.disableAlarm ? disableAck(seq, opcode) : null,
+      );
+      expect(await w.engine.disableAlarm(), AlarmDisableOutcome.written);
       expect(w.lastCommandOf(3), <int>[Cmd.disableAlarm, 0x02, 0xFF]);
       await w.engine.getAlarm();
       expect(w.lastCommandOf(3), <int>[Cmd.getAlarmTime, 0x04, 1]);

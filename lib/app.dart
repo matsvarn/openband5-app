@@ -2,7 +2,20 @@ import 'dart:async';
 import 'openband/controller.dart';
 import 'openband/domain.dart';
 import 'openband/local_repository.dart';
+import 'openband/health.dart';
+import 'openband/journal.dart';
+import 'openband/journal_editor.dart';
+import 'openband/cycle.dart';
+import 'openband/medication.dart';
+import 'openband/nutrition_route.dart';
+import 'openband/run_live.dart';
+import 'openband/release_scope.dart';
 import 'openband/screens.dart';
+import 'openband/session.dart';
+import 'openband/strength_live.dart';
+import 'openband/template_editor.dart';
+import 'openband/templates.dart';
+import 'openband/training.dart';
 import 'openband/theme.dart' show openBandTheme;
 import 'data/day_label.dart';
 
@@ -24,9 +37,10 @@ import 'theme/theme_switcher.dart';
 import 'widget/widget_service.dart';
 import 'ui2/activity/catalogue.dart';
 import 'ui2/activity/live.dart';
-import 'ui2/onboarding/pairing.dart' show OnboardingBypass;
+import 'ui2/activity/tiles.dart' show mapTilesAllowed;
+import 'ui2/onboarding/first_sync.dart';
+import 'ui2/onboarding/pairing.dart' show OnboardingBypass, PairingScreen;
 import 'ui2/onboarding/profile_setup.dart';
-import 'ui2/pairing/device_picker.dart';
 import 'ui2/onboarding/splash.dart';
 import 'ui2/onboarding/welcome.dart';
 import 'ui2/profile/alarm.dart';
@@ -34,11 +48,8 @@ import 'ui2/profile/profile.dart';
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
-import 'ui2/screens/health_screen.dart';
-import 'ui2/screens/journal_compose.dart';
 import 'ui2/screens/log_workout.dart';
-import 'ui2/screens/nutrition_screen.dart';
-import 'ui2/screens/wellness_screen.dart';
+import 'ui2/screens/log_food.dart';
 import 'ui2/screens/workout_screen.dart';
 import 'ui2/ui2.dart';
 
@@ -186,15 +197,23 @@ class _OpenStrapAppState extends State<OpenStrapApp>
 AppRoute resolveRoute(
   AppRoute route, {
   required bool pairingSkipped,
+  required bool firstSyncSeen,
   required bool profileSeen,
   bool onboarded = false,
 }) {
   var r = route;
-  if (onboarded && (r == AppRoute.pairing || r == AppRoute.profile)) {
+  if (onboarded &&
+      (r == AppRoute.pairing ||
+          r == AppRoute.firstSync ||
+          r == AppRoute.profile)) {
     return AppRoute.shell;
   }
   if (r == AppRoute.pairing && pairingSkipped) r = AppRoute.profile;
   if (r == AppRoute.profile && profileSeen) return AppRoute.shell;
+  // A real pairing shows the first-sync step once; a skipped one does not.
+  if (r == AppRoute.profile && !pairingSkipped && !firstSyncSeen) {
+    return AppRoute.firstSync;
+  }
   return r;
 }
 
@@ -230,6 +249,7 @@ class _Gate extends StatelessWidget {
         final route = resolveRoute(
           raw,
           pairingSkipped: OnboardingBypass.pairingSkipped,
+          firstSyncSeen: OnboardingBypass.firstSyncSeen,
           profileSeen: OnboardingBypass.profileSeen,
           onboarded: _onboarded,
         );
@@ -245,9 +265,12 @@ class _Gate extends StatelessWidget {
           AppRoute.loading => const _Loading(),
           AppRoute.failed => const _InitFailed(),
           AppRoute.welcome => const WelcomeScreen(),
-          AppRoute.pairing => DevicePickerScreen(
+          AppRoute.pairing => PairingScreen(
             onBack: () => context.read<AppState>().returnToWelcome(),
             onSkip: () => OnboardingBypass.mark(OnboardingBypass.kPairing),
+          ),
+          AppRoute.firstSync => FirstSyncScreen(
+            onDone: () => OnboardingBypass.mark(OnboardingBypass.kFirstSync),
           ),
           AppRoute.profile => ProfileSetupScreen(
             onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile),
@@ -360,8 +383,8 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
   // Water is a journal field that lives on Nutrition — that is the tab
   // behind the log screen, and where a "back" from it should land.
   kRouteWater => ShellDomain.wellness,
-  // The medication reminder. Wellness owns the Medication tab and its
-  // checklist, which is where a dose is actually recorded.
+  // The medication reminder. Journal owns the canonical medications screen;
+  // back from it lands on Journal, same as water → Nutrition over wellness.
   kRouteMeds => ShellDomain.wellness,
   // The movement/sedentary nudges. Today (Home) is where the steps/rings
   // they point at live; there is no move screen to push, so
@@ -408,42 +431,70 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 ///
 /// `/ai/*` used to be in that list too. It now lands on the briefing itself,
 /// which also carries the exact snapshot that was sent to produce it.
-Widget? screenForRoute(String route) => switch (routePath(route)) {
-  kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
-  kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
-  kRouteJournalCompose => const JournalCompose(),
-  kRouteBreathing => const CalmBreathing(),
-  // The hydration reminder lands on Nutrition, where the water tile carries
-  // its own − / + and is beside the food it belongs with. There used to be
-  // a whole screen for this one field; it was reachable ONLY from here,
-  // which is how the tile that everybody actually used stayed add-only for
-  // so long — the thing that could clear a value was behind a notification.
-  kRouteWater => const NutritionScreen(),
-  // The detected bout, with the three answers to it: log it, adjust the
-  // times first, or say it never happened.
-  // The medication reminder pushes NOTHING, and still lands on the
-  // checklist: it is a SUB-TAB of Wellness, so pushing anything would put
-  // a second copy of a shell tab over the shell. `_consume` asks Wellness
-  // for the tab instead (`WellnessScreen.tabRequest`) — the deep link is
-  // wired, the answer here stays null.
-  kRouteMeds => null,
-  // A CONSTRUCTOR ARGUMENT is right here and wrong for `/meds` above: this
-  // screen is PUSHED by `_consume`, so every tap builds a fresh one and the
-  // id reaches it. Wellness is a shell tab kept alive in the IndexedStack,
-  // never rebuilt on a tap, which is why that one needs a request notifier.
-  kRouteWorkoutSuggestion => WorkoutSuggestionScreen(focusId: routeId(route)),
-  // Battery, band and sources all live behind this one.
-  kRouteProfile => const ProfileHome(),
-  // The alarm safety notifications land where either can actually be
-  // fixed — the schedule itself.
-  kRouteAlarm => const AlarmScreen(),
-  // The weekly recap used to land on the Health tab and push nothing,
-  // because there was no recap screen to push. There is now: the sweep's
-  // findings, which the app has been computing every night and delivering
-  // only as a notification you could dismiss into nothing.
-  kRouteRecap => const WhatChangedScreen(),
-  _ => null,
-};
+Future<void> _nutritionBarcode(BuildContext context, String day, String meal) =>
+    LogFoodSheet.show(context, date: day, meal: meal);
+
+/// A reduced release has only Home. Retained screens stay gated in
+/// [releaseScreenForRoute]; a parked route still pushes nothing.
+/// A full development build keeps [domainForRoute].
+ShellDomain releaseDomainForRoute(String route, {required bool reduced}) {
+  if (reduced) return ShellDomain.home;
+  return domainForRoute(route);
+}
+
+ShellDomain releaseDomainForTab(int tab, {required bool reduced}) {
+  final domain = domainForTab(tab);
+  if (reduced && domain != ShellDomain.home) return ShellDomain.home;
+  return domain;
+}
+
+Widget? releaseScreenForRoute(
+  String route, {
+  required bool reduced,
+  OpenBandRepository? repository,
+}) {
+  if (reduced && !openBandReleaseKeepsRoute(route)) return null;
+  return screenForRoute(route, repository: repository);
+}
+
+Widget? screenForRoute(String route, {OpenBandRepository? repository}) =>
+    switch (routePath(route)) {
+      kRouteAiMorning => const AiBriefingScreen(period: BriefingPeriod.morning),
+      kRouteAiEvening => const AiBriefingScreen(period: BriefingPeriod.evening),
+      kRouteJournalCompose => const OpenBandJournalEditorRoute(),
+      kRouteBreathing => const CalmBreathing(),
+      // The hydration reminder lands on Nutrition, where the water tile carries
+      // its own − / + and is beside the food it belongs with. There used to be
+      // a whole screen for this one field; it was reachable ONLY from here,
+      // which is how the tile that everybody actually used stayed add-only for
+      // so long — the thing that could clear a value was behind a notification.
+      kRouteWater => OpenBandNutritionRoute(
+        date: todayLabel(),
+        onBarcode: _nutritionBarcode,
+      ),
+      // Same shape as water: a focused screen pushed over Journal. Missing or
+      // ended plans open the canonical day without mutating — the screen reads.
+      kRouteMeds =>
+        repository == null
+            ? null
+            : OpenBandMedications(repository: repository, day: todayLabel()),
+      // The detected bout, with the three answers to it: log it, adjust the
+      // times first, or say it never happened.
+      kRouteWorkoutSuggestion => WorkoutSuggestionScreen(
+        focusId: routeId(route),
+      ),
+      // Battery, band and sources all live behind this one.
+      kRouteProfile => const ProfileHome(),
+      // The alarm safety notifications land where either can actually be
+      // fixed — the schedule itself.
+      kRouteAlarm => const AlarmScreen(),
+      // The weekly recap used to land on the Health tab and push nothing,
+      // because there was no recap screen to push. There is now: the sweep's
+      // findings, which the app has been computing every night and delivering
+      // only as a notification you could dismiss into nothing.
+      kRouteRecap => const WhatChangedScreen(),
+      _ => null,
+    };
 
 class _Shell extends StatefulWidget {
   const _Shell();
@@ -460,18 +511,11 @@ class _ShellState extends State<_Shell> {
   Object? _lastBandState;
   bool? _lastDeriving;
 
-  ShellDomain _restoredDomain() {
-    final saved = Prefs.getString('ui.openband.tab', '');
-    for (final domain in ShellDomain.values) {
-      if (domain.name == saved) return domain;
-    }
-    return switch (Prefs.getInt(Prefs.shellTab, 0)) {
-      1 => ShellDomain.health,
-      2 || 4 => ShellDomain.wellness,
-      3 => ShellDomain.workout,
-      _ => ShellDomain.home,
-    };
-  }
+  ShellDomain _restoredDomain() => shellDomainForRestore(
+    reduced: kOpenBandReleaseReduced,
+    savedName: Prefs.getString(kOpenBandTabPref, ''),
+    legacyTab: Prefs.getInt(Prefs.shellTab, 0),
+  );
 
   void _sourceChanged() {
     final app = _app!;
@@ -579,30 +623,30 @@ class _ShellState extends State<_Shell> {
     // A screen route carries its own domain; the tab index alongside it is
     // the base the payload was built with, not a second destination.
     if (s != null && s.isNotEmpty) {
-      _go(domainForRoute(s));
-      // A route whose destination is a SUB-tab, which no pushed screen can
-      // express. Asked for AFTER `_go` (which may re-key the shell and build a
-      // fresh Wellness) and cleared a frame later, so whichever state ends up
-      // on screen has seen it — see `WellnessScreen.tabRequest`.
-      if (routePath(s) == kRouteMeds) {
-        WellnessScreen.tabRequest.value = WellnessScreen.medsTab;
-        WidgetsBinding.instance.addPostFrameCallback(
-          (_) => WellnessScreen.tabRequest.value = -1,
-        );
-      }
-      final screen = screenForRoute(s);
+      final domain = releaseDomainForRoute(s, reduced: kOpenBandReleaseReduced);
+      _go(domain);
+      final screen = releaseScreenForRoute(
+        s,
+        reduced: kOpenBandReleaseReduced,
+        repository: _day.repository,
+      );
       if (screen != null) {
-        _shellKey.currentState?.open(domainForRoute(s), screen);
+        _shellKey.currentState?.open(domain, screen);
       }
       return;
     }
-    if (tab >= 0) _go(domainForTab(tab));
+    if (tab >= 0) {
+      _go(releaseDomainForTab(tab, reduced: kOpenBandReleaseReduced));
+    }
   }
 
   void _go(ShellDomain d) {
+    if (kOpenBandReleaseReduced && d != ShellDomain.home) {
+      d = ShellDomain.home;
+    }
     _domain = d;
     _shellKey.currentState?.select(d);
-    Prefs.setString('ui.openband.tab', d.name);
+    persistOpenBandTab(reduced: kOpenBandReleaseReduced, name: d.name);
   }
 
   @override
@@ -620,49 +664,248 @@ class _ShellState extends State<_Shell> {
     // SELECT, not watch: a bool that flips twice a workout, not the ~1 Hz
     // AppState tick.
     final live = context.select<AppState, bool>((a) => a.activeWorkout != null);
+    final reduced = kOpenBandReleaseReduced;
     return AppShell(
       key: _shellKey,
       initial: _domain,
-      banner: live ? const _LiveSessionBar() : null,
+      domains: reduced ? kOpenBandReleaseDomains : null,
+      banner: live
+          ? _LiveSessionBar(
+              repository: _day.repository,
+              onFinished: _day.refresh,
+            )
+          : null,
       onSelect: (d) {
         _domain = d;
-        Prefs.setString('ui.openband.tab', d.name);
+        persistOpenBandTab(reduced: reduced, name: d.name);
+        if (d == ShellDomain.health) unawaited(_day.refresh());
       },
       builder: (c, d) => switch (d) {
         ShellDomain.home => OpenBandOverview(
           controller: _day,
+          reduced: reduced,
           onProfile: () => Navigator.of(
             c,
           ).push(MaterialPageRoute<void>(builder: (_) => const ProfileHome())),
-          onJournal: () => _go(ShellDomain.wellness),
-          onNutrition: () => _shellKey.currentState?.open(
-            ShellDomain.wellness,
-            const NutritionScreen(),
-          ),
-          onTraining: () => _go(ShellDomain.workout),
-          onSync: () => _app!.openSession(),
-        ),
-        ShellDomain.health => const HealthScreen(),
-        ShellDomain.workout => const WorkoutScreen(),
-        ShellDomain.wellness => Column(
-          children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => Navigator.of(c).push(
+          onJournal: reduced ? null : () => _go(ShellDomain.wellness),
+          onNutrition: reduced
+              ? null
+              : () => Navigator.of(c).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const NutritionScreen(),
+                    builder: (_) => OpenBandNutritionRoute(
+                      controller: _day,
+                      onBarcode: _nutritionBarcode,
+                    ),
                   ),
                 ),
-                icon: const Icon(LucideIcons.utensils, size: 18),
-                label: const Text('Ernährung & Wasser'),
+          onTraining: reduced ? null : () => _go(ShellDomain.workout),
+          onSync: () => _app!.openSession(),
+        ),
+        ShellDomain.health => OpenBandHealth(controller: _day),
+        ShellDomain.workout => OpenBandTraining(
+          controller: _day,
+          onStart: (type) => _startActivity(c, type),
+          onOpenTemplates: () async {
+            await Navigator.of(c).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandTemplates(
+                  repository: _day.repository,
+                  onStartTemplate: (t) => _openStrength(c, t),
+                  onEditTemplate: (t) => _openTemplateEditor(c, t),
+                ),
+              ),
+            );
+            _day.refresh();
+          },
+          onStartTemplate: (t) => _openStrength(c, t),
+          onEditTemplate: (t) => _openTemplateEditor(c, t),
+          onOpen: (s) => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  OpenBandSession(repository: _day.repository, session: s),
+            ),
+          ),
+        ),
+        ShellDomain.wellness => OpenBandJournal(
+          controller: _day,
+          onEdit: (day) async {
+            await Navigator.of(c).push(
+              MaterialPageRoute<void>(
+                builder: (_) => OpenBandJournalEditor(
+                  repository: _day.repository,
+                  day: day,
+                ),
+              ),
+            );
+          },
+          onNutrition: () => Navigator.of(c).push(
+            MaterialPageRoute<void>(
+              builder: (_) => OpenBandNutritionRoute(
+                controller: _day,
+                onBarcode: _nutritionBarcode,
               ),
             ),
-            const Expanded(child: WellnessScreen()),
-          ],
+          ),
+          onCycle: () => OpenBandCycle.push(
+            c,
+            repository: _day.repository,
+            day: _day.selectedDay,
+            now: _day.now,
+            synthetic: _day.day?.synthetic == true,
+          ),
         ),
       },
     );
+  }
+
+  Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
+    return Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OpenBandStrengthLive(
+          repository: _day.repository,
+          template: t,
+          onFinished: _day.refresh,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTemplateEditor(BuildContext c, WorkoutTemplate? t) async {
+    await Navigator.of(c).push(
+      MaterialPageRoute<WorkoutTemplate>(
+        builder: (_) =>
+            OpenBandTemplateEditor(repository: _day.repository, template: t),
+      ),
+    );
+    _day.refresh();
+  }
+
+  /// Quick-Start entry. Running opens the OpenBand live screen on the single
+  /// AppState live engine; every other type goes through the existing picker
+  /// so its setup (weight, privacy, GPS consent) stays in one place.
+  Future<void> _startActivity(BuildContext c, String type) async {
+    final app = _app;
+    if (app == null) return;
+    if (type != 'running') {
+      await Navigator.of(
+        c,
+      ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutScreen()));
+      return;
+    }
+    if (app.activeWorkout == null) {
+      try {
+        await app.startWorkout(type: 'running');
+      } catch (_) {
+        if (c.mounted) {
+          showRetryableActivityStart(
+            c,
+            () => unawaited(_startActivity(c, type)),
+          );
+        }
+        return;
+      }
+    }
+    if (app.activeWorkout == null) {
+      if (c.mounted) {
+        showRetryableActivityStart(c, () => unawaited(_startActivity(c, type)));
+      }
+      return;
+    }
+    if (!c.mounted) return;
+    final feed = _LiveRunFeed(app);
+    await Navigator.of(c).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OpenBandRunLive(
+          run: feed,
+          tracker: app.routeTracker,
+          mapAllowed: mapTilesAllowed,
+          onPause: feed.pause,
+          onResume: feed.resume,
+          onLap: () {
+            if (feed.value.paused) return;
+            final v = feed.value;
+            final id = app.activeWorkout?.workoutId;
+            if (id == null) return;
+            unawaited(
+              _day.repository.recordLap(
+                id,
+                Lap(
+                  index: v.laps + 1,
+                  elapsedSec: v.elapsedSec,
+                  pausedSec: v.pausedSec,
+                  distanceM: v.distanceM,
+                  at: DateTime.now(),
+                ),
+              ),
+            );
+            feed.markLap();
+          },
+          onFinish: () async {
+            await app.stopWorkout();
+            _day.refresh();
+            if (c.mounted) Navigator.of(c).maybePop();
+          },
+        ),
+      ),
+    );
+    feed.dispose();
+  }
+}
+
+/// Adapts the AppState tick to a [LiveRun]. Pauses are the user's; the
+/// banked pause seconds and the current pause start live here, never inferred
+/// from a missing heart rate.
+class _LiveRunFeed extends ValueNotifier<LiveRun> {
+  final AppState app;
+  int _pausedSec = 0;
+  int _laps = 0;
+  DateTime? _pausedAt;
+  _LiveRunFeed(this.app) : super(const LiveRun(elapsedSec: 0)) {
+    app.addListener(_update);
+    _update();
+  }
+  void _update() {
+    final w = app.activeWorkout;
+    if (w == null) return;
+    final now = DateTime.now();
+    final inPause = _pausedAt == null
+        ? 0
+        : now.difference(_pausedAt!).inSeconds;
+    final km = app.liveDistanceKm;
+    value = LiveRun(
+      elapsedSec: now.difference(w.startTime).inSeconds,
+      pausedSec: _pausedSec + inPause,
+      laps: _laps,
+      distanceM: km == null ? null : km * 1000,
+      heartRate: app.liveHr,
+      zone: app.liveZone,
+      paused: _pausedAt != null,
+      gps: app.routeTracking,
+    );
+  }
+
+  void pause() {
+    _pausedAt ??= DateTime.now();
+    _update();
+  }
+
+  void markLap() {
+    _laps++;
+    _update();
+  }
+
+  void resume() {
+    if (_pausedAt case final at?) {
+      _pausedSec += DateTime.now().difference(at).inSeconds;
+      _pausedAt = null;
+    }
+    _update();
+  }
+
+  @override
+  void dispose() {
+    app.removeListener(_update);
+    super.dispose();
   }
 }
 
@@ -678,7 +921,9 @@ class _ShellState extends State<_Shell> {
 /// per-second rebuild of the whole shell to keep one number honest is not a
 /// trade worth making. The number is on the screen this taps through to.
 class _LiveSessionBar extends StatelessWidget {
-  const _LiveSessionBar();
+  final OpenBandRepository repository;
+  final VoidCallback? onFinished;
+  const _LiveSessionBar({required this.repository, this.onFinished});
 
   /// The activity behind the open session.
   ///
@@ -692,24 +937,7 @@ class _LiveSessionBar extends StatelessWidget {
       activityByName(LiveDraft.current?.activityKey ?? app.activeWorkout?.type);
 
   Future<void> _resume(BuildContext c) async {
-    final app = c.read<AppState>();
-    final draft = LiveDraft.current;
-    final a = _activityFor(app);
-    if (a == null) return;
-    final nav = Navigator.of(c);
-    // The lifter's previous and best. Absent renders as "First time on this
-    // lift", which would be a false claim on a resumed session.
-    final history = await loadSetHistory();
-    await nav.push(
-      MaterialPageRoute<void>(
-        builder: (_) => liveFor(
-          a,
-          private: draft?.private ?? false,
-          weightKg: draft?.weightKg,
-          host: activityHost(app, history: history),
-        ),
-      ),
-    );
+    await resumeLiveSession(c, repository: repository, onFinished: onFinished);
   }
 
   @override
@@ -800,4 +1028,99 @@ class _LiveSessionBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Resume the session the live bar is holding.
+///
+/// Non-sets keep their live route without a strength snapshot read. Sets and
+/// unknown types wait for a real read: Active/Corrupt → Alpin resume,
+/// Legacy/NoActive → the existing live engine. A thrown read is not Alpin
+/// and not NoActive — Erneut calls this again.
+Future<void> resumeLiveSession(
+  BuildContext context, {
+  required OpenBandRepository repository,
+  VoidCallback? onFinished,
+}) async {
+  final app = context.read<AppState>();
+  final draft = LiveDraft.current;
+  final a = activityByName(draft?.activityKey ?? app.activeWorkout?.type);
+  if (a != null && a.track != Track.sets) {
+    final page = await _activityLive(app, a, draft);
+    if (!context.mounted) return;
+    await _pushResumedLive(context, page);
+    return;
+  }
+  final ActiveStrengthRuntime runtime;
+  try {
+    runtime = await repository.readActiveStrengthSession();
+  } catch (_) {
+    if (context.mounted) {
+      showRetryableNotice(context, 'Einheit nicht geladen', () {
+        unawaited(
+          resumeLiveSession(
+            context,
+            repository: repository,
+            onFinished: onFinished,
+          ),
+        );
+      });
+    }
+    return;
+  }
+  if (!context.mounted) return;
+  switch (runtime) {
+    case ActiveStrengthSession():
+    case CorruptActiveStrength():
+      await _pushResumedLive(
+        context,
+        OpenBandStrengthLive.resume(
+          repository: repository,
+          onFinished: onFinished,
+        ),
+      );
+    case LegacyActiveStrength():
+    case NoActiveStrength():
+      if (a == null) return;
+      final page = await _activityLive(app, a, draft);
+      if (!context.mounted) return;
+      await _pushResumedLive(context, page);
+  }
+}
+
+Future<Widget> _activityLive(AppState app, Activity a, LiveDraft? draft) async {
+  final history = await loadSetHistory();
+  return liveFor(
+    a,
+    private: draft?.private ?? false,
+    weightKg: draft?.weightKg,
+    host: activityHost(app, history: history),
+  );
+}
+
+Future<void> _pushResumedLive(BuildContext context, Widget page) async {
+  if (!context.mounted) return;
+  await Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => page));
+}
+
+void showRetryableNotice(
+  BuildContext context,
+  String message,
+  VoidCallback onRetry,
+) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      action: SnackBarAction(label: 'Erneut', onPressed: onRetry),
+    ),
+  );
+}
+
+void showRetryableActivityStart(BuildContext context, VoidCallback onRetry) {
+  showRetryableNotice(
+    context,
+    'Aktivität konnte nicht gestartet werden.',
+    onRetry,
+  );
 }

@@ -860,7 +860,11 @@ class LocalRepositoryImpl extends LocalRepository {
     );
     final ts = <double>[], rr = <double>[];
     for (final r in rows) {
-      final t = r['rr_ts_ms'] as num?, v = r['rr_ms'] as num?;
+      // Same coalesce the derive path applies (derive_prepare.dart): beat_ts_ms
+      // is the real per-beat time; rr_ts_ms is the whole-second staircase
+      // fallback for rows banked before the column existed.
+      final t = (r['beat_ts_ms'] as num?) ?? (r['rr_ts_ms'] as num?);
+      final v = r['rr_ms'] as num?;
       if (t == null || v == null) continue;
       ts.add(t.toDouble());
       rr.add(v.toDouble());
@@ -2707,6 +2711,10 @@ class LocalRepositoryImpl extends LocalRepository {
       profile: profile,
       hrMax: _profileMaxHr(deviceFamily, startTs)?.toDouble(),
       restingHr: restingHr,
+      // The personal quiet-waking level the day pipeline resolves (edge#226) —
+      // null ⇒ the strain abstains rather than pricing the bout off the
+      // population constant it was never calibrated to.
+      quietHrr: await LocalDb.personalQuietWakingHrr(),
       // TS-04 — the persisted `zone_min` is binned with the SAME set the detail
       // screen's `zone_bands` recomputes. `hrMax` above stays the strain and
       // calorie anchor; the two are named separately because they can now be
@@ -2815,6 +2823,7 @@ class LocalRepositoryImpl extends LocalRepository {
         hrMax: _profileMaxHr(row['device_family'] as String?, startTs)?.toDouble(),
         restingHr:
             await _recentRestingHr() ?? profile.restingHrManual?.toDouble(),
+        quietHrr: await LocalDb.personalQuietWakingHrr(),
         zoneSet: _zoneSetFor(
             row['device_family'] as String?, await _zoneAnchors(), startTs),
       );
@@ -3221,42 +3230,144 @@ class LocalRepositoryImpl extends LocalRepository {
     String date,
     Map<String, JournalMetricValue> fields,
   ) async {
-    // Clamp on the way in rather than trusting the editor. A value past the
-    // field's ceiling is almost always a mis-tap, and a single 40-coffee day
-    // would dominate every correlation that field appears in for months.
-    final specs = await getJournalFields();
-    final clamped = <String, JournalMetricValue>{};
-    for (final e in fields.entries) {
-      final spec = journalFieldSpec(
-        e.key,
-        custom: specs.where((s) => s.custom).toList(),
-      );
-      final v = spec == null
-          ? e.value.value
-          : e.value.value.clamp(0.0, spec.max).toDouble();
-      // A zero is a real answer ("no caffeine today") and is stored as one.
-      // Absence is expressed by leaving the field out of the map entirely.
-      clamped[e.key] = JournalMetricValue(
-        v,
-        atMinuteOfDay: e.value.atMinuteOfDay,
-      );
-    }
+    final custom = await _customJournalFields();
+    final clamped = <String, JournalMetricValue>{
+      for (final e in fields.entries)
+        e.key: JournalMetricValue(
+          _clampedJournalValue(e.key, e.value.value, custom),
+          atMinuteOfDay: e.value.atMinuteOfDay,
+        ),
+    };
     await LocalDb.putJournalMetrics(date, clamped);
   }
 
   @override
-  Future<List<JournalFieldSpec>> getJournalFields() async => [
+  Future<void> upsertJournalMetric(
+    String date,
+    String field,
+    double value,
+  ) async {
+    await LocalDb.upsertJournalMetric(
+      date,
+      field,
+      _clampedJournalValue(field, value, await _customJournalFields()),
+    );
+  }
+
+  @override
+  Future<JournalDaySnapshot> readJournalDay(String day) async {
+    if (!isJournalDayId(day)) {
+      throw ArgumentError.value(day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    final rows = await LocalDb.readJournalDayRows(day);
+    final metrics = <String, JournalMetricValue>{};
+    final metricUpdatedAt = <String, int>{};
+    for (final r in rows.metrics) {
+      final key = r['field'] as String;
+      metrics[key] = JournalMetricValue(
+        (r['value'] as num).toDouble(),
+        atMinuteOfDay: (r['at_min'] as num?)?.toInt(),
+      );
+      metricUpdatedAt[key] = (r['updated_at'] as num?)?.toInt() ?? 0;
+    }
+    final journal = rows.journal;
+    return JournalDaySnapshot(
+      day: day,
+      metrics: metrics,
+      metricUpdatedAt: metricUpdatedAt,
+      tags: decodeJournalTags(journal?['tags_json']),
+      note: (journal?['note'] as String?) ?? '',
+      journalUpdatedAt: (journal?['updated_at'] as num?)?.toInt() ?? 0,
+      fields: await getJournalFields(),
+    );
+  }
+
+  @override
+  Future<void> patchJournalDay(JournalDayPatch patch) async {
+    if (!isJournalDayId(patch.day)) {
+      throw ArgumentError.value(patch.day, 'day', 'Expected YYYY-MM-DD.');
+    }
+    // Hidden defs stay valid for a dirty save after archive. Active editor
+    // lists still omit them; a key with no definition is still unknown.
+    final custom = await _customJournalFields(includeHidden: true);
+    final fields = <String, JournalFieldSpec>{
+      for (final f in [...kJournalFields, ...custom]) f.key: f,
+    };
+    for (final e in patch.metrics.entries) {
+      if (e.key.isEmpty || !fields.containsKey(e.key)) {
+        throw ArgumentError.value(e.key, 'field', 'Unknown journal field.');
+      }
+      if (e.value == null) continue;
+      validateJournalPatchMetric(fields[e.key]!, e.value!);
+    }
+    await LocalDb.patchJournalDay(patch);
+  }
+
+  @override
+  Future<double?> addJournalMetric(
+    String date,
+    String field,
+    double delta,
+  ) async {
+    if (!isJournalDayId(date)) {
+      throw ArgumentError.value(date, 'date', 'Expected YYYY-MM-DD.');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Journal field is required.');
+    }
+    if (!delta.isFinite) {
+      throw ArgumentError.value(delta, 'delta', 'Journal value must be finite.');
+    }
+    final spec = journalFieldSpec(field, custom: await _customJournalFields());
+    if (spec == null) {
+      throw ArgumentError.value(field, 'field', 'Unknown journal field.');
+    }
+    return LocalDb.applyJournalMetricDelta(
+      date: date,
+      field: field,
+      delta: delta,
+      max: spec.max,
+    );
+  }
+
+  Future<List<JournalFieldSpec>> _customJournalFields({
+    bool includeHidden = false,
+  }) async =>
+      (await getJournalFields(includeHidden: includeHidden))
+          .where((s) => s.custom)
+          .toList();
+
+  /// Clamp on the way in rather than trusting the editor. A value past the
+  /// field's ceiling is almost always a mis-tap, and a single 40-coffee day
+  /// would dominate every correlation that field appears in for months.
+  ///
+  /// A zero is a real answer ("no caffeine today") and is stored as one.
+  /// Absence is expressed by not writing the field, not by writing 0.
+  double _clampedJournalValue(
+    String key,
+    double value,
+    List<JournalFieldSpec> custom,
+  ) {
+    final spec = journalFieldSpec(key, custom: custom);
+    return spec == null ? value : value.clamp(0.0, spec.max).toDouble();
+  }
+
+  @override
+  Future<List<JournalFieldSpec>> getJournalFields({
+    bool includeHidden = false,
+  }) async => [
     ...kJournalFields,
-    ...await LocalDb.journalFieldDefs(),
+    ...await LocalDb.journalFieldDefs(includeHidden: includeHidden),
   ];
 
   @override
-  Future<void> postCustomJournalField(JournalFieldSpec spec) =>
-      LocalDb.putJournalFieldDef(spec);
+  Future<void> postCustomJournalField(JournalFieldSpec spec) async {
+    await LocalDb.putJournalFieldDef(spec);
+  }
 
   @override
   Future<void> deleteCustomJournalField(String key) =>
-      LocalDb.deleteJournalFieldDef(key);
+      LocalDb.hideJournalFieldDef(key);
 
   /// For each distinct tag in the window, compare mean readiness on tagged days
   /// vs the window mean and emit a metric-delta card (only when n_with >= 2).
@@ -3461,8 +3572,8 @@ class LocalRepositoryImpl extends LocalRepository {
     );
 
     // Custom field definitions so a user-invented field reads by its own name
-    // and unit rather than its storage key.
-    final customs = (await getJournalFields()).where((f) => f.custom).toList();
+    // and unit rather than its storage key. Hidden rows still name history.
+    final customs = await LocalDb.journalFieldDefs(includeHidden: true);
     final betterOf = {
       for (final od in outcomeDefs)
         od['key'] as String: od['higherBetter'] as bool,

@@ -145,9 +145,41 @@ const kCsvExportSets = <CsvExportSet>[
   CsvExportSet(
     name: 'labs',
     title: 'Lab results',
-    columns: ['taken_on', 'marker', 'value', 'unit', 'note'],
-    sql: 'SELECT taken_on, marker, value, unit, note FROM lab_result '
-        'ORDER BY taken_on ASC, marker ASC',
+    columns: [
+      'taken_on',
+      'marker',
+      'value',
+      'unit',
+      'note',
+      'report_low',
+      'report_high',
+    ],
+    sql: 'SELECT taken_on, marker, value, unit, note, report_low, report_high '
+        'FROM lab_result ORDER BY taken_on ASC, marker ASC',
+  ),
+  CsvExportSet(
+    name: 'vo2',
+    title: 'VO2max',
+    // Every revision, including a deleted head. `source` is the stored origin
+    // (`user-entered`); the method is the user's own words, not a verified test.
+    columns: [
+      'id',
+      'measured_on',
+      'value',
+      'unit',
+      'declared_method',
+      'source',
+      'revision',
+      'deleted',
+      'created_at',
+      'updated_at',
+    ],
+    sql: '''
+      SELECT id, measured_on, value_ml_kg_min AS value, unit, declared_method,
+             origin AS source, revision, deleted, created_at, updated_at
+      FROM manual_vo2
+      ORDER BY measured_on ASC, id ASC, revision ASC
+    ''',
   ),
   // ── everything below is data the user TYPED IN ──────────────────────────────
   //
@@ -200,11 +232,11 @@ const kCsvExportSets = <CsvExportSet>[
       'note',
     ],
     sql: '''
-      SELECT d.date, COALESCE(m.label, d.med_key) AS medication,
-             COALESCE(m.kind, '') AS kind, d.slot_min, d.taken_ts, d.skipped,
-             COALESCE(d.dose_value, m.dose_value) AS dose_value,
-             COALESCE(m.dose_unit, '') AS dose_unit, d.note
-      FROM med_dose d LEFT JOIN med_def m ON m.key = d.med_key
+      SELECT d.date, COALESCE(d.label, d.med_key) AS medication,
+             COALESCE(d.kind, '') AS kind, d.slot_min, d.taken_ts, d.skipped,
+             d.dose_value AS dose_value,
+             COALESCE(d.dose_unit, '') AS dose_unit, d.note
+      FROM med_dose d
       ORDER BY d.date ASC, d.slot_min ASC
     ''',
   ),
@@ -235,14 +267,27 @@ const kCsvExportSets = <CsvExportSet>[
       'hold_sec',
       'rest_sec',
       'note',
+      'original_load',
+      'original_unit',
+      'load_basis',
+      'device_count',
+      'repetition_basis',
+      'side',
     ],
-    // Exercises live as a Dart constant (lib/ui2/activity/catalogue.dart), not
-    // in `exercise_def` — nothing inserts into that table — so `exercise` is
-    // the storage key, the same deliberate fallback the habits set documents
-    // above. The LEFT JOIN that used to be here could only ever miss.
+    // `exercise` is the stored strength_set key (preset id or custom UUID),
+    // not a joined `exercise_def` label — labels can be renamed later.
+    // Custom definitions do write `exercise_def`; this export still uses the
+    // set's own identity. `load_kg` remains the stored normalized total.
+    // Original input fields are empty on historic rows without load_json.
     sql: '''
       SELECT s.at_ts, s.session_id, s.exercise_key AS exercise,
-             s.set_index, s.reps, s.load_kg, s.rpe, s.hold_sec, s.rest_sec, s.note
+             s.set_index, s.reps, s.load_kg, s.rpe, s.hold_sec, s.rest_sec, s.note,
+             json_extract(s.load_json, '\$.value') AS original_load,
+             json_extract(s.load_json, '\$.unit') AS original_unit,
+             json_extract(s.load_json, '\$.basis') AS load_basis,
+             json_extract(s.load_json, '\$.deviceCount') AS device_count,
+             json_extract(s.load_json, '\$.repetitionBasis') AS repetition_basis,
+             json_extract(s.load_json, '\$.side') AS side
       FROM strength_set s
       ORDER BY s.at_ts ASC, s.session_id ASC, s.seq ASC
     ''',

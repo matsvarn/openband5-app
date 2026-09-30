@@ -13,16 +13,16 @@ String stageName(NightStage? stage) => switch (stage) {
 };
 Color stageColor(OB p, NightStage? stage) => switch (stage) {
   NightStage.awake => p.strain,
-  NightStage.rem => p.rem,
+  NightStage.rem => p.stageRem,
   NightStage.light => p.sleep,
-  NightStage.deep => p.deep,
+  NightStage.deep => p.stageDeep,
   null => p.line,
 };
 
 class MetricRing extends StatelessWidget {
   final String label, value;
   final String? unit;
-  final Color color;
+  final Color color, tint;
   final double? fraction;
   final SleepNight? night;
   final VoidCallback onTap;
@@ -32,6 +32,7 @@ class MetricRing extends StatelessWidget {
     required this.value,
     this.unit,
     required this.color,
+    required this.tint,
     this.fraction,
     this.night,
     required this.onTap,
@@ -43,8 +44,16 @@ class MetricRing extends StatelessWidget {
     final text = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(value, style: p.text(25, weight: FontWeight.w600)),
-        if (unit != null) Text(unit!, style: p.text(11, color: p.muted)),
+        Text(value, style: p.text(24, weight: FontWeight.w800, display: true)),
+        if (unit != null)
+          Text(
+            unit!,
+            style: p.text(
+              11,
+              weight: FontWeight.w600,
+              color: p.smallText(color),
+            ),
+          ),
       ],
     );
     return Semantics(
@@ -63,43 +72,27 @@ class MetricRing extends StatelessWidget {
                   text
                 else
                   SizedBox(
-                    width: 94,
-                    height: 94,
+                    width: 96,
+                    height: 96,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        Container(
-                          width: 84,
-                          height: 84,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                p.card,
-                                p.dark ? p.canvas : const Color(0xFFF3F5FA),
-                              ],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: p.ink.withValues(alpha: .06),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                        ),
                         CustomPaint(
-                          size: const Size.square(94),
-                          painter: _RingPainter(p, color, fraction, night),
+                          size: const Size.square(96),
+                          painter: _RingPainter(
+                            p,
+                            color,
+                            tint,
+                            fraction,
+                            night,
+                          ),
                         ),
                         text,
                       ],
                     ),
                   ),
-                const SizedBox(height: 5),
-                Text(label, style: p.text(13, weight: FontWeight.w500)),
+                const SizedBox(height: 8),
+                Text(label, style: p.text(13, weight: FontWeight.w600)),
               ],
             ),
           ),
@@ -111,31 +104,28 @@ class MetricRing extends StatelessWidget {
 
 class _RingPainter extends CustomPainter {
   final OB p;
-  final Color color;
+  final Color color, tint;
   final double? fraction;
   final SleepNight? night;
-  _RingPainter(this.p, this.color, this.fraction, this.night);
+  _RingPainter(this.p, this.color, this.tint, this.fraction, this.night);
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromCircle(
-      center: size.center(Offset.zero),
-      radius: 38.5,
-    );
+    final rect = Rect.fromCircle(center: size.center(Offset.zero), radius: 41);
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 6
+      ..strokeWidth = 9
       ..strokeCap = StrokeCap.round
-      ..color = p.line;
+      ..color = tint;
     canvas.drawArc(rect, 0, math.pi * 2, false, paint);
     if (night case final n?) {
       final bed = n.bedMinutes;
       if (bed == null || bed <= 0) return;
       var start = -math.pi / 2;
       for (final part in [
-        (n.remMinutes, p.rem),
+        (n.remMinutes, p.stageRem),
         (n.lightMinutes, p.sleep),
-        (n.deepMinutes, p.deep),
-        (n.awakeMinutes, p.strain),
+        (n.deepMinutes, p.stageDeep),
+        (n.awakeMinutes, p.wake),
       ]) {
         if (part.$1 == null) continue;
         final sweep = (part.$1! / bed).clamp(0.0, 1.0) * math.pi * 2;
@@ -166,7 +156,8 @@ class _RingPainter extends CustomPainter {
       old.night != night ||
       old.fraction != fraction ||
       old.p.dark != p.dark ||
-      old.color != color;
+      old.color != color ||
+      old.tint != tint;
 }
 
 class NightChart extends StatelessWidget {
@@ -424,70 +415,4 @@ class _NightPainter extends CustomPainter {
       old.p.dark != p.dark ||
       old.selectedOnset != selectedOnset ||
       old.selectedWake != selectedWake;
-}
-
-class BaselineMark extends StatelessWidget {
-  final DayMetric metric;
-  final Color color;
-  const BaselineMark({super.key, required this.metric, required this.color});
-  @override
-  Widget build(BuildContext context) {
-    if (metric.value == null || metric.baseline == null) {
-      return const SizedBox(height: 22);
-    }
-    return ExcludeSemantics(
-      child: SizedBox(
-        height: 22,
-        width: double.infinity,
-        child: CustomPaint(
-          painter: _BaselinePainter(
-            metric.value!,
-            metric.baseline!,
-            color,
-            OB.of(context).line,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BaselinePainter extends CustomPainter {
-  final double value, baseline;
-  final Color color, line;
-  _BaselinePainter(this.value, this.baseline, this.color, this.line);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final mid = size.width / 2;
-    canvas.drawLine(
-      const Offset(3, 11),
-      Offset(size.width - 3, 11),
-      Paint()
-        ..color = line
-        ..strokeWidth = 4
-        ..strokeCap = StrokeCap.round,
-    );
-    canvas.drawLine(
-      Offset(mid, 4),
-      Offset(mid, 18),
-      Paint()
-        ..color = const Color(0xFF9AA8BB)
-        ..strokeWidth = 2,
-    );
-    final relative = baseline == 0
-        ? 0.0
-        : ((value - baseline) / baseline).clamp(-.4, .4);
-    canvas.drawCircle(
-      Offset(mid + relative * size.width, 11),
-      4,
-      Paint()..color = color,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _BaselinePainter old) =>
-      old.value != value ||
-      old.baseline != baseline ||
-      old.color != color ||
-      old.line != line;
 }

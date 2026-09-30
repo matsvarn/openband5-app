@@ -1286,7 +1286,11 @@ List<double?> _curveOverSession(LiveWorkoutState? w) {
 /// tally, no calorie scoring, no GPS.
 Future<bool> _startSession(AppState app, Activity a) async {
   if (app.activeWorkout != null) return false;
-  app.startWorkout(type: a.typeKey);
+  try {
+    await app.startWorkout(type: a.typeKey);
+  } catch (_) {
+    return false;
+  }
   return app.activeWorkout != null;
 }
 

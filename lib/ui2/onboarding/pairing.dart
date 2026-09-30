@@ -20,7 +20,7 @@ import '../../ble/ble_state.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
-import '../ui2.dart';
+import '../../openband/theme.dart';
 
 /// Onboarding steps the user deliberately walked past.
 ///
@@ -34,6 +34,7 @@ class OnboardingBypass {
   OnboardingBypass._();
 
   static const kPairing = 'onboard.skipped_pairing';
+  static const kFirstSync = 'onboard.saw_first_sync';
   static const kProfile = 'onboard.saw_profile_setup';
 
   /// Bumped on every skip so the gate — which selects on the AppState route,
@@ -41,6 +42,7 @@ class OnboardingBypass {
   static final revision = ValueNotifier<int>(0);
 
   static bool get pairingSkipped => Prefs.getBool(kPairing, false);
+  static bool get firstSyncSeen => Prefs.getBool(kFirstSync, false);
   static bool get profileSeen => Prefs.getBool(kProfile, false);
 
   static void mark(String key) {
@@ -106,10 +108,16 @@ PairPhase classifyPairError(Object error, {int bondRefusals = 0}) {
 }
 
 class PairingScreen extends StatefulWidget {
-  /// Walk past pairing and open the app anyway. Supplied by the router.
+  /// Gate callbacks are explicit because the gate is the navigator's sole
+  /// route: it must change AppState instead of popping itself. Pushed re-pair
+  /// screens omit [onBack] and provide [onPaired] for exactly one pop.
+  final VoidCallback? onBack;
+  final VoidCallback? onPaired;
+
+  /// Walk past pairing and open the app anyway. Supplied only by the router.
   final VoidCallback? onSkip;
 
-  const PairingScreen({super.key, this.onSkip});
+  const PairingScreen({super.key, this.onBack, this.onPaired, this.onSkip});
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -139,6 +147,13 @@ class _PairingScreenState extends State<PairingScreen> {
         await app.pairWith(found);
       }
       if (!mounted) return;
+      // AccessorySetup cancellation is platform-owned and has changed shape
+      // across iOS releases. Persistence is the source of truth: a callback
+      // returning normally without an actual paired row is not success.
+      if (!app.isPaired) {
+        setState(() => _phase = PairPhase.cancelled);
+        return;
+      }
       setState(() => _phase = PairPhase.paired);
     } catch (e) {
       if (!mounted) return;
@@ -152,14 +167,17 @@ class _PairingScreenState extends State<PairingScreen> {
 
   @override
   Widget build(BuildContext c) => PairingView(
-        phase: _phase,
-        detail: _detail,
-        blocker: _blocker,
-        onPair: _pair,
-        onBack: () => Navigator.of(c).pop(c.read<AppState>().isPaired),
-        onContinue: () => Navigator.of(c).pop(true),
-        onSkip: widget.onSkip,
-      );
+    phase: _phase,
+    detail: _detail,
+    blocker: _blocker,
+    onPair: _pair,
+    onBack:
+        widget.onBack ?? () => Navigator.of(c).pop(c.read<AppState>().isPaired),
+    onContinue:
+        widget.onPaired ??
+        (widget.onBack == null ? () => Navigator.of(c).pop(true) : null),
+    onSkip: widget.onSkip,
+  );
 }
 
 class PairingView extends StatelessWidget {
@@ -169,6 +187,7 @@ class PairingView extends StatelessWidget {
   final VoidCallback? onBack;
   final VoidCallback? onContinue;
   final VoidCallback? onSkip;
+  final VoidCallback? onInfo;
 
   /// Which phone-side blocker, when [phase] is `bluetoothBlocked`.
   final BleBlocker? blocker;
@@ -182,80 +201,238 @@ class PairingView extends StatelessWidget {
     this.detail = '',
     this.blocker,
     this.onSkip,
+    this.onInfo,
   });
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
+    final p = OB.of(c);
     final busy = phase == PairPhase.scanning;
     // The copy for this one lives in the BLE layer, so this screen and the
     // Devices screen cannot drift into two different accounts of one state.
     final blocked = phase == PairPhase.bluetoothBlocked
         ? localizedBandStatus(
-            c, bandStatusFor(connection: 'disconnected', blocker: blocker))
+            c,
+            bandStatusFor(connection: 'disconnected', blocker: blocker),
+          )
         : null;
+    final stateDetail = phase == PairPhase.idle
+        ? _s(
+            c,
+            'Band nah ans iPhone halten.',
+            'Hold the band close to the phone.',
+          )
+        : blocked == null
+        ? _body(c, phase, blocker)
+        : blocked.fix ?? blocked.reason;
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: p.canvas,
       body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.devicePickerTitle ?? 'Connect your devices',
-                onBack: onBack),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, S.x8, S.x4, S.x8),
-              children: [
-                Icon(
-                    blocked == null
-                        ? LucideIcons.bluetooth
-                        : LucideIcons.bluetoothOff,
-                    size: 36,
-                    color: p.on(C.blue)),
-                const SizedBox(height: S.x5),
-                Text(_title(c, phase, blocker), style: F.t1.copyWith(color: p.ink)),
-                const SizedBox(height: S.x3),
-                Text(_body(c, phase, blocker), style: F.body.copyWith(color: p.ink2)),
-                if (blocked?.fix != null) ...[
-                  const SizedBox(height: S.x3),
-                  Text(blocked!.fix!,
-                      style: F.body.copyWith(
-                          color: p.on(C.blue), fontWeight: FontWeight.w600)),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: OBPageHeader(
+                title: _s(c, 'Band verbinden', 'Connect band'),
+                subtitle: onSkip == null
+                    ? ''
+                    : _s(
+                        c,
+                        'Einrichtung · Schritt 1 von 3',
+                        'Setup · Step 1 of 3',
+                      ),
+                onBack: onBack,
+                onInfo: onInfo ?? () => _showInfo(c),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                children: [
+                  OBCard(
+                    child: Column(
+                      children: [
+                        Container(
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: p.well,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _PairDeviceIcon(icon: LucideIcons.watch),
+                              const SizedBox(width: 16),
+                              _PairLink(
+                                activeBars: switch (phase) {
+                                  PairPhase.paired => 3,
+                                  PairPhase.idle || PairPhase.scanning => 2,
+                                  _ => 0,
+                                },
+                              ),
+                              const SizedBox(width: 16),
+                              _PairDeviceIcon(icon: LucideIcons.smartphone),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: p.sleepTint,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: busy
+                                  ? Padding(
+                                      padding: const EdgeInsets.all(9),
+                                      child: CircularProgressIndicator(
+                                        color: p.sleep,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      blocked == null
+                                          ? phase == PairPhase.paired
+                                                ? LucideIcons.circleCheck
+                                                : LucideIcons.bluetooth
+                                          : LucideIcons.bluetoothOff,
+                                      size: 18,
+                                      color: p.sleep,
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    phase == PairPhase.idle
+                                        ? 'WHOOP 5.0'
+                                        : _title(c, phase, blocker),
+                                    style: p.text(15, weight: FontWeight.w600),
+                                  ),
+                                  Text(
+                                    stateDetail,
+                                    style: p.text(13, color: p.muted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (phase != PairPhase.bluetoothBlocked) ...[
+                    const SizedBox(height: 10),
+                    OBCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 4,
+                      ),
+                      child: Column(
+                        children: [
+                          _PairStep(
+                            '1',
+                            _s(
+                              c,
+                              'Band tragen oder laden',
+                              'Wear or charge the band',
+                            ),
+                          ),
+                          _PairStep(
+                            '2',
+                            _s(c, 'Bluetooth einschalten', 'Turn on Bluetooth'),
+                          ),
+                          _PairStep(
+                            '3',
+                            _s(c, 'WHOOP-App schließen', 'Close the WHOOP app'),
+                            last: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-                if (busy) ...[
-                  const SizedBox(height: S.x8),
-                  Center(child: CircularProgressIndicator(color: p.on(C.blue))),
-                ],
-                ..._advice(c, phase, detail),
-                const SizedBox(height: S.x8),
-                BigButton(_cta(c, phase),
-                    icon: LucideIcons.radio,
-                    color: C.blue,
-                    onTap: busy
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                children: [
+                  OBAction(
+                    _cta(c, phase),
+                    ink: true,
+                    onPressed: busy
                         ? null
                         : phase == PairPhase.paired
                         ? onContinue
-                        : onPair),
-                if (onSkip != null && phase != PairPhase.paired) ...[
-                  const SizedBox(height: S.x3),
-                  // Never disabled, not even mid-scan: waiting out a scan you
-                  // already know will fail is exactly the trap this exists for.
-                  BigButton(AppLocalizations.of(c)?.pairingSkipForNow ?? 'Skip for now',
-                      color: C.blue, soft: true, onTap: onSkip),
-                  const SizedBox(height: S.x2),
-                  Text(
-                    AppLocalizations.of(c)?.pairingSkipNote ??
-                        'The app opens without a band. Nothing is measured until one '
-                            'is paired.',
-                    style: F.cap.copyWith(color: p.ink3),
+                        : onPair,
                   ),
+                  if (onSkip != null && phase != PairPhase.paired) ...[
+                    const SizedBox(height: 10),
+                    // Never disabled mid-scan: the escape hatch must not make
+                    // someone wait out a scan they already chose to leave.
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: onSkip,
+                        style: TextButton.styleFrom(
+                          foregroundColor: p.muted,
+                          minimumSize: const Size(44, 44),
+                        ),
+                        child: Text(
+                          _s(c, 'Später verbinden', 'Connect later'),
+                          style: p.text(
+                            15,
+                            weight: FontWeight.w600,
+                            color: p.muted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showInfo(BuildContext context) {
+    final p = OB.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: p.card,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _title(sheet, phase, blocker),
+                style: p.text(18, weight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Text(_body(sheet, phase, blocker), style: p.text(14)),
+              ..._advice(sheet, phase, detail),
+              const SizedBox(height: 16),
+              OBAction(
+                _s(sheet, 'Schließen', 'Close'),
+                ink: true,
+                onPressed: () => Navigator.pop(sheet),
+              ),
+            ],
           ),
-        ]),
+        ),
       ),
     );
   }
@@ -264,14 +441,17 @@ class PairingView extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return switch (phase) {
       PairPhase.bluetoothBlocked => localizedBandStatus(
-          c, bandStatusFor(connection: 'disconnected', blocker: blocker))
-        .title,
-      PairPhase.idle => l?.pairingIdleTitle ?? 'Wake the band and hold it close',
+        c,
+        bandStatusFor(connection: 'disconnected', blocker: blocker),
+      ).title,
+      PairPhase.idle =>
+        l?.pairingIdleTitle ?? 'Wake the band and hold it close',
       PairPhase.scanning => l?.pairingScanningTitle ?? 'Looking for your band',
       PairPhase.notFound => l?.pairingNotFoundTitle ?? 'No band in range',
       PairPhase.bondRefused =>
         l?.pairingBondRefusedTitle ?? 'The band refused the pairing',
-      PairPhase.cancelled => l?.pairingCancelledTitle ?? 'Pairing was cancelled',
+      PairPhase.cancelled =>
+        l?.pairingCancelledTitle ?? 'Pairing was cancelled',
       PairPhase.failed => l?.pairingFailedTitle ?? 'Pairing did not complete',
       PairPhase.paired => l?.pairingPairedTitle ?? 'Paired',
     };
@@ -281,25 +461,32 @@ class PairingView extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return switch (phase) {
       PairPhase.bluetoothBlocked => localizedBandStatus(
-          c, bandStatusFor(connection: 'disconnected', blocker: blocker))
-        .reason,
-      PairPhase.idle => l?.pairingIdleBody ??
-          'Take the band off the charger, put it on your wrist and keep the '
-              'phone within arm’s reach.',
-      PairPhase.scanning => l?.pairingScanningBody ??
-          'A band that has just come off the charger can take up to half a '
-              'minute to start advertising.',
-      PairPhase.notFound => l?.pairingNotFoundBody ??
-          'Nothing answered the scan. The band advertises only when it is '
-              'awake and not already connected to another phone.',
-      PairPhase.bondRefused => l?.pairingBondRefusedBody ??
-          'The link came up, but the band would not accept the encryption '
-              'key. That is almost always a stale pairing record on this '
-              'phone rather than a fault in the band.',
-      PairPhase.cancelled => l?.pairingCancelledBody ??
-          'The system picker was dismissed before a band was chosen.',
-      PairPhase.failed => l?.pairingFailedBody ??
-          'The band was reachable but the session did not finish.',
+        c,
+        bandStatusFor(connection: 'disconnected', blocker: blocker),
+      ).reason,
+      PairPhase.idle =>
+        l?.pairingIdleBody ??
+            'Take the band off the charger, put it on your wrist and keep the '
+                'phone within arm’s reach.',
+      PairPhase.scanning =>
+        l?.pairingScanningBody ??
+            'A band that has just come off the charger can take up to half a '
+                'minute to start advertising.',
+      PairPhase.notFound =>
+        l?.pairingNotFoundBody ??
+            'Nothing answered the scan. The band advertises only when it is '
+                'awake and not already connected to another phone.',
+      PairPhase.bondRefused =>
+        l?.pairingBondRefusedBody ??
+            'The link came up, but the band would not accept the encryption '
+                'key. That is almost always a stale pairing record on this '
+                'phone rather than a fault in the band.',
+      PairPhase.cancelled =>
+        l?.pairingCancelledBody ??
+            'The system picker was dismissed before a band was chosen.',
+      PairPhase.failed =>
+        l?.pairingFailedBody ??
+            'The band was reachable but the session did not finish.',
       PairPhase.paired => l?.pairingPairedBody ?? 'Setting up the first sync.',
     };
   }
@@ -307,9 +494,10 @@ class PairingView extends StatelessWidget {
   static String _cta(BuildContext c, PairPhase phase) {
     final l = AppLocalizations.of(c);
     return switch (phase) {
-      PairPhase.idle => l?.pairingFindMyBand ?? 'Find my band',
+      PairPhase.idle => _s(c, 'Verbinden', 'Connect'),
       PairPhase.scanning => l?.pairingSearching ?? 'Searching…',
-      PairPhase.cancelled => l?.pairingOpenPickerAgain ?? 'Open the picker again',
+      PairPhase.cancelled =>
+        l?.pairingOpenPickerAgain ?? 'Open the picker again',
       PairPhase.paired => l?.actionContinue ?? 'Continue',
       _ => l?.pairingTryAgain ?? 'Try again',
     };
@@ -320,53 +508,139 @@ class PairingView extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return switch (phase) {
       PairPhase.notFound => [
-          const SizedBox(height: S.x6),
-          StatusCard(
-            l?.pairingNotFoundAdviceTitle ??
-                'Three things stop a band answering',
-            l?.pairingNotFoundAdviceBody ??
-                'It is still on the charger; it is out of range; or it is '
-                    'still connected to another phone or to the vendor app.',
-            fix: l?.pairingNotFoundAdviceFix ??
-                'Force-quit the other app, then scan again',
-            icon: LucideIcons.searchX,
-          ),
-        ],
+        const SizedBox(height: 24),
+        OBNoticeCard(
+          l?.pairingNotFoundAdviceTitle ?? 'Three things stop a band answering',
+          l?.pairingNotFoundAdviceBody ??
+              'It is still on the charger; it is out of range; or it is '
+                  'still connected to another phone or to the vendor app.',
+          fix:
+              l?.pairingNotFoundAdviceFix ??
+              'Force-quit the other app, then scan again',
+          icon: LucideIcons.searchX,
+        ),
+      ],
       PairPhase.bondRefused => [
-          const SizedBox(height: S.x6),
-          StatusCard(
-            l?.pairingBondRefusedAdviceTitle ??
-                'Forget the band in Bluetooth settings first',
-            l?.pairingBondRefusedAdviceBody ??
-                'Open the phone’s Bluetooth settings, forget the band, '
-                    'then scan again here. The refused key is the old pairing '
-                    'record, and only the system can clear it.',
-            fix: l?.pairingBondRefusedAdviceFix ?? 'Open Bluetooth settings',
-            icon: LucideIcons.unlink,
-          ),
-          if (detail.isNotEmpty) ...[
-            const SizedBox(height: S.x3),
-            _Detail(detail),
-          ],
-        ],
+        const SizedBox(height: 24),
+        OBNoticeCard(
+          l?.pairingBondRefusedAdviceTitle ??
+              'Forget the band in Bluetooth settings first',
+          l?.pairingBondRefusedAdviceBody ??
+              'Open the phone’s Bluetooth settings, forget the band, '
+                  'then scan again here. The refused key is the old pairing '
+                  'record, and only the system can clear it.',
+          fix: l?.pairingBondRefusedAdviceFix ?? 'Open Bluetooth settings',
+          icon: LucideIcons.unlink,
+        ),
+        if (detail.isNotEmpty) ...[const SizedBox(height: 12), _Detail(detail)],
+      ],
       PairPhase.failed => [
-          const SizedBox(height: S.x6),
-          StatusCard(
-            l?.pairingFailedAdviceTitle ??
-                'The band was found but the session did not finish',
-            l?.pairingFailedAdviceBody ??
-                'Scanning again from a metre away normally works.',
-            icon: LucideIcons.triangleAlert,
-          ),
-          if (detail.isNotEmpty) ...[
-            const SizedBox(height: S.x3),
-            _Detail(detail),
-          ],
-        ],
+        const SizedBox(height: 24),
+        OBNoticeCard(
+          l?.pairingFailedAdviceTitle ??
+              'The band was found but the session did not finish',
+          l?.pairingFailedAdviceBody ??
+              'Scanning again from a metre away normally works.',
+          icon: LucideIcons.triangleAlert,
+        ),
+        if (detail.isNotEmpty) ...[const SizedBox(height: 12), _Detail(detail)],
+      ],
       _ => const [],
     };
   }
 }
+
+class _PairDeviceIcon extends StatelessWidget {
+  final IconData icon;
+  const _PairDeviceIcon({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Icon(icon, size: 28, color: p.ink),
+    );
+  }
+}
+
+class _PairLink extends StatelessWidget {
+  final int activeBars;
+  const _PairLink({required this.activeBars});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Row(
+      children: [
+        for (var i = 0; i < 3; i++) ...[
+          Container(
+            width: 10,
+            height: 3,
+            decoration: BoxDecoration(
+              color: i < activeBars ? p.action : p.line,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          if (i < 2) const SizedBox(width: 4),
+        ],
+      ],
+    );
+  }
+}
+
+class _PairStep extends StatelessWidget {
+  final String number;
+  final String label;
+  final bool last;
+  const _PairStep(this.number, this.label, {this.last = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: last
+          ? null
+          : BoxDecoration(
+              border: Border(bottom: BorderSide(color: p.line)),
+            ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 20,
+            child: Text(
+              number,
+              style: p.text(
+                15,
+                weight: FontWeight.w700,
+                display: true,
+                color: p.muted,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label, style: p.text(15, weight: FontWeight.w500)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+bool _german(BuildContext context) =>
+    Localizations.maybeLocaleOf(context)?.languageCode == 'de';
+
+String _s(BuildContext context, String de, String en) =>
+    _german(context) ? de : en;
 
 /// The raw error, kept but demoted. It is useless to most people and the only
 /// thing that helps in a bug report.
@@ -376,11 +650,9 @@ class _Detail extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
-    return Surface(
-      elevation: 0,
-      color: p.card2,
-      child: Text(text, style: F.cap.copyWith(color: p.ink3)),
+    final p = OB.of(c);
+    return OBCard(
+      child: Text(text, style: p.text(13, color: p.muted)),
     );
   }
 }

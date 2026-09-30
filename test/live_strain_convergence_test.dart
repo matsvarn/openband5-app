@@ -43,6 +43,10 @@ void main() {
           profile: _profile,
           hrMax: 187.0,
           restingHr: 55,
+          // 0.20 = the population level the canonical figures were pinned at;
+          // a live workout now receives the user's measured level, resolved by
+          // AppState (edge#226).
+          quietHrr: 0.20,
         );
 
     test('starts absent, not zero', () {

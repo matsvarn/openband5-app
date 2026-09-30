@@ -40,12 +40,14 @@ import 'package:provider/provider.dart';
 import '../../ai/journal_ai.dart' show kJournalPresetTags;
 import '../../l10n/app_localizations.dart';
 import '../../data/db.dart';
-import '../../data/journal_fields.dart' show formatMinuteOfDay;
+import '../../data/journal_fields.dart'
+    show JournalConflict, JournalDayPatch, formatMinuteOfDay;
 import '../../data/local_repository.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
-import 'journal_compose.dart';
+import '../../openband/journal_editor.dart';
+import '../../openband/local_repository.dart';
 
 /// Nights of the user's own record before any sign may fire. Matches
 /// `alcoholNightFlag`'s own floor — below it the MAD of four nights is noise
@@ -382,30 +384,25 @@ class _RoughNightCardState extends State<RoughNightCard> {
   /// Agreeing writes the tags the user picked onto that night, MERGED into
   /// whatever was already logged.
   ///
-  /// `postJournal` replaces the row's whole tag set, so the stored day is read
-  /// first — the same read-merge the compose screen does. Nothing numeric is
-  /// written: the card asked whether, not how much, and a quantity nobody gave
-  /// is a fabricated one. "Add how much" leads to the editor that does ask.
+  /// Tags-only patch: the note and every numeric field stay. Exact-day read,
+  /// so a night older than 30 days still keeps what was already there.
+  /// Nothing numeric is written: the card asked whether, not how much, and a
+  /// quantity nobody gave is a fabricated one. "Add how much" leads to the
+  /// editor that does ask.
   Future<void> _save() async {
     if (_saving || _picked.isEmpty) return;
     setState(() => _saving = true);
     try {
       final repo = context.read<AppState>().repo;
       if (repo == null) return;
-      Map<String, dynamic>? row;
-      for (final e in await repo.getJournal(range: '30d')) {
-        if (e['date'] == widget.night.day) row = e;
-      }
-      final tags = <String>{
-        ...?(row?['tags'] as List?)?.map((t) => t.toString()),
-        ..._picked,
-      };
-      await repo.postJournal(
-        widget.night.day,
-        tags.toList(),
-        (row?['note'] as String?) ?? '',
+      final snap = await repo.readJournalDay(widget.night.day);
+      final tags = <String>{...snap.tags, ..._picked};
+      await repo.patchJournalDay(
+        JournalDayPatch.fromBase(snap, tags: tags.toList()),
       );
       _dismiss();
+    } on JournalConflict {
+      // Keep the card and the picks; a conflicting tag edit is not merged.
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -550,7 +547,12 @@ class _RoughNightCardState extends State<RoughNightCard> {
     // amount is what the correlation engine actually reads.
     Pressable(
       onTap: () => Navigator.of(c).push(
-        MaterialPageRoute<void>(builder: (_) => JournalCompose(date: n.day)),
+        MaterialPageRoute<void>(
+          builder: (_) => OpenBandJournalEditor(
+            repository: LocalOpenBandRepository(c.read<AppState>()),
+            day: n.day,
+          ),
+        ),
       ),
       child: Text(
         l?.roughNightAddHowMuch ?? 'Add how much',

@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
+import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/models.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
@@ -246,6 +247,27 @@ void main() {
       }
       expect(allSet.skinTempC, closeTo(30.0, 1e-9));
       expect(allClear.skinTempC, closeTo(30.0, 1e-9));
+    });
+  });
+
+  group('decodeSubstrate — raw replay keeps gen5 skin temp', () {
+    String hexOf(Uint8List b) =>
+        b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+
+    test('a real reading replays as the same centi-°C the decoded row stored',
+        () {
+      final sub = decodeSubstrate([hexOf(v18Inner(skinTempRaw: 3057))]);
+      expect(sub.length, 1);
+      // The array convention is the decoded path's (`_skinTempFor`): centi-°C.
+      // `_Rec.gen5` used to write 0 here, which made a raw-replayed day lose
+      // every temperature second the stored `skin_temp_c` column carried.
+      expect(sub.skinTemp[0], 3057);
+    });
+
+    test('the -50.00 °C sentinel replays as absent (0), never a reading', () {
+      final sub = decodeSubstrate([hexOf(v18Inner(skinTempRaw: -5000))]);
+      expect(sub.length, 1);
+      expect(sub.skinTemp[0], 0);
     });
   });
 

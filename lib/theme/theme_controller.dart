@@ -32,14 +32,25 @@ class ThemeController extends ChangeNotifier {
 
   AppThemeChoice _choice;
   Brightness _platform;
+  final Future<bool> Function(AppThemeChoice choice)? _persist;
+  Future<void> _writes = Future<void>.value();
+  bool _disposed = false;
 
-  ThemeController._(this._choice, this._platform) {
+  ThemeController._(
+    this._choice,
+    this._platform, {
+    Future<bool> Function(AppThemeChoice choice)? persist,
+  }) : _persist = persist {
     _applyActive(); // make AppColors.active correct immediately
   }
 
   /// Build synchronously from already-loaded inputs (used by [bootstrap]).
-  factory ThemeController.seed(AppThemeChoice choice, Brightness platform) =>
-      ThemeController._(choice, platform);
+  factory ThemeController.seed(
+    AppThemeChoice choice,
+    Brightness platform, {
+    Future<bool> Function(AppThemeChoice choice)? persist,
+  }) =>
+      ThemeController._(choice, platform, persist: persist);
 
   /// Load the persisted choice + current OS brightness and set [AppColors.active]
   /// BEFORE the first frame. Call from main() before runApp so login/signup
@@ -79,15 +90,35 @@ class ThemeController extends ChangeNotifier {
   ThemeData get lightTheme => buildOpenStrapTheme(kLightPalette);
   ThemeData get darkTheme => buildOpenStrapTheme(kDarkPalette);
 
-  /// User picked a mode (onboarding / profile). Updates live + persists.
-  Future<void> setChoice(AppThemeChoice choice) async {
-    if (_choice == choice) return;
-    _choice = choice;
-    _applyActive();
-    _applySystemChrome();
-    notifyListeners();
+  /// Persist [choice] then show it. Writes run in call order; each durable
+  /// success is applied, so a later failure cannot hide an earlier save.
+  /// Selection never moves before persist returns.
+  Future<bool> setChoice(AppThemeChoice choice) {
+    late final Future<bool> result;
+    result = _writes.then((_) => _persistAndApply(choice));
+    _writes = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<bool> _persistAndApply(AppThemeChoice choice) async {
+    try {
+      final ok = await (_persist ?? _defaultPersist)(choice);
+      if (!ok) return false;
+      if (_choice != choice) {
+        _choice = choice;
+        _applyActive();
+        _applySystemChrome();
+        if (!_disposed) notifyListeners();
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _defaultPersist(AppThemeChoice choice) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kChoice, choice.name);
+    return prefs.setString(_kChoice, choice.name);
   }
 
   /// Called when the OS brightness changes (only matters under `system`).
@@ -97,8 +128,14 @@ class ThemeController extends ChangeNotifier {
     if (_choice == AppThemeChoice.system) {
       _applyActive();
       _applySystemChrome();
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   void _applyActive() {

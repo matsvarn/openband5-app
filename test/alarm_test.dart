@@ -16,6 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart' show alarmLatchFailed;
+import 'package:openstrap_edge/state/alarm_cancel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/sync/sync_policy.dart' show ClockRef;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
@@ -283,15 +285,15 @@ void main() {
       expect(a.isUnconfirmed(6000), isTrue);
     });
 
-    test('event 56 confirms (and clears pending/unconfirmed)', () {
+    test('event 56 cannot prove the current arm even after SET', () {
       final a = AlarmConfirmation(graceMs: 6000);
       a.set(1750000000, 0);
       final eff = a.onEvent(AlarmConfirmation.kEvtSet, 100);
-      expect(eff, AlarmEffect.confirmed);
-      expect(a.confirmed, isTrue);
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.confirmed, isFalse);
       expect(a.lastEventId, 56);
       expect(a.isPending(10000), isFalse);
-      expect(a.isUnconfirmed(10000), isFalse);
+      expect(a.isUnconfirmed(10000), isTrue);
     });
 
     test('events 57/58 mark FIRED with a timestamp', () {
@@ -308,15 +310,137 @@ void main() {
       }
     });
 
-    test('event 59 clears the alarm', () {
+    test('historical event 59 lowers confidence but cannot clear the alarm', () {
       final a = AlarmConfirmation();
       a.set(1750000000, 0);
       a.onEvent(AlarmConfirmation.kEvtSet, 10);
       final eff = a.onEvent(AlarmConfirmation.kEvtDisabled, 20);
-      expect(eff, AlarmEffect.cleared);
+      expect(eff, AlarmEffect.uncertain);
       expect(a.confirmed, isFalse);
-      expect(a.targetEpoch, isNull);
+      expect(a.targetEpoch, 1750000000);
       expect(a.lastEventId, 59);
+      expect(a.isDisableOutstanding, isFalse,
+          reason: 'unsolicited 59 does not invent a local off request');
+    });
+
+    test('requestDisable keeps the last armed instant', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 0);
+      a.onEvent(AlarmConfirmation.kEvtSet, 10);
+      a.requestDisable(20);
+      expect(a.targetEpoch, 1750000000);
+      expect(a.confirmed, isFalse);
+      expect(a.isDisableOutstanding, isTrue);
+      expect(a.disableWritten, isFalse);
+    });
+
+    test('event 59 after written requestDisable is still uncorrelated', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 0);
+      a.requestDisable(10);
+      a.markDisableWritten();
+      final eff = a.onEvent(AlarmConfirmation.kEvtDisabled, 20);
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.confirmed, isFalse);
+      expect(a.targetEpoch, 1750000000);
+      expect(a.isDisableOutstanding, isTrue);
+      expect(a.lastEventId, 59);
+    });
+
+    test('local disable() does not invent event 59', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 0);
+      a.disable();
+      expect(a.targetEpoch, isNull);
+      expect(a.lastEventId, isNull);
+      expect(a.isDisableOutstanding, isFalse);
+    });
+
+    test('a late 59 after a newer SET is ignored', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 1);
+      a.requestDisable(10);
+      a.set(1750003600, 20); // SET superseded disable
+      a.onEvent(AlarmConfirmation.kEvtSet, 21);
+      expect(a.confirmed, isFalse);
+      final eff = a.onEvent(
+        AlarmConfirmation.kEvtDisabled,
+        30,
+        eventTsSec: 15,
+      );
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.targetEpoch, 1750003600);
+      expect(a.confirmed, isFalse, reason: 'SET confirmation becomes uncertain');
+    });
+
+    test('an ambiguous late 59 after SET-superseded disable abstains', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 1);
+      a.requestDisable(10);
+      a.set(1750003600, 20);
+      expect(a.onEvent(AlarmConfirmation.kEvtDisabled, 30), AlarmEffect.uncertain);
+      expect(a.targetEpoch, 1750003600);
+      expect(a.confirmed, isFalse);
+    });
+
+    test('strap-clock 59 far after phone SET still abstains', () {
+      // eventTsSec is strap RTC seconds; setAtMs is phone wall ms. A 2s
+      // comparison would treat this live-looking stamp as current.
+      final setAtMs = 1750003600 * 1000;
+      final a = AlarmConfirmation();
+      a.set(1750000000, 1);
+      a.requestDisable(10);
+      a.set(1750003600, setAtMs);
+      final liveSkewTs = 1750003600 + 90; // strap 90s ahead of the SET epoch
+      final eff = a.onEvent(
+        AlarmConfirmation.kEvtDisabled,
+        setAtMs + 5000,
+        eventTsSec: liveSkewTs,
+      );
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.targetEpoch, 1750003600);
+      expect(a.confirmed, isFalse);
+    });
+
+    test('restored superseded marker abstains a live-looking 59', () {
+      final a = AlarmConfirmation();
+      a.set(1785003600, 1785003600 * 1000);
+      a.markDisableSuperseded();
+      final eff = a.onEvent(
+        AlarmConfirmation.kEvtDisabled,
+        1785003700 * 1000,
+        eventTsSec: 1785003690,
+      );
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.targetEpoch, 1785003600);
+      expect(a.confirmed, isFalse);
+    });
+
+    test('59 before this DISABLE is written stays unknown', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 1);
+      a.requestDisable(10);
+      a.set(1750003600, 20);
+      a.requestDisable(40);
+      final eff = a.onEvent(
+        AlarmConfirmation.kEvtDisabled,
+        50,
+        eventTsSec: 1750003700,
+      );
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.isDisableOutstanding, isTrue);
+      expect(a.targetEpoch, 1750003600);
+    });
+
+    test('59 after this DISABLE was written cannot prove off', () {
+      final a = AlarmConfirmation();
+      a.set(1750000000, 1);
+      a.requestDisable(40);
+      a.markDisableWritten();
+      final eff = a.onEvent(AlarmConfirmation.kEvtDisabled, 50);
+      expect(eff, AlarmEffect.uncertain);
+      expect(a.isDisableOutstanding, isTrue);
+      expect(a.targetEpoch, 1750000000);
     });
 
     test('an unrelated event returns null and changes nothing', () {
@@ -328,43 +452,20 @@ void main() {
     });
   });
 
-  // The pure decision behind AppState._notifyAlarmLatchFailed (Feature 2.1):
-  // whether the "alarm not confirmed" safety notification should fire for a
-  // given epoch, given the toggle and the CURRENT confirmation state. No
-  // notification plumbing here — the OS-facing side is exercised separately.
-  group('alarmLatchFailed (safety notification gate)', () {
-    test('fires when the toggle is on, the epoch is still the target, and it '
-        'never confirmed', () {
-      final a = AlarmConfirmation()..set(1750000000, 0);
-      expect(alarmLatchFailed(a, 1750000000, enabled: true), isTrue);
-    });
-
-    test('the toggle off overrides everything else', () {
-      final a = AlarmConfirmation()..set(1750000000, 0);
-      expect(alarmLatchFailed(a, 1750000000, enabled: false), isFalse);
-    });
-
-    test('a confirmed alarm never fires it, even with the toggle on', () {
-      final a = AlarmConfirmation()..set(1750000000, 0);
-      a.onEvent(AlarmConfirmation.kEvtSet, 10);
-      expect(alarmLatchFailed(a, 1750000000, enabled: true), isFalse);
-    });
-
-    test('a superseded epoch (a newer arm, or a cancel) does not fire the '
-        'STALE one\'s notification', () {
-      final a = AlarmConfirmation()..set(1750000000, 0);
-      a.set(1750003600, 100); // a fresh arm replaced the pending one
-      expect(alarmLatchFailed(a, 1750000000, enabled: true), isFalse,
-          reason: 'that epoch is no longer what this machine is tracking');
-      // The NEW target, still unconfirmed, is what should fire instead.
-      expect(alarmLatchFailed(a, 1750003600, enabled: true), isTrue);
-    });
-
-    test('a disabled/cleared alarm (targetEpoch null) never fires it', () {
-      final a = AlarmConfirmation()
-        ..set(1750000000, 0)
-        ..disable();
-      expect(alarmLatchFailed(a, 1750000000, enabled: true), isFalse);
+  group('alarmLatchFailed (actual command failure gate)', () {
+    for (final kind in AlarmCommandFailure.values) {
+      test('$kind only while current and enabled', () {
+        var current = true;
+        final failure = AlarmFailure(kind, stillCurrent: () => current);
+        expect(alarmLatchFailed(failure, enabled: true, currentGeneration: true), isTrue);
+        expect(alarmLatchFailed(failure, enabled: false, currentGeneration: true), isFalse);
+        expect(alarmLatchFailed(failure, enabled: true, currentGeneration: false), isFalse);
+        current = false;
+        expect(alarmLatchFailed(failure, enabled: true, currentGeneration: true), isFalse);
+      });
+    }
+    test('unknown/no evidence never alerts', () {
+      expect(alarmLatchFailed(null, enabled: true, currentGeneration: true), isFalse);
     });
   });
 
@@ -468,4 +569,110 @@ void main() {
     });
   });
 
+  group('engine wiring — DISABLE is judged on the write, not as band-off', () {
+    proto.Decoded disableReply(int seq, int opcode, {int outer = 1}) =>
+        proto.Decoded('cmd_response', {
+          'opcode': opcode,
+          'req_seq': seq,
+          'cmd_status': outer,
+        });
+
+    test('a failed write is writeFailed, not off', () async {
+      final link = _Link();
+      link.engine.debugWriteHook = (_) async => false;
+      expect(await link.engine.disableAlarm(), AlarmDisableOutcome.writeFailed);
+      expect(link.engine.pendingCommandCount, 0);
+    });
+
+    test('a strap refusal is rejected, not off', () async {
+      final link = _Link(
+        replyTo: (seq, opcode) => opcode == proto.Cmd.disableAlarm
+            ? disableReply(seq, opcode, outer: CommandAwaiter.statusFailure)
+            : null,
+      );
+      expect(await link.engine.disableAlarm(), AlarmDisableOutcome.rejected);
+      expect(link.logged('disable REJECTED'), isTrue);
+    });
+
+    test('an accepted write is written, still not event 59', () async {
+      final link = _Link(
+        replyTo: (seq, opcode) => opcode == proto.Cmd.disableAlarm
+            ? disableReply(seq, opcode)
+            : null,
+      );
+      expect(await link.engine.disableAlarm(), AlarmDisableOutcome.written);
+      expect(link.logged('Band-off remains unconfirmed'), isTrue);
+      expect(link.logged('event 59 is uncorrelated'), isTrue);
+    });
+
+    test('an unanswered write is noReply, not confirmed-off', () {
+      fakeAsync((async) {
+        final link = _Link();
+        AlarmDisableOutcome? outcome;
+        var done = false;
+        link.engine.disableAlarm().then((v) {
+          outcome = v;
+          done = true;
+        });
+        async.elapse(const Duration(seconds: 4));
+        expect(done, isFalse);
+        async.elapse(const Duration(seconds: 2));
+        expect(done, isTrue);
+        expect(outcome, AlarmDisableOutcome.noReply);
+        expect(link.logged('disable UNCONFIRMED'), isTrue);
+      });
+    });
+  });
+
+  group('shared alarm runner disable is not strap-off', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      AlarmOwner.resetForTest();
+    });
+    proto.Decoded disableReply(int seq, int opcode) => proto.Decoded(
+          'cmd_response',
+          {
+            'opcode': opcode,
+            'req_seq': seq,
+            'cmd_status': CommandAwaiter.statusSuccess,
+          },
+        );
+
+    test('all-off with an armed epoch sends DISABLE and returns written', () async {
+      final link = _Link(
+        replyTo: (seq, opcode) => opcode == proto.Cmd.disableAlarm
+            ? disableReply(seq, opcode)
+            : null,
+      );
+      await AlarmOwner.choose(AlarmDesired.off);
+      expect(await AlarmOwner.reconcile(link.engine), AlarmDisableOutcome.written);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+    });
+
+    test('all-off retries DISABLE when outstanding even with no epoch', () async {
+      final link = _Link(
+        replyTo: (seq, opcode) => opcode == proto.Cmd.disableAlarm
+            ? disableReply(seq, opcode)
+            : null,
+      );
+      await AlarmOwner.choose(AlarmDesired.off);
+      await AlarmOwner.reconcile(link.engine);
+      expect(await AlarmOwner.reconcile(link.engine), AlarmDisableOutcome.written);
+    });
+
+    test('all-off with no epoch and no outstanding does not send DISABLE', () async {
+      final link = _Link();
+      await AlarmOwner.initialize(const []);
+      expect(await AlarmOwner.reconcile(link.engine), isNull);
+      expect(link.written, isEmpty);
+    });
+
+    test('a failed DISABLE does not report written', () async {
+      final link = _Link();
+      link.engine.debugWriteHook = (_) async => false;
+      await AlarmOwner.choose(AlarmDesired.off);
+      expect(await AlarmOwner.reconcile(link.engine), AlarmDisableOutcome.writeFailed);
+      expect((await AlarmOwner.load()).desired, AlarmDesired.off);
+    });
+  });
 }

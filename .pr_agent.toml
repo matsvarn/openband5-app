@@ -1,9 +1,10 @@
 # .pr_agent.toml — repo-level PR-Agent config for OpenStrap/edge
 #
-# Repo facts this config assumes (verified 2026-07-25):
-#   * No CI gate runs on PRs. build.yml triggers only on `push: tags: ['v*']`,
-#     so nothing runs `flutter analyze` or `flutter test` before merge.
-#     PR-Agent and CodeRabbit are the only pre-merge checks.
+# Repo facts this config assumes (verified 2026-09-22):
+#   * test.yml runs `flutter analyze` + `flutter test` on pull_request and on
+#     push to main — CI IS a pre-merge gate now. build.yml triggers only on
+#     `push: tags: ['v*']` and is the release lane.
+#   * PR-Agent and CodeRabbit run alongside CI, not instead of it.
 #   * AGENTS.md at the repo root carries the architecture map, hard invariants,
 #     and recurring bug patterns. It is injected automatically (see [config]).
 

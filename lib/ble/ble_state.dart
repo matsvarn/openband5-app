@@ -1306,17 +1306,69 @@ class AlarmPayloads {
       when.subtract(Duration(seconds: driftSec));
 }
 
-/// Effect of a strap alarm-lifecycle event, for the caller to act on.
-enum AlarmEffect { confirmed, fired, cleared }
+/// Current readback describes stored whole-second configuration, NEVER a
+/// promise that haptics will execute. Evidence is ephemeral and session-bound.
+enum AlarmReadbackState { unknown, storedSeconds, allSlotsInactive }
 
-/// Pure state machine for alarm CONFIRMATION, driven by the strap's own event
-/// stream. This replaces the parked (and wrong) GET_ALARM readback as the display
-/// truth: instead of guessing whether an alarm latched, the strap tells us.
+class AlarmReadback {
+  final AlarmReadbackState state;
+  final int? wallEpoch;
+  final bool Function()? _stillCurrent;
+  const AlarmReadback.unknown()
+      : state = AlarmReadbackState.unknown, wallEpoch = null, _stillCurrent = null;
+  AlarmReadback(this.state, {this.wallEpoch, required bool Function() stillCurrent})
+      : _stillCurrent = stillCurrent;
+  bool get isCurrent => _stillCurrent?.call() ?? false;
+}
+
+/// An attempted command failed; absence of GET/ACK evidence is NOT a failure.
+enum AlarmCommandFailure { writeFailed, rejected }
+
+/// Ephemeral failure evidence, invalidated by session/lease/operation changes.
+class AlarmFailure {
+  final AlarmCommandFailure kind;
+  final bool Function() _stillCurrent;
+  AlarmFailure(this.kind, {required bool Function() stillCurrent})
+      : _stillCurrent = stillCurrent;
+  bool get isCurrent => _stillCurrent();
+}
+
+class AlarmOperationResult {
+  final DateTime? armed;
+  final AlarmDisableOutcome? disableOutcome;
+  final AlarmReadback readback;
+  final AlarmFailure? failure;
+  const AlarmOperationResult({this.armed, this.disableOutcome, this.failure,
+    this.readback = const AlarmReadback.unknown()});
+}
+
+/// Effect of a strap alarm-lifecycle event, for the caller to act on.
+enum AlarmEffect { fired, uncertain }
+
+/// Result of a DISABLE_ALARM write. Command ACK is not event 59: [written]
+/// means the opcode left the phone and was not refused, not that the band
+/// is off. [noReply] is the same durable unknown — the write left, nothing
+/// came back. Never treat either as confirmed-off.
+enum AlarmDisableOutcome { writeFailed, noReply, rejected, written }
+
+extension AlarmDisableOutcomeX on AlarmDisableOutcome {
+  /// The DISABLE opcode left the phone. Still not a band-off event.
+  bool get leftPhone =>
+      this == AlarmDisableOutcome.written || this == AlarmDisableOutcome.noReply;
+
+  bool get failed =>
+      this == AlarmDisableOutcome.writeFailed ||
+      this == AlarmDisableOutcome.rejected;
+}
+
+/// Pure alarm observation policy. The pinned protocol documents 56/59 as
+/// historical lifecycle records, not request-correlated current status.
 ///   - [set] after a SET write → not confirmed, timer starts (PENDING)
-///   - event 56 (ALARM_SET) → [confirmed] = true
-///   - no 56 within the grace window → UNCONFIRMED (soft warning)
+///   - event 56 (ALARM_SET) → uncertain; some arm latched, not necessarily ours
+///   - after the grace window → UNCONFIRMED (soft warning)
 ///   - event 57/58 (EXECUTED) → fired ([firedAt] set)
-///   - event 59 (DISABLED) → cleared
+///   - event 59 (DISABLED) → uncertain: history delivery carries no causal
+///     request boundary, so even written DISABLE cannot be confirmed here
 /// I/O-free + deterministic (caller supplies `nowMs`) so it is fully unit-testable.
 class AlarmConfirmation {
   // Strap alarm-lifecycle event ids (match the protocol EventId values).
@@ -1330,23 +1382,66 @@ class AlarmConfirmation {
   AlarmConfirmation({this.graceMs = 6000});
 
   int? targetEpoch; // the scheduled wake time (unix sec), or null when off
-  bool confirmed = false; // strap emitted ALARM_SET (56)
+  bool confirmed = false; // never promoted by uncorrelated history
   int? setAtMs; // wall-ms of the SET write (for the grace window)
   int? lastEventId; // most recent alarm event seen
   int? firedAt; // wall-ms of the last EXECUTED event
 
+  /// Wall-ms of the local DISABLE request. Null when no disable is in flight.
+  /// Does not mean the band is off; uncorrelated event 59 cannot prove it either.
+  int? disableAtMs;
+  bool disableWritten = false;
+
+  /// A SET that superseded an earlier DISABLE, so a late event 59 must not
+  /// clear the new arm. Restored from the durable `superseded` intent token.
+  int? supersededDisableAtMs;
+
   /// Record a SET write (awaiting the strap's confirmation event).
+  /// A new SET supersedes any outstanding disable request.
   void set(int epoch, int nowMs) {
+    if (disableAtMs != null) supersededDisableAtMs = disableAtMs;
     targetEpoch = epoch;
     confirmed = false;
     setAtMs = nowMs;
+    disableAtMs = null;
+    disableWritten = false;
   }
 
-  /// Record an explicit disable/clear.
+  /// Local DISABLE request. Keeps [targetEpoch] so the last armed instant
+  /// stays visible while off is unconfirmed. Does not invent a band-off event.
+  void requestDisable(int nowMs) {
+    disableAtMs = nowMs;
+    disableWritten = false;
+    supersededDisableAtMs = null;
+  }
+
+  /// The DISABLE write left the phone (ACK or no reply). Still not off.
+  void markDisableWritten() {
+    disableWritten = true;
+  }
+
+  /// Drop a DISABLE request that never left / was refused. Arm stays.
+  void cancelDisableRequest() {
+    disableAtMs = null;
+    disableWritten = false;
+  }
+
+  /// Restore a durable SET-after-DISABLE. [disableAtMs] stays null so a live
+  /// 59 cannot be tied to a request after this SET.
+  void markDisableSuperseded([int? atMs]) {
+    supersededDisableAtMs = atMs ?? disableAtMs ?? setAtMs ?? 1;
+    disableAtMs = null;
+    disableWritten = false;
+  }
+
+  /// Reset the local observation; this is not evidence of band-off.
   void disable() {
     targetEpoch = null;
     confirmed = false;
     setAtMs = null;
+    disableAtMs = null;
+    disableWritten = false;
+    supersededDisableAtMs = null;
   }
 
   /// SET written but not yet confirmed AND still inside the grace window.
@@ -1360,29 +1455,37 @@ class AlarmConfirmation {
   bool isUnconfirmed(int nowMs) =>
       targetEpoch != null && !confirmed && !isPending(nowMs);
 
+  bool get isDisableOutstanding => disableAtMs != null;
+
   /// Feed a strap event. Returns the resulting [AlarmEffect] the caller acts on,
-  /// or null when the event is unrelated to the alarm.
-  AlarmEffect? onEvent(int id, int nowMs) {
+  /// or null when the event is unrelated — or when a late event 59 cannot be
+  /// attributed to the current arm without inventing causality.
+  AlarmEffect? onEvent(int id, int nowMs, {int? eventTsSec}) {
     switch (id) {
       case kEvtSet:
-        confirmed = true;
+        // EventInfo has no request sequence, alarm target or slot correlation.
+        // Protocol constants.dart / commands.dart document next-sync history.
+        // Neither a target in RAM nor arrival after SET proves this arm.
+        confirmed = false;
         lastEventId = id;
-        return AlarmEffect.confirmed;
+        return AlarmEffect.uncertain;
       case kEvtStrapExecuted:
       case kEvtAppExecuted:
         lastEventId = id;
         firedAt = nowMs;
         return AlarmEffect.fired;
       case kEvtDisabled:
+        // This callback includes historical events and carries no command /
+        // session correlation. Arrival after a write is NOT causal proof.
+        // Preserve target and desired-off; only lower observation confidence.
         confirmed = false;
-        targetEpoch = null;
-        setAtMs = null;
         lastEventId = id;
-        return AlarmEffect.cleared;
+        return AlarmEffect.uncertain;
       default:
         return null;
     }
   }
+
 }
 
 // ── command/response correlation ────────────────────────────────────

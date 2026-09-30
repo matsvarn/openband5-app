@@ -5,6 +5,8 @@
 // correlation that reads the second as the first invents a data point at the
 // bottom of the dose range, which is where it does the most damage.
 
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 
@@ -116,6 +118,333 @@ void main() {
       // rather than letting two fields share storage.
       expect(customJournalFieldKey('???'), 'custom_');
       expect(customJournalFieldKey(''), 'custom_');
+      expect(isCustomJournalFieldKey(customJournalFieldKey('???')), isFalse);
+    });
+
+    test('a UUID-backed identity does not depend on the display label', () {
+      final a = newCustomJournalFieldKey();
+      final b = newCustomJournalFieldKey();
+      expect(a, isNot(b));
+      expect(isCustomJournalFieldKey(a), isTrue);
+      expect(a, startsWith('custom_'));
+      expect(a.length, 7 + 32);
+      expect(RegExp(r'^custom_[0-9a-f]{32}$').hasMatch(a), isTrue);
+      expect(a.contains('Ü'), isFalse);
+      const unicode = JournalFieldSpec(
+        key: 'custom_0123456789abcdef0123456789abcdef',
+        label: 'Übung',
+        kind: JournalFieldKind.dose,
+        unit: 'mg',
+        max: 400,
+        step: 50,
+        custom: true,
+      );
+      expect(() => validateCustomJournalField(unicode), returnsNormally);
+      expect(preparedCustomJournalField(unicode).label, 'Übung');
+    });
+  });
+
+  group('validateCustomJournalField', () {
+    test('rejects built-ins, empty keys, and empty labels', () {
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'mood',
+            label: 'Mood',
+            kind: JournalFieldKind.rating,
+            unit: '',
+            max: 5,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_',
+            label: 'X',
+            kind: JournalFieldKind.dose,
+            unit: 'mg',
+            max: 10,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_ok',
+            label: '   ',
+            kind: JournalFieldKind.dose,
+            unit: 'mg',
+            max: 10,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects non-finite or non-positive max/step', () {
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_ok',
+            label: 'Ok',
+            kind: JournalFieldKind.dose,
+            unit: 'mg',
+            max: double.infinity,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_ok',
+            label: 'Ok',
+            kind: JournalFieldKind.dose,
+            unit: 'mg',
+            max: 10,
+            step: 0,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('kind-specific yes/no and rating constraints, wellness max 1 ok', () {
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_habit',
+            label: 'Walk after lunch',
+            kind: JournalFieldKind.rating,
+            unit: '',
+            max: 1,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        returnsNormally,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_yn',
+            label: 'Did it',
+            kind: JournalFieldKind.yesNo,
+            unit: '',
+            max: 1,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        returnsNormally,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_yn',
+            label: 'Did it',
+            kind: JournalFieldKind.yesNo,
+            unit: '',
+            max: 5,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_dose',
+            label: 'Magnesium',
+            kind: JournalFieldKind.dose,
+            unit: '',
+            max: 100,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateCustomJournalField(
+          const JournalFieldSpec(
+            key: 'custom_frac',
+            label: 'Mood-ish',
+            kind: JournalFieldKind.rating,
+            unit: '',
+            max: 5.5,
+            step: 1,
+            custom: true,
+          ),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('unknown kind names fail instead of becoming a dose', () {
+      expect(
+        () => journalFieldKindNamed('something_new'),
+        throwsA(isA<FormatException>()),
+      );
+      expect(journalFieldKindNamed('dose'), JournalFieldKind.dose);
+    });
+  });
+
+  group('validateJournalPatchMetric', () {
+    test('refuses over-max and fractional ratings, keeps a valid whole rating',
+        () {
+      expect(
+        () => validateJournalPatchMetric(
+          kJournalFieldsByKey['mood']!,
+          const JournalMetricValue(3.5),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateJournalPatchMetric(
+          kJournalFieldsByKey['caffeine_mg']!,
+          const JournalMetricValue(5000),
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateJournalPatchMetric(
+          kJournalFieldsByKey['mood']!,
+          const JournalMetricValue(4),
+        ),
+        returnsNormally,
+      );
+    });
+  });
+
+  group('parseStoredCustomJournalField', () {
+    test('legacy slug keys, empty labels, and rating max 1 still parse', () {
+      // Wellness still slugs the name; older writers did not trim. Create
+      // rejects those shapes, but a stored row must remain readable.
+      final slug = parseStoredCustomJournalField({
+        'key': 'custom_walk_after_lunch',
+        'label': ' Walk after lunch ',
+        'kind': 'rating',
+        'unit': '',
+        'max_value': 1.0,
+        'step': 1.0,
+        'has_time': 0,
+        'hidden': 0,
+      });
+      expect(slug.label, ' Walk after lunch ');
+      expect(slug.max, 1);
+      expect(slug.hidden, isFalse);
+      final unnamed = parseStoredCustomJournalField({
+        'key': 'legacy_habit',
+        'label': '',
+        'kind': 'dose',
+        'unit': 'mg',
+        'max_value': 10.0,
+        'step': 1.0,
+        'has_time': 1,
+        'hidden': 1,
+      });
+      expect(unnamed.key, 'legacy_habit');
+      expect(unnamed.label, isEmpty);
+      expect(unnamed.hasTime, isTrue);
+      expect(unnamed.hidden, isTrue);
+    });
+
+    test('rejects inverted/non-positive scales and fractional ratings', () {
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_ok',
+          'label': 'Ok',
+          'kind': 'dose',
+          'unit': 'mg',
+          'max_value': 0.0,
+          'step': 1.0,
+          'has_time': 0,
+          'hidden': 0,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_ok',
+          'label': 'Ok',
+          'kind': 'dose',
+          'unit': 'mg',
+          'max_value': 5.0,
+          'step': 10.0,
+          'has_time': 0,
+          'hidden': 0,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_frac',
+          'label': 'Frac',
+          'kind': 'rating',
+          'unit': '',
+          'max_value': 5.5,
+          'step': 1.0,
+          'has_time': 0,
+          'hidden': 0,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('rejects malformed booleans and non-string units', () {
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_ok',
+          'label': 'Ok',
+          'kind': 'dose',
+          'unit': 'mg',
+          'max_value': 10.0,
+          'step': 1.0,
+          'has_time': 2,
+          'hidden': 0,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_ok',
+          'label': 'Ok',
+          'kind': 'dose',
+          'unit': 'mg',
+          'max_value': 10.0,
+          'step': 1.0,
+          'has_time': 0,
+          'hidden': null,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => parseStoredCustomJournalField({
+          'key': 'custom_ok',
+          'label': 'Ok',
+          'kind': 'dose',
+          'unit': 0,
+          'max_value': 10.0,
+          'step': 1.0,
+          'has_time': 0,
+          'hidden': 0,
+        }),
+        throwsA(isA<FormatException>()),
+      );
     });
   });
 
@@ -200,6 +529,31 @@ void main() {
       final ewma = weightTrendEwma({'2026-01-01': 80.0, '2026-01-02': 84.0});
       // ~9.4% of a 4 kg jump at a 7-day half-life.
       expect(ewma['2026-01-02'], closeTo(80.4, 0.1));
+    });
+
+    test('civil-day gaps survive Europe/Berlin spring DST', () {
+      // Independently: same EWMA as the January 1-day case, and a 4-day gap
+      // at the 7-day half-life. Local midnight parse + inDays: 29→30 is the
+      // 23h spring-forward (inDays 0); 27→31 is 95h (inDays 3). 28→29 is
+      // still 24h — the jump is 02:00 on the 29th.
+      const start = 80.0;
+      const next = 84.0;
+      double afterGap(int days) {
+        final w = 1 - math.pow(0.5, days / kWeightTrendHalfLifeDays);
+        return start + w * (next - start);
+      }
+
+      final oneDay = weightTrendEwma({
+        '2026-03-29': start,
+        '2026-03-30': next,
+      });
+      expect(oneDay['2026-03-30'], closeTo(afterGap(1), 1e-9));
+
+      final multiDay = weightTrendEwma({
+        '2026-03-27': start,
+        '2026-03-31': next,
+      });
+      expect(multiDay['2026-03-31'], closeTo(afterGap(4), 1e-9));
     });
   });
 }

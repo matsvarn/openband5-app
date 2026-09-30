@@ -25,6 +25,11 @@ class _Repository implements OpenBandRepository {
       throw UnimplementedError();
   @override
   Future<void> restoreAutomatic(String day) async {}
+  // The controller under test touches only the sleep members above; every
+  // other repository member is out of scope for these tests.
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
 }
 
 void main() {

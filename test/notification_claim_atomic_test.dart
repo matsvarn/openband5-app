@@ -42,6 +42,8 @@ String _dayOffset(int days) => dayLabelOf(DateTime.now().add(Duration(days: days
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  final previousReduced = NotificationCenter.instance.releaseReduced;
+
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
@@ -55,6 +57,11 @@ void main() {
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
     SharedPreferences.setMockInitialValues({});
+    NotificationCenter.instance.releaseReduced = false;
+  });
+
+  tearDown(() {
+    NotificationCenter.instance.releaseReduced = previousReduced;
   });
 
   tearDownAll(() async => LocalDb.close());

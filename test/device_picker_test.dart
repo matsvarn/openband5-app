@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' show BluetoothDevice;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/_registry.dart';
+import 'package:openstrap_edge/ble/ble_state.dart'
+    show BleBlocker, bandStatusFor;
 import 'package:openstrap_edge/ble/hrs_link.dart';
 import 'package:openstrap_edge/ui2/pairing/device_picker.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart' show kPairableSensors;
@@ -41,9 +43,12 @@ DevicePickerView _view({
   List<BandCandidate> found = const [],
   bool scanning = false,
   String? heldBack,
+  BleBlocker? scanBlocker,
+  String? scanProblem,
   String? problem,
   String? busyRemoteId,
   List<({BandEntry entry, String blurb, IconData icon})> categories = const [],
+  VoidCallback? onScan,
   VoidCallback? onSkip,
 }) =>
     DevicePickerView(
@@ -53,9 +58,12 @@ DevicePickerView _view({
       found: found,
       scanning: scanning,
       heldBack: heldBack,
+      scanBlocker: scanBlocker,
+      scanProblem: scanProblem,
       problem: problem,
       busyRemoteId: busyRemoteId,
       categories: categories,
+      onScan: onScan,
       onSkip: onSkip,
     );
 
@@ -119,11 +127,44 @@ void main() {
     });
   });
 
-  testWidgets('a scan failure is its own card, distinct from "nothing found"',
+  testWidgets('a failed scan never renders a successful empty result and retries',
       (t) async {
-    await _pump(t, _view(problem: 'Bluetooth is off.'));
-    expect(find.text('That did not work'), findsOneWidget);
-    expect(find.text('Bluetooth is off.'), findsOneWidget);
+    var retries = 0;
+    await _pump(t, _view(
+      scanBlocker: BleBlocker.adapterOff,
+      onScan: () => retries++,
+    ));
+    expect(find.text('Bluetooth is turned off'), findsOneWidget);
+    expect(find.text('Nothing found yet'), findsNothing);
+    final status = bandStatusFor(
+      connection: 'disconnected',
+      blocker: BleBlocker.adapterOff,
+    );
+    expect(find.text(status.fix!), findsOneWidget);
+    expect(find.text(status.reason), findsNothing);
+    await t.tap(find.text('Try again'));
+    expect(retries, 1);
+  });
+
+  testWidgets('a late scan failure preserves candidates already observed',
+      (t) async {
+    await _pump(t, _view(
+      found: [_cand('AA', 'ble_hrs', label: 'Strap')],
+      scanProblem: 'The scan stopped early.',
+      onScan: () {},
+    ));
+    expect(find.text('Strap'), findsOneWidget);
+    expect(find.text('The scan stopped early.'), findsOneWidget);
+    expect(find.text('Nothing found yet'), findsNothing);
+  });
+
+  testWidgets('a pairing failure does not hide valid scan results', (t) async {
+    await _pump(t, _view(
+      found: [_cand('AA', 'ble_hrs', label: 'Strap')],
+      problem: 'Could not pair that device.',
+    ));
+    expect(find.text('Strap'), findsOneWidget);
+    expect(find.text('Could not pair that device.'), findsOneWidget);
   });
 
   group('categories are plain text and a generic glyph, never a fetched brand asset',
@@ -155,6 +196,7 @@ void main() {
   testWidgets('skip is offered only when the caller gave a way out', (t) async {
     await _pump(t, _view());
     expect(find.text('Skip for now'), findsNothing);
+    expect(find.textContaining('Everything stays on this phone'), findsNothing);
     await _pump(t, _view(onSkip: () {}));
     expect(find.text('Skip for now'), findsOneWidget);
   });

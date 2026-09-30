@@ -1,5 +1,7 @@
 # OpenBand 5
 
+> Release scope approved 21 September 2026: daily band data, sleep, Band and essential Profile/settings/data. Secondary modules remain preserved behind development access. The current scope, queue and acceptance process are in [IMPLEMENTATION_PLAN.md](docs/openband5/IMPLEMENTATION_PLAN.md); the previous full-product checklist is archived.
+
 A subscription-free app for WHOOP 5.0. An independent [OpenStrap](https://github.com/OpenStrap) fork owned by Mats, focused on iPhone and the WHOOP 5.0 hardware he already owns.
 
 The aim is reliable access to the band's useful data, understandable insights, and an app that can be personalized. The official WHOOP subscription is already inactive. Direct Bluetooth is therefore the primary connection.

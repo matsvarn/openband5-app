@@ -124,4 +124,31 @@ void main() {
     expect(await svc.ensurePermission(), isTrue);
     expect(prompts, 1);
   });
+
+  test('hasPermission is fail-closed; readPermissionStatus throws', () async {
+    svc.debugProbePermission = () async {
+      throw Exception('plugin down');
+    };
+    expect(await svc.hasPermission(), isFalse);
+    await expectLater(svc.readPermissionStatus(), throwsA(isA<Exception>()));
+  });
+
+  test('null OS probe is fail-closed for hasPermission, unknown for UI',
+      () async {
+    svc.debugProbePermission = () async => null;
+    expect(await svc.hasPermission(), isFalse);
+    await expectLater(
+      svc.readPermissionStatus(),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('known grant and deny stay truthful on both seams', () async {
+    svc.debugProbePermission = () async => true;
+    expect(await svc.hasPermission(), isTrue);
+    expect(await svc.readPermissionStatus(), isTrue);
+    svc.debugProbePermission = () async => false;
+    expect(await svc.hasPermission(), isFalse);
+    expect(await svc.readPermissionStatus(), isFalse);
+  });
 }

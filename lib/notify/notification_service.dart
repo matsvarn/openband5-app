@@ -247,7 +247,9 @@ class NotificationService {
       }
       final name = await FlutterTimezone.getLocalTimezone();
       if (name != tz.local.name) tz.setLocalLocation(tz.getLocation(name));
-    } catch (_) {/* tz stays as-is (UTC on a cold failure); we retry next arm */}
+    } catch (e, st) {
+      if (_strictSchedule) Error.throwWithStackTrace(e, st);
+    }
   }
 
   /// Set up the plugin, channels, timezone db and the tap handler. Idempotent.
@@ -263,10 +265,19 @@ class NotificationService {
       requestBadgePermission: false,
       requestSoundPermission: false,
     );
-    await _plugin.initialize(
+    final ok = await _plugin.initialize(
       const InitializationSettings(android: android, iOS: darwin),
       onDidReceiveNotificationResponse: _onTap,
     );
+    // `false` is the plugin's documented failure. `null` is an absent
+    // platform implementation (VM tests, unsupported targets) — not a
+    // reported init failure.
+    if (ok == false) {
+      if (_strictSchedule) {
+        throw StateError('notification plugin failed to initialize');
+      }
+      return;
+    }
     final androidImpl = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidImpl?.createNotificationChannel(_deviceChannel);
@@ -364,33 +375,85 @@ class NotificationService {
   /// Test seams for the platform permission plumbing (there is no plugin to
   /// talk to in a unit test). [debugRequestPermission] stands in for the
   /// interactive request, [debugProbePermission] for the non-prompting check.
+  /// Returning `null` from the probe is an unknown OS response, not a denial.
   @visibleForTesting
   Future<bool> Function()? debugRequestPermission;
   @visibleForTesting
-  Future<bool> Function()? debugProbePermission;
+  Future<bool?> Function()? debugProbePermission;
 
-  /// Non-mutating: whether notifications are currently enabled, WITHOUT ever
-  /// showing the OS authorization prompt. Safe to call from any context,
-  /// including headless/background. Does not populate [_granted] — a
-  /// not-yet-decided status here shouldn't get permanently cached as
-  /// "denied" just because a background check happened to run first.
+  /// Plugin seams for schedule/cancel. Same role as [debugProbePermission]:
+  /// the real method still runs its gates; only the platform call is replaced.
+  @visibleForTesting
+  Future<void> Function(int id)? debugCancel;
+  @visibleForTesting
+  Future<void> Function()? debugZonedSchedule;
+
+  /// Caller-scoped: only async work started inside [reportingScheduleFailures]
+  /// sees this. A singleton depth would make a background cancel throw while
+  /// settings is reporting, or swallow a settings cancel awaited after the
+  /// depth dropped.
+  static final Object _reportScheduleFailures = Object();
+
+  bool get _strictSchedule =>
+      identical(Zone.current[_reportScheduleFailures], true);
+
+  /// Caller-requested: plugin [scheduleDaily]/[scheduleWeekly]/[scheduleOnce]/
+  /// [cancel]/[cancelAll] errors propagate. Default callers keep swallowing.
+  /// A thrown error is "the plugin call failed", not that a notification
+  /// fired on the device.
+  Future<T> reportingScheduleFailures<T>(Future<T> Function() action) =>
+      runZoned(action, zoneValues: {_reportScheduleFailures: true});
+
+  Future<void> _ignoreUnlessStrict(Future<void> Function() run) async {
+    try {
+      await run();
+    } catch (e, st) {
+      if (_strictSchedule) Error.throwWithStackTrace(e, st);
+    }
+  }
+
+  /// Fail-closed for background/headless callers: query errors and a
+  /// nullable OS response become `false`. Does not populate [_granted].
+  /// Settings UI must use [readPermissionStatus] — unknown is not denied.
   Future<bool> hasPermission() async {
     try {
-      final probe = debugProbePermission;
-      if (probe != null) return await probe();
-      await init();
-      final ios = _plugin.resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>();
-      if (ios != null) return (await ios.checkPermissions())?.isEnabled ?? false;
-      final android = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      if (android != null) {
-        return await android.areNotificationsEnabled() ?? false;
-      }
-      return true; // other platforms (macOS/Linux) — no gating here
+      return await readPermissionStatus();
     } catch (_) {
       return false;
     }
+  }
+
+  /// Strict apply re-probes. An unreadable status must not look like a
+  /// denial: standing cancel already ran, and a silent skip would claim
+  /// success with the reminders gone. Known deny stays a skip. Background
+  /// stays fail-closed through [ensurePermission].
+  Future<bool> _permissionAllowsSchedule() {
+    if (_strictSchedule) return readPermissionStatus();
+    return ensurePermission(allowPrompt: false);
+  }
+
+  /// Truthful non-prompting probe for settings UI. Throws on plugin/query
+  /// failure or when the OS returns a null (undecided) status. Known
+  /// grant/deny is `true`/`false`.
+  Future<bool> readPermissionStatus() async {
+    final enabled = await _probePermission();
+    if (enabled == null) {
+      throw StateError('notification permission unknown');
+    }
+    return enabled;
+  }
+
+  Future<bool?> _probePermission() async {
+    final probe = debugProbePermission;
+    if (probe != null) return await probe();
+    await init();
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    if (ios != null) return (await ios.checkPermissions())?.isEnabled;
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android != null) return await android.areNotificationsEnabled();
+    return true; // other platforms (macOS/Linux) — no gating here
   }
 
   NotificationDetails _details(NotifCategory c) {
@@ -479,6 +542,34 @@ class NotificationService {
     return false;
   }
 
+  Future<void> _zonedSchedule({
+    required int id,
+    required String title,
+    required String? body,
+    required tz.TZDateTime when,
+    required NotificationDetails details,
+    DateTimeComponents? match,
+    String? payload,
+  }) async {
+    final hook = debugZonedSchedule;
+    if (hook != null) {
+      await hook();
+      return;
+    }
+    await _plugin.zonedSchedule(
+      id,
+      title,
+      body,
+      when,
+      details,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: match,
+      payload: payload,
+    );
+  }
+
   Future<void> scheduleDaily({
     required int id,
     required NotifCategory category,
@@ -488,37 +579,33 @@ class NotificationService {
     required int minute,
     String? route,
     bool skipToday = false,
-  }) async {
-    try {
-      if (!_maySchedule(id)) return;
-      if (!await ensurePermission(allowPrompt: false)) return;
-      await ensureTimezone();
-      var when = _nextInstanceOf(hour, minute);
-      // skipToday: tonight's instance is already handled (e.g. the journal was
-      // logged before the prompt time) — start the daily repeat tomorrow.
-      if (skipToday) {
-        final now = tz.TZDateTime.now(tz.local);
-        if (when.year == now.year &&
-            when.month == now.month &&
-            when.day == now.day) {
-          // Calendar day, not +24h — see nextInstanceOf's DST note.
-          when = nextCalendarDay(when);
+  }) =>
+      _ignoreUnlessStrict(() async {
+        if (!_maySchedule(id)) return;
+        if (!await _permissionAllowsSchedule()) return;
+        await ensureTimezone();
+        var when = _nextInstanceOf(hour, minute);
+        // skipToday: tonight's instance is already handled (e.g. the journal was
+        // logged before the prompt time) — start the daily repeat tomorrow.
+        if (skipToday) {
+          final now = tz.TZDateTime.now(tz.local);
+          if (when.year == now.year &&
+              when.month == now.month &&
+              when.day == now.day) {
+            // Calendar day, not +24h — see nextInstanceOf's DST note.
+            when = nextCalendarDay(when);
+          }
         }
-      }
-      await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        when,
-        _details(category),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: route,
-      );
-    } catch (_) {}
-  }
+        await _zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          when: when,
+          details: _details(category),
+          match: DateTimeComponents.time,
+          payload: route,
+        );
+      });
 
   Future<void> scheduleWeekly({
     required int id,
@@ -529,25 +616,21 @@ class NotificationService {
     required int hour,
     required int minute,
     String? route,
-  }) async {
-    try {
-      if (!_maySchedule(id)) return;
-      if (!await ensurePermission(allowPrompt: false)) return;
-      await ensureTimezone();
-      await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        _nextInstanceOf(hour, minute, weekday: weekday),
-        _details(category),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        payload: route,
-      );
-    } catch (_) {}
-  }
+  }) =>
+      _ignoreUnlessStrict(() async {
+        if (!_maySchedule(id)) return;
+        if (!await _permissionAllowsSchedule()) return;
+        await ensureTimezone();
+        await _zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          when: _nextInstanceOf(hour, minute, weekday: weekday),
+          details: _details(category),
+          match: DateTimeComponents.dayOfWeekAndTime,
+          payload: route,
+        );
+      });
 
   /// One-shot absolute-time schedule (unlike [scheduleDaily]/[scheduleWeekly],
   /// no `matchDateTimeComponents` — this fires exactly once at [at] and is not
@@ -564,30 +647,28 @@ class NotificationService {
     required String body,
     required DateTime at,
     String? route,
-  }) async {
-    try {
-      if (!_maySchedule(id)) return;
-      if (!await ensurePermission(allowPrompt: false)) return;
-      final when = tz.TZDateTime.from(at, tz.local);
-      await _plugin.zonedSchedule(
-        id,
-        title,
-        body,
-        when,
-        _details(category),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        payload: route,
-      );
-    } catch (_) {}
-  }
+  }) =>
+      _ignoreUnlessStrict(() async {
+        if (!_maySchedule(id)) return;
+        if (!await _permissionAllowsSchedule()) return;
+        await _zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          when: tz.TZDateTime.from(at, tz.local),
+          details: _details(category),
+          payload: route,
+        );
+      });
 
-  Future<void> cancel(int id) async {
-    try {
-      await _plugin.cancel(id);
-    } catch (_) {}
-  }
+  Future<void> cancel(int id) => _ignoreUnlessStrict(() async {
+        final hook = debugCancel;
+        if (hook != null) {
+          await hook(id);
+          return;
+        }
+        await _plugin.cancel(id);
+      });
 
   /// Drop every notification this app has scheduled or posted.
   ///
@@ -595,9 +676,7 @@ class NotificationService {
   /// survives a full reset fires days later, about data that is gone. The
   /// per-id [cancel] cannot reach them, because the ids live in the
   /// preferences the reset is clearing at the same time.
-  Future<void> cancelAll() async {
-    try {
-      await _plugin.cancelAll();
-    } catch (_) {}
-  }
+  Future<void> cancelAll() => _ignoreUnlessStrict(() async {
+        await _plugin.cancelAll();
+      });
 }

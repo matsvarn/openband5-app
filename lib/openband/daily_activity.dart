@@ -7,8 +7,16 @@ import 'theme.dart';
 
 class StepsCard extends StatelessWidget {
   final OpenBandDay day;
+  final DateTime Function() now;
   final VoidCallback? onNutrition;
-  const StepsCard({super.key, required this.day, this.onNutrition});
+  final bool showIntake;
+  const StepsCard({
+    super.key,
+    required this.day,
+    required this.now,
+    this.onNutrition,
+    this.showIntake = true,
+  });
 
   void _details(BuildContext context, {bool intake = false}) {
     final p = OB.of(context);
@@ -32,19 +40,19 @@ class StepsCard extends StatelessWidget {
               const SizedBox(height: 16),
               if (intake) ...[
                 Text(
-                  '${day.intake.kcalIsFloor ? 'Mindestens ' : ''}${obNumber(day.intake.kcal)} kcal erfasst',
+                  '${obNumber(day.intake.kcal)} kcal erfasst',
                   style: p.text(24, weight: FontWeight.w600),
                 ),
+                if (day.intake.kcalIsFloor) ...[
+                  const SizedBox(height: 8),
+                  Text('Teilweise', style: p.text(13, color: p.muted)),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   '${obNumber(day.intake.waterMl)} ml Wasser erfasst',
                   style: p.text(18),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Die Angaben stammen aus deinen Einträgen. Fehlende Mengen bleiben offen.',
-                ),
-                if (onNutrition != null && day.day == todayLabel()) ...[
+                if (onNutrition != null) ...[
                   const SizedBox(height: 16),
                   OBAction(
                     'Ernährung öffnen',
@@ -61,9 +69,7 @@ class StepsCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 if (day.stepIntervals.isEmpty)
-                  const Text(
-                    'Für diesen Tag ist noch kein zeitlicher Verlauf verfügbar. Ein gespeicherter Tageswert bleibt davon unabhängig.',
-                  )
+                  const Text('Kein Stundenverlauf.')
                 else
                   for (final interval in day.stepIntervals)
                     Padding(
@@ -87,184 +93,316 @@ class StepsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!showIntake) {
+      return _ReleaseStepsCard(
+        day: day,
+        now: now,
+        onOpen: () => _details(context),
+      );
+    }
     final p = OB.of(context);
-    final kcal =
-        '${day.intake.kcalIsFloor ? '≥' : ''}${obNumber(day.intake.kcal)} kcal';
-    final water = '${obNumber(day.intake.waterMl)} ml';
     final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
     return OBCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () => _details(context),
-            borderRadius: BorderRadius.circular(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            LucideIcons.footprints,
-                            size: 16,
-                            color: p.strain,
-                          ),
-                          const SizedBox(width: 6),
-                          Text('Schritte', style: p.text(13)),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        spacing: 8,
-                        children: [
-                          Text(
-                            obNumber(day.steps.value),
-                            style: p.text(27, weight: FontWeight.w600),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              last != null
-                                  ? 'bis ${obTime(last)}'
-                                  : 'Tageswert',
-                              style: p.text(11, color: p.muted),
+          Expanded(
+            flex: 3,
+            child: _DayValue(
+              label: 'Schritte',
+              icon: LucideIcons.footprints,
+              color: p.strain,
+              value: obNumber(day.steps.value),
+              unit: last != null ? 'bis ${obTime(last)}' : null,
+              onTap: () => _details(context),
+              child: day.stepIntervals.isEmpty
+                  ? null
+                  : Builder(
+                      builder: (context) {
+                        final buckets = stepsByHour(day.stepIntervals);
+                        return Semantics(
+                          label:
+                              'Schritteverlauf: ${buckets.indexed.where((e) => e.$2 > 0).map((e) => '${e.$1.toString().padLeft(2, '0')}:00 ${obNumber(e.$2.round())} Schritte').join(', ')}',
+                          child: SizedBox(
+                            height: 40,
+                            width: double.infinity,
+                            child: CustomPaint(
+                              painter: _StepsPainter(
+                                buckets,
+                                day.day == todayLabel() ? now().hour : 23,
+                                p.strain,
+                                p.strainTint,
+                                p.line,
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SizedBox(
-                  width: 120,
-                  height: 40,
-                  child: day.stepIntervals.isEmpty
-                      ? Semantics(
-                          label: 'Schritteverlauf noch offen',
-                          child: Icon(
-                            LucideIcons.footprints,
-                            color: p.strain.withValues(alpha: .4),
-                            size: 34,
-                          ),
-                        )
-                      : Semantics(
-                          label:
-                              'Schritteverlauf: ${day.stepIntervals.map((s) => '${obTime(s.start)} bis ${obTime(s.end)}, ${obNumber(s.steps)} Schritte').join('. ')}',
-                          child: CustomPaint(
-                            painter: _StepsPainter(day.stepIntervals, p.strain),
-                          ),
-                        ),
-                ),
-              ],
+                        );
+                      },
+                    ),
             ),
           ),
-          const SizedBox(height: 2),
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 2,
-                  children: [
-                    _chip(
-                      context,
-                      kcal,
-                      p.deep,
-                      () => _details(context, intake: true),
-                    ),
-                    _chip(
-                      context,
-                      water,
-                      p.action,
-                      () => _details(context, intake: true),
-                    ),
-                  ],
-                ),
+          if (showIntake)
+            Expanded(
+              flex: 2,
+              child: _DayValue(
+                label: 'Wasser',
+                icon: LucideIcons.droplet,
+                color: p.sleep,
+                value: day.intake.waterMl == null
+                    ? '—'
+                    : obNumber(day.intake.waterMl! / 1000, digits: 2),
+                unit: day.intake.waterMl == null ? null : 'l',
+                onTap: () => _details(context, intake: true),
               ),
-              IconButton(
-                tooltip: 'Schritte ansehen',
-                onPressed: () => _details(context),
-                icon: Icon(LucideIcons.chevronRight, color: p.muted, size: 14),
+            ),
+          if (showIntake)
+            Expanded(
+              flex: 2,
+              child: _DayValue(
+                label: 'Energie',
+                icon: LucideIcons.utensils,
+                color: p.food,
+                value: obNumber(day.intake.kcal),
+                unit: day.intake.kcal == null ? null : 'kcal',
+                onTap: () => _details(context, intake: true),
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _chip(
-    BuildContext context,
-    String label,
-    Color color,
-    VoidCallback onTap,
-  ) => Semantics(
-    button: true,
-    label: label,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(9),
-      child: ExcludeSemantics(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
-          child: Center(
-            widthFactor: 1,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: .09),
-                borderRadius: BorderRadius.circular(9),
+class _ReleaseStepsCard extends StatelessWidget {
+  final OpenBandDay day;
+  final DateTime Function() now;
+  final VoidCallback onOpen;
+  const _ReleaseStepsCard({
+    required this.day,
+    required this.now,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final last = day.stepIntervals.isEmpty ? null : day.stepIntervals.last.end;
+    final buckets = day.stepIntervals.isEmpty
+        ? const <double>[]
+        : stepsByHour(day.stepIntervals);
+    return OBCard(
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.footprints, size: 16, color: p.strain),
+                const SizedBox(width: 6),
+                Text(
+                  'Schritte',
+                  style: p.text(13, weight: FontWeight.w600, color: p.muted),
+                ),
+                const Spacer(),
+                if (last != null)
+                  Text(
+                    'bis ${obTime(last)}',
+                    style: p.text(13, weight: FontWeight.w500, color: p.muted),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              obNumber(day.steps.value),
+              style: p
+                  .text(34, weight: FontWeight.w800, display: true)
+                  .copyWith(height: 36 / 34),
+            ),
+            if (buckets.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 40,
+                width: double.infinity,
+                child: CustomPaint(
+                  painter: _StepsPainter(
+                    buckets,
+                    day.day == todayLabel() ? now().hour : 23,
+                    p.strain,
+                    p.strainTint,
+                    p.line,
+                  ),
+                ),
               ),
-              child: Text(label, style: OB.of(context).text(13, color: color)),
+              const SizedBox(height: 8),
+              const _StepHourAxis(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepHourAxis extends StatelessWidget {
+  const _StepHourAxis();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    final style = p.text(11, weight: FontWeight.w500, color: p.muted);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (final label in const ['0', '6', '12', '18', '24'])
+          Text(label, style: style),
+      ],
+    );
+  }
+}
+
+class _DayValue extends StatelessWidget {
+  final String label, value;
+  final String? unit;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final Widget? child;
+  const _DayValue({
+    required this.label,
+    required this.value,
+    this.unit,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.child,
+  });
+  @override
+  Widget build(BuildContext context) {
+    final p = OB.of(context);
+    return Semantics(
+      button: true,
+      label: '$label $value ${unit ?? ''}',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ExcludeSemantics(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              spacing: 4,
+              children: [
+                Row(
+                  children: [
+                    Icon(icon, size: 14, color: color),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: p.text(
+                          12,
+                          weight: FontWeight.w600,
+                          color: p.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 4,
+                  children: [
+                    Text(
+                      value,
+                      style: p.text(22, weight: FontWeight.w800, display: true),
+                    ),
+                    if (unit != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          unit!,
+                          style: p.text(
+                            12,
+                            weight: FontWeight.w500,
+                            color: p.muted,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                ?child,
+              ],
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
+}
+
+/// Splits [StepInterval]s into 24 local hour buckets; an interval crossing an
+/// hour boundary contributes to each hour proportionally to its overlap.
+List<double> stepsByHour(List<StepInterval> intervals) {
+  final hours = List<double>.filled(24, 0);
+  for (final s in intervals) {
+    final totalMs = s.end.difference(s.start).inMilliseconds;
+    if (totalMs <= 0) continue;
+    var start = s.start;
+    while (start.isBefore(s.end)) {
+      final hourEnd = DateTime(
+        start.year,
+        start.month,
+        start.day,
+        start.hour + 1,
+      );
+      final sliceEnd = hourEnd.isBefore(s.end) ? hourEnd : s.end;
+      hours[start.hour] +=
+          s.steps * sliceEnd.difference(start).inMilliseconds / totalMs;
+      start = sliceEnd;
+    }
+  }
+  return hours;
 }
 
 class _StepsPainter extends CustomPainter {
-  final List<StepInterval> intervals;
-  final Color color;
-  _StepsPainter(this.intervals, this.color);
+  final List<double> buckets;
+  final int currentHour;
+  final Color color, tint, line;
+  _StepsPainter(
+    this.buckets,
+    this.currentHour,
+    this.color,
+    this.tint,
+    this.line,
+  );
   @override
   void paint(Canvas canvas, Size size) {
-    final maxValue = intervals.map((v) => v.steps).fold<double>(0, math.max);
-    if (maxValue <= 0) return;
-    final start = intervals.first.start.millisecondsSinceEpoch;
-    final span = intervals.last.end.millisecondsSinceEpoch - start;
-    if (span <= 0) return;
-    for (final interval in intervals) {
-      final x =
-          (interval.start.millisecondsSinceEpoch - start) / span * size.width;
-      final width =
-          (interval.end.difference(interval.start).inMilliseconds /
-                      span *
-                      size.width -
-                  2)
-              .clamp(.5, size.width);
-      final height = interval.steps / maxValue * size.height;
-      if (height <= 0) continue;
+    final maxValue = buckets.fold<double>(0, math.max);
+    const gap = 3.0;
+    final width = (size.width - 23 * gap) / 24;
+    for (var h = 0; h < 24; h++) {
+      final v = buckets[h];
+      final (height, paint) = v > 0
+          ? (math.max(4.0, size.height * v / maxValue), Paint()..color = color)
+          : (3.0, Paint()..color = h <= currentHour ? tint : line);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x, size.height - height, width, height),
+          Rect.fromLTWH(h * (width + gap), size.height - height, width, height),
           const Radius.circular(3),
         ),
-        Paint()
-          ..color = color.withValues(
-            alpha: .52 + .48 * interval.steps / maxValue,
-          ),
+        paint,
       );
     }
   }
 
   @override
   bool shouldRepaint(covariant _StepsPainter old) =>
-      old.intervals != intervals || old.color != color;
+      old.buckets != buckets ||
+      old.currentHour != currentHour ||
+      old.color != color ||
+      old.tint != tint ||
+      old.line != line;
 }

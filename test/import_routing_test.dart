@@ -17,6 +17,8 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/backup_import_result.dart';
+import 'package:openstrap_edge/import/journal_csv_import.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 
@@ -28,11 +30,28 @@ class _RoutingSpy extends AppState {
 
   final noop = <String>[];
   final vendor = <String>[];
+  final backups = <String>[];
+  final receipts = <String, BackupImportReceipt>{};
+  final rawFailures = <String>{};
+
+  @override
+  Future<BackupImportReceipt> importEdgeBackup(String path) async {
+    backups.add(path);
+    return receipts[path] ??
+        const BackupImportReceipt(
+          days: 0,
+          vo2TablePresent: false,
+          insertedRevisions: 0,
+          conflictIds: 0,
+          corruptIds: 0,
+        );
+  }
 
   @override
   Future<int> importNoopCsv(String path,
       {void Function(int days)? onProgress}) async {
     noop.add(path);
+    if (rawFailures.contains(path)) throw StateError('raw read failed');
     return 1;
   }
 
@@ -148,5 +167,145 @@ void main() {
     expect(app.vendor, [whoopPath]);
     expect(out.source, contains('Raw sensor export'));
     expect(out.source, contains('Vendor CSV export'));
+  });
+
+  test('two database backups aggregate days and VO2 counts separately', () async {
+    final app = _RoutingSpy();
+    final older = await write('older.db', [0, 1, 2, 3]);
+    final newer = await write('newer.db', [4, 5, 6, 7]);
+    app.receipts[older] = const BackupImportReceipt(
+      days: 3,
+      vo2TablePresent: false,
+      insertedRevisions: 0,
+      conflictIds: 0,
+      corruptIds: 0,
+    );
+    app.receipts[newer] = const BackupImportReceipt(
+      days: 1,
+      vo2TablePresent: true,
+      insertedRevisions: 2,
+      conflictIds: 1,
+      corruptIds: 1,
+      recalculationError: 'rollup',
+    );
+
+    final out = await runImport(app, [older, newer]);
+
+    expect(app.backups, [older, newer]);
+    expect(out.days, 4);
+    expect(out.vo2TablePresent, isTrue);
+    expect(out.vo2Revisions, 2);
+    expect(out.vo2ConflictIds, 1);
+    expect(out.vo2CorruptIds, 1);
+    expect(out.rollupError, 'rollup');
+    expect(out.nothingLanded, isFalse);
+  });
+
+  test('an old backup without a VO2 table stays absent in the aggregate', () async {
+    final app = _RoutingSpy();
+    final a = await write('a.db', [0]);
+    final b = await write('b.db', [1]);
+    const absent = BackupImportReceipt(
+      days: 1,
+      vo2TablePresent: false,
+      insertedRevisions: 0,
+      conflictIds: 0,
+      corruptIds: 0,
+    );
+    app.receipts[a] = absent;
+    app.receipts[b] = const BackupImportReceipt(
+      days: 0,
+      vo2TablePresent: false,
+      insertedRevisions: 0,
+      conflictIds: 0,
+      corruptIds: 0,
+    );
+
+    final out = await runImport(app, [a, b]);
+
+    expect(out.days, 1);
+    expect(out.vo2TablePresent, isFalse);
+    expect(out.vo2Revisions, 0);
+  });
+
+  test('a committed backup survives a later raw read failure', () async {
+    final app = _RoutingSpy();
+    final backup = await write('band.db', [1, 2, 3, 4]);
+    final raw = await write('sensors.csv', utf8.encode(_noopCsv));
+    final later = await write('sensors-2.csv', utf8.encode(_noopCsv));
+    app.receipts[backup] = const BackupImportReceipt(
+      days: 0,
+      vo2TablePresent: true,
+      insertedRevisions: 2,
+      conflictIds: 0,
+      corruptIds: 0,
+    );
+    app.rawFailures.add(raw);
+
+    final out = await runImport(app, [backup, raw, later]);
+
+    expect(app.backups, [backup]);
+    expect(app.noop, [raw, later]);
+    expect(out.error, isNull);
+    expect(out.vo2TablePresent, isTrue);
+    expect(out.vo2Revisions, 2);
+    expect(out.days, 1);
+    expect(out.readError, contains('raw read failed'));
+    expect(out.nothingLanded, isFalse);
+  });
+
+  test('a raw file that is the only selection still fails', () async {
+    final app = _RoutingSpy();
+    final raw = await write('only.csv', utf8.encode(_noopCsv));
+    app.rawFailures.add(raw);
+
+    await expectLater(
+      runImport(app, [raw]),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('a journal format error still reaches the vendor importer', () async {
+    final app = _RoutingSpy();
+    final path = await write('notes.csv', utf8.encode('not,a,journal\n'));
+
+    final out = await runImport(app, [path]);
+
+    expect(app.vendor, [path]);
+    expect(app.noop, isEmpty);
+    expect(out.journalRows, 0);
+  });
+
+  test('a committed backup survives an unexpected journal failure', () async {
+    final app = _RoutingSpy();
+    final backup = await write('kept.db', [9]);
+    final bad = await write('bad-journal.csv', utf8.encode('date,tags,note\n'));
+    final later = await write('later-journal.csv', utf8.encode('date,tags,note\n'));
+    app.receipts[backup] = const BackupImportReceipt(
+      days: 3,
+      vo2TablePresent: true,
+      insertedRevisions: 1,
+      conflictIds: 0,
+      corruptIds: 0,
+    );
+    final seen = <String>[];
+
+    final out = await runImport(
+      app,
+      [backup, bad, later],
+      debugReadJournal: (path) async {
+        seen.add(path);
+        if (path == bad) throw StateError('journal read failed');
+        return const JournalImportResult(4, []);
+      },
+    );
+
+    expect(seen, [bad, later]);
+    expect(out.error, isNull);
+    expect(out.days, 3);
+    expect(out.vo2Revisions, 1);
+    expect(out.journalRows, 4);
+    expect(out.readError, contains('journal read failed'));
+    expect(out.nothingLanded, isFalse);
   });
 }

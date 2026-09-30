@@ -27,6 +27,7 @@ import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
 
 import '../data/db.dart';
+import 'glucose_contract.dart';
 
 /// Stable `imported_measurement.kind` keys. Written to the database, so they
 /// are contract: rename one and every stored row orphans.
@@ -54,46 +55,142 @@ const Map<String, (double, double)> kImportedBounds = {
   kKindBodyTemp: (25, 45),
 };
 
+bool importedUnitCorrect(String kind, HealthDataUnit unit) {
+  switch (kind) {
+    case kKindSystolic:
+    case kKindDiastolic:
+      return unit == HealthDataUnit.MILLIMETER_OF_MERCURY;
+    case kKindGlucose:
+      return unit == HealthDataUnit.MILLIGRAM_PER_DECILITER;
+    case kKindBodyTemp:
+      return unit == HealthDataUnit.DEGREE_CELSIUS;
+    default:
+      return false;
+  }
+}
+
+class ImportedPointParse {
+  final List<Map<String, Object?>> rows;
+  final int invalidCount;
+  final int ignoredCount;
+  final Map<String, int> invalidByKind;
+  final Map<String, int> ignoredByKind;
+  const ImportedPointParse({
+    required this.rows,
+    this.invalidCount = 0,
+    this.ignoredCount = 0,
+    this.invalidByKind = const {},
+    this.ignoredByKind = const {},
+  });
+}
+
 /// Turn raw health-store points into `imported_measurement` rows, dropping
 /// anything unusable. Pure, so the filtering is testable without a store.
 @visibleForTesting
-List<Map<String, Object?>> rowsFrom(List<HealthDataPoint> points) {
+List<Map<String, Object?>> rowsFrom(
+  List<HealthDataPoint> points, {
+  bool isApple = true,
+}) =>
+    parseImportedPoints(points, isApple: isApple).rows;
+
+@visibleForTesting
+ImportedPointParse parseImportedPoints(
+  List<HealthDataPoint> points, {
+  bool isApple = true,
+}) {
   final out = <Map<String, Object?>>[];
   final seen = <String>{};
+  var invalid = 0;
+  var ignored = 0;
+  final invalidByKind = <String, int>{};
+  final ignoredByKind = <String, int>{};
+  void bumpInvalid(String kind) {
+    invalid++;
+    invalidByKind[kind] = (invalidByKind[kind] ?? 0) + 1;
+  }
+
+  void bumpIgnored(String kind) {
+    ignored++;
+    ignoredByKind[kind] = (ignoredByKind[kind] ?? 0) + 1;
+  }
+
   for (final p in points) {
     final kind = kImportedKinds[p.type];
     if (kind == null) continue;
     final v = p.value;
-    if (v is! NumericHealthValue) continue;
+    if (v is! NumericHealthValue) {
+      bumpInvalid(kind);
+      continue;
+    }
     final value = v.numericValue.toDouble();
+    if (!value.isFinite) {
+      bumpInvalid(kind);
+      continue;
+    }
+    if (!importedUnitCorrect(kind, p.unit)) {
+      bumpInvalid(kind);
+      continue;
+    }
     final bounds = kImportedBounds[kind];
-    if (bounds != null && (value < bounds.$1 || value > bounds.$2)) continue;
-    // A record with no uuid cannot be updated or deduplicated later, and the
-    // table's whole idempotence rests on it. Skipping is better than minting a
-    // synthetic key that re-inserts the same reading on every read.
-    if (p.uuid.isEmpty || !seen.add(p.uuid)) continue;
+    if (bounds != null && (value < bounds.$1 || value > bounds.$2)) {
+      bumpInvalid(kind);
+      continue;
+    }
+    if (p.uuid.isEmpty) {
+      bumpInvalid(kind);
+      continue;
+    }
+    if (!seen.add(p.uuid)) {
+      bumpIgnored(kind);
+      continue;
+    }
+    final sourceName = p.sourceName;
+    final sourceId = p.sourceId;
     out.add({
       'uuid': p.uuid,
       'ts': p.dateTo.millisecondsSinceEpoch ~/ 1000,
       'kind': kind,
       'value': value,
       'unit': p.unit.name,
-      // MANDATORY. A reading whose source we cannot name is a reading we
-      // cannot honestly display, because the entire claim is "we did not
-      // measure this — they did".
-      'source': p.sourceName.trim().isEmpty ? 'Unknown app' : p.sourceName,
+      'source': sourceName,
+      'source_id': sourceId.trim().isEmpty ? null : sourceId.trim(),
+      'source_key': importedSourceKey(
+        isApple: isApple,
+        sourceId: sourceId,
+        sourceName: sourceName,
+      ),
     });
   }
-  return out;
+  return ImportedPointParse(
+    rows: out,
+    invalidCount: invalid,
+    ignoredCount: ignored,
+    invalidByKind: invalidByKind,
+    ignoredByKind: ignoredByKind,
+  );
 }
 
 class ImportedMeasurementImporter {
-  ImportedMeasurementImporter({Health? health, bool? isApple})
-      : _health = health ?? Health(),
-        _isApple = isApple ?? (Platform.isIOS || Platform.isMacOS);
+  ImportedMeasurementImporter({
+    Health? health,
+    bool? isApple,
+    Future<ImportedMeasurementCommitResult> Function(
+      ImportedMeasurementCommitInput input,
+    )? commit,
+    DateTime Function()? clock,
+  })  : _health = health ?? Health(),
+        _isApple = isApple ?? (Platform.isIOS || Platform.isMacOS),
+        _commit = commit ?? LocalDb.commitImportedMeasurements,
+        _clock = clock;
 
   final Health _health;
   final bool _isApple;
+  final Future<ImportedMeasurementCommitResult> Function(
+    ImportedMeasurementCommitInput input,
+  ) _commit;
+  final DateTime Function()? _clock;
+
+  DateTime _wallNow() => _clock?.call() ?? DateTime.now();
 
   static const List<HealthDataType> types = [
     HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
@@ -102,43 +199,190 @@ class ImportedMeasurementImporter {
     HealthDataType.BODY_TEMPERATURE,
   ];
 
-  /// READ only. This app writes none of these and never will.
-  Future<bool> requestPermission() async {
-    try {
-      await _health.configure();
-      final perms = [for (final _ in types) HealthDataAccess.READ];
-      final already = await _health.hasPermissions(types, permissions: perms);
-      if (already == true) return true;
-      return await _health.requestAuthorization(types, permissions: perms);
-    } catch (e) {
-      debugPrint('[imported_measurement] permission: $e');
-      return false;
-    }
+  static const List<HealthDataType> glucoseOnly = [
+    HealthDataType.BLOOD_GLUCOSE,
+  ];
+
+  Future<HealthMeasurementImportOutcome> sync({
+    List<HealthDataType>? types,
+    DateTime? now,
+  }) {
+    final requested = types ?? ImportedMeasurementImporter.types;
+    // One process-wide queue for Health I/O and the matching commit. Per-instance
+    // in-flight flags cannot order two Phone Import / Jetzt-lesen objects.
+    return LocalDb.runImportedMeasurementOp(
+      () => _sync(requested: requested, now: now),
+    );
   }
 
-  /// Read the recent window and store what is there. Returns how many rows
-  /// landed; 0 covers an empty store, a denied permission and a locked device
-  /// alike, none of which is an error the user needs a dialog for.
-  Future<int> sync({DateTime? now}) async {
-    final end = now ?? DateTime.now();
+  Future<HealthMeasurementImportOutcome> _sync({
+    required List<HealthDataType> requested,
+    DateTime? now,
+  }) async {
+    final attemptedAt = now ?? _wallNow();
+    final kinds = [
+      for (final t in requested)
+        if (kImportedKinds[t] != null) kImportedKinds[t]!,
+    ];
+    try {
+      await _health.configure();
+    } catch (e) {
+      debugPrint('[imported_measurement] configure: $e');
+      return _fail(
+        HealthMeasurementImportStatus.authorizationRequestFailed,
+        attemptedAt,
+        kinds,
+      );
+    }
+
+    final perms = [for (final _ in requested) HealthDataAccess.READ];
+    bool? already;
+    try {
+      already = await _health.hasPermissions(requested, permissions: perms);
+    } catch (e) {
+      debugPrint('[imported_measurement] permission: $e');
+      return _fail(
+        HealthMeasurementImportStatus.authorizationRequestFailed,
+        attemptedAt,
+        kinds,
+      );
+    }
+
+    if (already != true) {
+      try {
+        await _health.requestAuthorization(requested, permissions: perms);
+      } catch (e) {
+        debugPrint('[imported_measurement] permission: $e');
+        return _fail(
+          HealthMeasurementImportStatus.authorizationRequestFailed,
+          attemptedAt,
+          kinds,
+        );
+      }
+    }
+    if (!_isApple) {
+      try {
+        final proven = await _health.hasPermissions(
+          requested,
+          permissions: perms,
+        );
+        if (proven == false) {
+          return _fail(
+            HealthMeasurementImportStatus.authorizationDenied,
+            attemptedAt,
+            kinds,
+          );
+        }
+      } catch (e) {
+        debugPrint('[imported_measurement] permission: $e');
+        return _fail(
+          HealthMeasurementImportStatus.authorizationRequestFailed,
+          attemptedAt,
+          kinds,
+        );
+      }
+    }
+
+    final end = attemptedAt;
     // Health Connect caps third-party reads at 30 days without
-    // READ_HEALTH_DATA_HISTORY, which the pinned `health` 11.1.1 cannot
-    // request — so ask Android for what it will actually give. A year on Apple
-    // is enough for a series that is measured occasionally by hand.
+    // READ_HEALTH_DATA_HISTORY. Pinned health 12.2.1 can request that
+    // permission; this app does not declare or ask for it — so Android still
+    // gets the 30-day window. A year on Apple is enough for occasional meters.
     final start = _isApple
         ? DateTime(end.year - 1, end.month, end.day)
         : end.subtract(const Duration(days: 30));
+
+    List<HealthDataPoint> points;
     try {
-      await _health.configure();
-      final points = await _health.getHealthDataFromTypes(
-        types: types,
+      points = await _health.getHealthDataFromTypes(
+        types: requested,
         startTime: start,
         endTime: end,
       );
-      return LocalDb.putImportedMeasurements(rowsFrom(points));
     } catch (e) {
       debugPrint('[imported_measurement] read: $e');
-      return 0;
+      return _fail(
+        HealthMeasurementImportStatus.readFailed,
+        attemptedAt,
+        kinds,
+      );
     }
+
+    final parsed = parseImportedPoints(points, isApple: _isApple);
+    final storedAt = _wallNow();
+    try {
+      final committed = await _commit(
+        ImportedMeasurementCommitInput(
+          rows: parsed.rows,
+          kinds: kinds,
+          attemptedAt: attemptedAt,
+          storedAt: storedAt,
+          invalidByKind: parsed.invalidByKind,
+          ignoredByKind: parsed.ignoredByKind,
+        ),
+      );
+      final status = parsed.invalidCount > 0
+          ? HealthMeasurementImportStatus.partial
+          : committed.storedCount > 0
+              ? HealthMeasurementImportStatus.stored
+              : HealthMeasurementImportStatus.empty;
+      return HealthMeasurementImportOutcome(
+        status: status,
+        attemptedAt: attemptedAt,
+        storedCount: committed.storedCount,
+        writtenCount: committed.writtenCount,
+        invalidCount: parsed.invalidCount,
+        ignoredCount: parsed.ignoredCount + committed.skippedExcluded,
+      );
+    } catch (e) {
+      debugPrint('[imported_measurement] persist: $e');
+      await _fail(
+        HealthMeasurementImportStatus.persistenceFailed,
+        attemptedAt,
+        kinds,
+        invalidByKind: parsed.invalidByKind,
+        ignoredByKind: parsed.ignoredByKind,
+      );
+      return HealthMeasurementImportOutcome(
+        status: HealthMeasurementImportStatus.persistenceFailed,
+        attemptedAt: attemptedAt,
+        invalidCount: parsed.invalidCount,
+        ignoredCount: parsed.ignoredCount,
+      );
+    }
+  }
+
+  Future<HealthMeasurementImportOutcome> _fail(
+    HealthMeasurementImportStatus status,
+    DateTime attemptedAt,
+    List<String> kinds, {
+    Map<String, int> invalidByKind = const {},
+    Map<String, int> ignoredByKind = const {},
+  }) async {
+    final invalidCount =
+        invalidByKind.values.fold<int>(0, (sum, n) => sum + n);
+    final ignoredCount =
+        ignoredByKind.values.fold<int>(0, (sum, n) => sum + n);
+    try {
+      await _commit(
+        ImportedMeasurementCommitInput(
+          rows: const [],
+          kinds: kinds,
+          attemptedAt: attemptedAt,
+          forcedOutcome: status.name,
+          invalidByKind: invalidByKind,
+          ignoredByKind: ignoredByKind,
+          persistRows: false,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[imported_measurement] receipt: $e');
+    }
+    return HealthMeasurementImportOutcome(
+      status: status,
+      attemptedAt: attemptedAt,
+      invalidCount: invalidCount,
+      ignoredCount: ignoredCount,
+    );
   }
 }

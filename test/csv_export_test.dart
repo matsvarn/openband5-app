@@ -5,11 +5,14 @@
 // once the file is in a spreadsheet, and a column of zeroes where a metric was
 // never computed is a fabrication the user will then average.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/csv_export.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/vo2_store.dart';
+import 'package:openstrap_edge/openband/vo2_data.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -216,6 +219,61 @@ void main() {
       final broken = rows.firstWhere((r) => r['date'] == '2026-04-10');
       expect(broken['tags'], 'not json');
     });
+
+    test('medication export uses the dose snapshot, never the current plan',
+        () async {
+      final db = await LocalDb.instance;
+      await db.insert('med_def', {
+        'key': 'k1',
+        'label': 'CurrentName',
+        'dose_value': 99,
+        'dose_unit': 'mg',
+        'kind': 'supplement',
+        'schedule_json': '[]',
+        'active': 1,
+        'note': '',
+        'created_at': 1,
+      });
+      await db.insert('med_dose', {
+        'med_key': 'k1',
+        'date': '2026-09-10',
+        'slot_min': 480,
+        'taken_ts': 1,
+        'skipped': 0,
+        'dose_value': 1,
+        'note': '',
+        'updated_at': 1,
+        'label': 'Frozen',
+        'dose_unit': 'Tablette',
+        'kind': 'medication',
+      });
+      await db.insert('med_dose', {
+        'med_key': 'orphan',
+        'date': '2026-09-11',
+        'slot_min': 600,
+        'taken_ts': null,
+        'skipped': 0,
+        'dose_value': null,
+        'note': '',
+        'updated_at': 1,
+      });
+      final med = kCsvExportSets.firstWhere((s) => s.name == 'medication');
+      final rows = await db.rawQuery(med.sql);
+      final frozen = rows.firstWhere((r) => r['date'] == '2026-09-10');
+      expect(frozen['medication'], 'Frozen');
+      expect(frozen['dose_value'], 1);
+      expect(frozen['dose_unit'], 'Tablette');
+      expect(frozen['kind'], 'medication');
+      expect(frozen['medication'], isNot('CurrentName'));
+      final unknown = rows.firstWhere((r) => r['date'] == '2026-09-11');
+      expect(unknown['medication'], 'orphan');
+      expect(unknown['dose_value'], isNull);
+      expect(unknown['dose_unit'], '');
+      expect(unknown['kind'], '');
+      final csv = renderCsv(med.columns, rows);
+      final unknownLine = csv.trim().split(RegExp(r'\r?\n')).last;
+      expect(unknownLine.split(',')[med.columns.indexOf('dose_value')], '');
+    });
   });
 
   group('formula injection', () {
@@ -337,5 +395,169 @@ void main() {
       expect(failed.isEmpty, isTrue);
       expect(failed.hasFailures, isTrue);
     });
+  });
+
+  test('labs CSV keeps report bounds and writes null as empty', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = 'openstrap_csv_labs_bounds_test.db';
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      await LocalDb.putLabResult(
+        marker: 'ferritin',
+        takenOn: '2026-09-15',
+        value: 52,
+        unit: 'ng/mL',
+        note: '',
+        reportLow: 30,
+        reportHigh: 400,
+      );
+      await LocalDb.putLabResult(
+        marker: 'vitamin_d',
+        takenOn: '2026-09-15',
+        value: 37,
+        unit: 'ng/mL',
+      );
+      final labs = kCsvExportSets.firstWhere((s) => s.name == 'labs');
+      expect(
+        labs.columns,
+        [
+          'taken_on',
+          'marker',
+          'value',
+          'unit',
+          'note',
+          'report_low',
+          'report_high',
+        ],
+      );
+      final rows = await (await LocalDb.instance).rawQuery(labs.sql);
+      expect(rows, hasLength(2));
+      final csv = renderCsv(labs.columns, rows);
+      expect(
+        csv,
+        startsWith(
+          'taken_on,marker,value,unit,note,report_low,report_high',
+        ),
+      );
+      expect(csv, contains('2026-09-15,ferritin,52,ng/mL,,30,400'));
+      expect(csv, contains('2026-09-15,vitamin_d,37,ng/mL,,,'));
+      expect(csv, isNot(contains('null')));
+    } finally {
+      await LocalDb.close();
+    }
+  });
+
+  test('strength export keeps load_kg and adds original input fields', () async {
+    LocalDb.dbName = 'openstrap_csv_strength_load_test.db';
+    await LocalDb.close();
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      final db = await LocalDb.instance;
+      await db.insert('strength_set', {
+        'session_id': 's1',
+        'seq': 0,
+        'exercise_key': 'incline_db_press',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 62.55,
+        'at_ts': 1,
+        'note': '',
+      });
+      await db.insert('strength_set', {
+        'session_id': 's1',
+        'seq': 1,
+        'exercise_key': 'curl',
+        'set_index': 1,
+        'reps': 8,
+        'load_kg': 20,
+        'at_ts': 2,
+        'note': '',
+        'load_json': jsonEncode({
+          'value': 10,
+          'unit': 'kg',
+          'basis': 'perDevice',
+          'deviceCount': 2,
+          'repetitionBasis': 'perSide',
+          'side': 'both',
+        }),
+      });
+      final strength = kCsvExportSets.firstWhere((s) => s.name == 'strength');
+      expect(
+        strength.columns,
+        containsAll([
+          'load_kg',
+          'original_load',
+          'original_unit',
+          'load_basis',
+          'device_count',
+          'repetition_basis',
+          'side',
+        ]),
+      );
+      final rows = await db.rawQuery(strength.sql);
+      expect(rows, hasLength(2));
+      expect(rows.first['load_kg'], 62.55);
+      expect(rows.first['original_load'], isNull);
+      expect(rows.last['load_kg'], 20);
+      expect(rows.last['original_load'], 10);
+      expect(rows.last['original_unit'], 'kg');
+      expect(rows.last['load_basis'], 'perDevice');
+      expect(rows.last['device_count'], 2);
+      expect(rows.last['repetition_basis'], 'perSide');
+      expect(rows.last['side'], 'both');
+      final csv = renderCsv(strength.columns, rows);
+      expect(csv, contains('62.55'));
+      expect(csv.split('\n').first, contains('original_load'));
+    } finally {
+      await LocalDb.close();
+    }
+  });
+
+  test('vo2 CSV keeps source, unit, revision, and deleted state', () async {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = 'openstrap_csv_vo2_test.db';
+    await LocalDb.close();
+    await databaseFactory.deleteDatabase(
+      p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
+    );
+    try {
+      final db = await LocalDb.instance;
+      final created = await Vo2Store.create(
+        db,
+        id: 'entry-1',
+        measuredOn: '2026-09-14',
+        valueMlKgMin: 42.5,
+        declaredMethod: 'Spiroergometrie',
+        now: DateTime(2026, 9, 14, 9),
+      );
+      expect(created, isA<Vo2Committed>());
+      await Vo2Store.delete(
+        db,
+        id: 'entry-1',
+        expectedRevision: 1,
+        now: DateTime(2026, 9, 14, 10),
+      );
+      final vo2 = kCsvExportSets.firstWhere((s) => s.name == 'vo2');
+      expect(vo2.columns, containsAll(['source', 'unit', 'revision', 'deleted']));
+      final rows = await db.rawQuery(vo2.sql);
+      expect(rows, hasLength(2));
+      final csv = renderCsv(vo2.columns, rows);
+      expect(csv, contains('user-entered'));
+      expect(csv, contains('ml/kg/min'));
+      expect(csv, contains('Spiroergometrie'));
+      expect(csv.trim().split('\n').last, contains('user-entered,2,1,'));
+      expect(rows.last['deleted'], 1);
+      expect(rows.last['source'], kVo2Origin);
+      expect(rows.last['revision'], 2);
+      expect(csv, isNot(contains('null')));
+    } finally {
+      await LocalDb.close();
+    }
   });
 }

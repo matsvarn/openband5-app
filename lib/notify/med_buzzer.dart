@@ -10,10 +10,9 @@
 // the checklist behind it is where the dose gets recorded.
 //
 // Where water slots are daily wall-clock MINUTES (recurring), doses are
-// ONE-SHOT ABSOLUTE instants — `med_def` schedules land on specific days
-// (slotsForDay already resolved taken/skipped/past for today), and
-// medPromptSlots hands back exactly the still-upcoming slots over its 3-day
-// horizon. So this class consumes DateTimes, not minutes-from-midnight.
+// ONE-SHOT ABSOLUTE instants. The same resolved list AppState reads from
+// MedDb.upcomingReminderInstants — and NotificationCenter.medReminderPlan
+// caps — is mapped to DateTimes here. No second date calculation.
 
 import 'dart:async';
 
@@ -29,11 +28,14 @@ class MedBuzzer {
   Timer? _timer;
   List<DateTime> _slots = const []; // absolute instants, ascending
 
+  /// Pending absolute instants. Tests only.
+  List<DateTime> get debugSlotInstants => List.unmodifiable(_slots);
+
   /// (Re)configure from the current prefs + schedule. Idempotent — cancels and
-  /// re-arms. Pass `NotificationCenter.medPromptSlots(...)` mapped through
-  /// `NotificationCenter.medSlotInstant(...)` (nulls dropped) as [slotInstants].
-  /// Past instants are skipped, not fired late: a buzz for a dose window that
-  /// already passed is noise about a decision the user already made.
+  /// re-arms. Pass the same resolved DateTimes NotificationCenter armed, not a
+  /// separately computed list. Past instants are skipped, not fired late: a
+  /// buzz for a dose window that already passed is noise about a decision the
+  /// user already made.
   void configure({required List<DateTime> slotInstants}) {
     final now = DateTime.now();
     _slots = slotInstants.where((t) => t.isAfter(now)).toList()..sort();

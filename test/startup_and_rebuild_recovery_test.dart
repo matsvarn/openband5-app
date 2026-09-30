@@ -274,6 +274,30 @@ void main() {
         'source': 'user',
         'created_at': 1,
       });
+      await db.insert('openband_workout_template', {
+        'id': 'template-1',
+        'name': 'Saved plan',
+        'version': 1,
+        'exercises_json': '[]',
+        'updated_at': 1,
+      });
+      await db.insert('openband_pinned_template', {
+        'singleton': 1,
+        'template_id': 'template-1',
+      });
+      await db.insert('openband_meal_draft', {
+        'draft_id': 'meal-1',
+        'day_id': '2026-08-01',
+        'meal': 'dinner',
+        'entries_json': '[]',
+        'updated_at': 1,
+      });
+      await db.insert('alarm_schedule', {
+        'weekday': 1,
+        'hour': 7,
+        'minute': 30,
+        'enabled': 0,
+      });
       await db.insert('sessions', {
         'id': 's1',
         'start_ts': 1000,
@@ -282,6 +306,40 @@ void main() {
         'status': 'done',
         'source': 'manual',
         'created_at': 1,
+      });
+      await db.insert('openband_session_detail', {
+        'session_id': 's1',
+        'algo_version': 1,
+        'computed_at': 1,
+        'payload_json': '{}',
+      });
+      await db.insert('openband_lap', {
+        'session_id': 's1',
+        'lap_index': 0,
+        'at_ts': 1500,
+        'elapsed_sec': 500,
+        'paused_sec': 0,
+      });
+      await db.insert('workout_suggestions', {
+        'id': 'suggestion-1',
+        'date': '2026-08-01',
+        'start_ts': 1000,
+        'end_ts': 2000,
+        'dismissed': 1,
+        'created_at': 1,
+      });
+      await db.insert('live_coverage', {
+        'start_ts': 1000,
+        'end_ts': 1060,
+        'steps': 20,
+        'day': '2026-08-01',
+      });
+      await db.insert('raw_records', {
+        'counter': 0,
+        'hex': '00ff',
+        'packet_type': 47,
+        'captured_at': 1000,
+        'rec_ts': 1,
       });
       await db.insert('day_result', {
         'day_id': '2026-08-01',
@@ -330,7 +388,16 @@ void main() {
       'med_dose',
       'cycle_log',
       'sleep_override',
+      'openband_workout_template',
+      'openband_pinned_template',
+      'openband_meal_draft',
+      'alarm_schedule',
       'sessions',
+      'openband_session_detail',
+      'openband_lap',
+      'workout_suggestions',
+      'live_coverage',
+      'raw_records',
       'day_result',
       'metric_series',
       'baselines',

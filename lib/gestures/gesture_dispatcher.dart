@@ -23,17 +23,24 @@ class GestureDispatcher {
   final Future<void> Function()? onWorkoutToggle;
   final Future<void> Function()? onLogWater;
 
+  /// Parked in-app actions return without running and without rewriting
+  /// the saved mapping. Native actions are unchanged.
+  final bool releaseReduced;
+
   GestureDispatcher({
     required this.settings,
     this.log,
     this.onMarkMoment,
     this.onWorkoutToggle,
     this.onLogWater,
+    this.releaseReduced = false,
   });
 
   static const int _doubleTapEventId = 14; // EventId.doubleTap
-  static const int _recencyWindowSec = 6; // older than this = a drained/historical tap
-  static const int _plausibleAgeCapSec = 86400; // ignore the recency check if ts looks bogus
+  static const int _recencyWindowSec =
+      6; // older than this = a drained/historical tap
+  static const int _plausibleAgeCapSec =
+      86400; // ignore the recency check if ts looks bogus
   static const int _debounceMs = 2000;
 
   int _lastFiredMs = 0;
@@ -44,6 +51,10 @@ class GestureDispatcher {
     if (eventId != _doubleTapEventId) return;
     final action = settings.doubleTap;
     if (action == DeviceAction.none) return;
+    if (releaseReduced && action.releaseParked) {
+      log?.call('[gesture] ${action.id} inactive in this release');
+      return;
+    }
 
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final age = nowSec - tsEpoch;
