@@ -49,6 +49,16 @@ xcrun devicectl device info processes --device "$DEVICE" | grep -i openband   # 
 
 A missing required line is a finding, even if the data checks pass.
 
+## If the band stops connecting
+
+This applies during the trial or at any other time, whenever reconnects keep failing for more than about 5 minutes while the band is on the wrist. The 29–30 September outage showed that only the band's side of the story says why (audit `audits/reliability-2026-10.md`).
+
+1. Note the time. Leave OpenBand running; do not force-quit it or toggle Bluetooth.
+2. If a second phone or the Mac is at hand, scan with nRF Connect for 60 s and note whether a WHOOP advertisement appears, and its name and whether it is connectable.
+3. Double-tap the band and note the time to the second.
+4. Scan again for 60 s.
+5. Once the band is back, let the backlog finish, then pull with `tool/pull_device_db.sh incident`. The band's console lines and events 11/12 arrive with the backlog; `[LINK]` and `[ble-restore]` lines give the phone's side.
+
 ## After the trial — verify, don't eyeball
 
 After the night, stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
