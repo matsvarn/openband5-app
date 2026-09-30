@@ -7,7 +7,7 @@ import '../../../health/health_export.dart';
 import '../../../ui2/screens/home_screen.dart' show repoOf;
 import '../../../ui2/screens/log_workout.dart' show appOf;
 import '../../domain.dart';
-import '../chrome.dart' show OBActionPrimary;
+import '../chrome.dart' show OBActionPrimary, OBListRow;
 import '../g3_theme.dart';
 import '../training_parts.dart';
 
@@ -40,24 +40,7 @@ class G3ManualFlow extends StatefulWidget {
 }
 
 class _G3ManualFlowState extends State<G3ManualFlow> {
-  static const sports = <String>[
-    'running',
-    'cycling',
-    'hiking',
-    'tennis',
-    'walking',
-    'weight_training',
-    'swimming',
-    'yoga',
-    'intervals',
-    'stretching',
-    'soccer',
-    'rowing',
-    'climbing',
-    'skiing',
-    'martial_arts',
-    'other',
-  ];
+  static const sports = trainingSports;
   late int step = widget.initialStep;
   String sport = 'yoga';
   late DateTime start, end;
@@ -444,7 +427,7 @@ class _G3ManualFlowState extends State<G3ManualFlow> {
             decoration: sport == value
                 ? BoxDecoration(
                     color: G3.of(context).ink,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
                   )
                 : G3.of(context).raised(),
             child: Column(
@@ -494,11 +477,10 @@ Widget _timeRow(
   String value,
   VoidCallback tap,
 ) {
-  final g = G3.of(context);
-  return ListTile(
-    title: Text(label, style: g.t(13, 17, color: g.muted)),
-    subtitle: Text(value, style: g.t(17, 22, weight: FontWeight.w700)),
-    trailing: const Icon(LucideIcons.chevronRight),
+  return OBListRow(
+    title: label,
+    value: value,
+    icon: label == 'Tag' ? LucideIcons.calendarDays : LucideIcons.clock3,
     onTap: tap,
   );
 }
