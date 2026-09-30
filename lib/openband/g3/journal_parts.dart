@@ -446,7 +446,7 @@ class OBPatternCard extends StatelessWidget {
     return InkWell(
       onTap: onOpen,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: kG3CardPadding,
         decoration: g.raised(radius: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -467,7 +467,7 @@ class OBPatternCard extends StatelessWidget {
                   ? 'noch kein Vergleich'
                   : title,
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: relation == null ? 12 : 8),
             if (loading)
               Row(
                 children: [
@@ -497,10 +497,10 @@ class OBPatternCard extends StatelessWidget {
               )
             else if (relation != null) ...[
               relation!,
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Text(
                 '$title · $have von $need Paaren',
-                style: g.t(14, 19, weight: FontWeight.w700),
+                style: g.t(14, 18, weight: FontWeight.w500),
               ),
             ] else if (awaiting)
               Row(
@@ -542,7 +542,7 @@ class OBPatternCard extends StatelessWidget {
               OBPatternProgress(have: have!.clamp(0, need!), need: need!),
             ],
             if (!loading && onRetry == null) ...[
-              const SizedBox(height: 10),
+              SizedBox(height: relation == null ? 10 : 2),
               Text(
                 footer ??
                     (have == null || need == null

@@ -122,7 +122,7 @@ class OBCheckIn extends StatelessWidget {
     return Stack(
       children: [
         Container(
-          padding: const EdgeInsets.all(18),
+          padding: kG3CardPadding,
           decoration: g.pressed(radius: 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
