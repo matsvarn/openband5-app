@@ -124,7 +124,11 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('TRAININGSLAST', style: g.caps()),
+          const G3LabelRow(
+            'TRAININGSLAST',
+            domain: G3Domain.load,
+            glyph: LucideIcons.flame,
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -215,7 +219,12 @@ class OBLoadLead extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              G3LabelRow('BELASTUNG', onTap: onTap),
+              G3LabelRow(
+                'BELASTUNG',
+                domain: G3Domain.load,
+                glyph: LucideIcons.flame,
+                onTap: onTap,
+              ),
               const SizedBox(height: 3),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -244,9 +253,11 @@ class OBLoadLead extends StatelessWidget {
                 ],
               ),
               G3Scale(
+                domain: G3Domain.load,
                 min: 0,
                 max: 21,
                 value: value,
+                band: value == null ? null : (0.0, value!),
                 ticks: const [G3Tick(0, '0'), G3Tick(21, '21')],
               ),
             ],

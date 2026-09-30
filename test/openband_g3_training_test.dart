@@ -17,6 +17,10 @@ import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
+import 'package:openstrap_edge/openband/g3/day.dart'
+    show OBActivityRow, OBWeekBars;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart';
+import 'package:openstrap_edge/openband/g3/metrics.dart' show G3Scale;
 import 'package:openstrap_edge/openband/g3/chrome.dart'
     show OBActionPrimary, OBActionSecondary, OBSheet;
 import 'package:openstrap_edge/openband/g3/band_parts.dart' show OBSettingsRow;
@@ -932,7 +936,7 @@ void main() {
       lessThanOrEqualTo(title.preferredLineHeight * 1.2),
     );
     expect(title.didExceedMaxLines, isFalse);
-    expect(find.byTooltip('Abbrechen'), findsOneWidget);
+    expect(find.bySemanticsLabel('Abbrechen'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1023,7 +1027,7 @@ void main() {
       title.size.height,
       lessThanOrEqualTo(title.preferredLineHeight * 1.2),
     );
-    expect(title.didExceedMaxLines, isFalse);
+    expect(title.maxLines, 1);
   });
 
   testWidgets('load detail title stays on one line at 375 pt and 2× text', (
@@ -1388,6 +1392,106 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Daten bis 09:12'), findsOneWidget);
     expect(find.textContaining('Daten bis 09:38'), findsNothing);
+  });
+
+  testWidgets('Training overview uses the load domain for facts and charts', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect(tester.widget<G3Scale>(find.byType(G3Scale)).domain, G3Domain.load);
+    expect(
+      tester
+          .widget<ColoredBox>(find.byKey(const ValueKey('scale-normal-band')))
+          .color,
+      G3(false).domainBar(G3Domain.load),
+    );
+    expect(
+      tester.widget<OBActivityRow>(find.byType(OBActivityRow).first).domain,
+      G3Domain.load,
+    );
+    expect(
+      tester.widget<OBWeekBars>(find.byType(OBWeekBars)).domain,
+      G3Domain.load,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(
+              of: find.byType(OBLoadLead),
+              matching: find.text('9,4'),
+            ),
+          )
+          .style!
+          .color,
+      G3(false).ink,
+    );
+  });
+
+  testWidgets('shared activity footer confirms without opening the result', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    expect((await repo.readActivities('2026-09-29')).single.confirmed, isFalse);
+    await tester.tap(find.text('Stimmt'));
+    await tester.pumpAndSettle();
+    expect((await repo.readActivities('2026-09-29')).single.confirmed, isTrue);
+    expect(find.byType(G3ActivityScreen), findsNothing);
+  });
+
+  testWidgets('result colours trace and zones while live pulse stays ink', (
+    tester,
+  ) async {
+    final repo = _repo(SyntheticScenario.g3Sample);
+    final activity = (await repo.readActivities('2026-09-29')).single;
+    await repo.confirmSuggestion(activity.id);
+    final confirmed = (await repo.readActivities('2026-09-29')).single;
+    await tester.pumpWidget(
+      _app(G3ActivityScreen(repository: repo, activity: confirmed)),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byType(OBHrTrace));
+    expect(
+      tester.widget<OBHrTrace>(find.byType(OBHrTrace)).domain,
+      G3Domain.load,
+    );
+    await tester.ensureVisible(find.byType(OBZoneRows));
+    expect(
+      tester.widget<OBZoneRows>(find.byType(OBZoneRows)).domain,
+      G3Domain.load,
+    );
+
+    final run = ValueNotifier(const LiveRun(elapsedSec: 60, heartRate: 142));
+    addTearDown(run.dispose);
+    await tester.pumpWidget(
+      _app(
+        G3LiveRun(
+          run: run,
+          sport: 'running',
+          onPause: () {},
+          onResume: () {},
+          onFinish: () async {},
+        ),
+      ),
+    );
+    expect(tester.widget<Text>(find.text('142')).style!.color, G3(false).ink);
   });
 
   testWidgets('live copy states pause once and keeps active time explicit', (
