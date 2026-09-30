@@ -173,15 +173,24 @@ class OBCheckIn extends StatelessWidget {
               Text(target!, style: g.t(12, 16, color: g.ink2)),
             const SizedBox(height: 12),
             if (inlineLater)
-              Row(
-                children: [
-                  Expanded(child: answer),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 72,
-                    child: OBPillButton('Später', onPressed: onLater),
-                  ),
-                ],
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: answer),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: onLater,
+                      style: TextButton.styleFrom(
+                        foregroundColor: g.ink,
+                        minimumSize: const Size(44, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        textStyle: g.t(13, 18, weight: FontWeight.w700),
+                      ),
+                      child: const Text('Später', maxLines: 1, softWrap: false),
+                    ),
+                  ],
+                ),
               )
             else
               answer,
