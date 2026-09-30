@@ -5796,6 +5796,7 @@ class DerivationEngine {
       }
       await LocalDb.pruneSupersededDayResults();
       await LocalDb.compactLegacyOneHz();
+      await LocalDb.pruneDuplicateSamples();
       final reencoded = await LocalDb.reencodeLegacyDayResults();
       if (reencoded > 0) {
         _log('re-encoded $reencoded legacy day bundles');

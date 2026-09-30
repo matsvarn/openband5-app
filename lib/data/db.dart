@@ -16060,6 +16060,38 @@ class LocalDb {
     return converted;
   }
 
+  static const kSamplePruneCursorKey = 'samples_deduplicate';
+
+  /// Retire legacy dual-writes without removing the fallback's only copy.
+  /// Each small transaction commits deletions and the scan position together.
+  static Future<int> pruneDuplicateSamples({int batchSize = 2000}) async {
+    if (batchSize < 1) return 0;
+    final db = await instance;
+    return db.transaction((txn) async {
+      final state = await txn.query('compute_freshness',
+          where: 'key = ?', whereArgs: [kSamplePruneCursorKey]);
+      final payload = state.isEmpty ? <String, dynamic>{} :
+          jsonDecode(state.first['payload_json'] as String) as Map<String, dynamic>;
+      final cursor = (payload['cursor'] as num?)?.toInt() ?? 0;
+      final rows = await txn.rawQuery(
+        'SELECT rowid AS id FROM samples WHERE rowid > ? ORDER BY rowid LIMIT ?',
+        [cursor, batchSize]);
+      final last = rows.isEmpty ? cursor : rows.last['id'] as int;
+      final deleted = await txn.rawDelete(
+        'DELETE FROM samples WHERE rowid > ? AND rowid <= ? '
+        'AND EXISTS (SELECT 1 FROM decoded_onehz d '
+        'WHERE d.device_id = samples.device_id AND d.ts_ms = samples.ts_ms '
+        'AND d.rec_ts = samples.ts AND $kPrimaryBandSourceSql)',
+        [cursor, last]);
+      await txn.insert('compute_freshness', {
+        'key': kSamplePruneCursorKey,
+        'payload_json': jsonEncode({'cursor': rows.length < batchSize ? 0 : last}),
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return deleted;
+    });
+  }
+
   /// Keep the served generation, one predecessor, and the latest complete
   /// result per day. Future-build rows are outside this build's ownership.
   /// The bounded delete is atomic; another pass removes any remaining excess.
