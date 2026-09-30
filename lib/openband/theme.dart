@@ -76,10 +76,15 @@ class OB {
       _pick(AlpColor.warningTint, AlpColor.darkWarningTint);
   Color get danger => _pick(AlpColor.danger, AlpColor.darkDanger);
   Color get dangerTint => _pick(AlpColor.dangerTint, AlpColor.darkDangerTint);
-  Color get stageDeep => _pick(AlpColor.stageDeep, AlpColor.darkStageDeep);
-  Color get stageLight => _pick(AlpColor.stageLight, AlpColor.darkStageLight);
-  Color get stageRem => _pick(AlpColor.stageRem, AlpColor.darkStageRem);
-  Color get wake => _pick(AlpColor.wake, AlpColor.darkWake);
+  // G2 keeps its established stage ramp. The named alp-stage tokens now
+  // describe G3.1 Schlaf and are applied by opted-in G3 components.
+  Color get stageDeep =>
+      dark ? const Color(0xFFEDEDE9) : const Color(0xFF1B1B1A);
+  Color get stageLight =>
+      dark ? const Color(0xFF9A9A94) : const Color(0xFF6A6A66);
+  Color get stageRem =>
+      dark ? const Color(0xFF5E5E59) : const Color(0xFFAEAEA9);
+  Color get wake => dark ? const Color(0xFF4A4A45) : const Color(0xFFC9C9C4);
   Color get sleepText => dark ? sleep : AlpColor.sleepText;
   Color get recoveryText => dark ? recovery : AlpColor.recoveryText;
   Color get strainText => dark ? strain : AlpColor.strainText;
@@ -521,27 +526,30 @@ class OBDayPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    Widget arrow(AxisDirection direction, VoidCallback? onPressed, String tip) =>
-        Semantics(
-          button: true,
-          enabled: onPressed != null,
-          label: tip,
-          excludeSemantics: true,
-          child: InkWell(
-            onTap: onPressed,
-            customBorder: const CircleBorder(),
-            child: SizedBox(
-              width: 40,
-              height: 44,
-              child: Center(
-                child: OBChevron(
-                  direction: direction,
-                  color: onPressed == null ? p.gap : p.ink,
-                ),
-              ),
+    Widget arrow(
+      AxisDirection direction,
+      VoidCallback? onPressed,
+      String tip,
+    ) => Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: tip,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onPressed,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 40,
+          height: 44,
+          child: Center(
+            child: OBChevron(
+              direction: direction,
+              color: onPressed == null ? p.gap : p.ink,
             ),
           ),
-        );
+        ),
+      ),
+    );
     return SizedBox(
       height: 44,
       child: Stack(

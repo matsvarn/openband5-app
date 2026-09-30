@@ -11,7 +11,7 @@ import 'package:openstrap_edge/openband/g3/day.dart';
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/metrics.dart';
 import 'package:openstrap_edge/openband/theme.dart'
-    show OBChevron, openBandTheme;
+    show OB, OBChevron, openBandTheme;
 
 Widget _frame(Widget child, {bool dark = false}) => MaterialApp(
   theme: openBandTheme(dark ? Brightness.dark : Brightness.light),
@@ -82,6 +82,15 @@ void main() {
     }
     expect(AlpColor.domainRecoveryBar, const Color(0xFFA9C6DE));
     expect(AlpColor.darkDomainSleepTint, const Color(0xFF28233F));
+  });
+
+  test('legacy sleep stages stay grey until a G3 metric opts in', () {
+    expect(OB(false).stageDeep, const Color(0xFF1B1B1A));
+    expect(OB(false).stageLight, const Color(0xFF6A6A66));
+    expect(OB(true).stageDeep, const Color(0xFFEDEDE9));
+    expect(OB(true).stageLight, const Color(0xFF9A9A94));
+    expect(G3(true).stageFor(G3Domain.neutral, 2), OB(true).stageLight);
+    expect(G3(true).stageFor(G3Domain.sleep, 2), AlpColor.darkStageLight);
   });
 
   testWidgets('domain colours header only; lead and chevron remain neutral', (

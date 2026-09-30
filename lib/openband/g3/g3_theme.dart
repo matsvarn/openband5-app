@@ -39,11 +39,10 @@ class G3 {
   Color get led => ob.led;
   // The original greys remain the neutral default after the named stage
   // tokens become the G3.1 Schlaf ramp.
-  Color get stageDeep => dark ? const Color(0xFFEDEDE9) : ink;
-  Color get stageLight => dark ? const Color(0xFF9A9A94) : muted;
-  Color get stageRem =>
-      dark ? const Color(0xFF5E5E59) : const Color(0xFFAEAEA9);
-  Color get wake => dark ? const Color(0xFF4A4A45) : const Color(0xFFC9C9C4);
+  Color get stageDeep => ob.stageDeep;
+  Color get stageLight => ob.stageLight;
+  Color get stageRem => ob.stageRem;
+  Color get wake => ob.wake;
 
   /// Text and icons on an ink-filled key.
   Color get onInk => dark ? AlpColor.ink : AlpColor.canvas;
