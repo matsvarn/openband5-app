@@ -222,6 +222,22 @@ const _families = {
 };
 
 void main() {
+  test('G3.1 shared variants have synthetic gallery specimens', () {
+    expect(
+      g3Specimens.keys,
+      containsAll([
+        'OBDayNote.sleep',
+        'OBActivityRow.compact',
+        'OBActivityRow.confirmation',
+        'OBCheckIn.shared',
+        'OBPageHeader.modal',
+        'OBSectionHeader.detail',
+        'G3DetailPage.section',
+        'OBSheet.independentClose',
+      ]),
+    );
+  });
+
   setUpAll(() async {
     for (final (family, path) in [
       ('Inter', 'assets/fonts/Inter/Inter.ttf'),

@@ -670,6 +670,13 @@ final _psd = List<double>.generate(64, (i) => (i < 20 ? 40 - i : 26 - i * .3)
     .toDouble());
 
 Map<String, Widget> extraCases() => {
+      'profile_notice': ProfileNotice(
+        'Datenstand unvollständig',
+        'Die letzte Übertragung ist unterbrochen. Bereits gespeicherte Werte bleiben erhalten.',
+        icon: LucideIcons.info,
+        action: 'Datenstand ansehen',
+        onAction: () {},
+      ),
       // The edge treatment that tells a horizontal row it continues. Swept
       // rather than photographed because the state worth seeing is the one a
       // still cannot hold: it is ABSENT when the content fits, present when it

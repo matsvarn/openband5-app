@@ -1331,7 +1331,7 @@ void main() {
         releaseScreenForRoute(kRouteJournalCompose, reduced: true),
         isA<G3JournalComposeRoute>(),
       );
-      await tester.tap(find.text('Anpassen ›'));
+      await tester.tap(find.bySemanticsLabel('Anpassen'));
       await tester.pumpAndSettle();
       expect(find.byType(G3JournalCustomize), findsOneWidget);
       await tester.tap(find.text('Eigene Frage'));
@@ -1510,6 +1510,9 @@ void main() {
   );
 
   test('parked notification emits do not fire or claim the key', () async {
+    final fixtureClock = DateTime.now();
+    final day = todayLabel(fixtureClock);
+    final run = fixtureClock.microsecondsSinceEpoch;
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(
       quietEnabled: false,
@@ -1541,11 +1544,11 @@ void main() {
       priority: priority,
       title: key,
       body: 'b',
-      date: '2026-09-15',
+      date: day,
       route: route,
     );
     final parked = event(
-      key: '2026-09-15:water',
+      key: '$day:water:$run',
       category: NotifCategory.reminders,
       route: kRouteWater,
     );
@@ -1554,7 +1557,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:recovery',
+          key: '$day:recovery:$run',
           category: NotifCategory.recovery,
           route: kRouteRecovery,
         ),
@@ -1564,7 +1567,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:steps',
+          key: '$day:steps:$run',
           category: NotifCategory.reminders,
           route: kRouteSteps,
         ),
@@ -1574,7 +1577,7 @@ void main() {
     expect(
       await center.emit(
         event(
-          key: '2026-09-15:alarm',
+          key: '$day:alarm:$run',
           category: NotifCategory.reminders,
           route: kRouteAlarm,
           priority: NotifPriority.critical,
@@ -1582,16 +1585,15 @@ void main() {
       ),
       isTrue,
     );
-    expect(shown, [
-      '2026-09-15:recovery',
-      '2026-09-15:steps',
-      '2026-09-15:alarm',
-    ]);
+    expect(shown, ['$day:recovery:$run', '$day:steps:$run', '$day:alarm:$run']);
   });
 
   test(
     'kept release prompts use their own switches, not weekly recap',
     () async {
+      final fixtureClock = DateTime.now();
+      final day = todayLabel(fixtureClock);
+      final run = fixtureClock.microsecondsSinceEpoch;
       SharedPreferences.setMockInitialValues({});
       final center = NotificationCenter.instance;
       final previousReduced = center.releaseReduced;
@@ -1631,11 +1633,11 @@ void main() {
       ];
       for (final (name, route, withSwitch) in cases) {
         NotificationEvent event(String state) => NotificationEvent(
-          dedupeKey: 'release-prompt:$name:$state',
+          dedupeKey: 'release-prompt:$day:$run:$name:$state',
           category: NotifCategory.reminders,
           title: name,
           body: 'test',
-          date: '2026-09-15',
+          date: day,
           route: route,
         );
         await withSwitch(
@@ -1655,10 +1657,11 @@ void main() {
   test('kept reminder routes and workout suggestion each claim once', () async {
     SharedPreferences.setMockInitialValues({});
     await const NotificationPrefs(quietEnabled: false).save();
-    // FiredKeyStore prunes dated claims after 14 days. Use a fresh local day
-    // and unique keys so the claim assertions do not age or collide on reruns.
-    final day = todayLabel();
-    final run = DateTime.now().microsecondsSinceEpoch;
+    // Capture one clock instant for the day and unique keys. FiredKeyStore
+    // prunes dated claims after 14 days.
+    final fixtureClock = DateTime.now();
+    final day = todayLabel(fixtureClock);
+    final run = fixtureClock.microsecondsSinceEpoch;
     final alarmKey = 'alarm_fired:$run';
     final syncKey = '$day:sync_stale:$run';
     final healthKey = '$day:exception:medical:$run';
