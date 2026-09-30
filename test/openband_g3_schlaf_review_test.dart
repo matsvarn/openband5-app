@@ -15,9 +15,10 @@ import 'package:openstrap_edge/openband/g3/screens/sleep_reminder.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart'
     show G3DetailPage, OBInfoSheet, OBPanel, OBPageHeader, OBSectionHeader;
 import 'package:openstrap_edge/openband/g3/day.dart'
-    show OBDayNote, OBHypnogram, OBWeekBars;
+    show OBDayNote, OBHypnogram, OBStageLegend, OBWeekBars;
 import 'package:openstrap_edge/openband/g3/g3_theme.dart';
-import 'package:openstrap_edge/openband/g3/metrics.dart' show OBMissingValue;
+import 'package:openstrap_edge/openband/g3/metrics.dart'
+    show G3LabelRow, OBMissingValue;
 import 'package:openstrap_edge/openband/g3/sleep_parts.dart';
 import 'package:openstrap_edge/openband/naps.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
@@ -389,6 +390,17 @@ void main() {
         tester.widget<OBHypnogram>(find.byType(OBHypnogram)).domain,
         G3Domain.sleep,
       );
+      final g = G3.of(tester.element(find.byType(OBStageLegend)));
+      final swatches = tester.widget<OBStageLegend>(find.byType(OBStageLegend));
+      expect(
+        [for (final item in swatches.items) item.$3],
+        [
+          g.stageFor(G3Domain.sleep, 3),
+          g.stageFor(G3Domain.sleep, 2),
+          g.stageFor(G3Domain.sleep, 1),
+          g.stageFor(G3Domain.sleep, 0),
+        ],
+      );
       expect(find.textContaining('Phasen aus Puls'), findsNothing);
       expect(find.text('lückenlos'), findsNothing);
       await Scrollable.ensureVisible(
@@ -685,6 +697,7 @@ void main() {
     await _card(
       tester,
       OBNightTrace(
+        domain: G3Domain.recovery,
         series: NightSignalSeries(readings: [NightSignalReading(at, 60)]),
         start: at,
         end: at.add(const Duration(minutes: 1)),
@@ -698,6 +711,74 @@ void main() {
                 'Nachtverlauf mit 1 gespeichertem Messpunkt. Lücken bleiben leer.',
       ),
       findsOneWidget,
+    );
+    expect(
+      tester.widget<OBNightTrace>(find.byType(OBNightTrace)).domain,
+      G3Domain.recovery,
+    );
+  });
+
+  testWidgets('Körper metrics stay blue on Schlaf and Nachtverlauf', (
+    tester,
+  ) async {
+    await _root(tester, const SleepNight());
+    await tester.scrollUntilVisible(
+      find.text('HRV · ms'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final g = G3.of(tester.element(find.text('HRV · ms')));
+    for (final label in ['HRV · ms', 'RUHEPULS', 'ATEMFREQUENZ']) {
+      expect(
+        tester.widget<Text>(find.text(label)).style!.color,
+        g.domainHue(G3Domain.recovery),
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: G3SleepNightSignals(
+          repository: _RespirationRangeRepo(),
+          day: '2026-09-29',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<OBPageHeader>(find.byType(OBPageHeader)).domain,
+      G3Domain.sleep,
+    );
+    expect(
+      tester
+          .widget<G3LabelRow>(
+            find.byWidgetPredicate(
+              (widget) => widget is G3LabelRow && widget.label == 'RUHEPULS',
+            ),
+          )
+          .domain,
+      G3Domain.recovery,
+    );
+    await tester.tap(find.text('Atemfrequenz'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<G3LabelRow>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is G3LabelRow && widget.label == 'ATEMFREQUENZ',
+            ),
+          )
+          .domain,
+      G3Domain.recovery,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.color == g.domainBar(G3Domain.recovery),
+      ),
+      findsWidgets,
     );
   });
 

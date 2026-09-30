@@ -1102,10 +1102,12 @@ class OBInlineNotice extends StatelessWidget {
 class OBNightTrace extends StatelessWidget {
   const OBNightTrace({
     super.key,
+    required this.domain,
     required this.series,
     required this.start,
     required this.end,
   });
+  final G3Domain domain;
   final NightSignalSeries series;
   final DateTime start, end;
 
@@ -1128,7 +1130,7 @@ class OBNightTrace extends StatelessWidget {
                   start,
                   end,
                   series.maxConnectingGap,
-                  g.domainHue(G3Domain.sleep),
+                  g.domainHue(domain),
                   g.hairline,
                 ),
               ),

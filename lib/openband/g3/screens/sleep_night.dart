@@ -146,8 +146,8 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                             NightSignalKind.hrv => 'HRV',
                             NightSignalKind.respiration => 'ATEMFREQUENZ',
                           },
-                          domain: G3Domain.sleep,
-                          glyph: LucideIcons.moon,
+                          domain: G3Domain.recovery,
+                          glyph: LucideIcons.heartPulse,
                           note: status(),
                         ),
                         const SizedBox(height: 8),
@@ -212,8 +212,8 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                           NightSignalKind.hrv => 'HRV',
                           NightSignalKind.respiration => 'ATEMFREQUENZ',
                         }} · NACHT',
-                        domain: G3Domain.sleep,
-                        glyph: LucideIcons.moon,
+                        domain: G3Domain.recovery,
+                        glyph: LucideIcons.heartPulse,
                         note: recorded.isEmpty
                             ? 'keine Daten'
                             : series != null &&
@@ -237,6 +237,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                           series != null &&
                           recorded.isNotEmpty)
                         OBNightTrace(
+                          domain: G3Domain.recovery,
                           series: series,
                           start: recordedTime(
                             window.start,
@@ -303,7 +304,7 @@ class _G3SleepNightSignalsState extends State<G3SleepNightSignals> {
                   top: 8,
                   child: Container(
                     height: 9,
-                    color: g.domainBar(G3Domain.sleep),
+                    color: g.domainBar(G3Domain.recovery),
                   ),
                 ),
                 Positioned(

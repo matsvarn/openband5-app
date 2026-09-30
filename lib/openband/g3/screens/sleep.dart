@@ -772,22 +772,22 @@ class _G3SleepScreenState extends State<G3SleepScreen>
               (
                 'Tief',
                 obSleepDuration(stagedMinutes(NightStage.deep)),
-                g.stageDeep,
+                g.stageFor(G3Domain.sleep, 3),
               ),
               (
                 'Leicht',
                 obSleepDuration(stagedMinutes(NightStage.light)),
-                g.stageLight,
+                g.stageFor(G3Domain.sleep, 2),
               ),
               (
                 'REM',
                 obSleepDuration(stagedMinutes(NightStage.rem)),
-                g.stageRem,
+                g.stageFor(G3Domain.sleep, 1),
               ),
               (
                 'Wach',
                 obSleepDuration(stagedMinutes(NightStage.awake)),
-                g.wake,
+                g.stageFor(G3Domain.sleep, 0),
               ),
             ]),
             const SizedBox(height: 10),
@@ -855,7 +855,7 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                             10,
                             14,
                             weight: FontWeight.w700,
-                            color: g.domainHue(G3Domain.sleep),
+                            color: g.domainHue(G3Domain.recovery),
                           ),
                         ),
                         value.$2 == null
