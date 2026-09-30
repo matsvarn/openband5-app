@@ -43,7 +43,7 @@ void main() {
           final pending = Completer<void>();
           final attempts = <Duration>[];
           final disconnects = <bool>[];
-          final cancelsBeforeProbe = <bool>[];
+          final cancelsBeforeProbe = <List<bool>>[];
           var probes = 0;
           var completed = false;
           Object? failure;
@@ -67,7 +67,7 @@ void main() {
           };
           e.debugSystemConnected = (device, services) async {
             probes++;
-            cancelsBeforeProbe.addAll(disconnects);
+            cancelsBeforeProbe.add(List.of(disconnects));
             expect(device.remoteId.str, 'AA:BB:CC:DD:EE:FF');
             expect(
               services.toSet(),
@@ -87,9 +87,9 @@ void main() {
           );
           async.flushMicrotasks();
           async.elapse(const Duration(seconds: 20));
-          expect(probes, 1);
+          expect(probes, greaterThanOrEqualTo(1));
           expect(
-            cancelsBeforeProbe,
+            cancelsBeforeProbe.first,
             isEmpty,
             reason: 'probe must precede any cancel',
           );
@@ -164,14 +164,17 @@ void main() {
     'landed link recovery gives the pending future only five more seconds',
     () {
       fakeAsync((async) {
-        final e = engine([]);
+        final logs = <String>[];
+        final e = engine(logs);
         final pending = Completer<void>();
         final disconnects = <bool>[];
+        var linkUp = true;
         Object? failure;
         e.debugDeviceConnectWithTimeout = (_) => pending.future;
-        e.debugSystemConnected = (_, _) async => true;
+        e.debugSystemConnected = (_, _) async => linkUp;
         e.debugDeviceDisconnect = ({bool queue = true}) async {
           disconnects.add(queue);
+          linkUp = false;
           pending.completeError(StateError('native connect cancelled'));
         };
         unawaited(
@@ -188,6 +191,12 @@ void main() {
         async.elapse(const Duration(seconds: 1));
         expect(disconnects, [false]);
         expect(
+          logs,
+          contains(
+            '[LINK] link was up but connect did not complete within 5s — cancelling',
+          ),
+        );
+        expect(
           failure,
           isA<FlutterBluePlusException>().having(
             (e) => e.code,
@@ -199,40 +208,85 @@ void main() {
     },
   );
 
-  test('successful connect wins a race with timer cancellation', () {
-    fakeAsync((async) {
-      final logs = <String>[];
-      final e = engine(logs);
-      final pending = Completer<void>();
-      final disconnects = <bool>[];
-      var completed = false;
-      e.debugDeviceConnectWithTimeout = (_) => pending.future;
-      e.debugSystemConnected = (_, _) async => false;
-      e.debugDeviceDisconnect = ({bool queue = true}) async {
-        disconnects.add(queue);
-        // The connection arrives while native is handling cancellation.
-        pending.complete();
-      };
-      unawaited(
-        e
-            .debugConnectAttempt(device, const Duration(minutes: 20))
-            .then((_) => completed = true),
-      );
-      async.flushMicrotasks();
-      async.elapse(const Duration(minutes: 19));
-      expect(disconnects, isEmpty);
-      expect(completed, isFalse);
-      async.elapse(const Duration(minutes: 1));
-      expect(disconnects, [false]);
-      expect(completed, isTrue);
-      expect(
-        logs,
-        contains(
-          '[LINK] background connect completed after cancellation — keeping it',
-        ),
-      );
-    });
-  });
+  for (final survivesCancellation in [false, true]) {
+    test(
+      survivesCancellation
+          ? 'timer cancellation keeps a link only after a positive post-cancel probe'
+          : 'late connect success cannot keep a link dropped by timer cancellation',
+      () {
+        fakeAsync((async) {
+          final logs = <String>[];
+          final e = engine(logs);
+          final pending = Completer<void>();
+          final cancellation = Completer<void>();
+          final disconnects = <bool>[];
+          final states = StreamController<BluetoothConnectionState>.broadcast();
+          e.debugConnectionStates = () => states.stream;
+          addTearDown(states.close);
+          var linkUp = false;
+          var completed = false;
+          Object? failure;
+          e.debugDeviceConnectWithTimeout = (_) => pending.future;
+          e.debugSystemConnected = (_, _) async => linkUp;
+          e.debugDeviceDisconnect = ({bool queue = true}) async {
+            disconnects.add(queue);
+            pending.complete();
+            await cancellation.future;
+            linkUp = survivesCancellation;
+            states.add(
+              linkUp
+                  ? BluetoothConnectionState.connected
+                  : BluetoothConnectionState.disconnected,
+            );
+          };
+          unawaited(
+            e
+                .debugConnectAttempt(device, const Duration(minutes: 20))
+                .then(
+                  (_) => completed = true,
+                  onError: (Object error) => failure = error,
+                ),
+          );
+          async.flushMicrotasks();
+          async.elapse(const Duration(minutes: 19));
+          expect(disconnects, isEmpty);
+          expect(completed, isFalse);
+          async.elapse(const Duration(minutes: 1));
+          expect(disconnects, [false]);
+          expect(completed, isFalse);
+          cancellation.complete();
+          async.flushMicrotasks();
+          expect(completed, survivesCancellation);
+          if (survivesCancellation) {
+            expect(failure, isNull);
+            expect(
+              logs,
+              contains(
+                '[LINK] background connect completed after cancellation — keeping it',
+              ),
+            );
+          } else {
+            expect(
+              failure,
+              isA<FlutterBluePlusException>()
+                  .having((e) => e.platform, 'platform', ErrorPlatform.fbp)
+                  .having((e) => e.function, 'function', 'connect')
+                  .having((e) => e.code, 'code', FbpErrorCode.timeout.index)
+                  .having(
+                    (e) => e.description,
+                    'description',
+                    'Timed out after 1200s',
+                  ),
+            );
+            expect(
+              logs,
+              isNot(contains(contains('after cancellation — keeping it'))),
+            );
+          }
+        });
+      },
+    );
+  }
 
   test('non-timeout errors never probe or re-attach', () async {
     final e = engine([]);

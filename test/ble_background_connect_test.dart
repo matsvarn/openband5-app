@@ -106,54 +106,118 @@ void main() {
     },
   );
 
-  for (final landedBeforeProbe in [true, false]) {
-    testWidgets(
-      landedBeforeProbe
-          ? 'foreground return keeps a link ahead of the session listener'
-          : 'successful connect keeps the link when cancellation loses the race',
-      (tester) async {
-        final logs = <String>[];
-        final e = engine(logs)..setBackground(true);
-        final pending = Completer<void>();
-        final cancels = <bool>[];
-        e.debugDeviceConnectWithTimeout = (_) => pending.future;
-        e.debugSystemConnected = (_, _) async => landedBeforeProbe;
-        e.debugDeviceDisconnect = ({bool queue = true}) async {
-          cancels.add(queue);
-        };
-        final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
-        await tester.pump();
-        try {
-          e.setBackground(false);
-          await tester.pump();
-          expect(
-            cancels.where((queue) => !queue),
-            hasLength(landedBeforeProbe ? 0 : 1),
-          );
-          pending.complete();
-          await tester.pump();
-          await tester.pump(const Duration(seconds: 16));
-          await finishConnect(tester, connect);
-          expect(logs, contains(contains('[BOOT gen5]')));
-          expect(logs, isNot(contains(startsWith('connect failed:'))));
-          expect(
-            logs,
-            contains(
-              contains(
-                landedBeforeProbe
-                    ? 'foreground — background connect already landed, keeping it'
-                    : 'background connect completed after cancellation — keeping it',
-              ),
-            ),
-          );
-        } finally {
-          if (!pending.isCompleted) pending.complete();
-          await tester.pump();
-          await tester.pump(const Duration(seconds: 16));
-          await finishConnect(tester, connect);
-        }
-      },
+  testWidgets('foreground return keeps a link ahead of the session listener', (
+    tester,
+  ) async {
+    final logs = <String>[];
+    final e = engine(logs)..setBackground(true);
+    final pending = Completer<void>();
+    final cancels = <bool>[];
+    e.debugDeviceConnectWithTimeout = (_) => pending.future;
+    e.debugSystemConnected = (_, _) async => true;
+    e.debugDeviceDisconnect = ({bool queue = true}) async {
+      cancels.add(queue);
+    };
+    final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+    await tester.pump();
+    e.setBackground(false);
+    await tester.pump();
+    expect(cancels.where((queue) => !queue), isEmpty);
+    pending.complete();
+    await tester.pump();
+    await finishConnect(tester, connect);
+    expect(logs, contains(contains('[BOOT gen5]')));
+    expect(logs, isNot(contains(startsWith('connect failed:'))));
+    expect(
+      logs,
+      contains(
+        '[LINK] foreground — background connect already landed, keeping it',
+      ),
     );
+  });
+
+  for (final foregroundReturn in [true, false]) {
+    for (final survivesCancellation in [false, true]) {
+      testWidgets(
+        '${foregroundReturn ? "foreground" : "disconnect"} cancellation '
+        '${survivesCancellation ? "keeps a verified surviving link" : "rejects late success after link drops"}',
+        (tester) async {
+          final logs = <String>[];
+          final e = engine(logs)..setBackground(true);
+          final pending = Completer<void>();
+          final cancellation = Completer<void>();
+          final cancels = <bool>[];
+          final states = StreamController<BluetoothConnectionState>.broadcast();
+          e.debugConnectionStates = () => states.stream;
+          addTearDown(states.close);
+          var linkUp = false;
+          e.debugDeviceConnectWithTimeout = (_) => pending.future;
+          e.debugSystemConnected = (_, _) async => linkUp;
+          e.debugDeviceDisconnect = ({bool queue = true}) async {
+            cancels.add(queue);
+            if (!queue) {
+              await cancellation.future;
+              linkUp = survivesCancellation;
+              states.add(
+                linkUp
+                    ? BluetoothConnectionState.connected
+                    : BluetoothConnectionState.disconnected,
+              );
+            }
+          };
+          final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+          await tester.pump();
+          Future<void>? disconnect;
+          try {
+            if (foregroundReturn) {
+              e.setBackground(false);
+            } else {
+              disconnect = e.disconnect();
+            }
+            await tester.pump();
+            expect(cancels.where((queue) => !queue), hasLength(1));
+            // FBP's connect future may succeed while disconnect is still running.
+            pending.complete();
+            await tester.pump();
+            expect(logs, isNot(contains(contains('[BOOT gen5]'))));
+            cancellation.complete();
+            await tester.pump();
+            expect(await finishConnect(tester, connect), isFalse);
+            if (disconnect != null) {
+              await tester.runAsync(() => disconnect!);
+            }
+            if (survivesCancellation) {
+              expect(logs, contains(contains('[BOOT gen5]')));
+              expect(logs, isNot(contains(startsWith('connect failed:'))));
+              expect(
+                logs,
+                contains(
+                  '[LINK] background connect completed after cancellation — keeping it',
+                ),
+              );
+            } else {
+              expect(logs, isNot(contains(contains('[BOOT gen5]'))));
+              expect(
+                logs,
+                contains(
+                  'connect failed: Bad state: background pending connect cancelled',
+                ),
+              );
+              expect(e.holdsBandLink, isFalse);
+              expect(BleEngine.bandClaimed, isFalse);
+              expect(e.state.connection, 'disconnected');
+            }
+          } finally {
+            if (!pending.isCompleted) pending.complete();
+            if (!cancellation.isCompleted) cancellation.complete();
+            await finishConnect(tester, connect);
+            if (disconnect != null) {
+              await tester.runAsync(() => disconnect!);
+            }
+          }
+        },
+      );
+    }
   }
 
   for (final foregroundReturn in [true, false]) {

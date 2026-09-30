@@ -2463,6 +2463,7 @@ class BleEngine {
     final started = now();
     final pending = _PendingConnect(device);
     final background = timeout == kIosBackgroundConnectTimeout;
+    var timerExpired = false;
     if (background) {
       _backgroundPendingConnect = pending;
       _log('[LINK] background pending connect (up to 20 min)');
@@ -2486,6 +2487,7 @@ class BleEngine {
       await connect.timeout(
         timeout,
         onTimeout: () async {
+          timerExpired = true;
           if (await _connectLinkUp(device) || pending.connected) {
             _log(
               '[LINK] connect timer expired but the link is up — keeping it',
@@ -2493,30 +2495,41 @@ class BleEngine {
             try {
               await connect.timeout(const Duration(seconds: 5));
               return;
+            } on TimeoutException {
+              _log(
+                '[LINK] link was up but connect did not complete within 5s — cancelling',
+              );
             } catch (error) {
               _log('[LINK] system-link recovery did not complete: $error');
             }
           }
           await _cancelConnect(pending);
-          if (pending.connected) return;
-          // The timeout listener already consumes late errors; also observe the
-          // cancellation completion without keeping the operation lock parked.
+          // Consume late errors without waiting indefinitely for connect. The
+          // post-cancel probe below decides whether the attempt can still succeed.
           unawaited(connect.catchError((Object _) {}));
-          throw FlutterBluePlusException(
-            ErrorPlatform.fbp,
-            'connect',
-            FbpErrorCode.timeout.index,
-            'Timed out after ${timeout.inSeconds}s',
-          );
         },
       );
+      await pending.cancellation;
+      await pending.disconnect;
       if (pending.cancelled) {
+        final linkUp = await _connectLinkUp(device);
+        if (!linkUp || !pending.connected) {
+          if (timerExpired) {
+            throw FlutterBluePlusException(
+              ErrorPlatform.fbp,
+              'connect',
+              FbpErrorCode.timeout.index,
+              'Timed out after ${timeout.inSeconds}s',
+            );
+          }
+          throw StateError('background pending connect cancelled');
+        }
         _log(
           '[LINK] background connect completed after cancellation — keeping it',
         );
       }
     } catch (_) {
-      if (pending.cancelled && !pending.connected) {
+      if (pending.cancelled && !timerExpired) {
         // Keep our timeout exception intact for the existing failure classifier.
         // Only a native failure after foreground/disconnect cancellation is a
         // cancellation failure.

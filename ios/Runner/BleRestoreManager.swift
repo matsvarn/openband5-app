@@ -301,6 +301,9 @@ class BleRestoreManager: NSObject {
         if self.wakeQueuedBeforeReady {
           self.wakeQueuedBeforeReady = false
           self.channel?.invokeMethod("wake", arguments: nil)
+          for uuid in Array(self.arms.keys) where self.arms[uuid]?.handedOff == true {
+            self.startWakeWatchdog(uuid)
+          }
         }
         result(nil)
       case "wakeAck":
@@ -343,9 +346,16 @@ class BleRestoreManager: NSObject {
 
   @objc private func appDidEnterBackground() { armIfAppropriate() }
   @objc private func appWillEnterForeground() {
-    // Foreground: let flutter_blue_plus own the band; drop our pending connect.
+    // Keep a connected handoff until Dart has adopted it; cancel pending connects.
     log("[ble-restore] appWillEnterForeground — cancelling pending connections")
-    cancelPending()
+    for uuid in Array(arms.keys) {
+      let s = state(uuid)
+      if s.handedOff && s.peripheral?.state == .connected {
+        log("[ble-restore] foreground — keeping handed-off connection \(uuid.uuidString) until syncDone/setOwnsBand")
+      } else {
+        cancelPending(uuid)
+      }
+    }
   }
 
   // MARK: - Pending connect
@@ -436,11 +446,15 @@ class BleRestoreManager: NSObject {
     beginBackground()
     if flutterReady {
       channel?.invokeMethod("wake", arguments: nil)
+      startWakeWatchdog(uuid)
       log("[ble-restore] wake → Flutter")
     } else {
       wakeQueuedBeforeReady = true
       log("[ble-restore] wake queued (Flutter not ready)")
     }
+  }
+
+  private func startWakeWatchdog(_ uuid: UUID) {
     // Only an unacknowledged wake may expire. Once Dart accepts it, Dart
     // ends the handoff with syncDone; suspension must not consume its budget.
     DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
