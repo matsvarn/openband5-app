@@ -12,8 +12,8 @@ import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
 import 'package:openstrap_edge/openband/g3/day.dart';
-import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'package:openstrap_edge/openband/g3/journal_parts.dart';
+import 'package:openstrap_edge/openband/g3/metrics.dart' show OBMissingValue;
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
@@ -91,8 +91,13 @@ class _ReviewRepo extends SyntheticOpenBandRepository {
   );
 }
 
-Widget _app(Widget child, {double scale = 1}) => MaterialApp(
-  theme: openBandTheme(Brightness.light),
+Widget _app(
+  Widget child, {
+  double scale = 1,
+  Brightness brightness = Brightness.light,
+}) => MaterialApp(
+  debugShowCheckedModeBanner: false,
+  theme: openBandTheme(brightness),
   builder: (context, child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
     child: child!,
@@ -147,7 +152,7 @@ void main() {
 
   for (final scale in [1.0, 1.3]) {
     testWidgets(
-      'review P1 sleep stage duration is not a footer target $scale',
+      'review P1 sleep duration stays separate and footer reaches below text $scale',
       (tester) async {
         final c = await _controller(tester, _ReviewRepo());
         await tester.pumpWidget(
@@ -209,30 +214,31 @@ void main() {
       expect(taps, 2);
     });
 
-    testWidgets('review P1 last zone minutes are not Grundlage $scale', (
-      tester,
-    ) async {
-      var taps = 0;
-      await tester.pumpWidget(
-        _app(
-          _card(
-            OBZoneRows(
-              zones: const [OBZone(2, '', 9), OBZone(1, '', 3)],
-              source: 'HFmax 186 · geschätzt aus Alter',
-              onBasis: () => taps++,
+    testWidgets(
+      'review P1 zone minutes stay separate and Grundlage reaches below text $scale',
+      (tester) async {
+        var taps = 0;
+        await tester.pumpWidget(
+          _app(
+            _card(
+              OBZoneRows(
+                zones: const [OBZone(2, '', 9), OBZone(1, '', 3)],
+                source: 'HFmax 186 · geschätzt aus Alter',
+                onBasis: () => taps++,
+              ),
             ),
+            scale: scale,
           ),
-          scale: scale,
-        ),
-      );
-      final minutes = tester.getRect(find.text('3 Min.'));
-      await tester.tapAt(Offset(minutes.center.dx, minutes.bottom - 1));
-      expect(taps, 0);
-      final link = tester.getRect(find.text('Grundlage'));
-      await tester.tapAt(link.center);
-      await tester.tapAt(Offset(link.center.dx, link.bottom + 10));
-      expect(taps, 2);
-    });
+        );
+        final minutes = tester.getRect(find.text('3 Min.'));
+        await tester.tapAt(Offset(minutes.center.dx, minutes.bottom - 1));
+        expect(taps, 0);
+        final link = tester.getRect(find.text('Grundlage'));
+        await tester.tapAt(link.center);
+        await tester.tapAt(Offset(link.center.dx, link.bottom + 10));
+        expect(taps, 2);
+      },
+    );
 
     testWidgets('review P1 a footer with no gap shrinks its target $scale', (
       tester,
@@ -363,11 +369,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Lauf'), findsOneWidget);
       await c.selectDay('2026-09-27');
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.byType(OBTrainingLoad), 250);
       expect(find.text('Keine Aktivität an diesem Tag.'), findsOneWidget);
-      expect(find.byType(OBActivityRow), findsNothing);
+      expect(find.text('Lauf'), findsNothing);
     },
   );
 
@@ -410,6 +417,14 @@ void main() {
       await tester.scrollUntilVisible(find.text('HRV · ms'), 250);
       expect(find.textContaining('NaN'), findsNothing);
       expect(find.textContaining('Infinity'), findsNothing);
+      final tiles = find.ancestor(
+        of: find.text('HRV · ms'),
+        matching: find.byType(OBPanel),
+      );
+      expect(
+        find.descendant(of: tiles, matching: find.byType(OBMissingValue)),
+        findsNWidgets(3),
+      );
       expect(tester.takeException(), isNull);
     });
   }
@@ -433,5 +448,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ø 5,0 · 28 Tage ohne Belastungswert'), findsOneWidget);
     expect(find.text('2,0–8,0'), findsOneWidget);
+    await tester.ensureVisible(find.text('MEDIAN'));
+    expect(find.text('5,0'), findsNWidgets(2));
   });
+  for (final scale in [1.0, 1.3, 2.0]) {
+    testWidgets('review 7 load labels fit and values align at 375 pt $scale', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _app(
+          _card(const OBTrainingLoad(load: G3WeeklyLoad([], atl: 64, ctl: 51))),
+          scale: scale,
+        ),
+      );
+      for (final label in ['AKUT · 7 TAGE', 'GEWOHNT · 6 WOCHEN']) {
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(label),
+        );
+        expect(
+          paragraph.size.height,
+          lessThanOrEqualTo(paragraph.preferredLineHeight * 1.2),
+        );
+      }
+      expect(
+        tester.getTopLeft(find.text('64')).dy,
+        tester.getTopLeft(find.text('51')).dy,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('review 8 journal target glyph wraps with its label at 375 pt', (
+    tester,
+  ) async {
+    final c = await _controller(tester, _ReviewRepo());
+    await tester.pumpWidget(
+      _app(G3JournalScreen(controller: c, onEdit: (_) {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(OBPatternCard), 250);
+    final moon = find.descendant(
+      of: find.byType(OBPatternCard),
+      matching: find.byWidgetPredicate(
+        (w) => w is Icon && w.icon == LucideIcons.moon,
+      ),
+    );
+    expect(
+      tester.getCenter(moon).dy,
+      closeTo(tester.getCenter(find.text('Einschlafen')).dy, 1),
+    );
+  });
+
+  testWidgets('review 8 journal zero pairs has no redundant third line', (
+    tester,
+  ) async {
+    final c = await _controller(tester, _ReviewRepo());
+    await tester.pumpWidget(
+      _app(G3JournalScreen(controller: c, onEdit: (_) {})),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(OBPatternCard), 250);
+    expect(find.text('Noch kein Vergleich · 0 von 8 Paaren'), findsOneWidget);
+    expect(find.textContaining('0 Paare ·'), findsNothing);
+  });
+  for (final brightness in Brightness.values) {
+    for (final screen in ['training-load', 'journal-pattern']) {
+      testWidgets(
+        'review small-phone $screen ${brightness.name} golden',
+        (tester) async {
+          final Widget page;
+          if (screen == 'training-load') {
+            page = _card(
+              OBTrainingLoad(
+                load: const G3WeeklyLoad([], atl: 64, ctl: 51),
+                onMethod: () {},
+              ),
+            );
+          } else {
+            final c = await _controller(tester, _ReviewRepo());
+            page = G3JournalScreen(controller: c, onEdit: (_) {});
+          }
+          await tester.pumpWidget(_app(page, brightness: brightness));
+          await tester.pumpAndSettle();
+          if (screen == 'journal-pattern') {
+            await tester.scrollUntilVisible(find.byType(OBPatternCard), 250);
+            await tester.pumpAndSettle();
+          }
+          expect(tester.takeException(), isNull);
+          await expectLater(
+            find.byType(MaterialApp),
+            matchesGoldenFile(
+              'openband_goldens/g31-review-$screen-375-${brightness.name}.png',
+            ),
+          );
+        },
+        tags: const ['golden'],
+      );
+    }
+  }
 }

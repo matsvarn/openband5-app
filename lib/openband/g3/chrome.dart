@@ -23,7 +23,7 @@ class _Hit extends StatelessWidget {
   final Widget child;
   final double? width;
   final Alignment alignment;
-  final double bottomPadding;
+  final double bottomPadding, height;
   const _Hit({
     required this.label,
     required this.onTap,
@@ -31,6 +31,7 @@ class _Hit extends StatelessWidget {
     this.width,
     this.alignment = Alignment.center,
     this.bottomPadding = 0,
+    this.height = 44,
   });
   @override
   Widget build(BuildContext context) => Semantics(
@@ -44,7 +45,7 @@ class _Hit extends StatelessWidget {
       onTap: onTap,
       child: SizedBox(
         width: width,
-        height: 44,
+        height: height,
         child: Align(
           alignment: alignment,
           widthFactor: width == null ? 1 : null,
@@ -78,7 +79,12 @@ class OBLink extends StatelessWidget {
     final footer =
         bottomAligned &&
         context.findAncestorWidgetOfExactType<OBPanel>() != null;
+    final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 13;
+    final targetHeight = footer
+        ? (lineHeight + 20).clamp(44.0, double.infinity)
+        : 44.0;
     final target = _Hit(
+      height: targetHeight,
       bottomPadding: footer ? 18 : 0,
       label: semanticsLabel ?? label,
       onTap: onTap,
@@ -95,9 +101,8 @@ class OBLink extends StatelessWidget {
     if (!footer) {
       return target;
     }
-    final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 13;
     return _LinkTapArea(
-      overlap: (44 - lineHeight - 2).clamp(0, 26),
+      overlap: targetHeight - (lineHeight + 2).clamp(18.0, double.infinity),
       child: target,
     );
   }
@@ -150,8 +155,7 @@ class _LinkTapBox extends RenderShiftedBox {
       context.paintChild(child!, offset + Offset(0, 18 - _overlap));
 }
 
-// Rows normally clip hit tests to their layout bounds. Route overlapping link
-// targets at the card level so two-link footers retain their full targets.
+// Route footer targets through the card so rows do not clip the padding area.
 class _PanelLinkTargets extends SingleChildRenderObjectWidget {
   const _PanelLinkTargets({required super.child});
   @override
@@ -221,8 +225,9 @@ class _PanelLinkBox extends RenderProxyBox {
                 link._panelHit = false;
               }
             },
-          ))
+          )) {
         return true;
+      }
     }
     return super.hitTestChildren(result, position: position);
   }

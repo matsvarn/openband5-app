@@ -425,6 +425,7 @@ class OBPatternCard extends StatelessWidget {
     required this.have,
     required this.need,
     this.footer,
+    this.showFooter = true,
     this.loading = false,
     this.onRetry,
     this.partial = false,
@@ -436,7 +437,7 @@ class OBPatternCard extends StatelessWidget {
   final int? have;
   final int? need;
   final String? footer;
-  final bool loading, partial;
+  final bool loading, partial, showFooter;
   final VoidCallback? onRetry;
   final VoidCallback? onOpen;
   @override
@@ -541,7 +542,7 @@ class OBPatternCard extends StatelessWidget {
               const SizedBox(height: 16),
               OBPatternProgress(have: have!.clamp(0, need!), need: need!),
             ],
-            if (!loading && onRetry == null) ...[
+            if (showFooter && !loading && onRetry == null) ...[
               SizedBox(height: relation == null ? 10 : 2),
               Text(
                 footer ??

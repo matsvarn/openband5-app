@@ -106,7 +106,21 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: g.caps(color: g.muted, size: 11)),
+          SizedBox(
+            height: MediaQuery.textScalerOf(context).scale(11) * 16 / 11,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: g.caps(color: g.muted, size: 11),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 5),
           if (value == null)
             const OBMissingValue(size: 36, lineHeight: 40)
