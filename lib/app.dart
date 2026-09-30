@@ -739,7 +739,8 @@ class _ShellState extends State<_Shell> {
             _day.refresh();
           },
           onOpenMetric: (m) => openHeuteMetric(c, _day, m),
-          onOpenActivity: (_) => _go(ShellDomain.workout),
+          onOpenActivity: (activity) =>
+              unawaited(openHeuteActivity(c, _day, activity)),
           onOpenSleep: () => _go(ShellDomain.sleep),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),

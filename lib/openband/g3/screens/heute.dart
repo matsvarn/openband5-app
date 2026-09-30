@@ -523,15 +523,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           const SizedBox(height: 12),
           _pad(_steps(day, isToday)),
         ],
-        if (stored != null)
-          OBFooterStamp(
-            [
-              'Letzter Bandwert ${_relative(stored, now)}',
-              if (band.receivedAt != null)
-                'Übertragung ${_relative(band.receivedAt!, now)}',
-            ].join(' · '),
-            synthetic: synthetic,
-          ),
       ],
     ];
     if (day != null && (_data.checkIn != null || !isToday)) _jumpToAnchor();
@@ -555,15 +546,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               child: OBPageHeader.compact(
                 title: isToday
                     ? 'Heute'
-                    : DateFormat(
-                        'EEEE',
-                        'de_DE',
-                      ).format(DateTime.parse(c.selectedDay)),
+                    : '${DateFormat('E', 'de_DE').format(DateTime.parse(c.selectedDay))} ${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(c.selectedDay))}',
                 subtitle: [
-                  DateFormat('E dd.MM', 'de_DE')
-                      .format(DateTime.parse(c.selectedDay))
-                      .replaceAll('.,', '')
-                      .replaceFirst('. ', ' '),
+                  if (isToday)
+                    '${DateFormat('E', 'de_DE').format(DateTime.parse(c.selectedDay))} ${DateFormat('dd.MM', 'de_DE').format(DateTime.parse(c.selectedDay))}'
+                  else
+                    _selectedDayAge(c.selectedDay, c.now()),
                   if (synthetic) 'Synthetische Daten',
                 ].join(' · '),
                 band: OBBandCapsule(
@@ -598,6 +586,14 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     return '${DateFormat('dd.MM.').format(t)} ${_clock(t)}';
   }
 
+  String _selectedDayAge(String day, DateTime now) {
+    final selected = DateTime.parse(day);
+    final days = DateTime.utc(now.year, now.month, now.day)
+        .difference(DateTime.utc(selected.year, selected.month, selected.day))
+        .inDays;
+    return days == 1 ? 'gestern' : 'vor $days Tagen';
+  }
+
   // ---------------------------------------------------------------------
   // header, date strip, sync line
 
@@ -609,20 +605,11 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
   ) {
     final day = DateTime.parse(c.selectedDay);
     final now = c.now();
-    // Calendar days, not 24 h spans: a local span across a DST change is
-    // 23 or 25 h. UTC dates have none.
-    final ago = DateTime.utc(
-      now.year,
-      now.month,
-      now.day,
-    ).difference(DateTime.utc(day.year, day.month, day.day)).inDays;
     final title = isToday ? 'Heute' : DateFormat('EEEE', 'de_DE').format(day);
     final date = DateFormat('d. MMMM', 'de_DE').format(day);
     final subtitle = isToday
         ? DateFormat('EEEE, d. MMMM', 'de_DE').format(day)
-        : ago == 1
-        ? '$date · gestern'
-        : '$date · vor $ago Tagen';
+        : '$date · ${_selectedDayAge(c.selectedDay, now)}';
     return OBPageHeader.hub(
       title: title,
       subtitle: subtitle,
@@ -764,14 +751,11 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       final need = baseline?.status.nightsNeeded;
       lead = OBLeadMetric(
         label: 'ERHOLUNG',
-        note: 'Basis im Aufbau',
         state: OBLeadState.building,
         have: baseline?.status.nightsHave,
         need: need,
         title: 'Noch keine Erholung',
-        reason: need == null
-            ? 'Sie braucht eine Basis aus deinen Nächten.'
-            : 'Sie braucht $need ${g3CountNoun(need, 'Nacht', 'Nächte')} als Basis.',
+        reason: '',
         onTap: widget.onOpenMetric == null ? null : open,
       );
     } else if (value != null) {
@@ -1421,8 +1405,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         );
       case _Week.sleep:
         final goal = strip?.goal;
-        final recoveryEmpty = (_data.week[G3Metric.recovery]?.days ?? const [])
-            .every((d) => d.value == null);
         return OBWeekBars(
           bars: bars,
           max: 111 / 11 * 60,
@@ -1434,8 +1416,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               G3Legend.goal('Ziel ${_hm(goal)}')
             else
               const G3Legend.text('kein Schlafziel'),
-            if (recoveryEmpty)
-              const G3Legend.text('Erholung: noch keine Werte'),
           ],
         );
       case _Week.strain:
@@ -1443,7 +1423,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           bars: bars,
           max: 21,
           emptyReason: empty ? 'Keine Belastung in dieser Woche' : null,
-          footer: const [G3Legend.text('Skala 0–21 · kein Normalbereich')],
         );
     }
   }
@@ -1505,7 +1484,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     }
     return OBNightCard(
       state: gap != null ? OBNightState.gap : OBNightState.full,
-      note: gap != null ? '${gap.round()} Min. Lücke' : 'lückenlos',
+      note: gap != null ? '${gap.round()} Min. Lücke' : null,
       asleep: _hm(asleep),
       subtitle: bed == null
           ? null
@@ -1668,22 +1647,12 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
                   : () => open(G3Metric.skinTempZ),
             ),
     );
-    final hrvBase = _data.ranges[G3Metric.hrv];
-    final building = hrvBase?.status.phase == BaselinePhase.building;
-    final left = hrvBase?.status.remaining;
     return OBPanel(
       padding: const EdgeInsets.fromLTRB(18, 14, 16, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          OBCardHeader(
-            'KÖRPER',
-            note: building
-                ? (left == null
-                      ? 'Basis im Aufbau'
-                      : 'Basis: noch $left ${g3CountNoun(left, 'Nacht', 'Nächte')}')
-                : 'vergangene Nacht',
-          ),
+          OBCardHeader('KÖRPER', note: 'vergangene Nacht'),
           ...rows,
         ],
       ),
@@ -1718,9 +1687,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     final hourly = [for (final v in sums) v?.round()];
     return OBStepsCard(
       total: total,
-      note: last != null && isToday
-          ? 'Zähler im Band · bis ${_clock(last)}'
-          : 'Zähler im Band',
+      note: last != null && isToday ? 'bis ${_clock(last)}' : '',
       hourly: total == null ? const [] : hourly,
       goalLabel: null,
     );
