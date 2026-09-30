@@ -11,6 +11,7 @@ import 'theme.dart';
 import 'time.dart';
 import 'g3/chrome.dart' as g3_chrome;
 import 'g3/g3_theme.dart';
+import 'g3/g3_format.dart';
 import 'g3/metrics.dart' show G3LabelRow;
 
 double _windowScaleX(int minute, double width, {required bool g3}) {
@@ -345,31 +346,62 @@ class _SleepEditorState extends State<SleepEditor> {
     }
     await _draftWrite;
     if (!mounted) return;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Änderung behalten?'),
-        content: Text(
-          draftError ??
-              'Dein Entwurf bleibt für diese Nacht gespeichert. Die Schlafzeiten ändern sich erst nach deiner Bestätigung.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'continue'),
-            child: const Text('Weiter bearbeiten'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'discard'),
-            child: const Text('Verwerfen'),
-          ),
-          if (draftError == null)
-            TextButton(
-              onPressed: () => Navigator.pop(c, 'keep'),
-              child: const Text('Entwurf behalten'),
+    final Future<String?> actionFuture = widget.g3
+        ? showModalBottomSheet<String>(
+            context: context,
+            useSafeArea: true,
+            backgroundColor: Colors.transparent,
+            builder: (sheet) => g3_chrome.OBSheet(
+              title: 'Änderung behalten?',
+              cancelLabel: 'Weiter bearbeiten',
+              confirmLabel: 'Verwerfen',
+              onCancel: () => Navigator.pop(sheet, 'continue'),
+              onConfirm: () => Navigator.pop(sheet, 'discard'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    draftError ??
+                        'Dein Entwurf bleibt für diese Nacht gespeichert. Die Schlafzeiten ändern sich erst nach deiner Bestätigung.',
+                  ),
+                  if (draftError == null) ...[
+                    const SizedBox(height: 12),
+                    g3_chrome.OBActionSecondary(
+                      'Entwurf behalten',
+                      expand: true,
+                      onPressed: () => Navigator.pop(sheet, 'keep'),
+                    ),
+                  ],
+                ],
+              ),
             ),
-        ],
-      ),
-    );
+          )
+        : showDialog<String>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: const Text('Änderung behalten?'),
+              content: Text(
+                draftError ??
+                    'Dein Entwurf bleibt für diese Nacht gespeichert. Die Schlafzeiten ändern sich erst nach deiner Bestätigung.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(c, 'continue'),
+                  child: const Text('Weiter bearbeiten'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(c, 'discard'),
+                  child: const Text('Verwerfen'),
+                ),
+                if (draftError == null)
+                  TextButton(
+                    onPressed: () => Navigator.pop(c, 'keep'),
+                    child: const Text('Entwurf behalten'),
+                  ),
+              ],
+            ),
+          );
+    final action = await actionFuture;
     if (action == 'discard') {
       try {
         await widget.controller.repository.discardDraft(day);
@@ -415,6 +447,20 @@ class _SleepEditorState extends State<SleepEditor> {
   void _showDetails() {
     final edit = draft;
     if (edit == null) return;
+    if (widget.g3) {
+      g3_chrome.showOBInfoSheet(
+        context,
+        title: 'Zeitfenster & Auswertung',
+        paragraphs: [
+          'Aufzeichnungszone: ${edit.recordingTimezone ?? 'nicht gespeichert'}.',
+          edit.recordingTimezone == null
+              ? 'Die Zeiten werden in der aktuellen iPhone-Zeitzone angezeigt. Prüfe Beginn, Ende und Datum.'
+              : 'Beginn: ${edit.onset.timeZoneName}. Ende: ${edit.wake.timeZoneName}. Zeitumstellungen bleiben berücksichtigt.',
+          'Die Vorschau ändert nur das Zeitfenster. Nach dem Speichern werden die vorhandenen Messungen neu ausgewertet. Fehlende Intervalle bleiben offen.',
+        ],
+      );
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -506,8 +552,7 @@ class _SleepEditorState extends State<SleepEditor> {
                             if (widget.g3)
                               g3_chrome.OBPageHeader.detail(
                                 title: 'SCHLAFZEITEN',
-                                subtitle:
-                                    'Nacht zu ${DateFormat('E dd.MM', 'de_DE').format(draft!.wake).replaceFirst('.', '')}',
+                                subtitle: g3NightOf(draft!.wake),
                                 backLabel: receipt == null
                                     ? 'Abbrechen'
                                     : 'Schlaf',
@@ -720,8 +765,9 @@ class _SleepEditorState extends State<SleepEditor> {
                                                     ),
                                                     _statusRow(
                                                       'Vorheriger Schlaf',
-                                                      obDuration(
-                                                        original.duration.value,
+                                                      g3Duration(
+                                                        original.duration.value
+                                                            ?.round(),
                                                       ),
                                                       LucideIcons.clock3,
                                                       p.muted,
@@ -857,24 +903,23 @@ class _SleepEditorState extends State<SleepEditor> {
                                             )),
                                       const SizedBox(height: 12),
                                       (widget.g3
-                                          ? g3_chrome.OBPanel(
-                                              child: _actionRow(
-                                                'Automatische Zeiten wiederherstellen',
-                                                LucideIcons.refreshCw,
-                                                p.action,
-                                                () async {
-                                                  final restored =
-                                                      await restoreAutomaticSleep(
-                                                        context,
-                                                        widget.controller,
-                                                        day,
-                                                      );
-                                                  if (restored &&
-                                                      context.mounted) {
-                                                    Navigator.pop(context);
-                                                  }
-                                                },
-                                              ),
+                                          ? g3_chrome.OBActionSecondary(
+                                              'Automatische Zeiten wiederherstellen',
+                                              icon: LucideIcons.refreshCw,
+                                              expand: true,
+                                              onPressed: () async {
+                                                final restored =
+                                                    await restoreAutomaticSleep(
+                                                      context,
+                                                      widget.controller,
+                                                      day,
+                                                      g3: true,
+                                                    );
+                                                if (restored &&
+                                                    context.mounted) {
+                                                  Navigator.pop(context);
+                                                }
+                                              },
                                             )
                                           : OBCard(
                                               child: _actionRow(
@@ -1113,7 +1158,7 @@ class _SleepEditorState extends State<SleepEditor> {
               const G3LabelRow('IM BETT', arrow: false),
               const Spacer(),
               Text(
-                '${obDuration(bed.toDouble())}${windowChanged ? ' · vorher ${obDuration(previous?.toDouble())}' : ''}',
+                '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
                 style: g.t(13, 17, color: g.muted),
               ),
             ],
@@ -1166,10 +1211,7 @@ class _SleepEditorState extends State<SleepEditor> {
     final value = start ? draft!.onset : draft!.wake;
     final text = start ? startText : endText;
     final enabled = receipt == null && !busy;
-    final weekday = DateFormat(
-      'E',
-      'de_DE',
-    ).format(value).replaceAll('.', '').toUpperCase();
+    final weekday = g3DayShort(value).split(' ').first.toUpperCase();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1327,7 +1369,9 @@ class _SleepEditorState extends State<SleepEditor> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          obDuration(night.duration.value),
+          widget.g3
+              ? g3Duration(night.duration.value?.round())
+              : obDuration(night.duration.value),
           style: widget.g3
               ? G3.of(context).t(34, 39, weight: FontWeight.w700)
               : p.text(34, weight: FontWeight.w800, display: true),
@@ -1345,13 +1389,17 @@ class _SleepEditorState extends State<SleepEditor> {
         const SizedBox(height: 8),
         _statusRow(
           'Zeit im Bett',
-          obDuration(night.bedMinutes),
+          widget.g3
+              ? g3Duration(night.bedMinutes?.round())
+              : obDuration(night.bedMinutes),
           LucideIcons.bed,
           p.sleep,
         ),
         _statusRow(
           'Wach',
-          '${obNumber(night.awakeMinutes)} Min.',
+          widget.g3
+              ? g3Duration(night.awakeMinutes?.round())
+              : '${obNumber(night.awakeMinutes)} Min.',
           LucideIcons.sun,
           p.strainText,
         ),
@@ -1438,25 +1486,40 @@ class _SleepEditorState extends State<SleepEditor> {
 Future<bool> restoreAutomaticSleep(
   BuildContext context,
   OpenBandController controller,
-  String day,
-) async {
-  final yes = await showDialog<bool>(
-    context: context,
-    builder: (c) => AlertDialog(
-      title: const Text('Automatische Zeiten wiederherstellen?'),
-      content: const Text('Schlaf und Erholung werden neu berechnet.'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(c, false),
-          child: const Text('Abbrechen'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(c, true),
-          child: const Text('Wiederherstellen'),
-        ),
-      ],
-    ),
-  );
+  String day, {
+  bool g3 = false,
+}) async {
+  final Future<bool?> confirmation = g3
+      ? showModalBottomSheet<bool>(
+          context: context,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
+          builder: (sheet) => g3_chrome.OBSheet(
+            title: 'Automatische Zeiten wiederherstellen?',
+            confirmLabel: 'Wiederherstellen',
+            onCancel: () => Navigator.pop(sheet, false),
+            onConfirm: () => Navigator.pop(sheet, true),
+            child: const Text('Schlaf und Erholung werden neu berechnet.'),
+          ),
+        )
+      : showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Automatische Zeiten wiederherstellen?'),
+            content: const Text('Schlaf und Erholung werden neu berechnet.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Abbrechen'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Wiederherstellen'),
+              ),
+            ],
+          ),
+        );
+  final yes = await confirmation;
   if (yes != true) return false;
   try {
     await controller.repository.restoreAutomatic(day);
