@@ -107,7 +107,12 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: g.caps(color: g.muted)),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: g.caps(color: g.muted),
+          ),
           const SizedBox(height: 5),
           if (value == null)
             const OBMissingValue(size: 36, lineHeight: 40)
@@ -131,10 +136,11 @@ class OBTrainingLoad extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              column('AKUT · 7 TAGE', ready ? acute : null),
+              column('AKUT · 7 T.', ready ? acute : null),
               SizedBox(height: 55, child: VerticalDivider(color: g.line)),
-              column('GEWOHNT · 6 WOCHEN', ready ? usual : null),
+              column('GEWOHNT · 6 WO.', ready ? usual : null),
             ],
           ),
           if (ready) ...[
