@@ -9,6 +9,7 @@ import '../../../data/day_label.dart';
 import '../../../data/journal_fields.dart';
 import '../../../state/app_state.dart';
 import '../../controller.dart';
+import '../../day_picker.dart';
 import '../../domain.dart';
 import '../../local_repository.dart';
 import '../../journal_controls.dart' show kJournalMoodIcons;
@@ -16,8 +17,10 @@ import '../../journal_fields.dart' show journalFieldIcon;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart'
     show
+        OBActionPrimary,
         OBBandCapsule,
         OBBandState,
+        OBListRow,
         OBPageHeader,
         OBPanel,
         OBSectionHeader,
@@ -73,6 +76,43 @@ String _patternFooter(G3JournalPattern result) {
 
 String _nightsOrDash(int? count) =>
     count == null ? '—' : '$count ${g3CountNoun(count, 'Nacht', 'Nächte')}';
+
+void _showJournalInfo(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) {
+  final g = G3.of(context);
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: g.canvas,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheet) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title, style: g.t(20, 24, weight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            Text(body, style: g.t(14, 19, color: g.ink2)),
+            const SizedBox(height: 20),
+            OBActionPrimary(
+              'Schließen',
+              expand: true,
+              onPressed: () => Navigator.pop(sheet),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 enum _Answer { yesNo, amount, scale, note }
 
@@ -653,7 +693,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     return OBJournalDayRow(
       title:
           '${row.day == yesterday ? 'Gestern · ' : ''}${DateFormat('EEE', 'de_DE').format(date).replaceAll('.', '')} ${DateFormat('dd.MM', 'de_DE').format(date)}',
-      summary: 'nichts eingetragen',
+      summary: null,
       chips: chips,
       count: chips.isEmpty
           ? null
@@ -682,10 +722,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
     final storedAt = band.latestStoredAt;
     final openDayIsToday = day == dayLabelOf(widget.controller.now());
     final sectionDay = openDayIsToday ? 'HEUTE' : _shortDay(day).toUpperCase();
-    final compactDate = DateFormat(
-      'EEE dd.MM',
-      'de_DE',
-    ).format(DateTime.parse(day)).replaceAll('.', '');
+    final compactDate = _shortDay(day);
     return ColoredBox(
       color: g.page,
       child: AnimatedBuilder(
@@ -695,10 +732,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
             ListView(
               controller: _scrollController,
               key: const PageStorageKey('g3.journal'),
-              padding: const EdgeInsets.only(
-                top: 20,
-                bottom: kOBTabBarContentInset,
-              ),
+              padding: const EdgeInsets.only(bottom: kOBTabBarContentInset),
               children: [
                 if (widget.onBack != null)
                   OBPageHeader.detail(
@@ -709,6 +743,12 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                     ).format(DateTime.parse(day)),
                     backLabel: 'Journal',
                     onBack: widget.onBack,
+                    onTrailing: () => _showJournalInfo(
+                      context,
+                      title: 'Journal verstehen',
+                      body:
+                          'Alkohol, Koffein und die Notiz gehören zum Vortag. Stimmung und eigene Fragen gelten für den ausgewählten Tag. Fehlende Antworten bleiben offen.',
+                    ),
                   )
                 else
                   OBPageHeader.hub(
@@ -727,17 +767,8 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                       onTap: widget.onBand,
                     ),
                     onProfile: widget.onProfile,
-                    onTitle: () async {
-                      final chosen = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.parse(day),
-                        firstDate: DateTime(2020),
-                        lastDate: widget.controller.now(),
-                      );
-                      if (chosen != null) {
-                        await widget.controller.selectDay(dayLabelOf(chosen));
-                      }
-                    },
+                    onTitle: () =>
+                        chooseOpenBandDay(context, widget.controller),
                   ),
                 OBSyncState(
                   kind: storedAt == null
@@ -810,13 +841,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                               : () => _save(current, currentDraft),
                         ),
                 ),
-                _JournalSectionHeader(
-                  '$sectionDay BEANTWORTET',
-                  trailing: Text(
-                    '$count beantwortet',
-                    style: g.t(13, 17, color: g.ink2),
-                  ),
-                ),
+                const OBSectionHeader('BEANTWORTET'),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: snap == null || count == 0
@@ -892,55 +917,51 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 const SizedBox(height: 20),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: InkWell(
-                    onTap: pattern == null
-                        ? null
-                        : () => Navigator.of(context).push(
+                  child: pattern == null && _patternLoading
+                      ? OBPatternCard(
+                          title: 'Vergleich wird geladen',
+                          detail: '',
+                          have: null,
+                          need: null,
+                          loading: true,
+                        )
+                      : pattern == null && _patternFailed
+                      ? OBPatternCard(
+                          title: '—',
+                          detail: 'Vergleich konnte nicht geladen werden.',
+                          have: null,
+                          need: null,
+                          onRetry: () => _loadPattern(day, _serial),
+                        )
+                      : pattern != null
+                      ? OBPatternCard(
+                          title: switch (pattern.pattern.kind) {
+                            CaffeineSleepPatternKind.meaningful =>
+                              'Koffein und Einschlafen',
+                            CaffeineSleepPatternKind.nonmeaningful =>
+                              'Kein klares Muster',
+                            CaffeineSleepPatternKind.insufficient =>
+                              'Noch zu wenige Nächte',
+                            CaffeineSleepPatternKind.unavailable =>
+                              'Noch kein Vergleich',
+                          },
+                          detail: 'Koffein nach 14 Uhr · folgende Nacht',
+                          have:
+                              pattern.historyNeed?.have ??
+                              pattern.pattern.pairedN,
+                          need:
+                              pattern.historyNeed?.need ??
+                              pattern.pairedMinimum,
+                          footer: _patternFooter(pattern),
+                          partial: pattern.pattern.partial,
+                          onOpen: () => Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (_) =>
                                   G3JournalPatternScreen(pattern: pattern),
                             ),
                           ),
-                    child: pattern == null && _patternLoading
-                        ? OBPatternCard(
-                            title: 'Vergleich wird geladen',
-                            detail: '',
-                            have: null,
-                            need: null,
-                            loading: true,
-                          )
-                        : pattern == null && _patternFailed
-                        ? OBPatternCard(
-                            title: '—',
-                            detail: 'Vergleich konnte nicht geladen werden.',
-                            have: null,
-                            need: null,
-                            onRetry: () => _loadPattern(day, _serial),
-                          )
-                        : pattern != null
-                        ? OBPatternCard(
-                            title: switch (pattern.pattern.kind) {
-                              CaffeineSleepPatternKind.meaningful =>
-                                'Koffein und Einschlafen',
-                              CaffeineSleepPatternKind.nonmeaningful =>
-                                'Kein klares Muster',
-                              CaffeineSleepPatternKind.insufficient =>
-                                'Noch zu wenige Nächte',
-                              CaffeineSleepPatternKind.unavailable =>
-                                'Noch kein Vergleich',
-                            },
-                            detail: 'Koffein nach 14 Uhr · folgende Nacht',
-                            have:
-                                pattern.historyNeed?.have ??
-                                pattern.pattern.pairedN,
-                            need:
-                                pattern.historyNeed?.need ??
-                                pattern.pairedMinimum,
-                            footer: _patternFooter(pattern),
-                            partial: pattern.pattern.partial,
-                          )
-                        : const SizedBox.shrink(),
-                  ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -953,24 +974,21 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
                 right: 0,
                 child: ColoredBox(
                   color: g.page,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 20),
-                    child: OBPageHeader.compact(
-                      title: 'Journal',
-                      subtitle:
-                          '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
-                      band: OBBandCapsule(
-                        state: band.connection == BandConnection.connected
-                            ? OBBandState.live
-                            : storedAt == null
-                            ? OBBandState.none
-                            : OBBandState.off,
-                        battery: band.batteryPercent,
-                        small: true,
-                        onTap: widget.onBand,
-                      ),
-                      onProfile: widget.onProfile,
+                  child: OBPageHeader.compact(
+                    title: 'Journal',
+                    subtitle:
+                        '$compactDate${widget.controller.day?.synthetic == true ? ' · Synthetische Daten' : ''}',
+                    band: OBBandCapsule(
+                      state: band.connection == BandConnection.connected
+                          ? OBBandState.live
+                          : storedAt == null
+                          ? OBBandState.none
+                          : OBBandState.off,
+                      battery: band.batteryPercent,
+                      small: true,
+                      onTap: widget.onBand,
                     ),
+                    onProfile: widget.onProfile,
                   ),
                 ),
               ),
@@ -1095,6 +1113,12 @@ class G3JournalPatternScreen extends StatelessWidget {
               subtitle: 'Koffein nach 14 Uhr · Einschlafen',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
+              onTrailing: () => _showJournalInfo(
+                context,
+                title: 'Muster verstehen',
+                body:
+                    'Koffein nach 14 Uhr wird mit dem Einschlafen in der folgenden Nacht verglichen. Dafür braucht es mindestens ${pattern.pairedMinimum} Tag-Nacht-Paare und je ${pattern.perSideMinimum} Nächte mit Ja und Nein. Ein Vergleich beweist keine Ursache.',
+              ),
             ),
             const SizedBox(height: 16),
             OBPanel(
@@ -1127,7 +1151,11 @@ class G3JournalPatternScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '${minutes > 0 ? '+' : ''}$minutes',
+                          '${minutes < 0
+                              ? '−'
+                              : minutes > 0
+                              ? '+'
+                              : ''}${minutes.abs()}',
                           style: g.t(72, 72, weight: FontWeight.w700),
                         ),
                         const SizedBox(width: 6),
@@ -1347,6 +1375,12 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
               subtitle: 'Fragen im Check-in',
               backLabel: 'Journal',
               onBack: () => Navigator.pop(context),
+              onTrailing: () => _showJournalInfo(
+                context,
+                title: 'Fragen anpassen',
+                body:
+                    'Eigene Fragen lassen sich ausblenden und wieder einblenden. Gespeicherte Antworten bleiben erhalten. Neue Fragen zählen ab heute und werden nicht mit Schlafnächten verglichen.',
+              ),
             ),
             const SizedBox(height: 24),
             Text(
@@ -1436,43 +1470,30 @@ class _G3JournalCustomizeState extends State<G3JournalCustomize> {
             ],
             const SizedBox(height: 18),
             if (_error != null) OBInlineError(message: _error!, onRetry: _load),
-            OBPanel(
-              child: Row(
-                children: [
-                  const Icon(LucideIcons.plus, size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Eigene Frage'),
-                      subtitle: const Text('Name und Antwortart festlegen'),
-                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
-                      onTap: () async {
-                        await showModalBottomSheet<void>(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: g.canvas,
-                          barrierColor: Colors.black.withValues(
-                            alpha:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? .55
-                                : .35,
-                          ),
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(28),
-                            ),
-                          ),
-                          builder: (_) => G3JournalNewQuestionSheet(
-                            repository: widget.repository,
-                          ),
-                        );
-                        if (mounted) _load();
-                      },
+            OBListRow(
+              icon: LucideIcons.plus,
+              title: 'Eigene Frage',
+              subtitle: 'Name und Antwortart festlegen',
+              onTap: () async {
+                await showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: g.canvas,
+                  barrierColor: Colors.black.withValues(
+                    alpha: Theme.of(context).brightness == Brightness.dark
+                        ? .55
+                        : .35,
+                  ),
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(28),
                     ),
                   ),
-                ],
-              ),
+                  builder: (_) =>
+                      G3JournalNewQuestionSheet(repository: widget.repository),
+                );
+                if (mounted) _load();
+              },
             ),
           ],
         ),
