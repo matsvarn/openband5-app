@@ -82,6 +82,35 @@ class _NoWeekRepo extends SyntheticOpenBandRepository {
   ]);
 }
 
+class _RecentTrainingRepo extends SyntheticOpenBandRepository {
+  _RecentTrainingRepo()
+    : super.fromMaps(
+        _fixture('day-summary'),
+        _fixture('sleep-detail'),
+        scenario: SyntheticScenario.g3Sample,
+      );
+
+  @override
+  Future<List<G3Activity>> readActivities(String day) async {
+    if (day == '2026-09-28') {
+      final start = DateTime(2026, 9, 28, 17);
+      return [
+        G3Activity(
+          id: 'recent-ride',
+          sport: 'cycling',
+          source: G3ActivitySource.live,
+          confirmed: true,
+          start: start,
+          end: start.add(const Duration(minutes: 55)),
+          strain: 8.4,
+          zoneMinutes: const [2, 8, 19, 15, 1],
+        ),
+      ];
+    }
+    return super.readActivities(day);
+  }
+}
+
 SyntheticOpenBandRepository _repo(SyntheticScenario scenario) =>
     SyntheticOpenBandRepository.fromMaps(
       _fixture('day-summary'),
@@ -1456,6 +1485,29 @@ void main() {
     await tester.pumpAndSettle();
     expect((await repo.readActivities('2026-09-29')).single.confirmed, isTrue);
     expect(find.byType(G3ActivityScreen), findsNothing);
+  });
+
+  testWidgets('recent activity keeps its stored strain in the shared row', (
+    tester,
+  ) async {
+    final repo = _RecentTrainingRepo();
+    final controller = OpenBandController(
+      repository: repo,
+      initialDay: '2026-09-29',
+      band: repo.band,
+      now: () => DateTime(2026, 9, 29, 9, 41),
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(G3TrainingScreen(controller: controller)));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widgetList<OBActivityRow>(find.byType(OBActivityRow))
+          .any((row) => row.title == 'Rad' && row.strain == '+8,4'),
+      isTrue,
+    );
   });
 
   testWidgets('result colours trace and zones while live pulse stays ink', (

@@ -549,11 +549,14 @@ Widget _recentCard(
     for (final a in activities) ...[
       day_widgets.OBActivityRow(
         domain: G3Domain.load,
-        compact: true,
         pictogram: trainingSportIcon(a.sport, color: G3.of(context).ink),
         title: trainingSport(a.sport),
         subtitle:
             '${g3DayShort(a.start)} · ${g3Duration(a.duration?.inMinutes)}${a.source == G3ActivitySource.manual ? ' · nachgetragen' : ''}',
+        strain: a.strain == null
+            ? null
+            : trainingNumber(a.strain, signed: true),
+        zoneMinutes: a.zoneMinutes?.map((m) => m.round()).toList(),
         onTap: () => open(a),
       ),
       const SizedBox(height: 10),
