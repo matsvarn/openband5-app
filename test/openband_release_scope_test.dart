@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
+import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
 import 'package:openstrap_edge/notify/fired_keys.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
@@ -20,10 +22,13 @@ import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/health.dart';
+import 'package:openstrap_edge/openband/journal_editor.dart';
 import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
+import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
+import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
@@ -31,6 +36,7 @@ import 'package:openstrap_edge/ui2/profile/data.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
+import 'package:openstrap_edge/ui2/activity/picker.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
@@ -66,17 +72,23 @@ void main() {
     expect(kOpenBandReleaseReduced, isTrue);
   });
 
-  test('a saved training or journal tab stays stored and opens home', () async {
+  test('G3 release domains and saved tabs restore by name', () async {
+    expect(kOpenBandReleaseDomains, [
+      ShellDomain.home,
+      ShellDomain.sleep,
+      ShellDomain.workout,
+      ShellDomain.wellness,
+    ]);
     SharedPreferences.setMockInitialValues({kOpenBandTabPref: 'workout'});
     Prefs.debugReset();
     await Prefs.ensureLoaded();
     expect(
       shellDomainForRestore(reduced: true, savedName: 'workout', legacyTab: 0),
-      ShellDomain.home,
+      ShellDomain.workout,
     );
     expect(
       shellDomainForRestore(reduced: true, savedName: '', legacyTab: 4),
-      ShellDomain.home,
+      ShellDomain.workout,
     );
     expect(
       shellDomainForRestore(
@@ -86,27 +98,46 @@ void main() {
       ),
       ShellDomain.wellness,
     );
+    expect(
+      shellDomainForRestore(reduced: true, savedName: 'health', legacyTab: 0),
+      ShellDomain.home,
+    );
+    expect(
+      shellDomainForRestore(reduced: false, savedName: 'sleep', legacyTab: 0),
+      ShellDomain.sleep,
+    );
+    expect(
+      shellDomainForRestore(reduced: true, savedName: 'sleep', legacyTab: 0),
+      ShellDomain.sleep,
+    );
     persistOpenBandTab(reduced: true, name: 'home');
-    expect(Prefs.getString(kOpenBandTabPref, ''), 'workout');
+    expect(Prefs.getString(kOpenBandTabPref, ''), 'home');
+    persistOpenBandTab(reduced: true, name: 'health');
+    expect(Prefs.getString(kOpenBandTabPref, ''), 'home');
     persistOpenBandTab(reduced: false, name: 'home');
     expect(Prefs.getString(kOpenBandTabPref, ''), 'home');
   });
 
-  test('parked routes and old tabs stay home; profile and alarm stay', () {
+  test('parked routes land on Heute; retained routes use their G3 domains', () {
     expect(
       releaseDomainForRoute(kRouteJournalCompose, reduced: true),
-      ShellDomain.home,
+      ShellDomain.wellness,
     );
-    expect(releaseScreenForRoute(kRouteJournalCompose, reduced: true), isNull);
+    expect(
+      releaseScreenForRoute(kRouteJournalCompose, reduced: true),
+      isNotNull,
+    );
     expect(releaseScreenForRoute(kRouteWater, reduced: true), isNull);
     expect(
       releaseScreenForRoute(kRouteWorkoutSuggestion, reduced: true),
-      isNull,
+      isNotNull,
     );
     expect(releaseScreenForRoute(kRouteRecap, reduced: true), isNull);
+    expect(releaseDomainForRoute(kRouteRecap, reduced: true), ShellDomain.home);
+    expect(releaseScreenForRoute(kRouteRecap, reduced: false), isNotNull);
     expect(releaseScreenForRoute('/nope', reduced: true), isNull);
-    expect(releaseDomainForTab(4, reduced: true), ShellDomain.home);
-    expect(releaseDomainForTab(1, reduced: true), ShellDomain.home);
+    expect(releaseDomainForTab(4, reduced: true), ShellDomain.workout);
+    expect(releaseDomainForTab(1, reduced: true), ShellDomain.sleep);
     expect(
       releaseScreenForRoute(kRouteProfile, reduced: true),
       isA<ProfileHome>(),
@@ -122,7 +153,7 @@ void main() {
     expect(openBandReleaseKeepsRoute('/today'), isTrue);
     expect(openBandReleaseKeepsRoute('/heart'), isTrue);
     expect(openBandReleaseKeepsRoute('$kRouteWorkoutIdle?id=w1'), isTrue);
-    expect(openBandReleaseKeepsRoute(kRouteWorkoutSuggestion), isFalse);
+    expect(openBandReleaseKeepsRoute(kRouteWorkoutSuggestion), isTrue);
     expect(openBandReleaseParksRoute('/today', reduced: true), isFalse);
     expect(openBandReleaseParksRoute('/heart', reduced: true), isFalse);
     expect(
@@ -134,13 +165,13 @@ void main() {
         workoutSuggestionRoute('2026-09-15:1750000000'),
         reduced: true,
       ),
-      isTrue,
+      isFalse,
     );
     expect(releaseDomainForRoute('/today', reduced: true), ShellDomain.home);
     expect(releaseDomainForRoute('/heart', reduced: true), ShellDomain.home);
     expect(
       releaseDomainForRoute(kRouteWorkoutIdle, reduced: true),
-      ShellDomain.home,
+      ShellDomain.workout,
     );
     expect(
       releaseDomainForRoute(kRouteProfile, reduced: true),
@@ -149,6 +180,8 @@ void main() {
     expect(releaseScreenForRoute('/today', reduced: true), isNull);
     expect(releaseScreenForRoute('/heart', reduced: true), isNull);
     expect(releaseScreenForRoute(kRouteWorkoutIdle, reduced: true), isNull);
+    expect(releaseDomainForRoute(kRouteWater, reduced: true), ShellDomain.home);
+    expect(releaseScreenForRoute(kRouteWater, reduced: true), isNull);
     expect(
       releaseScreenForRoute(kRouteJournalCompose, reduced: false),
       isNotNull,
@@ -162,6 +195,128 @@ void main() {
       ShellDomain.wellness,
     );
     expect(releaseDomainForTab(4, reduced: false), ShellDomain.workout);
+  });
+
+  test('every declared notification route has a release decision', () {
+    const decisions = <String, bool>{
+      kRouteAiMorning: false,
+      kRouteAiEvening: false,
+      kRouteJournalCompose: true,
+      kRouteBreathing: false,
+      kRouteWater: false,
+      kRouteWorkoutSuggestion: true,
+      kRouteMovement: true,
+      kRouteRecovery: true,
+      kRouteSteps: true,
+      kRouteWorkoutIdle: true,
+      kRouteMeds: false,
+      kRouteProfile: true,
+      kRouteRecap: false,
+      kRouteAlarm: true,
+      '/today': true,
+      '/sleep': true,
+      '/heart': true,
+      '/body': true,
+      '/workouts': true,
+    };
+    final declared = RegExp(r"const String (kRoute\w+) =")
+        .allMatches(File('lib/notify/tap_router.dart').readAsStringSync())
+        .map((m) => m.group(1)!)
+        .toSet();
+    expect(declared, {
+      'kRouteAiMorning',
+      'kRouteAiEvening',
+      'kRouteJournalCompose',
+      'kRouteBreathing',
+      'kRouteWater',
+      'kRouteWorkoutSuggestion',
+      'kRouteMovement',
+      'kRouteRecovery',
+      'kRouteSteps',
+      'kRouteWorkoutIdle',
+      'kRouteMeds',
+      'kRouteProfile',
+      'kRouteRecap',
+      'kRouteAlarm',
+    });
+    for (final entry in decisions.entries) {
+      expect(
+        openBandReleaseKeepsRoute(entry.key),
+        entry.value,
+        reason: entry.key,
+      );
+      expect(
+        openBandReleaseParksRoute(entry.key, reduced: true),
+        !entry.value,
+        reason: entry.key,
+      );
+      expect(
+        openBandReleaseParksRoute(entry.key, reduced: false),
+        isFalse,
+        reason: entry.key,
+      );
+    }
+    expect(openBandReleaseKeepsRoute('/sleep/stress'), isFalse);
+    expect(openBandReleaseKeepsRoute('/nutrition/meal'), isFalse);
+    expect(openBandReleaseKeepsRoute('/training/templates'), isFalse);
+    expect(openBandReleaseKeepsRoute('/unknown'), isFalse);
+  });
+
+  testWidgets('a parked notification tap selects Heute without a push', (
+    tester,
+  ) async {
+    final key = GlobalKey<AppShellState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: openBandTheme(Brightness.light),
+        home: AppShell(
+          key: key,
+          initial: ShellDomain.wellness,
+          domains: kOpenBandReleaseDomains,
+          releaseStyle: true,
+          builder: (_, domain) => Text('Root ${domain.name}'),
+        ),
+      ),
+    );
+    for (final route in [kRouteWater, kRouteRecap]) {
+      key.currentState!.select(ShellDomain.wellness);
+      final target = resolveTapRoute(route);
+      final domain = releaseDomainForRoute(target.screen!, reduced: true);
+      key.currentState!.select(domain);
+      final screen = releaseScreenForRoute(target.screen!, reduced: true);
+      if (screen != null) key.currentState!.open(domain, screen);
+      await tester.pumpAndSettle();
+      expect(find.text('Root home'), findsOneWidget, reason: route);
+      expect(find.text('Root wellness'), findsNothing, reason: route);
+      expect(find.byKey(const ValueKey('ob-tab-home')), findsOneWidget);
+      expect(screen, isNull, reason: route);
+    }
+  });
+
+  testWidgets('release sport picker omits the exercise library path', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: const ActivityPicker(releaseReduced: true),
+      ),
+    );
+    expect(find.text('Weight training'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'Weight training');
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ActivityRow, 'Weight training'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'Cycling');
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ActivityRow, 'Cycling'), findsOneWidget);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: ActivityPicker(key: UniqueKey()),
+      ),
+    );
+    expect(find.text('Weight training'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   test('a parked gesture does not run and does not rewrite the saved id', () {
@@ -190,6 +345,24 @@ void main() {
     );
     open.onEvent(14, now, '');
     expect(water, 1);
+  });
+
+  test('release gestures can finish workouts and mark journal moments', () {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    var workouts = 0;
+    var moments = 0;
+    GestureDispatcher(
+      settings: GestureSettings()..doubleTap = DeviceAction.workoutToggle,
+      onWorkoutToggle: () async => workouts++,
+      releaseReduced: true,
+    ).onEvent(14, now, '');
+    GestureDispatcher(
+      settings: GestureSettings()..doubleTap = DeviceAction.markMoment,
+      onMarkMoment: () async => moments++,
+      releaseReduced: true,
+    ).onEvent(14, now, '');
+    expect(workouts, 1);
+    expect(moments, 1);
   });
 
   test('a native gesture still runs when the release is reduced', () async {
@@ -243,8 +416,8 @@ void main() {
       find.text('Saved. It does nothing in this version.'),
       findsOneWidget,
     );
-    expect(find.text('Start / stop workout'), findsNothing);
-    expect(find.text('Mark a moment'), findsNothing);
+    expect(find.text('Start / stop workout'), findsOneWidget);
+    expect(find.text('Mark a moment'), findsOneWidget);
     expect(find.text('Ring my phone'), findsOneWidget);
     await tester.tap(find.text('Log water'));
     await tester.pump();
@@ -252,33 +425,42 @@ void main() {
     await tester.tap(find.text('Ring my phone'));
     await tester.pump();
     expect(chosen, DeviceAction.ringPhone);
+    await tester.tap(find.text('Start / stop workout'));
+    await tester.pump();
+    expect(chosen, DeviceAction.workoutToggle);
   });
 
-  testWidgets('reduced shell has no bottom nav and keeps a finish control', (
-    tester,
-  ) async {
-    final key = GlobalKey<AppShellState>();
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: openBandTheme(Brightness.light),
-        home: AppShell(
-          key: key,
-          initial: ShellDomain.workout,
-          domains: kOpenBandReleaseDomains,
-          banner: const Text('Session beenden'),
-          builder: (_, domain) => Text(domain.name),
+  testWidgets(
+    'release shell has four tabs and keeps a running session reachable',
+    (tester) async {
+      final key = GlobalKey<AppShellState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: AppShell(
+            key: key,
+            initial: ShellDomain.home,
+            domains: kOpenBandReleaseDomains,
+            releaseStyle: true,
+            banner: const Text('Session beenden'),
+            builder: (_, domain) => Text(domain.name),
+          ),
         ),
-      ),
-    );
-    expect(find.text('home'), findsOneWidget);
-    expect(find.text('Training'), findsNothing);
-    expect(find.text('Journal'), findsNothing);
-    expect(find.text('Session beenden'), findsOneWidget);
-    key.currentState!.open(ShellDomain.workout, const Text('Training starten'));
-    await tester.pump();
-    expect(find.text('Training starten'), findsNothing);
-    expect(find.text('home'), findsOneWidget);
-  });
+      );
+      expect(find.text('home'), findsOneWidget);
+      expect(find.text('Training'), findsOneWidget);
+      expect(find.text('Journal'), findsOneWidget);
+      expect(find.text('Session beenden'), findsOneWidget);
+      expect(
+        tester.getRect(find.text('Session beenden')).bottom,
+        lessThan(tester.getRect(find.byKey(const ValueKey('ob-tab-home'))).top),
+      );
+      key.currentState!.select(ShellDomain.workout);
+      await tester.pump();
+      expect(find.text('workout'), findsOneWidget);
+      expect(find.text('Session beenden'), findsOneWidget);
+    },
+  );
 
   testWidgets('stored stage minutes are the only night summary', (
     tester,
@@ -305,7 +487,9 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  testWidgets('reduced Messwerte is the four stored cards', (tester) async {
+  testWidgets('release Messwerte keeps band metrics and weight', (
+    tester,
+  ) async {
     final repo = _repo()..scenario = SyntheticScenario.complete;
     final controller = OpenBandController(
       repository: repo,
@@ -336,7 +520,7 @@ void main() {
     expect(find.text('7 Nächte'), findsNothing);
     expect(find.text('Laborwerte'), findsNothing);
     expect(find.text('Glukose'), findsNothing);
-    expect(find.text('Gewicht'), findsNothing);
+    expect(find.text('Gewicht'), findsOneWidget);
   });
 
   testWidgets('reduced overview hides parked actions and opens Messwerte', (
@@ -373,7 +557,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Dein Journal'), findsNothing);
-    expect(find.text('Training'), findsNothing);
+    expect(find.text('Training'), findsOneWidget);
     expect(find.text('Wasser'), findsNothing);
     expect(find.text('Energie'), findsNothing);
     expect(find.text('DEINE NACHT'), findsOneWidget);
@@ -445,7 +629,7 @@ void main() {
     );
     expect(find.text('Alle Messwerte'), findsOneWidget);
     expect(find.text('Wasser'), findsNothing);
-    expect(find.text('Training'), findsNothing);
+    expect(find.text('Training'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -692,10 +876,7 @@ void main() {
           supportedLocales: const [Locale('de')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           theme: openBandTheme(Brightness.light),
-          home: DataScreenView(
-            cadence: cadence,
-            onAutomatic: requests.add,
-          ),
+          home: DataScreenView(cadence: cadence, onAutomatic: requests.add),
         ),
       );
       await tester.tap(find.byType(Switch));
@@ -841,12 +1022,45 @@ void main() {
     expect(find.byKey(const ValueKey('notif-winddown')), findsNothing);
     expect(find.byKey(const ValueKey('notif-water')), findsNothing);
     expect(find.byKey(const ValueKey('notif-meds')), findsNothing);
-    expect(find.byKey(const ValueKey('notif-checkin')), findsNothing);
+    expect(find.byKey(const ValueKey('notif-checkin')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-weekly')), findsNothing);
-    expect(find.byKey(const ValueKey('notif-autodetect')), findsNothing);
+    expect(find.byKey(const ValueKey('notif-autodetect')), findsOneWidget);
+    expect(find.byKey(const ValueKey('notif-workout-idle')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-steps')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-recovery')), findsOneWidget);
     expect(find.byKey(const ValueKey('notif-alarm-latch')), findsOneWidget);
+  });
+
+  testWidgets('release idle-workout switch changes its own preference', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390 * 3, 2400 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    NotificationPrefs? changed;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('de'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('de')],
+        theme: openBandTheme(Brightness.light),
+        home: NotificationSettingsView(
+          releaseReduced: true,
+          prefs: const NotificationPrefs(remindersEnabled: false),
+          onChanged: (next) async => changed = next,
+        ),
+      ),
+    );
+    final toggle = find.descendant(
+      of: find.byKey(const ValueKey('notif-workout-idle')),
+      matching: find.byType(CupertinoSwitch),
+    );
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(changed?.workoutIdleEnabled, isFalse);
+    expect(changed?.remindersEnabled, isFalse);
   });
 
   testWidgets('reduced gallery opens Profile and deterministic Data receipts', (
@@ -866,10 +1080,14 @@ void main() {
     await tester.tap(find.byTooltip('Profil'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
+    expect(find.byType(OBTabBar), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('profile-data')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
+    expect(find.byType(OBTabBar), findsOneWidget);
+    expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('data-export-database')));
     await tester.pump();
@@ -894,40 +1112,61 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the synthetic gallery keeps four tabs until release is asked', (
-    tester,
-  ) async {
-    phone(tester);
-    final repository = (await tester.runAsync(loadGalleryRepository))!;
-    await tester.pumpWidget(
-      OpenBandGallery(repository: repository, showControls: false),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Übersicht'), findsOneWidget);
-    expect(find.text('Gesundheit'), findsOneWidget);
-    expect(find.text('Training'), findsOneWidget);
-    expect(find.text('Journal'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Wasser'),
-      200,
-      scrollable: find.byType(Scrollable).last,
-    );
-    expect(find.text('Wasser'), findsWidgets);
+  testWidgets(
+    'the synthetic gallery keeps development hubs and G3 release tabs',
+    (tester) async {
+      phone(tester);
+      final repository = (await tester.runAsync(loadGalleryRepository))!;
+      await tester.pumpWidget(
+        OpenBandGallery(repository: repository, showControls: false),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Heute'), findsOneWidget);
+      expect(find.text('Gesundheit'), findsOneWidget);
+      expect(find.text('Training'), findsOneWidget);
+      expect(find.text('Journal'), findsOneWidget);
+      expect(find.text('Schlaf'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Wasser'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Wasser'), findsWidgets);
 
-    await tester.pumpWidget(
-      OpenBandGallery(
-        repository: repository,
-        showControls: false,
-        releaseReduced: true,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Training'), findsNothing);
-    expect(find.text('Journal'), findsNothing);
-    expect(find.text('Wasser'), findsNothing);
-    expect(find.text('Alle Messwerte'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      await tester.pumpWidget(
+        OpenBandGallery(
+          repository: repository,
+          showControls: false,
+          releaseReduced: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Training'), findsOneWidget);
+      expect(find.text('Journal'), findsOneWidget);
+      expect(find.text('Wasser'), findsNothing);
+      expect(find.text('Alle Messwerte'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('ob-tab-workout')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Vorlagen'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(OBQuickStart),
+          matching: find.text('Kraft'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const ValueKey('ob-tab-wellness')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('medication-journal')), findsNothing);
+      expect(find.byKey(const ValueKey('cycle-journal')), findsNothing);
+      expect(find.text('Ernährung'), findsNothing);
+      await tester.tap(find.byTooltip('Journal bearbeiten'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OpenBandJournalEditor), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test('parked notification emits do not fire or claim the key', () async {
     SharedPreferences.setMockInitialValues({});
@@ -964,12 +1203,12 @@ void main() {
       date: '2026-09-15',
       route: route,
     );
-    final workout = event(
-      key: '2026-09-15:auto',
+    final parked = event(
+      key: '2026-09-15:water',
       category: NotifCategory.reminders,
-      route: kRouteWorkoutSuggestion,
+      route: kRouteWater,
     );
-    expect(await center.emit(workout), isFalse);
+    expect(await center.emit(parked), isFalse);
     expect(shown, isEmpty);
     expect(
       await center.emit(
@@ -1002,25 +1241,22 @@ void main() {
       ),
       isTrue,
     );
-    center.releaseReduced = false;
-    expect(await center.emit(workout), isTrue);
     expect(shown, [
       '2026-09-15:recovery',
       '2026-09-15:steps',
       '2026-09-15:alarm',
-      '2026-09-15:auto',
     ]);
   });
 
   test(
-    'kept reminder routes emit and a parked workout suggestion claims nothing',
+    'kept release prompts use their own switches, not weekly recap',
     () async {
       SharedPreferences.setMockInitialValues({});
-      await const NotificationPrefs(quietEnabled: false).save();
       final center = NotificationCenter.instance;
       final previousReduced = center.releaseReduced;
       final previousSink = center.presentSink;
       final shown = <String>[];
+      center.releaseReduced = true;
       center.presentSink = (event, {bool allowPermissionPrompt = true}) async {
         shown.add(event.dedupeKey);
         return true;
@@ -1029,100 +1265,167 @@ void main() {
         center.releaseReduced = previousReduced;
         center.presentSink = previousSink;
       });
-      center.releaseReduced = true;
-      const store = FiredKeyStore();
-      const suggestionId = '2026-09-15:1750000000';
-      const suggestionKey = '$suggestionId:auto_workout';
-      final parked = NotificationEvent(
-        dedupeKey: suggestionKey,
-        category: NotifCategory.reminders,
-        priority: NotifPriority.normal,
-        title: 'Did you work out?',
-        body: 'We spotted ~20 min of elevated activity. Tap to log it.',
-        date: '2026-09-15',
-        route: workoutSuggestionRoute(suggestionId),
-      );
-      expect(await center.emit(parked, allowPermissionPrompt: false), isFalse);
-      expect(await store.hasFired(suggestionKey), isFalse);
-      expect(shown, isEmpty);
 
-      Future<bool> emitReal(NotificationEvent event) =>
-          center.emit(event, allowPermissionPrompt: false);
-      expect(
-        await emitReal(
-          const NotificationEvent(
-            dedupeKey: 'alarm_fired:1750000000',
-            category: NotifCategory.reminders,
-            priority: NotifPriority.critical,
-            title: 'Alarm',
-            body: 'Your strap alarm just fired.',
-            date: '2026-09-15',
-            route: '/today',
-          ),
+      final cases = <(String, String, NotificationPrefs Function(bool))>[
+        (
+          'steps',
+          kRouteSteps,
+          (enabled) => NotificationPrefs(stepGoalEnabled: enabled),
         ),
-        isTrue,
-      );
-      expect(
-        await emitReal(
-          const NotificationEvent(
-            dedupeKey: '2026-09-15:sync_stale',
-            category: NotifCategory.device,
-            priority: NotifPriority.normal,
-            title: "Your band hasn't synced in a while",
-            body:
-                'No new data for about 12 hours. Open OpenStrap to '
-                'reconnect — background sync may have stalled.',
-            date: '2026-09-15',
-            route: '/today',
-          ),
+        (
+          'movement',
+          kRouteMovement,
+          (enabled) => NotificationPrefs(movementEnabled: enabled),
         ),
-        isTrue,
-      );
-      expect(
-        await emitReal(
-          const NotificationEvent(
-            dedupeKey: '2026-09-15:exception:medical',
-            category: NotifCategory.health,
-            priority: NotifPriority.critical,
-            title: 'Something changed',
-            body: 'A health exception needs a look.',
-            date: '2026-09-15',
-            route: '/heart',
-          ),
+        (
+          'workout idle',
+          kRouteWorkoutIdle,
+          (enabled) => NotificationPrefs(workoutIdleEnabled: enabled),
         ),
-        isTrue,
-      );
-      expect(
-        await emitReal(
-          const NotificationEvent(
-            dedupeKey: 'w123:workout_idle',
-            category: NotifCategory.reminders,
-            priority: NotifPriority.normal,
-            title: 'Still working out?',
-            body:
-                'Nothing above resting effort has been recorded. If the '
-                'session is over, open the app to finish it.',
-            date: '2026-09-15',
-            route: kRouteWorkoutIdle,
-          ),
+        (
+          'workout suggestion',
+          workoutSuggestionRoute('bout-1'),
+          (enabled) => NotificationPrefs(autoDetectEnabled: enabled),
         ),
-        isTrue,
-      );
-      expect(await store.hasFired(suggestionKey), isFalse);
-      expect(await store.hasFired('alarm_fired:1750000000'), isTrue);
-      expect(await store.hasFired('2026-09-15:sync_stale'), isTrue);
-      expect(await store.hasFired('2026-09-15:exception:medical'), isTrue);
-      expect(await store.hasFired('w123:workout_idle'), isTrue);
-      expect(shown, [
-        'alarm_fired:1750000000',
-        '2026-09-15:sync_stale',
-        '2026-09-15:exception:medical',
-        'w123:workout_idle',
-      ]);
-      expect(await center.emit(parked, allowPermissionPrompt: false), isFalse);
-      expect(shown, hasLength(4));
+      ];
+      for (final (name, route, withSwitch) in cases) {
+        NotificationEvent event(String state) => NotificationEvent(
+          dedupeKey: 'release-prompt:$name:$state',
+          category: NotifCategory.reminders,
+          title: name,
+          body: 'test',
+          date: '2026-09-15',
+          route: route,
+        );
+        await withSwitch(
+          false,
+        ).copyWith(remindersEnabled: false, quietEnabled: false).save();
+        expect(await center.emit(event('off')), isFalse, reason: '$name off');
+        await withSwitch(
+          true,
+        ).copyWith(remindersEnabled: false, quietEnabled: false).save();
+        expect(await center.emit(event('on')), isTrue, reason: '$name on');
+        expect(shown.last, event('on').dedupeKey);
+      }
+      expect(shown, hasLength(cases.length));
     },
   );
+
+  test('kept reminder routes and workout suggestion each claim once', () async {
+    SharedPreferences.setMockInitialValues({});
+    await const NotificationPrefs(quietEnabled: false).save();
+    // FiredKeyStore prunes dated claims after 14 days, so a fixed fixture date
+    // ages out. Use the current local day.
+    final day = todayLabel();
+    final center = NotificationCenter.instance;
+    final previousReduced = center.releaseReduced;
+    final previousSink = center.presentSink;
+    final shown = <String>[];
+    center.presentSink = (event, {bool allowPermissionPrompt = true}) async {
+      shown.add(event.dedupeKey);
+      return true;
+    };
+    addTearDown(() {
+      center.releaseReduced = previousReduced;
+      center.presentSink = previousSink;
+    });
+    center.releaseReduced = true;
+    const store = FiredKeyStore();
+    final suggestionId = '$day:1750000000';
+    final suggestionKey = '$suggestionId:auto_workout';
+    final suggestion = NotificationEvent(
+      dedupeKey: suggestionKey,
+      category: NotifCategory.reminders,
+      priority: NotifPriority.normal,
+      title: 'Did you work out?',
+      body: 'We spotted ~20 min of elevated activity. Tap to log it.',
+      date: day,
+      route: workoutSuggestionRoute(suggestionId),
+    );
+    expect(await center.emit(suggestion, allowPermissionPrompt: false), isTrue);
+    expect(await store.hasFired(suggestionKey), isTrue);
+    expect(shown, [suggestionKey]);
+
+    Future<bool> emitReal(NotificationEvent event) =>
+        center.emit(event, allowPermissionPrompt: false);
+    expect(
+      await emitReal(
+        NotificationEvent(
+          dedupeKey: 'alarm_fired:1750000000',
+          category: NotifCategory.reminders,
+          priority: NotifPriority.critical,
+          title: 'Alarm',
+          body: 'Your strap alarm just fired.',
+          date: day,
+          route: '/today',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      await emitReal(
+        NotificationEvent(
+          dedupeKey: '$day:sync_stale',
+          category: NotifCategory.device,
+          priority: NotifPriority.normal,
+          title: "Your band hasn't synced in a while",
+          body:
+              'No new data for about 12 hours. Open OpenStrap to '
+              'reconnect — background sync may have stalled.',
+          date: day,
+          route: '/today',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      await emitReal(
+        NotificationEvent(
+          dedupeKey: '$day:exception:medical',
+          category: NotifCategory.health,
+          priority: NotifPriority.critical,
+          title: 'Something changed',
+          body: 'A health exception needs a look.',
+          date: day,
+          route: '/heart',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      await emitReal(
+        NotificationEvent(
+          dedupeKey: 'w123:workout_idle',
+          category: NotifCategory.reminders,
+          priority: NotifPriority.normal,
+          title: 'Still working out?',
+          body:
+              'Nothing above resting effort has been recorded. If the '
+              'session is over, open the app to finish it.',
+          date: day,
+          route: kRouteWorkoutIdle,
+        ),
+      ),
+      isTrue,
+    );
+    expect(await store.hasFired(suggestionKey), isTrue);
+    expect(await store.hasFired('alarm_fired:1750000000'), isTrue);
+    expect(await store.hasFired('$day:sync_stale'), isTrue);
+    expect(await store.hasFired('$day:exception:medical'), isTrue);
+    expect(await store.hasFired('w123:workout_idle'), isTrue);
+    expect(shown, [
+      suggestionKey,
+      'alarm_fired:1750000000',
+      '$day:sync_stale',
+      '$day:exception:medical',
+      'w123:workout_idle',
+    ]);
+    expect(
+      await center.emit(suggestion, allowPermissionPrompt: false),
+      isFalse,
+    );
+    expect(shown, hasLength(5));
+  });
 }
 
 SyntheticOpenBandRepository _repo() => SyntheticOpenBandRepository.fromMaps(

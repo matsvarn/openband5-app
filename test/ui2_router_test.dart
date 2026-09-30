@@ -25,6 +25,7 @@ import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/models.dart' show DeviceState;
 import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/nutrition_route.dart';
+import 'package:openstrap_edge/openband/release_scope.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
 import 'package:openstrap_edge/import/backup_crypto.dart';
@@ -215,17 +216,36 @@ void main() {
     });
   });
 
-  group('deep links survive the five-tab rename', () {
-    test('every notification tab index resolves', () {
-      expect(domainForTab(0), ShellDomain.home);
-      // Sleep, Heart and Body all folded into Health.
-      expect(domainForTab(1), ShellDomain.health);
-      expect(domainForTab(2), ShellDomain.health);
-      expect(domainForTab(3), ShellDomain.health);
-      expect(domainForTab(4), ShellDomain.workout);
-      // A payload from a build that had more tabs than we do.
-      expect(domainForTab(9), ShellDomain.home);
-      expect(domainForTab(-1), ShellDomain.home);
+  group('legacy deep links survive the G3 tabs', () {
+    test('notification and saved tab indices resolve in both builds', () {
+      const legacyTabs = <(int, ShellDomain, ShellDomain)>[
+        (0, ShellDomain.home, ShellDomain.home),
+        (1, ShellDomain.sleep, ShellDomain.sleep),
+        (2, ShellDomain.health, ShellDomain.home),
+        (3, ShellDomain.health, ShellDomain.home),
+        (4, ShellDomain.workout, ShellDomain.workout),
+        (9, ShellDomain.home, ShellDomain.home),
+        (-1, ShellDomain.home, ShellDomain.home),
+      ];
+      for (final (index, development, release) in legacyTabs) {
+        expect(domainForTab(index), development, reason: 'tab $index');
+        expect(releaseDomainForTab(index, reduced: false), development,
+            reason: 'development tab $index');
+        expect(releaseDomainForTab(index, reduced: true), release,
+            reason: 'release tab $index');
+        expect(
+          shellDomainForRestore(
+              reduced: false, savedName: '', legacyTab: index),
+          development,
+          reason: 'development saved tab $index',
+        );
+        expect(
+          shellDomainForRestore(
+              reduced: true, savedName: '', legacyTab: index),
+          release,
+          reason: 'release saved tab $index',
+        );
+      }
     });
 
     test('every kRoute constant lands somewhere deliberate', () {
@@ -288,9 +308,18 @@ void main() {
       );
     });
 
-    test('the tab index the shell persists round-trips through the enum', () {
+    test('saved tab names restore in development and release', () {
       for (final d in ShellDomain.values) {
-        expect(ShellDomain.values[d.index], d);
+        expect(
+          shellDomainForRestore(
+              reduced: false, savedName: d.name, legacyTab: -1),
+          d,
+        );
+        expect(
+          shellDomainForRestore(
+              reduced: true, savedName: d.name, legacyTab: -1),
+          d == ShellDomain.health ? ShellDomain.home : d,
+        );
       }
     });
   });

@@ -517,6 +517,7 @@ Future<T?> showOpenBandSettingsChoiceSheet<T>({
   final p = OB.of(context);
   return showModalBottomSheet<T>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: p.card,
     barrierColor: barrierColor,
@@ -605,6 +606,7 @@ Future<int?> showOpenBandSettingsCountSheet({
   final p = OB.of(context);
   return showModalBottomSheet<int>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: p.card,
     barrierColor: const Color(0x52000000),

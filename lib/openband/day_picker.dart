@@ -39,6 +39,7 @@ class _DayPickerState extends State<_DayPicker> {
 
   void _info() => showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     useSafeArea: true,
     isScrollControlled: true,
     builder: (c) => SafeArea(

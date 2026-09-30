@@ -184,6 +184,7 @@ class _OpenBandMetricDetailState extends State<OpenBandMetricDetail> {
 
   void _basis(BuildContext context) => showModalBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     useSafeArea: true,
     builder: (c) {
       final p = OB.of(c);

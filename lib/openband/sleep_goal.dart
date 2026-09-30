@@ -456,6 +456,7 @@ Future<void> _goalInfo(
   String day,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {
@@ -492,6 +493,7 @@ Future<void> _estimateInfo(
   WeekendSleepEstimate? estimate,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {

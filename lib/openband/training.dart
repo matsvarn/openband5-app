@@ -10,9 +10,11 @@ import 'alp_tokens.dart';
 import 'controller.dart';
 import 'domain.dart';
 import 'theme.dart';
+import 'tab_bar.dart';
 
 class OpenBandTraining extends StatelessWidget {
   final OpenBandController controller;
+  final bool releaseReduced;
   final ValueChanged<String>? onStart;
   final Future<void> Function(WorkoutTemplate)? onStartTemplate;
   final Future<void> Function(WorkoutTemplate?)? onEditTemplate;
@@ -21,6 +23,7 @@ class OpenBandTraining extends StatelessWidget {
   const OpenBandTraining({
     super.key,
     required this.controller,
+    this.releaseReduced = false,
     this.onStart,
     this.onStartTemplate,
     this.onEditTemplate,
@@ -36,49 +39,70 @@ class OpenBandTraining extends StatelessWidget {
         color: p.canvas,
         child: ListView(
           key: const PageStorageKey('openband.training'),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            4,
+            16,
+            releaseReduced ? kOBTabBarContentInset : 24,
+          ),
           children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Training',
-                      style: p.text(30, weight: FontWeight.w800, display: true),
-                    ),
-                  ),
-                  if (onOpenTemplates != null)
-                    SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: Material(
-                        color: p.card,
-                        shape: const CircleBorder(),
-                        clipBehavior: Clip.antiAlias,
-                        child: IconButton(
-                          tooltip: 'Vorlagen',
-                          onPressed: onOpenTemplates,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 44,
-                            height: 44,
-                          ),
-                          icon: Icon(LucideIcons.list, size: 20, color: p.ink),
+            if (releaseReduced)
+              const OBPageHeader(
+                title: 'Training',
+                subtitle: '',
+                showBack: false,
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Training',
+                        style: p.text(
+                          30,
+                          weight: FontWeight.w800,
+                          display: true,
                         ),
                       ),
                     ),
-                ],
+                    if (onOpenTemplates != null)
+                      SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: Material(
+                          color: p.card,
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: IconButton(
+                            tooltip: 'Vorlagen',
+                            onPressed: onOpenTemplates,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 44,
+                              height: 44,
+                            ),
+                            icon: Icon(
+                              LucideIcons.list,
+                              size: 20,
+                              color: p.ink,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 12),
-            OBQuickStart(onStart: onStart),
+            OBQuickStart(onStart: onStart, releaseReduced: releaseReduced),
             const SizedBox(height: 10),
-            _HubTemplate(
-              controller: controller,
-              onStart: onStartTemplate,
-              onEdit: onEditTemplate,
-            ),
+            if (!releaseReduced)
+              _HubTemplate(
+                controller: controller,
+                onStart: onStartTemplate,
+                onEdit: onEditTemplate,
+              ),
             FutureBuilder<List<TrainingSession>>(
               key: ValueKey('sessions-${controller.selectedDay}'),
               future: controller.repository.readSessions(
@@ -226,7 +250,8 @@ class OBSportIcon extends StatelessWidget {
 
 class OBQuickStart extends StatelessWidget {
   final ValueChanged<String>? onStart;
-  const OBQuickStart({super.key, this.onStart});
+  final bool releaseReduced;
+  const OBQuickStart({super.key, this.onStart, this.releaseReduced = false});
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
@@ -277,13 +302,14 @@ class OBQuickStart extends StatelessWidget {
     return Row(
       spacing: 8,
       children: [
-        tile(
-          'Kraft',
-          OBSportIcon('barbell', color: p.strain),
-          p.strain,
-          p.strainTint,
-          'weight_training',
-        ),
+        if (!releaseReduced)
+          tile(
+            'Kraft',
+            OBSportIcon('barbell', color: p.strain),
+            p.strain,
+            p.strainTint,
+            'weight_training',
+          ),
         tile(
           'Laufen',
           OBSportIcon('run', color: p.strain),

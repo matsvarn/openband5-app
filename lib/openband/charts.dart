@@ -339,6 +339,7 @@ class NightChart extends StatelessWidget {
             onTap: available
                 ? () => showModalBottomSheet<void>(
                     context: context,
+                    useRootNavigator: true,
                     isScrollControlled: true,
                     useSafeArea: true,
                     builder: (c) => SafeArea(

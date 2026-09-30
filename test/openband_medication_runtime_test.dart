@@ -224,7 +224,27 @@ void main() {
       expect(maxDepth, 1);
     });
 
-    test('reduced release cancels parked ids and does not rearm them', () async {
+    test('G3 release arms no recap or default check-in', () async {
+      var armed = 0;
+      svc.debugZonedSchedule = () async {
+        armed++;
+      };
+      final defaults = await NotificationPrefs.load();
+      expect(defaults.checkInEnabled, isFalse);
+      await NotificationCenter.instance.scheduleStandingReminders(
+        defaults.copyWith(alarmNightCheckEnabled: false),
+        bedtimeMinOfDay: 23 * 60,
+        weeklyFinding: 'A week happened',
+        checkInDoneToday: false,
+        now: now,
+        releaseReduced: true,
+      );
+      expect(cancelled, contains(NotificationService.idWeeklyRecap));
+      expect(cancelled, contains(NotificationService.idCheckIn));
+      expect(armed, 0);
+    });
+
+    test('G3 release cancels parked ids and rearms opted-in check-in', () async {
       var armed = 0;
       svc.debugZonedSchedule = () async {
         armed++;
@@ -241,8 +261,11 @@ void main() {
         stepGoalEnabled: true,
         recoveryEnabled: true,
       );
+      await enabled.save();
+      final optedIn = await NotificationPrefs.load();
+      expect(optedIn.checkInEnabled, isTrue);
       await NotificationCenter.instance.scheduleStandingReminders(
-        enabled,
+        optedIn,
         bedtimeMinOfDay: 23 * 60,
         weeklyFinding: 'A week happened',
         checkInDoneToday: false,
@@ -273,7 +296,7 @@ void main() {
       expect(cancelled, contains(NotificationService.idMorningBrief));
       expect(cancelled, contains(NotificationService.idEveningBrief));
       expect(cancelled, contains(NotificationService.idJournalLog));
-      expect(armed, 0);
+      expect(armed, 1); // Only the explicitly enabled Journal check-in.
     });
   });
 

@@ -21,8 +21,8 @@ import 'weight.dart';
 class OpenBandHealth extends StatefulWidget {
   final OpenBandController controller;
 
-  /// Stored band metrics only, with a back header titled Messwerte.
-  /// Weight, manual VO₂, labs and glucose stay on the full Gesundheit tab.
+  /// G3 body values, with a back header titled Messwerte. Manual VO₂, labs
+  /// and glucose stay on the full development Gesundheit tab.
   final bool bandMetricsOnly;
   const OpenBandHealth({
     super.key,
@@ -69,6 +69,19 @@ class _OpenBandHealthState extends State<OpenBandHealth> {
                 ),
               ),
             SizedBox(height: widget.bandMetricsOnly ? 6 : 12),
+            if (widget.bandMetricsOnly) ...[
+              const SizedBox(height: 10),
+              OBCard(
+                padding: EdgeInsets.zero,
+                child: _HealthWeightRow(
+                  key: ValueKey('weight-${c.selectedDay}'),
+                  repository: c.repository,
+                  endDay: c.selectedDay,
+                  now: c.now,
+                  refreshRequest: c.refreshRequest,
+                ),
+              ),
+            ],
             if (!widget.bandMetricsOnly) ...[
               OBSegmented(
                 labels: const ['7 Nächte', '30 Nächte'],

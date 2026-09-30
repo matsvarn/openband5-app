@@ -216,9 +216,8 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
   /// Open the form on the detected window so the athlete can widen it to the
   /// session they actually did, then save that instead.
   Future<void> _adjust(Suggestion s) async {
-    final nav = Navigator.of(context);
     final l = AppLocalizations.of(context);
-    final saved = await nav.push<bool>(MaterialPageRoute<bool>(
+    final saved = await pushFullScreen<bool>(context, MaterialPageRoute<bool>(
       builder: (_) => LogWorkout(
         start: DateTime.fromMillisecondsSinceEpoch(s.startTs * 1000),
         end: DateTime.fromMillisecondsSinceEpoch(s.endTs * 1000),

@@ -20541,13 +20541,24 @@ void main() {
         }
 
         await mount(release: true);
-        expect(find.text('Training'), findsNothing);
-        expect(find.text('Journal'), findsNothing);
+        expect(find.byKey(const ValueKey('ob-tab-workout')), findsOneWidget);
+        expect(find.byKey(const ValueKey('ob-tab-wellness')), findsOneWidget);
         expect(find.text('Wasser'), findsNothing);
         expect(find.text('Energie'), findsNothing);
         expect(find.text('Alle Messwerte'), findsOneWidget);
         expect(find.text('Dein Journal'), findsNothing);
         await capture('release-happy-light');
+        for (final (domain, name) in [
+          ('sleep', 'release-tab-sleep-light'),
+          ('workout', 'release-tab-training-light'),
+          ('wellness', 'release-tab-journal-light'),
+        ]) {
+          await tester.tap(find.byKey(ValueKey('ob-tab-$domain')));
+          await tester.pumpAndSettle();
+          await capture(name);
+        }
+        await tester.tap(find.byKey(const ValueKey('ob-tab-home')));
+        await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
           find.text('SCHRITTE'),
           300,
@@ -20578,7 +20589,7 @@ void main() {
         await capture('release-error');
 
         await mount(release: true, scale: 2);
-        expect(find.text('Training'), findsNothing);
+        expect(find.byKey(const ValueKey('ob-tab-workout')), findsOneWidget);
         await capture('release-large');
         await tester.scrollUntilVisible(
           find.text('SCHRITTE'),
@@ -20666,6 +20677,13 @@ void main() {
         await tester.tap(exportDatabase);
         await tester.pumpAndSettle();
         final exportFailure = find.textContaining('synthetischer Schreibfehler');
+        if (exportFailure.evaluate().isEmpty) {
+          await tester.scrollUntilVisible(
+            exportFailure,
+            200,
+            scrollable: verticalScrollable().last,
+          );
+        }
         await tester.ensureVisible(exportFailure);
         expect(exportFailure, findsOneWidget);
         await capture('release-data-export-error');
@@ -20676,7 +20694,11 @@ void main() {
         expect(exportFailure, findsNothing);
         await capture('release-data-export-retry');
         final cadence = find.byKey(const ValueKey('data-backup-cadence'));
-        await tester.ensureVisible(cadence);
+        await Scrollable.ensureVisible(
+          tester.element(cadence),
+          alignment: 0.5,
+        );
+        await tester.pumpAndSettle();
         await tester.tap(cadence);
         await tester.pumpAndSettle();
         expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);

@@ -20,6 +20,7 @@ Future<T?> showOpenBandActionSheet<T>(
   final p = OB.of(context);
   return showModalBottomSheet<T>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: p.card,

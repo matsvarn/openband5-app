@@ -6,6 +6,7 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/day_label.dart';
+import '../ui2/app_shell.dart' show pushFullScreen;
 import 'controller.dart';
 import 'domain.dart';
 import 'health.dart' show OBSegmented;
@@ -756,9 +757,14 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
   }
 
   Future<void> _openCorrection() {
-    return Navigator.of(context).push<void>(
+    final tabNavigator = Navigator.of(context);
+    return pushFullScreen<void>(context,
       MaterialPageRoute<void>(
-        builder: (_) => SleepEditor(controller: widget.controller),
+        builder: (_) => SleepEditor(
+          controller: widget.controller,
+          onReturnToOverview: () =>
+              tabNavigator.popUntil((route) => route.isFirst),
+        ),
       ),
     );
   }

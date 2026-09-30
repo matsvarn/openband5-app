@@ -334,6 +334,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
     final current = _values[spec.key];
     final result = await showModalBottomSheet<_SheetResult>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _RatingSheet(spec: spec, metric: current),
@@ -358,6 +359,7 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
     if (_busy) return;
     final result = await showModalBottomSheet<List<String>>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _TagsSheet(selected: _tags),

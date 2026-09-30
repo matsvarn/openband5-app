@@ -196,6 +196,7 @@ class _OpenBandJournalFieldsState extends State<OpenBandJournalFields> {
   Future<void> _showDetail(JournalFieldSpec spec) async {
     final hidden = await showModalBottomSheet<bool>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _FieldDetailSheet(spec: spec, hidden: spec.hidden),
@@ -406,6 +407,7 @@ class _OpenBandJournalHiddenFieldsState
   Future<void> _restore(JournalFieldSpec spec) async {
     final restore = await showModalBottomSheet<bool>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _FieldDetailSheet(spec: spec, hidden: true),
@@ -582,6 +584,7 @@ class _OpenBandJournalFieldCreateState
   Future<void> _pickKind() async {
     final picked = await showModalBottomSheet<JournalFieldKind>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _KindSheet(selected: _kind),
     );

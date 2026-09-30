@@ -66,7 +66,7 @@ void main() {
         if (scale == 2.0) {
           expect(
             tester
-                .renderObject<RenderParagraph>(find.text('page:wellness'))
+                .renderObject<RenderParagraph>(find.text('page:sleep'))
                 .textScaler
                 .scale(10),
             20,
@@ -153,7 +153,10 @@ void _expectLabelsSingleLineInBounds(WidgetTester tester) {
     );
     widths.add(tabRect.width);
   }
-  expect(widths.toSet(), hasLength(1), reason: 'tabs must share equal width');
+  for (final width in widths) {
+    expect(width, closeTo(widths.first, 1e-9),
+        reason: 'tabs must share equal width');
+  }
 }
 
 void _expectHitTargets(WidgetTester tester) {

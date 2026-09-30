@@ -185,6 +185,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   );
   Widget _shell(BuildContext context) => AppShell(
     domains: widget.releaseReduced ? kOpenBandReleaseDomains : null,
+    releaseStyle: widget.releaseReduced,
     onSelect: (domain) {
       if (domain == ShellDomain.health) controller.refresh();
     },
@@ -212,8 +213,10 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
         },
       ),
       ShellDomain.health => OpenBandHealth(controller: controller),
+      ShellDomain.sleep => OpenBandSleep(controller: controller, asTab: true),
       ShellDomain.workout => OpenBandTraining(
         controller: controller,
+        releaseReduced: widget.releaseReduced,
         onStart: (type) {
           if (type != 'running') return;
           final run = ValueNotifier(
@@ -225,7 +228,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
               gps: true,
             ),
           );
-          Navigator.of(c).push(
+          pushFullScreen(c,
             MaterialPageRoute<void>(
               builder: (_) => OpenBandRunLive(
                 run: run,
@@ -247,7 +250,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
                   gps: true,
                 ),
                 onLap: () {},
-                onFinish: () => Navigator.of(c).maybePop(),
+                onFinish: () => Navigator.of(c, rootNavigator: true).maybePop(),
               ),
             ),
           );
@@ -276,6 +279,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
       ),
       ShellDomain.wellness => OpenBandJournal(
         controller: controller,
+        releaseReduced: widget.releaseReduced,
         onEdit: (day) async {
           await Navigator.of(c).push(
             MaterialPageRoute<void>(
@@ -300,7 +304,7 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   );
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return Navigator.of(c).push(
+    return pushFullScreen(c,
       MaterialPageRoute<void>(
         builder: (_) =>
             OpenBandStrengthLive(repository: widget.repository, template: t),

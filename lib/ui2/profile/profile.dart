@@ -215,6 +215,7 @@ Future<void> _pickLanguage(BuildContext c) async {
   ];
   await showModalBottomSheet<void>(
     context: c,
+    useRootNavigator: true,
     backgroundColor: p.card,
     showDragHandle: true,
     builder: (sheet) => SafeArea(

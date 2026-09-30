@@ -753,6 +753,22 @@ class NotificationSettingsView extends StatelessWidget {
                               ),
                             ),
                           ),
+                        if (releaseReduced)
+                          OBSettingsToggleRow(
+                            key: const ValueKey('notif-workout-idle'),
+                            label: _s(
+                              context,
+                              'Training läuft noch?',
+                              'Still working out?',
+                            ),
+                            value: prefs.workoutIdleEnabled,
+                            interactive: interactive,
+                            onToggle: () => _set(
+                              (p) => p.copyWith(
+                                workoutIdleEnabled: !p.workoutIdleEnabled,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -1017,6 +1033,7 @@ class NotificationSettingsView extends StatelessWidget {
     final p = OB.of(context);
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: p.card,
       builder: (sheet) {
@@ -1308,6 +1325,7 @@ bool _samePrefs(NotificationPrefs a, NotificationPrefs b) =>
     a.waterEnabled == b.waterEnabled &&
     a.waterIntervalMin == b.waterIntervalMin &&
     a.autoDetectEnabled == b.autoDetectEnabled &&
+    a.workoutIdleEnabled == b.workoutIdleEnabled &&
     a.movementEnabled == b.movementEnabled &&
     a.medsEnabled == b.medsEnabled &&
     a.checkInEnabled == b.checkInEnabled &&

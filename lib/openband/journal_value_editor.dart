@@ -37,6 +37,7 @@ Future<OpenBandJournalValueResult?> showOpenBandJournalValueSheet({
 }) {
   return showModalBottomSheet<OpenBandJournalValueResult>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.32),
     isScrollControlled: true,

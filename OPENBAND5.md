@@ -1,6 +1,6 @@
 # OpenBand 5
 
-> Release scope approved 21 September 2026: daily band data, sleep, Band and essential Profile/settings/data. Secondary modules remain preserved behind development access. The current scope, queue and acceptance process are in [IMPLEMENTATION_PLAN.md](docs/openband5/IMPLEMENTATION_PLAN.md); the previous full-product checklist is archived.
+> Scope updated 29 September 2026: the G3 expansion brings back Training, Journal, trends, expanded sleep, body values and widgets on top of daily band data, sleep, Band and Profile/Data. Nutrition, cycle, medication, labs/glucose and coach stay behind development access. The current scope, queue and acceptance process are in [IMPLEMENTATION_PLAN.md](docs/openband5/IMPLEMENTATION_PLAN.md).
 
 A subscription-free app for WHOOP 5.0. An independent [OpenStrap](https://github.com/OpenStrap) fork owned by Mats, focused on iPhone and the WHOOP 5.0 hardware he already owns.
 

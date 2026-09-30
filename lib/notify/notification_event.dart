@@ -117,10 +117,8 @@ NotifClass? classOf(NotificationEvent e) => switch (e.category) {
       // something measured — an open session whose trailing 20 minutes were
       // all rest or absence — asking the user to act on a state only they can
       // resolve, so it is a prompt exactly like the detected workout. At most
-      // once per session, enforced by its dedupeKey. No switch of its own: it
-      // reports on a session the user started, so the reminders category
-      // toggle is its off switch, the way recovery-ready rides
-      // recoveryEnabled.
+      // once per session, enforced by its dedupeKey. Its reduced-release off
+      // switch is NotificationPrefs.workoutIdleEnabled.
       NotifCategory.reminders
           when e.priority == NotifPriority.normal &&
               routePath(e.route ?? '') == kRouteWorkoutIdle =>

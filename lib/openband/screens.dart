@@ -13,6 +13,7 @@ import 'health.dart';
 import 'metric_detail.dart';
 import 'night_signals.dart';
 import '../data/day_label.dart';
+import '../ui2/app_shell.dart' show pushFullScreen;
 import '../ui2/profile/profile.dart' show SetRow;
 import 'naps.dart';
 import 'scale.dart';
@@ -20,6 +21,7 @@ import 'sleep_editor.dart';
 import 'sleep_goal.dart';
 import 'sleep_plan.dart';
 import 'theme.dart';
+import 'tab_bar.dart';
 
 class OpenBandOverview extends StatefulWidget {
   final OpenBandController controller;
@@ -74,7 +76,12 @@ class _OpenBandOverviewState extends State<OpenBandOverview> {
           onRefresh: controller.refresh,
           child: ListView(
             key: const PageStorageKey('openband.overview'),
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 40),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              6,
+              20,
+              reduced ? kOBTabBarContentInset : 40,
+            ),
             children: [
               _OverviewHeader(
                 controller: controller,
@@ -1592,7 +1599,10 @@ class OBMetricCard extends StatelessWidget {
                                         ? null
                                         : obVerdictText(
                                             p,
-                                            dayMetricVerdict(metricKey!, metric),
+                                            dayMetricVerdict(
+                                              metricKey!,
+                                              metric,
+                                            ),
                                           )) ??
                                     p.ink
                               : p.muted,
@@ -1999,7 +2009,11 @@ class _BandFrontierCard extends StatelessWidget {
               mark: p.card,
               markEdge: p.ink,
               ticks: 3,
-              labels: ('00:00', 'bis ${obTime(stored)}', 'jetzt ${obTime(now)}'),
+              labels: (
+                '00:00',
+                'bis ${obTime(stored)}',
+                'jetzt ${obTime(now)}',
+              ),
               semanticsLabel:
                   'Gespeicherte Banddaten bis ${obTime(stored)}, jetzt ${obTime(now)}',
             )
@@ -2022,6 +2036,7 @@ Future<void> showBandStatus(
   VoidCallback? onSync,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   backgroundColor: OB.of(context).canvas,
@@ -2083,10 +2098,7 @@ Future<void> showBandStatus(
                         ? '—'
                         : '${DateFormat('dd.MM').format(b.latestStoredAt!)} · ${obTime(b.latestStoredAt)}',
                   ),
-                  _Fact(
-                    'Auf dem iPhone gespeichert',
-                    obTime(b.receivedAt),
-                  ),
+                  _Fact('Auf dem iPhone gespeichert', obTime(b.receivedAt)),
                   _Fact(
                     'Nacht am ${DateFormat('dd.MM').format(DateTime.parse(controller.selectedDay))}',
                     controller.day == null
@@ -2137,7 +2149,12 @@ Future<void> showBandStatus(
 
 class OpenBandSleep extends StatefulWidget {
   final OpenBandController controller;
-  const OpenBandSleep({super.key, required this.controller});
+  final bool asTab;
+  const OpenBandSleep({
+    super.key,
+    required this.controller,
+    this.asTab = false,
+  });
 
   /// Nights needed before a 30-night average ("Schnitt") is shown.
   static const int averageMinNights = 7;
@@ -2205,11 +2222,17 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
                   : null;
               return ListView(
                 key: PageStorageKey('openband.sleep.$selected'),
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  0,
+                  16,
+                  widget.asTab ? kOBTabBarContentInset : 24,
+                ),
                 children: [
                   OBPageHeader(
                     title: 'Schlaf',
-                    backText: 'Heute',
+                    backText: widget.asTab ? null : 'Heute',
+                    showBack: !widget.asTab,
                     subtitle: '',
                     // Paper: pill 4 pt under the header; its hit area adds 2.
                     bottom: 2,
@@ -2431,9 +2454,14 @@ class _OpenBandSleepState extends State<OpenBandSleep> {
     },
   );
   Future<void> _edit(BuildContext context) async {
-    await Navigator.of(context).push(
+    final tabNavigator = Navigator.of(context);
+    await pushFullScreen(context,
       MaterialPageRoute<void>(
-        builder: (_) => SleepEditor(controller: controller),
+        builder: (_) => SleepEditor(
+          controller: controller,
+          onReturnToOverview: () =>
+              tabNavigator.popUntil((route) => route.isFirst),
+        ),
       ),
     );
   }
@@ -2925,8 +2953,7 @@ class _NightTile extends StatelessWidget {
                             TextSpan(text: '$unit · '),
                             TextSpan(
                               text: deltaText,
-                              style: deltaColor == null ||
-                                      deltaColor == p.muted
+                              style: deltaColor == null || deltaColor == p.muted
                                   ? null
                                   : TextStyle(color: deltaColor),
                             ),
@@ -3250,7 +3277,9 @@ class _Fact extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: last
           ? null
-          : BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
+          : BoxDecoration(
+              border: Border(bottom: BorderSide(color: p.line)),
+            ),
       child: large
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3271,6 +3300,7 @@ Future<void> _sleepMethod(
   OpenBandController controller,
 ) => showModalBottomSheet<void>(
   context: context,
+  useRootNavigator: true,
   isScrollControlled: true,
   useSafeArea: true,
   builder: (c) {

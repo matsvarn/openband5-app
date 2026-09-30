@@ -361,13 +361,12 @@ class _InitFailed extends StatelessWidget {
 
 /// A notification's tab index → the domain that now owns that content.
 ///
-/// The indices come from `tap_router.dart`, which still speaks the old
-/// five-tab vocabulary (Today · Sleep · Heart · Body · Workouts). Sleep, Heart
-/// and Body all folded into Health, so three of the five collapse onto one
-/// destination. Payloads from older builds keep working, which is the whole
-/// point — a notification is scheduled days before it is tapped.
+/// The indices come from `tap_router.dart`'s five historical destinations.
+/// Sleep and Workouts have G3 tabs; Heart and Body land on Heute. Payloads
+/// scheduled by older builds still resolve after an upgrade.
 ShellDomain domainForTab(int tab) => switch (tab) {
-  1 || 2 || 3 => ShellDomain.health,
+  1 => ShellDomain.sleep,
+  2 || 3 => ShellDomain.health,
   4 => ShellDomain.workout,
   _ => ShellDomain.home,
 };
@@ -378,6 +377,8 @@ ShellDomain domainForTab(int tab) => switch (tab) {
 /// to Home rather than crashing a cold launch on a payload from an older
 /// build.
 ShellDomain domainForRoute(String route) => switch (routePath(route)) {
+  '/sleep' => ShellDomain.sleep,
+  '/workouts' => ShellDomain.workout,
   kRouteAiMorning || kRouteAiEvening => ShellDomain.home,
   kRouteJournalCompose || kRouteBreathing => ShellDomain.wellness,
   // Water is a journal field that lives on Nutrition — that is the tab
@@ -434,17 +435,16 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
 Future<void> _nutritionBarcode(BuildContext context, String day, String meal) =>
     LogFoodSheet.show(context, date: day, meal: meal);
 
-/// A reduced release has only Home. Retained screens stay gated in
-/// [releaseScreenForRoute]; a parked route still pushes nothing.
-/// A full development build keeps [domainForRoute].
 ShellDomain releaseDomainForRoute(String route, {required bool reduced}) {
-  if (reduced) return ShellDomain.home;
-  return domainForRoute(route);
+  if (reduced && !openBandReleaseKeepsRoute(route)) return ShellDomain.home;
+  final domain = domainForRoute(route);
+  if (reduced && domain == ShellDomain.health) return ShellDomain.home;
+  return domain;
 }
 
 ShellDomain releaseDomainForTab(int tab, {required bool reduced}) {
   final domain = domainForTab(tab);
-  if (reduced && domain != ShellDomain.home) return ShellDomain.home;
+  if (reduced && domain == ShellDomain.health) return ShellDomain.home;
   return domain;
 }
 
@@ -624,14 +624,17 @@ class _ShellState extends State<_Shell> {
     // the base the payload was built with, not a second destination.
     if (s != null && s.isNotEmpty) {
       final domain = releaseDomainForRoute(s, reduced: kOpenBandReleaseReduced);
-      _go(domain);
       final screen = releaseScreenForRoute(
         s,
         reduced: kOpenBandReleaseReduced,
         repository: _day.repository,
       );
       if (screen != null) {
+        _domain = domain;
+        persistOpenBandTab(reduced: kOpenBandReleaseReduced, name: domain.name);
         _shellKey.currentState?.open(domain, screen);
+      } else {
+        _go(domain);
       }
       return;
     }
@@ -641,7 +644,7 @@ class _ShellState extends State<_Shell> {
   }
 
   void _go(ShellDomain d) {
-    if (kOpenBandReleaseReduced && d != ShellDomain.home) {
+    if (kOpenBandReleaseReduced && !kOpenBandReleaseDomains.contains(d)) {
       d = ShellDomain.home;
     }
     _domain = d;
@@ -669,6 +672,7 @@ class _ShellState extends State<_Shell> {
       key: _shellKey,
       initial: _domain,
       domains: reduced ? kOpenBandReleaseDomains : null,
+      releaseStyle: reduced,
       banner: live
           ? _LiveSessionBar(
               repository: _day.repository,
@@ -684,9 +688,10 @@ class _ShellState extends State<_Shell> {
         ShellDomain.home => OpenBandOverview(
           controller: _day,
           reduced: reduced,
-          onProfile: () => Navigator.of(
+          onProfile: () => pushInTab(
             c,
-          ).push(MaterialPageRoute<void>(builder: (_) => const ProfileHome())),
+            MaterialPageRoute<void>(builder: (_) => const ProfileHome()),
+          ),
           onJournal: reduced ? null : () => _go(ShellDomain.wellness),
           onNutrition: reduced
               ? null
@@ -702,8 +707,10 @@ class _ShellState extends State<_Shell> {
           onSync: () => _app!.openSession(),
         ),
         ShellDomain.health => OpenBandHealth(controller: _day),
+        ShellDomain.sleep => OpenBandSleep(controller: _day, asTab: true),
         ShellDomain.workout => OpenBandTraining(
           controller: _day,
+          releaseReduced: reduced,
           onStart: (type) => _startActivity(c, type),
           onOpenTemplates: () async {
             await Navigator.of(c).push(
@@ -719,7 +726,7 @@ class _ShellState extends State<_Shell> {
           },
           onStartTemplate: (t) => _openStrength(c, t),
           onEditTemplate: (t) => _openTemplateEditor(c, t),
-          onOpen: (s) => Navigator.of(c).push(
+          onOpen: (s) => pushInTab(c,
             MaterialPageRoute<void>(
               builder: (_) =>
                   OpenBandSession(repository: _day.repository, session: s),
@@ -728,8 +735,9 @@ class _ShellState extends State<_Shell> {
         ),
         ShellDomain.wellness => OpenBandJournal(
           controller: _day,
+          releaseReduced: reduced,
           onEdit: (day) async {
-            await Navigator.of(c).push(
+            await pushInTab(c,
               MaterialPageRoute<void>(
                 builder: (_) => OpenBandJournalEditor(
                   repository: _day.repository,
@@ -759,7 +767,7 @@ class _ShellState extends State<_Shell> {
   }
 
   Future<void> _openStrength(BuildContext c, WorkoutTemplate t) {
-    return Navigator.of(c).push(
+    return pushFullScreen(c,
       MaterialPageRoute<void>(
         builder: (_) => OpenBandStrengthLive(
           repository: _day.repository,
@@ -787,9 +795,12 @@ class _ShellState extends State<_Shell> {
     final app = _app;
     if (app == null) return;
     if (type != 'running') {
-      await Navigator.of(
-        c,
-      ).push(MaterialPageRoute<void>(builder: (_) => const WorkoutScreen()));
+      await pushFullScreen(c,
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              const WorkoutScreen(releaseReduced: kOpenBandReleaseReduced),
+        ),
+      );
       return;
     }
     if (app.activeWorkout == null) {
@@ -813,7 +824,7 @@ class _ShellState extends State<_Shell> {
     }
     if (!c.mounted) return;
     final feed = _LiveRunFeed(app);
-    await Navigator.of(c).push(
+    await pushFullScreen(c,
       MaterialPageRoute<void>(
         builder: (_) => OpenBandRunLive(
           run: feed,
@@ -843,7 +854,7 @@ class _ShellState extends State<_Shell> {
           onFinish: () async {
             await app.stopWorkout();
             _day.refresh();
-            if (c.mounted) Navigator.of(c).maybePop();
+            if (c.mounted) Navigator.of(c, rootNavigator: true).maybePop();
           },
         ),
       ),
@@ -1099,9 +1110,10 @@ Future<Widget> _activityLive(AppState app, Activity a, LiveDraft? draft) async {
 
 Future<void> _pushResumedLive(BuildContext context, Widget page) async {
   if (!context.mounted) return;
-  await Navigator.of(
+  await pushFullScreen(
     context,
-  ).push(MaterialPageRoute<void>(builder: (_) => page));
+    MaterialPageRoute<void>(builder: (_) => page),
+  );
 }
 
 void showRetryableNotice(

@@ -63,6 +63,10 @@ class NotificationPrefs {
   /// again rather than losing a week of them.
   final bool autoDetectEnabled;
 
+  /// The nudge for a workout left open after a long quiet stretch.
+  /// Kept separate from the parked weekly lookback's reminders switch.
+  final bool workoutIdleEnabled;
+
   /// The "time to move" nudge: a one-shot OS notification two hours after the
   /// last movement the band's live IMU saw, re-armed on every movement so it
   /// only ever fires on a genuinely uninterrupted still stretch.
@@ -145,6 +149,7 @@ class NotificationPrefs {
     this.waterEnabled = false,
     this.waterIntervalMin = 120, // every 2 hours
     this.autoDetectEnabled = true,
+    this.workoutIdleEnabled = true,
     this.movementEnabled = false,
     this.medsEnabled = false,
     this.checkInEnabled = false,
@@ -166,6 +171,7 @@ class NotificationPrefs {
   static const _kWater = 'notif_water';
   static const _kWaterInterval = 'notif_water_interval';
   static const _kAutoDetect = 'notif_auto_detect';
+  static const _kWorkoutIdle = 'notif_workout_idle';
   static const _kMovement = 'notif_movement';
   static const _kMeds = 'notif_meds';
   static const _kCheckIn = 'notif_checkin';
@@ -195,6 +201,7 @@ class NotificationPrefs {
       waterEnabled: p.getBool(_kWater) ?? false,
       waterIntervalMin: p.getInt(_kWaterInterval) ?? 120,
       autoDetectEnabled: p.getBool(_kAutoDetect) ?? true,
+      workoutIdleEnabled: p.getBool(_kWorkoutIdle) ?? true,
       movementEnabled: p.getBool(_kMovement) ?? false,
       medsEnabled: p.getBool(_kMeds) ?? false,
       checkInEnabled: p.getBool(_kCheckIn) ?? false,
@@ -221,6 +228,7 @@ class NotificationPrefs {
     await p.setBool(_kWater, waterEnabled);
     await p.setInt(_kWaterInterval, waterIntervalMin);
     await p.setBool(_kAutoDetect, autoDetectEnabled);
+    await p.setBool(_kWorkoutIdle, workoutIdleEnabled);
     await p.setBool(_kMovement, movementEnabled);
     await p.setBool(_kMeds, medsEnabled);
     await p.setBool(_kCheckIn, checkInEnabled);
@@ -244,6 +252,7 @@ class NotificationPrefs {
     bool? waterEnabled,
     int? waterIntervalMin,
     bool? autoDetectEnabled,
+    bool? workoutIdleEnabled,
     bool? movementEnabled,
     bool? medsEnabled,
     bool? checkInEnabled,
@@ -266,6 +275,7 @@ class NotificationPrefs {
         waterEnabled: waterEnabled ?? this.waterEnabled,
         waterIntervalMin: waterIntervalMin ?? this.waterIntervalMin,
         autoDetectEnabled: autoDetectEnabled ?? this.autoDetectEnabled,
+        workoutIdleEnabled: workoutIdleEnabled ?? this.workoutIdleEnabled,
         movementEnabled: movementEnabled ?? this.movementEnabled,
         medsEnabled: medsEnabled ?? this.medsEnabled,
         checkInEnabled: checkInEnabled ?? this.checkInEnabled,
@@ -302,7 +312,8 @@ class NotificationPrefs {
   /// This is also where the three-class rule is enforced — one gate rather than
   /// a check at each of the emit sites, which is how twenty-two kinds accreted
   /// in the first place.
-  bool shouldFireOs(NotifEvent event, int minuteOfDay) {
+  bool shouldFireOs(NotifEvent event, int minuteOfDay,
+      {bool releaseReduced = false}) {
     // The auto-detect off switch, applied before anything else: it is the one
     // gate the user set for THIS notification, and route is what identifies it
     // (the category it is emitted on is shared with everything else on the
@@ -311,6 +322,10 @@ class NotificationPrefs {
     // check against the bare route would miss every real one.)
     if (!autoDetectEnabled &&
         routePath(event.route ?? '') == kRouteWorkoutSuggestion) {
+      return false;
+    }
+    if (releaseReduced && !workoutIdleEnabled &&
+        routePath(event.route ?? '') == kRouteWorkoutIdle) {
       return false;
     }
     // The movement nudge's off switch, same shape and same reason as the
@@ -336,7 +351,14 @@ class NotificationPrefs {
     // it FOR a time, usually inside the quiet window, and its off switch is
     // cancelling the alarm rather than a preference buried in settings.
     if (klass == NotifClass.alarm) return true;
-    if (!categoryEnabled(event.category)) return false;
+    // In the reduced release the reminders switch only controls the parked
+    // weekly lookback. Each sanctioned prompt above has its own switch.
+    if (!(releaseReduced &&
+            event.category == NotifCategory.reminders &&
+            klass == NotifClass.prompt) &&
+        !categoryEnabled(event.category)) {
+      return false;
+    }
     if (inQuietHours(minuteOfDay)) {
       return event.priority == NotifPriority.critical && criticalOverridesQuiet;
     }

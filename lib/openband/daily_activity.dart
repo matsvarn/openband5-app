@@ -23,6 +23,7 @@ class StepsCard extends StatelessWidget {
     final p = OB.of(context);
     showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) => SafeArea(

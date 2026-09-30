@@ -15,6 +15,7 @@ Future<bool?> showOpenBandConfirmSheet({
 }) {
   return showModalBottomSheet<bool>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.32),
     builder: (context) => OpenBandConfirmSheet(

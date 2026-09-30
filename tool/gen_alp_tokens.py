@@ -21,6 +21,11 @@ def px(value: str) -> str:
     return re.sub(r"px$", "", value)
 
 
+def em(value: str) -> str:
+    """Letter spacing as a multiple of the font size (Flutter multiplies)."""
+    return re.sub(r"em$", "", value)
+
+
 def main() -> None:
     data = json.loads(SRC.read_text())
     src = data["source"]
@@ -51,6 +56,10 @@ def main() -> None:
             lambda n, v: f"static const double {n} = {px(v)};")
     section("AlpRadius", "--radius-alp-", "radius",
             lambda n, v: f"static const double {n} = {px(v)};")
+    section("AlpLeading", "--leading-alp-", "lineHeight",
+            lambda n, v: f"static const double {n} = {px(v)};")
+    section("AlpTracking", "--tracking-alp-", "letterSpacing",
+            lambda n, v: f"static const double {n} = {em(v)};")
 
     fonts = {t["name"]: t["value"] for t in tokens if t["type"] == "fontFamily"}
     out += [

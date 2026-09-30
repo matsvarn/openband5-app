@@ -146,7 +146,9 @@ class NotificationCenter {
       final prefs = await NotificationPrefs.load();
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
-      if (!prefs.shouldFireOs(e, minuteOfDay)) return false;
+      if (!prefs.shouldFireOs(e, minuteOfDay, releaseReduced: releaseReduced)) {
+        return false;
+      }
       if (stillValid != null && !stillValid()) return false;
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
       // The OS id only REPLACES a prior post of the same key — it still

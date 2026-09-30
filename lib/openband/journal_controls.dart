@@ -88,7 +88,7 @@ class OBJournalYesNo extends StatelessWidget {
     final p = OB.of(context);
     final stacked =
         MediaQuery.textScalerOf(context).scale(15) > 20 ||
-        MediaQuery.sizeOf(context).width < 360;
+        MediaQuery.sizeOf(context).width < 420;
     final line = MediaQuery.textScalerOf(context).scale(18);
     final visualHeight = stacked ? (line > 32 ? line : 32.0) : 32.0;
     final hitHeight = stacked
@@ -266,6 +266,7 @@ Future<Object?> showOpenBandJournalInfo(
 }) {
   return showModalBottomSheet<Object>(
     context: context,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x52000000),
     elevation: 0,

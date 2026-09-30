@@ -2,14 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../openband/theme.dart';
+import '../openband/tab_bar.dart';
 import 'theme.dart' show C;
 import 'grammar.dart' show Pressable;
 
+/// Push a detail from a tab page onto that tab's retained stack. Pass a
+/// context below the tab Navigator (for example, a page builder's context).
+/// Use [pushFullScreen] for live/setup/correction flows that cover the bar.
+Future<T?> pushInTab<T>(BuildContext context, Route<T> route) =>
+    Navigator.of(context).push(route);
+
+/// Push a full-screen flow above the shell, hiding its floating tab bar.
+Future<T?> pushFullScreen<T>(BuildContext context, Route<T> route) =>
+    Navigator.of(context, rootNavigator: true).push(route);
+
 enum ShellDomain {
-  home('Übersicht', LucideIcons.house, C.domHome),
+  home('Heute', LucideIcons.sun, C.domHome),
   health('Gesundheit', LucideIcons.heart, C.domHealth),
-  workout('Training', LucideIcons.dumbbell, C.domMove),
-  wellness('Journal', LucideIcons.notebookPen, C.domMind);
+  workout('Training', LucideIcons.activity, C.domMove),
+  wellness('Journal', LucideIcons.notebookPen, C.domMind),
+  sleep('Schlaf', LucideIcons.moon, C.domHealth);
 
   const ShellDomain(this.label, this.icon, this.accent);
   final String label;
@@ -21,8 +33,12 @@ class AppShell extends StatefulWidget {
   final Widget Function(BuildContext, ShellDomain) builder;
   final ShellDomain initial;
 
-  /// Null keeps the four-tab shell. A single domain hides the bar.
+  /// Null uses every development domain. A single development domain hides
+  /// the legacy bar.
   final List<ShellDomain>? domains;
+
+  /// G3 floating control over every tab route; development keeps its old bar.
+  final bool releaseStyle;
   final ValueChanged<ShellDomain>? onSelect;
   final Widget? banner;
   const AppShell({
@@ -30,6 +46,7 @@ class AppShell extends StatefulWidget {
     required this.builder,
     this.initial = ShellDomain.home,
     this.domains,
+    this.releaseStyle = false,
     this.onSelect,
     this.banner,
   });
@@ -55,6 +72,7 @@ class AppShellState extends State<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() {});
     });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   @override
@@ -68,6 +86,11 @@ class AppShellState extends State<AppShell> {
 
   void select(ShellDomain domain) {
     if (!_domains.contains(domain)) return;
+    if (_current == domain) {
+      _keys[domain]!.currentState?.popUntil((route) => route.isFirst);
+      widget.onSelect?.call(domain);
+      return;
+    }
     setState(() {
       _current = domain;
       _built.add(domain);
@@ -77,19 +100,26 @@ class AppShellState extends State<AppShell> {
 
   void open(ShellDomain domain, Widget screen) {
     if (!_domains.contains(domain)) return;
-    select(domain);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    void push() {
       if (!mounted) return;
       _keys[domain]!.currentState?.push(
         MaterialPageRoute<void>(builder: (_) => screen),
       );
-    });
+    }
+
+    if (_current == domain) {
+      push();
+    } else {
+      select(domain);
+      WidgetsBinding.instance.addPostFrameCallback((_) => push());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
-    final atRoot = _observers[_current]!.depth <= 1;
+    final atRoot = !_observers[_current]!.coversRoot;
+    final tabBottom = obTabBarBottom(context);
     return PopScope(
       canPop: atRoot,
       onPopInvokedWithResult: (didPop, result) {
@@ -101,31 +131,68 @@ class AppShellState extends State<AppShell> {
           backgroundColor: p.canvas,
           body: SafeArea(
             bottom: false,
-            child: Column(
+            child: Stack(
               children: [
-                Expanded(
-                  child: IndexedStack(
-                    index: _current.index,
-                    children: [
-                      for (final domain in ShellDomain.values)
-                        if (_built.contains(domain))
-                          Navigator(
-                            key: _keys[domain],
-                            observers: [_observers[domain]!],
-                            onGenerateRoute: (_) => MaterialPageRoute<void>(
-                              builder: (c) => widget.builder(c, domain),
-                            ),
-                          )
-                        else
-                          const SizedBox.shrink(),
-                    ],
-                  ),
+                Column(
+                  children: [
+                    Expanded(
+                      child: IndexedStack(
+                        index: _current.index,
+                        children: [
+                          for (final domain in ShellDomain.values)
+                            if (_built.contains(domain))
+                              Padding(
+                                padding: EdgeInsets.only(
+                                  bottom:
+                                      widget.releaseStyle &&
+                                          _observers[domain]!.coversRoot
+                                      ? tabBottom +
+                                            kOBTabBarHeight +
+                                            kOBTabBarBannerGap
+                                      : 0,
+                                ),
+                                child: Navigator(
+                                  key: _keys[domain],
+                                  observers: [_observers[domain]!],
+                                  onGenerateRoute: (_) =>
+                                      MaterialPageRoute<void>(
+                                        builder: (c) =>
+                                            widget.builder(c, domain),
+                                      ),
+                                ),
+                              )
+                            else
+                              const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                    if (widget.banner != null && atRoot && !widget.releaseStyle)
+                      widget.banner!,
+                  ],
                 ),
-                if (widget.banner != null && atRoot) widget.banner!,
+                if (widget.releaseStyle && atRoot && widget.banner != null)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: tabBottom + kOBTabBarHeight + kOBTabBarBannerGap,
+                    child: widget.banner!,
+                  ),
+                if (widget.releaseStyle)
+                  Positioned(
+                    left: kOBTabBarHorizontalInset,
+                    right: kOBTabBarHorizontalInset,
+                    bottom: tabBottom,
+                    child: OBTabBar(
+                      domains: _domains,
+                      selected: _current,
+                      onSelect: select,
+                    ),
+                  ),
               ],
             ),
           ),
-          bottomNavigationBar: !atRoot || _domains.length < 2
+          bottomNavigationBar:
+              widget.releaseStyle || !atRoot || _domains.length < 2
               ? null
               : Container(
                   decoration: BoxDecoration(
@@ -198,6 +265,8 @@ class AppShellState extends State<AppShell> {
 class _TabObserver extends NavigatorObserver {
   final VoidCallback changed;
   int depth = 0;
+  final _exitingRoutes = <Route<dynamic>>{};
+  bool get coversRoot => depth > 1 || _exitingRoutes.isNotEmpty;
   _TabObserver(this.changed);
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -208,6 +277,13 @@ class _TabObserver extends NavigatorObserver {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     depth--;
+    if (previousRoute != null && route is TransitionRoute<dynamic>) {
+      _exitingRoutes.add(route);
+      route.completed.then((_) {
+        _exitingRoutes.remove(route);
+        changed();
+      });
+    }
     changed();
   }
 
