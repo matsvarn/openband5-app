@@ -192,6 +192,7 @@ class OBIconButton extends StatelessWidget {
 // Page headers
 
 class OBPageHeader extends StatelessWidget {
+  final G3Domain domain;
   final _Kind _kind;
   final String title;
   final String? subtitle;
@@ -210,6 +211,7 @@ class OBPageHeader extends StatelessWidget {
     this.onTitle,
     this.onProfile,
   }) : _kind = _Kind.hub,
+       domain = G3Domain.neutral,
        onBack = null,
        onTrailing = null,
        backLabel = '',
@@ -223,6 +225,7 @@ class OBPageHeader extends StatelessWidget {
     this.subtitle,
     required this.backLabel,
     required this.onBack,
+    this.domain = G3Domain.neutral,
     this.trailing = LucideIcons.info,
     this.trailingLabel = 'Erklärung',
     this.onTrailing,
@@ -239,6 +242,7 @@ class OBPageHeader extends StatelessWidget {
     required this.band,
     this.onProfile,
   }) : _kind = _Kind.compact,
+       domain = G3Domain.neutral,
        onBack = null,
        onTitle = null,
        onTrailing = null,
@@ -355,6 +359,7 @@ class OBPageHeader extends StatelessWidget {
                           16,
                           weight: FontWeight.w700,
                           tracking: .1,
+                          color: g.domainHue(domain),
                         ),
                       ),
                     ),

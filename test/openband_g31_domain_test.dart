@@ -180,6 +180,28 @@ void main() {
     expect(tester.widget<G3LabelRow>(find.byType(G3LabelRow)).onTap, isNull);
   });
 
+  testWidgets('detail title takes identity while the back control stays ink', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        OBPageHeader.detail(
+          title: 'ERHOLUNG',
+          backLabel: 'Heute',
+          onBack: () {},
+          domain: G3Domain.recovery,
+        ),
+      ),
+    );
+    final g = G3(false);
+    expect(
+      tester.widget<Text>(find.text('ERHOLUNG')).style!.color,
+      g.domainHue(G3Domain.recovery),
+    );
+    expect(tester.widget<Text>(find.text('Heute')).style!.color, g.ink);
+    expect(tester.widget<OBChevron>(find.byType(OBChevron)).color, g.ink);
+  });
+
   testWidgets(
     'week uses tint, past bar, today hue and out-of-range amber on top',
     (tester) async {
