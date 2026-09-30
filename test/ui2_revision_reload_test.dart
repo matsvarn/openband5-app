@@ -442,10 +442,7 @@ void main() {
 
   test('the screens the shell keeps alive re-read', () {
     for (final f in const [
-      'home_screen',
-      'health_screen',
       'workout_screen',
-      'wellness_screen',
     ]) {
       expect(
         File('lib/ui2/screens/$f.dart').readAsStringSync(),

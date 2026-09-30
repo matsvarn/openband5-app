@@ -233,3 +233,24 @@ Enabled in this branch: `cancel_subscriptions`, `close_sinks`, `strict-casts`. T
 - Storage (`lib/data`, `lib/compute`): DUP-1 and DUP-2 need a coherent served-row projection and a policy for versioned `metric_series`. `putMetricSeriesValue` (`data/db.dart:13419`) has no caller. Large files: `data/db.dart` 16,071, `compute/derivation_engine.dart` 9,073, `data/local_repository_impl.dart` 4,531, `compute/onehz_pipeline.dart` 1,955, `compute/substrate.dart` 1,513.
 - Reliability (`lib/ble`, `lib/sync`): `ble/ble_engine.dart` 8,619, `ble/ble_state.dart` 2,082, `ble/adapters/_registry.dart` 1,674. Lint counts in their code: `discarded_futures` 12, `unawaited_futures` 3, `strict-inference` 31, `avoid_catches_without_on_clauses` 316. The native background arm/start futures at `state/app_state.dart:2786,2789` are unawaited; ownership of their failure handling sits with reliability.
 - Test suite: deleting DC-1 removes golden cases and PNGs from `test/ui2_home_health_golden_test.dart`; this branch lists every removed PNG in its PR. `test/hrs_link_test.dart:31` `kBpmOnlyWithContact` is unreachable. The full Paper harness run fails 38 tests on the base; the cause is unexamined.
+
+### Retired Ponytail ceilings
+
+These comments belonged to the deleted legacy screen cluster. They are retained
+here as historical simplification notes; the reads they describe no longer run.
+
+```dart
+// Retired from lib/ui2/screens/circadian_detail.dart
+// ponytail: N bundle reads per open. If this ever feels slow, the fix is a
+// `sleepWindows({days})` repo method that reads onset/offset without the
+// payload, not a smaller number here.
+// Retired from lib/ui2/screens/circadian_detail.dart
+    // ponytail: 7 more bundle decodes on a screen that already does 42. If
+    // this screen ever feels slow the fix is one repo method that reads
+    // `daytime_hrv` without the payload, not a smaller week.
+// Retired from lib/ui2/screens/investigate.dart
+  // ponytail: N bundle reads per open, same shape as the actogram's. If this
+  // ever feels slow the fix is a repo method that reads `cvhr_per_hour` and
+  // `analyzed_hours` without the payload, not a shorter window — the window is
+  // the gate.
+```
