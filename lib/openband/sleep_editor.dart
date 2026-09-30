@@ -1268,7 +1268,7 @@ class _SleepEditorState extends State<SleepEditor> {
                       alignment: Alignment.center,
                       decoration: g.raised(radius: 22),
                       child: Text(
-                        delta < 0 ? '−5 Min.' : '+5 Min.',
+                        g3Signed(delta, unit: 'Min.'),
                         maxLines: 1,
                         style: g.t(
                           12,

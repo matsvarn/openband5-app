@@ -274,7 +274,7 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                   children: [
                     Expanded(
                       child: OBActionSecondary(
-                        '−15 Min.',
+                        g3Signed(-15, unit: 'Min.'),
                         expand: true,
                         onPressed: _busy || _draft == null
                             ? null
@@ -284,7 +284,7 @@ class _G3SleepGoalSheetState extends State<G3SleepGoalSheet> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: OBActionSecondary(
-                        '+15 Min.',
+                        g3Signed(15, unit: 'Min.'),
                         expand: true,
                         onPressed: _busy || _draft == null
                             ? null
