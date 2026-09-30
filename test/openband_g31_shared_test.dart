@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart';
 import 'package:openstrap_edge/openband/g3/check_in.dart';
+import 'package:openstrap_edge/openband/g3/journal_parts.dart' show OBAnswerKey;
 import 'package:openstrap_edge/openband/g3/band_parts.dart'
     show OBSettingsRow, bandFrontierDayPrefix;
 import 'package:openstrap_edge/openband/g3/day.dart';
@@ -24,7 +29,57 @@ Widget _frame(Widget child) => MaterialApp(
   ),
 );
 
+Widget _narrowCheckIn(double textScale) => MaterialApp(
+  theme: openBandTheme(Brightness.light),
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(
+      context,
+    ).copyWith(textScaler: TextScaler.linear(textScale)),
+    child: child!,
+  ),
+  home: Scaffold(
+    body: SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: OBCheckIn(
+          title: 'Alkohol am Abend?',
+          index: 1,
+          total: 4,
+          inlineLater: true,
+          answer: Row(
+            children: [
+              for (final label in ['Nein', 'Ja']) ...[
+                if (label == 'Ja') const SizedBox(width: 8),
+                Expanded(
+                  child: OBAnswerKey(label: label, onTap: () {}),
+                ),
+              ],
+            ],
+          ),
+          onLater: () {},
+        ),
+      ),
+    ),
+  ),
+);
+
 void main() {
+  setUpAll(() async {
+    for (final (family, path) in [
+      ('Inter', 'assets/fonts/Inter/Inter.ttf'),
+      ('Inter Tight', 'assets/fonts/InterTight/InterTight[wght].ttf'),
+    ]) {
+      await (FontLoader(family)..addFont(
+            Future.value(ByteData.sublistView(File(path).readAsBytesSync())),
+          ))
+          .load();
+    }
+    await (FontLoader('packages/lucide_icons_flutter/Lucide')..addFont(
+          rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+        ))
+        .load();
+  });
+
   test('Band frontier prefixes use the shared short date format', () {
     final now = DateTime(2026, 9, 29, 10);
     expect(bandFrontierDayPrefix(DateTime(2026, 9, 29, 9), now), '');
@@ -121,6 +176,58 @@ void main() {
     expect(find.textContaining('Für später gemerkt'), findsOneWidget);
     expect(find.text('Ja oder Nein'), findsNothing);
   });
+
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'shared check-in keeps Später on one line at 375 pt and $scale× text',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 812);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(_narrowCheckIn(scale));
+        await tester.pumpAndSettle();
+
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text('Später'),
+        );
+        expect(
+          paragraph.getBoxesForSelection(
+            const TextSelection(baseOffset: 0, extentOffset: 6),
+          ),
+          hasLength(1),
+        );
+        final noHeight = tester
+            .getSize(find.widgetWithText(OBAnswerKey, 'Nein'))
+            .height;
+        final yesHeight = tester
+            .getSize(find.widgetWithText(OBAnswerKey, 'Ja'))
+            .height;
+        final laterHeight = tester
+            .getSize(find.widgetWithText(TextButton, 'Später'))
+            .height;
+        expect(noHeight, greaterThanOrEqualTo(44));
+        expect(yesHeight, noHeight);
+        expect(laterHeight, noHeight);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('golden shared check-in at 375 pt and $scale× text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(_narrowCheckIn(scale));
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(OBCheckIn),
+        matchesGoldenFile(
+          'openband_goldens/g31-checkin-narrow-${scale == 1 ? 'normal' : '2x'}.png',
+        ),
+      );
+    }, tags: const ['golden']);
+  }
 
   test('Heute and Training resolve the same sport order and labels', () {
     expect(g3SportIds.first, 'running');
