@@ -250,10 +250,46 @@ class OBPageHeader extends StatelessWidget {
        trailing = LucideIcons.info,
        trailingLabel = '';
 
+  /// Modal flow header with a 44 pt close target and a centred title.
+  const OBPageHeader.modal({
+    super.key,
+    required this.title,
+    required this.onBack,
+    this.backLabel = 'Schließen',
+    this.trailing = LucideIcons.x,
+  }) : _kind = _Kind.modal,
+       domain = G3Domain.neutral,
+       subtitle = null,
+       band = null,
+       onTitle = null,
+       onProfile = null,
+       onTrailing = null,
+       trailingLabel = '',
+       assert(onBack != null);
+
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
     switch (_kind) {
+      case _Kind.modal:
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              OBIconButton(icon: trailing, label: backLabel, onTap: onBack),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: g.t(13, 16, weight: FontWeight.w700, tracking: .1),
+                ),
+              ),
+              const SizedBox(width: 44, height: 44),
+            ],
+          ),
+        );
       case _Kind.hub:
         return Padding(
           padding: const EdgeInsets.only(left: 24, right: 16, top: 4),
@@ -421,7 +457,7 @@ class OBPageHeader extends StatelessWidget {
   }
 }
 
-enum _Kind { hub, detail, compact }
+enum _Kind { hub, detail, compact, modal }
 
 /// A detail header outside the 16 pt content gutter, followed by a 12 pt gap.
 /// [bottomInset] is scroll padding, so content can travel behind a tab bar.

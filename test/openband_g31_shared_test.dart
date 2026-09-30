@@ -104,6 +104,46 @@ void main() {
     );
   });
 
+  testWidgets('modal header closes from a 44 pt target', (tester) async {
+    var closed = false;
+    await tester.pumpWidget(
+      _frame(
+        OBPageHeader.modal(title: 'NACHTRAGEN', onBack: () => closed = true),
+      ),
+    );
+    final close = find.byIcon(LucideIcons.x);
+    expect(
+      tester
+          .getSize(
+            find.ancestor(of: close, matching: find.byType(OBIconButton)),
+          )
+          .height,
+      greaterThanOrEqualTo(44),
+    );
+    await tester.tap(close);
+    expect(closed, isTrue);
+  });
+
+  testWidgets(
+    'activity row supports compact presentation and a confirmation footer',
+    (tester) async {
+      await tester.pumpWidget(
+        _frame(
+          const OBActivityRow(
+            pictogram: Icon(LucideIcons.activity),
+            title: 'Lauf',
+            subtitle: 'Di. 29.09',
+            compact: true,
+            confirmationFooter: Text('Sportart richtig?'),
+          ),
+        ),
+      );
+      expect(find.text('Sportart richtig?'), findsOneWidget);
+      expect(find.text('Belastung'), findsNothing);
+      expect(find.byType(OBChevron), findsNothing);
+    },
+  );
+
   testWidgets('label and card chevrons require a handler', (tester) async {
     var taps = 0;
     await tester.pumpWidget(_frame(const G3LabelRow('ERHOLUNG')));

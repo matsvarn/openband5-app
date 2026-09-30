@@ -272,6 +272,12 @@ class OBActivityRow extends StatelessWidget {
   final String? strain;
   final List<int>? zoneMinutes;
   final VoidCallback? onTap;
+
+  /// The confirmation strip below the activity facts, owned by the caller.
+  final Widget? confirmationFooter;
+
+  /// Small recent-activity row without strain or zones.
+  final bool compact;
   const OBActivityRow({
     super.key,
     this.domain = G3Domain.neutral,
@@ -282,6 +288,8 @@ class OBActivityRow extends StatelessWidget {
     this.strain,
     this.zoneMinutes,
     this.onTap,
+    this.confirmationFooter,
+    this.compact = false,
   });
 
   @override
@@ -296,83 +304,115 @@ class OBActivityRow extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
         child: Container(
-          padding: kG3CardPadding,
+          padding: compact
+              ? const EdgeInsets.symmetric(horizontal: 14, vertical: 12)
+              : kG3CardPadding,
           decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    alignment: Alignment.center,
-                    decoration: g.pressed(
-                      radius: 12,
-                      color: domain == G3Domain.neutral
-                          ? g.track
-                          : g.domainTint(domain),
+              if (compact)
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: g.pressed(
+                        radius: 10,
+                        color: g.domainTint(domain),
+                      ),
+                      child: SizedBox(width: 20, height: 20, child: pictogram),
                     ),
-                    child: domain == G3Domain.neutral
-                        ? pictogram
-                        : ColorFiltered(
-                            colorFilter: ColorFilter.mode(
-                              g.domainHue(domain),
-                              BlendMode.srcIn,
-                            ),
-                            child: pictogram,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: g.t(14, 18, weight: FontWeight.w700),
                           ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              title,
-                              style: g.t(17, 22, weight: FontWeight.w700),
+                          Text(subtitle, style: g.t(12, 16, color: g.ink2)),
+                        ],
+                      ),
+                    ),
+                    if (onTap != null) OBChevron(size: 14, color: g.gap),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: g.pressed(
+                        radius: 12,
+                        color: domain == G3Domain.neutral
+                            ? g.track
+                            : g.domainTint(domain),
+                      ),
+                      child: domain == G3Domain.neutral
+                          ? pictogram
+                          : ColorFiltered(
+                              colorFilter: ColorFilter.mode(
+                                g.domainHue(domain),
+                                BlendMode.srcIn,
+                              ),
+                              child: pictogram,
                             ),
-                            if (unconfirmed)
-                              const OBChip(OBChipKind.tag, 'auto-erkannt'),
-                          ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                title,
+                                style: g.t(17, 22, weight: FontWeight.w700),
+                              ),
+                              if (unconfirmed)
+                                const OBChip(OBChipKind.tag, 'auto-erkannt'),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(subtitle, style: g.t(13, 17, color: g.ink2)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        MediaQuery.withClampedTextScaling(
+                          maxScaleFactor: 1.3,
+                          child: Text(
+                            strain ?? '—',
+                            style: g.t(
+                              20,
+                              24,
+                              weight: FontWeight.w700,
+                              color: strain == null ? g.gap : g.ink,
+                              tracking: -.02,
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(subtitle, style: g.t(13, 17, color: g.ink2)),
+                        const SizedBox(height: 1),
+                        Text('Belastung', style: g.t(11, 14, color: g.muted)),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      MediaQuery.withClampedTextScaling(
-                        maxScaleFactor: 1.3,
-                        child: Text(
-                          strain ?? '—',
-                          style: g.t(
-                            20,
-                            24,
-                            weight: FontWeight.w700,
-                            color: strain == null ? g.gap : g.ink,
-                            tracking: -.02,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text('Belastung', style: g.t(11, 14, color: g.muted)),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 12),
+                      OBChevron(size: 14, color: g.gap),
                     ],
-                  ),
-                  if (onTap != null) ...[
-                    const SizedBox(width: 12),
-                    OBChevron(size: 14, color: g.gap),
                   ],
-                ],
-              ),
-              if (unconfirmed)
+                ),
+              if (!compact && unconfirmed)
                 Padding(
                   padding: const EdgeInsets.only(left: 56, top: 12),
                   child: Text(
@@ -380,11 +420,15 @@ class OBActivityRow extends StatelessWidget {
                     style: g.t(12, 16, weight: FontWeight.w500, color: g.muted),
                   ),
                 )
-              else if (zoneMinutes case final z?)
+              else if (!compact && zoneMinutes != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 56, right: 26, top: 12),
-                  child: OBZoneStrip(z, domain: domain),
+                    child: OBZoneStrip(zoneMinutes!, domain: domain),
                 ),
+              if (confirmationFooter case final footer?) ...[
+                const SizedBox(height: 12),
+                footer,
+              ],
             ],
           ),
         ),
