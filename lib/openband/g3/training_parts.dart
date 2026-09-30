@@ -3,10 +3,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart';
 import '../training.dart' show OBSportIcon;
-import 'chrome.dart' show OBPanel;
+import 'chrome.dart' show OBLink, OBPanel;
 import 'count_copy.dart';
+import 'g3_format.dart' show g3Signed;
 import 'g3_theme.dart';
-import 'metrics.dart' show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind;
+import 'metrics.dart'
+    show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind, OBMissingValue;
 
 const trainingSports = <String>[
   'running',
@@ -142,7 +144,9 @@ class OBSportTile extends StatelessWidget {
 String trainingNumber(double? value, {bool signed = false}) =>
     value == null || !value.isFinite
     ? '—'
-    : g3Number(value, digits: 1, signed: signed);
+    : signed
+    ? g3Signed(value, digits: 1)
+    : g3Number(value, digits: 1);
 
 class OBTrainingLoad extends StatelessWidget {
   final G3WeeklyLoad? load;
@@ -168,21 +172,18 @@ class OBTrainingLoad extends StatelessWidget {
         children: [
           Text(label, style: g.caps(color: g.muted)),
           const SizedBox(height: 5),
-          Text(
-            trainingNumber(value).replaceAll(',0', ''),
-            style: g.t(
-              36,
-              40,
-              weight: FontWeight.w700,
-              color: value == null ? g.gap : g.ink,
+          if (value == null)
+            const OBMissingValue(size: 36, lineHeight: 40)
+          else
+            Text(
+              trainingNumber(value).replaceAll(',0', ''),
+              style: g.t(36, 40, weight: FontWeight.w700),
             ),
-          ),
         ],
       ),
     );
-    return Container(
+    return OBPanel(
       padding: const EdgeInsets.all(18),
-      decoration: g.raised(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -241,10 +242,7 @@ class OBTrainingLoad extends StatelessWidget {
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onMethod,
-                child: const Text('Methode ›'),
-              ),
+              child: OBLink('Methode', onTap: onMethod!),
             ),
           ],
         ],
@@ -280,20 +278,18 @@ class OBLoadLead extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              G3LabelRow('BELASTUNG', arrow: onTap != null),
+              G3LabelRow('BELASTUNG', onTap: onTap),
               const SizedBox(height: 3),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    trainingNumber(value),
-                    style: g.t(
-                      92,
-                      84,
-                      weight: FontWeight.w700,
-                      color: value == null ? g.gap : g.ink,
+                  if (value == null)
+                    const OBMissingValue(size: 92, lineHeight: 84)
+                  else
+                    Text(
+                      trainingNumber(value),
+                      style: g.t(92, 84, weight: FontWeight.w700),
                     ),
-                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Padding(
