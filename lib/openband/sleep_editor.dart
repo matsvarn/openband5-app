@@ -14,6 +14,8 @@ import 'g3/g3_theme.dart';
 import 'g3/g3_format.dart';
 import 'g3/metrics.dart' show G3LabelRow;
 
+String _g3ClockOrDash(DateTime? time) => time == null ? '—' : g3Clock(time);
+
 double _windowScaleX(int minute, double width, {required bool g3}) {
   final afterEightPm = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
   return width * (afterEightPm / ((g3 ? 14 : 12) * 60)).clamp(0.0, 1.0);
@@ -210,8 +212,10 @@ class _SleepEditorState extends State<SleepEditor> {
               wake: end,
               recordingTimezone: original.recordingTimezone,
             );
-        startText.text = obTime(draft!.onset);
-        endText.text = obTime(draft!.wake);
+        startText.text = widget.g3
+            ? g3Clock(draft!.onset)
+            : obTime(draft!.onset);
+        endText.text = widget.g3 ? g3Clock(draft!.wake) : obTime(draft!.wake);
         changed = stored != null || widget.initialSaveError != null;
         saveFailed = widget.initialSaveError != null;
         error = widget.initialSaveError;
@@ -279,7 +283,9 @@ class _SleepEditorState extends State<SleepEditor> {
     final value = start ? draft!.onset : draft!.wake;
     final next = value.add(Duration(minutes: minutes));
     if (_applyTimes(start ? next : draft!.onset, start ? draft!.wake : next)) {
-      (start ? startText : endText).text = obTime(next);
+      (start ? startText : endText).text = widget.g3
+          ? g3Clock(next)
+          : obTime(next);
     }
   }
 
@@ -315,7 +321,7 @@ class _SleepEditorState extends State<SleepEditor> {
     if (date == null || !mounted) return;
     final updated = parseRecordedTime(
       date,
-      obTime(current),
+      widget.g3 ? g3Clock(current) : obTime(current),
       zone: draft!.recordingTimezone,
       previous: current,
     );
@@ -552,6 +558,7 @@ class _SleepEditorState extends State<SleepEditor> {
                             if (widget.g3)
                               g3_chrome.OBPageHeader.detail(
                                 title: 'SCHLAFZEITEN',
+                                domain: G3Domain.sleep,
                                 subtitle: g3NightOf(draft!.wake),
                                 backLabel: receipt == null
                                     ? 'Abbrechen'
@@ -612,7 +619,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                       g3_chrome.OBErrorBlock(
                                         title: 'Nicht gespeichert',
                                         reason:
-                                            'Die Zeiten ließen sich nicht speichern. Dein Entwurf ${obTime(draft!.onset)}–${obTime(draft!.wake)} bleibt hier.',
+                                            'Die Zeiten ließen sich nicht speichern. Dein Entwurf ${g3Clock(draft!.onset)}–${g3Clock(draft!.wake)} bleibt hier.',
                                         retryLabel: 'Erneut speichern',
                                         onRetry: _save,
                                         secondaryLabel: 'Details',
@@ -746,7 +753,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                                   children: [
                                                     _statusRow(
                                                       'Zeiten gespeichert',
-                                                      '${obTime(receipt!.onset)}–${obTime(receipt!.wake)}',
+                                                      '${g3Clock(receipt!.onset)}–${g3Clock(receipt!.wake)}',
                                                       LucideIcons.circleCheck,
                                                       p.ink,
                                                     ),
@@ -1148,14 +1155,14 @@ class _SleepEditorState extends State<SleepEditor> {
     }
     final recordedSpan = recordedStart == null || recordedEnd == null
         ? '—'
-        : '${obTime(recordedTime(recordedStart, original.recordingTimezone))}–${obTime(recordedTime(recordedEnd, original.recordingTimezone))}';
+        : '${g3Clock(recordedTime(recordedStart, original.recordingTimezone))}–${g3Clock(recordedTime(recordedEnd, original.recordingTimezone))}';
     return g3_chrome.OBPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              const G3LabelRow('IM BETT', arrow: false),
+              const G3LabelRow('IM BETT', domain: G3Domain.sleep, arrow: false),
               const Spacer(),
               Text(
                 '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
@@ -1183,7 +1190,7 @@ class _SleepEditorState extends State<SleepEditor> {
           const _G3WindowAxis(),
           const SizedBox(height: 12),
           Text(
-            'Band hat aufgezeichnet $recordedSpan${windowChanged ? ' · vorher ${obTime(originalStart)}–${obTime(originalEnd)}' : ''}',
+            'Band hat aufgezeichnet $recordedSpan${windowChanged ? ' · vorher ${_g3ClockOrDash(originalStart)}–${_g3ClockOrDash(originalEnd)}' : ''}',
             style: g.t(12, 16, color: g.ink2),
           ),
         ],
@@ -1211,7 +1218,7 @@ class _SleepEditorState extends State<SleepEditor> {
     final value = start ? draft!.onset : draft!.wake;
     final text = start ? startText : endText;
     final enabled = receipt == null && !busy;
-    final weekday = g3DayShort(value).split(' ').first.toUpperCase();
+    final weekday = g3Weekday(value).toUpperCase();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1405,13 +1412,13 @@ class _SleepEditorState extends State<SleepEditor> {
         ),
         _statusRow(
           'Zeitfenster',
-          '${obTime(receipt!.onset)}–${obTime(receipt!.wake)}',
+          '${widget.g3 ? g3Clock(receipt!.onset) : obTime(receipt!.onset)}–${widget.g3 ? g3Clock(receipt!.wake) : obTime(receipt!.wake)}',
           LucideIcons.clock3,
           p.action,
         ),
         const SizedBox(height: 8),
         Text(
-          'Schlaf neu ausgewertet · ${obTime(receipt!.savedAt)} gespeichert',
+          'Schlaf neu ausgewertet · ${widget.g3 ? g3Clock(receipt!.savedAt) : obTime(receipt!.savedAt)} gespeichert',
           style: p.text(12, color: p.muted),
         ),
       ],
