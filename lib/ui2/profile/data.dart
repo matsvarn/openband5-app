@@ -27,6 +27,7 @@ import '../../data/db.dart';
 import '../../data/day_label.dart';
 import '../../import/backup_crypto.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/release_scope.dart';
 import '../../openband/g3/g3_theme.dart';
 import '../../openband/g3/g3_format.dart';
@@ -616,6 +617,7 @@ class DataScreenView extends StatelessWidget {
               ),
               trailingLabel: de ? 'Informationen' : 'Information',
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(

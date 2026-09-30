@@ -231,6 +231,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
               onTrailing: () => _info(c),
               trailingLabel: _infoLabel(c),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(

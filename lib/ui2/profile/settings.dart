@@ -26,6 +26,7 @@ import '../../health/health_export.dart' show HealthLinkState;
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/appearance.dart';
 import '../../openband/cycle.dart';
 import '../../openband/local_repository.dart';
@@ -702,6 +703,7 @@ class MoreSettingsView extends StatelessWidget {
                     : 'Choose what the band and this phone do. Changes are saved on this device.',
               ),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
@@ -1253,6 +1255,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                     'They feed heart-rate zones, calorie estimates and training load. Clear one and only the metrics that need it stay unavailable.',
               ),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(

@@ -7,6 +7,8 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
+import 'package:openstrap_edge/openband/alp_tokens.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' as chrome;
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/ui2/onboarding/profile_setup.dart';
@@ -159,6 +161,33 @@ void main() {
     'profile-setup': ProfileSetupView(onSave: (_) async {}),
     'welcome': WelcomeView(onNew: () {}, onImport: () {}),
   };
+
+  for (final name in [
+    'settings',
+    'alarm',
+    'band-notifications',
+    'gestures',
+    'edit-profile',
+    'data',
+  ]) {
+    testWidgets('$name separates the detail header from its body', (
+      tester,
+    ) async {
+      await pump(tester, cases[name]!);
+      final header = tester.getRect(find.byType(chrome.OBPageHeader).first);
+      final body = tester.getRect(find.byType(ListView).first);
+      expect(body.top - header.bottom, AlpSpace.s12);
+      if (name == 'gestures') {
+        expect(
+          find.descendant(
+            of: find.byType(ListView).first,
+            matching: find.text('Die App muss verbunden und aktiv sein.'),
+          ),
+          findsOneWidget,
+        );
+      }
+    });
+  }
 
   for (final entry in cases.entries) {
     testWidgets('G3 ${entry.key} golden', (tester) async {

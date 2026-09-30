@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/theme.dart';
 import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/g3_theme.dart';
@@ -139,6 +140,7 @@ class BandGesturesView extends StatelessWidget {
                 onBack: () => Navigator.of(c).maybePop(),
                 onTrailing: showInfo,
               ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(

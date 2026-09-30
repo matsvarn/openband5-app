@@ -27,6 +27,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/alp_tokens.dart';
 import '../../openband/g3/chrome.dart' as chrome;
 import '../../openband/g3/g3_theme.dart';
 import '../../notify/notification_relay.dart';
@@ -147,6 +148,7 @@ class BandNotificationsView extends StatelessWidget {
                 l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ',
               ),
             ),
+            const SizedBox(height: AlpSpace.s12),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
