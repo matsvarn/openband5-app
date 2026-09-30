@@ -15956,6 +15956,26 @@ class LocalDb {
     return free;
   }
 
+  /// Keep the served generation, one predecessor, and the latest complete
+  /// result per day. Future-build rows are outside this build's ownership.
+  /// The bounded delete is atomic; another pass removes any remaining excess.
+  static Future<int> pruneSupersededDayResults({int limit = 200}) async {
+    if (limit < 1) return 0;
+    final db = await instance;
+    return db.transaction((txn) async {
+      return txn.rawDelete(
+        'DELETE FROM day_result WHERE rowid IN ('
+        'SELECT r.rowid FROM day_result r WHERE r.algo_version <= ? '
+        'AND (SELECT COUNT(*) FROM day_result n WHERE n.day_id = r.day_id '
+        'AND n.algo_version <= ? AND n.algo_version > r.algo_version) >= 2 '
+        'AND r.algo_version != COALESCE((SELECT MAX(g.algo_version) '
+        'FROM day_result g WHERE g.day_id = r.day_id AND g.algo_version <= ? '
+        'AND g.skipped = 0 AND g.partial = 0), -1) LIMIT ?)',
+        [kAlgoVersion, kAlgoVersion, kAlgoVersion, limit],
+      );
+    });
+  }
+
   /// Drop recomputable per-day intermediates left behind by superseded
   /// algorithm versions.
   ///
@@ -15991,7 +16011,8 @@ class LocalDb {
       'wake_day_features',
     ]) {
       final rows = await db.rawQuery(
-        'SELECT DISTINCT day_id, algo_version FROM $table',
+        'SELECT DISTINCT day_id, algo_version FROM $table WHERE algo_version <= ?',
+        [kAlgoVersion],
       );
       final versionsByDay = <String, List<int>>{};
       for (final r in rows) {

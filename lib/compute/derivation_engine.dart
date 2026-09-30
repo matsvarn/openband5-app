@@ -5755,13 +5755,7 @@ class DerivationEngine {
     if (deleted > 0) {
       _log('pruned $deleted decoded rows with rec_ts < $cutoffSec');
     }
-    // Superseded generations of the recomputable per-day intermediates. Runs
-    // here rather than inside the decoded prune so it stays off the path to a
-    // durable commit.
-    final stale = await LocalDb.pruneSupersededIntermediates();
-    if (stale > 0) {
-      _log('pruned $stale superseded intermediate rows');
-    }
+
   }
 
   /// Storage housekeeping that must run on EVERY derive.
@@ -5793,6 +5787,14 @@ class DerivationEngine {
   /// runs under iOS's CPU watchdog (invariant 11).
   Future<void> _runStorageHousekeeping() async {
     try {
+    // Superseded generations of the recomputable per-day intermediates. Runs
+    // after derivation, outside the decoded-retention policy and off the path to a
+    // durable commit.
+    final stale = await LocalDb.pruneSupersededIntermediates();
+    if (stale > 0) {
+      _log('pruned $stale superseded intermediate rows');
+    }
+      await LocalDb.pruneSupersededDayResults();
       final reencoded = await LocalDb.reencodeLegacyDayResults();
       if (reencoded > 0) {
         _log('re-encoded $reencoded legacy day bundles');
