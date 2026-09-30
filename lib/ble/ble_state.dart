@@ -17,6 +17,20 @@ import 'package:openstrap_protocol/openstrap_protocol.dart'
 
 import '../sync/sync_policy.dart' show isPlausibleUnix, kMinPlausibleUnix;
 
+/// MUST stay below superviseReconnect's staleAfter (25 minutes), so the
+/// supervisor cannot restart the loop during a legitimate pending attempt.
+const kIosBackgroundConnectTimeout = Duration(minutes: 20);
+
+/// Keep an iOS app connection pending through suspension. Headless drainers
+/// keep the short timeout to fit their OS execution budget.
+Duration connectTimeoutFor({
+  required bool ios,
+  required bool background,
+  required bool backgroundDrainer,
+}) => ios && background && !backgroundDrainer
+    ? kIosBackgroundConnectTimeout
+    : const Duration(seconds: 20);
+
 /// The explicit connection state machine. The flutter_blue_plus connection-state
 /// stream is the SOURCE OF TRUTH for connected/disconnected; this enum layers the
 /// app's intent + sub-phases (scan/discover/subscribe) on top of it.

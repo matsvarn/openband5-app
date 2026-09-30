@@ -51,6 +51,7 @@ import '../ble/zetime_link.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/profile.dart';
 import '../data/db.dart';
+import '../data/day_label.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import 'headless_gate.dart';
@@ -64,6 +65,25 @@ import 'sync_policy.dart';
 
 @visibleForTesting
 Future<void> Function(String) backgroundSyncLogSink = FileLog.write;
+
+@visibleForTesting
+DateTime Function() syncStalenessNow = DateTime.now;
+
+@visibleForTesting
+Future<List<List<int>>> Function(
+  int loSec,
+  int hiSec, {
+  required String deviceId,
+})
+syncWristOffSpans = LocalDb.wristOffSpans;
+
+@visibleForTesting
+Future<List<List<int>>> Function(
+  int loSec,
+  int hiSec, {
+  required String deviceId,
+})
+syncChargingSpans = LocalDb.chargingSpans;
 
 void _log(String line) {
   debugPrint(line);
@@ -94,6 +114,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       '[bgsync] skipped — foreground or another headless session owns the band '
       '(${BandOwnership.debugState}).',
     );
+    await checkSyncStaleness();
     return true;
   }
   _log(
@@ -483,7 +504,8 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
     // nothing to escalate; that's a distinct, already-visible onboarding
     // state, not silent staleness.
     if (recTsHw == null || recTsHw <= 0) return;
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final now = syncStalenessNow();
+    final nowSec = now.millisecondsSinceEpoch ~/ 1000;
     final tier = stalenessTierFor(nowSec - recTsHw);
     if (tier != StalenessTier.notify) return;
 
@@ -491,31 +513,59 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
     final lastMs = prefs.getInt(_kLastStalenessNotifiedMs);
     final lastAt =
         lastMs == null ? null : DateTime.fromMillisecondsSinceEpoch(lastMs);
-    final now = DateTime.now();
     if (!shouldRenotifyStaleness(lastAt, now)) return;
+
+    final wristOff = await syncWristOffSpans(
+      recTsHw,
+      nowSec,
+      deviceId: LocalDb.kPrimaryDeviceId,
+    );
+    if (wristOff.any((span) => span[1] >= nowSec)) {
+      _log(
+        '[bgsync] staleness notification skipped: band last known off wrist.',
+      );
+      return;
+    }
+    final charging = await syncChargingSpans(
+      recTsHw,
+      nowSec,
+      deviceId: LocalDb.kPrimaryDeviceId,
+    );
+    if (charging.any((span) => span[1] >= nowSec)) {
+      _log(
+        '[bgsync] staleness notification skipped: band last known charging.',
+      );
+      return;
+    }
+
+    final lastRecord = DateTime.fromMillisecondsSinceEpoch(recTsHw * 1000);
+    String two(int value) => value.toString().padLeft(2, '0');
+    final time = '${two(lastRecord.hour)}:${two(lastRecord.minute)}';
+    final since = dayLabelOf(lastRecord) == dayLabelOf(now)
+        ? time
+        : '${two(lastRecord.day)}.${two(lastRecord.month)}., $time';
 
     final hoursStale = (nowSec - recTsHw) ~/ 3600;
     final shown = await NotificationCenter.instance.emit(
       NotificationEvent(
-        // Date-bucketed so a legitimate re-fire after the cooldown isn't
-        // blocked by putNotification's INSERT-OR-IGNORE dedupe.
-        dedupeKey: '${now.toIso8601String().substring(0, 10)}:sync_stale',
+        dedupeKey: 'sync_stale:$recTsHw:${nowSec ~/ kStalenessRenotifySeconds}',
         category: NotifCategory.device,
         // Quiet hours DROP a normal-priority event; nothing queues it for the
-        // morning. The 48-hour cooldown below is therefore only spent when the
+        // morning. The 12-hour cooldown below is therefore only spent when the
         // event was actually presented.
         priority: NotifPriority.normal,
-        title: "Your band hasn't synced in a while",
-        body: 'No new data for about $hoursStale hours. Open OpenStrap to '
-            'reconnect — background sync may have stalled.',
-        date: now.toIso8601String().substring(0, 10),
+        title: 'Keine neuen Banddaten',
+        body:
+            'Seit $since Uhr kam nichts mehr an. '
+            'Doppeltippe auf das Band und öffne OpenBand.',
+        date: dayLabelOf(now),
         route: '/today',
       ),
       allowPermissionPrompt: allowPermissionPrompt,
     );
     if (!shown) {
       // The gate refused it (quiet hours on an overnight wake is the common
-      // case). Burning the cooldown here silenced the backstop for another 48
+      // case). Burning the cooldown here silenced the backstop for another 12
       // hours over a notification nobody ever saw.
       _log('[bgsync] staleness notification dropped by the gate.');
       return;
