@@ -67,8 +67,8 @@ class IosBleRestore {
       }
       // Shared gate with the BGProcessingTask/BGAppRefreshTask entry points
       // (HeadlessSyncGate): if another headless sync is mid-flight, skip this
-      // wake — matching the old private-_busy semantics (no syncDone signal;
-      // the running entry point completes its own cycle).
+      // wake without wakeAck or syncDone. Native's 60-second watchdog releases
+      // this unaccepted handoff, including a connected restore peripheral.
       await HeadlessSyncGate.tryRun<void>('ble_restore_wake', () async {
         await _ackWake();
         try {

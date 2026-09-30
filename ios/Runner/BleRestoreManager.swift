@@ -20,17 +20,20 @@ import Flutter
 /// not guarantee the physical link disconnects while another connection exists:
 /// https://developer.apple.com/documentation/corebluetooth/cbcentralmanager/cancelperipheralconnection(_:)
 /// This central holds a no-timeout pending connect so iOS relaunches us when the band
-/// shows up, then tells Flutter to sync. It keeps a connected restore peripheral until
-/// Dart explicitly releases it, allowing flutter_blue_plus to adopt the link first.
+/// shows up, then tells Flutter to sync. Every connected restore band is handedOff.
+/// If Dart acknowledges the wake, it releases the handoff with syncDone after syncing
+/// or waiting at most 80 awake polls for flutter_blue_plus to adopt the link. If Dart
+/// does not acknowledge, the 60-second watchdog releases it even while connected.
+/// Either release cancels this central's connection and leaves restoration idle.
 ///
 /// This is RECOVERY-ONLY: normal sync is the kept-alive live connection + the AppState
 /// flusher. The restore central arms a no-timeout pending connect ONLY when Dart tells
-/// it the connection dropped (`setOwnsBand(false)` / `arm`). No timers, no cooldown.
+/// it the connection dropped (`setOwnsBand(false)` / `arm`). No connect timeout or cooldown.
 ///
-/// Loop prevention is event-driven, not time-based: after a wake hands off to Dart and
-/// Dart reports the drain done (`syncDone`), we go IDLE and do NOT re-arm. We re-arm only
-/// on the next explicit request from Dart (a fresh disconnect). Arming only happens while
-/// backgrounded; in the foreground flutter_blue_plus owns the band.
+/// After syncDone or the unacknowledged-wake watchdog releases a handoff, we go IDLE
+/// and do NOT re-arm. We re-arm only on the next explicit request from Dart (a fresh
+/// disconnect). Arming only happens while backgrounded; in the foreground
+/// flutter_blue_plus owns the band.
 ///
 /// Verified against Apple's official docs ("Core Bluetooth Background Processing for iOS
 /// Apps"): a state-restoration relaunch is a BOUNDED wake, not indefinite runtime — "an app
@@ -52,12 +55,14 @@ private struct ArmState {
   /// drop it mid-connect — a peripheral we no longer hold is one `cancelPending`
   /// can no longer cancel.
   var peripheral: CBPeripheral?
-  /// True between a wake's `didConnect` and Dart's `syncDone` for THIS band.
+  /// Always true while this restore band's peripheral is connected, including on
+  /// relaunch. Ends with Dart's syncDone or the watchdog for an unacknowledged wake.
   var handedOff = false
-  /// Dart owns an acknowledged handoff until syncDone, even across suspension.
+  /// Dart accepted the wake and will release it with syncDone, even across suspension.
+  /// False leaves release to the 60-second watchdog started when Dart receives the wake.
   var wakeAcknowledged = false
-  /// Set after this band's wake-sync completes; suppresses re-arming until Dart
-  /// explicitly re-arms it on the next disconnect. Not a timer, not a cooldown.
+  /// Set after syncDone or the unacknowledged-wake watchdog releases this band;
+  /// suppresses re-arming until Dart explicitly re-arms it on the next disconnect.
   var idleAfterSync = false
   /// True while the app holds the live flutter_blue_plus connection to THIS band.
   var appOwnsBand = false
@@ -190,8 +195,12 @@ class BleRestoreManager: NSObject {
           self.saveBandUUID(uuid)
           self.bandUUID = uuid
           var s = self.state(uuid)
-          s.handedOff = false
-          s.wakeAcknowledged = false
+          if s.peripheral?.state == .connected {
+            self.log("[ble-restore] arm \(uuid.uuidString) — connected handoff stays open")
+          } else {
+            s.handedOff = false
+            s.wakeAcknowledged = false
+          }
           s.idleAfterSync = false   // explicit (re-)arm request from Dart
           self.arms[uuid] = s
           self.logArmState(uuid)
@@ -258,8 +267,12 @@ class BleRestoreManager: NSObject {
           self.bandUUID = uuid
           var st = self.state(uuid)
           st.appOwnsBand = false
-          st.handedOff = false
-          st.wakeAcknowledged = false
+          if st.peripheral?.state == .connected {
+            self.log("[ble-restore] armRecoveryNow \(uuid.uuidString) — connected handoff stays open")
+          } else {
+            st.handedOff = false
+            st.wakeAcknowledged = false
+          }
           st.idleAfterSync = false
           self.arms[uuid] = st
           self.logArmState(uuid)
@@ -317,7 +330,7 @@ class BleRestoreManager: NSObject {
       case "syncDone":
         self.log("[ble-restore] syncDone received")
         // Dart finished the drain or confirmed a live band link. Release the named
-        // bands (all if omitted), even when a re-arm cleared handedOff.
+        // bands (all if omitted).
         let uuids: [UUID]
         if let s = call.arguments as? String, let uuid = UUID(uuidString: s) {
           uuids = [uuid]
@@ -346,7 +359,8 @@ class BleRestoreManager: NSObject {
 
   @objc private func appDidEnterBackground() { armIfAppropriate() }
   @objc private func appWillEnterForeground() {
-    // Keep every connected restore peripheral until Dart releases it; cancel pending connects.
+    // Connected restore bands are handedOff until syncDone or the watchdog releases
+    // them. Keep those links across foregrounding and cancel every other peripheral.
     log("[ble-restore] appWillEnterForeground — cancelling pending connections")
     for uuid in Array(arms.keys) {
       let s = state(uuid)
@@ -462,10 +476,6 @@ class BleRestoreManager: NSObject {
     // ends the handoff with syncDone; suspension must not consume its budget.
     DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
       guard let self = self, self.state(uuid).handedOff else { return }
-      if self.state(uuid).peripheral?.state == .connected {
-        self.log("[ble-restore] syncDone watchdog skipped — keeping connected restore peripheral \(uuid.uuidString)")
-        return
-      }
       if self.state(uuid).wakeAcknowledged {
         self.log("[ble-restore] syncDone watchdog skipped — Dart acknowledged handoff \(uuid.uuidString)")
         return
@@ -572,13 +582,18 @@ extension BleRestoreManager: CBCentralManagerDelegate {
     guard !restored.isEmpty else { return }
     // Take ALL of them, not just the first — the count was already being logged, so the
     // code always knew there could be more. Each carries a pending/active connect
-    // bluetoothd preserved for us; didConnect fires per peripheral if one lands.
+    // bluetoothd preserved for us. An already-connected band needs the same handoff
+    // as didConnect because restoration need not deliver another didConnect callback.
     // Keep retaining a restored peripheral whose UUID is not in `arms` (band we have
     // since forgotten): bluetoothd preserved a connect for it and dropping the retain
     // loses the ability to cancel it. Insert a default entry so the retain has a home;
     // didConnect below still refuses to wake Dart for it.
+    let knownBands = Set(arms.keys)
     for p in restored {
       arms[p.identifier, default: ArmState()].peripheral = p
+      if p.state == .connected && knownBands.contains(p.identifier) {
+        centralManager(central, didConnect: p)
+      }
     }
     log("[ble-restore] willRestoreState restored \(restored.count) peripheral(s)")
   }
