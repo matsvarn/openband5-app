@@ -102,12 +102,14 @@ extension BleEngineTransport on BleEngine {
       } else {
         await FlutterBluePlus.startScan(withServices: wanted, timeout: timeout);
       }
-      _clearBlocker('on (scan accepted)');
+      if (await _readAdapterState(freshOnly: true) == BluetoothAdapterState.on) {
+        _clearBlocker('on (scan accepted)');
+      }
       await FlutterBluePlus.isScanning.where((on) => on == false).first;
     } catch (e) {
       // Recheck the OS state after a thrown scan. Exception text alone can be
       // stale during adapter initialization and must not become a phone blocker.
-      final blocker = await _classifyRadioError(e);
+      final blocker = (await _classifyRadioError(e)).blocker;
       if (blocker != null) {
         await sub.cancel();
         _setPhase(BleConnState.idle);
