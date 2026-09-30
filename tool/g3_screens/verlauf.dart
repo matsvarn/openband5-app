@@ -4,14 +4,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/data/journal_fields.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/g3/charts.dart';
-import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
-import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
 
 import 'env.dart';
@@ -170,9 +167,43 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
     final labels = g3DaysEnding(endDay, days);
     List<double?>? values;
     if (metric == G3Metric.recovery) {
+      final recovery = g31
+          ? <double?>[
+              68,
+              70,
+              null,
+              58,
+              72,
+              69,
+              61,
+              68,
+              84,
+              71,
+              68,
+              58,
+              55,
+              64,
+              70,
+              null,
+              74,
+              69,
+              62,
+              58,
+              72,
+              68,
+              64,
+              68,
+              58,
+              62,
+              71,
+              49,
+              63,
+              74,
+            ]
+          : _recovery;
       values = days == 90
-          ? [...List<double?>.filled(60, null), ..._recovery]
-          : _recovery.sublist(30 - days);
+          ? [...List<double?>.filled(60, null), ...recovery]
+          : recovery.sublist(30 - days);
     } else if (metric == G3Metric.hrv) {
       values = days == 90
           ? [...List<double?>.filled(60, null), ..._hrv]
@@ -260,53 +291,16 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
   }
 }
 
-Widget _frame(Widget child) => Builder(
-  builder: (context) {
-    final g = G3.of(context);
-    return Stack(
-      children: [
-        Positioned.fill(top: 48, bottom: 95, child: child),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 48,
-          child: ColoredBox(
-            color: g.page,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(44, 15, 28, 0),
-              child: Row(
-                children: [
-                  Text('9:41', style: g.t(17, 21, weight: FontWeight.w700)),
-                  const Spacer(),
-                  Icon(LucideIcons.signal, size: 17, color: g.ink),
-                  const SizedBox(width: 6),
-                  Icon(LucideIcons.wifi, size: 17, color: g.ink),
-                  const SizedBox(width: 6),
-                  Icon(LucideIcons.batteryFull, size: 22, color: g.ink),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 24,
-          child: OBTabBar(
-            domains: const [
-              ShellDomain.home,
-              ShellDomain.sleep,
-              ShellDomain.workout,
-              ShellDomain.wellness,
-            ],
-            selected: ShellDomain.home,
-            onSelect: (_) {},
-          ),
-        ),
-      ],
-    );
-  },
+Widget _frame(Widget child) => AppShell(
+  releaseStyle: true,
+  domains: const [
+    ShellDomain.home,
+    ShellDomain.sleep,
+    ShellDomain.workout,
+    ShellDomain.wellness,
+  ],
+  builder: (_, domain) =>
+      domain == ShellDomain.home ? child : const SizedBox.shrink(),
 );
 
 Widget _metric(
@@ -324,6 +318,7 @@ Widget _metric(
     endDay: env.day(_day),
     band: env.band(() => sample().band),
     initialPeriod: period,
+    now: env.now(() => DateTime(2026, 9, 29, 9, 41)),
   );
   return env.real ? child : _frame(child);
 }

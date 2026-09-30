@@ -188,6 +188,7 @@ class OBYesNoKeys extends StatelessWidget {
 class OBRatingKeys extends StatelessWidget {
   final String question, low, high;
   final int max;
+  final bool showLegend;
   final ValueChanged<int>? onRate;
   const OBRatingKeys({
     super.key,
@@ -195,6 +196,7 @@ class OBRatingKeys extends StatelessWidget {
     required this.low,
     required this.high,
     this.max = 5,
+    this.showLegend = true,
     this.onRate,
   });
 
@@ -224,13 +226,14 @@ class OBRatingKeys extends StatelessWidget {
             ],
           ],
         ),
-        Row(
-          children: [
-            Text(low, style: g.t(12, 16, color: g.muted)),
-            const Spacer(),
-            Text(high, style: g.t(12, 16, color: g.muted)),
-          ],
-        ),
+        if (showLegend)
+          Row(
+            children: [
+              Text(low, style: g.t(12, 16, color: g.muted)),
+              const Spacer(),
+              Text(high, style: g.t(12, 16, color: g.muted)),
+            ],
+          ),
       ],
     );
   }

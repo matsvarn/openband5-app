@@ -80,6 +80,127 @@ void main() {
         .load();
   });
 
+  testWidgets('trailing link ends at card padding and keeps its target', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        OBPanel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [OBLink('Methode', onTap: () {})],
+          ),
+        ),
+      ),
+    );
+    final card = tester.getRect(find.byType(OBPanel));
+    final text = tester.getRect(find.text('Methode'));
+    expect(card.bottom - text.bottom, 18);
+    expect(tester.getSize(find.byType(OBLink)).height, 44);
+  });
+
+  testWidgets('sync keeps a 44 pt target and a 10 pt visual card gap', (
+    tester,
+  ) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        Column(
+          children: [
+            const SizedBox(height: 40),
+            OBSyncState(
+              kind: OBSyncKind.live,
+              text: 'Daten bis 09:38',
+              onTap: () => taps++,
+            ),
+            const SizedBox(height: 10),
+            const SizedBox(
+              key: ValueKey('first-card'),
+              height: 100,
+              width: 300,
+            ),
+          ],
+        ),
+      ),
+    );
+    final target = find.descendant(
+      of: find.byType(OBSyncState),
+      matching: find.byType(GestureDetector),
+    );
+    final bounds = tester.getRect(target);
+    expect(bounds.height, 44);
+    expect(find.byType(OBSyncState).hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('first-card'))).dy -
+          tester
+              .getBottomLeft(
+                find.descendant(
+                  of: find.byType(OBSyncState),
+                  matching: find.byType(RichText),
+                ),
+              )
+              .dy,
+      10,
+    );
+    await tester.tapAt(Offset(bounds.left + 30, bounds.top + 1));
+    await tester.tapAt(Offset(bounds.left + 30, bounds.bottom - 1));
+    expect(taps, 2);
+  });
+
+  testWidgets('statistics use one card interior when nested in a panel', (
+    tester,
+  ) async {
+    const statistics = OBStatRow([
+      ('Ø 30 Nächte', '45', null),
+      ('Median', '45', null),
+      ('Spanne', '36–50', null),
+    ]);
+    await tester.pumpWidget(_frame(statistics));
+    final standalone = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - standalone.top, 18);
+    expect(
+      tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - standalone.left,
+      18,
+    );
+    expect(find.text('MEDIAN'), findsOneWidget);
+    await tester.pumpWidget(_frame(const OBPanel(child: statistics)));
+    final outer = tester.getRect(find.byType(OBPanel));
+    final inner = tester.getRect(find.byType(OBStatRow));
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dy - outer.top, 18);
+    expect(tester.getTopLeft(find.text('Ø 30 NÄCHTE')).dx - outer.left, 18);
+    expect(inner.height, standalone.height - 36);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recent-day chevron requires a tap handler', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      _frame(
+        const OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsNothing);
+    await tester.pumpWidget(
+      _frame(
+        OBDayValueRow(
+          domain: G3Domain.recovery,
+          date: 'Di 29.09',
+          value: '48',
+          share: .6,
+          onTap: () => taps++,
+        ),
+      ),
+    );
+    expect(find.byType(OBChevron), findsOneWidget);
+    await tester.tap(find.text('Di 29.09'));
+    expect(taps, 1);
+  });
+
   test('Band frontier prefixes use the shared short date format', () {
     final now = DateTime(2026, 9, 29, 10);
     expect(bandFrontierDayPrefix(DateTime(2026, 9, 29, 9), now), '');
@@ -135,7 +256,7 @@ void main() {
     expect(g3CheckInCopy('alcohol_evening', '').target, 'zu gestern Abend');
     expect(g3CheckInCopy('caffeine_late', '').question, 'Koffein nach 14 Uhr?');
     expect(g3CheckInCopy('mood', '').low, 'schlecht');
-    expect(g3CheckInCopy('mood', '').high, 'gut');
+    expect(g3CheckInCopy('mood', '').high, 'sehr gut');
     expect(g3CheckInCopy('custom', 'Meine Frage?').question, 'Meine Frage?');
   });
 

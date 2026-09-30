@@ -170,6 +170,20 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  for (final brightness in Brightness.values) {
+    testWidgets('Journal has no overflow at 375 × 812, $brightness', (
+      tester,
+    ) async {
+      await mount(tester, brightness: brightness);
+      tester.view.physicalSize = const Size(375, 812);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('Journal remains usable at 320 pt with larger text', (
     tester,
   ) async {
@@ -237,7 +251,7 @@ void main() {
     expect(find.text('3 von 4'), findsOneWidget);
   });
 
-  testWidgets('dark check-in separates done, current, and future segments', (
+  testWidgets('dark check-in shows the count without a progress bar', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -263,21 +277,9 @@ void main() {
         )
         .where((widget) => widget.constraints?.minHeight == 4)
         .toList();
-    expect(segments, hasLength(4));
-    final colors = [
-      for (final segment in segments)
-        (segment.decoration! as BoxDecoration).color!,
-    ];
-    expect(
-      colors[0].computeLuminance(),
-      greaterThan(colors[1].computeLuminance()),
-    );
-    expect(colors[1].a, 1);
-    expect(
-      colors[1].computeLuminance(),
-      greaterThan(colors[2].computeLuminance() + .2),
-    );
-    expect(colors[2], colors[3]);
+    expect(segments, isEmpty);
+    expect(find.text('CHECK-IN'), findsOneWidget);
+    expect(find.text('2 von 4'), findsOneWidget);
   });
 
   testWidgets('today caffeine answer belongs to yesterday', (tester) async {
@@ -328,7 +330,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Wie ist deine Stimmung?'), findsOneWidget);
     expect(find.text('So 01.03'), findsOneWidget);
-    expect(find.text('1 schlecht · 5 gut'), findsOneWidget);
+    expect(find.text('1 schlecht · 5 sehr gut'), findsOneWidget);
     await tester.tap(find.text('4').first);
     await tester.pumpAndSettle();
     expect((await repo.readJournalDay('2026-03-01')).metrics['mood']?.value, 4);
@@ -818,9 +820,9 @@ void main() {
     await mount(tester);
     await tester.drag(find.byType(ListView).first, const Offset(0, -700));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('noch kein Vergleich'));
+    await tester.ensureVisible(find.text('MUSTER'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('noch kein Vergleich'));
+    await tester.tap(find.text('MUSTER'));
     await tester.pumpAndSettle();
     expect(find.text('5 von 8 Paaren · noch 3'), findsOneWidget);
     expect(
@@ -1199,7 +1201,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    expect(find.text('So 13.09'), findsOneWidget);
+    expect(find.text('Mo 14.09 – Fr 11.09 · leer'), findsOneWidget);
     expect(find.text('nichts eingetragen'), findsNothing);
   });
 

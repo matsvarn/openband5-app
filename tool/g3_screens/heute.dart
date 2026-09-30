@@ -145,6 +145,12 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    if (g31 && metric == G3Metric.respRate && day == _today) {
+      return const G3Baseline(
+        BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(14.6, 16.4, 15.5),
+      );
+    }
     if (g31 && metric == G3Metric.recovery && day == _today) {
       return const G3Baseline(
         BaselineStatus(BaselinePhase.trusted),
@@ -269,6 +275,7 @@ class _HeuteFrameState extends State<_HeuteFrame> {
             reminder: reminder,
             onProfile: () {},
             onBand: () {},
+            onDataStatus: () {},
             onConnect: () {},
             onAddActivity: () {},
             onJournalDay: (_) {},
