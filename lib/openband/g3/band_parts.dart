@@ -449,7 +449,7 @@ String bandStatusLabel(
   return switch (status.condition) {
     BandCondition.connected => 'Verbunden',
     BandCondition.connecting => 'Verbindet …',
-    BandCondition.scanning => 'Sucht …',
+    BandCondition.scanning => g3BandScanningLabel,
     _ => 'Nicht verbunden',
   };
 }

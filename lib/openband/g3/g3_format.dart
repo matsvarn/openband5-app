@@ -84,3 +84,5 @@ String g3Signed(num? value, {int digits = 0, String? unit}) {
   final sign = roundedZero ? '' : (value < 0 ? '−' : '+');
   return '$sign$magnitude${unit == null ? '' : ' $unit'}';
 }
+
+const g3BandScanningLabel = 'Sucht …';

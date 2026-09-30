@@ -780,6 +780,32 @@ void main() {
     expect(find.text('getrennt'), findsNothing);
   });
 
+  testWidgets('scanning has the same label in the capsule and Band screen', (
+    tester,
+  ) async {
+    final status = bandStatusFor(connection: 'scanning');
+    await pump(
+      tester,
+      Scaffold(
+        body: OBBandCapsule(state: OBBandState.off, bandStatus: status),
+      ),
+    );
+    expect(find.text('Sucht …'), findsOneWidget);
+    expect(find.text('getrennt'), findsNothing);
+
+    await pump(
+      tester,
+      G3BandScreen(
+        band: const BandSnapshot(connection: BandConnection.disconnected),
+        now: DateTime(2026, 9, 30),
+        status: status,
+        onReconnect: () async {},
+      ),
+    );
+    expect(find.text('Sucht …'), findsWidgets);
+    expect(find.text('Nicht verbunden'), findsNothing);
+  });
+
   testWidgets('date sheet commits only a confirmed selection', (tester) async {
     final summary =
         jsonDecode(
@@ -1274,6 +1300,9 @@ void main() {
     controller.updateBandStatus(bandStatusFor(connection: 'connecting'));
     await tester.pump();
     expect(find.text('Verbindet …'), findsOneWidget);
+    controller.updateBandStatus(bandStatusFor(connection: 'scanning'));
+    await tester.pump();
+    expect(find.text('Sucht …'), findsOneWidget);
   });
 
   testWidgets('data status dates the stored frontier from yesterday', (
