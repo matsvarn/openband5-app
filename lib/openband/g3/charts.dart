@@ -32,6 +32,8 @@ void _dash(
 // Heart-rate trace
 
 class OBHrTrace extends StatelessWidget {
+  final G3Domain domain;
+
   /// (minute since start, bpm) samples.
   final List<(double, double)> samples;
   final double duration;
@@ -53,6 +55,7 @@ class OBHrTrace extends StatelessWidget {
   final String signalNote;
   const OBHrTrace({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.samples,
     required this.duration,
     this.gaps = const [],
@@ -142,6 +145,7 @@ class OBHrTrace extends StatelessWidget {
                         zoneEdges,
                         peakAt,
                         g,
+                        domain,
                       ),
                     ),
                   ),
@@ -303,6 +307,7 @@ List<List<(double, double)>> hrTraceStrokeRuns(
 }
 
 class _HrPainter extends CustomPainter {
+  final G3Domain domain;
   final List<(double, double)> samples;
   final double duration;
   final List<(double, double)> gaps;
@@ -319,6 +324,7 @@ class _HrPainter extends CustomPainter {
     this.edges,
     this.peak,
     this.g,
+    this.domain,
   );
 
   @override
@@ -330,7 +336,7 @@ class _HrPainter extends CustomPainter {
       if (hi <= lo) continue;
       canvas.drawRect(
         Rect.fromLTRB(0, y(hi), size.width, y(lo)),
-        Paint()..color = g.zoneTints[i],
+        Paint()..color = g.zoneTintsFor(domain)[i],
       );
     }
     for (final (g0, g1) in gaps) {
@@ -352,7 +358,7 @@ class _HrPainter extends CustomPainter {
       }
     }
     final line = Paint()
-      ..color = g.ink
+      ..color = g.domainHue(domain)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeJoin = StrokeJoin.round
@@ -375,7 +381,7 @@ class _HrPainter extends CustomPainter {
           Offset(x(t), y(v)),
           3.5,
           Paint()
-            ..color = g.ink
+            ..color = g.domainHue(domain)
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2,
         );
@@ -384,7 +390,10 @@ class _HrPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HrPainter old) =>
-      old.samples != samples || old.gaps != gaps || old.g.dark != g.dark;
+      old.samples != samples ||
+      old.gaps != gaps ||
+      old.g.dark != g.dark ||
+      old.domain != domain;
 }
 
 // ---------------------------------------------------------------------------
@@ -400,6 +409,7 @@ class OBZone {
 }
 
 class OBZoneRows extends StatelessWidget {
+  final G3Domain domain;
   final List<OBZone> zones;
 
   /// Unit of the ranges ("% HFmax") and the stored zone source
@@ -408,6 +418,7 @@ class OBZoneRows extends StatelessWidget {
   final VoidCallback? onBasis;
   const OBZoneRows({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.zones,
     this.basis = '% HFmax',
     required this.source,
@@ -467,7 +478,7 @@ class OBZoneRows extends StatelessWidget {
                         child: Container(
                           height: 14,
                           decoration: BoxDecoration(
-                            color: g.zones[z.index - 1],
+                            color: g.zonesFor(domain)[z.index - 1],
                             borderRadius: BorderRadius.circular(3),
                           ),
                         ),
@@ -527,6 +538,7 @@ enum OBTrendPeriod { d7, d30, d90 }
 enum OBTrendMark { none, better, worse, outside }
 
 class OBTrendChart extends StatelessWidget {
+  final G3Domain domain;
   final String title;
   final OBTrendPeriod period;
   final List<double?> values;
@@ -543,6 +555,7 @@ class OBTrendChart extends StatelessWidget {
   final ValueChanged<OBTrendPeriod>? onPeriod;
   const OBTrendChart({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.title,
     required this.period,
     required this.values,
@@ -731,7 +744,10 @@ class _TrendPainter extends CustomPainter {
     if (c.band case (final lo, final hi)) {
       canvas.drawRect(
         Rect.fromLTRB(0, y(hi), w, y(lo)),
-        Paint()..color = g.band.withValues(alpha: .45),
+        Paint()
+          ..color = c.domain == G3Domain.neutral
+              ? g.band.withValues(alpha: .45)
+              : g.domainTint(c.domain),
       );
     }
     canvas.drawLine(Offset(0, h), Offset(w, h), Paint()..color = g.hairline);
@@ -767,7 +783,9 @@ class _TrendPainter extends CustomPainter {
           );
           continue;
         }
-        final color = _mark(i) ?? (i == n - 1 ? g.ink : g.bar);
+        final color =
+            _mark(i) ??
+            (i == n - 1 ? g.domainHue(c.domain) : g.domainBar(c.domain));
         canvas.drawRRect(
           RRect.fromLTRBR(cx - 12, y(v), cx + 12, h, const Radius.circular(4)),
           Paint()..color = color,
@@ -808,7 +826,7 @@ class _TrendPainter extends CustomPainter {
       }
     }
     final line = Paint()
-      ..color = g.ink
+      ..color = g.domainHue(c.domain)
       ..style = PaintingStyle.stroke
       ..strokeWidth = c.period == OBTrendPeriod.d30 ? 2 : 1.5
       ..strokeJoin = StrokeJoin.round
@@ -852,7 +870,7 @@ class _TrendPainter extends CustomPainter {
             o,
             r,
             Paint()
-              ..color = g.ink
+              ..color = g.domainHue(c.domain)
               ..style = PaintingStyle.stroke
               ..strokeWidth = ring ? 2 : 1.5,
           );
@@ -862,7 +880,11 @@ class _TrendPainter extends CustomPainter {
       final o = Offset(w, y(last));
       canvas
         ..drawCircle(o, 5.5, Paint()..color = g.canvas)
-        ..drawCircle(o, 4.5, Paint()..color = (_mark(n - 1) ?? g.ink));
+        ..drawCircle(
+          o,
+          4.5,
+          Paint()..color = (_mark(n - 1) ?? g.domainHue(c.domain)),
+        );
     }
   }
 

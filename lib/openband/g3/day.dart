@@ -223,8 +223,9 @@ class OBDayNote extends StatelessWidget {
 
 /// Minutes per zone (Z1…Z5) as a grey ramp; zero zones are left out.
 class OBZoneStrip extends StatelessWidget {
+  final G3Domain domain;
   final List<int> minutes;
-  const OBZoneStrip(this.minutes, {super.key});
+  const OBZoneStrip(this.minutes, {super.key, this.domain = G3Domain.neutral});
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -242,7 +243,7 @@ class OBZoneStrip extends StatelessWidget {
               flex: m,
               child: Container(
                 decoration: BoxDecoration(
-                  color: g.zones[i],
+                  color: g.zonesFor(domain)[i],
                   borderRadius: BorderRadius.horizontal(
                     left: Radius.circular(k == 0 ? 3 : 0),
                     right: Radius.circular(k == shown.length - 1 ? 3 : 0),
@@ -258,6 +259,7 @@ class OBZoneStrip extends StatelessWidget {
 }
 
 class OBActivityRow extends StatelessWidget {
+  final G3Domain domain;
   final Widget pictogram;
   final String title, subtitle;
 
@@ -270,6 +272,7 @@ class OBActivityRow extends StatelessWidget {
   final VoidCallback? onTap;
   const OBActivityRow({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.pictogram,
     required this.title,
     required this.subtitle,
@@ -302,8 +305,21 @@ class OBActivityRow extends StatelessWidget {
                     width: 44,
                     height: 44,
                     alignment: Alignment.center,
-                    decoration: g.pressed(radius: 12, color: g.track),
-                    child: pictogram,
+                    decoration: g.pressed(
+                      radius: 12,
+                      color: domain == G3Domain.neutral
+                          ? g.track
+                          : g.domainTint(domain),
+                    ),
+                    child: domain == G3Domain.neutral
+                        ? pictogram
+                        : ColorFiltered(
+                            colorFilter: ColorFilter.mode(
+                              g.domainHue(domain),
+                              BlendMode.srcIn,
+                            ),
+                            child: pictogram,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -365,7 +381,7 @@ class OBActivityRow extends StatelessWidget {
               else if (zoneMinutes case final z?)
                 Padding(
                   padding: const EdgeInsets.only(left: 56, right: 26, top: 12),
-                  child: OBZoneStrip(z),
+                  child: OBZoneStrip(z, domain: domain),
                 ),
             ],
           ),
@@ -563,6 +579,7 @@ class OBWeekBar {
 /// Seven days. Bars start at zero; a null value is a dashed slot, never a
 /// short bar. [labelsBelow] puts values under the day (sleep durations).
 class OBWeekBars extends StatelessWidget {
+  final G3Domain domain;
   final List<OBWeekBar> bars;
 
   /// Value that fills the 111 pt chart height.
@@ -576,6 +593,7 @@ class OBWeekBars extends StatelessWidget {
   final List<Widget> footer;
   const OBWeekBars({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.bars,
     required this.max,
     this.band,
@@ -608,7 +626,11 @@ class OBWeekBars extends StatelessWidget {
                     right: 0,
                     top: y(hi),
                     height: y(lo) - y(hi),
-                    child: ColoredBox(color: g.track),
+                    child: ColoredBox(
+                      color: domain == G3Domain.neutral
+                          ? g.track
+                          : g.domainTint(domain),
+                    ),
                   ),
                 Positioned.fill(
                   bottom: 1,
@@ -651,7 +673,9 @@ class OBWeekBars extends StatelessWidget {
                                   decoration: BoxDecoration(
                                     color:
                                         g.mark(b.deviation) ??
-                                        (b.today ? g.ink : g.bar),
+                                        (b.today
+                                            ? g.domainHue(domain)
+                                            : g.domainBar(domain)),
                                     borderRadius: const BorderRadius.vertical(
                                       top: Radius.circular(5),
                                       bottom: Radius.circular(2),
@@ -867,6 +891,7 @@ class OBStageSegment {
 enum OBNightState { full, gap, missing }
 
 class OBNightCard extends StatelessWidget {
+  final G3Domain domain;
   final OBNightState state;
   final String? note;
   final String? asleep, subtitle;
@@ -884,6 +909,7 @@ class OBNightCard extends StatelessWidget {
   final VoidCallback? onTap;
   const OBNightCard({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.state,
     this.note,
     this.asleep,
@@ -909,10 +935,10 @@ class OBNightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     Color stageColor(OBStage s) => switch (s) {
-      OBStage.deep => g.stageDeep,
-      OBStage.light => g.stageLight,
-      OBStage.rem => g.stageRem,
-      OBStage.wake => g.wake,
+      OBStage.deep => g.stageFor(domain, 3),
+      OBStage.light => g.stageFor(domain, 2),
+      OBStage.rem => g.stageFor(domain, 1),
+      OBStage.wake => g.stageFor(domain, 0),
     };
     if (state == OBNightState.missing || asleep == null) {
       return Container(
@@ -921,7 +947,12 @@ class OBNightCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            G3LabelRow('NACHT', note: note ?? 'keine Daten', arrow: false),
+            G3LabelRow(
+              'NACHT',
+              domain: domain,
+              note: note ?? 'keine Daten',
+              arrow: false,
+            ),
             const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -967,7 +998,7 @@ class OBNightCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              G3LabelRow('NACHT', note: note, onTap: onTap),
+              G3LabelRow('NACHT', domain: domain, note: note, onTap: onTap),
               const SizedBox(height: 4),
               G3ValueLine(
                 asleep!,
@@ -978,6 +1009,7 @@ class OBNightCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               OBHypnogram(
+                domain: domain,
                 segments: segments,
                 totalMinutes: totalMinutes,
                 gaps: gaps,
@@ -1068,11 +1100,13 @@ class OBStageLegend extends StatelessWidget {
 
 /// Four stage lanes (Wach, REM, Leicht, Tief). Gaps stay hollow.
 class OBHypnogram extends StatelessWidget {
+  final G3Domain domain;
   final List<OBStageSegment> segments;
   final double totalMinutes;
   final List<(double, double)> gaps;
   const OBHypnogram({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.segments,
     required this.totalMinutes,
     this.gaps = const [],
@@ -1083,18 +1117,19 @@ class OBHypnogram extends StatelessWidget {
     return RepaintBoundary(
       child: CustomPaint(
         size: const Size(double.infinity, 84),
-        painter: _HypnoPainter(segments, totalMinutes, gaps, g),
+        painter: _HypnoPainter(segments, totalMinutes, gaps, g, domain),
       ),
     );
   }
 }
 
 class _HypnoPainter extends CustomPainter {
+  final G3Domain domain;
   final List<OBStageSegment> segments;
   final double total;
   final List<(double, double)> gaps;
   final G3 g;
-  _HypnoPainter(this.segments, this.total, this.gaps, this.g);
+  _HypnoPainter(this.segments, this.total, this.gaps, this.g, this.domain);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1106,15 +1141,15 @@ class _HypnoPainter extends CustomPainter {
       OBStage.deep: 66.0,
     };
     final color = {
-      OBStage.wake: g.wake,
-      OBStage.rem: g.stageRem,
-      OBStage.light: g.stageLight,
-      OBStage.deep: g.stageDeep,
+      OBStage.wake: g.stageFor(domain, 0),
+      OBStage.rem: g.stageFor(domain, 1),
+      OBStage.light: g.stageFor(domain, 2),
+      OBStage.deep: g.stageFor(domain, 3),
     };
     for (final y in lane.values) {
       canvas.drawRRect(
         RRect.fromLTRBR(0, y, size.width, y + 18, const Radius.circular(4)),
-        Paint()..color = g.hypnoLane,
+        Paint()..color = g.hypnoLaneFor(domain),
       );
     }
     for (final s in segments) {
@@ -1162,7 +1197,8 @@ class _HypnoPainter extends CustomPainter {
       old.segments != segments ||
       old.total != total ||
       old.gaps != gaps ||
-      old.g.dark != g.dark;
+      old.g.dark != g.dark ||
+      old.domain != domain;
 }
 
 void _dashRRect(Canvas canvas, RRect r, Color color, {double width = 1.5}) {
@@ -1181,6 +1217,8 @@ void _dashRRect(Canvas canvas, RRect r, Color color, {double width = 1.5}) {
 // Steps
 
 class OBStepsCard extends StatelessWidget {
+  final G3Domain domain;
+
   /// On-chip counter total; null = no transfer today.
   final int? total;
   final String note;
@@ -1191,6 +1229,7 @@ class OBStepsCard extends StatelessWidget {
   final VoidCallback? onGoal;
   const OBStepsCard({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.total,
     required this.note,
     this.hourly = const [],
@@ -1205,6 +1244,7 @@ class OBStepsCard extends StatelessWidget {
       (i) => total == null || i >= hourly.length ? null : hourly[i],
     );
     final peak = hours.whereType<int>().fold(1, (a, b) => a > b ? a : b);
+    final currentHour = hours.lastIndexWhere((v) => v != null);
     return Semantics(
       label: 'Schritte ${total == null ? 'nicht übertragen' : g3Count(total)}',
       child: Container(
@@ -1213,7 +1253,7 @@ class OBStepsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            G3LabelRow('SCHRITTE', note: note, arrow: false),
+            G3LabelRow('SCHRITTE', domain: domain, note: note, arrow: false),
             const SizedBox(height: 4),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1256,7 +1296,7 @@ class OBStepsCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  for (final v in hours)
+                  for (final (hour, v) in hours.indexed)
                     Expanded(
                       child: Center(
                         heightFactor: 1,
@@ -1272,6 +1312,7 @@ class OBStepsCard extends StatelessWidget {
                                   ),
                                 )
                               : Container(
+                                  key: ValueKey('steps-hour-$hour'),
                                   width: 8,
                                   height: v == 0
                                       ? 2
@@ -1280,7 +1321,13 @@ class OBStepsCard extends StatelessWidget {
                                           52.0,
                                         ),
                                   decoration: BoxDecoration(
-                                    color: v == 0 ? g.band : g.ink,
+                                    color: v == 0
+                                        ? g.band
+                                        : domain == G3Domain.neutral
+                                        ? g.ink
+                                        : hour == currentHour
+                                        ? g.domainHue(domain)
+                                        : g.domainBar(domain),
                                     borderRadius: BorderRadius.circular(
                                       v == 0 ? 1 : 2,
                                     ),

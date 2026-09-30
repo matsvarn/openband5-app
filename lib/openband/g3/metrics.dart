@@ -24,6 +24,7 @@ class G3Tick {
 /// Labelled linear scale: pressed track, optional grey normal band, median
 /// notch, value pointer. Paper places inner labels 8 pt left of their value.
 class G3Scale extends StatelessWidget {
+  final G3Domain domain;
   final double min, max;
   final double? value, median;
   final (double, double)? band;
@@ -32,6 +33,7 @@ class G3Scale extends StatelessWidget {
   final double trackHeight, pointerHeight, top, labelSize;
   const G3Scale({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.min,
     required this.max,
     this.value,
@@ -86,7 +88,10 @@ class G3Scale extends StatelessWidget {
                     width: x(hi) - x(lo),
                     top: trackTop,
                     height: trackHeight,
-                    child: ColoredBox(color: g.band),
+                    child: ColoredBox(
+                      key: const ValueKey('scale-normal-band'),
+                      color: g.normalBand(domain),
+                    ),
                   ),
               if (median?.isFinite == true)
                 Positioned(
@@ -145,6 +150,8 @@ class G3Scale extends StatelessWidget {
 
 /// "ERHOLUNG ›" on the left, a muted note on the right.
 class G3LabelRow extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
   final String? note;
   final VoidCallback? onTap;
@@ -153,6 +160,8 @@ class G3LabelRow extends StatelessWidget {
   const G3LabelRow(
     this.label, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.note,
     this.onTap,
     this.arrow = true,
@@ -174,7 +183,13 @@ class G3LabelRow extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(child: Text(label, style: g.caps())),
+              if (glyph != null) ...[
+                Icon(glyph, size: 16, color: g.domainHue(domain)),
+                const SizedBox(width: 6),
+              ],
+              Flexible(
+                child: Text(label, style: g.caps(color: g.domainHue(domain))),
+              ),
               if (onTap != null && arrow) ...[
                 const SizedBox(width: 4),
                 OBChevron(size: 12, color: g.muted),
@@ -327,6 +342,8 @@ enum OBLeadState { normal, better, worse, plain, building, missing }
 /// [state] is decided by the caller from its stored baseline. A null [value]
 /// always renders the missing state, whatever [state] says.
 class OBLeadMetric extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
   final String? note;
   final OBLeadState state;
@@ -361,6 +378,8 @@ class OBLeadMetric extends StatelessWidget {
 
   const OBLeadMetric({
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     required this.label,
     required this.state,
     this.note,
@@ -527,6 +546,7 @@ class OBLeadMetric extends StatelessWidget {
         if (s != null) ...[
           const SizedBox(height: 10),
           G3Scale(
+            domain: domain,
             min: s.min,
             max: s.max,
             value: value,
@@ -549,7 +569,14 @@ class OBLeadMetric extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            G3LabelRow(label, note: note, onTap: onTap, arrow: showLabelArrow),
+            G3LabelRow(
+              label,
+              domain: domain,
+              glyph: glyph,
+              note: note,
+              onTap: onTap,
+              arrow: showLabelArrow,
+            ),
             ...body,
           ],
         ),
@@ -562,6 +589,8 @@ class OBLeadMetric extends StatelessWidget {
 // Secondary metric (Schlaf, Belastung) with a short fill scale
 
 class OBSecondaryMetric extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
 
   /// Already formatted value ("7h18", "9,4"); null renders "—".
@@ -577,6 +606,8 @@ class OBSecondaryMetric extends StatelessWidget {
   final VoidCallback? onTap;
   const OBSecondaryMetric({
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     required this.label,
     required this.value,
     this.aside,
@@ -601,7 +632,7 @@ class OBSecondaryMetric extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            G3LabelRow(label, onTap: onTap),
+            G3LabelRow(label, domain: domain, glyph: glyph, onTap: onTap),
             const SizedBox(height: 2),
             G3ValueLine(
               v ?? '—',
@@ -694,7 +725,7 @@ class OBSecondaryMetric extends StatelessWidget {
                               width: w * fill!.clamp(0.0, 1.0),
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: g.ink,
+                                  color: g.domainHue(domain),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
                               ),
@@ -776,6 +807,7 @@ enum OBBodyState { range, plain, building, missing, deviation }
 /// One body value with its picture. [deviation] is relative (skin
 /// temperature): unitless, on kühler · normal · wärmer, never coloured.
 class OBBodyRow extends StatelessWidget {
+  final G3Domain domain;
   final OBBodyState state;
   final String name;
   final String? value;
@@ -791,6 +823,7 @@ class OBBodyRow extends StatelessWidget {
   final VoidCallback? onTap;
   const OBBodyRow({
     super.key,
+    this.domain = G3Domain.neutral,
     required this.state,
     required this.name,
     this.value,
@@ -881,6 +914,7 @@ class OBBodyRow extends StatelessWidget {
       picture = SizedBox(
         width: w,
         child: G3Scale(
+          domain: domain,
           min: min,
           max: max,
           value: at?.isFinite == true ? at : null,

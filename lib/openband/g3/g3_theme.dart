@@ -15,6 +15,10 @@ const kG3CardPadding = EdgeInsets.symmetric(horizontal: 18, vertical: 16);
 /// The widgets never decide this; the caller passes it.
 enum G3Deviation { none, better, worse }
 
+/// Identity belongs to a metric, not the tab that shows it. Omit [domain] in
+/// shared components to retain the neutral G3 appearance.
+enum G3Domain { recovery, sleep, load, neutral }
+
 class G3 {
   final bool dark;
   final OB ob;
@@ -33,10 +37,13 @@ class G3 {
   Color get muted => ob.muted;
   Color get gap => ob.gap;
   Color get led => ob.led;
-  Color get stageDeep => ob.stageDeep;
-  Color get stageLight => ob.stageLight;
-  Color get stageRem => ob.stageRem;
-  Color get wake => ob.wake;
+  // The original greys remain the neutral default after the named stage
+  // tokens become the G3.1 Schlaf ramp.
+  Color get stageDeep => dark ? const Color(0xFFEDEDE9) : ink;
+  Color get stageLight => dark ? const Color(0xFF9A9A94) : muted;
+  Color get stageRem =>
+      dark ? const Color(0xFF5E5E59) : const Color(0xFFAEAEA9);
+  Color get wake => dark ? const Color(0xFF4A4A45) : const Color(0xFFC9C9C4);
 
   /// Text and icons on an ink-filled key.
   Color get onInk => dark ? AlpColor.ink : AlpColor.canvas;
@@ -60,8 +67,88 @@ class G3 {
   Color get noteInk2 => _p(AlpColor.noteInk2, AlpColor.darkNoteInk2);
   Color get noteMuted => _p(AlpColor.noteMuted, AlpColor.darkNoteMuted);
   Color get noteAction => _p(AlpColor.noteAction, AlpColor.darkNoteAction);
-  Color get hypnoLane => _p(AlpColor.hypnoLane, AlpColor.darkHypnoLane);
-  List<Color> get zones => dark
+  Color get hypnoLane =>
+      dark ? const Color(0xFF262624) : const Color(0xFFEDEDE9);
+
+  Color domainHue(G3Domain domain) => switch (domain) {
+    G3Domain.recovery => _p(
+      AlpColor.domainRecovery,
+      AlpColor.darkDomainRecovery,
+    ),
+    G3Domain.sleep => _p(AlpColor.domainSleep, AlpColor.darkDomainSleep),
+    G3Domain.load => _p(AlpColor.domainLoad, AlpColor.darkDomainLoad),
+    G3Domain.neutral => ink,
+  };
+
+  Color domainBar(G3Domain domain) => switch (domain) {
+    G3Domain.recovery => _p(
+      AlpColor.domainRecoveryBar,
+      AlpColor.darkDomainRecoveryBar,
+    ),
+    G3Domain.sleep => _p(AlpColor.domainSleepBar, AlpColor.darkDomainSleepBar),
+    G3Domain.load => _p(AlpColor.domainLoadBar, AlpColor.darkDomainLoadBar),
+    G3Domain.neutral => bar,
+  };
+
+  Color domainTint(G3Domain domain) => switch (domain) {
+    G3Domain.recovery => _p(
+      AlpColor.domainRecoveryTint,
+      AlpColor.darkDomainRecoveryTint,
+    ),
+    G3Domain.sleep => _p(
+      AlpColor.domainSleepTint,
+      AlpColor.darkDomainSleepTint,
+    ),
+    G3Domain.load => _p(AlpColor.domainLoadTint, AlpColor.darkDomainLoadTint),
+    G3Domain.neutral => band,
+  };
+
+  Color normalBand(G3Domain domain) =>
+      domain == G3Domain.neutral ? band : domainBar(domain);
+
+  Color hypnoLaneFor(G3Domain domain) => domain == G3Domain.sleep
+      ? _p(AlpColor.hypnoLane, AlpColor.darkHypnoLane)
+      : hypnoLane;
+
+  Color stageFor(G3Domain domain, int lane) {
+    if (domain != G3Domain.sleep) {
+      return [wake, stageRem, stageLight, stageDeep][lane];
+    }
+    return dark
+        ? [
+            AlpColor.darkWake,
+            AlpColor.darkStageRem,
+            AlpColor.darkStageLight,
+            AlpColor.darkStageDeep,
+          ][lane]
+        : [
+            AlpColor.wake,
+            AlpColor.stageRem,
+            AlpColor.stageLight,
+            AlpColor.stageDeep,
+          ][lane];
+  }
+
+  List<Color> zonesFor(G3Domain domain) => domain == G3Domain.load
+      ? loadZones
+      : dark
+      ? const [
+          Color(0xFF3A3A36),
+          Color(0xFF55554F),
+          Color(0xFF7C7C76),
+          Color(0xFFAEAEA9),
+          Color(0xFFEDEDE9),
+        ]
+      : const [
+          Color(0xFFD2D2CC),
+          Color(0xFFB4B4AE),
+          Color(0xFF8A8A84),
+          Color(0xFF55554F),
+          Color(0xFF1B1B1A),
+        ];
+
+  List<Color> get zones => zonesFor(G3Domain.neutral);
+  List<Color> get loadZones => dark
       ? const [
           AlpColor.darkZone1,
           AlpColor.darkZone2,
@@ -76,7 +163,26 @@ class G3 {
           AlpColor.zone4,
           AlpColor.zone5,
         ];
-  List<Color> get zoneTints => dark
+  List<Color> zoneTintsFor(G3Domain domain) => domain == G3Domain.load
+      ? loadZoneTints
+      : dark
+      ? const [
+          Color(0xFF262624),
+          Color(0xFF2B2B28),
+          Color(0xFF31312E),
+          Color(0xFF393935),
+          Color(0xFF44443F),
+        ]
+      : const [
+          Color(0xFFEEEEEA),
+          Color(0xFFE8E8E3),
+          Color(0xFFE1E1DB),
+          Color(0xFFD8D8D2),
+          Color(0xFFCDCDC7),
+        ];
+
+  List<Color> get zoneTints => zoneTintsFor(G3Domain.neutral);
+  List<Color> get loadZoneTints => dark
       ? const [
           AlpColor.darkZoneTint1,
           AlpColor.darkZoneTint2,

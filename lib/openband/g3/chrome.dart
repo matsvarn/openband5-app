@@ -553,6 +553,8 @@ class OBSyncState extends StatelessWidget {
 // Section header, card header, footer
 
 class OBSectionHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String text;
   final String? action;
   final VoidCallback? onAction;
@@ -560,6 +562,8 @@ class OBSectionHeader extends StatelessWidget {
   const OBSectionHeader(
     this.text, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.action,
     this.onAction,
     this.trailing,
@@ -575,7 +579,24 @@ class OBSectionHeader extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(top: 18, bottom: 8),
-              child: Text(text, style: g.caps(color: g.muted)),
+              child: Row(
+                children: [
+                  if (glyph != null) ...[
+                    Icon(glyph, size: 16, color: g.domainHue(domain)),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: g.caps(
+                        color: domain == G3Domain.neutral
+                            ? g.muted
+                            : g.domainHue(domain),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (action != null && onAction != null)
@@ -613,6 +634,8 @@ class OBSectionHeader extends StatelessWidget {
 }
 
 class OBCardHeader extends StatelessWidget {
+  final G3Domain domain;
+  final IconData? glyph;
   final String label;
   final String? note;
   final VoidCallback? onTap;
@@ -621,6 +644,8 @@ class OBCardHeader extends StatelessWidget {
   const OBCardHeader(
     this.label, {
     super.key,
+    this.domain = G3Domain.neutral,
+    this.glyph,
     this.note,
     this.onTap,
     this.arrow = true,
@@ -628,7 +653,14 @@ class OBCardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 2),
-    child: G3LabelRow(label, note: note, onTap: onTap, arrow: arrow),
+    child: G3LabelRow(
+      label,
+      domain: domain,
+      glyph: glyph,
+      note: note,
+      onTap: onTap,
+      arrow: arrow,
+    ),
   );
 }
 
