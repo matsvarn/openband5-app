@@ -9,6 +9,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/openband/alp_tokens.dart';
+import 'package:openstrap_edge/openband/g3/chrome.dart' as g3chrome;
+import 'package:openstrap_edge/openband/g3/g3_theme.dart';
 import 'package:openstrap_edge/openband/settings_controls.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
@@ -130,7 +132,7 @@ void main() {
     expect(find.byIcon(LucideIcons.circleCheck), findsOneWidget);
     expect(tester.widget<Icon>(find.byIcon(LucideIcons.circleCheck)).size, 14);
     expect(find.text('07:00'), findsWidgets);
-    await tester.tap(find.byTooltip('Alarm: Plan und Bestätigung'));
+    await tester.tap(find.bySemanticsLabel('Alarm: Plan und Bestätigung'));
     await tester.pumpAndSettle();
     expect(find.textContaining('ganzen Sekunden'), findsOneWidget);
     expect(find.textContaining('Konfiguration'), findsOneWidget);
@@ -145,7 +147,7 @@ void main() {
     expect(find.text('Erneut ausschalten'), findsNothing);
     expect(find.byIcon(LucideIcons.circleCheck), findsNothing);
     expect(tester.widget<Text>(find.byKey(const ValueKey('alarm-hero-time'))).data, '—');
-    await tester.tap(find.byTooltip('Alarm: Plan und Bestätigung'));
+    await tester.tap(find.bySemanticsLabel('Alarm: Plan und Bestätigung'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Alle sechs Alarmplätze'), findsOneWidget);
   });
@@ -347,7 +349,7 @@ void main() {
     expect(find.text('Confirmed on the band'), findsNothing);
     expect(find.text('Turn off'), findsNothing);
 
-    await tester.tap(find.byTooltip(fr.alarmNavTitle));
+    await tester.tap(find.bySemanticsLabel(fr.alarmNavTitle));
     await tester.pumpAndSettle();
     expect(find.text(fr.alarmDetailUnknown), findsOneWidget);
     expect(find.text(fr.alarmNotConnectedBody), findsOneWidget);
@@ -534,7 +536,7 @@ void main() {
     tester,
   ) async {
     Future<void> open() async {
-      await tester.tap(find.byTooltip('Alarm: Plan und Bestätigung'));
+      await tester.tap(find.bySemanticsLabel('Alarm: Plan und Bestätigung'));
       await tester.pumpAndSettle();
     }
 
@@ -700,7 +702,7 @@ void main() {
     expect(find.bySemanticsLabel(RegExp('Später heute')), findsNothing);
   });
 
-  testWidgets('hero uses Paper geometry and a full localized date', (tester) async {
+  testWidgets('hero uses G3 geometry and a full localized date', (tester) async {
     await mount(
       tester,
       at: galleryAlarmAt,
@@ -712,18 +714,23 @@ void main() {
     );
     expect(find.text('Mittwoch, 16. September'), findsOneWidget);
     expect(find.textContaining(RegExp(r'\d{2}\.\d{2}\.')), findsNothing);
-    final hero = tester.widget<OBCard>(find.byType(OBCard).first);
-    expect(hero.padding, const EdgeInsets.all(AlpSpace.s20));
+    final heroFinder = find.byType(g3chrome.OBPanel).first;
+    final hero = tester.widget<g3chrome.OBPanel>(heroFinder);
+    expect(hero.hero, isTrue);
+    final panel = tester.widget<Container>(
+      find.descendant(of: heroFinder, matching: find.byType(Container)).first,
+    );
+    expect(panel.padding, kG3CardPadding);
     final time = tester.widget<Text>(
       find.byKey(const ValueKey('alarm-hero-time')),
     );
     expect(time.style!.fontSize, 48);
     expect(time.style!.height, 56 / 48);
     expect(time.style!.letterSpacing, -0.04 * 48);
-    expect(time.style!.fontFamily, AlpFont.display);
+    expect(time.style!.fontFamily, OB.family(weight: FontWeight.w700));
     final date = tester.widget<Text>(find.text('Mittwoch, 16. September'));
     expect(date.style!.fontSize, 13);
-    expect(date.style!.height, 16 / 13);
+    expect(date.style!.height, 17 / 13);
     final status = tester.widget<Text>(
       find.byKey(const ValueKey('alarm-hero-status')),
     );
@@ -742,7 +749,7 @@ void main() {
       onTest: () async {},
       onCancel: () async {},
     );
-    expect(find.text('Wednesday, September 16'), findsOneWidget);
+    expect(find.text('Wednesday, September 16, 2026'), findsOneWidget);
     expect(find.text('Im Band gespeichert'), findsNothing);
   });
 

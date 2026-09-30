@@ -87,9 +87,8 @@ class SetRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final g = G3.of(c);
     final tint = danger ? g.muted : g.ink;
-    return GestureDetector(
+    return Pressable(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
       child: ConstrainedBox(
         constraints: BoxConstraints(minHeight: minHeight),
         child: Row(
@@ -290,8 +289,7 @@ Future<void> showProfileLanguagePicker(BuildContext c) async {
             children: [
               for (var i = 0; i < options.length; i++) ...[
                 if (i > 0) Divider(height: 1, color: G3.of(sheet).hairline),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                Pressable(
                   onTap: () async {
                     await ctrl.setCode(options[i]);
                     if (sheet.mounted) Navigator.of(sheet).pop();

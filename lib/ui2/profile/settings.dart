@@ -248,10 +248,7 @@ class _IconRow extends StatelessWidget {
             width: 32,
             height: 32,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: g.track,
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: g.track, borderRadius: R.rMd),
             child: Icon(LucideIcons.image, size: 16, color: g.ink),
           ),
           const SizedBox(width: S.x3),
@@ -312,7 +309,7 @@ class _IconChoice extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(S.x1 / 2),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: R.rMd,
           border: Border.all(
             color: selected ? g.ink : g.hairline,
             width: selected ? 2 : 1,

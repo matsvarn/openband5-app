@@ -1440,6 +1440,11 @@ Map<String, Widget> _liveCases() => {
 /// hold: `SourceRow` shipped an overflow because every fixture said
 /// "Connected", and nothing said "Syncing · 4 minutes ago".
 Map<String, Widget> _listCases() => {
+      'profile_notice': const ProfileNotice(
+        'Band braucht deine Aufmerksamkeit',
+        'Die gespeicherten Werte bleiben auf dem iPhone erhalten.',
+        icon: LucideIcons.info,
+      ),
       'set_row': Builder(
         builder: (c) => settingsGroup(c, 'Settings row', [
           SetRow(LucideIcons.bell, C.purple, 'Manage notifications',
