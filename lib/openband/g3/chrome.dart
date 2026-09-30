@@ -23,12 +23,14 @@ class _Hit extends StatelessWidget {
   final Widget child;
   final double? width;
   final Alignment alignment;
+  final double bottomPadding;
   const _Hit({
     required this.label,
     required this.onTap,
     required this.child,
     this.width,
     this.alignment = Alignment.center,
+    this.bottomPadding = 0,
   });
   @override
   Widget build(BuildContext context) => Semantics(
@@ -46,7 +48,10 @@ class _Hit extends StatelessWidget {
         child: Align(
           alignment: alignment,
           widthFactor: width == null ? 1 : null,
-          child: child,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: bottomPadding),
+            child: child,
+          ),
         ),
       ),
     ),
@@ -70,7 +75,11 @@ class OBLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
+    final footer =
+        bottomAligned &&
+        context.findAncestorWidgetOfExactType<OBPanel>() != null;
     final target = _Hit(
+      bottomPadding: footer ? 18 : 0,
       label: semanticsLabel ?? label,
       onTap: onTap,
       alignment: bottomAligned ? Alignment.bottomCenter : Alignment.center,
@@ -83,8 +92,7 @@ class OBLink extends StatelessWidget {
         ],
       ),
     );
-    if (!bottomAligned ||
-        context.findAncestorWidgetOfExactType<OBPanel>() == null) {
+    if (!footer) {
       return target;
     }
     final lineHeight = MediaQuery.textScalerOf(context).scale(13) * 16 / 13;
@@ -95,7 +103,7 @@ class OBLink extends StatelessWidget {
   }
 }
 
-// A footer occupies its text height; the rest of its target overlaps upward.
+// Footer layout stays at text height; its target uses the gap and bottom padding.
 class _LinkTapArea extends SingleChildRenderObjectWidget {
   const _LinkTapArea({required this.overlap, required super.child});
   final double overlap;
@@ -109,6 +117,7 @@ class _LinkTapArea extends SingleChildRenderObjectWidget {
 class _LinkTapBox extends RenderShiftedBox {
   _LinkTapBox(this._overlap) : super(null);
   double _overlap;
+  bool _panelHit = false;
   set overlap(double value) {
     if (value == _overlap) return;
     _overlap = value;
@@ -121,13 +130,14 @@ class _LinkTapBox extends RenderShiftedBox {
     size = constraints.constrain(
       Size(child!.size.width, child!.size.height - _overlap),
     );
-    (child!.parentData! as BoxParentData).offset = Offset(0, -_overlap);
+    (child!.parentData! as BoxParentData).offset = Offset(0, 18 - _overlap);
   }
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!_panelHit && !size.contains(position)) return false;
     final hit = result.addWithPaintOffset(
-      offset: Offset(0, -_overlap),
+      offset: Offset(0, 18 - _overlap),
       position: position,
       hitTest: (result, position) => child!.hitTest(result, position: position),
     );
@@ -137,7 +147,7 @@ class _LinkTapBox extends RenderShiftedBox {
 
   @override
   void paint(PaintingContext context, Offset offset) =>
-      context.paintChild(child!, offset + Offset(0, -_overlap));
+      context.paintChild(child!, offset + Offset(0, 18 - _overlap));
 }
 
 // Rows normally clip hit tests to their layout bounds. Route overlapping link
@@ -151,23 +161,70 @@ class _PanelLinkTargets extends SingleChildRenderObjectWidget {
 class _PanelLinkBox extends RenderProxyBox {
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    var hit = false;
-    void testLinks(RenderObject object) {
-      if (hit) return;
+    final links = <_LinkTapBox>[];
+    final content = <Rect>[];
+    bool collect(RenderObject object) {
       if (object is _LinkTapBox) {
-        hit = result.addWithPaintTransform(
-          transform: object.getTransformTo(this),
-          position: position,
-          hitTest: (result, position) =>
-              object.hitTest(result, position: position),
-        );
-      } else {
-        object.visitChildren(testLinks);
+        links.add(object);
+        return true;
       }
+      var hasLink = false;
+      object.visitChildren((child) {
+        hasLink = collect(child) || hasLink;
+      });
+      if (!hasLink &&
+          object is RenderBox &&
+          (object is RenderParagraph ||
+              object is RenderImage ||
+              object is RenderCustomPaint ||
+              object is RenderDecoratedBox)) {
+        content.add(
+          MatrixUtils.transformRect(
+            object.getTransformTo(this),
+            Offset.zero & object.size,
+          ),
+        );
+      }
+      return hasLink;
     }
 
-    child?.visitChildren(testLinks);
-    return hit || super.hitTestChildren(result, position: position);
+    child?.visitChildren(collect);
+    for (final link in links) {
+      final transform = link.getTransformTo(this);
+      final visual = MatrixUtils.transformRect(
+        transform,
+        Offset.zero & link.size,
+      );
+      var top = visual.top + 18 - link._overlap;
+      for (final rect in content) {
+        if (rect.bottom <= visual.top &&
+            rect.right > visual.left &&
+            rect.left < visual.right) {
+          if (rect.bottom > top) top = rect.bottom;
+        }
+      }
+      final target = Rect.fromLTRB(
+        visual.left,
+        top,
+        visual.right,
+        visual.bottom + 18,
+      );
+      if (target.contains(position) &&
+          result.addWithPaintTransform(
+            transform: transform,
+            position: position,
+            hitTest: (result, position) {
+              link._panelHit = true;
+              try {
+                return link.hitTest(result, position: position);
+              } finally {
+                link._panelHit = false;
+              }
+            },
+          ))
+        return true;
+    }
+    return super.hitTestChildren(result, position: position);
   }
 }
 
