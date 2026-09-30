@@ -138,6 +138,8 @@ void main() {
             scale: 3.1,
             brightness: b);
         expect(layoutFaults, isEmpty, reason: '$b');
+        expect(find.bySemanticsLabel('Zurück zu Settings'), findsOneWidget);
+        expect(find.bySemanticsLabel('Double-tap'), findsOneWidget);
       }
     });
   });

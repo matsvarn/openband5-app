@@ -77,6 +77,15 @@ class BandGesturesView extends StatelessWidget {
     final p = OB.of(c);
     final g = G3.of(c);
     final l = AppLocalizations.of(c);
+    final title = (l?.gesturesNavTitle ?? 'Double-tap').toUpperCase();
+    final backLabel = Localizations.localeOf(c).languageCode == 'de'
+        ? 'Einstellungen'
+        : 'Settings';
+    void showInfo() => showProfileInfoSheet(
+      c,
+      l?.gesturesNavTitle ?? 'Double-tap',
+      l?.gesturesSectionBody ?? 'The app must be connected and awake.',
+    );
     // Enum order, filtered to this phone: nothing first (it is the default and
     // the way back out), then the in-app actions, then whatever the OS offered.
     final offered = [
@@ -96,19 +105,40 @@ class BandGesturesView extends StatelessWidget {
         bottom: !hasFloatingTabBar(c),
         child: Column(
           children: [
-            chrome.OBPageHeader.detail(
-              title: (l?.gesturesNavTitle ?? 'Double-tap').toUpperCase(),
-              backLabel: Localizations.localeOf(c).languageCode == 'de'
-                  ? 'Einstellungen'
-                  : 'Settings',
-              onBack: () => Navigator.of(c).maybePop(),
-              onTrailing: () => showProfileInfoSheet(
-                c,
-                l?.gesturesNavTitle ?? 'Double-tap',
-                l?.gesturesSectionBody ??
-                    'The app must be connected and awake.',
+            if (MediaQuery.textScalerOf(c).scale(15) > 30)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    chrome.OBIconButton(
+                      icon: LucideIcons.chevronLeft,
+                      label: 'Zurück zu $backLabel',
+                      onTap: () => Navigator.of(c).maybePop(),
+                    ),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: g.t(13, 16, weight: FontWeight.w700),
+                      ),
+                    ),
+                    chrome.OBIconButton(
+                      icon: LucideIcons.info,
+                      label: l?.gesturesNavTitle ?? 'Double-tap',
+                      onTap: showInfo,
+                    ),
+                  ],
+                ),
+              )
+            else
+              chrome.OBPageHeader.detail(
+                title: title,
+                backLabel: backLabel,
+                onBack: () => Navigator.of(c).maybePop(),
+                onTrailing: showInfo,
               ),
-            ),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.fromLTRB(
