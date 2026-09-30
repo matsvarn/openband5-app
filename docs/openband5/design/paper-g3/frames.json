@@ -1,0 +1,399 @@
+{
+  "file": "01M2TRX5GZKAXKTSXK7D34E8AY",
+  "componentsPage": "p-16-0",
+  "scale": 2,
+  "note": "Registry for tool/g3_review.py. components: Bausteine · G3 nodes (light/dark). screens: G3 screen artboards by Paper id; add one entry per frame with page, node, mode and a builder of the same name in tool/g3_review_test.dart.",
+  "components": {
+    "OBActionPrimary": {
+      "light": "5MW8-0",
+      "dark": "5MYH-0",
+      "background": "page"
+    },
+    "OBActionSecondary": {
+      "light": "5MWE-0",
+      "dark": "5MYN-0",
+      "background": "page"
+    },
+    "OBActivityRow.auto": {
+      "light": "5LX5-0",
+      "dark": "5M0V-0",
+      "background": "page"
+    },
+    "OBActivityRow.confirmed": {
+      "light": "5LXY-0",
+      "dark": "5M1O-0",
+      "background": "page"
+    },
+    "OBBandCapsule.live": {
+      "light": "5L2P-0",
+      "dark": "5L53-0",
+      "background": "page"
+    },
+    "OBBandCapsule.none": {
+      "light": "5L33-0",
+      "dark": "5L5H-0",
+      "background": "page"
+    },
+    "OBBandCapsule.off": {
+      "light": "5L2W-0",
+      "dark": "5L5A-0",
+      "background": "page"
+    },
+    "OBBodyRow.building": {
+      "light": "5MOF-0",
+      "dark": "5MR6-0",
+      "background": "canvas"
+    },
+    "OBBodyRow.deviation": {
+      "light": "5WTU-0",
+      "dark": "5WUD-0",
+      "background": "canvas"
+    },
+    "OBBodyRow.missing": {
+      "light": "5MOU-0",
+      "dark": "5MRL-0",
+      "background": "canvas"
+    },
+    "OBBodyRow.plain": {
+      "light": "5MNY-0",
+      "dark": "5MQP-0",
+      "background": "canvas"
+    },
+    "OBBodyRow.range": {
+      "light": "5MNG-0",
+      "dark": "5MQ7-0",
+      "background": "canvas"
+    },
+    "OBCardHeader": {
+      "light": "5O43-0",
+      "dark": "5OB3-0",
+      "background": "canvas"
+    },
+    "OBCheckIn.answered": {
+      "light": "5LZD-0",
+      "dark": "5M33-0",
+      "background": "page"
+    },
+    "OBCheckIn.later": {
+      "light": "5M07-0",
+      "dark": "5M3X-0",
+      "background": "page"
+    },
+    "OBCheckIn.question": {
+      "light": "5LYP-0",
+      "dark": "5M2F-0",
+      "background": "page"
+    },
+    "OBChip.basis": {
+      "light": "5MY7-0",
+      "dark": "5N0G-0",
+      "background": "canvas"
+    },
+    "OBChip.better": {
+      "light": "5MXJ-0",
+      "dark": "5MZS-0",
+      "background": "canvas"
+    },
+    "OBChip.delta": {
+      "light": "5MXA-0",
+      "dark": "5MZJ-0",
+      "background": "canvas"
+    },
+    "OBChip.tag": {
+      "light": "5MY1-0",
+      "dark": "5N0A-0",
+      "background": "canvas"
+    },
+    "OBChip.worse": {
+      "light": "5MXS-0",
+      "dark": "5N01-0",
+      "background": "canvas"
+    },
+    "OBDateStrip": {
+      "light": "5O8F-0",
+      "dark": "5OFF-0",
+      "background": "page"
+    },
+    "OBDayNote.absent": {
+      "light": "5LUT-0",
+      "dark": "5LWK-0",
+      "background": "page"
+    },
+    "OBDayNote.action": {
+      "light": "5LTI-0",
+      "dark": "5LV9-0",
+      "background": "page"
+    },
+    "OBDayNote.reminded": {
+      "light": "5LU0-0",
+      "dark": "5LVR-0",
+      "background": "page"
+    },
+    "OBDayNote.text": {
+      "light": "5LUJ-0",
+      "dark": "5LWA-0",
+      "background": "page"
+    },
+    "OBDayValueRow.default": {
+      "light": "5O9Z-0",
+      "dark": "5OGZ-0",
+      "background": "canvas"
+    },
+    "OBDayValueRow.gap": {
+      "light": "5OAA-0",
+      "dark": "5OHA-0",
+      "background": "canvas"
+    },
+    "OBEmptyState": {
+      "light": "5N1G-0",
+      "dark": "5N36-0",
+      "background": "page"
+    },
+    "OBErrorBlock": {
+      "light": "5N1V-0",
+      "dark": "5N3L-0",
+      "background": "page"
+    },
+    "OBFooterStamp": {
+      "light": "5O88-0",
+      "dark": "5OF8-0",
+      "background": "page"
+    },
+    "OBFormField.number": {
+      "light": "5OAK-0",
+      "dark": "5OHK-0",
+      "background": "canvas"
+    },
+    "OBHrTrace": {
+      "light": "5N4G-0",
+      "dark": "5N7G-0",
+      "background": "page"
+    },
+    "OBIconButton": {
+      "light": "5L3C-0",
+      "dark": "5L5Q-0",
+      "background": "page"
+    },
+    "OBLeadMetric.better": {
+      "light": "5LKT-0",
+      "dark": "5LPI-0",
+      "background": "canvas"
+    },
+    "OBLeadMetric.building": {
+      "light": "5LN6-0",
+      "dark": "5LRV-0",
+      "background": "canvas"
+    },
+    "OBLeadMetric.missing": {
+      "light": "5LO4-0",
+      "dark": "5LST-0",
+      "background": "canvas"
+    },
+    "OBLeadMetric.normal": {
+      "light": "5LJZ-0",
+      "dark": "5LOO-0",
+      "background": "canvas"
+    },
+    "OBLeadMetric.plain": {
+      "light": "5LMH-0",
+      "dark": "5LR6-0",
+      "background": "canvas"
+    },
+    "OBLeadMetric.worse": {
+      "light": "5LLN-0",
+      "dark": "5LQC-0",
+      "background": "canvas"
+    },
+    "OBListRow.default": {
+      "light": "5MTK-0",
+      "dark": "5MV2-0",
+      "background": "page"
+    },
+    "OBListRow.value": {
+      "light": "5MTZ-0",
+      "dark": "5MVH-0",
+      "background": "page"
+    },
+    "OBMetricCard.default": {
+      "light": "5MP8-0",
+      "dark": "5MRZ-0",
+      "background": "page"
+    },
+    "OBMetricCard.missing": {
+      "light": "5MPS-0",
+      "dark": "5MSJ-0",
+      "background": "page"
+    },
+    "OBNightCard.full": {
+      "light": "5MEX-0",
+      "dark": "5MJ4-0",
+      "background": "page"
+    },
+    "OBNightCard.gap": {
+      "light": "5MGQ-0",
+      "dark": "5MKX-0",
+      "background": "page"
+    },
+    "OBNightCard.missing": {
+      "light": "5MIM-0",
+      "dark": "5MMT-0",
+      "background": "page"
+    },
+    "OBPageHeader.compact": {
+      "light": "5KQ4-0",
+      "dark": "5KS1-0",
+      "background": "page"
+    },
+    "OBPageHeader.detail": {
+      "light": "5KPN-0",
+      "dark": "5KRK-0",
+      "background": "page"
+    },
+    "OBPageHeader.hub": {
+      "light": "5KP4-0",
+      "dark": "5KR1-0",
+      "background": "page"
+    },
+    "OBPanel": {
+      "light": "5LHG-0",
+      "dark": "5LJK-0",
+      "background": "page"
+    },
+    "OBPanel.hero": {
+      "light": "5LHA-0",
+      "dark": "5LJE-0",
+      "background": "page"
+    },
+    "OBPillButton": {
+      "light": "5MWK-0",
+      "dark": "5MYT-0",
+      "background": "canvas"
+    },
+    "OBSecondaryMetric.goal": {
+      "light": "5LFM-0",
+      "dark": "5LHQ-0",
+      "background": "canvas"
+    },
+    "OBSecondaryMetric.missing": {
+      "light": "5LGQ-0",
+      "dark": "5LIU-0",
+      "background": "canvas"
+    },
+    "OBSecondaryMetric.plain": {
+      "light": "5LG7-0",
+      "dark": "5LIB-0",
+      "background": "canvas"
+    },
+    "OBSectionHeader": {
+      "light": "5MT3-0",
+      "dark": "5MUL-0",
+      "background": "page"
+    },
+    "OBSectionHeader.plain": {
+      "light": "5MTE-0",
+      "dark": "5MUW-0",
+      "background": "page"
+    },
+    "OBSegmented": {
+      "light": "5MWQ-0",
+      "dark": "5MYZ-0",
+      "background": "page"
+    },
+    "OBSegmented.range": {
+      "light": "5MWZ-0",
+      "dark": "5MZ8-0",
+      "background": "canvas"
+    },
+    "OBSegmented.week": {
+      "light": "5M4Q-0",
+      "dark": "5M9R-0",
+      "background": "page"
+    },
+    "OBSegmented.week.sleep": {
+      "light": "5M51-0",
+      "dark": "5MA2-0",
+      "background": "page"
+    },
+    "OBSheet": {
+      "light": "5N0V-0",
+      "dark": "5N2L-0",
+      "background": "page"
+    },
+    "OBStatRow": {
+      "light": "5O9I-0",
+      "dark": "5OGI-0",
+      "background": "page"
+    },
+    "OBStepsCard.default": {
+      "light": "5O4E-0",
+      "dark": "5OBE-0",
+      "background": "page"
+    },
+    "OBStepsCard.missing": {
+      "light": "5O6B-0",
+      "dark": "5ODB-0",
+      "background": "page"
+    },
+    "OBSyncState.live": {
+      "light": "5L1A-0",
+      "dark": "5L3O-0",
+      "background": "page"
+    },
+    "OBSyncState.never": {
+      "light": "5L25-0",
+      "dark": "5L4J-0",
+      "background": "page"
+    },
+    "OBSyncState.partial": {
+      "light": "5L1K-0",
+      "dark": "5L3Y-0",
+      "background": "page"
+    },
+    "OBSyncState.past": {
+      "light": "5L2F-0",
+      "dark": "5L4T-0",
+      "background": "page"
+    },
+    "OBSyncState.stale": {
+      "light": "5L1U-0",
+      "dark": "5L48-0",
+      "background": "page"
+    },
+    "OBTrendChart.d30": {
+      "light": "5NK3-0",
+      "dark": "5NO7-0",
+      "background": "page"
+    },
+    "OBTrendChart.d7": {
+      "light": "5NIY-0",
+      "dark": "5NN2-0",
+      "background": "page"
+    },
+    "OBTrendChart.d90": {
+      "light": "5NLT-0",
+      "dark": "5NPX-0",
+      "background": "page"
+    },
+    "OBWeekBars.empty": {
+      "light": "5M8E-0",
+      "dark": "5MDF-0",
+      "background": "page"
+    },
+    "OBWeekBars.recovery": {
+      "light": "5M5C-0",
+      "dark": "5MAD-0",
+      "background": "page"
+    },
+    "OBWeekBars.sleep": {
+      "light": "5M6S-0",
+      "dark": "5MBT-0",
+      "background": "page"
+    },
+    "OBZoneRows": {
+      "light": "5N5Z-0",
+      "dark": "5N8Z-0",
+      "background": "page"
+    }
+  },
+  "screens": {}
+}
