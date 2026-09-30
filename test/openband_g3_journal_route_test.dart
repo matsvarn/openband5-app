@@ -59,7 +59,8 @@ void main() {
     );
     await tester.tap(find.text('Öffnen'));
     await tester.pumpAndSettle();
-    expect(find.text('Gestern Abend Alkohol?'), findsOneWidget);
+    expect(find.text('Alkohol am Abend?'), findsOneWidget);
+    expect(find.text('zu gestern Abend'), findsOneWidget);
     await tester.tap(find.text('Nein').first);
     await tester.pumpAndSettle();
     final selectedDay = todayLabel();
