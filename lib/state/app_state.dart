@@ -406,27 +406,6 @@ class AppState extends ChangeNotifier {
   // Resolved by CompanionClient as: this override → build-time COMPANION_URL →
   // empty. Loaded into CompanionClient.overrideUrl in _initCompanion.
 
-  /// The effective companion base URL (override or build-time), '' if unconfigured.
-  String get companionUrl => CompanionClient.effectiveBase;
-
-  /// True when a companion URL is configured (override or build-time).
-  bool get companionConfigured =>
-      CompanionClient.effectiveBase.trim().isNotEmpty;
-
-  /// Set (or clear, with '') the runtime companion-URL override.
-  Future<void> setCompanionUrl(String url) async {
-    final v = url.trim();
-    final prefs = await SharedPreferences.getInstance();
-    if (v.isEmpty) {
-      await prefs.remove(_kCompanionUrl);
-      CompanionClient.overrideUrl = null;
-    } else {
-      await prefs.setString(_kCompanionUrl, v);
-      CompanionClient.overrideUrl = v;
-    }
-    notifyListeners();
-  }
-
   /// New-user path: record the choice and advance (welcome → pairing → profile).
   Future<void> chooseNewUser() async {
     final prefs = await SharedPreferences.getInstance();
@@ -439,17 +418,6 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kOnboard);
     _onboardChoice = null;
-    notifyListeners();
-  }
-
-  /// Existing-user path: after a successful cloud import, persist the cloud
-  /// profile + mark onboarding done so the gate advances to pairing → shell.
-  /// [cloudProfile] is the mapped local-profile field set from CloudImporter.
-  Future<void> completeCloudOnboard(Map<String, dynamic> cloudProfile) async {
-    await updateProfile(cloudProfile); // persists + notifies
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kOnboard, 'existing');
-    _onboardChoice = 'existing';
     notifyListeners();
   }
 
@@ -619,7 +587,6 @@ class AppState extends ChangeNotifier {
 
   /// "Apple Health" (iOS) or "Health Connect" (Android).
   String get healthStoreName => HealthExporter.storeName;
-  bool get healthIsApple => HealthExporter.isApple;
 
   /// Check current permission state WITHOUT prompting (startup-safe).
   Future<void> checkHealth() async {
@@ -846,21 +813,6 @@ class AppState extends ChangeNotifier {
       return 0;
     }
   }
-
-  /// Session-triggered Health export for one just-finished workout (issue
-  /// #130) — for callers outside this class that write a `sessions` row
-  /// directly rather than going through [stopWorkout]. See
-  /// [HealthExporter.exportWorkout] for why this can't just wait for the next
-  /// day export. Best-effort, never throws.
-  ///
-  /// This used to take the row, and its only two call sites went out with the
-  /// old `lib/ui/workouts` — leaving it callerless while `logManualWorkout`
-  /// paths (the coach, the log-workout sheet) exported nothing at all. Those
-  /// callers hold the `workout_id` the repo hands back, not the row, and most
-  /// of them have no AppState to reach for either, so the seam that matters is
-  /// [HealthExporter.exportWorkoutId] and this just forwards to it.
-  Future<bool> exportWorkoutToHealth(String? sessionId) =>
-      HealthExporter.exportWorkoutId(sessionId);
 
   // ── companion: anonymous telemetry + health-data contribution ────────────────
   // All anchored to a stable anonymous install id (no account). Two SEPARATE
@@ -1675,11 +1627,6 @@ class AppState extends ChangeNotifier {
     _workoutTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {});
   }
 
-  /// True while some foreground feature is holding the live streams open —
-  /// the gate [_maybeDowngradeLiveForBackground] consults. Tests only.
-  @visibleForTesting
-  bool get debugHasLiveConsumer => _hasLiveConsumer;
-
   /// Run start-up (guarded, exactly as the constructor fires it) so a test can
   /// drive the failure path. Tests only.
   @visibleForTesting
@@ -2051,10 +1998,6 @@ class AppState extends ChangeNotifier {
   /// schedule/cancel calls", not that a notification was delivered.
   Future<void> refreshAiReminders() => NotificationService.instance
       .reportingScheduleFailures(_scheduleReminders);
-
-  /// Screens that just wrote a briefing/journal state call this so Today's
-  /// AI card (which reads BriefingStore synchronously at build) repaints.
-  void briefingUpdated() => notifyListeners();
 
   int _lastBriefingAttemptMs = 0;
 
@@ -4998,11 +4941,6 @@ class AppState extends ChangeNotifier {
     await engine.runAlarm();
   }
 
-  Future<void> testBuzzPattern(int pattern) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
-    await engine.buzzPattern(pattern);
-  }
-
   /// Pulse the strap so it can be heard/felt during a find-my-strap hunt.
   /// Unlike [testAlarmBuzz] this NEVER throws — the hunt screen fires it on a
   /// timer and a momentary disconnect must not surface as an error dialog.
@@ -5030,8 +4968,6 @@ class AppState extends ChangeNotifier {
       throw Exception('Alarm not disabled');
     }
   }
-
-  Future<void> clearAlarm() => disableAlarm();
 
   /// Historical alarm lifecycle (56 set / 57–58 fired / 59 disabled).
   /// These callbacks lack current-request correlation even when processed
@@ -5662,20 +5598,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> bluetoothReady() async {
-    if (!await FlutterBluePlus.isSupported) return false;
-    // CoreBluetooth boots in `unknown` before settling — `.first` loses that
-    // race and misreads a powered-on adapter as off. Wait for a determinate
-    // state (bounded, in case it never settles).
-    final state = await FlutterBluePlus.adapterState
-        .firstWhere((s) => s != BluetoothAdapterState.unknown)
-        .timeout(
-          const Duration(seconds: 3),
-          onTimeout: () => BluetoothAdapterState.unknown,
-        );
-    return state == BluetoothAdapterState.on;
-  }
-
   // The live HRV spot-check that used to live here is GONE. It was fully
   // implemented — 60 s of RR-bearing frames handed to the repository seam —
   // and no screen ever started one, so `spotActive` was a permanently-false
@@ -5701,12 +5623,6 @@ class AppState extends ChangeNotifier {
 
   /// When the running session started, for the persisted history row.
   DateTime? _breathingStartedAt;
-
-  /// When the running session began, for a view that mounts mid-session.
-  DateTime? get breathingStartedAt => _breathingStartedAt;
-
-  /// What the running session was asked to run for, or null for an open one.
-  Duration? get breathingTarget => _breathingTarget;
 
   /// What the session was SUPPOSED to run for, or null for an open one.
   ///
@@ -5954,18 +5870,6 @@ class AppState extends ChangeNotifier {
     unawaited(engine.buzzPattern(pattern).catchError((_) {}));
   }
 
-  /// The whole session is over, as opposed to one phase of it.
-  ///
-  /// Its own pattern rather than a repeat of the phase cue: repeated
-  /// `runHapticsPattern` frames serialize on the BLE write chain and arrive
-  /// milliseconds apart, re-triggering the firmware's haptic engine while it
-  /// is still playing — so N of them are felt as one, and the user cannot tell
-  /// "round over" from "session over".
-  void buzzSessionComplete() {
-    if (!isConnected) return;
-    unawaited(engine.buzzPattern(4).catchError((_) {}));
-  }
-
   Future<void> _recomputeBreathingCoherence() async {
     if (!breathingActive || repo == null) return;
     final frames = List<String>.from(_breathingFrames);
@@ -6035,7 +5939,7 @@ class AppState extends ChangeNotifier {
   // GPS route tracking for the active run/ride/walk (on-device only). Null when
   // no session is live or the type isn't route-eligible / permission denied.
   RouteTracker? _routeTracker;
-  RouteTracker? get routeTracker => _routeTracker;
+
   // A hike is a walk that goes somewhere, so it records a route like one.
   // Ski and snowboard are deliberately NOT here despite being outdoors: the
   // route screen's hero numbers are distance and pace, and pace down a

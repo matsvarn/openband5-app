@@ -81,14 +81,6 @@ UnitsController? unitsOf(BuildContext c) {
   }
 }
 
-/// "72.4 kg" → `('72.4', 'kg')`. [UnitsController] owns every conversion and
-/// hands back one string; this only puts the two halves in the two slots a
-/// row has. Never convert in a screen.
-(String, String) splitUnit(String s) {
-  final i = s.lastIndexOf(' ');
-  return i < 0 ? (s, '') : (s.substring(0, i), s.substring(i + 1));
-}
-
 /// The band-sync trigger, or null when there is no AppState above us. Every
 /// "Sync the band" CTA in this folder goes through here — a call to action
 /// with no action behind it is worse than no call to action.

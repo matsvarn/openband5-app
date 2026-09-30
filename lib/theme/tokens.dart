@@ -13,11 +13,6 @@
 
 import 'package:flutter/material.dart';
 
-/// Light-sleep stage colour — a soft light orange (warm, distinct from the
-/// coral REM/Deep tones; replaces the old cool-blue which clashed with the
-/// ember palette).
-const Color kLightStageColor = Color(0xFFF6B07A);
-
 /// A complete set of mode-varying colour roles. Two const instances exist
 /// ([kLightPalette], [kDarkPalette]); the active one is swapped at runtime.
 @immutable
@@ -387,14 +382,6 @@ class AppColors {
   static Color get critical => active.bad;
   static Color get criticalSoft => active.badSoft;
   // (warn / warnSoft already exist above.)
-}
-
-/// Faint arc alpha for a low-confidence ring — high confidence paints the arc
-/// solid, low confidence fades it so uncertainty reads visually. Used by [Gauge]
-/// and any confidence-aware ring. Clamped to a legible floor.
-double confidenceRingAlpha(double c) {
-  if (c.isNaN) return 0.35;
-  return (0.35 + 0.65 * c.clamp(0.0, 1.0)).clamp(0.35, 1.0);
 }
 
 /// Spacing — 4-pt grid.
