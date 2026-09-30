@@ -10179,18 +10179,26 @@ class LocalDb {
   /// is gone.)
   static Future<(int?, int?)> firstAndLastRecordTs() async {
     final db = await instance;
-    final rows = await db.rawQuery(
-      // rec_ts > 0, matching rawStats()/lastDecodedRecTs() — a stray rec_ts=0
-      // row (e.g. via _queueDecodedOneHz's `raw.recTs ?? decoded.tsEpoch`,
-      // which only substitutes on null, not on an explicit 0) would otherwise
-      // make MIN(rec_ts) return 0 and render "Data from Jan 1" (1970 epoch).
-      'SELECT MIN(rec_ts) AS lo, MAX(rec_ts) AS hi FROM decoded_onehz '
-      'WHERE rec_ts > 0 AND ${derivableSourceSql()}',
-    );
-    if (rows.isEmpty) return (null, null);
-    final lo = (rows.first['lo'] as num?)?.toInt();
-    final hi = (rows.first['hi'] as num?)?.toInt();
-    return (lo, hi);
+    return _decodedRecordSpan(db,
+        where: 'rec_ts > 0 AND ${derivableSourceSql()}');
+  }
+
+  /// Separate ordered seeks let SQLite stop at each admitted edge instead of
+  /// visiting every table row to evaluate a combined MIN/MAX aggregate.
+  static Future<(int?, int?)> _decodedRecordSpan(
+    Database db, {
+    required String where,
+    List<Object?> args = const [],
+  }) async {
+    // Both seeks share a statement snapshot if ingestion is writing meanwhile.
+    final row = (await db.rawQuery(
+      'SELECT (SELECT rec_ts FROM decoded_onehz WHERE $where '
+      'ORDER BY rec_ts ASC LIMIT 1) AS lo, '
+      '(SELECT rec_ts FROM decoded_onehz WHERE $where '
+      'ORDER BY rec_ts DESC LIMIT 1) AS hi',
+      [...args, ...args],
+    )).single;
+    return ((row['lo'] as num?)?.toInt(), (row['hi'] as num?)?.toInt());
   }
 
   /// `{localDayLabel -> MAX(rec_ts)}` over canonical decoded 1 Hz rows, grouped
@@ -10201,9 +10209,9 @@ class LocalDb {
   /// is a function of the column, so SQLite could use no index for it: it was a
   /// full scan of every retained second plus a temp b-tree — 91 ms on a 3-day
   /// (259 k row) table on desktop, and the derive calls this up to three times
-  /// a pass. `rec_ts` is the INTEGER PRIMARY KEY (the rowid), so a bounded
-  /// `MAX(rec_ts) WHERE rec_ts >= a AND rec_ts < b` is a single index seek, and
-  /// the span is bounded by `rawRetentionDays` in any healthy install.
+  /// a pass. Since v47 the primary key is `(device_id, ts_ms)`;
+  /// `idx_decoded_onehz_rects` serves bounded `rec_ts` reads. SQLite can seek
+  /// from the high end of each day and stop at its first admitted row.
   ///
   /// The day walk goes through [localDayEndSec] rather than `+ 86400` for the
   /// reason that helper documents: a local calendar day is 23 h on a
@@ -10920,9 +10928,7 @@ class LocalDb {
     final db = await instance;
     final rawRows = await db.rawQuery(
       "SELECT strftime('%Y-%m-%d', rec_ts, 'unixepoch', 'localtime') AS day_id, "
-      'COUNT(*) AS raw_count, '
-      'MIN(rec_ts) AS min_rec_ts, '
-      'MAX(rec_ts) AS max_rec_ts '
+      'COUNT(*) AS raw_count '
       'FROM decoded_onehz WHERE rec_ts > 0 AND ${derivableSourceSql()} '
       'GROUP BY day_id ORDER BY day_id DESC',
     );
@@ -10962,8 +10968,12 @@ class LocalDb {
       if (dayId == null || dayId.isEmpty) continue;
       final m = ensure(dayId);
       m['raw_count'] = (row['raw_count'] as num?)?.toInt() ?? 0;
-      m['min_rec_ts'] = (row['min_rec_ts'] as num?)?.toInt();
-      m['max_rec_ts'] = (row['max_rec_ts'] as num?)?.toInt();
+      final (lo, hi) = await _decodedRecordSpan(db,
+          where: 'rec_ts > 0 AND ${derivableSourceSql()} '
+              'AND rec_ts >= ? AND rec_ts < ?',
+          args: [localDayStartSec(dayId), localDayEndSec(dayId)]);
+      m['min_rec_ts'] = lo;
+      m['max_rec_ts'] = hi;
     }
     for (final row in derivedRows) {
       final dayId = row['day_id']?.toString();
@@ -13000,9 +13010,7 @@ class LocalDb {
           await db.rawQuery('SELECT COUNT(*) FROM decoded_onehz'),
         ) ??
         0;
-    final tsRow = (await db.rawQuery(
-      'SELECT MIN(rec_ts) AS lo, MAX(rec_ts) AS hi FROM decoded_onehz WHERE rec_ts > 0',
-    )).first;
+    final (lo, hi) = await _decodedRecordSpan(db, where: 'rec_ts > 0');
     final decodedOneHz =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM decoded_onehz'),
@@ -13020,8 +13028,8 @@ class LocalDb {
         0;
     return {
       'count': count,
-      'min_rec_ts': (tsRow['lo'] as num?)?.toInt(),
-      'max_rec_ts': (tsRow['hi'] as num?)?.toInt(),
+      'min_rec_ts': lo,
+      'max_rec_ts': hi,
       'by_type': const <String, int>{},
       'min_captured_ms': null,
       'max_captured_ms': null,
