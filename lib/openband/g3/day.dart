@@ -265,7 +265,7 @@ class OBActivityRow extends StatelessWidget {
   final Widget pictogram;
   final String title, subtitle;
 
-  /// Auto-detected and not yet confirmed: no zones, a hint instead.
+  /// Auto-detected and not yet confirmed: no zones.
   final bool unconfirmed;
 
   /// Formatted strain contribution ("+6,1"); null renders "—".
@@ -425,15 +425,7 @@ class OBActivityRow extends StatelessWidget {
                     ],
                   ],
                 ),
-              if (!compact && unconfirmed)
-                Padding(
-                  padding: const EdgeInsets.only(left: 56, top: 12),
-                  child: Text(
-                    'Zonen nach Bestätigung',
-                    style: g.t(12, 16, weight: FontWeight.w500, color: g.muted),
-                  ),
-                )
-              else if (!compact && zoneMinutes != null)
+              if (!compact && !unconfirmed && zoneMinutes != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 56, right: 26, top: 12),
                   child: OBZoneStrip(zoneMinutes!, domain: domain),
