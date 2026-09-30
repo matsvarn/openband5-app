@@ -7,18 +7,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/day_label.dart';
 import '../../openband/domain.dart';
+import '../../openband/g3/band_parts.dart';
+import '../../openband/g3/chrome.dart' show OBActionSecondary, OBErrorBlock;
 import '../../openband/local_repository.dart';
 import '../../openband/screens.dart' show OBSyncActionState, OBSyncState;
-import '../../openband/settings_controls.dart';
 import '../../openband/theme.dart';
 import '../../state/app_state.dart';
-import '../theme.dart' show R;
 
-enum SetupStatusIcon { open, active, done }
+enum SetupStatusIcon { open, active, done, stopped }
 
 class FirstSyncScreen extends StatefulWidget {
   final VoidCallback onDone;
@@ -285,45 +286,53 @@ class FirstSyncView extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: _s(context, 'Erste Übertragung', 'First transfer'),
-                subtitle: _s(
-                  context,
-                  'Einrichtung · Schritt 2 von 3',
-                  'Setup · Step 2 of 3',
-                ),
-                onBack: onBack,
-                showBack: onBack != null || Navigator.canPop(context),
-                onInfo: () => _info(context),
-              ),
+            OBSetupHeader(
+              title: _s(context, 'Erste Übertragung', 'First transfer'),
+              backLabel: _s(context, 'Zurück', 'Back'),
+              onBack: onBack,
+              onInfo: () => _info(context),
             ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 children: [
-                  Row(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        Expanded(
-                          child: Container(
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: i < 2
-                                  ? p.ink
-                                  : p.muted.withValues(alpha: .24),
-                              borderRadius: R.rPill,
-                            ),
-                          ),
-                        ),
-                        if (i < 2) const SizedBox(width: 6),
-                      ],
-                    ],
-                  ),
+                  const OBStepProgress(step: 2),
                   const SizedBox(height: 18),
                   if (band?.transfer == TransferState.receiving) ...[
                     _ReceivingCard(band: band!, now: now),
+                    const SizedBox(height: 12),
+                  ],
+                  if (band?.latestStoredAt != null &&
+                      band?.transfer != TransferState.receiving) ...[
+                    OBFrontierCard(
+                      storedAt: band!.latestStoredAt,
+                      now: now,
+                      rightLabel: band!.transfer == TransferState.interrupted
+                          ? _s(context, 'unterbrochen', 'interrupted')
+                          : _s(context, 'gespeichert', 'saved'),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (band?.transfer == TransferState.interrupted) ...[
+                    // The frontier is optional until the first durable write.
+                    OBBandActionNotice(
+                      title: _s(
+                        context,
+                        'Übertragung unterbrochen',
+                        'Transfer interrupted',
+                      ),
+                      body: band!.latestStoredAt == null
+                          ? _s(
+                              context,
+                              'Die Übertragung stoppte, bevor ein Wert gespeichert wurde. Band nah ans iPhone halten und fortsetzen.',
+                              'The transfer stopped before a value was stored. Keep the band near the phone and resume.',
+                            )
+                          : '${_s(context, 'Bis', 'Until')} ${bandFrontierDayPrefix(band!.latestStoredAt!, now, de: Localizations.localeOf(context).languageCode == 'de')}${obTime(band!.latestStoredAt)} ${_s(context, 'liegt sicher auf dem iPhone. Band nah ans iPhone halten und fortsetzen.', 'is safely stored on the phone. Keep the band near the phone and resume.')}',
+                      action: _s(context, 'Fortsetzen', 'Resume'),
+                      actionIcon: LucideIcons.refreshCw,
+                      onAction: onResume,
+                      onHelp: () => _info(context),
+                    ),
                     const SizedBox(height: 12),
                   ],
                   OBSetupStatusCard(
@@ -331,32 +340,81 @@ class FirstSyncView extends StatelessWidget {
                     evaluation: evaluation,
                     now: now,
                   ),
-                  if (band?.transfer == TransferState.receiving) ...[
-                    const SizedBox(height: 14),
-                    Text(
+                  if (onResume != null &&
+                      band?.connection == BandConnection.connected &&
+                      band?.transfer == TransferState.idle &&
+                      evaluation?.state != SetupEvalState.complete &&
+                      !resumeBusy &&
+                      !resumeFailed) ...[
+                    const SizedBox(height: 12),
+                    OBActionSecondary(
                       _s(
                         context,
-                        'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen.',
-                        'Stored before confirmation: the band only deletes values safely saved on the iPhone.',
+                        'Übertragung erneut versuchen',
+                        'Try the transfer again',
                       ),
-                      textAlign: TextAlign.center,
-                      style: p.text(13, color: p.muted),
+                      onPressed: onResume,
                     ),
                   ],
-                  if (band?.transfer == TransferState.interrupted ||
-                      resumeBusy ||
-                      resumeFailed) ...[
+                  if (band?.transfer == TransferState.receiving) ...[
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            LucideIcons.lockKeyhole,
+                            size: 16,
+                            color: p.muted,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _s(
+                                context,
+                                'Erst gespeichert, dann bestätigt: Das Band löscht nur Werte, die sicher auf dem iPhone liegen.',
+                                'Stored before confirmation: the band only deletes values safely saved on the iPhone.',
+                              ),
+                              style: p.text(13, color: p.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (band?.transfer == TransferState.idle &&
+                      evaluation?.state == SetupEvalState.complete) ...[
+                    const SizedBox(height: 14),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(LucideIcons.info, size: 16, color: p.muted),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _s(
+                                context,
+                                'Schlaf und Erholung kommen nach der ersten Nacht mit Band. Erholung braucht 14 Nächte als Basis.',
+                                'Sleep and recovery arrive after the first night with the band. Recovery needs 14 nights of baseline.',
+                              ),
+                              style: p.text(13, color: p.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (resumeBusy) ...[
                     const SizedBox(height: 12),
                     OBSyncState(
                       band: band ?? const BandSnapshot(),
                       now: () => now,
                       onResume: onResume,
                       showStoredTime: false,
-                      actionState: resumeBusy
-                          ? OBSyncActionState.pending
-                          : resumeFailed
-                          ? OBSyncActionState.failed
-                          : null,
+                      actionState: OBSyncActionState.pending,
                       interruptedLabel: _s(
                         context,
                         'Unterbrochen',
@@ -364,50 +422,61 @@ class FirstSyncView extends StatelessWidget {
                       ),
                       pendingLabel: _s(
                         context,
-                        'Verbindung wird hergestellt',
-                        'Connecting',
+                        'Wird erneut versucht …',
+                        'Trying again …',
                       ),
-                      failedLabel: _s(
+                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
+                    ),
+                  ],
+                  if (resumeFailed) ...[
+                    const SizedBox(height: 12),
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Fortsetzen fehlgeschlagen',
                         'Resume failed',
                       ),
-                      resumeLabel: _s(context, 'Fortsetzen', 'Resume'),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Die Verbindung konnte nicht fortgesetzt werden. Bereits gespeicherte Werte bleiben auf dem iPhone.',
+                        'The connection could not resume. Stored values remain on the phone.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
+                      onRetry: onResume,
                     ),
                   ],
                   if (evalError) ...[
                     const SizedBox(height: 12),
-                    OBSettingsErrorCard(
-                      message: _s(
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Auswertung nicht geladen',
                         'Evaluation not loaded',
                       ),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Der aktuelle Status ist nicht verfügbar.',
+                        'The current status is unavailable.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
                       onRetry: onRetry,
                     ),
                   ],
                   if (bandError) ...[
                     const SizedBox(height: 12),
-                    OBSettingsErrorCard(
-                      message: _s(
+                    OBErrorBlock(
+                      title: _s(
                         context,
                         'Bandstatus nicht geladen',
                         'Band status not loaded',
                       ),
-                      retryLabel: _s(context, 'Erneut', 'Try again'),
+                      reason: _s(
+                        context,
+                        'Der aktuelle Bandstatus ist gerade nicht verfügbar.',
+                        'The current band status is not available right now.',
+                      ),
+                      retryLabel: _s(context, 'Erneut versuchen', 'Try again'),
                       onRetry: onRetry,
-                    ),
-                  ],
-                  if (synthetic) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Synthetische Daten',
-                      textAlign: TextAlign.center,
-                      style: p
-                          .text(12, color: p.muted)
-                          .copyWith(height: 16 / 12),
                     ),
                   ],
                 ],
@@ -415,10 +484,45 @@ class FirstSyncView extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottom),
-              child: OBAction(
-                _s(context, 'Weiter zum Profil', 'Continue to profile'),
-                ink: true,
-                onPressed: onDone,
+              child: Column(
+                children: [
+                  OBAction(
+                    _s(context, 'Weiter', 'Continue'),
+                    secondary: band?.transfer == TransferState.interrupted,
+                    ink: band?.transfer != TransferState.interrupted,
+                    onPressed: onDone,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    band?.transfer == TransferState.interrupted
+                        ? _s(
+                            context,
+                            'Der Rest kommt beim nächsten Verbinden.',
+                            'The rest arrives on the next connection.',
+                          )
+                        : band?.transfer == TransferState.receiving
+                        ? _s(
+                            context,
+                            'App während der Übertragung offen lassen.',
+                            'Keep the app open during transfer.',
+                          )
+                        : _s(
+                            context,
+                            'Deine Angaben fehlen noch. Ergänze sie im nächsten Schritt.',
+                            'Your profile details are still missing. Add them in the next step.',
+                          ),
+                    textAlign: TextAlign.center,
+                    style: p.text(12, color: p.muted),
+                  ),
+                  if (synthetic) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      textAlign: TextAlign.center,
+                      style: p.label(size: 11).copyWith(color: p.muted),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
@@ -435,44 +539,18 @@ class _ReceivingCard extends StatelessWidget {
   const _ReceivingCard({required this.band, required this.now});
 
   @override
-  Widget build(BuildContext context) {
-    final p = OB.of(context);
-    final hasStoredValue = band.latestStoredAt != null;
-    return OBCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _s(context, 'AUF DEM IPHONE', 'ON THE IPHONE'),
-            style: p
-                .text(12, weight: FontWeight.w700, color: p.muted)
-                .copyWith(letterSpacing: 2),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _frontier(context, band.latestStoredAt, now),
-            style: p.text(40, weight: FontWeight.w700, display: true),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            hasStoredValue
-                ? _s(
-                    context,
-                    'Band sendet gespeicherte Werte. App währenddessen offen lassen.',
-                    'The band is sending stored values. Keep the app open.',
-                  )
-                : _s(
-                    context,
-                    'Noch kein Wert auf dem iPhone gespeichert. App während der Übertragung offen lassen.',
-                    'No value saved on the iPhone yet. Keep the app open during transfer.',
-                  ),
-            style: p.text(14, color: p.muted),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => OBFrontierCard(
+    storedAt: band.latestStoredAt,
+    now: now,
+    rightLabel: _s(context, 'Erste Übertragung', 'First transfer'),
+    caption: band.latestStoredAt == null
+        ? _s(
+            context,
+            'Noch kein Wert gespeichert. App während der Übertragung offen lassen.',
+            'No value saved yet. Keep the app open during transfer.',
+          )
+        : null,
+  );
 }
 
 class OBSetupStatusCard extends StatelessWidget {
@@ -532,7 +610,10 @@ class OBSetupStatusCard extends StatelessWidget {
       _s(context, 'Verbunden', 'Connected'),
     ),
     BandConnection.connecting => (SetupStatusIcon.active, '—'),
-    BandConnection.disconnected => (SetupStatusIcon.open, '—'),
+    BandConnection.disconnected => (
+      SetupStatusIcon.stopped,
+      _s(context, 'Getrennt', 'Disconnected'),
+    ),
   };
 }
 
@@ -545,7 +626,10 @@ class OBSetupStatusCard extends StatelessWidget {
   final frontier = _frontier(context, band.latestStoredAt, now);
   return switch (band.transfer) {
     TransferState.receiving => (SetupStatusIcon.active, frontier),
-    TransferState.interrupted => (SetupStatusIcon.open, frontier),
+    TransferState.interrupted => (
+      band.latestStoredAt == null ? SetupStatusIcon.open : SetupStatusIcon.done,
+      frontier,
+    ),
     TransferState.idle => (
       band.latestStoredAt == null ? SetupStatusIcon.open : SetupStatusIcon.done,
       frontier,
@@ -612,36 +696,48 @@ class _StatusRow extends StatelessWidget {
     final p = OB.of(context);
     final open = icon == SetupStatusIcon.open;
     final mark = switch (icon) {
-      SetupStatusIcon.done => Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(
-          color: p.led,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: p.led.withValues(alpha: .2), blurRadius: 6),
-          ],
-        ),
-      ),
+      SetupStatusIcon.done =>
+        label == _s(context, 'Verbindung', 'Connection')
+            ? OBLed(on: true, size: 9)
+            : Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+                child: Icon(LucideIcons.check, size: 13, color: p.card),
+              ),
       SetupStatusIcon.active => Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: p.ink, width: 2),
+        ),
+        child: Icon(LucideIcons.refreshCw, size: 12, color: p.ink),
       ),
       SetupStatusIcon.open => Container(
-        width: 10,
-        height: 10,
+        width: 20,
+        height: 20,
         decoration: BoxDecoration(
-          color: p.muted.withValues(alpha: .28),
           shape: BoxShape.circle,
+          border: Border.all(color: p.gap, width: 1.5),
         ),
+      ),
+      SetupStatusIcon.stopped => Icon(
+        LucideIcons.bluetoothOff,
+        size: 17,
+        color: p.ink,
       ),
     };
     final labelStyle = p
         .text(15, weight: FontWeight.w500, color: open ? p.muted : p.ink)
         .copyWith(height: 20 / 15);
     final valueStyle = p
-        .text(15, weight: FontWeight.w600, display: true, color: p.muted)
+        .text(
+          15,
+          weight: FontWeight.w700,
+          display: true,
+          color: open ? (value == '—' ? p.gap : p.muted) : p.ink,
+        )
         .copyWith(height: 20 / 15);
     final stack = _stackStatusRows(context);
     final shown = value;

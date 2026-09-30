@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
+import 'g3/g3_theme.dart';
 import 'calendar.dart';
 import 'controller.dart';
 import 'domain.dart';
@@ -10,9 +12,18 @@ Future<void> chooseOpenBandDay(
   BuildContext context,
   OpenBandController controller,
 ) async {
-  final selected = await Navigator.of(
-    context,
-  ).push<String>(MaterialPageRoute(builder: (_) => _DayPicker(controller)));
+  final selected = await showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    barrierColor: Colors.black.withValues(alpha: .38),
+    backgroundColor: G3.of(context).canvas,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (_) =>
+        FractionallySizedBox(heightFactor: 1, child: _DayPicker(controller)),
+  );
   if (selected != null) await controller.selectDay(selected);
 }
 
@@ -24,6 +35,7 @@ class _DayPicker extends StatefulWidget {
 }
 
 class _DayPickerState extends State<_DayPicker> {
+  final GlobalKey _selectedCellKey = GlobalKey();
   late DateTime selected = DateTime.parse(widget.controller.selectedDay);
   late DateTime month = DateTime(selected.year, selected.month);
   late Future<Set<String>> days = widget.controller.repository.sleepDays();
@@ -31,11 +43,28 @@ class _DayPickerState extends State<_DayPicker> {
     dayLabelOf(selected),
   );
 
-  void _select(DateTime date) => setState(() {
-    selected = date;
-    month = DateTime(date.year, date.month);
-    preview = widget.controller.repository.readDay(dayLabelOf(date));
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected();
+  }
+
+  void _revealSelected() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted || MediaQuery.textScalerOf(context).scale(15) <= 22) return;
+    final cell = _selectedCellKey.currentContext;
+    if (cell != null) {
+      Scrollable.ensureVisible(cell, alignment: .8);
+    }
   });
+
+  void _select(DateTime date) {
+    setState(() {
+      selected = date;
+      month = DateTime(date.year, date.month);
+      preview = widget.controller.repository.readDay(dayLabelOf(date));
+    });
+    _revealSelected();
+  }
 
   void _info() => showModalBottomSheet<void>(
     context: context,
@@ -72,33 +101,89 @@ class _DayPickerState extends State<_DayPicker> {
   @override
   Widget build(BuildContext context) {
     final p = OB.of(context);
+    final g = G3.of(context);
     final now = widget.controller.now();
     final today = DateTime(now.year, now.month, now.day);
     final selectedDay = dayLabelOf(selected);
     final previous = DateTime(selected.year, selected.month, selected.day - 1);
+    final largeText = MediaQuery.textScalerOf(context).scale(15) > 22;
     return Scaffold(
       backgroundColor: p.canvas,
       body: SafeArea(
         bottom: false,
         child: Column(
           children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 5,
+                margin: EdgeInsets.only(top: 10, bottom: largeText ? 8 : 16),
+                decoration: BoxDecoration(
+                  color: p.muted.withValues(alpha: .5),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: 'Datum wählen',
-                backText: 'Abbrechen',
-                subtitle: 'Gespeicherte Nächte',
-                backLabel: 'Abbrechen',
-                onInfo: _info,
-                infoLabel: 'Gespeicherte Schlafwerte',
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Datum wählen',
+                      style: g.t(
+                        20,
+                        24,
+                        weight: FontWeight.w700,
+                        tracking: -.02,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Schließen',
+                    onPressed: () => Navigator.pop(context),
+                    icon: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: g.chip,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(LucideIcons.x, size: 16, color: g.ink),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, largeText ? 4 : 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Gespeicherte Nächte',
+                      style: p.text(14, color: p.muted),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Gespeicherte Schlafwerte',
+                    onPressed: _info,
+                    icon: const Icon(LucideIcons.info, size: 20),
+                  ),
+                ],
               ),
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+                padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 32),
                 children: [
                   OBCard(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      largeText ? 8 : 14,
+                      16,
+                      largeText ? 8 : 16,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -106,25 +191,33 @@ class _DayPickerState extends State<_DayPicker> {
                           future: days,
                           builder: (c, snapshot) => Column(
                             children: [
-                              OBCalendar(
-                                month: month,
-                                selected: selected,
-                                now: now,
-                                allowFuture: false,
-                                showAvailability: true,
-                                instrumentHeader: true,
-                                nights: snapshot.data ?? const {},
-                                onSelect: _select,
-                                onPrevMonth: () => setState(
-                                  () => month = DateTime(
-                                    month.year,
-                                    month.month - 1,
-                                  ),
+                              MediaQuery(
+                                data: MediaQuery.of(context).copyWith(
+                                  textScaler: largeText
+                                      ? const TextScaler.linear(1.5)
+                                      : MediaQuery.textScalerOf(context),
                                 ),
-                                onNextMonth: () => setState(
-                                  () => month = DateTime(
-                                    month.year,
-                                    month.month + 1,
+                                child: OBCalendar(
+                                  month: month,
+                                  selected: selected,
+                                  now: now,
+                                  allowFuture: false,
+                                  showAvailability: true,
+                                  instrumentHeader: true,
+                                  selectedCellKey: _selectedCellKey,
+                                  nights: snapshot.data ?? const {},
+                                  onSelect: _select,
+                                  onPrevMonth: () => setState(
+                                    () => month = DateTime(
+                                      month.year,
+                                      month.month - 1,
+                                    ),
+                                  ),
+                                  onNextMonth: () => setState(
+                                    () => month = DateTime(
+                                      month.year,
+                                      month.month + 1,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -225,14 +318,6 @@ class _DayPickerState extends State<_DayPicker> {
                       );
                     },
                   ),
-                  if (widget.controller.day?.synthetic == true) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      'Synthetische Daten',
-                      textAlign: TextAlign.center,
-                      style: p.text(12, color: p.muted),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -241,14 +326,56 @@ class _DayPickerState extends State<_DayPicker> {
                 16,
                 10,
                 16,
-                MediaQuery.paddingOf(context).bottom,
+                MediaQuery.paddingOf(context).bottom + 16,
               ),
-              child: OBAction(
-                selectedDay == dayLabelOf(today)
-                    ? 'Zu heute'
-                    : '${obDate(selectedDay)} ansehen',
-                secondary: selectedDay == dayLabelOf(today),
-                onPressed: () => Navigator.pop(context, selectedDay),
+              child: Column(
+                children: [
+                  if (largeText)
+                    Column(
+                      children: [
+                        OBAction(
+                          'Zu heute',
+                          secondary: true,
+                          onPressed: () =>
+                              Navigator.pop(context, dayLabelOf(today)),
+                        ),
+                        const SizedBox(height: 10),
+                        OBAction(
+                          '${obDate(selectedDay)} ansehen',
+                          onPressed: () => Navigator.pop(context, selectedDay),
+                        ),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OBAction(
+                            'Zu heute',
+                            secondary: true,
+                            onPressed: () =>
+                                Navigator.pop(context, dayLabelOf(today)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OBAction(
+                            '${obDate(selectedDay)} ansehen',
+                            onPressed: () =>
+                                Navigator.pop(context, selectedDay),
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (widget.controller.day?.synthetic == true) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      textAlign: TextAlign.center,
+                      style: g.caps(color: g.muted, size: 11),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

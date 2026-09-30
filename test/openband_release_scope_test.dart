@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/app.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
 import 'package:openstrap_edge/data/day_label.dart' show todayLabel;
@@ -21,6 +22,9 @@ import 'package:openstrap_edge/main_gallery.dart';
 import 'package:openstrap_edge/notify/tap_router.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/g3/band_parts.dart'
+    show OBSettingsRow, OBToggle;
+import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/health.dart';
 import 'package:openstrap_edge/openband/g3/screens/journal_screen.dart';
 import 'package:openstrap_edge/openband/journal.dart';
@@ -33,6 +37,7 @@ import 'package:openstrap_edge/openband/tab_bar.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/data.dart';
@@ -41,6 +46,7 @@ import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/activity/picker.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -750,11 +756,11 @@ void main() {
       ),
     );
 
-    final values = [find.text('07:42'), find.text('—'), find.text('4,2 GB')];
+    final values = [find.text('07:42'), find.text('64 %'), find.text('4,2 GB')];
     final labels = [
       find.text('Daten bis'),
-      find.text('Letzter Bandwert'),
-      find.text('Rohdaten-Archiv'),
+      find.text('Akku'),
+      find.text('Datenbank'),
     ];
     for (var i = 0; i < values.length; i++) {
       expect(values[i], findsOneWidget);
@@ -785,7 +791,7 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('Bandstatus nicht verfügbar'), findsOneWidget);
+    expect(find.text('Status unbekannt'), findsOneWidget);
     expect(find.text('Kein Band verbunden'), findsNothing);
   });
 
@@ -815,9 +821,9 @@ void main() {
         ),
       );
 
-      expect(find.text('Bandstatus nicht verfügbar'), findsOneWidget);
+      expect(find.text('Status unbekannt'), findsOneWidget);
       expect(find.text('Verbunden'), findsNothing);
-      expect(find.text('64 %'), findsOneWidget);
+      expect(find.text('zuletzt 64 %'), findsOneWidget);
       expect(find.text('07:42'), findsOneWidget);
     },
   );
@@ -848,21 +854,22 @@ void main() {
       ),
     );
     expect(find.byKey(const ValueKey('data-screen')), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(tester.widget<OBToggle>(find.byType(OBToggle)).value, isTrue);
     expect(find.text('Von eurem Telefon'), findsNothing);
     expect(find.byKey(const ValueKey('data-action-receipt')), findsOneWidget);
-    for (final key in const [
+    for (final (index, key) in const [
+      'data-backup-now',
+      'data-backup-cadence',
       'data-export-database',
       'data-export-encrypted',
       'data-export-csv',
-      'data-backup-cadence',
-      'data-backup-now',
       'data-import-file',
       'data-reanalyze',
-    ]) {
+    ].indexed) {
       await tester.ensureVisible(find.byKey(ValueKey(key)));
       await tester.tap(find.byKey(ValueKey(key)));
       await tester.pump();
+      expect(hits, index + 1, reason: key);
     }
     expect(hits, 7);
     expect(tester.takeException(), isNull);
@@ -882,7 +889,7 @@ void main() {
           home: DataScreenView(cadence: cadence, onAutomatic: requests.add),
         ),
       );
-      await tester.tap(find.byType(Switch));
+      await tester.tap(find.byType(OBToggle));
       await tester.pump();
     }
     expect(requests, [true, false]);
@@ -1085,6 +1092,31 @@ void main() {
     expect(find.byKey(const ValueKey('profile-screen')), findsOneWidget);
     expect(find.byType(OBTabBar), findsOneWidget);
     expect(find.byType(OBTabBar).hitTestable(), findsOneWidget);
+    expect(find.text('Datenbankdatei 4,2 GB'), findsOneWidget);
+    expect(find.text('Datenbankdatei 4.2 GB'), findsNothing);
+
+    for (final label in ['Mitteilungen', 'Einstellungen']) {
+      final row = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(OBSettingsRow),
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(LucideIcons.chevronRight),
+        ),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(row);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      final route = label == 'Mitteilungen'
+          ? find.byType(NotificationSettingsView)
+          : find.byType(MoreSettingsView);
+      expect(route, findsOneWidget);
+      Navigator.of(tester.element(route)).pop();
+      await tester.pumpAndSettle();
+    }
 
     await tester.tap(find.byKey(const ValueKey('profile-data')));
     await tester.pumpAndSettle();
@@ -1111,7 +1143,42 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey('data-export-database')));
     await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('data-action-receipt')),
+      -150,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('Export erstellt'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('release Band route cannot open the legacy device picker', (
+    tester,
+  ) async {
+    phone(tester);
+    final app = AppState.forTesting(releaseReduced: true);
+    addTearDown(app.dispose);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppState>.value(value: app),
+          ChangeNotifierProvider<LocaleController>(
+            create: (_) => LocaleController.seed('de'),
+          ),
+        ],
+        child: MaterialApp(
+          locale: const Locale('de'),
+          theme: openBandTheme(Brightness.light),
+          home: const ProfileHome(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-band')));
+    await tester.pumpAndSettle();
+    final band = tester.widget<G3BandScreen>(find.byType(G3BandScreen));
+    expect(band.onDevices, isNull);
+    expect(find.text('Meine Geräte'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -12,6 +12,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../openband/g3/band_parts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
@@ -189,6 +190,7 @@ class PairingView extends StatelessWidget {
   final VoidCallback? onContinue;
   final VoidCallback? onSkip;
   final VoidCallback? onInfo;
+  final bool synthetic;
 
   /// Which phone-side blocker, when [phase] is `bluetoothBlocked`.
   final BleBlocker? blocker;
@@ -203,6 +205,7 @@ class PairingView extends StatelessWidget {
     this.blocker,
     this.onSkip,
     this.onInfo,
+    this.synthetic = false,
   });
 
   @override
@@ -231,44 +234,20 @@ class PairingView extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: OBPageHeader(
-                title: _s(c, 'Band verbinden', 'Connect band'),
-                subtitle: onSkip == null
-                    ? ''
-                    : _s(
-                        c,
-                        'Einrichtung · Schritt 1 von 3',
-                        'Setup · Step 1 of 3',
-                      ),
-                onBack: onBack,
-                onInfo: onInfo ?? () => _showInfo(c),
-              ),
+            OBSetupHeader(
+              title: _s(c, 'Band verbinden', 'Connect band'),
+              backLabel: _s(c, 'Zurück', 'Back'),
+              onBack:
+                  onBack ??
+                  (Navigator.canPop(c) ? () => Navigator.pop(c) : null),
+              onInfo: onInfo ?? () => _showInfo(c),
             ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
                 children: [
                   if (onSkip != null) ...[
-                    Row(
-                      children: [
-                        for (var i = 0; i < 3; i++) ...[
-                          Expanded(
-                            child: Container(
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: i == 0
-                                    ? p.ink
-                                    : p.muted.withValues(alpha: .24),
-                                borderRadius: R.rPill,
-                              ),
-                            ),
-                          ),
-                          if (i < 2) const SizedBox(width: 6),
-                        ],
-                      ],
-                    ),
+                    const OBStepProgress(step: 1),
                     const SizedBox(height: 18),
                   ],
                   OBCard(
@@ -318,10 +297,13 @@ class PairingView extends StatelessWidget {
                                 height: 8,
                                 margin: const EdgeInsets.only(top: 6),
                                 decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
                                   color: phase == PairPhase.paired
                                       ? p.led
-                                      : p.muted,
-                                  shape: BoxShape.circle,
+                                      : null,
+                                  border: phase == PairPhase.paired
+                                      ? null
+                                      : Border.all(color: p.muted, width: 1.5),
                                 ),
                               ),
                             const SizedBox(width: 12),
@@ -348,7 +330,14 @@ class PairingView extends StatelessWidget {
                     ),
                   ),
                   if (phase != PairPhase.bluetoothBlocked) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 18),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 0, 8),
+                      child: Text(
+                        _s(c, 'VORHER', 'BEFORE'),
+                        style: p.label(size: 12),
+                      ),
+                    ),
                     OBCard(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -357,7 +346,6 @@ class PairingView extends StatelessWidget {
                       child: Column(
                         children: [
                           _PairStep(
-                            '1',
                             _s(
                               c,
                               'Band tragen oder laden',
@@ -365,11 +353,9 @@ class PairingView extends StatelessWidget {
                             ),
                           ),
                           _PairStep(
-                            '2',
                             _s(c, 'Bluetooth einschalten', 'Turn on Bluetooth'),
                           ),
                           _PairStep(
-                            '3',
                             _s(c, 'WHOOP-App schließen', 'Close the WHOOP app'),
                             last: true,
                           ),
@@ -414,6 +400,14 @@ class PairingView extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ),
+                  ],
+                  if (synthetic) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SYNTHETISCHE DATEN',
+                      textAlign: TextAlign.center,
+                      style: p.label(size: 11).copyWith(color: p.muted),
                     ),
                   ],
                 ],
@@ -611,7 +605,13 @@ class _PairLink extends StatelessWidget {
             width: 6,
             height: 6,
             decoration: BoxDecoration(
-              color: i < activeBars ? p.action : p.line,
+              color: i < activeBars
+                  ? p.ink
+                  : i == activeBars
+                  ? p.muted
+                  : i == activeBars + 1
+                  ? p.gap
+                  : p.line,
               shape: BoxShape.circle,
             ),
           ),
@@ -623,10 +623,9 @@ class _PairLink extends StatelessWidget {
 }
 
 class _PairStep extends StatelessWidget {
-  final String number;
   final String label;
   final bool last;
-  const _PairStep(this.number, this.label, {this.last = false});
+  const _PairStep(this.label, {this.last = false});
 
   @override
   Widget build(BuildContext context) {
@@ -643,19 +642,20 @@ class _PairStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 26,
-            height: 26,
+            width: 22,
+            height: 22,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: p.well,
               shape: BoxShape.circle,
-              border: Border.all(color: p.line),
+              border: Border.all(color: p.gap, width: 1.5),
             ),
-            child: Text(number, style: p.text(13, weight: FontWeight.w700)),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(label, style: p.text(15, weight: FontWeight.w500)),
+            child: Text(
+              label,
+              style: p.text(15, weight: FontWeight.w500, color: p.muted),
+            ),
           ),
         ],
       ),

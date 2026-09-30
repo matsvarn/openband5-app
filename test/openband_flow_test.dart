@@ -388,7 +388,10 @@ void main() {
         find.byKey(const ValueKey('capture')),
         matchesGoldenFile('openband_goldens/date-selection.png'),
       );
-      await tester.tap(find.byTooltip('Abbrechen'));
+      await tester.drag(find.byType(ListView).last, const Offset(0, -220));
+      await tester.pumpAndSettle();
+      expect(find.text('7h02'), findsOneWidget);
+      await tester.tap(find.byTooltip('Schließen'));
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-15');
       await tester.tap(find.text(obDayTitle('2026-09-15')));
@@ -416,18 +419,18 @@ void main() {
     await mount(tester);
     await tester.tap(find.text('64 %'));
     await tester.pumpAndSettle();
-    expect(find.text('letzter Wert vor 1 h 59'), findsOneWidget);
+    expect(find.text('letzter Wert vor 1 h 59 Min.'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(BottomSheet),
         matching: find.byType(OBScale),
       ),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('64 % · gemessen 07:42'), findsOneWidget);
-    expect(find.text('15.09 · 07:42'), findsOneWidget);
-    expect(find.text('Auf dem iPhone gespeichert'), findsOneWidget);
-    expect(find.text('—'), findsOneWidget);
+    expect(find.text('Akku 64 % · gemessen 07:42'), findsOneWidget);
+    expect(find.text('bis 07:42'), findsWidgets);
+    expect(find.text('Auf dem iPhone gespeichert'), findsNothing);
+    expect(find.text('Abdeckung'), findsOneWidget);
   });
   testWidgets(
     'accessible values and tap targets include unobserved intervals',
@@ -656,18 +659,13 @@ void main() {
       await tester.tap(find.text(obDayTitle('2026-09-15')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('14'));
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
       final previousDay = find.widgetWithText(
         FilledButton,
         '14. September ansehen',
       );
-      await tester.scrollUntilVisible(
-        previousDay,
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      expect(previousDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(previousDay);
       await tester.pumpAndSettle();
@@ -680,11 +678,7 @@ void main() {
         FilledButton,
         '15. September ansehen',
       );
-      await tester.scrollUntilVisible(
-        selectedDay,
-        200,
-        scrollable: find.byType(Scrollable).last,
-      );
+      expect(selectedDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(selectedDay);
       await tester.pumpAndSettle();

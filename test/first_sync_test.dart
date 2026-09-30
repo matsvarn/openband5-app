@@ -77,19 +77,19 @@ void main() {
       await tester.pump();
 
       expect(find.text('ERSTE ÜBERTRAGUNG'), findsOneWidget);
-      expect(find.text('Einrichtung · Schritt 2 von 3'), findsOneWidget);
+      expect(find.text('Schritt 2 von 3'), findsOneWidget);
       expect(find.text('Verbindung'), findsOneWidget);
       expect(find.text('AUF DEM IPHONE'), findsOneWidget);
       expect(find.text('Übertragung'), findsOneWidget);
       expect(find.text('läuft'), findsOneWidget);
       expect(find.text('Auswertung heute'), findsOneWidget);
       expect(find.text('Verbunden'), findsOneWidget);
-      expect(find.text('bis 06:54'), findsOneWidget);
+      expect(find.text('bis 06:54'), findsWidgets);
       expect(find.text('—'), findsOneWidget);
       expect(find.text('Das Band erzählt von der letzten Nacht'), findsNothing);
       expect(find.text('Nacht wird gelesen'), findsNothing);
 
-      await tester.tap(find.text('Weiter zum Profil'));
+      await tester.tap(find.text('Weiter'));
       await tester.pump();
       expect(done, isTrue);
       await _unmount(tester);
@@ -113,7 +113,7 @@ void main() {
     );
     expect(
       find.text(
-        'Noch kein Wert auf dem iPhone gespeichert. App während der Übertragung offen lassen.',
+        'Noch kein Wert gespeichert. App während der Übertragung offen lassen.',
       ),
       findsOneWidget,
     );
@@ -135,13 +135,13 @@ void main() {
         ),
       ),
     );
-    expect(find.text('bis 06:54'), findsOneWidget);
-    expect(find.text('Unterbrochen'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
+    expect(find.text('Übertragung unterbrochen'), findsOneWidget);
     expect(find.text('Fortsetzen'), findsOneWidget);
     await tester.tap(find.text('Fortsetzen'));
     expect(resumes, 1);
     expect(
-      tester.getSize(find.widgetWithText(TextButton, 'Fortsetzen')).height,
+      tester.getSize(find.bySemanticsLabel('Fortsetzen')).height,
       greaterThanOrEqualTo(44),
     );
   });
@@ -165,13 +165,54 @@ void main() {
         ),
       ),
     );
-    final state = tester.getRect(find.text('Unterbrochen'));
-    final action = tester.getRect(
-      find.widgetWithText(TextButton, 'Fortsetzen'),
+    await tester.scrollUntilVisible(
+      find.text('Übertragung unterbrochen'),
+      120,
+      scrollable: find.byType(Scrollable).first,
     );
+    final state = tester.getRect(find.text('Übertragung unterbrochen'));
+    final action = tester.getRect(find.bySemanticsLabel('Fortsetzen'));
     expect(action.top, greaterThanOrEqualTo(state.bottom));
     expect(action.height, greaterThanOrEqualTo(44));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('interruption before the first stored value says so', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: const BandSnapshot(transfer: TransferState.interrupted),
+        ),
+      ),
+    );
+    expect(
+      find.textContaining('bevor ein Wert gespeichert wurde'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Bis —'), findsNothing);
+  });
+
+  testWidgets('interrupted frontier includes yesterday in its notice', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _frame(
+        FirstSyncView(
+          now: _now,
+          onDone: () {},
+          band: BandSnapshot(
+            transfer: TransferState.interrupted,
+            latestStoredAt: DateTime(2026, 9, 14, 9, 28),
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('Bis gestern · 09:28'), findsOneWidget);
+    expect(find.text('bis gestern · 09:28'), findsOneWidget);
   });
 
   testWidgets(
@@ -206,10 +247,10 @@ void main() {
       await tester.tap(find.text('Fortsetzen'));
       await tester.pump();
       expect(find.text('Fortsetzen fehlgeschlagen'), findsOneWidget);
-      expect(find.text('Erneut'), findsOneWidget);
-      expect(find.text('Unterbrochen'), findsNothing);
+      expect(find.text('Erneut versuchen'), findsOneWidget);
+      expect(find.text('Übertragung unterbrochen'), findsNothing);
 
-      await tester.tap(find.text('Erneut'));
+      await tester.tap(find.text('Erneut versuchen'));
       await tester.pump();
       expect(attempts, 2);
       expect(find.text('Fortsetzen fehlgeschlagen'), findsNothing);
@@ -252,7 +293,7 @@ void main() {
     await tester.pump();
     expect(find.text('Fortsetzen fehlgeschlagen'), findsNothing);
     expect(find.text('Verbunden'), findsOneWidget);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
     await _unmount(tester);
   });
 
@@ -278,9 +319,15 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Fortsetzen'));
     await tester.pump();
-    expect(find.text('Verbindung wird hergestellt'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Wird erneut versucht …'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Wird erneut versucht …'), findsOneWidget);
     expect(attempts, 1);
-    await tester.tap(find.text('Verbindung wird hergestellt'));
+    await tester.ensureVisible(find.text('Fortsetzen'));
+    await tester.tap(find.text('Fortsetzen'));
     await tester.pump();
     expect(attempts, 1);
     resume.complete();
@@ -304,8 +351,8 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('—'), findsNWidgets(3));
-    await tester.tap(find.text('Weiter zum Profil'));
+    expect(find.text('—'), findsNWidgets(2));
+    await tester.tap(find.text('Weiter'));
     await tester.pump();
     expect(done, isTrue);
     await _unmount(tester);
@@ -326,7 +373,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text('07:12'), findsNothing);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
     expect(find.text('—'), findsOneWidget);
     await _unmount(tester);
   });
@@ -374,7 +421,7 @@ void main() {
       ),
     );
     expect(find.text('07:12'), findsOneWidget);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
   });
 
   testWidgets('continue works on empty, partial and read failure', (
@@ -411,7 +458,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Weiter zum Profil'));
+      await tester.tap(find.text('Weiter'));
       await tester.pump();
       expect(done, isTrue);
     }
@@ -436,10 +483,15 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Verbunden'), findsOneWidget);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('Auswertung nicht geladen'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('Auswertung nicht geladen'), findsOneWidget);
     expect(find.text('Bandstatus nicht geladen'), findsNothing);
-    await tester.tap(find.text('Erneut'));
+    await tester.tap(find.text('Erneut versuchen'));
     await tester.pump();
     expect(retries, greaterThan(1));
     await _unmount(tester);
@@ -540,7 +592,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(find.text('07:12'), findsNothing);
     expect(maxInflight, 1);
-    await tester.tap(find.text('Weiter zum Profil'));
+    await tester.tap(find.text('Weiter'));
     await tester.pump();
     expect(done, isTrue);
     slow.complete(_eval(SetupEvalState.complete));
@@ -577,17 +629,17 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Verbunden'), findsOneWidget);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
     expect(find.text('07:12'), findsNothing);
     expect(find.text('—'), findsOneWidget);
     expect(maxInflight, 1);
-    await tester.tap(find.text('Weiter zum Profil'));
+    await tester.tap(find.text('Weiter'));
     await tester.pump();
     expect(done, isTrue);
     slow.complete(_eval(SetupEvalState.complete));
     await tester.pump();
     expect(find.text('07:12'), findsOneWidget);
-    expect(find.text('bis 06:54'), findsOneWidget);
+    expect(find.text('bis 06:54'), findsWidgets);
     expect(maxInflight, 1);
     await _unmount(tester);
   });
@@ -617,7 +669,7 @@ void main() {
       ),
     );
     expect(find.text('FIRST TRANSFER'), findsOneWidget);
-    await tester.tap(find.text('Continue to profile'));
+    await tester.tap(find.text('Continue'));
     await tester.pump();
     expect(done, isTrue);
   });
@@ -636,6 +688,6 @@ void main() {
       ),
     );
     expect(find.textContaining('14.9.'), findsOneWidget);
-    expect(find.textContaining('22:10'), findsOneWidget);
+    expect(find.textContaining('22:10'), findsWidgets);
   });
 }
