@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../data/day_label.dart';
 import '../../controller.dart';
 import '../../domain.dart';
+import '../../theme.dart' show OBChevron;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../charts.dart'
     show OBHrTrace, OBTrendChart, OBTrendPeriod, OBZone, OBZoneRows;
@@ -20,11 +21,12 @@ import '../chrome.dart'
         OBFooterStamp,
         OBSheet,
         OBLink,
+        OBListRow,
         OBPanel,
         G3DetailPage,
         OBSectionHeader,
         showOBInfoSheet;
-import '../metrics.dart' show OBMissingValue;
+import '../metrics.dart' show OBMissingValue, OBStatRow, G3LabelRow;
 import '../g3_theme.dart';
 import '../g3_format.dart';
 import '../sport.dart' show g3QuickSportIds;
@@ -251,7 +253,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
     );
   }
 
-  void _openActivity(G3Activity activity) {
+  void _openActivity(G3Activity activity, {String? initialSheet}) {
     Navigator.of(context).push(
       g3ActivityResultRoute(
         repository: widget.controller.repository,
@@ -259,6 +261,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
         latestStoredAt: widget.controller.band.latestStoredAt,
         now: widget.controller.now(),
         onChanged: _reload,
+        initialSheet: initialSheet,
       ),
     );
   }
@@ -319,7 +322,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                     synthetic: data.day.synthetic,
                     onTap: widget.onDataStatus,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Column(
@@ -340,12 +343,13 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
                         Row(
                           children: [
                             Expanded(
                               child: OBActionPrimary(
                                 'Training starten',
+                                icon: LucideIcons.play,
                                 onPressed: widget.onStart == null
                                     ? null
                                     : _start,
@@ -364,7 +368,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
                         Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Text(
@@ -413,6 +417,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                               context,
                               a,
                               () => _openActivity(a),
+                              () => _openActivity(a, initialSheet: 'sport'),
                               _confirming.contains(a.id)
                                   ? null
                                   : () => _confirmSuggestion(a),
@@ -435,7 +440,7 @@ class _G3TrainingScreenState extends State<G3TrainingScreen> {
                         ),
                         const SizedBox(height: 8),
                         _week(context, data.weekly.days, today: current),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 18),
                         if (data.activities.any(
                           (a) => dayLabelOf(a.start) != _day,
                         )) ...[
@@ -518,11 +523,6 @@ Widget _week(
   required bool today,
 }) {
   final g = G3.of(context);
-  final whole = days
-      .take(days.length - 1)
-      .map((p) => p.value)
-      .whereType<double>()
-      .toList();
   return day_widgets.OBWeekBars(
     domain: G3Domain.load,
     max: 21,
@@ -532,16 +532,23 @@ Widget _week(
           today && index == days.length - 1
               ? 'Heute'
               : g3Weekday(DateTime.parse(point.day)),
-          point.value,
-          label: point.value == null ? null : trainingNumber(point.value),
+          point.partial ? null : point.value,
+          label: point.value == null || point.partial
+              ? null
+              : trainingNumber(point.value),
           today: today && index == days.length - 1,
         ),
     ],
     footer: [
-      Text('Belastung je Tag · 0–21', style: g.t(12, 16, color: g.muted)),
-      if (whole.length == 6)
+      if (days.any((p) => p.value == null || p.partial))
         Text(
-          'Ø ${trainingNumber(whole.reduce((a, b) => a + b) / whole.length)} · 6 ganze Tage',
+          days
+              .where((p) => p.value == null || p.partial)
+              .map(
+                (p) =>
+                    '${g3Weekday(DateTime.parse(p.day))} ${p.partial ? 'unvollständig' : 'ohne Belastungswert'}',
+              )
+              .join(' · '),
           style: g.t(12, 16, color: g.ink2),
         ),
     ],
@@ -576,6 +583,7 @@ Widget _activityRow(
   BuildContext context,
   G3Activity a,
   VoidCallback open,
+  VoidCallback change,
   VoidCallback? confirm,
 ) {
   final g = G3.of(context);
@@ -584,6 +592,7 @@ Widget _activityRow(
     domain: G3Domain.load,
     pictogram: trainingSportIcon(a.sport, color: g.ink),
     title: trainingSport(a.sport),
+    unconfirmed: pending,
     subtitle:
         '${g3Clock(a.start)}–${a.end == null ? '—' : g3Clock(a.end!)} · ${g3Duration(a.duration?.inMinutes)}',
     strain: a.strain == null ? null : trainingNumber(a.strain, signed: true),
@@ -603,11 +612,17 @@ Widget _activityRow(
                       style: g.t(12, 16, color: g.ink2),
                     ),
                   ),
+                  OBActionSecondary(
+                    'Ändern',
+                    onPressed: confirm == null ? null : change,
+                    height: 34,
+                  ),
+                  const SizedBox(width: 8),
                   OBActionPrimary(
                     'Stimmt',
                     icon: LucideIcons.check,
                     onPressed: confirm,
-                    height: 30,
+                    height: 34,
                   ),
                 ],
               ),
@@ -699,6 +714,7 @@ Route<void> g3ActivityResultRoute({
   DateTime? latestStoredAt,
   DateTime? now,
   VoidCallback? onChanged,
+  String? initialSheet,
 }) => MaterialPageRoute<void>(
   builder: (_) => G3ActivityScreen(
     repository: repository,
@@ -706,6 +722,7 @@ Route<void> g3ActivityResultRoute({
     latestStoredAt: latestStoredAt,
     now: now,
     onChanged: onChanged,
+    initialSheet: initialSheet,
   ),
 );
 
@@ -895,6 +912,42 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
     }
   }
 
+  Future<void> _actions() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: OBPanel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OBListRow(
+                icon: LucideIcons.pencil,
+                title: 'Sportart ändern',
+                onTap: () => Navigator.of(sheetContext).pop('sport'),
+              ),
+              OBListRow(
+                icon: LucideIcons.x,
+                title: 'Kein Training',
+                onTap: () => Navigator.of(sheetContext).pop('dismiss'),
+              ),
+              OBListRow(
+                icon: LucideIcons.info,
+                title: 'Quelle und Berechnung',
+                onTap: () => Navigator.of(sheetContext).pop('source'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'source') _resultInfo(context);
+    if (action == 'sport') await _sportPicker();
+    if (action == 'dismiss') await _dismissSuggestion();
+  }
+
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context), a = _activity;
@@ -928,13 +981,15 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
           bottomInset: kOBTabBarContentInset,
           header: OBPageHeader.detail(
             title: 'EINHEIT',
+            subtitle: confirmed ? 'bestätigt' : 'auto-erkannt',
             domain: G3Domain.load,
             backLabel: 'Training',
             onBack: () => Navigator.of(context).maybePop(),
-            onTrailing: () => _resultInfo(context),
+            trailing: confirmed ? LucideIcons.info : LucideIcons.ellipsis,
+            trailingLabel: confirmed ? 'Erklärung' : 'Aktionen',
+            onTrailing: confirmed ? () => _resultInfo(context) : _actions,
           ),
           children: [
-            const SizedBox(height: 3),
             Row(
               children: [
                 Container(
@@ -963,7 +1018,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                         style: g.t(30, 34, weight: FontWeight.w700),
                       ),
                       Text(
-                        g3DayLong(a.start),
+                        '${g3DayShort(a.start)} · ${g3Clock(a.start)}–${a.end == null ? '—' : g3Clock(a.end!)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: g.t(13, 17, color: g.ink2),
@@ -974,47 +1029,37 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               ],
             ),
             const SizedBox(height: 18),
-            Row(
-              children: [
-                _figure(
-                  context,
-                  'DAUER',
-                  durationText.endsWith(' Min.')
-                      ? durationText.substring(0, durationText.length - 5)
-                      : durationText,
-                  unit: durationText.endsWith(' Min.') ? 'Min.' : null,
-                  sub: a.end == null
-                      ? null
-                      : '${g3Clock(a.start)}–${g3Clock(a.end!)}',
+            FutureBuilder<OpenBandDay>(
+              future: _day,
+              builder: (context, day) => _card(
+                context,
+                Row(
+                  children: [
+                    _figure(
+                      context,
+                      'DAUER',
+                      durationText.endsWith(' Min.')
+                          ? durationText.substring(0, durationText.length - 5)
+                          : durationText,
+                      unit: durationText.endsWith(' Min.') ? 'Min.' : null,
+                      sub: a.end == null
+                          ? null
+                          : '${g3Clock(a.start)}–${g3Clock(a.end!)}',
+                    ),
+                    const SizedBox(width: 12),
+                    _figure(
+                      context,
+                      'BELASTUNG',
+                      trainingNumber(a.strain, signed: true),
+                      sub: day.data?.strain.value == null
+                          ? null
+                          : 'Tag jetzt ${trainingNumber(day.data!.strain.value)}',
+                    ),
+                    const SizedBox(width: 12),
+                    _figure(context, 'STRECKE', '—'),
+                  ],
                 ),
-                Container(
-                  width: 1,
-                  height: 67,
-                  color: g.line,
-                  margin: EdgeInsets.symmetric(
-                    horizontal: MediaQuery.textScalerOf(context).scale(1) > 1.3
-                        ? 4
-                        : 10,
-                  ),
-                ),
-                _figure(
-                  context,
-                  'BELASTUNG',
-                  trainingNumber(a.strain, signed: true),
-                  sub: a.strain == null ? null : 'diese Einheit',
-                ),
-                Container(
-                  width: 1,
-                  height: 67,
-                  color: g.line,
-                  margin: EdgeInsets.symmetric(
-                    horizontal: MediaQuery.textScalerOf(context).scale(1) > 1.3
-                        ? 4
-                        : 10,
-                  ),
-                ),
-                _figure(context, 'STRECKE', '—', sub: '+ hinzufügen'),
-              ],
+              ),
             ),
             const SizedBox(height: 16),
             if (!confirmed) ...[
@@ -1063,9 +1108,15 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                 peak: a.maxHr?.round().toString(),
                 axis: (
                   g3Clock(a.start),
-                  '',
+                  a.end == null
+                      ? ''
+                      : g3Clock(a.start.add(a.end!.difference(a.start) ~/ 2)),
                   a.end == null ? '—' : g3Clock(a.end!),
                 ),
+                gapLabel: a.signalGaps.length == 1
+                    ? '${a.signalGaps.single.end.difference(a.signalGaps.single.start).inSeconds} s ohne Signal'
+                    : '',
+                signalNote: '',
                 signalShare: a.opticalShare == null
                     ? null
                     : '${(a.opticalShare! * 100).round()} %',
@@ -1143,18 +1194,36 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('PULSERHOLUNG', style: g.caps()),
+                  const G3LabelRow(
+                    'PULSERHOLUNG',
+                    domain: G3Domain.load,
+                    glyph: LucideIcons.flame,
+                    note: 'nach dem Ende',
+                  ),
                   const SizedBox(height: 8),
-                  Text(
-                    a.hrRecoveryOneMinute == null
-                        ? '—'
-                        : '${g3Signed(-a.hrRecoveryOneMinute!.round(), unit: '/min')} in 1 Min.',
-                    style: g.t(
-                      25,
-                      29,
-                      weight: FontWeight.w700,
-                      color: a.hrRecoveryOneMinute == null ? g.gap : g.ink,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        a.hrRecoveryOneMinute == null
+                            ? '—'
+                            : g3Signed(-a.hrRecoveryOneMinute!.round()),
+                        style: g.t(
+                          36,
+                          40,
+                          weight: FontWeight.w700,
+                          color: a.hrRecoveryOneMinute == null ? g.gap : g.ink,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          '/min in 1 Min.',
+                          style: g.t(14, 18, color: g.ink2),
+                        ),
+                      ),
+                    ],
                   ),
                   if (a.hrRecoveryOneMinute == null) ...[
                     const SizedBox(height: 5),
@@ -1165,8 +1234,31 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                       style: g.t(13, 18, color: g.ink2),
                     ),
                   ],
+                  if (a.priorHrrCount != null && a.priorHrrCount! < 3) ...[
+                    const SizedBox(height: 16),
+                    Divider(height: 1, color: g.line),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const G3Dashed(width: 16, height: 10, radius: 2),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Basis: noch ${3 - a.priorHrrCount!} ${a.sport == 'running' ? (a.priorHrrCount == 2 ? 'Lauf' : 'Läufe') : (a.priorHrrCount == 2 ? 'Einheit' : 'Einheiten')} bis zum Vergleich',
+                            style: g.t(13, 18, color: g.ink2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
+            ),
+            const SizedBox(height: 12),
+            OBListRow(
+              icon: LucideIcons.info,
+              title: 'Quelle und Berechnung',
+              onTap: () => _resultInfo(context),
             ),
             const SizedBox(height: 18),
             FutureBuilder<OpenBandDay>(
@@ -1246,7 +1338,7 @@ Widget _figure(
           overflow: TextOverflow.ellipsis,
           style: g.caps(color: g.muted, size: 11),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 3),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -1255,13 +1347,13 @@ Widget _figure(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.bottomLeft,
                 child: value == '—'
-                    ? const OBMissingValue(size: 44, lineHeight: 48)
+                    ? const OBMissingValue(size: 36, lineHeight: 40)
                     : Text(
                         value,
                         maxLines: 1,
                         style: g.t(
-                          44,
-                          48,
+                          36,
+                          40,
                           weight: FontWeight.w700,
                           tracking: -.04,
                         ),
@@ -1314,6 +1406,8 @@ class G3LoadScreen extends StatefulWidget {
 class _G3LoadScreenState extends State<G3LoadScreen> {
   late OBTrendPeriod period = widget.initialPeriod;
   late Future<G3Trend> trend = _load();
+  late final Future<List<G3Activity>> activities = widget.controller.repository
+      .readActivities(widget.controller.selectedDay);
 
   Future<G3Trend> _load() => widget.controller.repository.readTrend(
     G3Metric.strain,
@@ -1344,6 +1438,23 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
             final avg = present.isEmpty
                 ? null
                 : present.reduce((a, b) => a + b) / present.length;
+            final sorted = [...present]..sort();
+            final median = sorted.isEmpty
+                ? null
+                : sorted.length.isOdd
+                ? sorted[sorted.length ~/ 2]
+                : (sorted[sorted.length ~/ 2 - 1] +
+                          sorted[sorted.length ~/ 2]) /
+                      2;
+            final missing = values.where((v) => v == null).length;
+            final periodDays = switch (period) {
+              OBTrendPeriod.d7 => 7,
+              OBTrendPeriod.d30 => 30,
+              OBTrendPeriod.d90 => 90,
+            };
+            final current =
+                widget.controller.selectedDay ==
+                todayLabel(widget.controller.now());
             final stamp = widget.controller.band.latestStoredAt;
             return G3DetailPage(
               bottomInset: kOBTabBarContentInset,
@@ -1366,14 +1477,51 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _card(
-                          context,
-                          Text(
-                            widget.activity == null
-                                ? 'Noch keine Aktivität heute.'
-                                : '${trainingSport(widget.activity!.sport)} · ${trainingNumber(widget.activity!.strain, signed: true)}',
-                            style: g.t(15, 20),
-                          ),
+                        FutureBuilder<List<G3Activity>>(
+                          future: activities,
+                          builder: (context, snapshot) {
+                            if (snapshot.hasError) {
+                              return _error(
+                                context,
+                                () => Navigator.of(context).maybePop(),
+                              );
+                            }
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            return _card(
+                              context,
+                              Column(
+                                children: [
+                                  if (snapshot.data!.isEmpty)
+                                    Text(
+                                      'Noch keine Aktivität heute.',
+                                      style: g.t(15, 20),
+                                    ),
+                                  for (final (index, activity)
+                                      in snapshot.data!.indexed) ...[
+                                    if (index > 0)
+                                      Divider(height: 24, color: g.line),
+                                    _loadActivityRow(
+                                      context,
+                                      activity,
+                                      () => Navigator.of(context).push(
+                                        g3ActivityResultRoute(
+                                          repository:
+                                              widget.controller.repository,
+                                          activity: activity,
+                                          latestStoredAt: stamp,
+                                          now: widget.controller.now(),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 12),
                         OBTrainingLoad(
@@ -1400,18 +1548,31 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                       ? g3DataThrough(stamp, now: widget.controller.now())
                       : null,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 if (snap.hasData)
                   OBTrendChart(
                     domain: G3Domain.load,
-                    title: 'BELASTUNG · 0–21',
+                    title: '$periodDays TAGE',
                     period: period,
                     values: values,
                     min: 0,
                     max: 21,
-                    xLabels: const ['', '', 'heute'],
-                    footLeft: avg == null ? 'Ø —' : 'Ø ${trainingNumber(avg)}',
-                    footRight: 'ohne persönlichen Bereich',
+                    xLabels: points.isEmpty
+                        ? const []
+                        : [
+                            g3DateShort(DateTime.parse(points.first.day)),
+                            g3DateShort(
+                              DateTime.parse(
+                                points[(points.length - 1) ~/ 2].day,
+                              ),
+                            ),
+                            current
+                                ? 'heute'
+                                : g3DateShort(DateTime.parse(points.last.day)),
+                          ],
+                    footLeft:
+                        '${avg == null ? 'Ø —' : 'Ø ${trainingNumber(avg)}'}${missing == 0 ? '' : ' · $missing ${missing == 1 ? 'Tag' : 'Tage'} ohne Belastungswert'}',
+                    footRight: current ? 'heute läuft' : null,
                     onPeriod: (next) => setState(() {
                       period = next;
                       trend = _load();
@@ -1419,6 +1580,28 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
                   )
                 else
                   const Center(child: CircularProgressIndicator()),
+                if (snap.hasData) ...[
+                  const SizedBox(height: 12),
+                  OBStatRow([
+                    (
+                      'Ø $periodDays TAGE',
+                      avg == null ? null : trainingNumber(avg),
+                      null,
+                    ),
+                    (
+                      'MEDIAN',
+                      median == null ? null : trainingNumber(median),
+                      null,
+                    ),
+                    (
+                      'SPANNE',
+                      sorted.isEmpty
+                          ? null
+                          : '${trainingNumber(sorted.first)}–${trainingNumber(sorted.last)}',
+                      null,
+                    ),
+                  ]),
+                ],
               ],
             );
           },
@@ -1426,4 +1609,56 @@ class _G3LoadScreenState extends State<G3LoadScreen> {
       ),
     );
   }
+}
+
+Widget _loadActivityRow(
+  BuildContext context,
+  G3Activity activity,
+  VoidCallback open,
+) {
+  final g = G3.of(context);
+  return InkWell(
+    onTap: open,
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: g.pressed(radius: 12, color: g.domainTint(G3Domain.load)),
+          alignment: Alignment.center,
+          child: trainingSportIcon(
+            activity.sport,
+            color: g.domainHue(G3Domain.load),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                trainingSport(activity.sport),
+                style: g.t(17, 22, weight: FontWeight.w700),
+              ),
+              Text(
+                '${g3Clock(activity.start)}–${activity.end == null ? '—' : g3Clock(activity.end!)} · ${g3Duration(activity.duration?.inMinutes)}',
+                style: g.t(13, 17, color: g.ink2),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          trainingNumber(activity.strain, signed: true),
+          style: g.t(
+            20,
+            24,
+            weight: FontWeight.w700,
+            color: activity.strain == null ? g.gap : g.ink,
+          ),
+        ),
+        const SizedBox(width: 12),
+        OBChevron(size: 14, color: g.gap),
+      ],
+    ),
+  );
 }
