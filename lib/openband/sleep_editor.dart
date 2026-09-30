@@ -9,14 +9,27 @@ import 'controller.dart';
 import 'domain.dart';
 import 'theme.dart';
 import 'time.dart';
+import 'g3/chrome.dart' as g3_chrome;
+import 'g3/g3_theme.dart';
+
+double _windowScaleX(int minute, double width, {required bool g3}) {
+  final afterEightPm = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
+  return width * (afterEightPm / ((g3 ? 14 : 12) * 60)).clamp(0.0, 1.0);
+}
 
 class SleepEditor extends StatefulWidget {
   final OpenBandController controller;
   final VoidCallback? onReturnToOverview;
+  final bool g3;
+  final SleepCorrection? initialReceipt;
+  final String? initialSaveError;
   const SleepEditor({
     super.key,
     required this.controller,
     this.onReturnToOverview,
+    this.g3 = false,
+    this.initialReceipt,
+    this.initialSaveError,
   });
   @override
   State<SleepEditor> createState() => _SleepEditorState();
@@ -26,18 +39,18 @@ class _WindowScalePainter extends CustomPainter {
   final OB p;
   final DateTime start, end;
   final DateTime? originalStart, originalEnd;
+  final bool g3;
   const _WindowScalePainter({
     required this.p,
     required this.start,
     required this.end,
     required this.originalStart,
     required this.originalEnd,
+    this.g3 = false,
   });
 
   double _x(DateTime time, double width) {
-    final minute = time.hour * 60 + time.minute;
-    final afterEightPm = minute >= 20 * 60 ? minute - 20 * 60 : minute + 4 * 60;
-    return width * (afterEightPm / (12 * 60)).clamp(0.0, 1.0);
+    return _windowScaleX(time.hour * 60 + time.minute, width, g3: g3);
   }
 
   @override
@@ -91,10 +104,12 @@ class _WindowScalePainter extends CustomPainter {
           ..strokeWidth = 1.2,
       );
     }
-    final tick = Paint()..color = p.muted;
-    for (var i = 0; i <= 4; i++) {
-      final x = math.min(width - .5, math.max(.5, width * i / 4));
-      canvas.drawRect(Rect.fromLTWH(x, 43, 1, i.isEven ? 5 : 3), tick);
+    if (!g3) {
+      final tick = Paint()..color = p.muted;
+      for (var i = 0; i <= 4; i++) {
+        final x = math.min(width - .5, math.max(.5, width * i / 4));
+        canvas.drawRect(Rect.fromLTWH(x, 43, 1, i.isEven ? 5 : 3), tick);
+      }
     }
   }
 
@@ -103,8 +118,50 @@ class _WindowScalePainter extends CustomPainter {
       old.p != p ||
       old.start != start ||
       old.end != end ||
+      old.g3 != g3 ||
       old.originalStart != originalStart ||
       old.originalEnd != originalEnd;
+}
+
+class _G3WindowAxis extends StatelessWidget {
+  const _G3WindowAxis();
+
+  @override
+  Widget build(BuildContext context) {
+    final g = G3.of(context);
+    return LayoutBuilder(
+      builder: (context, box) => SizedBox(
+        height: 22,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (final hour in const [20, 0, 4, 8, 10])
+              Positioned(
+                left: _windowScaleX(hour * 60, box.maxWidth, g3: true) - 17,
+                width: 34,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      key: ValueKey('sleep-window-tick-$hour'),
+                      width: 1,
+                      height: 5,
+                      color: g.muted,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${hour.toString().padLeft(2, '0')}:00',
+                      textAlign: TextAlign.center,
+                      style: g.t(10, 14, color: g.muted),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _SleepEditorState extends State<SleepEditor> {
@@ -123,6 +180,7 @@ class _SleepEditorState extends State<SleepEditor> {
   @override
   void initState() {
     super.initState();
+    receipt = widget.initialReceipt;
     _load();
   }
 
@@ -150,7 +208,9 @@ class _SleepEditorState extends State<SleepEditor> {
             );
         startText.text = obTime(draft!.onset);
         endText.text = obTime(draft!.wake);
-        changed = stored != null;
+        changed = stored != null || widget.initialSaveError != null;
+        saveFailed = widget.initialSaveError != null;
+        error = widget.initialSaveError;
         loading = false;
       });
     } catch (_) {
@@ -435,42 +495,73 @@ class _SleepEditorState extends State<SleepEditor> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            OBPageHeader(
-                              title: title,
-                              backText: receipt == null
-                                  ? 'Abbrechen'
-                                  : 'Schlaf',
-                              subtitle: receipt == null
-                                  ? 'Nacht ${DateFormat('E', 'de_DE').format(draft!.onset)} → ${DateFormat('E', 'de_DE').format(draft!.wake)} ${DateFormat('dd.MM', 'de_DE').format(draft!.wake)}'
-                                  : obDate(day),
-                              onBack: _leave,
-                              onInfo: _showDetails,
-                              infoLabel: 'Zeitfenster und Auswertung',
-                            ),
-                            if (completed) _resultCard() else _windowCard(),
+                            if (widget.g3)
+                              g3_chrome.OBPageHeader.detail(
+                                title: 'SCHLAFZEITEN',
+                                subtitle:
+                                    'Nacht zu ${DateFormat('E dd.MM', 'de_DE').format(draft!.wake).replaceFirst('.', '')}',
+                                backLabel: receipt == null
+                                    ? 'Abbrechen'
+                                    : 'Schlaf',
+                                onBack: _leave,
+                                onTrailing: _showDetails,
+                              )
+                            else
+                              OBPageHeader(
+                                title: title,
+                                backText: receipt == null
+                                    ? 'Abbrechen'
+                                    : 'Schlaf',
+                                subtitle: receipt == null
+                                    ? 'Nacht ${DateFormat('E', 'de_DE').format(draft!.onset)} → ${DateFormat('E', 'de_DE').format(draft!.wake)} ${DateFormat('dd.MM', 'de_DE').format(draft!.wake)}'
+                                    : obDate(day),
+                                onBack: _leave,
+                                onInfo: _showDetails,
+                                infoLabel: 'Zeitfenster und Auswertung',
+                              ),
+                            if (completed)
+                              _resultCard()
+                            else if (widget.g3)
+                              _g3WindowCard()
+                            else
+                              _windowCard(),
                             const SizedBox(height: 12),
                             if (receipt == null) ...[
-                              Row(
-                                spacing: 10,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [_timeCard(true), _timeCard(false)],
-                              ),
+                              if (widget.g3)
+                                _g3TimePair()
+                              else
+                                Row(
+                                  spacing: 10,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [_timeCard(true), _timeCard(false)],
+                                ),
                               const SizedBox(height: 12),
                             ],
                             if (error != null) ...[
-                              Semantics(
-                                liveRegion: true,
-                                child: OBCard(
-                                  child: Text(
-                                    error!,
-                                    style: p.text(
-                                      14,
-                                      weight: FontWeight.w500,
-                                      color: p.danger,
+                              if (widget.g3 && saveFailed)
+                                g3_chrome.OBErrorBlock(
+                                  title: 'Nicht gespeichert',
+                                  reason:
+                                      'Die Zeiten ließen sich nicht speichern. Dein Entwurf ${obTime(draft!.onset)}–${obTime(draft!.wake)} bleibt hier.',
+                                  retryLabel: 'Erneut speichern',
+                                  onRetry: _save,
+                                  secondaryLabel: 'Details',
+                                  onSecondary: _showDetails,
+                                )
+                              else
+                                Semantics(
+                                  liveRegion: true,
+                                  child: OBCard(
+                                    child: Text(
+                                      error!,
+                                      style: p.text(
+                                        14,
+                                        weight: FontWeight.w500,
+                                        color: widget.g3 ? p.ink : p.danger,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
                               const SizedBox(height: 12),
                             ],
                             if (draftError != null && receipt == null) ...[
@@ -493,40 +584,54 @@ class _SleepEditorState extends State<SleepEditor> {
                               const SizedBox(height: 12),
                             ],
                             if (receipt == null) ...[
-                              OBCard.inset(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 6,
-                                ),
-                                child: TextButton(
-                                  onPressed: _showDetails,
-                                  style: TextButton.styleFrom(
-                                    padding: EdgeInsets.zero,
+                              if (!widget.g3) ...[
+                                OBCard.inset(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 6,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          'Zeitzone',
-                                          style: p.text(14, color: p.muted),
+                                  child: TextButton(
+                                    onPressed: _showDetails,
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            'Zeitzone',
+                                            style: p.text(14, color: p.muted),
+                                          ),
                                         ),
-                                      ),
-                                      Text(
-                                        draft!.recordingTimezone ??
-                                            'Nicht gespeichert',
-                                        style: p.text(13),
-                                      ),
-                                    ],
+                                        Text(
+                                          draft!.recordingTimezone ??
+                                              'Nicht gespeichert',
+                                          style: p.text(13),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 12),
+                                const SizedBox(height: 12),
+                              ],
                               Text(
                                 'Nach dem Speichern wird die Nacht neu ausgewertet. Die Rohdaten bleiben unverändert.',
                                 style: p.text(12, color: p.muted),
                               ),
                             ] else ...[
                               if (!completed) ...[
+                                if (widget.g3 &&
+                                    !failed &&
+                                    (widget.controller.calculating ||
+                                        widget.initialReceipt != null)) ...[
+                                  const g3_chrome.OBEmptyState(
+                                    icon: LucideIcons.refreshCw,
+                                    title: 'Wird neu ausgewertet',
+                                    reason:
+                                        'Phasen, Schlafschuld, Regelmäßigkeit',
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                                 Semantics(
                                   liveRegion: true,
                                   child: OBCard(
@@ -565,7 +670,18 @@ class _SleepEditorState extends State<SleepEditor> {
                                 ),
                                 const SizedBox(height: 12),
                               ],
-                              if (failed ||
+                              if (widget.g3 &&
+                                  !completed &&
+                                  !failed &&
+                                  (widget.controller.calculating ||
+                                      widget.initialReceipt != null)) ...[
+                                g3_chrome.OBActionPrimary(
+                                  'Wird ausgewertet …',
+                                  expand: true,
+                                  onPressed: null,
+                                ),
+                                const SizedBox(height: 12),
+                              ] else if (failed ||
                                   !completed &&
                                       !widget.controller.calculating) ...[
                                 OBAction(
@@ -593,6 +709,7 @@ class _SleepEditorState extends State<SleepEditor> {
                                             controller: widget.controller,
                                             onReturnToOverview:
                                                 widget.onReturnToOverview,
+                                            g3: widget.g3,
                                           ),
                                         ),
                                       ),
@@ -618,16 +735,21 @@ class _SleepEditorState extends State<SleepEditor> {
                                 ),
                                 const SizedBox(height: 8),
                               ],
-                              OBAction(
-                                'Zur Übersicht',
-                                secondary: true,
-                                onPressed: () {
-                                  widget.onReturnToOverview?.call();
-                                  Navigator.of(context).popUntil(
-                                    (route) => route.isFirst,
-                                  );
-                                },
-                              ),
+                              if (!widget.g3 ||
+                                  completed ||
+                                  failed ||
+                                  !widget.controller.calculating &&
+                                      widget.initialReceipt == null)
+                                OBAction(
+                                  'Zur Übersicht',
+                                  secondary: true,
+                                  onPressed: () {
+                                    widget.onReturnToOverview?.call();
+                                    Navigator.of(
+                                      context,
+                                    ).popUntil((route) => route.isFirst);
+                                  },
+                                ),
                             ],
                           ],
                         ),
@@ -641,19 +763,37 @@ class _SleepEditorState extends State<SleepEditor> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                OBAction(
-                                  busy
-                                      ? 'Wird gespeichert …'
-                                      : saveFailed
-                                      ? 'Erneut speichern'
-                                      : 'Schlafzeiten speichern',
-                                  onPressed: busy || !changed ? null : _save,
-                                ),
+                                if (widget.g3 && saveFailed)
+                                  const SizedBox.shrink()
+                                else if (widget.g3)
+                                  g3_chrome.OBActionPrimary(
+                                    busy
+                                        ? 'Wird gespeichert …'
+                                        : saveFailed
+                                        ? 'Erneut speichern'
+                                        : 'Speichern',
+                                    expand: true,
+                                    onPressed: busy || !changed ? null : _save,
+                                  )
+                                else
+                                  OBAction(
+                                    busy
+                                        ? 'Wird gespeichert …'
+                                        : saveFailed
+                                        ? 'Erneut speichern'
+                                        : 'Schlafzeiten speichern',
+                                    onPressed: busy || !changed ? null : _save,
+                                  ),
                                 TextButton(
                                   onPressed: busy || !changed ? null : _discard,
                                   child: Text(
-                                    'Änderung verwerfen',
-                                    style: p.text(13, color: p.muted),
+                                    saveFailed && widget.g3
+                                        ? 'Entwurf verwerfen'
+                                        : 'Änderung verwerfen',
+                                    style: p.text(
+                                      13,
+                                      color: widget.g3 ? p.ink : p.muted,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -739,6 +879,167 @@ class _SleepEditorState extends State<SleepEditor> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _g3WindowCard() {
+    final g = G3.of(context);
+    final bed = draft!.wake.difference(draft!.onset).inMinutes;
+    final previous = original.onset == null || original.wake == null
+        ? null
+        : original.wake!.difference(original.onset!).inMinutes;
+    final originalStart = original.onset == null
+        ? null
+        : recordedTime(original.onset!, original.recordingTimezone);
+    final originalEnd = original.wake == null
+        ? null
+        : recordedTime(original.wake!, original.recordingTimezone);
+    final windowChanged =
+        originalStart != null &&
+        originalEnd != null &&
+        (!draft!.onset.isAtSameMomentAs(originalStart) ||
+            !draft!.wake.isAtSameMomentAs(originalEnd));
+    DateTime? recordedStart, recordedEnd;
+    for (final segment in original.segments) {
+      if (segment.stage == null) continue;
+      if (recordedStart == null || segment.start.isBefore(recordedStart)) {
+        recordedStart = segment.start;
+      }
+      if (recordedEnd == null || segment.end.isAfter(recordedEnd)) {
+        recordedEnd = segment.end;
+      }
+    }
+    final recordedSpan = recordedStart == null || recordedEnd == null
+        ? '—'
+        : '${obTime(recordedTime(recordedStart, original.recordingTimezone))}–${obTime(recordedTime(recordedEnd, original.recordingTimezone))}';
+    return g3_chrome.OBPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('IM BETT', style: g.caps()),
+              const Spacer(),
+              Text(
+                '${obDuration(bed.toDouble())}${windowChanged ? ' · vorher ${obDuration(previous?.toDouble())}' : ''}',
+                style: g.t(13, 17, color: g.muted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          RepaintBoundary(
+            child: SizedBox(
+              key: const ValueKey('sleep-window-bar'),
+              height: 43,
+              child: CustomPaint(
+                painter: _WindowScalePainter(
+                  p: OB.of(context),
+                  start: draft!.onset,
+                  end: draft!.wake,
+                  originalStart: original.onset,
+                  originalEnd: original.wake,
+                  g3: true,
+                ),
+              ),
+            ),
+          ),
+          const _G3WindowAxis(),
+          const SizedBox(height: 12),
+          Text(
+            'Band hat aufgezeichnet $recordedSpan${windowChanged ? ' · vorher ${obTime(originalStart)}–${obTime(originalEnd)}' : ''}',
+            style: g.t(12, 16, color: g.ink2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _g3TimePair() {
+    final g = G3.of(context);
+    return g3_chrome.OBPanel(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _g3TimeControl(true)),
+          Container(width: 1, height: 106, color: g.line),
+          const SizedBox(width: 12),
+          Expanded(child: _g3TimeControl(false)),
+        ],
+      ),
+    );
+  }
+
+  Widget _g3TimeControl(bool start) {
+    final g = G3.of(context);
+    final value = start ? draft!.onset : draft!.wake;
+    final text = start ? startText : endText;
+    final enabled = receipt == null && !busy;
+    final weekday = DateFormat(
+      'E',
+      'de_DE',
+    ).format(value).replaceAll('.', '').toUpperCase();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: enabled ? () => _date(start) : null,
+          child: SizedBox(
+            height: 28,
+            child: Text(
+              '${start ? 'BEGINN' : 'ENDE'} · $weekday',
+              style: g.caps(color: g.muted),
+            ),
+          ),
+        ),
+        Semantics(
+          label: start ? 'Beginn der Nacht' : 'Ende der Nacht',
+          child: TextField(
+            key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
+            controller: text,
+            focusNode: start ? null : endFocus,
+            enabled: enabled,
+            keyboardType: TextInputType.datetime,
+            textInputAction: start
+                ? TextInputAction.next
+                : TextInputAction.done,
+            style: g.t(32, 38, weight: FontWeight.w700),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (_) => _update(),
+            onSubmitted: (_) {
+              _update();
+              if (start) {
+                endFocus.requestFocus();
+              } else {
+                FocusScope.of(context).unfocus();
+              }
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (final delta in const [-5, 5]) ...[
+              Expanded(
+                child: TextButton(
+                  onPressed: enabled ? () => _step(start, delta) : null,
+                  style: TextButton.styleFrom(
+                    backgroundColor: g.track,
+                    foregroundColor: g.ink,
+                    minimumSize: const Size.fromHeight(44),
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: Text(delta < 0 ? '− 5' : '+ 5'),
+                ),
+              ),
+              if (delta < 0) const SizedBox(width: 6),
+            ],
+          ],
+        ),
+      ],
     );
   }
 

@@ -374,6 +374,7 @@ class G3SleepPlus {
     this.goalMinutes,
     this.baselineOsdMinutes,
     this.appliedDebtMinutes,
+    this.needClamp,
     this.strainBonusMinutes,
     this.napCreditMinutes,
     this.napsJudged,
@@ -394,9 +395,13 @@ class G3SleepPlus {
   /// Stored OSD clamped to the coach's 7–9.5 h baseline interval.
   final double? baselineOsdMinutes;
 
-  /// Residual debt visible in the clamped need after stored strain and nap
-  /// adjustments. Null if the stored terms cannot reconcile honestly.
+  /// Positive raw debt when the stored terms reconcile within minute rounding,
+  /// or at a named need limit. Null for other inconsistent stored terms.
   final double? appliedDebtMinutes;
+
+  /// Named 6 h or 11 h limit when the stored applied terms do not sum to need.
+  /// The coach's actual clamp adjustment is not available in this snapshot.
+  final G3SleepNeedClamp? needClamp;
 
   /// Adjustments actually applied by the stored coach after its clamp.
   final double? strainBonusMinutes, napCreditMinutes;
@@ -406,6 +411,11 @@ class G3SleepPlus {
 
   /// Null until the stored plan snapshot carries this source value.
   final double? typicalEfficiency;
+}
+
+class G3SleepNeedClamp {
+  const G3SleepNeedClamp(this.limitMinutes);
+  final int limitMinutes;
 }
 
 enum G3CheckInKind { yesNo, quantity, rating, freeNote }

@@ -46,6 +46,45 @@ void main() {
         partial: partial,
       );
 
+  Future<G3SleepPlus> readCoachParts({
+    required double osdHours,
+    required double debtHours,
+    required double needMinutes,
+    required int strainBonus,
+    required int napCredit,
+  }) async {
+    await LocalDb.putBaseline(
+      'crossday',
+      jsonEncode({
+        'built_for_day': day,
+        'algo_version': kAlgoVersion,
+        'built_at_epoch':
+            DateTime(2026, 9, 27, 9, 38).millisecondsSinceEpoch ~/ 1000,
+        'sleep_debt': {
+          'value': {
+            'osd_hours': osdHours,
+            'debt_hours': debtHours,
+            'has_free_night': true,
+          },
+        },
+        'sleep_coach': {
+          'need': {
+            'value': {'need_sec': needMinutes * 60},
+          },
+          'bedtime': {
+            'value': {'bedtime_min_of_day': 23 * 60},
+          },
+          'wake': {
+            'value': {'wake_min_of_day': 7 * 60},
+          },
+          'strain_bonus_min': strainBonus,
+          'nap_credit_min': napCredit,
+        },
+      }),
+    );
+    return repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
+  }
+
   test(
     'stored trusted baseline is the only source of the personal band',
     () async {
@@ -372,6 +411,7 @@ void main() {
       expect(plus.needMinutes, isNull);
       expect(plus.baselineOsdMinutes, isNull);
       expect(plus.appliedDebtMinutes, isNull);
+      expect(plus.needClamp, isNull);
       expect(plus.napsJudged, isNull);
       expect(plus.typicalEfficiency, isNull);
       expect(plus.bedtime, isNull);
@@ -400,9 +440,9 @@ void main() {
       );
       await repo.answerCheckIn(day, 'alcohol_units', const G3QuantityAnswer(0));
       expect(
-        (await repo.readJournalDay('2026-09-26'))
-            .metrics['alcohol_units']
-            ?.value,
+        (await repo.readJournalDay(
+          '2026-09-26',
+        )).metrics['alcohol_units']?.value,
         0,
       );
       await repo.answerCheckIn(day, 'mood', const G3RatingAnswer(4));
@@ -681,6 +721,7 @@ void main() {
       expect(plus.needMinutes, 485);
       expect(plus.baselineOsdMinutes, closeTo(455, 1e-9));
       expect(plus.appliedDebtMinutes, isNull);
+      expect(plus.needClamp, isNull);
       expect(plus.strainBonusMinutes, 20);
       expect(plus.napCreditMinutes, isNull);
       expect(plus.napsJudged, isFalse);
@@ -774,7 +815,7 @@ void main() {
         'sleep_debt': {
           'value': {
             'osd_hours': 9.5,
-            'debt_hours': 2,
+            'debt_hours': 165 / 60,
             'has_free_night': true,
           },
         },
@@ -795,17 +836,15 @@ void main() {
     );
     plus = await repo.readSleepPlus(day, now: DateTime(2026, 9, 27, 12));
     expect(plus.needMinutes, 660);
-    expect(plus.sleepDebt.debtHours, 2); // Raw evidence remains available.
+    expect(plus.sleepDebt.debtHours, closeTo(165 / 60, 1e-9));
     expect(plus.baselineOsdMinutes, 570);
-    expect(plus.appliedDebtMinutes, 90);
-    expect(
-      plus.baselineOsdMinutes! + plus.appliedDebtMinutes! +
-          plus.strainBonusMinutes! - plus.napCreditMinutes!,
-      plus.needMinutes,
-    );
+    expect(plus.appliedDebtMinutes, 165);
+    expect(plus.needClamp?.limitMinutes, 660);
+    expect(plus.strainBonusMinutes, 0);
+    expect(plus.napCreditMinutes, 0);
 
-    // At the 6 h floor the independently applied strain/nap deltas cannot
-    // allocate the clamp to debt without overstating the stored 10 minutes.
+    // Raw strain 45 and nap 120 yield a 6 h floor. The coach stores their
+    // post-clamp applied deltas: strain 0 and nap 115.
     await LocalDb.putBaseline(
       'crossday',
       jsonEncode({
@@ -839,65 +878,123 @@ void main() {
     expect(plus.needMinutes, 360);
     expect(plus.baselineOsdMinutes, 420);
     expect(plus.sleepDebt.debtHours, closeTo(10 / 60, 1e-9));
+    expect(plus.appliedDebtMinutes, closeTo(10, 1e-9));
+    expect(plus.needClamp?.limitMinutes, 360);
+    expect(plus.strainBonusMinutes, 0);
+    expect(plus.napCreditMinutes, 115);
+  });
+
+  test('inconsistent need away from a clamp refuses inferred debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 10 / 60,
+      needMinutes: 425,
+      strainBonus: 0,
+      napCredit: 0,
+    );
     expect(plus.appliedDebtMinutes, isNull);
+    expect(plus.needClamp, isNull);
   });
 
-  test('check-in reads and writes yesterday’s caffeine on its journal day', () async {
-    const selected = '2026-03-30';
-    const previous = '2026-03-29';
-    await LocalDb.upsertJournalMetric(previous, 'caffeine_late', 1);
-    await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 0);
-
-    var checkIn = await repo.readCheckIn(selected);
-    expect((checkIn.questions[1].answer as G3YesNoAnswer).value, isTrue);
-    expect(checkIn.questions.map((q) => q.targetDay), [
-      previous,
-      previous,
-      selected,
-      previous,
-    ]);
-    expect(g3CheckInTargetDay('2026-03-30', 'custom_meditation'), selected);
-
-    await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 1);
-    await repo.answerCheckIn(
-      selected,
-      'caffeine_late',
-      const G3YesNoAnswer(false),
+  test('a need just off the 6 h limit is not labelled as the limit', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 10 / 60,
+      needMinutes: 360.4,
+      strainBonus: 0,
+      napCredit: 0,
     );
-    expect(
-      (await repo.readJournalDay(previous)).metrics['caffeine_late']?.value,
-      0,
-    );
-    expect(
-      (await repo.readJournalDay(selected)).metrics['caffeine_late']?.value,
-      1,
-    );
-    await repo.answerCheckIn(
-      selected,
-      'alcohol_evening',
-      const G3YesNoAnswer(true),
-    );
-    expect(
-      (await repo.readJournalDay(previous)).metrics['alcohol_evening']?.value,
-      1,
-    );
-    await repo.answerCheckIn(selected, 'alcohol_units', const G3QuantityAnswer(0));
-    expect(
-      (await repo.readJournalDay(previous)).metrics['alcohol_units']?.value,
-      0,
-    );
-    await repo.answerCheckIn(selected, 'mood', const G3RatingAnswer(4));
-    expect((await repo.readJournalDay(selected)).metrics['mood']?.value, 4);
-    await repo.answerCheckIn(
-      selected,
-      'journal_note',
-      const G3FreeNoteAnswer('Ruhig'),
-    );
-    expect((await repo.readJournalDay(previous)).note, 'Ruhig');
-    expect((await repo.readJournalDay(selected)).note, isEmpty);
-    checkIn = await repo.readCheckIn(selected);
-    expect(checkIn.answered, 4);
+    expect(plus.appliedDebtMinutes, isNull);
+    expect(plus.needClamp, isNull);
   });
+
+  test('whole-minute strain bonus does not erase zero debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 0,
+      needMinutes: 442.5,
+      strainBonus: 23,
+      napCredit: 0,
+    );
+    expect(plus.appliedDebtMinutes, 0);
+    expect(plus.needClamp, isNull);
+  });
+
+  test('sub-minute strain effect does not invent debt', () async {
+    final plus = await readCoachParts(
+      osdHours: 7,
+      debtHours: 0,
+      needMinutes: 420 + 1 / 7,
+      strainBonus: 0,
+      napCredit: 0,
+    );
+    expect(plus.appliedDebtMinutes, 0);
+    expect(plus.needClamp, isNull);
+  });
+
+  test(
+    'check-in reads and writes yesterday’s caffeine on its journal day',
+    () async {
+      const selected = '2026-03-30';
+      const previous = '2026-03-29';
+      await LocalDb.upsertJournalMetric(previous, 'caffeine_late', 1);
+      await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 0);
+
+      var checkIn = await repo.readCheckIn(selected);
+      expect((checkIn.questions[1].answer as G3YesNoAnswer).value, isTrue);
+      expect(checkIn.questions.map((q) => q.targetDay), [
+        previous,
+        previous,
+        selected,
+        previous,
+      ]);
+      expect(g3CheckInTargetDay('2026-03-30', 'custom_meditation'), selected);
+
+      await LocalDb.upsertJournalMetric(selected, 'caffeine_late', 1);
+      await repo.answerCheckIn(
+        selected,
+        'caffeine_late',
+        const G3YesNoAnswer(false),
+      );
+      expect(
+        (await repo.readJournalDay(previous)).metrics['caffeine_late']?.value,
+        0,
+      );
+      expect(
+        (await repo.readJournalDay(selected)).metrics['caffeine_late']?.value,
+        1,
+      );
+      await repo.answerCheckIn(
+        selected,
+        'alcohol_evening',
+        const G3YesNoAnswer(true),
+      );
+      expect(
+        (await repo.readJournalDay(previous)).metrics['alcohol_evening']?.value,
+        1,
+      );
+      await repo.answerCheckIn(
+        selected,
+        'alcohol_units',
+        const G3QuantityAnswer(0),
+      );
+      expect(
+        (await repo.readJournalDay(previous)).metrics['alcohol_units']?.value,
+        0,
+      );
+      await repo.answerCheckIn(selected, 'mood', const G3RatingAnswer(4));
+      expect((await repo.readJournalDay(selected)).metrics['mood']?.value, 4);
+      await repo.answerCheckIn(
+        selected,
+        'journal_note',
+        const G3FreeNoteAnswer('Ruhig'),
+      );
+      expect((await repo.readJournalDay(previous)).note, 'Ruhig');
+      expect((await repo.readJournalDay(selected)).note, isEmpty);
+      checkIn = await repo.readCheckIn(selected);
+      expect(checkIn.answered, 4);
+    },
+  );
 
   test('open live session keeps unknown end and duration absent', () async {
     final start = DateTime(2026, 9, 27, 7, 58).millisecondsSinceEpoch ~/ 1000;

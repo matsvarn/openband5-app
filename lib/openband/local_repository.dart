@@ -43,9 +43,11 @@ import 'time.dart';
   }
   final points = <G3HrPoint>[
     if (endSec > startSec)
-      for (var t = (startSec ~/ 60) * 60;
-          t <= ((endSec - 1) ~/ 60) * 60;
-          t += 60)
+      for (
+        var t = (startSec ~/ 60) * 60;
+        t <= ((endSec - 1) ~/ 60) * 60;
+        t += 60
+      )
         G3HrPoint(DateTime.fromMillisecondsSinceEpoch(t * 1000), values[t]),
   ];
   final signalGaps = <G3SignalGap>[];
@@ -54,17 +56,25 @@ import 'time.dart';
       if (item is! Map || item['start'] is! num || item['end'] is! num) {
         continue;
       }
-      signalGaps.add(G3SignalGap(
-        DateTime.fromMillisecondsSinceEpoch((item['start'] as num).toInt() * 1000),
-        DateTime.fromMillisecondsSinceEpoch((item['end'] as num).toInt() * 1000),
-      ));
+      signalGaps.add(
+        G3SignalGap(
+          DateTime.fromMillisecondsSinceEpoch(
+            (item['start'] as num).toInt() * 1000,
+          ),
+          DateTime.fromMillisecondsSinceEpoch(
+            (item['end'] as num).toInt() * 1000,
+          ),
+        ),
+      );
     }
   }
   if (values.isEmpty && signalGaps.isEmpty && endSec > startSec) {
-    signalGaps.add(G3SignalGap(
-      DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
-      DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
-    ));
+    signalGaps.add(
+      G3SignalGap(
+        DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+        DateTime.fromMillisecondsSinceEpoch(endSec * 1000),
+      ),
+    );
   }
   return (points: points, gaps: signalGaps);
 }
@@ -117,13 +127,13 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Future<void> Function(CycleSettings)? cycleSettingsSave,
     Future<void> Function()? cycleContextRefresh,
     DateTime Function()? diagnosticsNow,
-  })  : _measurementImporter = measurementImporter,
-        _glucoseRefresh = glucoseRefresh,
-        _reminderRefresh = reminderRefresh,
-        _cycleSettingsRead = cycleSettingsRead,
-        _cycleSettingsSave = cycleSettingsSave,
-        _cycleContextRefresh = cycleContextRefresh,
-        _diagnosticsNow = diagnosticsNow ?? DateTime.now;
+  }) : _measurementImporter = measurementImporter,
+       _glucoseRefresh = glucoseRefresh,
+       _reminderRefresh = reminderRefresh,
+       _cycleSettingsRead = cycleSettingsRead,
+       _cycleSettingsSave = cycleSettingsSave,
+       _cycleContextRefresh = cycleContextRefresh,
+       _diagnosticsNow = diagnosticsNow ?? DateTime.now;
 
   final AppState app;
   final ImportedMeasurementImporter? _measurementImporter;
@@ -567,9 +577,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   Future<({List<G3HrPoint> points, List<G3SignalGap> gaps})> _g3HrTrace(
     int startSec,
-    int endSec,
-    {String? frozenTrace}
-  ) async {
+    int endSec, {
+    String? frozenTrace,
+  }) async {
     if (frozenTrace != null) {
       final frozen = await Isolate.run(
         () => _g3ProjectFrozenTrace(frozenTrace, startSec, endSec),
@@ -707,6 +717,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final raw = data?[key];
       return raw is num && raw.isFinite ? raw.toDouble() : null;
     }
+
     final hasFreeNight = data?['has_free_night'];
     final observed = hasFreeNight == true;
     return G3SleepDebt(
@@ -777,11 +788,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         artifact['built_for_day'] == day &&
         artifact['algo_version'] == kAlgoVersion;
     final source = current ? artifact : null;
-    final regularity = _crossdayValue(
-      source,
-      'regularity',
-      'sri',
-    );
+    final regularity = _crossdayValue(source, 'regularity', 'sri');
     final sriDays = (_at(source, 'regularity.value.days') as num?)?.toInt();
     final gatedRegularity = source?['regularity'] is! Map
         ? const G3AvailableValue(null)
@@ -791,11 +798,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
             null,
             gate: (source!['regularity'] as Map)['note'] as String?,
           );
-    final social = _crossdayValue(
-      source,
-      'social_jetlag',
-      'abs_hours',
-    );
+    final social = _crossdayValue(source, 'social_jetlag', 'abs_hours');
     final debt = _g3SleepDebt(source);
     final plan = await readSleepPlan(day, now: clock);
     final available =
@@ -830,19 +833,31 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final strainBonus = planned?.strainBonusMin;
     final napCredit = planned?.napCreditMin;
     double? appliedDebtMinutes;
+    G3SleepNeedClamp? needClamp;
     if (needMinutes != null &&
         baselineOsdMinutes != null &&
         debtHours != null &&
         strainBonus != null &&
         napCredit != null) {
-      // The coach stores applied strain/nap deltas but raw debt. Its final
-      // 6–11 h clamp can absorb part of debt, so project only the residual
-      // that reconciles with the published need. Refuse inconsistent inputs.
+      // Strain and nap adjustments are the coach's rounded post-clamp deltas.
+      // They cannot reveal how many minutes the coach's limit changed the need.
       final residual =
           needMinutes - baselineOsdMinutes - strainBonus + napCredit;
       final rawPositiveDebt = debtHours < 0 ? 0.0 : debtHours * 60;
-      if (residual >= -1e-6 && residual <= rawPositiveDebt + 1e-6) {
-        appliedDebtMinutes = residual < 0 ? 0 : residual;
+      final visibleSum =
+          baselineOsdMinutes + rawPositiveDebt + strainBonus - napCredit;
+      const rounding = 0.500001;
+      // A coach clamp stores exactly 6 h or 11 h; only the reconciliation
+      // above tolerates the coach's whole-minute rounding.
+      const limitTolerance = 1e-6;
+      if ((needMinutes - visibleSum).abs() <= rounding) {
+        appliedDebtMinutes = residual.clamp(0.0, rawPositiveDebt).toDouble();
+      } else if ((needMinutes - 360).abs() <= limitTolerance) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = const G3SleepNeedClamp(360);
+      } else if ((needMinutes - 660).abs() <= limitTolerance) {
+        appliedDebtMinutes = rawPositiveDebt;
+        needClamp = const G3SleepNeedClamp(660);
       }
     }
     return G3SleepPlus(
@@ -857,6 +872,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       goalMinutes: goal?.toDouble(),
       baselineOsdMinutes: baselineOsdMinutes,
       appliedDebtMinutes: appliedDebtMinutes,
+      needClamp: needClamp,
       strainBonusMinutes: planned?.strainBonusMin,
       napCreditMinutes: planned?.napCreditMin,
       napsJudged: planned == null ? null : planned.napCreditMin != null,
@@ -906,9 +922,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   Future<G3JournalPattern> readJournalPattern(
     String endDay,
     int nights,
-  ) async => G3JournalPattern(
-    await readCaffeineSleepPattern(endDay, nights),
-  );
+  ) async => G3JournalPattern(await readCaffeineSleepPattern(endDay, nights));
 
   @override
   Future<G3Weight> readG3Weight(String endDay, int days) async {
@@ -924,20 +938,26 @@ class LocalOpenBandRepository implements OpenBandRepository {
       whereArgs: ['weight_kg', 'kg', start, end],
       orderBy: 'ts DESC',
     );
-    return G3Weight(history, {
-      for (final entry in history.entries) entry.day: G3WeightSource.manual,
-    }, imported: [
-      for (final row in rows)
-        if (row['uuid'] is String && row['ts'] is num && row['value'] is num && row['source'] is String)
-          G3ImportedWeight(
-            row['uuid'] as String,
-            DateTime.fromMillisecondsSinceEpoch((row['ts'] as num).toInt() * 1000),
-            (row['value'] as num).toDouble(),
-            row['source'] as String,
-          ),
-    ]);
+    return G3Weight(
+      history,
+      {for (final entry in history.entries) entry.day: G3WeightSource.manual},
+      imported: [
+        for (final row in rows)
+          if (row['uuid'] is String &&
+              row['ts'] is num &&
+              row['value'] is num &&
+              row['source'] is String)
+            G3ImportedWeight(
+              row['uuid'] as String,
+              DateTime.fromMillisecondsSinceEpoch(
+                (row['ts'] as num).toInt() * 1000,
+              ),
+              (row['value'] as num).toDouble(),
+              row['source'] as String,
+            ),
+      ],
+    );
   }
-
 
   @override
   Future<NightSignals> readNightSignals(String day) async {
@@ -1409,9 +1429,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     Map<String, dynamic>? correctionRow;
     if (snapshot.sleep.isNotEmpty) {
       correctionRow = Map<String, dynamic>.from(snapshot.sleep.first);
-      recordingTimezone = nightScalarLabel(
-        correctionRow['recording_timezone'],
-      );
+      recordingTimezone = nightScalarLabel(correctionRow['recording_timezone']);
     }
 
     return OpenBandDay(
@@ -1727,13 +1745,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
     final decoded = jsonDecode(raw);
     if (decoded is! Map) {
-      throw const FormatException('Exercise definition snapshot is unreadable.');
+      throw const FormatException(
+        'Exercise definition snapshot is unreadable.',
+      );
     }
     final snap = ExerciseDefinitionSnapshot.fromJson(
       Map<String, dynamic>.from(decoded),
     );
     if (snap.id != exerciseKey) {
-      throw const FormatException('Exercise definition snapshot is unreadable.');
+      throw const FormatException(
+        'Exercise definition snapshot is unreadable.',
+      );
     }
     return snap;
   }
@@ -1906,7 +1928,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }) async {
     _requireDay(endDay);
     if (days < 1) {
-      throw ArgumentError.value(days, 'days', 'Window length must be at least 1.');
+      throw ArgumentError.value(
+        days,
+        'days',
+        'Window length must be at least 1.',
+      );
     }
     final labels = openBandDaysEnding(endDay, days);
     final db = await LocalDb.instance;
@@ -1940,7 +1966,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
     FoodEntry next,
   ) async {
     if (next.id != expected.id) {
-      throw ArgumentError.value(next.id, 'id', 'Edited snapshot id must match.');
+      throw ArgumentError.value(
+        next.id,
+        'id',
+        'Edited snapshot id must match.',
+      );
     }
     requireFoodEntryWrite(next);
     final result = await LocalDb.saveOpenBandFoodEntryIfUnchanged(
@@ -2020,9 +2050,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'draft_id': draft.id,
         'day_id': draft.day,
         'meal': draft.meal,
-        'entries_json': jsonEncode([
-          for (final e in draft.entries) e.toJson(),
-        ]),
+        'entries_json': jsonEncode([for (final e in draft.entries) e.toJson()]),
         'updated_at': DateTime.now().millisecondsSinceEpoch,
       },
       expected: expected == null
@@ -2107,9 +2135,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
               final m => m * 60,
             }
           : endTs - startTs,
-      avgHr: (workout?['avg_hr'] as num?)?.toDouble() ??
+      avgHr:
+          (workout?['avg_hr'] as num?)?.toDouble() ??
           (row['avg_hr'] as num?)?.toDouble(),
-      maxHr: (workout?['max_hr'] as num?)?.toInt() ??
+      maxHr:
+          (workout?['max_hr'] as num?)?.toInt() ??
           (row['max_hr'] as num?)?.toInt(),
       strain: (row['strain'] as num?)?.toDouble(),
       kcal: (row['calories'] as num?)?.toDouble(),
@@ -2367,11 +2397,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final pairedJournal = <Map<String, Object>>[
       for (var i = 0; i + 1 < days.length; i++)
         if (outcomes[i + 1] != null)
-        if (caffeineByDay[days[i]] case final v?)
-          {
-            'date': days[i],
-            'values': {CaffeineSleepPattern.field: v},
-          },
+          if (caffeineByDay[days[i]] case final v?)
+            {
+              'date': days[i],
+              'values': {CaffeineSleepPattern.field: v},
+            },
     ];
 
     if (pairedJournal.isEmpty || availableOutcomes == 0) {
@@ -2618,8 +2648,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'ORDER BY algo_version DESC LIMIT 1',
         [day, kAlgoVersion],
       );
-      final selectedMap =
-          selectedRows.isEmpty ? null : Map<String, Object?>.from(selectedRows.first);
+      final selectedMap = selectedRows.isEmpty
+          ? null
+          : Map<String, Object?>.from(selectedRows.first);
       Map<String, Object?>? selectedProjected;
       if (selectedMap != null) {
         final selectedRaw = selectedMap['payload_json'];
@@ -2631,8 +2662,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
           ),
         );
         final first = projected.first;
-        selectedProjected =
-            first == null ? null : Map<String, Object?>.from(first);
+        selectedProjected = first == null
+            ? null
+            : Map<String, Object?>.from(first);
         selectedMap.remove('payload_json');
       }
       final selectedAlgo = (selectedMap?['algo_version'] as num?)?.toInt();
@@ -2661,17 +2693,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
         if (batch.isEmpty) break;
         final rawPayloads = [for (final r in batch) r['payload_json']];
         final payloads = await Isolate.run(
-          () => projectNightScalarPayloads(
-            rawPayloads,
-            baselineRoot,
-            scalarKey,
-          ),
+          () =>
+              projectNightScalarPayloads(rawPayloads, baselineRoot, scalarKey),
         );
         for (var i = 0; i < batch.length; i++) {
           final r = Map<String, Object?>.from(batch[i])..remove('payload_json');
           final projected = i < payloads.length ? payloads[i] : null;
-          r['projected'] =
-              projected == null ? null : Map<String, Object?>.from(projected);
+          r['projected'] = projected == null
+              ? null
+              : Map<String, Object?>.from(projected);
           matchingRows.add(r);
         }
         offset += batch.length;
@@ -2744,7 +2774,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
         source: valid ? nightScalarLabel(projected['source']) : null,
         rowSource: nightScalarLabel(r['source']),
         sleepSource: valid ? nightScalarLabel(projected['sleep_source']) : null,
-        deviceFamily: valid ? nightScalarLabel(projected['device_family']) : null,
+        deviceFamily: valid
+            ? nightScalarLabel(projected['device_family'])
+            : null,
         baseline: valid
             ? nightScalarBaseline(
                 value: projected['baseline_value'],
@@ -2763,7 +2795,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
 
-    Object? selectedScalar(Map<String, Object?> r, Map<String, Object?>? projected) {
+    Object? selectedScalar(
+      Map<String, Object?> r,
+      Map<String, Object?>? projected,
+    ) {
       if (sqlColumn != null) return r[sqlColumn];
       return projected?['scalar'];
     }
@@ -2783,10 +2818,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         if (r['day_id'] is String)
           r['day_id'] as String: rowFrom(
             r,
-            scalar: selectedScalar(
-              r,
-              r['projected'] as Map<String, Object?>?,
-            ),
+            scalar: selectedScalar(r, r['projected'] as Map<String, Object?>?),
             projected: r['projected'] as Map<String, Object?>?,
           ),
     };
@@ -3131,15 +3163,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
         }
       }
       final window = sleepPlanContributingDays(artifact, planDay: today);
-      final observations = await _sleepPlanObservations(txn, window ?? const []);
+      final observations = await _sleepPlanObservations(
+        txn,
+        window ?? const [],
+      );
       final fetchDays = [
         for (final row in observations)
           if (row.inFetchWindow) row.day,
       ];
-      final sleepDays = <String>{
-        ...?window,
-        ...fetchDays,
-      }.toList();
+      final sleepDays = <String>{...?window, ...fetchDays}.toList();
       final jobs = await _sleepPlanJobs(
         txn,
         sleepDays: sleepDays,
@@ -3166,7 +3198,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result '
         'WHERE algo_version <= ? GROUP BY day_id) m '
         'ON r.day_id = m.day_id AND r.algo_version = m.v';
-    const columns = 'SELECT r.day_id, r.computed_at, r.skipped FROM day_result r ';
+    const columns =
+        'SELECT r.day_id, r.computed_at, r.skipped FROM day_result r ';
     final fetch = await txn.rawQuery(
       '$columns $servedJoin ORDER BY r.day_id DESC LIMIT ?',
       [kAlgoVersion, kSleepPlanProducerFetchLimit],
@@ -4256,8 +4289,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       now: now,
     );
     try {
-      final snapshot =
-          await (_glucoseRefresh ?? () => readGlucose(limit: 1))();
+      final snapshot = await (_glucoseRefresh ?? () => readGlucose(limit: 1))();
       return GlucoseImportResult(outcome: outcome, snapshot: snapshot);
     } catch (_) {
       return GlucoseImportResult(outcome: outcome, refreshFailed: true);
@@ -4310,12 +4342,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       throw ArgumentError.value(toDay, 'toDay', 'Invalid calendar day.');
     }
     final db = await LocalDb.instance;
-    return MedDb.readHistory(
-      db,
-      fromDay,
-      toDay,
-      now: now ?? DateTime.now(),
-    );
+    return MedDb.readHistory(db, fromDay, toDay, now: now ?? DateTime.now());
   }
 
   @override
@@ -4372,12 +4399,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
     final at = now ?? DateTime.now();
     final db = await LocalDb.instance;
-    final plan = await MedDb.setActive(
-      db,
-      trimmed,
-      active: active,
-      now: at,
-    );
+    final plan = await MedDb.setActive(db, trimmed, active: active, now: at);
     return _medicationWriteResult(plan: plan);
   }
 
@@ -4743,7 +4765,8 @@ GlucoseSnapshot _glucoseSnapshotFromRead(
     final latest = row == null ? null : glucoseReadingFromStored(row);
     if (row != null && latest == null) markUnread(row);
     byKey[g.key] = GlucoseSourceInventoryItem(
-      source: latest?.source ??
+      source:
+          latest?.source ??
           glucoseSourceFromStored(sourceKey: g.key, sourceName: ''),
       excluded: excluded.contains(g.key),
       lastMeasuredAt: latest?.measuredAt,
@@ -4802,7 +4825,7 @@ GlucoseSnapshot _glucoseSnapshotFromRead(
     selected: selectedKey == null
         ? null
         : (byKey[selectedKey]?.source ??
-            glucoseSourceFromStored(sourceKey: selectedKey, sourceName: '')),
+              glucoseSourceFromStored(sourceKey: selectedKey, sourceName: '')),
     selectedKey: selectedKey,
     selectedExcluded: selectedExcluded,
     truncated: read.historyTruncated,
@@ -4817,14 +4840,11 @@ const int kCycleNightPayloadBatchSize = 32;
 
 bool _cycleMediansNeedsNightRows(CycleMediansSnapshot snap) {
   return switch (snap.reason) {
-    CycleMediansReason.available ||
-    CycleMediansReason.insufficientDays =>
-      true,
+    CycleMediansReason.available || CycleMediansReason.insufficientDays => true,
     CycleMediansReason.trackingDisabled ||
     CycleMediansReason.emptyStarts ||
     CycleMediansReason.unreadableStarts ||
-    CycleMediansReason.longPeriods =>
-      false,
+    CycleMediansReason.longPeriods => false,
   };
 }
 
@@ -4873,13 +4893,7 @@ Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
   while (true) {
     final dayRows = await txn.query(
       'day_result',
-      columns: [
-        'day_id',
-        'skipped',
-        'partial',
-        'payload_json',
-        'computed_at',
-      ],
+      columns: ['day_id', 'skipped', 'partial', 'payload_json', 'computed_at'],
       where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
       whereArgs: [startDay, endDay, kAlgoVersion],
       orderBy: 'day_id ASC',
@@ -4899,8 +4913,9 @@ Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
       if (date is! String) continue;
       final payload = i < payloads.length ? payloads[i] : null;
       final correction = correctionRowsByDay[date];
-      final published =
-          correction != null && !blockedJob.contains(date) ? correction : null;
+      final published = correction != null && !blockedJob.contains(date)
+          ? correction
+          : null;
       rows.add(
         CycleNightSourceRow(
           day: date,
@@ -4911,8 +4926,8 @@ Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
           payloadUnreadable: payload == null,
           jobBlocked: blockedJob.contains(date),
           computedAtMs: (r['computed_at'] as num?)?.toInt(),
-          resultComputedAtMs:
-              (published?['result_computed_at'] as num?)?.toInt(),
+          resultComputedAtMs: (published?['result_computed_at'] as num?)
+              ?.toInt(),
           correctionAction: published?['action']?.toString(),
           correctionOnsetMs: (published?['onset_ms'] as num?)?.toInt(),
           correctionWakeMs: (published?['wake_ms'] as num?)?.toInt(),
