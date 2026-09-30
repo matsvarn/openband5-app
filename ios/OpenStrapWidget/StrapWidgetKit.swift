@@ -123,6 +123,17 @@ enum SW {
   struct Snapshot {
     let hasData: Bool
     let updatedAt: Int          // epoch sec of the last push, 0 = unknown
+    let g3SnapshotPresent: Bool
+    let g3HasSnapshot: Bool
+    let neverConnected: Bool
+    let sampleAt: Int
+    let recoveryValue: Int
+    let recoveryLow: Double, recoveryHigh: Double, recoveryMedian: Double
+    let baselineHave: Int, baselineNeed: Int
+    let sleepMinutes: Int, sleepGoalMinutes: Int
+    let strainValue: Double
+    let batteryPercent: Int
+    let batteryAt: Int
     let tier: Int               // -1 not scored · 0 rest · 1 easy · 2 steady · 3 good
     let recovery, strain, sleep: RingData
     let hrv, hrvBaseline, rhr, efficiency: Int  // -1 = none
@@ -140,7 +151,15 @@ enum SW {
     }
 
     static let placeholder = Snapshot(
-      hasData: true, updatedAt: Int(Date().timeIntervalSince1970), tier: 3,
+      hasData: true, updatedAt: Int(Date().timeIntervalSince1970),
+      g3SnapshotPresent: true, g3HasSnapshot: true, neverConnected: false,
+      sampleAt: Int(Date().timeIntervalSince1970), recoveryValue: 74,
+      recoveryLow: 58, recoveryHigh: 80, recoveryMedian: 68,
+      baselineHave: -1, baselineNeed: -1,
+      sleepMinutes: 438, sleepGoalMinutes: 465, strainValue: 9.4,
+      batteryPercent: 64,
+      batteryAt: Int(Date().timeIntervalSince1970),
+      tier: 3,
       recovery: RingData(state: 0, value: "72", sub: "Good to go", why: "", frac: 0.72),
       strain: RingData(state: 0, value: "12.4", sub: "of 21", why: "", frac: 12.4 / 21),
       sleep: RingData(state: 0, value: "7h 17m", sub: "of 7h 45m", why: "", frac: 437.0 / 465),
@@ -159,10 +178,23 @@ enum SW {
 
   static func read() -> Snapshot {
     let d = UserDefaults(suiteName: appGroup)
+    let g3SnapshotFlag = d?.object(forKey: "g3_has_snapshot")
     func i(_ k: String) -> Int { d?.object(forKey: k) as? Int ?? -1 }
     return Snapshot(
       hasData: d?.bool(forKey: "has_data") ?? false,
       updatedAt: d?.object(forKey: "updated_at") as? Int ?? 0,
+      g3SnapshotPresent: g3SnapshotFlag != nil,
+      g3HasSnapshot: g3SnapshotFlag as? Bool ?? false,
+      neverConnected: d?.bool(forKey: "g3_never_connected") ?? false,
+      sampleAt: i("g3_sample_at"), recoveryValue: i("readiness"),
+      recoveryLow: d?.object(forKey: "g3_recovery_low") as? Double ?? -1,
+      recoveryHigh: d?.object(forKey: "g3_recovery_high") as? Double ?? -1,
+      recoveryMedian: d?.object(forKey: "g3_recovery_median") as? Double ?? -1,
+      baselineHave: i("g3_baseline_have"), baselineNeed: i("g3_baseline_need"),
+      sleepMinutes: i("sleep_min"), sleepGoalMinutes: i("g3_sleep_goal_min"),
+      strainValue: d?.object(forKey: "strain") as? Double ?? -1,
+      batteryPercent: i("batt_pct"),
+      batteryAt: i("batt_at"),
       tier: i("readiness_tier"),
       recovery: ring(d, "recovery"), strain: ring(d, "strain"), sleep: ring(d, "sleep"),
       hrv: i("hrv"), hrvBaseline: i("hrv_baseline"), rhr: i("rhr"),
@@ -184,6 +216,18 @@ enum SW {
     return date.timeIntervalSince1970 - Double(s.updatedAt) <= staleAfter
   }
 
+  static func stale(_ s: Snapshot, at date: Date) -> Bool {
+    guard s.sampleAt > 0 else { return true }
+    return !Calendar.current.isDate(Date(timeIntervalSince1970: Double(s.sampleAt)), inSameDayAs: date)
+  }
+
+  static func dataUntil(_ s: Snapshot, at date: Date) -> String {
+    guard s.sampleAt > 0 else { return "Daten bis —" }
+    let sample = Date(timeIntervalSince1970: Double(s.sampleAt))
+    let time = sample.formatted(date: .omitted, time: .shortened)
+    return stale(s, at: date) ? "Daten bis gestern \(time)" : "Daten bis \(time)"
+  }
+
   /// The instant [s] stops being today's answer, or nil if it already is not.
   static func stalenessDeadline(_ s: Snapshot, after date: Date) -> Date? {
     guard s.hasData, s.updatedAt > 0 else { return nil }
@@ -199,6 +243,11 @@ enum SW {
   ) -> Timeline<E> {
     var entries = [make(now)]
     if let deadline = stalenessDeadline(s, after: now) { entries.append(make(deadline)) }
+    if let midnight = Calendar.current.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0),
+                                                matchingPolicy: .nextTime) {
+      entries.append(make(midnight))
+    }
+    entries.sort { $0.date < $1.date }
     let next = Calendar.current.date(byAdding: .hour, value: 1, to: now)
       ?? now.addingTimeInterval(3600)
     return Timeline(entries: entries, policy: .after(next))

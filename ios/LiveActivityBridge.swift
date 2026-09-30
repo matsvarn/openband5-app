@@ -15,20 +15,21 @@ import ActivityKit
 @available(iOS 16.1, *)
 struct OpenStrapWidgetAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
-    var hr: Int
-    var zone: Int
-    // Optional because unmeasured is not zero. A profile without the anchors
-    // Keytel and Banister read cannot be scored at all, and the in-app gauge
-    // shows "—" for exactly that case; these used to arrive coerced to 0, so
-    // the lock screen claimed a real 0.0 strain / 0 kcal instead.
+    // Optional additions decode as nil in an activity started by the old app.
+    var hr: Int?
+    var hrSampleAt: Date?
+    var signal: String?
+    var zone: Int?
+    var zoneLowPct: Double?
+    var zoneHighPct: Double?
+    var zoneBasis: String?
+    var zoneBasisBpm: Int?
+    var elapsedSeconds: Int?
+    var paused: Bool?
     var strain: Double?
-    var calories: Int?
-    var maxHr: Int
-    var rhr: Int
   }
   var sessionName: String
   var startedAt: Date
-  var targetKcal: Int
 }
 
 enum LiveActivityBridge {
@@ -48,14 +49,6 @@ enum LiveActivityBridge {
     }
   }
 
-  private static func i(_ a: [String: Any], _ k: String, _ d: Int = 0) -> Int {
-    (a[k] as? NSNumber)?.intValue ?? d
-  }
-  private static func dbl(_ a: [String: Any], _ k: String, _ d: Double = 0) -> Double {
-    (a[k] as? NSNumber)?.doubleValue ?? d
-  }
-  // Absent-preserving reads. Dart sends null for a figure it refuses to
-  // fabricate; substituting a default here would put the fabrication back.
   private static func iOpt(_ a: [String: Any], _ k: String) -> Int? {
     (a[k] as? NSNumber)?.intValue
   }
@@ -65,8 +58,25 @@ enum LiveActivityBridge {
 
   @available(iOS 16.2, *)
   private static func state(_ a: [String: Any]) -> OpenStrapWidgetAttributes.ContentState {
-    .init(hr: i(a, "hr"), zone: i(a, "zone"), strain: dblOpt(a, "strain"),
-          calories: iOpt(a, "calories"), maxHr: i(a, "maxHr", 190), rhr: i(a, "rhr", 60))
+    .init(
+      hr: iOpt(a, "hr"),
+      hrSampleAt: iOpt(a, "hrSampleAtMs").map { Date(timeIntervalSince1970: Double($0) / 1000) },
+      signal: a["signal"] as? String,
+      zone: iOpt(a, "zone"),
+      zoneLowPct: dblOpt(a, "zoneLowPct"),
+      zoneHighPct: dblOpt(a, "zoneHighPct"),
+      zoneBasis: a["zoneBasis"] as? String,
+      zoneBasisBpm: iOpt(a, "zoneBasisBpm"),
+      elapsedSeconds: iOpt(a, "elapsedSeconds"),
+      paused: (a["paused"] as? NSNumber)?.boolValue,
+      strain: dblOpt(a, "strain"))
+  }
+
+  @available(iOS 16.2, *)
+  private static func content(_ a: [String: Any]) -> ActivityContent<OpenStrapWidgetAttributes.ContentState> {
+    let value = state(a)
+    let staleDate = value.signal == "live" ? value.hrSampleAt?.addingTimeInterval(5) : nil
+    return ActivityContent(state: value, staleDate: staleDate)
   }
 
   @available(iOS 16.2, *)
@@ -78,12 +88,11 @@ enum LiveActivityBridge {
     }
     let attrs = OpenStrapWidgetAttributes(
       sessionName: a["name"] as? String ?? "Live session",
-      startedAt: Date(timeIntervalSince1970: dbl(a, "startedAtMs") / 1000.0),
-      targetKcal: i(a, "targetKcal", 300))
+      startedAt: Date(timeIntervalSince1970: Double(iOpt(a, "startedAtMs") ?? 0) / 1000))
     do {
       _ = try Activity.request(
         attributes: attrs,
-        content: .init(state: state(a), staleDate: nil))
+        content: content(a))
     } catch {
       NSLog("LiveActivity start failed: \(error)")
     }
@@ -91,7 +100,7 @@ enum LiveActivityBridge {
 
   @available(iOS 16.2, *)
   private static func update(_ a: [String: Any]) {
-    let content = ActivityContent(state: state(a), staleDate: nil)
+    let content = content(a)
     for act in Activity<OpenStrapWidgetAttributes>.activities {
       Task { await act.update(content) }
     }

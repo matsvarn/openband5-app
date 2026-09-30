@@ -149,6 +149,11 @@ struct BatteryProvider: TimelineProvider {
     let entry = BatteryStore.read().at(now)
     var entries = [entry]
     if let deadline = entry.stalenessDeadline { entries.append(entry.at(deadline)) }
+    if let midnight = Calendar.current.nextDate(after: now,
+        matching: DateComponents(hour: 0, minute: 0), matchingPolicy: .nextTime) {
+      entries.append(entry.at(midnight))
+    }
+    entries.sort { $0.date < $1.date }
     let next = Calendar.current.date(byAdding: .minute, value: 30, to: now)
       ?? now.addingTimeInterval(1800)
     completion(Timeline(entries: entries, policy: .after(next)))
@@ -264,13 +269,18 @@ private extension View {
 struct OpenStrapBatteryEntryView: View {
   @Environment(\.widgetFamily) var family
   var entry: BatteryEntry
+  private var inlineStale: Bool {
+    let snap = SW.read()
+    let state = G3Widget.status(snap, entry.date)
+    return family == .accessoryInline && (state == .stale || state == .missing)
+  }
 
   var body: some View {
     // The staleness mute used to be applied only inside BatterySmallView, so a
     // lock-screen complication showed a week-old percentage at full strength.
     // It belongs here, above every family.
     content
-      .opacity(entry.stale ? 0.5 : 1)
+      .opacity(entry.stale || inlineStale ? 0.5 : 1)
       .battWidgetBackground(family == .systemSmall ? Color.battPaper : Color.clear)
   }
 
@@ -280,11 +290,9 @@ struct OpenStrapBatteryEntryView: View {
     case .accessoryCircular:    BatteryCircularView(e: entry)
     case .accessoryRectangular: BatteryRectangularView(e: entry)
     case .accessoryInline:
-      Label(
-        entry.hasData
-          ? "\(entry.name) \(entry.pct)%\(entry.stale ? " · last known" : "")"
-          : "\(entry.name) not connected",
-        systemImage: entry.symbol)
+      let snap = SW.read()
+      G3BatteryInline(snap: snap, date: entry.date,
+                      percent: G3Widget.battery(snap, entry.date) == "—" ? -1 : entry.pct)
     default: BatterySmallView(e: entry)
     }
   }
@@ -297,8 +305,8 @@ struct OpenStrapBatteryWidget: Widget {
     StaticConfiguration(kind: kind, provider: BatteryProvider()) { entry in
       OpenStrapBatteryEntryView(entry: entry)
     }
-    .configurationDisplayName("Band Battery")
-    .description("Your band's battery level at a glance.")
+    .configurationDisplayName("OpenBand 5 · Band")
+    .description("Bandakku und Zeitpunkt der zuletzt gespeicherten Banddaten.")
     .supportedFamilies([.systemSmall, .accessoryCircular,
                         .accessoryRectangular, .accessoryInline])
   }
