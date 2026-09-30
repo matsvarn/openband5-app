@@ -3,9 +3,29 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../domain.dart';
 import '../training.dart' show OBSportIcon;
+import 'chrome.dart' show OBPanel;
 import 'count_copy.dart';
 import 'g3_theme.dart';
-import 'metrics.dart' show G3Scale, G3Tick;
+import 'metrics.dart' show G3LabelRow, G3Scale, G3Tick, OBChip, OBChipKind;
+
+const trainingSports = <String>[
+  'running',
+  'cycling',
+  'walking',
+  'hiking',
+  'weight_training',
+  'swimming',
+  'yoga',
+  'tennis',
+  'intervals',
+  'stretching',
+  'soccer',
+  'rowing',
+  'climbing',
+  'skiing',
+  'martial_arts',
+  'other',
+];
 
 String trainingSport(String sport) => switch (sport) {
   'running' => 'Lauf',
@@ -23,7 +43,7 @@ String trainingSport(String sport) => switch (sport) {
   'swimming' => 'Schwimmen',
   'yoga' => 'Yoga',
   'strength' || 'weightlifting' || 'weight_training' => 'Kraft',
-  _ => sport == 'other' ? 'Sonstiges' : 'Training',
+  _ => sport == 'other' ? 'Sonstiges' : 'Aktivität',
 };
 
 String trainingSportIconName(String sport) => switch (sport) {
@@ -166,18 +186,13 @@ class OBTrainingLoad extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text('TRAININGSLAST', style: g.caps())),
-              Text('TRIMP', style: g.t(13, 16, color: g.muted)),
-            ],
-          ),
+          Text('TRAININGSLAST', style: g.caps()),
           const SizedBox(height: 12),
           Row(
             children: [
-              column('AKUT · 7 T.', ready ? acute : null),
+              column('AKUT · 7 TAGE', ready ? acute : null),
               SizedBox(height: 55, child: VerticalDivider(color: g.line)),
-              column('GEWOHNT · 6 WO.', ready ? usual : null),
+              column('GEWOHNT · 6 WOCHEN', ready ? usual : null),
             ],
           ),
           if (ready) ...[
@@ -199,11 +214,6 @@ class OBTrainingLoad extends StatelessWidget {
               style: g.t(15, 19, weight: FontWeight.w700),
             ),
             if (building) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Akut und gewohnt aus täglichem TRIMP.',
-                style: g.t(13, 17, color: g.ink2),
-              ),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -227,21 +237,16 @@ class OBTrainingLoad extends StatelessWidget {
               ),
             ],
           ],
-          const SizedBox(height: 14),
-          Divider(color: g.line, height: 1),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Tägliches TRIMP · eigene Einheit',
-                  style: g.t(12, 16, color: g.muted),
-                ),
+          if (onMethod != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onMethod,
+                child: const Text('Methode ›'),
               ),
-              if (onMethod != null)
-                TextButton(onPressed: onMethod, child: const Text('Methode')),
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );
@@ -264,21 +269,18 @@ class OBLoadLead extends StatelessWidget {
     final g = G3.of(context);
     return Semantics(
       button: onTap != null,
-      label: 'Belastung ${trainingNumber(value)}, Verlauf öffnen',
+      label: onTap == null
+          ? 'Belastung ${trainingNumber(value)}'
+          : 'Belastung ${trainingNumber(value)}, Verlauf öffnen',
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
+        child: OBPanel(
+          hero: true,
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-          decoration: g.raised(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(child: Text('BELASTUNG  ›', style: g.caps())),
-                  Text('Tagessumme 0–21', style: g.t(13, 17, color: g.muted)),
-                ],
-              ),
+              G3LabelRow('BELASTUNG', arrow: onTap != null),
               const SizedBox(height: 3),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -300,24 +302,7 @@ class OBLoadLead extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (countTime != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: g.track,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                'Tag läuft',
-                                style: g.t(13, 16, weight: FontWeight.w700),
-                              ),
-                            ),
-                            Text(
-                              'gezählt bis $countTime',
-                              style: g.t(12, 16, color: g.ink2),
-                            ),
+                            const OBChip(OBChipKind.tag, 'Tag läuft'),
                           ],
                         ],
                       ),

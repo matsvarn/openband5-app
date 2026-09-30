@@ -1351,7 +1351,7 @@ void main() {
 
     await tester.tap(find.text('Pause'));
     await tester.pumpAndSettle();
-    expect(find.text('Pausiert · Puls zählt nicht mit'), findsOneWidget);
+    expect(find.text('Puls zählt nicht mit'), findsOneWidget);
     await tester.tap(find.text('Fortsetzen'));
     await tester.pumpAndSettle();
     expect(find.text('Zone 3'), findsOneWidget);

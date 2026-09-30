@@ -166,7 +166,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                               ),
                               Text(
                                 run.startedAt == null
-                                    ? 'Einheit läuft auf dem iPhone'
+                                    ? 'auf dem iPhone'
                                     : 'seit ${run.startedAt!.hour.toString().padLeft(2, '0')}:${run.startedAt!.minute.toString().padLeft(2, '0')}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -222,7 +222,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                     ),
                     if (run.paused) ...[
                       Text(
-                        'Pausiert · Puls zählt nicht mit',
+                        'Puls zählt nicht mit',
                         style: g.t(15, 20, color: g.ink2),
                       ),
                     ] else if (hr == null) ...[
@@ -266,14 +266,14 @@ class _G3LiveRunState extends State<G3LiveRun> {
                             context,
                             'DAUER',
                             _clock(active),
-                            run.paused ? 'pausiert' : 'aktiv',
+                            'aktive Zeit',
                           ),
                           _stat(
                             context,
                             'BELASTUNG',
                             trainingNumber(run.strain, signed: true),
                             run.paused
-                                ? 'angehalten'
+                                ? 'bisher'
                                 : hr == null
                                 ? 'wartet auf Signal'
                                 : 'bisher',
