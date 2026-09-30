@@ -6,7 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import 'chrome.dart' show OBLink, OBSegmented;
+import 'chrome.dart' show OBLink, OBPanel, OBSegmented;
 import 'g3_theme.dart';
 import 'metrics.dart' show OBMissingValue, G3LabelRow;
 
@@ -484,9 +484,7 @@ class OBZoneRows extends StatelessWidget {
     final longest = zones
         .map((z) => z.minutes ?? 0)
         .fold(1, (a, b) => a > b ? a : b);
-    return Container(
-      padding: kG3CardPadding,
-      decoration: g.raised(),
+    return OBPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -570,7 +568,7 @@ class OBZoneRows extends StatelessWidget {
           if (source.isNotEmpty || onBasis != null)
             Container(
               margin: const EdgeInsets.only(top: 8),
-              padding: const EdgeInsets.only(top: 0),
+              padding: const EdgeInsets.only(top: 10),
               decoration: BoxDecoration(
                 border: Border(top: BorderSide(color: g.line)),
               ),
