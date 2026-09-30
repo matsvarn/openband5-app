@@ -71,6 +71,33 @@ class _G3BandScreenState extends State<G3BandScreen> {
   Timer? _clockTick;
   int _readVersion = 0;
 
+  void _explain() => showModalBottomSheet<void>(
+    context: context,
+    useRootNavigator: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheet) => SafeArea(
+      child: chrome.OBSheet(
+        title: 'Über das Band',
+        subtitle: 'OpenBand 5',
+        cancelLabel: 'Schließen',
+        confirmLabel: widget.onStatus == null
+            ? 'Verstanden'
+            : 'Datenstand öffnen',
+        onCancel: () => Navigator.pop(sheet),
+        onConfirm: () {
+          Navigator.pop(sheet);
+          widget.onStatus?.call();
+        },
+        child: chrome.OBPanel(
+          child: Text(
+            'Verbindung, gespeicherter Datenstand und Auswertung können unterschiedlich aktuell sein. Das Band zeigt den letzten sicher auf dem iPhone gespeicherten Wert.',
+            style: G3.of(sheet).t(14, 20),
+          ),
+        ),
+      ),
+    ),
+  );
+
   @override
   void initState() {
     super.initState();
@@ -274,8 +301,8 @@ class _G3BandScreenState extends State<G3BandScreen> {
                   : name,
               backLabel: 'Profil',
               onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
-              onTrailing: widget.onStatus,
-              trailingLabel: 'Datenstand',
+              onTrailing: _explain,
+              trailingLabel: 'Über das Band',
             ),
             Expanded(
               child: ListView(
@@ -395,16 +422,6 @@ class _G3BandScreenState extends State<G3BandScreen> {
                         ],
                       ),
                     ],
-                  ],
-                  if (b != null) ...[
-                    const SizedBox(height: 22),
-                    Center(
-                      child: Text(
-                        'Letzter Bandwert ${obTime(stored)} · Übertragung ${obTime(b.receivedAt)}',
-                        textAlign: TextAlign.center,
-                        style: g.t(12, 17, color: g.muted),
-                      ),
-                    ),
                   ],
                   if (widget.synthetic) ...[
                     const SizedBox(height: 12),

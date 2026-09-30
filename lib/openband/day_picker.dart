@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../data/day_label.dart';
 import 'g3/g3_theme.dart';
+import 'g3/chrome.dart' as chrome;
 import 'calendar.dart';
 import 'controller.dart';
 import 'domain.dart';
@@ -72,27 +73,14 @@ class _DayPickerState extends State<_DayPicker> {
     useSafeArea: true,
     isScrollControlled: true,
     builder: (c) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Gespeicherte Nächte',
-              style: OB.of(c).text(18, weight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Ein gefüllter Punkt zeigt einen gespeicherten Schlafwert. Die Nacht gehört zum Tag des Aufwachens. Deine Auswahl gilt erst nach Bestätigung. Fehlende Werte bleiben offen.',
-            ),
-            const SizedBox(height: 12),
-            OBAction(
-              'Schließen',
-              secondary: true,
-              onPressed: () => Navigator.pop(c),
-            ),
-          ],
+      child: chrome.OBSheet(
+        title: 'Gespeicherte Nächte',
+        cancelLabel: 'Schließen',
+        confirmLabel: 'Verstanden',
+        onCancel: () => Navigator.pop(c),
+        onConfirm: () => Navigator.pop(c),
+        child: const Text(
+          'Ein gefüllter Punkt zeigt einen gespeicherten Schlafwert. Die Nacht gehört zum Tag des Aufwachens. Deine Auswahl gilt erst nach Bestätigung. Fehlende Werte bleiben offen.',
         ),
       ),
     ),
@@ -177,7 +165,7 @@ class _DayPickerState extends State<_DayPicker> {
               child: ListView(
                 padding: EdgeInsets.fromLTRB(16, largeText ? 0 : 10, 16, 32),
                 children: [
-                  OBCard(
+                  chrome.OBPanel(
                     padding: EdgeInsets.fromLTRB(
                       16,
                       largeText ? 8 : 14,
@@ -187,49 +175,66 @@ class _DayPickerState extends State<_DayPicker> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        FutureBuilder<Set<String>>(
-                          future: days,
-                          builder: (c, snapshot) => Column(
-                            children: [
-                              MediaQuery(
-                                data: MediaQuery.of(context).copyWith(
-                                  textScaler: largeText
-                                      ? const TextScaler.linear(1.5)
-                                      : MediaQuery.textScalerOf(context),
-                                ),
-                                child: OBCalendar(
-                                  month: month,
-                                  selected: selected,
-                                  now: now,
-                                  allowFuture: false,
-                                  showAvailability: true,
-                                  instrumentHeader: true,
-                                  selectedCellKey: _selectedCellKey,
-                                  nights: snapshot.data ?? const {},
-                                  onSelect: _select,
-                                  onPrevMonth: () => setState(
-                                    () => month = DateTime(
-                                      month.year,
-                                      month.month - 1,
+                        FutureBuilder<OpenBandDay>(
+                          future: preview,
+                          builder: (c, selectedSnapshot) => FutureBuilder<Set<String>>(
+                            future: days,
+                            builder: (c, snapshot) => Column(
+                              children: [
+                                MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(
+                                    textScaler: largeText
+                                        ? const TextScaler.linear(1.5)
+                                        : MediaQuery.textScalerOf(context),
+                                  ),
+                                  child: OBCalendar(
+                                    month: month,
+                                    selected: selected,
+                                    now: now,
+                                    allowFuture: false,
+                                    showAvailability: true,
+                                    instrumentHeader: true,
+                                    selectedCellKey: _selectedCellKey,
+                                    nights: {
+                                      ...?snapshot.data,
+                                      // The preview and calendar must agree even
+                                      // when a stored day is absent from the
+                                      // repository's bulk availability index.
+                                      if (selectedSnapshot
+                                              .data
+                                              ?.sleep
+                                              .duration
+                                              .value !=
+                                          null)
+                                        selectedDay,
+                                    },
+                                    onSelect: _select,
+                                    onPrevMonth: () => setState(
+                                      () => month = DateTime(
+                                        month.year,
+                                        month.month - 1,
+                                      ),
+                                    ),
+                                    onNextMonth: () => setState(
+                                      () => month = DateTime(
+                                        month.year,
+                                        month.month + 1,
+                                      ),
                                     ),
                                   ),
-                                  onNextMonth: () => setState(
-                                    () => month = DateTime(
-                                      month.year,
-                                      month.month + 1,
+                                ),
+                                if (snapshot.hasError)
+                                  TextButton(
+                                    onPressed: () => setState(
+                                      () => days = widget.controller.repository
+                                          .sleepDays(),
+                                    ),
+                                    child: const Text(
+                                      'Datenpunkte erneut laden',
                                     ),
                                   ),
-                                ),
-                              ),
-                              if (snapshot.hasError)
-                                TextButton(
-                                  onPressed: () => setState(
-                                    () => days = widget.controller.repository
-                                        .sleepDays(),
-                                  ),
-                                  child: const Text('Datenpunkte erneut laden'),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -259,7 +264,7 @@ class _DayPickerState extends State<_DayPicker> {
                       final night = ready ? snapshot.data?.sleep : null;
                       return Semantics(
                         liveRegion: true,
-                        child: OBCard.inset(
+                        child: chrome.OBPanel(
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             children: [
@@ -341,7 +346,7 @@ class _DayPickerState extends State<_DayPicker> {
                         ),
                         const SizedBox(height: 10),
                         OBAction(
-                          '${obDate(selectedDay)} ansehen',
+                          'Ansehen',
                           onPressed: () => Navigator.pop(context, selectedDay),
                         ),
                       ],
@@ -360,7 +365,7 @@ class _DayPickerState extends State<_DayPicker> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: OBAction(
-                            '${obDate(selectedDay)} ansehen',
+                            'Ansehen',
                             onPressed: () =>
                                 Navigator.pop(context, selectedDay),
                           ),

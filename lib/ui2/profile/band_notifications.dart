@@ -27,10 +27,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../openband/g3/chrome.dart' as chrome;
+import '../../openband/g3/g3_theme.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
-import 'profile.dart' show SetRow, settingsGroup;
+import 'profile.dart' show SetRow, settingsGroup, showProfileInfoSheet;
 
 /// One row's worth of the picker.
 class RelayApp {
@@ -121,39 +123,51 @@ class BandNotificationsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final p = P.of(c);
+    final g = G3.of(c);
     final l = AppLocalizations.of(c);
     return Scaffold(
-      backgroundColor: p.bg,
+      backgroundColor: g.page,
       body: SafeArea(
         bottom: !hasFloatingTabBar(c),
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.bandNotifNavTitle ?? 'Band notifications',
-                sub: l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ'),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                S.x4,
-                0,
-                S.x4,
-                tabRouteBottomInset(c, S.x10),
+        child: Column(
+          children: [
+            chrome.OBPageHeader.detail(
+              title: (l?.bandNotifNavTitle ?? 'Band notifications')
+                  .toUpperCase(),
+              subtitle: l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ',
+              backLabel: Localizations.localeOf(c).languageCode == 'de'
+                  ? 'Einstellungen'
+                  : 'Settings',
+              onBack: () => Navigator.of(c).maybePop(),
+              onTrailing: () => showProfileInfoSheet(
+                c,
+                l?.bandNotifNavTitle ?? 'Band notifications',
+                l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ',
               ),
-              children: [
-                if (!supported)
-                  StatusCard(
-                    l?.bandNotifUnsupportedTitle ?? 'This phone cannot do it',
-                    l?.bandNotifUnsupportedBody ??
-                        'Reading which app posted a notification is an Android '
-                            'capability. iOS gives no app that access, including '
-                            'this one.',
-                    icon: LucideIcons.smartphone,
-                  )
-                else ...[
-                  settingsGroup(c, l?.bandNotifRelayGroup ?? 'Relay', [
-                    SetRow(LucideIcons.bellRing, C.purple,
+            ),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(
+                  S.x4,
+                  0,
+                  S.x4,
+                  tabRouteBottomInset(c, S.x10),
+                ),
+                children: [
+                  if (!supported)
+                    StatusCard(
+                      l?.bandNotifUnsupportedTitle ?? 'This phone cannot do it',
+                      l?.bandNotifUnsupportedBody ??
+                          'Reading which app posted a notification is an Android '
+                              'capability. iOS gives no app that access, including '
+                              'this one.',
+                      icon: LucideIcons.smartphone,
+                    )
+                  else ...[
+                    settingsGroup(c, l?.bandNotifRelayGroup ?? 'Relay', [
+                      SetRow(
+                        LucideIcons.bellRing,
+                        C.purple,
                         l?.bandNotifBuzzOnAppNotifs ??
                             'Buzz on app notifications',
                         // What is actually true, and no more. The relay reads
@@ -163,7 +177,8 @@ class BandNotificationsView extends StatelessWidget {
                         // an app without asking for the permission that
                         // enumerates every app you have installed. "Nothing is
                         // stored" was the wrong claim to make about it.
-                        sub: l?.bandNotifBuzzSub ??
+                        sub:
+                            l?.bandNotifBuzzSub ??
                             'The strap buzzes when one of the apps below '
                                 'notifies you. What a notification says is never '
                                 'read or sent — only which app posted, kept on '
@@ -172,66 +187,75 @@ class BandNotificationsView extends StatelessWidget {
                             ? (l?.stateOn ?? 'On')
                             : (l?.stateOff ?? 'Off'),
                         chevron: false,
-                        onTap: () => onEnabled?.call(!enabled)),
-                    if (enabled && granted)
-                      SetRow(LucideIcons.listChecks, C.teal,
+                        onTap: () => onEnabled?.call(!enabled),
+                      ),
+                      if (enabled && granted)
+                        SetRow(
+                          LucideIcons.listChecks,
+                          C.teal,
                           l?.bandNotifAppsArmed ?? 'Apps armed',
-                          value: '$_armed', chevron: false),
-                  ]),
-                  if (enabled && !granted) ...[
+                          value: '$_armed',
+                          chevron: false,
+                        ),
+                    ]),
+                    if (enabled && !granted) ...[
+                      const SizedBox(height: S.x4),
+                      StatusCard(
+                        l?.bandNotifPermissionTitle ??
+                            'Android needs to let us see notifications',
+                        l?.bandNotifPermissionBody ??
+                            'The permission says which app posted, and that is all '
+                                'this uses it for. The names stay on this phone and '
+                                'nothing leaves it.',
+                        fix:
+                            l?.bandNotifGrantAccess ??
+                            'Grant notification access',
+                        icon: LucideIcons.shieldCheck,
+                        onFix: onGrant,
+                      ),
+                    ],
+                    if (enabled && granted) ...[
+                      if (apps.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: S.x4),
+                          child: StatusCard(
+                            l?.bandNotifEmptyTitle ??
+                                'No app has notified you yet',
+                            // Absence with its reason, not an empty list: this
+                            // is the cost of not asking for the permission that
+                            // enumerates every installed app, and it resolves
+                            // itself within minutes of ordinary use.
+                            l?.bandNotifEmptyBody ??
+                                'Apps appear here the first time each one notifies '
+                                    'you while the relay is on. Nothing is missed in '
+                                    'the meantime — the first ping is what puts an '
+                                    'app on this list, and the second can buzz.',
+                            icon: LucideIcons.hourglass,
+                          ),
+                        )
+                      else
+                        settingsGroup(
+                          c,
+                          l?.bandNotifAppsGroup ?? 'Apps that notify you',
+                          [for (final a in apps) _AppRow(a, onChanged: onApp)],
+                        ),
+                    ],
                     const SizedBox(height: S.x4),
                     StatusCard(
-                      l?.bandNotifPermissionTitle ??
-                          'Android needs to let us see notifications',
-                      l?.bandNotifPermissionBody ??
-                          'The permission says which app posted, and that is all '
-                              'this uses it for. The names stay on this phone and '
-                              'nothing leaves it.',
-                      fix: l?.bandNotifGrantAccess ?? 'Grant notification access',
-                      icon: LucideIcons.shieldCheck,
-                      onFix: onGrant,
+                      l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
+                      l?.bandNotifOneBuzzBody ??
+                          'Repeat posts from the same app are ignored for four '
+                              'seconds, ongoing notifications (media players, '
+                              'downloads) never buzz, and nothing buzzes at all '
+                              'while the band is disconnected.',
+                      icon: LucideIcons.waves,
                     ),
                   ],
-                  if (enabled && granted) ...[
-                    if (apps.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: S.x4),
-                        child: StatusCard(
-                          l?.bandNotifEmptyTitle ?? 'No app has notified you yet',
-                          // Absence with its reason, not an empty list: this
-                          // is the cost of not asking for the permission that
-                          // enumerates every installed app, and it resolves
-                          // itself within minutes of ordinary use.
-                          l?.bandNotifEmptyBody ??
-                              'Apps appear here the first time each one notifies '
-                                  'you while the relay is on. Nothing is missed in '
-                                  'the meantime — the first ping is what puts an '
-                                  'app on this list, and the second can buzz.',
-                          icon: LucideIcons.hourglass,
-                        ),
-                      )
-                    else
-                      settingsGroup(
-                          c, l?.bandNotifAppsGroup ?? 'Apps that notify you', [
-                        for (final a in apps)
-                          _AppRow(a, onChanged: onApp),
-                      ]),
-                  ],
-                  const SizedBox(height: S.x4),
-                  StatusCard(
-                    l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
-                    l?.bandNotifOneBuzzBody ??
-                        'Repeat posts from the same app are ignored for four '
-                            'seconds, ongoing notifications (media players, '
-                            'downloads) never buzz, and nothing buzzes at all '
-                            'while the band is disconnected.',
-                    icon: LucideIcons.waves,
-                  ),
                 ],
-              ],
+              ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -257,49 +281,69 @@ class _AppRow extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return Pressable(
       onTap: () => onChanged?.call(app.package, !app.on),
-      semanticLabel: '${appLabel(app.package)}, ${app.on ? (l?.bandNotifBuzzesDescription ?? 'buzzes') : (l?.bandNotifDoesNotBuzzDescription ?? 'does not buzz')}',
+      semanticLabel:
+          '${appLabel(app.package)}, ${app.on ? (l?.bandNotifBuzzesDescription ?? 'buzzes') : (l?.bandNotifDoesNotBuzzDescription ?? 'does not buzz')}',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
-          ClipRRect(
-            borderRadius: R.rSm,
-            child: icon != null && icon.isNotEmpty
-                ? Image.memory(icon,
-                    width: 32,
-                    height: 32,
-                    cacheWidth: px,
-                    gaplessPlayback: true)
-                : Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                        color: p.wash(C.purple), borderRadius: R.rSm),
-                    child: Icon(LucideIcons.appWindow,
-                        size: 16, color: p.on(C.purple)),
-                  ),
-          ),
-          const SizedBox(width: S.x3),
-          Expanded(
-            child: Column(
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: R.rSm,
+              child: icon != null && icon.isNotEmpty
+                  ? Image.memory(
+                      icon,
+                      width: 32,
+                      height: 32,
+                      cacheWidth: px,
+                      gaplessPlayback: true,
+                    )
+                  : Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.wash(C.purple),
+                        borderRadius: R.rSm,
+                      ),
+                      child: Icon(
+                        LucideIcons.appWindow,
+                        size: 16,
+                        color: p.on(C.purple),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: S.x3),
+            Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(appLabel(app.package),
-                      style: F.body.copyWith(color: p.ink),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  Text(app.package,
-                      style: F.over.copyWith(color: p.ink3),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ]),
-          ),
-          const SizedBox(width: S.x2),
-          Text(app.on ? (l?.bandNotifBuzzes ?? 'Buzzes') : (l?.stateOff ?? 'Off'),
+                  Text(
+                    appLabel(app.package),
+                    style: F.body.copyWith(color: p.ink),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    app.package,
+                    style: F.over.copyWith(color: p.ink3),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: S.x2),
+            Text(
+              app.on
+                  ? (l?.bandNotifBuzzes ?? 'Buzzes')
+                  : (l?.stateOff ?? 'Off'),
               style: F.cap.copyWith(
-                  color: app.on ? p.on(C.green) : p.ink3,
-                  fontWeight: FontWeight.w600)),
-        ]),
+                color: app.on ? p.on(C.green) : p.ink3,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

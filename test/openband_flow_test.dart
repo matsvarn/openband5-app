@@ -102,10 +102,7 @@ void main() {
             padding: const EdgeInsets.only(top: 59, bottom: 34),
             disableAnimations: reducedMotion,
           ),
-          child: RepaintBoundary(
-            key: const ValueKey('capture'),
-            child: child!,
-          ),
+          child: RepaintBoundary(key: const ValueKey('capture'), child: child!),
         ),
         home: AppShell(
           builder: (c, d) => d == ShellDomain.home
@@ -398,7 +395,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('14. September ansehen'));
+      await tester.tap(find.text('Ansehen'));
       await tester.pumpAndSettle();
       expect(controller.selectedDay, '2026-09-14');
       expect(controller.day!.recovery.value, isNull);
@@ -661,10 +658,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('14'));
       await tester.pumpAndSettle();
-      final previousDay = find.widgetWithText(
-        FilledButton,
-        '14. September ansehen',
-      );
+      final previousDay = find.widgetWithText(FilledButton, 'Ansehen');
       expect(previousDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(previousDay);
@@ -674,10 +668,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('15'));
       await tester.pumpAndSettle();
-      final selectedDay = find.widgetWithText(
-        FilledButton,
-        '15. September ansehen',
-      );
+      final selectedDay = find.widgetWithText(FilledButton, 'Ansehen');
       expect(selectedDay, findsOneWidget);
       await tester.pumpAndSettle();
       await tester.tap(selectedDay);
