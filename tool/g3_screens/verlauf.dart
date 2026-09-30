@@ -18,7 +18,7 @@ import 'env.dart';
 
 const _day = '2026-09-29';
 
-_PaperVerlaufRepository _repo(SyntheticScenario scenario) {
+_PaperVerlaufRepository _repo(SyntheticScenario scenario, {bool g31 = false}) {
   initializeDateFormatting('de_DE');
   Map<String, dynamic> fixture(String name) => Map<String, dynamic>.from(
     jsonDecode(File('docs/openband5/assets/fixtures/$name').readAsStringSync())
@@ -28,14 +28,21 @@ _PaperVerlaufRepository _repo(SyntheticScenario scenario) {
     fixture('day-summary.json'),
     fixture('sleep-detail.json'),
     scenario: scenario,
+    g31: g31,
   );
 }
 
 /// The screen artboards have denser historical rows than the shared daily
 /// fixture. These extra values exist only in the synthetic diff gallery.
 class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
-  _PaperVerlaufRepository(super.summary, super.detail, {super.scenario})
-    : super.fromMaps();
+  _PaperVerlaufRepository(
+    super.summary,
+    super.detail, {
+    super.scenario,
+    this.g31 = false,
+  }) : super.fromMaps();
+
+  final bool g31;
 
   static const _recovery = <double?>[
     66,
@@ -136,6 +143,14 @@ class _PaperVerlaufRepository extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day) {
+    if (g31 && metric == G3Metric.recovery) {
+      return Future.value(
+        const G3Baseline(
+          BaselineStatus(BaselinePhase.trusted),
+          range: PersonalRange(58, 80, 68),
+        ),
+      );
+    }
     if (metric == G3Metric.respRate) {
       return Future.value(
         const G3Baseline(
@@ -294,10 +309,15 @@ Widget _frame(Widget child) => Builder(
   },
 );
 
-Widget _metric(G3Env env, G3Metric metric, {OBTrendPeriod? period}) {
+Widget _metric(
+  G3Env env,
+  G3Metric metric, {
+  OBTrendPeriod? period,
+  bool g31 = false,
+}) {
   _PaperVerlaufRepository? synthetic;
   _PaperVerlaufRepository sample() =>
-      synthetic ??= _repo(SyntheticScenario.g3Sample);
+      synthetic ??= _repo(SyntheticScenario.g3Sample, g31: g31);
   final child = G3MetricDetail(
     metric: metric,
     repository: env.repository(sample),
@@ -307,6 +327,9 @@ Widget _metric(G3Env env, G3Metric metric, {OBTrendPeriod? period}) {
   );
   return env.real ? child : _frame(child);
 }
+
+Widget g31RecoveryBuilder(G3Env env) =>
+    _metric(env, G3Metric.recovery, g31: true);
 
 class _WeightSheetPreview extends StatefulWidget {
   const _WeightSheetPreview({required this.repo, required this.day, this.band});

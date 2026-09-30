@@ -1,0 +1,20 @@
+{
+  "g31-heute-hell": {"page": "p-1F-0", "node": "7FEZ-0", "mode": "light"},
+  "g31-heute-dunkel": {"page": "p-1F-0", "node": "7FRO-0", "mode": "dark"},
+  "g31-schlaf-hell": {"page": "p-1F-0", "node": "7G4D-0", "mode": "light"},
+  "g31-schlaf-dunkel": {"page": "p-1F-0", "node": "7GCT-0", "mode": "dark"},
+  "g31-training-hell": {"page": "p-1F-0", "node": "7GL9-0", "mode": "light"},
+  "g31-training-dunkel": {"page": "p-1F-0", "node": "7GS4-0", "mode": "dark"},
+  "g31-journal-hell": {"page": "p-1F-0", "node": "7GYZ-0", "mode": "light"},
+  "g31-journal-dunkel": {"page": "p-1F-0", "node": "7H4D-0", "mode": "dark"},
+  "g31-verlauf-erholung-30-tage-hell": {"page": "p-1F-0", "node": "7H9R-0", "mode": "light"},
+  "g31-verlauf-erholung-30-tage-dunkel": {"page": "p-1F-0", "node": "7HEW-0", "mode": "dark"},
+  "g31-verlauf-hrv-hell": {"page": "p-1F-0", "node": "7HK1-0", "mode": "light"},
+  "g31-verlauf-hrv-dunkel": {"page": "p-1F-0", "node": "7HPQ-0", "mode": "dark"},
+  "g31-schlaf-nachtverlauf-hell": {"page": "p-1F-0", "node": "7HVF-0", "mode": "light"},
+  "g31-schlaf-nachtverlauf-dunkel": {"page": "p-1F-0", "node": "7HZ9-0", "mode": "dark"},
+  "g31-training-lauf-ergebnis-hell": {"page": "p-1F-0", "node": "7I33-0", "mode": "light"},
+  "g31-training-lauf-ergebnis-dunkel": {"page": "p-1F-0", "node": "7I97-0", "mode": "dark"},
+  "g31-training-belastung-hell": {"page": "p-1F-0", "node": "7IFB-0", "mode": "light"},
+  "g31-training-belastung-dunkel": {"page": "p-1F-0", "node": "7IKW-0", "mode": "dark"}
+}

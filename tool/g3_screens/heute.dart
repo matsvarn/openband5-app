@@ -84,7 +84,7 @@ enum _State { canonical, building, past, never, stale, gap }
 
 /// The design repository plus the Paper-only states.
 class _HeuteFixture extends SyntheticOpenBandRepository {
-  _HeuteFixture(this.state)
+  _HeuteFixture(this.state, {this.g31 = false})
     : super.fromMaps(
         _json('day-summary.json'),
         _json('sleep-detail.json'),
@@ -93,6 +93,7 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
             : SyntheticScenario.g3Sample,
       );
   final _State state;
+  final bool g31;
 
   @override
   Future<OpenBandDay> readDay(String day) async {
@@ -144,6 +145,12 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
 
   @override
   Future<G3Baseline> readPersonalRange(G3Metric metric, String day) async {
+    if (g31 && metric == G3Metric.recovery && day == _today) {
+      return const G3Baseline(
+        BaselineStatus(BaselinePhase.trusted),
+        range: PersonalRange(58, 80, 68),
+      );
+    }
     if (state == _State.past &&
         day == '2026-09-27' &&
         metric == G3Metric.recovery) {
@@ -178,8 +185,22 @@ class _HeuteFixture extends SyntheticOpenBandRepository {
       : super.readActivities(day);
 
   @override
-  Future<G3CheckIn> readCheckIn(String day) async =>
-      state == _State.never ? G3CheckIn(day, const []) : super.readCheckIn(day);
+  Future<G3CheckIn> readCheckIn(String day) async {
+    if (state == _State.never) return G3CheckIn(day, const []);
+    final checkIn = await super.readCheckIn(day);
+    if (!g31 || day != _today) return checkIn;
+    return G3CheckIn(day, [
+      for (final q in checkIn.questions)
+        G3CheckInQuestion(
+          key: q.key,
+          label: q.label,
+          targetDay: q.targetDay,
+          kind: q.kind,
+          answer: null,
+          field: q.field,
+        ),
+    ]);
+  }
 
   @override
   Future<G3WeekStrip> readWeekStrip(G3Metric metric, String endDay) async =>
@@ -264,9 +285,10 @@ G3ScreenBuilder _frame(
   String day = _today,
   HeuteAnchor? anchor,
   bool realToo = false,
+  bool g31 = false,
 }) => (env) {
   if (env.real && !realToo) return null;
-  final fixture = _HeuteFixture(state);
+  final fixture = _HeuteFixture(state, g31: g31);
   return _HeuteFrame(
     env.repository(() => fixture),
     env.day(day),
@@ -275,6 +297,12 @@ G3ScreenBuilder _frame(
     anchor: anchor,
   );
 };
+
+final G3ScreenBuilder g31HeuteBuilder = _frame(
+  _State.canonical,
+  realToo: true,
+  g31: true,
+);
 
 final Map<String, G3ScreenBuilder> heuteScreens = {
   'heute-hell': _frame(_State.canonical, realToo: true),

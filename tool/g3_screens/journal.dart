@@ -47,10 +47,18 @@ final Map<String, G3ScreenBuilder> journalScreens = {
     name: (env) => env.real ? null : _JournalPreview(name: name, env: env),
 };
 
+G3ScreenBuilder g31JournalBuilder(String legacyName) =>
+    (env) => _JournalPreview(name: legacyName, env: env, g31: true);
+
 class _JournalPreview extends StatefulWidget {
-  const _JournalPreview({required this.name, required this.env});
+  const _JournalPreview({
+    required this.name,
+    required this.env,
+    this.g31 = false,
+  });
   final String name;
   final G3Env env;
+  final bool g31;
   @override
   State<_JournalPreview> createState() => _JournalPreviewState();
 }
@@ -238,6 +246,9 @@ class _JournalPreviewState extends State<_JournalPreview> {
                   controller: controller,
                   scrollController: scrollController,
                   onEdit: (_) {},
+                  onBand: widget.g31 ? () {} : null,
+                  onProfile: widget.g31 ? () {} : null,
+                  onDataStatus: widget.g31 ? () {} : null,
                 ),
         ),
         Positioned(

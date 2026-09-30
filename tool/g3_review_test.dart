@@ -54,6 +54,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'g3_screens/band.dart';
 import 'g3_screens/env.dart';
+import 'g3_screens/g31.dart';
 import 'g3_screens/heute.dart';
 import 'g3_screens/journal.dart';
 import 'g3_screens/schlaf.dart';
@@ -70,6 +71,7 @@ final Map<String, G3ScreenBuilder> g3ScreenBuilders = {
   ...verlaufScreens,
   ...bandScreens,
   ...widgetScreens,
+  ...g31Screens,
 };
 
 const _frameWidth = 393.0;
