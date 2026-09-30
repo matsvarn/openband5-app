@@ -14,14 +14,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/coach/coach_db.dart';
 
 void main() {
+  // The plain SELECT and explicit-LIMIT cases live in coach_sql_guard_test.dart.
   group('CoachDb.guardAndPrepare — allow-list', () {
-    test('accepts a plain SELECT over an allowed view + auto-LIMITs', () {
-      final out = CoachDb.guardAndPrepare(
-          "SELECT date, value FROM v_metric WHERE key='rhr'");
-      expect(out.toLowerCase(), contains('from v_metric'));
-      expect(out.toLowerCase(), contains('limit 200'));
-    });
-
     test('accepts a comma cross-join when BOTH members are allowed views', () {
       final out = CoachDb.guardAndPrepare(
           'SELECT d.date FROM v_daily d, v_metric m WHERE d.date = m.date');
@@ -40,11 +34,6 @@ void main() {
           "b AS (SELECT value v FROM v_metric WHERE key='rhr') "
           'SELECT (SELECT AVG(v) FROM a) - (SELECT AVG(v) FROM b)');
       expect(out.toLowerCase(), startsWith('with'));
-    });
-
-    test('respects an explicit LIMIT', () {
-      final out = CoachDb.guardAndPrepare('SELECT * FROM v_daily LIMIT 7');
-      expect(RegExp(r'limit\s+200', caseSensitive: false).hasMatch(out), isFalse);
     });
   });
 
