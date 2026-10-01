@@ -3,7 +3,6 @@ part of 'harness.dart';
 Future<void> reviewAll(ReviewHarness h) async {
   await reviewOverviewCorrection(h);
   await reviewSleepGoal(h);
-  await reviewLabs(h);
   await reviewTrainingTemplates(h);
   await reviewStrengthLive(h);
   await reviewJournal(h);
@@ -16,5 +15,4 @@ Future<void> reviewAll(ReviewHarness h) async {
   await reviewAppearance(h);
   await reviewUnits(h);
   await reviewWeight(h);
-  await reviewNutritionEntry(h);
 }

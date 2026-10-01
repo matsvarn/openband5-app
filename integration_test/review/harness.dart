@@ -24,12 +24,6 @@ import 'package:openstrap_edge/openband/notification_settings.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
     show kAlgoVersion;
 import 'package:openstrap_edge/openband/controller.dart';
-import 'package:openstrap_edge/openband/cycle.dart';
-import 'package:openstrap_edge/openband/cycle_comparison.dart';
-import 'package:openstrap_edge/openband/cycle_gaps.dart';
-import 'package:openstrap_edge/openband/cycle_measurements.dart';
-import 'package:openstrap_edge/openband/cycle_medians.dart';
-import 'package:openstrap_edge/openband/cycle_observations.dart';
 import 'package:openstrap_edge/openband/domain.dart';
 import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
@@ -41,15 +35,9 @@ import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
 import 'package:openstrap_edge/openband/g3/screens/verlauf.dart';
-import 'package:openstrap_edge/openband/glucose.dart';
 import 'package:openstrap_edge/openband/health.dart';
-import 'package:openstrap_edge/openband/journal.dart';
 import 'package:openstrap_edge/openband/night_scalar_detail.dart';
 import 'package:openstrap_edge/openband/night_signals.dart';
-import 'package:openstrap_edge/openband/medication.dart';
-import 'package:openstrap_edge/openband/meal_entry.dart';
-import 'package:openstrap_edge/openband/nutrition.dart';
-import 'package:openstrap_edge/openband/nutrition_browser.dart';
 import 'package:openstrap_edge/openband/screens.dart';
 import 'package:openstrap_edge/openband/settings_controls.dart';
 import 'package:openstrap_edge/openband/sleep_editor.dart';
@@ -57,7 +45,6 @@ import 'package:openstrap_edge/openband/sleep_goal.dart';
 import 'package:openstrap_edge/openband/sleep_plan.dart';
 import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/template_editor.dart';
-import 'package:openstrap_edge/openband/water.dart';
 import 'package:openstrap_edge/openband/vo2.dart';
 import 'package:openstrap_edge/openband/weight.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
@@ -78,22 +65,12 @@ part 'all.dart';
 part 'journal.dart';
 part 'vo2.dart';
 part 'weight.dart';
-part 'nutrition_entry.dart';
-part 'nutrition_parent.dart';
 part 'naps.dart';
 part 'sleep_plan.dart';
 part 'exercise_picker.dart';
 part 'custom_exercise.dart';
 part 'exercise_copy.dart';
 part 'custom_load.dart';
-part 'glucose.dart';
-part 'medications.dart';
-part 'cycle.dart';
-part 'cycle_measurements.dart';
-part 'cycle_observations.dart';
-part 'cycle_gaps.dart';
-part 'cycle_medians.dart';
-part 'cycle_comparison.dart';
 part 'night_scalar.dart';
 part 'sleep_legend.dart';
 part 'night_cards.dart';
@@ -102,7 +79,6 @@ part 'temperature.dart';
 part 'release.dart';
 part 'correction.dart';
 part 'sleep_goal.dart';
-part 'labs.dart';
 part 'training_templates.dart';
 part 'strength_live.dart';
 part 'gestures.dart';
@@ -153,13 +129,20 @@ class ReviewHarness {
   ReviewHarness({
     required this.tester,
     required this.binding,
+    required this.flow,
     required Set<String>? captureFilter,
     required this.capturedNames,
     required this.frames,
   }) : _captureFilter = captureFilter;
 
   final WidgetTester tester;
-  final IntegrationTestWidgetsFlutterBinding binding;
+
+  /// Null when the flow runs headless under `flutter test`, which captures
+  /// nothing (its capture filter is empty).
+  final IntegrationTestWidgetsFlutterBinding? binding;
+
+  /// The OPENBAND_REVIEW_FLOW name this run was dispatched as.
+  final String flow;
   final Set<String>? _captureFilter;
   final Set<String> capturedNames;
   final List<Map<String, Object?>> frames;
@@ -268,6 +251,7 @@ class ReviewHarness {
     if (captureFilter != null && !captureFilter.contains(name)) {
       return;
     }
+    final binding = this.binding!;
     const port = int.fromEnvironment('OPENBAND_REVIEW_PORT');
     if (port == 0) {
       await binding.takeScreenshot(name);

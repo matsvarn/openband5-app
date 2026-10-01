@@ -10,22 +10,12 @@ const reviewFlows = <String, Future<void> Function(ReviewHarness)>{
   'correction': reviewCorrection,
   'journal': reviewJournal,
   'journal-hub': reviewJournal,
-  'nutrition-entry': reviewNutritionEntry,
-  'nutrition-parent': reviewNutritionParent,
   'sleep-plan': reviewSleepPlan,
   'naps': reviewNaps,
   'exercise-picker': reviewExercisePicker,
   'custom-exercise': reviewCustomExercise,
   'exercise-copy': reviewExerciseCopy,
   'custom-load': reviewCustomLoad,
-  'glucose': reviewGlucose,
-  'medications': reviewMedications,
-  'cycle': reviewCycle,
-  'cycle-measurements': reviewCycleMeasurements,
-  'cycle-observations': reviewCycleObservations,
-  'cycle-gaps': reviewCycleGaps,
-  'cycle-medians': reviewCycleMedians,
-  'cycle-comparison': reviewCycleComparison,
   'night-scalar': reviewNightScalar,
   'night-cards': reviewNightCards,
   'sleep-legend': reviewSleepLegend,
@@ -49,7 +39,7 @@ void main() {
     if (flow == null) {
       throw StateError(
         'Unknown OPENBAND_REVIEW_FLOW: $kOpenBandReviewFlow '
-        '(expected all, correction, journal, journal-hub, nutrition-entry, nutrition-parent, sleep-plan, naps, exercise-picker, custom-exercise, exercise-copy, custom-load, glucose, medications, cycle, cycle-measurements, cycle-observations, cycle-gaps, cycle-medians, cycle-comparison, night-scalar, night-cards, sleep-legend, respiration, temperature, weight, vo2, or release)',
+        '(expected one of ${reviewFlows.keys.join(', ')})',
       );
     }
     await initializeDateFormatting('de_DE');
@@ -61,6 +51,7 @@ void main() {
       final h = ReviewHarness(
         tester: tester,
         binding: binding,
+        flow: kOpenBandReviewFlow,
         captureFilter: captureFilter,
         capturedNames: capturedNames,
         frames: frames,

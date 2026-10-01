@@ -269,7 +269,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   expect(hubSelected('Abends gelesen: Ja'), isTrue);
   expectMeaningfulPattern();
   await h.capture('journal-answered');
-  if (kOpenBandReviewFlow != 'journal-hub') {
+  if (h.flow != 'journal-hub') {
     await h.openHubEditor();
     await h.capture('journal-editor');
     await tester.tap(find.byTooltip('Information'));
