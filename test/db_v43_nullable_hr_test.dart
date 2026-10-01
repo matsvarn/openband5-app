@@ -99,6 +99,7 @@ void main() {
     // second is observed for the rest window even though it carries no beat.
     final row = (await db.query(
       'decoded_onehz',
+      columns: [LocalDb.decodedOneHzProjection],
       where: 'rec_ts = ?',
       whereArgs: [1001],
     )).first;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
@@ -200,7 +201,7 @@ class SleepSessionCandidate {
     'confidence': confidence,
     'flags': flags,
     'sleep_json': sleepJson,
-    'hypno_stages': hypnoStages,
+    'hypno_stages': _encodeStages(hypnoStages),
     'sleep_onset_sec': sleepOnsetSec,
     'sleep_offset_sec': sleepOffsetSec,
     'sleep_source': sleepSource,
@@ -215,11 +216,44 @@ class SleepSessionCandidate {
       flags: strs('flags'),
       sleepJson: ((m['sleep_json'] as Map?) ?? const {})
           .cast<String, dynamic>(),
-      hypnoStages: strs('hypno_stages'),
+      hypnoStages: _decodeStages(m['hypno_stages']),
       sleepOnsetSec: (m['sleep_onset_sec'] as num?)?.toInt() ?? 0,
       sleepOffsetSec: (m['sleep_offset_sec'] as num?)?.toInt() ?? 0,
       sleepSource: m['sleep_source'] as String? ?? 'auto',
     );
+  }
+
+  // A string at the legacy key makes older list-only readers fail loudly.
+  static String _encodeStages(List<String> stages) {
+    final runs = <List<Object>>[];
+    for (final stage in stages) {
+      if (runs.isNotEmpty && runs.last[0] == stage) {
+        runs.last[1] = (runs.last[1] as int) + 1;
+      } else {
+        runs.add([stage, 1]);
+      }
+    }
+    return 'rle1:${jsonEncode(runs)}';
+  }
+
+  static List<String> _decodeStages(Object? value) {
+    if (value is! String) {
+      return ((value as List?) ?? const []).map((e) => e.toString()).toList();
+    }
+    if (!value.startsWith('rle1:')) {
+      throw const FormatException('Unknown sleep stage encoding');
+    }
+    final runs = jsonDecode(value.substring(5));
+    if (runs is! List) throw const FormatException('Invalid sleep stage runs');
+    final stages = <String>[];
+    for (final run in runs) {
+      if (run is! List || run.length != 2 || run[0] is! String ||
+          run[1] is! int || (run[1] as int) < 1) {
+        throw const FormatException('Invalid sleep stage run');
+      }
+      stages.addAll(List<String>.filled(run[1] as int, run[0] as String));
+    }
+    return stages;
   }
 
   static SleepSessionCandidate absent(String dayId) => SleepSessionCandidate(
