@@ -1375,6 +1375,89 @@ void main() {
     expect(find.textContaining('vorher'), findsNothing);
   });
 
+  for (final scale in [2.0, 3.1]) {
+    testWidgets('correction axis and times fit 375 pt at ${scale}x text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(375, 812);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final controller = OpenBandController(
+        repository: _ClosedNightRepo(
+          SleepNight(
+            onset: DateTime(2026, 9, 28, 23, 25),
+            wake: DateTime(2026, 9, 29, 6, 54),
+          ),
+        ),
+        initialDay: '2026-09-29',
+      );
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: openBandTheme(Brightness.light),
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(375, 812),
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: SleepEditor(controller: controller, g3: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final recorded = tester.getRect(find.text('Band hat aufgezeichnet —'));
+      final labels = [
+        for (final label in ['20:00', '00:00', '04:00', '10:00'])
+          tester.getRect(find.text(label)),
+      ];
+      for (var i = 0; i < labels.length; i++) {
+        // One line, above the recorded span, clear of its neighbour.
+        expect(labels[i].height, lessThan(20 * 1.3));
+        expect(labels[i].bottom, lessThanOrEqualTo(recorded.top));
+        if (i > 0) {
+          expect(labels[i].left, greaterThanOrEqualTo(labels[i - 1].right));
+        }
+      }
+      for (final key in ['sleep-onset', 'sleep-wake']) {
+        final field = find.descendant(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byType(EditableText),
+        );
+        final editable = tester.widget<EditableText>(field);
+        final painter = TextPainter(
+          text: TextSpan(text: editable.controller.text, style: editable.style),
+          textScaler:
+              editable.textScaler ??
+              MediaQuery.textScalerOf(tester.element(field)),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        addTearDown(painter.dispose);
+        expect(painter.width, lessThanOrEqualTo(tester.getSize(field).width));
+      }
+      for (final label in ['BEGINN · MO', 'ENDE · DI']) {
+        expect(
+          tester.getRect(find.text(label)).bottom,
+          lessThanOrEqualTo(
+            tester
+                .getTopLeft(
+                  find.byKey(
+                    ValueKey(
+                      label.startsWith('B') ? 'sleep-onset' : 'sleep-wake',
+                    ),
+                  ),
+                )
+                .dy,
+          ),
+        );
+      }
+    });
+  }
+
   test('nap calculation failure keeps the committed revision', () async {
     final repo = _repo(scenario: SyntheticScenario.calculationFailure);
     const day = '2026-09-29';

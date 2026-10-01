@@ -820,8 +820,12 @@ class OBBodyRow extends StatelessWidget {
   final (double, double)? band;
   final String? minLabel, maxLabel;
 
-  /// Building / missing reason under the empty track.
+  /// Building reason under the empty track.
   final String note;
+
+  /// Why a missing value is missing, e.g. a failed calculation. Defaults to
+  /// "nicht erfasst".
+  final String? reason;
   final bool last;
   final VoidCallback? onTap;
   const OBBodyRow({
@@ -838,6 +842,7 @@ class OBBodyRow extends StatelessWidget {
     this.minLabel,
     this.maxLabel,
     this.note = 'nicht erfasst',
+    this.reason,
     this.last = false,
     this.onTap,
   });
@@ -846,6 +851,7 @@ class OBBodyRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final missing = state == OBBodyState.missing || value == null;
+    final absent = reason ?? 'nicht erfasst';
     const w = 128.0;
     final Widget picture;
     if (missing || state == OBBodyState.building) {
@@ -856,7 +862,7 @@ class OBBodyRow extends StatelessWidget {
           const G3Dashed(height: 8, width: w, radius: 4),
           const SizedBox(height: 5),
           Text(
-            missing ? 'nicht erfasst' : note,
+            missing ? absent : note,
             style: g.t(11, 13, weight: FontWeight.w500, color: g.ink2),
           ),
         ],
@@ -939,8 +945,12 @@ class OBBodyRow extends StatelessWidget {
     }
     return Semantics(
       button: onTap != null,
-      label: '$name ${missing ? 'nicht erfasst' : '$value ${unit ?? ''}'}'
-          .trim(),
+      label: missing
+          ? '$name $absent'
+          : [
+              '$name $value ${unit ?? ''}'.trim(),
+              if (state == OBBodyState.building) note,
+            ].join(', '),
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,

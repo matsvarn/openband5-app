@@ -350,7 +350,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
         case NightScalarState.unreadable:
           return 'Nachtwert nicht lesbar';
         case NightScalarState.partial:
-          return 'Unvollständige Nacht';
+          return kNightScalarPartialLabel;
         case NightScalarState.older:
           return 'Ältere Berechnung';
         case NightScalarState.current:
@@ -378,7 +378,7 @@ class _OpenBandNightScalarDetailState extends State<OpenBandNightScalarDetail> {
       case NightScalarState.unreadable:
         return 'Nachtwert nicht lesbar';
       case NightScalarState.partial:
-        return 'Unvollständige Nacht';
+        return kNightScalarPartialLabel;
       case NightScalarState.older:
         return 'Ältere Berechnung';
       case NightScalarState.current:
