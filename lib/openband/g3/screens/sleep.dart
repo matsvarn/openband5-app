@@ -785,9 +785,10 @@ class _G3SleepScreenState extends State<G3SleepScreen>
                                 TextSpan(
                                   children: [
                                     TextSpan(
-                                      text: value.$2!
-                                          .toStringAsFixed(value.$3)
-                                          .replaceAll('.', ','),
+                                      text: g3Number(
+                                        value.$2,
+                                        digits: value.$3,
+                                      ),
                                       style: g.t(
                                         22,
                                         27,

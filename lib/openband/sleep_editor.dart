@@ -1275,7 +1275,7 @@ class _SleepEditorState extends State<SleepEditor> {
                       alignment: Alignment.center,
                       decoration: g.raised(radius: 22),
                       child: Text(
-                        g3Signed(delta, unit: 'Min.'),
+                        '${delta > 0 ? '+' : ''}${g3Duration(delta)}',
                         maxLines: 1,
                         style: g.t(
                           12,
@@ -1406,7 +1406,7 @@ class _SleepEditorState extends State<SleepEditor> {
           'Wach',
           widget.g3
               ? g3Duration(night.awakeMinutes?.round())
-              : '${obNumber(night.awakeMinutes)} Min.',
+              : obDuration(night.awakeMinutes),
           LucideIcons.sun,
           p.strainText,
         ),

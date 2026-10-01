@@ -356,14 +356,14 @@ class _OpenBandNapsState extends State<OpenBandNaps> {
       textBaseline: TextBaseline.alphabetic,
       children: [
         Text(
-          total == null ? '—' : '$total',
+          total == null ? '—' : obDuration(total).replaceFirst(' Min.', ''),
           style: p
               .text(48, weight: FontWeight.w700, display: true)
               .copyWith(height: 54 / 48),
         ),
         const SizedBox(width: 8),
         Text(
-          'Min.',
+          total == null || total < 60 ? 'Min.' : '',
           style: p.text(16, color: p.muted).copyWith(height: 20 / 16),
         ),
       ],
@@ -461,9 +461,7 @@ class _NapRow extends StatelessWidget {
     final p = OB.of(context);
     final scale = MediaQuery.textScalerOf(context).scale(1);
     final time = '${obTime(session.start)}–${obTime(session.end)}';
-    final duration = session.durationMin == null
-        ? '—'
-        : '${session.durationMin} Min.';
+    final duration = obDuration(session.durationMin);
     final source = session.source == NapSource.manual ? 'Manuell' : 'Erkannt';
     return InkWell(
       onTap: onTap,

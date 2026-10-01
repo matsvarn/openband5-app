@@ -119,7 +119,7 @@ void main() {
   testWidgets('training hub renders light and dark', (tester) async {
     await mount(tester);
     expect(find.text('Training'), findsOneWidget);
-    expect(find.text('102'), findsOneWidget);
+    expect(find.text('1h42'), findsOneWidget);
     expect(find.text('3 Einheiten'), findsOneWidget);
     expect(find.bySemanticsLabel('Kraft starten'), findsOneWidget);
     expect(find.text('Ganzkörper A'), findsOneWidget);

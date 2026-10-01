@@ -4,6 +4,7 @@
 // Pure presentation. Every value is nullable and renders as "—" when absent;
 // the state (normal/better/worse/plain/building/missing) and any deviation
 // come from the caller — no widget decides a baseline or computes a metric.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 

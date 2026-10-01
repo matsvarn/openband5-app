@@ -4,6 +4,7 @@
 // Paper `Bausteine · G3` (p-16-0) is canonical; tool/g3_review.py diffs the
 // same specimens against Paper with Helvetica Neue. These goldens render the
 // test font stack (Inter), like the rest of test/openband_goldens/.
+import 'package:openstrap_edge/openband/g3/g3_format.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;

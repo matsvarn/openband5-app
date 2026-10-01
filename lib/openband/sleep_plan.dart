@@ -11,6 +11,7 @@ import 'scale.dart';
 import 'settings_controls.dart';
 import 'sleep_goal.dart';
 import 'theme.dart';
+import 'g3/g3_format.dart';
 
 class OpenBandSleepPlan extends StatefulWidget {
   final OpenBandRepository repository;
@@ -308,7 +309,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                       label: 'Belastung heute',
                       value: plan?.strainBonusMin == null
                           ? '—'
-                          : '${_strainMinutes(plan!.strainBonusMin!)}.',
+                          : _strainMinutes(plan!.strainBonusMin!),
                       known: plan?.strainBonusMin != null,
                       ink: p.muted,
                     ),
@@ -317,7 +318,7 @@ class _OpenBandSleepPlanState extends State<OpenBandSleepPlan>
                       label: 'Nickerchen',
                       value: plan?.napCreditMin == null
                           ? '—'
-                          : '${_napCreditMinutes(plan!.napCreditMin!)}.',
+                          : _napCreditMinutes(plan!.napCreditMin!),
                       known: plan?.napCreditMin != null,
                       ink: p.muted,
                     ),
@@ -475,11 +476,8 @@ class _TimesRow extends StatelessWidget {
   }
 }
 
-String sleepPlanNeedLabel(double? seconds) {
-  if (seconds == null) return '—';
-  final minutes = (seconds / 60).round();
-  return '${minutes ~/ 60} h ${(minutes % 60).toString().padLeft(2, '0')}';
-}
+String sleepPlanNeedLabel(double? seconds) =>
+    g3Duration(seconds == null ? null : (seconds / 60).round());
 
 String sleepPlanClockLabel(double? minuteOfDay) {
   if (minuteOfDay == null) return '—';
@@ -513,14 +511,11 @@ String sleepPlanNightRangeLabel(String startDay) {
 
 String _strainMinutes(double minutes) {
   final value = minutes.round();
-  if (value > 0) return '+$value Min';
-  return '$value Min';
+  return '${value > 0 ? '+' : ''}${g3Duration(value)}';
 }
 
 String _napCreditMinutes(double minutes) {
-  final value = minutes.round();
-  if (value > 0) return '-$value Min';
-  return '$value Min';
+  return g3Duration(-minutes.round().abs());
 }
 
 String sleepPlanInfoBody({ComingNightSleepPlan? plan, bool withheld = false}) {
@@ -540,7 +535,7 @@ String sleepPlanInfoBody({ComingNightSleepPlan? plan, bool withheld = false}) {
     final built = DateTime.fromMillisecondsSinceEpoch(plan.builtAtEpoch * 1000);
     final stand = DateFormat('d. MMMM, HH:mm', 'de_DE').format(built);
     parts.add(
-      'Berücksichtigt: ${bits.join(' · ')}. Stand $stand · Modell ${plan.algoVersion}.',
+      'Berücksichtigt: ${bits.join(' · ')}${bits.last.endsWith('.') ? '' : '.'} Stand $stand · Modell ${plan.algoVersion}.',
     );
   }
   if (plan == null || plan.limitations.sourceTimezoneUnknown) {

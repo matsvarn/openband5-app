@@ -3,6 +3,7 @@
 //
 // Pure presentation: strings come from the note engine / repository, values
 // are nullable, deviations are decided by the caller.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
