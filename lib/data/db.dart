@@ -243,6 +243,8 @@ class _SleepImportInterrupted implements Exception {
   final Object cause;
 }
 
+typedef DayCalculationIdentity = ({int algoVersion, int computedAt});
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -5292,8 +5294,11 @@ class LocalDb {
   /// is documented emitting 22-27 false steps/min during dishes, reaching and
   /// driving while missing slow walking — O'Connell 2017,
   /// doi:10.1371/journal.pone.0169616).
-  static Future<ResolvedDaySteps> resolvedStepsForDay(String day) async {
-    final db = await instance;
+  static Future<ResolvedDaySteps> resolvedStepsForDay(
+    String day, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     final rows = await db.query(
       'live_coverage',
       columns: ['start_ts', 'end_ts', 'steps', 'source', 'device_id'],
@@ -10684,16 +10689,93 @@ class LocalDb {
   /// The result row for one day_id at the highest version this build serves
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
-  static Future<Map<String, dynamic>?> dayResult(String dayId) async {
-    final db = await instance;
+  static Future<Map<String, dynamic>?> dayResult(
+    String dayId, {
+    DatabaseExecutor? txn,
+    bool pinned = false,
+    DayCalculationIdentity? identity,
+  }) async {
+    if (pinned && identity == null) return null;
+    final db = txn ?? await instance;
     final rows = await db.query(
       'day_result',
-      where: 'day_id = ? AND algo_version <= ?',
-      whereArgs: [dayId, _servedAlgoCeiling],
+      where: pinned
+          ? 'day_id = ? AND algo_version = ? AND computed_at = ?'
+          : 'day_id = ? AND algo_version <= ?',
+      whereArgs: pinned
+          ? [dayId, identity!.algoVersion, identity.computedAt]
+          : [dayId, _servedAlgoCeiling],
       orderBy: 'algo_version DESC',
       limit: 1,
     );
     return rows.isEmpty ? null : _withDate(rows.first);
+  }
+
+  static const servedDaySeriesSources = <String, String>{
+    'readiness': "json_extract(r.payload_json, '\$.scalars.readiness')",
+    'strain': "json_extract(r.payload_json, '\$.scalars.strain')",
+    'steps': "json_extract(r.payload_json, '\$.steps.value')",
+    'tst_min':
+        "ROUND(json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') / 60.0)",
+    'rmssd': 'r.rmssd',
+    'rhr': 'r.rhr',
+    'resp_rate': "json_extract(r.payload_json, '\$.scalars.resp_rate')",
+    'skin_temp_z': "json_extract(r.payload_json, '\$.scalars.skin_temp_z')",
+    'sol_min': "json_extract(r.payload_json, '\$.scalars.sol_min')",
+  };
+
+  /// UI points only. Derivation inputs continue to use metric_series.
+  /// A pin selects the exact PK and timestamp, or omits that day's point.
+  /// [omitAbsentComplete] omits optional-field absences before [limitDays],
+  /// Missing fields on partial, skipped or unreadable rows remain gaps.
+  static Future<List<Map<String, dynamic>>> servedDaySeries(
+    String key, {
+    String? fromDay,
+    String? throughDay,
+    int? limitDays,
+    bool omitAbsentComplete = false,
+    DatabaseExecutor? txn,
+    String? pinnedDay,
+    DayCalculationIdentity? identity,
+  }) async {
+    final source = servedDaySeriesSources[key];
+    if (source == null) throw ArgumentError.value(key, 'key');
+    if (limitDays != null && limitDays <= 0) {
+      throw ArgumentError.value(limitDays, 'limitDays');
+    }
+    final db = txn ?? await instance;
+    final where = <String>[
+      if (fromDay != null) 'r.day_id >= ?',
+      if (throughDay != null) 'r.day_id <= ?',
+      if (pinnedDay != null) 'r.day_id != ?',
+      'r.algo_version = (SELECT MAX(v.algo_version) FROM day_result v '
+          'WHERE v.day_id = r.day_id AND v.algo_version <= $_servedAlgoCeiling)',
+    ];
+    final args = <Object?>[?fromDay, ?throughDay, ?pinnedDay];
+    final selected =
+        'SELECT r.* FROM day_result r WHERE ${where.join(' AND ')}';
+    final pin = pinnedDay != null && identity != null
+        ? ' UNION ALL SELECT r.* FROM day_result r '
+              'WHERE r.day_id = ? AND r.algo_version = ? AND r.computed_at = ?'
+        : '';
+    if (pin.isNotEmpty) {
+      args.addAll([pinnedDay, identity!.algoVersion, identity.computedAt]);
+    }
+    final rows = await db.rawQuery(
+      'WITH selected AS ($selected$pin), points AS ('
+      'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.partial, r.skipped, '
+      'json_valid(r.payload_json) AS payload_valid, '
+      'CASE WHEN r.skipped = 0 AND json_valid(r.payload_json) '
+      'THEN $source END AS value, r.source, '
+      "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.imported') END AS imported, "
+      "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.sleep_source') END AS sleep_source "
+      'FROM selected r) SELECT * FROM points '
+      '${omitAbsentComplete ? 'WHERE value IS NOT NULL OR partial != 0 OR skipped != 0 OR payload_valid != 1 ' : ''}'
+      'ORDER BY date DESC'
+      '${limitDays == null ? '' : ' LIMIT ?'}',
+      [...args, ?limitDays],
+    );
+    return rows.reversed.toList();
   }
 
   static List<String> _boundedDayIds(Iterable<String> dayIds) {
@@ -10844,7 +10926,7 @@ class LocalDb {
       // json_valid() first: json_extract() ERRORS on a malformed payload, and a
       // corrupt bundle must degrade to "no sleep that day", never take out the
       // whole Records screen.
-      'WHERE json_valid(r.payload_json) '
+      'WHERE r.skipped = 0 AND json_valid(r.payload_json) '
       "AND json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') "
       'IS NOT NULL',
     );
@@ -14798,9 +14880,10 @@ class LocalDb {
 
   /// One day's numeric fields, or an empty map when nothing was recorded.
   static Future<Map<String, JournalMetricValue>> journalMetricsForDay(
-    String date,
-  ) async {
-    final db = await instance;
+    String date, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     final rows = await db.query(
       'journal_metric',
       where: 'date = ?',
@@ -15662,9 +15745,10 @@ class LocalDb {
 
   static Future<List<Map<String, dynamic>>> sessionsInRange(
     int fromTs,
-    int toTs,
-  ) async {
-    final db = await instance;
+    int toTs, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     return db.query(
       'sessions',
       where: 'start_ts >= ? AND start_ts <= ?',
