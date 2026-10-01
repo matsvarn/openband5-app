@@ -32,7 +32,7 @@ xcrun devicectl device info processes --device "$DEVICE" | grep -i openband   # 
 
 1. Stop **only** the OpenBand process (`xcrun devicectl device process terminate --device "$DEVICE" --pid <pid>`), then pull the before copy: `tool/pull_device_db.sh trial-pre`. The script copies Documents (db, -wal, -shm) plus the field log from `Library/Application Support`.
 2. `sqlite3 "<pre>/Documents/openstrap.db" "PRAGMA integrity_check"` must print `ok`.
-3. Relaunch: `xcrun devicectl device process launch --device "$DEVICE" $BUNDLE`. Wait until the Band screen shows connected, and note `T0 = date +%s`.
+3. Relaunch: `xcrun devicectl device process launch --device "$DEVICE" $BUNDLE`. Wait until the Band screen shows connected, then record the trial start: `echo "T0=$(date +%s)" >> "$LAB/trial-<date>/times.txt"`.
 4. Write each interruption's start and end (`date +%s`) into `trial-<date>/times.txt` while Mats performs it.
 
 ## What the field log must show
@@ -61,10 +61,12 @@ This applies during the trial or at any other time, whenever reconnects keep fai
 
 ## After the trial — verify, don't eyeball
 
-After the night, stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
+After the night, record the window end first: `echo "T1=$(( $(date +%s) - 900 ))" >> "$LAB/trial-<date>/times.txt"`. The 15 minutes keep seconds still waiting in band flash out of the loss check. Then stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
 
 ```sh
 PRE="<pre>/Documents/openstrap.db"; POST="<post>/Documents/openstrap.db"
+T0=$(sed -n 's/^T0=//p' "$LAB/trial-<date>/times.txt"); T1=$(sed -n 's/^T1=//p' "$LAB/trial-<date>/times.txt")
+: "${T0:?T0 not recorded}" "${T1:?T1 not recorded}"   # stop here rather than query an empty window
 sqlite3 "$POST" "PRAGMA integrity_check"                  # ok
 python3 tool/key_retention.py "$PRE" "$POST"               # RETAINED, exit 0
 python3 tool/verify_capture.py "$POST"                     # VERDICT: CLEAN
