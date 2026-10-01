@@ -1163,10 +1163,13 @@ class _SleepEditorState extends State<SleepEditor> {
           Row(
             children: [
               const G3LabelRow('IM BETT', domain: G3Domain.sleep, arrow: false),
-              const Spacer(),
-              Text(
-                '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
-                style: g.t(13, 17, color: g.muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
+                  textAlign: TextAlign.end,
+                  style: g.t(13, 17, color: g.muted),
+                ),
               ),
             ],
           ),
