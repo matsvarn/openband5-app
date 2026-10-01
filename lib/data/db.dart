@@ -10726,11 +10726,14 @@ class LocalDb {
 
   /// UI points only. Derivation inputs continue to use metric_series.
   /// A pin selects the exact PK and timestamp, or omits that day's point.
+  /// [omitAbsentComplete] omits optional-field absences before [limitDays],
+  /// Missing fields on partial, skipped or unreadable rows remain gaps.
   static Future<List<Map<String, dynamic>>> servedDaySeries(
     String key, {
     String? fromDay,
     String? throughDay,
     int? limitDays,
+    bool omitAbsentComplete = false,
     DatabaseExecutor? txn,
     String? pinnedDay,
     DayCalculationIdentity? identity,
@@ -10759,14 +10762,16 @@ class LocalDb {
       args.addAll([pinnedDay, identity!.algoVersion, identity.computedAt]);
     }
     final rows = await db.rawQuery(
-      'WITH selected AS ($selected$pin) '
+      'WITH selected AS ($selected$pin), points AS ('
       'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.partial, r.skipped, '
       'json_valid(r.payload_json) AS payload_valid, '
       'CASE WHEN r.skipped = 0 AND json_valid(r.payload_json) '
       'THEN $source END AS value, r.source, '
       "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.imported') END AS imported, "
       "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.sleep_source') END AS sleep_source "
-      'FROM selected r ORDER BY r.day_id DESC'
+      'FROM selected r) SELECT * FROM points '
+      '${omitAbsentComplete ? 'WHERE value IS NOT NULL OR partial != 0 OR skipped != 0 OR payload_valid != 1 ' : ''}'
+      'ORDER BY date DESC'
       '${limitDays == null ? '' : ' LIMIT ?'}',
       [...args, ?limitDays],
     );

@@ -230,6 +230,71 @@ const _completeB = {
   'steps headline/readTrend': [9000.0, 9000.0],
 };
 
+// Complete calculations with alternating measured and absent optional fields.
+// Explicit NULL series entries exercise metricSeries's historical SQL filter.
+Future<void> _putOptionalHistoryFixture() async {
+  for (var offset = 0; offset < 21; offset++) {
+    final day = g3DaysEnding(_day, offset + 1).first;
+    final measured = offset.isEven;
+    final values = <String, double?>{
+      'readiness': measured ? 60 + offset.toDouble() : null,
+      'strain': measured ? 4 + offset / 10 : null,
+      'steps': measured ? 1000 + offset.toDouble() : null,
+      'tst_min': measured ? 400 + offset.toDouble() : null,
+      'rmssd': measured ? 40 + offset.toDouble() : null,
+      'rhr': measured ? 50 + offset.toDouble() : null,
+      'resp_rate': measured ? 14 + offset / 10 : null,
+      'skin_temp_z': measured ? offset / 10 : null,
+      'sol_min': null,
+    };
+    await LocalDb.putDayResult(
+      dayId: day,
+      algoVersion: kAlgoVersion,
+      payloadJson: jsonEncode({
+        'source': 'band',
+        'sleep_source': 'auto',
+        'scalars': values,
+        'steps': {'value': values['steps']},
+        'sleep': {
+          'accounting': {
+            'value': {
+              'tst_sec': values['tst_min'] == null
+                  ? null
+                  : values['tst_min']! * 60,
+            },
+          },
+        },
+        'baselines': {
+          'recovery': {'baseline': 65, 'spread': 4, 'status': 'trusted'},
+        },
+      }),
+      windowJson: '{}',
+      source: 'band',
+      readiness: values['readiness'],
+      rmssd: values['rmssd'],
+      rhr: values['rhr'],
+      series: values,
+    );
+  }
+}
+
+Future<List<MetricPoint>> _legacyCalendarPoints(String key, int nights) async {
+  final rows = await LocalDb.metricSeries(key);
+  expect(rows.every((row) => row['value'] != null), isTrue);
+  final byDay = {
+    for (final row in rows)
+      row['date'] as String: (row['value'] as num).toDouble(),
+  };
+  return [
+    for (final day in g3DaysEnding(_day, nights))
+      MetricPoint(day, byDay[day]),
+  ];
+}
+
+List<Object?> _points(List<MetricPoint> points) => [
+  for (final point in points) [point.day, point.value, point.partial],
+];
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory scratch;
@@ -262,6 +327,150 @@ void main() {
     LocalDb.dbName = originalDbName;
     await databaseFactory.setDatabasesPath(originalDbPath);
     scratch.deleteSync(recursive: true);
+  });
+
+  group('complete optional fields retain filtered-series behavior', () {
+    setUp(_putOptionalHistoryFixture);
+
+    test('readDay keeps the latest eight measured sleep nights', () async {
+      final oldRows = (await LocalDb.metricSeries(
+        'tst_min',
+      )).where((row) => (row['date'] as String).compareTo(_day) <= 0).toList();
+      expect(oldRows.length, 11);
+      final expected = [
+        for (final row in oldRows.skip(oldRows.length - 8))
+          (
+            day: row['date'] as String,
+            minutes: (row['value'] as num).toDouble(),
+          ),
+      ];
+      final actual = await repo.readDay(_day);
+      expect(actual.sleep.history, expected);
+      expect(actual.sleep.history.length, 8);
+      expect(
+        actual.sleep.history.every((point) => point.minutes != null),
+        isTrue,
+      );
+    });
+
+    test(
+      'readDay still includes missing partial and skipped sleep gaps',
+      () async {
+        final skippedDay = g3DaysEnding(_day, 2).first;
+        for (final day in [_day, skippedDay]) {
+          await LocalDb.putDayResult(
+            dayId: day,
+            algoVersion: kAlgoVersion,
+            payloadJson: '{"scalars":{},"sleep_source":"auto"}',
+            windowJson: '{}',
+            partial: day == _day,
+            skipped: day == skippedDay,
+          );
+        }
+        final history = (await repo.readDay(_day)).sleep.history;
+        expect(history.length, 8);
+        expect(
+          history
+              .where((point) => point.minutes == null)
+              .map((point) => point.day),
+          [skippedDay, _day],
+        );
+      },
+    );
+
+    test('readMetricHistory keeps calendar gaps and night counts', () async {
+      for (final key in MetricKey.values) {
+        final expected = await _legacyCalendarPoints(key.series, 7);
+        expect(
+          _points(await repo.readMetricHistory(key, _day, 7)),
+          _points(expected),
+          reason: key.name,
+        );
+        if ([
+          MetricKey.hrv,
+          MetricKey.restingHr,
+          MetricKey.respiration,
+          MetricKey.skinTemperature,
+        ].contains(key)) {
+          final detail = await repo.readNightScalarDetail(key, _day, 7);
+          expect(detail.counts.compared, 4, reason: key.name);
+        }
+      }
+    });
+
+    test(
+      'readTrend including steps keeps dated gaps and minimum-count gate',
+      () async {
+        for (final metric in G3Metric.values) {
+          final key = switch (metric) {
+            G3Metric.steps => 'steps',
+            G3Metric.sleepMinutes => 'tst_min',
+            G3Metric.recovery => 'readiness',
+            G3Metric.hrv => 'rmssd',
+            G3Metric.rhr => 'rhr',
+            G3Metric.respRate => 'resp_rate',
+            G3Metric.skinTempZ => 'skin_temp_z',
+            G3Metric.strain => 'strain',
+          };
+          final expected = await _legacyCalendarPoints(key, 7);
+          final trend = await repo.readTrend(metric, _day, 7);
+          expect(_points(trend.points), _points(expected), reason: metric.name);
+          expect(trend.valueCount, 4, reason: metric.name);
+          expect(trend.insufficient, 3, reason: metric.name);
+        }
+      },
+    );
+
+    test(
+      'readWeekStrip keeps seven positions and absent comparison flags',
+      () async {
+        for (final entry in {
+          G3Metric.recovery: 'readiness',
+          G3Metric.sleepMinutes: 'tst_min',
+          G3Metric.strain: 'strain',
+        }.entries) {
+          final expected = await _legacyCalendarPoints(entry.value, 7);
+          final strip = await repo.readWeekStrip(entry.key, _day);
+          expect(
+            [
+              for (final point in strip.days) [point.day, point.value],
+            ],
+            [
+              for (final point in expected) [point.day, point.value],
+            ],
+            reason: entry.key.name,
+          );
+          expect(strip.days.length, 7);
+          expect(
+            strip.days
+                .where((point) => point.value == null)
+                .every((point) => point.outOfRange == null),
+            isTrue,
+          );
+        }
+      },
+    );
+
+    test('readWeeklyLoad keeps daily gaps and stored load counts', () async {
+      await LocalDb.putBaseline(
+        'crossday',
+        jsonEncode({
+          'built_for_day': _day,
+          'algo_version': kAlgoVersion,
+          'load': {
+            'value': {'ctl': 8, 'atl': 9},
+            'note': 'have=4,need=7',
+          },
+        }),
+      );
+      final expected = await _legacyCalendarPoints('strain', 7);
+      final load = await repo.readWeeklyLoad(_day);
+      expect(_points(load.days), _points(expected));
+      expect(load.daysHave, 4);
+      expect(load.daysNeed, 7);
+      expect(load.ctl, 8);
+      expect(load.atl, 9);
+    });
   });
 
   test(

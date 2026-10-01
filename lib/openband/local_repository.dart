@@ -1418,6 +1418,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         'tst_min',
         throughDay: day,
         limitDays: 8,
+        omitAbsentComplete: true,
         txn: txn,
       );
       final provenance = await txn.query(
@@ -2445,7 +2446,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
       if (r['source'] != null && r['source'] != 'band' || r['imported'] == 1) {
         continue;
       }
-      if (value == null || !value.isFinite || value < 0) {
+      // A null optional SOL was absent from the old value-filtered series.
+      // Answered but ineligible nights are flagged in the pairing loop below.
+      if (value == null) continue;
+      if (!value.isFinite || value < 0) {
         partial = true;
         continue;
       }
