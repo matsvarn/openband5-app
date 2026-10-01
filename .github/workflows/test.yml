@@ -117,8 +117,8 @@ jobs:
           bash tool/test_shard.sh ${{ matrix.shard }} 3
           --concurrency=4 --reporter=expanded
 
-  # Every `golden`-tagged test, pixels and all, on the host the masters were
-  # rendered on: macOS 27 on Apple silicon. Text rasterization goes through
+  # Every test in every file that compares pixels, with the exact comparator,
+  # on the host the masters were rendered on: macOS 27 on Apple silicon. Text rasterization goes through
   # the host's font stack, so an older macOS lands every golden sub-1% off
   # (544 diffs, 0.03–0.58%, measured on macos-latest) and Ubuntu lands them a
   # median 2.4% off. `xcode-27` is GitHub's macOS 27 arm64 image.
@@ -141,18 +141,19 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Only the files that compare pixels (tool/golden_test_files.sh):
-      # loading all ~470 files to find the ~65 with goldens took longer than
-      # the goldens themselves. The script falls back to every file when a
-      # comparison or the tag could come from elsewhere, and fails on a pixel
-      # comparison without the tag.
+      # Only the files that call matchesGoldenFile (tool/golden_test_files.sh):
+      # loading all ~470 files took longer than the goldens themselves. Every
+      # test in them runs, not just the golden-tagged ones, so a comparison is
+      # checked however its test is tagged. The script fails if a helper
+      # outside the test files compares pixels, since it could not find the
+      # callers.
       - name: Test (golden)
         run: |
           files=$(bash tool/golden_test_files.sh)
           cores=$(sysctl -n hw.ncpu)
           echo "cores: $cores, files: $(echo "$files" | wc -l)"
           # shellcheck disable=SC2086 # one path per word
-          flutter test --no-pub --concurrency="$cores" --tags golden \
+          flutter test --no-pub --concurrency="$cores" \
             --reporter=expanded $files
 
       - name: Upload golden failures

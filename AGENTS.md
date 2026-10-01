@@ -244,16 +244,16 @@ request and on push to `main`, in three jobs:
   (`flutter test --total-shards` splits tests inside files, so every shard
   would still compile everything).
 - `goldens` (`xcode-27`, GitHub's macOS 27 arm64 image): `flutter test --no-pub
-  --tags golden $(bash tool/golden_test_files.sh)` with the exact-match
-  comparator — the pixel check. The script lists the test files that mention
-  the tag, falls back to every test file if the tag or `matchesGoldenFile`
-  appears in any other tracked Dart file or a `dart_test.yaml` exists, and
-  fails on a pixel comparison in a file without the tag. The `test/openband_goldens/` PNGs were
-  rendered on macOS 27; older macOS rasterizes text sub-1% differently (544
-  diffs measured on `macos-latest`) and Ubuntu about 2.4%, so the golden lane
-  only runs on macOS 27. Tests that call `matchesGoldenFile` carry
-  `tags: const ['golden']`; the tag is on the test, never the file — tag new
-  golden tests the same way.
+  $(bash tool/golden_test_files.sh)` with the exact-match comparator — every
+  test in every file that calls `matchesGoldenFile`, tagged or not. The
+  `test/openband_goldens/` PNGs were rendered on macOS 27; older macOS
+  rasterizes text sub-1% differently (544 diffs measured on `macos-latest`)
+  and Ubuntu about 2.4%, so pixels are only compared on macOS 27. The script
+  fails if `matchesGoldenFile` appears in a tracked Dart file that is not a
+  test file: a shared helper's callers cannot be found by name. Tag tests
+  that call `matchesGoldenFile` with `tags: const ['golden']` (on the test,
+  never the file) so `--exclude-tags golden` skips them in the quick local
+  loop.
 
 Locally on macOS 27, `flutter test --no-pub` (default concurrency) runs
 everything with exact pixels; `flutter test --no-pub --exclude-tags golden` is

@@ -1,48 +1,34 @@
 #!/usr/bin/env bash
-# Print the test files the golden lane has to load, one per line.
+# Print the test files the golden lane has to load, one per line: every test
+# file that calls matchesGoldenFile.
 #
 #   bash tool/golden_test_files.sh
 #
-# The golden lane exists to compare pixels; the Ubuntu shards already run
-# every test body, goldens included, with an image comparator that accepts.
-# So this list must contain every file that compares pixels, or a golden image
-# is never checked. A test file that mentions neither 'golden' nor
-# matchesGoldenFile can still get a pixel comparison or the tag from a shared
-# helper or from dart_test.yaml; if any tracked Dart file other than a test
-# file carries either marker, or a dart_test.yaml exists, the list falls back
-# to every test file.
+# The Ubuntu shards run every test with an image comparator that accepts, so
+# the golden lane only has to compare pixels. It runs every test in these
+# files, tagged or not, so a comparison counts no matter how its test is
+# tagged.
 #
-# Fails when a test file calls matchesGoldenFile without mentioning the tag:
-# that comparison would never run with the exact comparator.
+# Fails when matchesGoldenFile appears in any other tracked Dart file: a
+# shared helper's callers do not name it, so this list could not find them.
+# Name such a helper here before introducing one.
 set -euo pipefail
 export LC_ALL=C
 
 cd "$(dirname "$0")/.."
-tag="['\"]golden['\"]"
 
-all=$(find test -name '*_test.dart' | sort)
-tagged=$(grep -lE "$tag" $all | sort || true)
-comparing=$(grep -l matchesGoldenFile $all | sort || true)
-
-untagged=$(comm -13 <(printf '%s\n' "$tagged") <(printf '%s\n' "$comparing"))
-if [[ -n $untagged ]]; then
-  echo "matchesGoldenFile without a golden tag in:" >&2
-  echo "$untagged" >&2
+helpers=$(git ls-files '*.dart' | grep -vE '^test/.*_test\.dart$' |
+  xargs grep -l matchesGoldenFile || true)
+if [[ -n $helpers ]]; then
+  echo "matchesGoldenFile outside test files; the golden lane cannot find their callers:" >&2
+  echo "$helpers" >&2
   exit 1
 fi
 
-elsewhere=$( (git ls-files '*.dart' | grep -vE '^test/.*_test\.dart$' |
-  xargs grep -lE "$tag|matchesGoldenFile" || true
-  git ls-files '*dart_test.yaml') | sort)
-if [[ -n $elsewhere ]]; then
-  echo "golden marker or test config outside test files; loading every test file:" >&2
-  echo "$elsewhere" >&2
-  echo "$all"
-  exit 0
-fi
-
-if [[ -z $tagged ]]; then
-  echo "no golden test files found" >&2
+files=$(find test -name '*_test.dart' -print0 |
+  xargs -0 grep -l matchesGoldenFile | sort || true)
+if [[ -z $files ]]; then
+  echo "no test file calls matchesGoldenFile" >&2
   exit 1
 fi
-echo "$tagged"
+echo "$files"
