@@ -121,6 +121,9 @@ While the loop runs, BGAppRefresh/BGProcessing wakes skip headless sync as well 
 **F16 · The reconnect supervisor measures an attempt in wall-clock time.** Owner: code quality (`lib/state/app_state.dart` `_superviseReconnect`).
 `superviseReconnect` (`lib/sync/sync_policy.dart:909`) restarts a loop whose attempt has run 25 min. After an iOS suspension longer than that it starts a second loop behind the still-pending connect, as it could before with 20 s attempts. The second loop waits on the engine's lock and reuses the link once it comes up, so it is harmless, but the post-connect block runs twice. Recommended: pass the engine's "background pending connect in flight" state into the supervisor.
 
+**F17 · Opening the app does not retire a running reconnect loop.** Owner: code quality (`lib/state/app_state.dart` `openSession` / `_reconnect`).
+`openSession` connects while `_reconnect` may still be looping; it does not bump `_reconnectGeneration`. One backoff later, the loop's `connectToRemoteId` finds the session already listening and returns true (`lib/ble/ble_engine.dart` `connect`, "already connected … reusing"). The loop then runs its post-connect block a second time: live streams are re-enabled, and `_resetLivePedometer` clears the steps the new session has already counted. This existed with 20 s attempts too; with D3, foregrounding now cancels a 20-minute background attempt, so it happens whenever the app is opened during such an attempt and `openSession` then reaches the band. Recommended: `openSession` retires the loop (bumps the generation) before connecting, and the loop treats "already listening" as someone else's success.
+
 **F13 · `tool/pull_device_db.sh` copies only `Documents`.** Fixed for the trial.
 Since `5402dbb7` the iOS field log lives in `Library/Application Support`, so pre/post pulls miss it. The script now also pulls `openstrap_sync.log` and `.1` from there.
 
