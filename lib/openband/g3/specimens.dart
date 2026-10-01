@@ -435,16 +435,6 @@ final Map<String, Widget Function()> g3Specimens = {
     min: -1.5,
     max: 1.5,
   ),
-  'OBMetricCard.default': () => const OBMetricCard(
-    label: 'HRV',
-    value: '48',
-    unit: 'ms',
-    meta: '7 Nächte',
-    spark: [44, 41, 46, 50, 39, 45, 48],
-    sparkMin: 30,
-    sparkMax: 53.6,
-  ),
-  'OBMetricCard.missing': () => const OBMetricCard(label: 'HRV', value: null),
   'OBStatRow': () => const OBStatRow([
     ('Ø 30 Tage', '66', null),
     ('Median', '68', null),
@@ -614,20 +604,6 @@ final Map<String, Widget Function()> g3Specimens = {
     ),
     onLater: _noop,
   ),
-  'OBCheckIn.question': () => const G3CheckInPreview(
-    state: OBCheckInState.question,
-    progress: '1 von 4',
-    question: 'Gestern Abend Alkohol?',
-  ),
-  'OBCheckIn.answered': () => const G3CheckInPreview(
-    state: OBCheckInState.answered,
-    progress: '2 von 4',
-    answered: 'Alkohol gestern: Nein',
-    question: 'Koffein nach 14 Uhr?',
-    onChange: _noop,
-  ),
-  'OBCheckIn.later': () =>
-      const G3CheckInPreview(state: OBCheckInState.later, progress: '4 offen'),
   'OBSegmented.week': () => _paperSegmented(
     const OBSegmented(items: ['Erholung', 'Schlaf', 'Belastung'], selected: 0),
   ),

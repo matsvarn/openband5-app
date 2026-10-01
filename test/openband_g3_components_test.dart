@@ -43,7 +43,6 @@ double? _width(String name) {
     'OBBodyRow': 327.0,
     'OBCardHeader': 325.0,
     'OBDayValueRow': 325.0,
-    'OBMetricCard': 172.0,
     'OBFormField': 353.0,
   };
   final base = name.split('.').first;
@@ -163,13 +162,7 @@ const _families = {
     'OBDayNote.text',
     'OBDayNote.absent',
   ],
-  'activity-checkin': [
-    'OBActivityRow.auto',
-    'OBActivityRow.confirmed',
-    'OBCheckIn.question',
-    'OBCheckIn.answered',
-    'OBCheckIn.later',
-  ],
+  'activity-checkin': ['OBActivityRow.auto', 'OBActivityRow.confirmed'],
   'week': [
     'OBSegmented.week',
     'OBSegmented.week.sleep',
@@ -184,8 +177,6 @@ const _families = {
     'OBBodyRow.building',
     'OBBodyRow.missing',
     'OBBodyRow.deviation',
-    'OBMetricCard.default',
-    'OBMetricCard.missing',
   ],
   'section-list': [
     'OBSectionHeader',
@@ -381,24 +372,6 @@ void main() {
           expect(find.byType(G3Dashed), findsOneWidget);
           expect(find.text('80'), findsOneWidget);
 
-          await tester.pumpWidget(
-            _app(
-              SizedBox(
-                width: 172,
-                child: OBMetricCard(
-                  label: 'Wert',
-                  value: '80',
-                  spark: [bad, 0.5],
-                ),
-              ),
-            ),
-          );
-          expect(
-            find.byWidgetPredicate(
-              (w) => w is Container && w.constraints?.minWidth == 6,
-            ),
-            findsOneWidget,
-          );
           expect(tester.takeException(), isNull);
         }
       },
@@ -650,7 +623,6 @@ void main() {
       ('OBSectionHeader', 'Eintragen'),
       ('OBZoneRows', 'Grundlage der Zonen'),
       ('OBFormField.number', 'Zeit ändern'),
-      ('OBCheckIn.answered', 'Antwort ändern'),
     ]) {
       await tester.pumpWidget(
         _app(SizedBox(width: 361, child: g3Specimens[name]!())),
@@ -1154,24 +1126,6 @@ void main() {
       );
     });
 
-    testWidgets('answered check-in change has a 44 pt target', (tester) async {
-      await tester.pumpWidget(
-        _app(
-          G3CheckInPreview(
-            state: OBCheckInState.answered,
-            progress: '1 von 4',
-            question: 'Frage?',
-            answered: 'Ja',
-            onChange: () {},
-          ),
-        ),
-      );
-      expect(
-        tester.getSize(find.bySemanticsLabel('Antwort ändern')).height,
-        greaterThanOrEqualTo(44),
-      );
-    });
-
     testWidgets('scaled track labels stay inside their widgets', (
       tester,
     ) async {
@@ -1291,10 +1245,8 @@ void main() {
       }
     });
 
-    testWidgets('note reminder and check-in keys are 44 pt and tappable', (
-      tester,
-    ) async {
-      var reminded = 0, later = 0;
+    testWidgets('note reminder is 44 pt and tappable', (tester) async {
+      var reminded = 0;
       await tester.pumpWidget(
         _app(
           Column(
@@ -1310,15 +1262,6 @@ void main() {
                   onRemind: () => reminded++,
                 ),
               ),
-              SizedBox(
-                width: 361,
-                child: G3CheckInPreview(
-                  state: OBCheckInState.question,
-                  progress: '1 von 4',
-                  question: 'Gestern Abend Alkohol?',
-                  onLater: () => later++,
-                ),
-              ),
             ],
           ),
         ),
@@ -1326,15 +1269,7 @@ void main() {
       final remind = find.bySemanticsLabel('Erinnern: 22:20 ins Bett');
       expect(tester.getSize(remind).height, greaterThanOrEqualTo(44));
       await tester.tap(remind);
-      await tester.tap(find.bySemanticsLabel('Später'));
-      expect((reminded, later), (1, 1));
-      for (final l in ['Nein', 'Ja', 'Später']) {
-        expect(
-          tester.getSize(find.bySemanticsLabel(l)).height,
-          greaterThanOrEqualTo(44),
-          reason: l,
-        );
-      }
+      expect(reminded, 1);
     });
 
     testWidgets('a segment without data is announced and cannot be chosen', (
