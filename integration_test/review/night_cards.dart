@@ -171,27 +171,41 @@ Future<void> reviewNightCards(ReviewHarness h) async {
     await tester.pumpAndSettle();
   }
 
-  Future<void> expectToday(String hrv, String rhr) async {
+  /// HRV and Ruhepuls rows show [hrv]/[rhr] (a number, or "—" when the
+  /// value is withheld). With a [note], each row also shows it and speaks
+  /// "<name> <note>" (withheld) or "<name> <value>, <note>".
+  Future<void> expectRows(String hrv, String rhr, {String? note}) async {
     await reveal(bodyRow('HRV'));
     for (final (name, value, unit) in [
       ('HRV', hrv, 'ms'),
       ('Ruhepuls', rhr, '/min'),
     ]) {
       final row = bodyRow(name);
+      final shown = value == '—' ? value : '$value $unit';
       expect(
         find.descendant(
           of: row,
-          matching: find.text(
-            value == '—' ? value : '$value $unit',
-            findRichText: true,
-          ),
+          matching: find.text(shown, findRichText: true),
         ),
         findsOneWidget,
+      );
+      if (note == null) continue;
+      expect(
+        find.descendant(of: row, matching: find.text(note, findRichText: true)),
+        findsOneWidget,
+      );
+      expect(
+        tester.getSemantics(row).label,
+        value == '—' ? '$name $note' : '$name $shown, $note',
       );
     }
   }
 
-  Future<void> expectHealth(String hrv, String rhr) => expectToday(hrv, rhr);
+  Future<void> expectToday(String hrv, String rhr, {String? note}) =>
+      expectRows(hrv, rhr, note: note);
+
+  Future<void> expectHealth(String hrv, String rhr, {String? note}) =>
+      expectRows(hrv, rhr, note: note);
 
   Future<void> openHealthDetail(
     String name,
@@ -280,12 +294,15 @@ Future<void> reviewNightCards(ReviewHarness h) async {
   await h.capture('night-cards-overview-strain-detail-dark');
   await reviewTapHeaderBack(tester);
 
-  for (final (scenario, seed, hrv, rhr, suffix) in [
+  // Heute and Messwerte must give one answer per night: the same value, or
+  // the same reason the value is withheld.
+  for (final (scenario, seed, hrv, rhr, note, suffix) in [
     (
       SyntheticScenario.missing,
       (SyntheticOpenBandRepository repo) => seedPair(repo, missing: true),
       '—',
       '—',
+      'nicht erfasst',
       'missing',
     ),
     (
@@ -297,6 +314,7 @@ Future<void> reviewNightCards(ReviewHarness h) async {
       ),
       '48',
       '54',
+      'Unvollständige Nacht',
       'partial',
     ),
     (
@@ -305,20 +323,25 @@ Future<void> reviewNightCards(ReviewHarness h) async {
           seedPair(repo, sleepJobs: failedJobs(), napJobs: failedJobs()),
       '—',
       '—',
+      'Auswertung fehlgeschlagen',
       'error',
     ),
   ]) {
     await openGallery(scenario: scenario, seed: seed);
-    await expectToday(hrv, rhr);
+    await expectToday(hrv, rhr, note: note);
     await h.capture('night-cards-overview-$suffix');
     await openGallery(scenario: scenario, seed: seed, health: true);
-    await expectHealth('—', '—');
+    await expectHealth(hrv, rhr, note: note);
     await h.capture('night-cards-messwerte-$suffix');
     await openHealthDetail(
       'HRV',
       G3Metric.hrv,
       capture: 'night-cards-messwerte-$suffix-verlauf',
     );
+    if (suffix == 'partial') {
+      // The detail leads with the same partial value, captioned, not hidden.
+      expect(find.text('Unvollständige Nacht'), findsWidgets);
+    }
     await openHealthDetail('Ruhepuls', G3Metric.rhr);
   }
   await openGallery(
@@ -331,7 +354,7 @@ Future<void> reviewNightCards(ReviewHarness h) async {
       rhr: selectedRhr(partial: true),
     ),
   );
-  await expectHealth('—', '—');
+  await expectHealth('48', '54', note: 'Unvollständige Nacht');
   await h.capture('night-cards-messwerte-partial-dark');
 
   await openGallery(scale: 2, seed: seedPair);

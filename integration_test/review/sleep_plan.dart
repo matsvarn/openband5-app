@@ -328,7 +328,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     expect(find.text('HEUTE NACHT'), findsOneWidget);
     expect(find.text('15./16. September'), findsOneWidget);
     expect(find.text('GESCHÄTZTER SCHLAFBEDARF'), findsOneWidget);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Stand 07:42'), findsOneWidget);
     expect(find.text('22:00'), findsOneWidget);
     expect(find.text('07:00'), findsOneWidget);
@@ -429,7 +429,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   );
   expect(
     find.text(
-      'Berücksichtigt: Belastung +3 Min · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
+      'Berücksichtigt: Belastung +3 Min. · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
     ),
     findsOneWidget,
   );
@@ -443,7 +443,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   await tester.tap(find.byTooltip('Schließen'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  expect(find.text('8 h 33'), findsOneWidget);
+  expect(find.text('8h33'), findsOneWidget);
 
   await revealIn(find.byType(OpenBandSleepPlan), goalLink());
   await tester.tap(goalLink().hitTestable());
@@ -492,7 +492,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   await tester.pump(const Duration(milliseconds: 400));
   expect(
     find.text(
-      'Berücksichtigt: Belastung +3 Min · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
+      'Berücksichtigt: Belastung +3 Min. · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
     ),
     findsOneWidget,
   );
@@ -504,7 +504,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
 
   resetPlan(repository, missingArtifact: true);
   await mountPlan(repository: repository);
-  expect(find.text('8 h 33'), findsNothing);
+  expect(find.text('8h33'), findsNothing);
   expect(find.text('—'), findsWidgets);
   expect(find.text('Noch keine Schätzung'), findsOneWidget);
   expect(find.text('Laden fehlgeschlagen'), findsNothing);
@@ -518,7 +518,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     artifact: fixtureArtifact(times: false, strain: strainBonusMin),
   );
   await mountPlan(repository: repository);
-  expect(find.text('8 h 33'), findsOneWidget);
+  expect(find.text('8h33'), findsOneWidget);
   expect(find.text('Stand 07:42'), findsOneWidget);
   expect(find.text('22:00'), findsNothing);
   expect(find.text('07:00'), findsNothing);
@@ -535,21 +535,21 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   await mountPlan(repository: repository);
   expect(find.text('Laden fehlgeschlagen'), findsOneWidget);
   expect(find.text('Erneut versuchen').hitTestable(), findsOneWidget);
-  expect(find.text('8 h 33'), findsNothing);
+  expect(find.text('8h33'), findsNothing);
   expect(find.text('Noch keine Schätzung'), findsNothing);
   await h.capture('sleep-plan-error');
   repository.failSleepPlanRead = false;
   await tester.tap(find.text('Erneut versuchen').hitTestable());
   await tester.pump();
   var retryFrames = 0;
-  while (find.text('8 h 33').evaluate().isEmpty) {
+  while (find.text('8h33').evaluate().isEmpty) {
     if (++retryFrames > 80) {
       throw FlutterError('Sleep plan retry did not restore the fixture.');
     }
     await tester.pump(const Duration(milliseconds: 16));
   }
   await reviewPumpPageTransitions(tester);
-  expect(find.text('8 h 33'), findsOneWidget);
+  expect(find.text('8h33'), findsOneWidget);
   expect(find.text('Laden fehlgeschlagen'), findsNothing);
   await h.capture('sleep-plan-error-retry');
   repository.failSleepPlanRead = true;
@@ -565,7 +565,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     ),
   );
   await mountPlan(repository: repository);
-  expect(find.text('8 h 33'), findsNothing);
+  expect(find.text('8h33'), findsNothing);
   expect(find.text('22:00'), findsNothing);
   expect(find.text('Schätzung nicht aktuell'), findsOneWidget);
   expect(find.text('Noch keine Schätzung'), findsNothing);
@@ -576,7 +576,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     artifact: fixtureArtifact(need: 100, strain: strainBonusMin),
   );
   await mountPlan(repository: repository);
-  expect(find.text('8 h 33'), findsNothing);
+  expect(find.text('8h33'), findsNothing);
   expect(find.text('Schätzung nicht lesbar'), findsOneWidget);
   expect(find.text('Noch keine Schätzung'), findsNothing);
   await h.capture('sleep-plan-corrupt');
@@ -590,7 +590,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     ),
   );
   await mountPlan(repository: repository);
-  expect(find.text('8 h 33'), findsOneWidget);
+  expect(find.text('8h33'), findsOneWidget);
   expect(find.text('Aktualität unbekannt'), findsOneWidget);
   expect(find.text('Stand 07:42'), findsNothing);
   await h.capture('sleep-plan-unknown');
@@ -602,7 +602,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   expect(missing.plan!.napCreditMin, 0);
   expect(missing.plan!.napCreditMin, isNotNull);
   expect(missing.plan!.strainBonusMin, isNull);
-  expect(find.text('8 h 33'), findsOneWidget);
+  expect(find.text('8h33'), findsOneWidget);
   expect(find.text('Belastung fehlt'), findsOneWidget);
   expect(find.text('Nickerchen unvollständig'), findsNothing);
   await tester.tap(find.byTooltip('Zur Schätzung'));
@@ -634,7 +634,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   }) async {
     resetPlan(repository);
     await mountPlan(repository: repository, brightness: brightness, scale: 2);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     final plan = find.byType(OpenBandSleepPlan);
     final origin = scrollPixels(plan);
     final bedLabel = find.text('INS BETT · GESCHÄTZT');
@@ -713,7 +713,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
     } else {
       await restoreScroll(plan, origin);
       expect(find.text('HEUTE NACHT'), findsOneWidget);
-      expect(find.text('8 h 33'), findsOneWidget);
+      expect(find.text('8h33'), findsOneWidget);
       await h.capture(name);
     }
   }

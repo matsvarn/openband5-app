@@ -42,7 +42,7 @@ Future<void> reviewNaps(ReviewHarness h) async {
     '16:40',
   );
   await tester.pumpAndSettle();
-  expect(find.text('40 Minuten gelegen'), findsOneWidget);
+  expect(find.text('40 Min. gelegen'), findsOneWidget);
   await h.capture('naps-add');
   await h.press('Speichern');
   expect(find.text('Di 15.09 · 16:00–16:40'), findsOneWidget);
