@@ -1183,8 +1183,13 @@ class BleEngine {
   /// schedule lives in one place. Exposed so it's testable + tunable.
   final ReconnectPolicy reconnectPolicy = ReconnectPolicy();
 
-  /// The delay to wait before reconnect `attempt` (1-based). Bounded + jittered.
-  Duration reconnectDelay(int attempt) => reconnectPolicy.delayFor(attempt);
+  /// The delay before reconnect `attempt` (1-based), keeping iOS recovery armed.
+  Duration reconnectDelay(int attempt) => reconnectDelayFor(
+    ios: debugIsIOS ?? Platform.isIOS,
+    background: _backgrounded,
+    backgroundDrainer: isBackgroundDrainer,
+    policyDelay: reconnectPolicy.delayFor(attempt),
+  );
 
   // ── reconnecting-state surface (owned by the caller's reconnect loop) ────────
   /// The caller (AppState._reconnect) owns reconnect INTENT, so only it knows

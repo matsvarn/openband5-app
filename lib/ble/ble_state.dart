@@ -31,6 +31,17 @@ Duration connectTimeoutFor({
     ? kIosBackgroundConnectTimeout
     : const Duration(seconds: 20);
 
+/// The 20-minute attempt is itself the wait, so the background gap without a
+/// pending connect must stay minimal. Other sessions keep their policy delay.
+Duration reconnectDelayFor({
+  required bool ios,
+  required bool background,
+  required bool backgroundDrainer,
+  required Duration policyDelay,
+}) => ios && background && !backgroundDrainer
+    ? const Duration(seconds: 1)
+    : policyDelay;
+
 /// The explicit connection state machine. The flutter_blue_plus connection-state
 /// stream is the SOURCE OF TRUTH for connected/disconnected; this enum layers the
 /// app's intent + sub-phases (scan/discover/subscribe) on top of it.

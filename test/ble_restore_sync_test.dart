@@ -73,11 +73,11 @@ void main() {
         await tester.pump();
         expect(calls, isNot(contains('syncDone')));
         await tester.pump(const Duration(milliseconds: 500));
-        expect(calls, ['wakeAck']);
+        expect(calls, isEmpty);
         held = true;
         await tester.pump(const Duration(milliseconds: 500));
         await wake;
-        expect(calls, ['wakeAck', 'syncDone']);
+        expect(calls, ['syncDone']);
         expect(logs, contains(contains('taken over after 2 polls')));
       },
     );
@@ -88,19 +88,17 @@ void main() {
       (tester) async {
         IosBleRestore.foregroundActive = !intentOnly;
         BandOwnership.markForegroundIntent(intentOnly);
-        IosBleRestore.handoffMaxPolls = 4;
         final wake = nativeCall('wake');
         await tester.pump();
-        expect(calls, ['wakeAck']);
-        for (var i = 0; i < 3; i++) {
+        expect(calls, isEmpty);
+        for (var i = 0; i < 79; i++) {
           await tester.pump(const Duration(milliseconds: 500));
         }
-        expect(calls, ['wakeAck']);
+        expect(calls, isEmpty);
         await tester.pump(const Duration(milliseconds: 500));
         await wake;
-        expect(calls, ['wakeAck', 'handoffExpired']);
-        expect(logs, contains(contains('not taken over after 4 polls')));
-        expect(logs, contains(contains('handoffExpired')));
+        expect(calls, ['syncDone']);
+        expect(logs, contains(contains('not taken over after 80 polls')));
       },
     );
   }
@@ -116,34 +114,27 @@ void main() {
         // Resume then runs one overdue poll.
         async.elapseBlocking(const Duration(hours: 3));
         async.elapse(Duration.zero);
-        expect(
-          calls,
-          ['wakeAck'],
-          reason: 'only ${i + 1} awake polls ran',
-        );
+        expect(calls, isEmpty, reason: 'only ${i + 1} awake polls ran');
         expect(completed, isFalse);
       }
       async.elapseBlocking(const Duration(hours: 3));
       async.elapse(Duration.zero);
       expect(completed, isTrue);
-      expect(calls, ['wakeAck', 'handoffExpired']);
+      expect(calls, ['syncDone']);
       expect(logs, contains(contains('not taken over after 4 polls')));
     });
   });
-  test(
-    'headless wake acknowledges before starting work and completing',
-    () async {
-      final lease = BandOwnership.tryAcquireHeadless()!;
-      addTearDown(() => BandOwnership.release(lease));
-      backgroundSyncLogSink = (line) async {
-        expect(calls, ['wakeAck']);
-        logs.add(line);
-      };
-      await nativeCall('wake');
-      expect(logs, contains(contains('[bgsync] skipped — foreground')));
-      expect(calls, ['wakeAck', 'syncDone']);
-    },
-  );
+  test('headless wake runs work before reporting syncDone', () async {
+    final lease = BandOwnership.tryAcquireHeadless()!;
+    addTearDown(() => BandOwnership.release(lease));
+    backgroundSyncLogSink = (line) async {
+      expect(calls, isEmpty);
+      logs.add(line);
+    };
+    await nativeCall('wake');
+    expect(logs, contains(contains('[bgsync] skipped — foreground')));
+    expect(calls, ['syncDone']);
+  });
   test(
     'busy headless gate leaves an unaccepted wake to the native watchdog',
     () async {
@@ -165,7 +156,8 @@ void main() {
     IosBleRestore.foregroundActive = true;
     held = true;
     await nativeCall('wake');
-    expect(calls, ['wakeAck', 'syncDone']);
+    expect(calls, ['syncDone']);
+    expect(logs, contains(contains('taken over after 0 polls')));
   });
   test('native log keeps its timestamp and reaches field log', () async {
     const line =

@@ -68,6 +68,57 @@ void main() {
     }
   });
 
+  test('background iOS app rearms its pending connect after one second', () {
+    final e = engine([])..setBackground(true);
+    expect(e.reconnectDelay(5), const Duration(seconds: 1));
+  });
+
+  test('reconnect gap is minimal only for the background iOS app', () {
+    final policy = ReconnectPolicy(jitterFraction: 0);
+    final policyDelay = policy.delayFor(5);
+    expect(policyDelay, const Duration(seconds: 30));
+    for (final ios in [false, true]) {
+      for (final background in [false, true]) {
+        for (final drainer in [false, true]) {
+          expect(
+            reconnectDelayFor(
+              ios: ios,
+              background: background,
+              backgroundDrainer: drainer,
+              policyDelay: policyDelay,
+            ),
+            ios && background && !drainer
+                ? const Duration(seconds: 1)
+                : const Duration(seconds: 30),
+          );
+        }
+      }
+    }
+  });
+
+  test('foreground, Android and drainer keep the reconnect policy delay', () {
+    for (final ios in [false, true]) {
+      for (final background in [false, true]) {
+        for (final drainer in [false, true]) {
+          if (ios && background && !drainer) continue;
+          final e = engine([], drainer: drainer)
+            ..debugIsIOS = ios
+            ..setBackground(background);
+          expect(
+            e.reconnectPolicy.baseDelayFor(5),
+            const Duration(seconds: 30),
+          );
+          expect(
+            e.reconnectDelay(5).inSeconds,
+            inInclusiveRange(24, 30),
+            reason:
+                'attempt 5 keeps the policy jitter around its 30-second base',
+          );
+        }
+      }
+    }
+  });
+
   test('long pending connect expires before the supervisor restarts it', () {
     ReconnectSupervisorAction action(Duration elapsed) => superviseReconnect(
       paired: true,
