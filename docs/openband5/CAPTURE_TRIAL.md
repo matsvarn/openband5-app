@@ -73,6 +73,13 @@ dart run tool/replay_check.dart "$POST"                    # exit 0
 
 Run the queries below on a scratch copy of the after database, or with `?mode=ro`. `T0` is the relaunch time. `T1` is the start of the after pull minus 15 min, so that the last seconds still waiting in band flash don't count as loss.
 
+Bind both times first. sqlite3 treats an unbound `:T0`/`:T1` as NULL and still exits 0, which makes every query below look clean on an empty window. Save the block as `zero_loss.sql` and run it like this:
+
+```sh
+cp "$POST" /tmp/trial-post.db   # scratch copy; the pull stays untouched
+sqlite3 /tmp/trial-post.db ".param set :T0 $T0" ".param set :T1 $T1" ".read zero_loss.sql"
+```
+
 ```sql
 -- Z1 Zero loss: every second the band counted between T0 and T1 is stored.
 --    Gen5 counters are contiguous per charge epoch; a hole is a lost second.
@@ -114,7 +121,7 @@ FROM g WHERE rec_ts - p > 60 ORDER BY p;
 Pass criteria, all of them:
 
 - integrity `ok` on both copies; `key_retention.py` RETAINED; `verify_capture.py` CLEAN; `replay_check.dart` exit 0.
-- Z1 `missing = 0`, Z2 `0`, Z3 `0`, Z4 as described.
+- Z1 `seconds > 0` and `missing = 0` (zero seconds means the window was not bound or not read), Z2 `0`, Z3 `0`, Z4 at least one row and as described.
 - Z6: every gap is explained by a WRIST_OFF or is absent. An interruption normally leaves **no** gap, because the band stores to flash and the backlog fills the time on reconnect. A gap that a later drain did not fill is loss, and Z1 must show it.
 - Every required log line above is present.
 - Strain, recovery and sleep for the trial days show real values or honest absence, never a value bridging a gap.
