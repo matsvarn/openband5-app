@@ -4,8 +4,8 @@ import 'package:crypto/crypto.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-// Only execution-clock columns are ignored. Measurement timestamps, dates,
-// revisions, versions, ordering, nulls and all numerical outputs stay exact.
+// Execution-clock columns are ignored. Measurement timestamps, dates,
+// analytics revisions, versions, ordering, nulls and numerical outputs stay exact.
 const ignoredClockColumns = <String, Set<String>>{
   'day_result': {'computed_at'},
   'sleep_session_candidates': {'computed_at'},
@@ -18,14 +18,25 @@ const ignoredClockColumns = <String, Set<String>>{
   'notif_fired': {'fired_at'},
 };
 
-const ignoredBaselineClockFields = <String, Set<String>>{
-  'crossday': {'built_at_epoch', 'input_read_started_at_ms'},
-  'crossday_input': {'input_read_started_at_ms'},
+// LocalDb.bumpCrossDaySourceRevision increments on every putDayResult. Its
+// documentation calls this a local publication fence for orchestration
+// eligibility, not analytics output. Exclude only these three fence values.
+const ignoredPayloadFields = <String, Map<String, Set<String>>>{
+  'baselines': {
+    'crossday': {'built_at_epoch', 'input_read_started_at_ms', 'source_rev'},
+    'crossday_input': {'input_read_started_at_ms', 'source_rev'},
+  },
+  'compute_freshness': {
+    'crossday_source_rev': {'v'},
+  },
 };
 
+String normalizePayload(String table, String key, String text) =>
+    maskRootFields(text, ignoredPayloadFields[table]?[key] ?? <String>{});
+
 // Preserve JSON bytes, including key order, spacing and number formatting.
-// Mask ONLY the numeric literal of an explicitly allowed ROOT clock field.
-String maskRootClocks(String text, Set<String> fields) {
+// Mask ONLY the numeric literal of an explicitly allowed ROOT clock or fence field.
+String maskRootFields(String text, Set<String> fields) {
   final matches = RegExp(r'"([^"\\]*)"\s*:\s*(-?\d+)').allMatches(text);
   final replacements = <(int, int)>[];
   for (final m in matches) {
@@ -122,10 +133,11 @@ class PersistedSnapshot {
             for (final column in ignoredClockColumns[name] ?? <String>{}) {
               row.remove(column);
             }
-            if (name == 'baselines' && row['payload_json'] is String) {
-              row['payload_json'] = maskRootClocks(
+            if (row['payload_json'] is String) {
+              row['payload_json'] = normalizePayload(
+                name,
+                row['key']?.toString() ?? '',
                 row['payload_json'] as String,
-                ignoredBaselineClockFields[row['key']] ?? <String>{},
               );
             }
             final hash = digest(jsonEncode(row));
