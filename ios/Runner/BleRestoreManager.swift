@@ -15,8 +15,9 @@ import Flutter
 /// Processing for iOS Apps). Confirmed directly against that doc — this is not a deviation
 /// from a single-manager model Apple only describes for the simple case.
 ///
-/// It does NOT drain data. flutter_blue_plus owns the real GATT session, and two
-/// CBCentralManagers can't share a peripheral connection. This is a trigger only: it
+/// It does NOT drain data. flutter_blue_plus owns the real GATT session. Apple's
+/// cancelPeripheralConnection documentation confirms that one central's cancel
+/// does not drop a link another central holds. This is a trigger only: it
 /// holds a no-timeout pending connect to the band (under a restore identifier) so iOS
 /// relaunches us when the band shows up, then it cancels its own connection and tells
 /// Flutter to run the normal headless sync.
@@ -74,6 +75,20 @@ class BleRestoreManager: NSObject {
   private var arms: [UUID: ArmState] = [:]
   private var channel: FlutterMethodChannel?
   private var flutterReady = false
+  private var pendingLogs: [String] = []
+  private let logTimestamp = ISO8601DateFormatter()
+
+  private func log(_ message: String) {
+    NSLog("%@", message)
+    let line = "\(logTimestamp.string(from: Date())) \(message)"
+    if flutterReady {
+      channel?.invokeMethod("log", arguments: line)
+    } else {
+      pendingLogs.append(line)
+      if pendingLogs.count > 200 { pendingLogs.removeFirst() }
+    }
+  }
+
   private var wakeQueuedBeforeReady = false
   private var bgTask: UIBackgroundTaskIdentifier = .invalid
 
@@ -109,12 +124,12 @@ class BleRestoreManager: NSObject {
       // Already provisioned on a prior launch → safe to create the restore central now so
       // iOS can relaunch us via willRestoreState. (No picker is ever shown in this case.)
       ensureCentral()
-      NSLog("[ble-restore] started (bands=\(arms.keys.map(\.uuidString).joined(separator: ","))) "
+      log("[ble-restore] started (bands=\(arms.keys.map(\.uuidString).joined(separator: ","))) "
             + "— restore central up")
     } else {
       // Fresh install / no provisioned accessory → DEFER central creation so the ASK
       // picker can be shown with no CBCentralManager alive.
-      NSLog("[ble-restore] started (no band) — restore central deferred until provisioned")
+      log("[ble-restore] started (no band) — restore central deferred until provisioned")
     }
   }
 
@@ -138,7 +153,7 @@ class BleRestoreManager: NSObject {
     bandUUID = uuid
     if arms[uuid] == nil { arms[uuid] = ArmState() }
     ensureCentral()
-    NSLog("[ble-restore] band provisioned — restore central created")
+    log("[ble-restore] band provisioned — restore central created")
   }
 
   /// Wire the Dart channel. Safe on the implicit engine too (background launch).
@@ -187,11 +202,11 @@ class BleRestoreManager: NSObject {
           self.arms[uuid] = st
           if owns {
             self.cancelPending(uuid)
-            NSLog("[ble-restore] app owns band \(uuid.uuidString) — pending connect cancelled")
+            self.log("[ble-restore] app owns band \(uuid.uuidString) — pending connect cancelled")
           } else {
             st.idleAfterSync = false
             self.arms[uuid] = st
-            NSLog("[ble-restore] app released band \(uuid.uuidString) — arming recovery")
+            self.log("[ble-restore] app released band \(uuid.uuidString) — arming recovery")
             self.armIfAppropriate()
           }
         } else {
@@ -208,9 +223,9 @@ class BleRestoreManager: NSObject {
             }
           }
           if owns {
-            NSLog("[ble-restore] app owns band — pending connect cancelled")
+            self.log("[ble-restore] app owns band — pending connect cancelled")
           } else {
-            NSLog("[ble-restore] app released band — arming recovery")
+            self.log("[ble-restore] app released band — arming recovery")
             self.armIfAppropriate()
           }
         }
@@ -234,7 +249,7 @@ class BleRestoreManager: NSObject {
           self.arms[uuid] = st
           self.ensureCentral()
           self.armIfAppropriate()
-          NSLog("[ble-restore] armRecoveryNow — recovery armed atomically")
+          self.log("[ble-restore] armRecoveryNow — recovery armed atomically")
           // The actual recovery (the no-timeout pending connect) is now held by
           // bluetoothd itself and survives full app suspension; the background-task
           // extension only needed to cover this method's own synchronous work, so
@@ -260,11 +275,15 @@ class BleRestoreManager: NSObject {
         if self.central != nil {
           self.central?.delegate = nil
           self.central = nil
-          NSLog("[ble-restore] restore central released for ASK picker (bands kept)")
+          self.log("[ble-restore] restore central released for ASK picker (bands kept)")
         }
         result(nil)
       case "ready":
         self.flutterReady = true
+        for line in self.pendingLogs {
+          self.channel?.invokeMethod("log", arguments: line)
+        }
+        self.pendingLogs.removeAll()
         if self.wakeQueuedBeforeReady {
           self.wakeQueuedBeforeReady = false
           self.channel?.invokeMethod("wake", arguments: nil)
@@ -307,35 +326,35 @@ class BleRestoreManager: NSObject {
 
   private func armIfAppropriate() {
     // Process-level guards, evaluated once (unchanged from today, same log text).
-    guard let central = central else { NSLog("[ble-restore] skip arm — no central"); return }
+    guard let central = central else { log("[ble-restore] skip arm — no central"); return }
     guard central.state == .poweredOn else {
-      NSLog("[ble-restore] skip arm — central not poweredOn (state=\(central.state.rawValue))"); return
+      log("[ble-restore] skip arm — central not poweredOn (state=\(central.state.rawValue))"); return
     }
     if UIApplication.shared.applicationState == .active {
-      NSLog("[ble-restore] skip arm — app active"); return
+      log("[ble-restore] skip arm — app active"); return
     }
-    guard !arms.isEmpty else { NSLog("[ble-restore] skip arm — no bandUUID"); return }
+    guard !arms.isEmpty else { log("[ble-restore] skip arm — no bandUUID"); return }
 
     // Write `Array(arms.keys)`, not `arms.keys` directly — the loop body mutates `arms`,
     // and iterating the live Keys view while doing so is a mutation-during-iteration hazard.
     for uuid in Array(arms.keys) {
       var s = state(uuid)
       let tag = uuid.uuidString
-      if s.appOwnsBand { NSLog("[ble-restore] skip arm \(tag) — app owns band"); continue }
-      if s.handedOff { NSLog("[ble-restore] skip arm \(tag) — handedOff"); continue }
+      if s.appOwnsBand { log("[ble-restore] skip arm \(tag) — app owns band"); continue }
+      if s.handedOff { log("[ble-restore] skip arm \(tag) — handedOff"); continue }
       if s.idleAfterSync {
-        NSLog("[ble-restore] skip arm \(tag) — idle after sync (awaiting re-arm)"); continue
+        log("[ble-restore] skip arm \(tag) — idle after sync (awaiting re-arm)"); continue
       }
       // Already holding a pending connect for this one — arming again is a no-op that
       // would drop and re-take the retain.
       if s.peripheral != nil { continue }
       guard let p = central.retrievePeripherals(withIdentifiers: [uuid]).first else {
-        NSLog("[ble-restore] band \(tag) not retrievable yet"); continue
+        log("[ble-restore] band \(tag) not retrievable yet"); continue
       }
       s.peripheral = p
       arms[uuid] = s
       central.connect(p, options: nil)  // no timeout → persists, relaunches us when reachable
-      NSLog("[ble-restore] armed pending connect \(tag)")
+      log("[ble-restore] armed pending connect \(tag)")
     }
   }
 
@@ -366,9 +385,9 @@ class BleRestoreManager: NSObject {
       if central != nil {
         central?.delegate = nil
         central = nil
-        NSLog("[ble-restore] disarmed — restore central released")
+        log("[ble-restore] disarmed — restore central released")
       } else {
-        NSLog("[ble-restore] disarmed")
+        log("[ble-restore] disarmed")
       }
       return
     }
@@ -379,9 +398,9 @@ class BleRestoreManager: NSObject {
     if arms.isEmpty, central != nil {
       central?.delegate = nil
       central = nil
-      NSLog("[ble-restore] disarmed \(uuid.uuidString) — restore central released (no bands left)")
+      log("[ble-restore] disarmed \(uuid.uuidString) — restore central released (no bands left)")
     } else {
-      NSLog("[ble-restore] disarmed \(uuid.uuidString)")
+      log("[ble-restore] disarmed \(uuid.uuidString)")
     }
   }
 
@@ -391,17 +410,17 @@ class BleRestoreManager: NSObject {
     beginBackground()
     if flutterReady {
       channel?.invokeMethod("wake", arguments: nil)
-      NSLog("[ble-restore] wake → Flutter")
+      log("[ble-restore] wake → Flutter")
     } else {
       wakeQueuedBeforeReady = true
-      NSLog("[ble-restore] wake queued (Flutter not ready)")
+      log("[ble-restore] wake queued (Flutter not ready)")
     }
     // Watchdog: if Dart never calls syncDone (crash), clear the handoff so we don't get
     // stuck, and go idle (await an explicit re-arm) so we don't loop. Not a sync cadence —
     // just a failsafe to release the in-flight state.
     DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
       guard let self = self, self.state(uuid).handedOff else { return }
-      NSLog("[ble-restore] syncDone watchdog fired — releasing handoff, going idle")
+      self.log("[ble-restore] syncDone watchdog fired — releasing handoff, going idle")
       var s = self.state(uuid)
       s.handedOff = false
       s.idleAfterSync = true
@@ -492,7 +511,7 @@ class BleRestoreManager: NSObject {
 
 extension BleRestoreManager: CBCentralManagerDelegate {
   func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    NSLog("[ble-restore] central state=\(central.state.rawValue)")
+    log("[ble-restore] central state=\(central.state.rawValue)")
     if central.state == .poweredOn { armIfAppropriate() }
   }
 
@@ -509,17 +528,17 @@ extension BleRestoreManager: CBCentralManagerDelegate {
     for p in restored {
       arms[p.identifier, default: ArmState()].peripheral = p
     }
-    NSLog("[ble-restore] willRestoreState restored \(restored.count) peripheral(s)")
+    log("[ble-restore] willRestoreState restored \(restored.count) peripheral(s)")
   }
 
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     let uuid = peripheral.identifier
     guard arms[uuid] != nil else {
-      NSLog("[ble-restore] didConnect for unknown band \(uuid.uuidString) — cancelling")
+      log("[ble-restore] didConnect for unknown band \(uuid.uuidString) — cancelling")
       central.cancelPeripheralConnection(peripheral)
       return
     }
-    NSLog("[ble-restore] didConnect \(uuid.uuidString) — handing off to flutter_blue_plus")
+    log("[ble-restore] didConnect \(uuid.uuidString) — handing off to flutter_blue_plus")
     arms[uuid]?.handedOff = true
     signalWake(uuid)
   }
@@ -528,7 +547,8 @@ extension BleRestoreManager: CBCentralManagerDelegate {
     let uuid = peripheral.identifier
     arms[uuid]?.peripheral = nil
     let handedOff = state(uuid).handedOff
-    NSLog("[ble-restore] didDisconnect \(uuid.uuidString) (handedOff=\(handedOff))")
+    let nativeError = error as NSError?
+    log("[ble-restore] didDisconnect \(uuid.uuidString) (handedOff=\(handedOff)) code=\(nativeError.map { String($0.code) } ?? "none") description=\(error?.localizedDescription ?? "none")")
     // Re-arm only if our own pending connect dropped while still in recovery mode (band
     // went away again). armIfAppropriate's idleAfterSync/appOwnsBand guards prevent loops.
     if !handedOff { armIfAppropriate() }
@@ -537,7 +557,8 @@ extension BleRestoreManager: CBCentralManagerDelegate {
   func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
     let uuid = peripheral.identifier
     arms[uuid]?.peripheral = nil
-    NSLog("[ble-restore] didFailToConnect \(uuid.uuidString): \(error?.localizedDescription ?? "—")")
+    let nativeError = error as NSError?
+    log("[ble-restore] didFailToConnect \(uuid.uuidString) code=\(nativeError.map { String($0.code) } ?? "none") description=\(error?.localizedDescription ?? "none")")
     if !state(uuid).handedOff { armIfAppropriate() }
   }
 }

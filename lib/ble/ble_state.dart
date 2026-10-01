@@ -17,6 +17,32 @@ import 'package:openstrap_protocol/openstrap_protocol.dart'
 
 import '../sync/sync_policy.dart' show isPlausibleUnix, kMinPlausibleUnix;
 
+/// MUST stay below superviseReconnect's staleAfter (25 minutes), so the
+/// supervisor cannot restart the loop during a legitimate pending attempt.
+const kIosBackgroundConnectTimeout = Duration(minutes: 20);
+
+/// Keep an iOS app connection pending through suspension. Headless drainers
+/// keep the short timeout to fit their OS execution budget.
+Duration connectTimeoutFor({
+  required bool ios,
+  required bool background,
+  required bool backgroundDrainer,
+}) => ios && background && !backgroundDrainer
+    ? kIosBackgroundConnectTimeout
+    : const Duration(seconds: 20);
+
+/// An attempt that actually stayed pending already did the waiting. Immediate
+/// platform failures and other sessions keep their policy delay.
+Duration reconnectDelayFor({
+  required bool ios,
+  required bool background,
+  required bool backgroundDrainer,
+  required bool lastAttemptPending,
+  required Duration policyDelay,
+}) => ios && background && !backgroundDrainer && lastAttemptPending
+    ? const Duration(seconds: 1)
+    : policyDelay;
+
 /// The explicit connection state machine. The flutter_blue_plus connection-state
 /// stream is the SOURCE OF TRUTH for connected/disconnected; this enum layers the
 /// app's intent + sub-phases (scan/discover/subscribe) on top of it.
@@ -572,21 +598,21 @@ class RecordGate {
 /// regression is caught even across the reconnect that a reboot itself
 /// usually causes — the two events are correlated, not sequential.
 class CounterRegressionDetector {
-  int? _lastCounter;
+  final Map<int, int> _lastCounters = {};
+  int? _seedCounter;
 
-  /// Regressions observed since construction (never reset by [reset] — reset
-  /// only clears the last-seen counter for reseeding at a fresh connect).
+  /// Lifetime total across record versions; reseeding only clears baselines.
   int regressions = 0;
 
-  CounterRegressionDetector({int? seedCounter}) : _lastCounter = seedCounter;
+  CounterRegressionDetector({int? seedCounter}) : _seedCounter = seedCounter;
 
   /// Feed the next record's raw hardware counter (u32, may wrap on a
   /// sufficiently long-running band). Returns true exactly when this counter
-  /// is a genuine regression against the previous one (not benign u32
+  /// is a genuine regression against the previous one of [recType] (not benign u32
   /// wraparound near the top of the range).
-  bool feed(int counter) {
-    final prev = _lastCounter;
-    _lastCounter = counter;
+  bool feed(int counter, {int recType = 0}) {
+    final prev = _lastCounters[recType] ?? _seedCounter;
+    _lastCounters[recType] = counter;
     if (prev == null || counter >= prev) return false;
     // Wraparound guard: prev near the top of u32, counter near 0 is normal
     // roll-over on an extremely long-running band, not a reboot.
@@ -599,7 +625,62 @@ class CounterRegressionDetector {
   /// Re-seed for a fresh connection (does not clear the lifetime [regressions]
   /// count — that's diagnostics across the engine's lifetime).
   void reseed(int? seedCounter) {
-    _lastCounter = seedCounter;
+    _lastCounters.clear();
+    _seedCounter = seedCounter;
+  }
+}
+
+/// Link diagnostics only; readiness and reconnect decisions remain with callers.
+class LinkEpisodeTracker {
+  LinkEpisodeTracker({DateTime Function()? now}) : _now = now ?? DateTime.now;
+
+  final DateTime Function() _now;
+  DateTime? lastLinkUp;
+  DateTime? lastLinkDown;
+  String? lastDownReason;
+  DateTime? unreachableSince;
+  int failedAttempts = 0;
+
+  void linkUp() => lastLinkUp = _now();
+
+  String linkDown({required String reason, DateTime? lastRxAt}) {
+    final at = _now();
+    lastLinkDown = at;
+    lastDownReason = reason;
+    if (unreachableSince == null || at.isBefore(unreachableSince!)) {
+      unreachableSince = at;
+    }
+    final length = lastLinkUp == null
+        ? 'unknown'
+        : '${at.difference(lastLinkUp!).inSeconds}s';
+    final rxAge = lastRxAt == null
+        ? 'unknown'
+        : '${at.difference(lastRxAt).inSeconds}s';
+    return '[LINK] down reason=$reason after $length last_rx=$rxAge';
+  }
+
+  String? connectFailed() {
+    unreachableSince ??= _now();
+    failedAttempts++;
+    final since = unreachableSince!.toLocal().toIso8601String();
+    if (failedAttempts == 1) return '[LINK] unreachable since $since';
+    if (failedAttempts % 10 == 0) {
+      return '[LINK] still unreachable since $since, $failedAttempts failed attempts';
+    }
+    return null;
+  }
+
+  /// Called only once the normal connection setup reaches READY.
+  String? ready() {
+    final since = unreachableSince;
+    if (since == null) return null;
+    final elapsed = _now().difference(since).inSeconds;
+    final line =
+        '[LINK] reachable again after ${elapsed}s, '
+        '$failedAttempts failed attempts since ${since.toLocal().toIso8601String()}';
+    unreachableSince = null;
+    failedAttempts = 0;
+    return line;
   }
 }
 

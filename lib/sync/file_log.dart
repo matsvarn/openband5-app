@@ -20,7 +20,8 @@ class FileLog {
   static File? _file;
   static bool _init = false;
 
-  static const int _maxBytes = 2 * 1024 * 1024;
+  // 6 MiB per file (about 12 MiB with .1) retains several days of field logs.
+  static const int _maxBytes = 6 * 1024 * 1024;
   // ponytail: the size check stats the file only once every 128 writes, so the
   // log can overshoot _maxBytes by a burst's worth of lines before rotating.
   static const int _sizeCheckEvery = 128;

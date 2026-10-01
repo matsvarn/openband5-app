@@ -726,8 +726,9 @@ enum StalenessTier {
   notify,
 }
 
-const int kStalenessQuietSeconds = 12 * 3600; // 12h
-const int kStalenessNotifySeconds = 48 * 3600; // 48h
+const int kStalenessQuietSeconds = 3600; // 1h
+const int kStalenessNotifySeconds = 3 * 3600; // 3h
+const int kStalenessRenotifySeconds = 12 * 3600; // 12h
 
 /// Tier for [secondsSinceLastRecord] (wall-now minus the `rec_ts_hw` cursor).
 /// Pure threshold lookup — callers own actually presenting the signal/
@@ -748,11 +749,11 @@ StalenessTier stalenessTierFor(int secondsSinceLastRecord) {
 /// background cycle (which can run every ~15 min) — but SHOULD get reminded
 /// periodically rather than only once, since a single missed/dismissed
 /// notification shouldn't be the only chance to recover. [renotifyAfter]
-/// defaults to the same width as the notify threshold itself.
+/// defaults to 12 hours, independently of the initial notify threshold.
 bool shouldRenotifyStaleness(
   DateTime? lastNotifiedAt,
   DateTime now, {
-  Duration renotifyAfter = const Duration(seconds: kStalenessNotifySeconds),
+  Duration renotifyAfter = const Duration(seconds: kStalenessRenotifySeconds),
 }) {
   if (lastNotifiedAt == null) return true;
   return now.difference(lastNotifiedAt) >= renotifyAfter;
