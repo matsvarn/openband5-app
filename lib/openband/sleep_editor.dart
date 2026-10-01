@@ -1163,10 +1163,13 @@ class _SleepEditorState extends State<SleepEditor> {
           Row(
             children: [
               const G3LabelRow('IM BETT', domain: G3Domain.sleep, arrow: false),
-              const Spacer(),
-              Text(
-                '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
-                style: g.t(13, 17, color: g.muted),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${g3Duration(bed)}${windowChanged ? ' · vorher ${g3Duration(previous)}' : ''}',
+                  textAlign: TextAlign.end,
+                  style: g.t(13, 17, color: g.muted),
+                ),
               ),
             ],
           ),
@@ -1275,7 +1278,7 @@ class _SleepEditorState extends State<SleepEditor> {
                       alignment: Alignment.center,
                       decoration: g.raised(radius: 22),
                       child: Text(
-                        g3Signed(delta, unit: 'Min.'),
+                        '${delta > 0 ? '+' : ''}${g3Duration(delta)}',
                         maxLines: 1,
                         style: g.t(
                           12,
@@ -1406,7 +1409,7 @@ class _SleepEditorState extends State<SleepEditor> {
           'Wach',
           widget.g3
               ? g3Duration(night.awakeMinutes?.round())
-              : '${obNumber(night.awakeMinutes)} Min.',
+              : obDuration(night.awakeMinutes),
           LucideIcons.sun,
           p.strainText,
         ),

@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/day_label.dart';
 import 'alp_tokens.dart';
+import 'g3/g3_format.dart';
 
 class OB {
   final bool dark;
@@ -426,20 +427,16 @@ class _AccessibleTransitions extends PageTransitionsBuilder {
 }
 
 String obGapMinutes(num minutes) =>
-    minutes < 1 ? '<1 Min.' : '${obNumber(minutes.ceil())} Min.';
+    minutes < 1 ? '<1 Min.' : g3Duration(minutes.ceil());
 
-String obDuration(num? minutes) {
-  if (minutes == null) return '—';
-  final m = minutes.round();
-  return '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}';
-}
-
+String obDuration(num? minutes) => g3Duration(minutes?.round());
 String obNumber(num? value, {int digits = 0}) => value == null
     ? '—'
     : NumberFormat.decimalPatternDigits(
         locale: 'de_DE',
         decimalDigits: digits,
       ).format(value);
+
 String obDate(String day) =>
     DateFormat('d. MMMM', 'de_DE').format(DateTime.parse(day));
 List<String> openBandDaysEnding(String endDay, int nights) {

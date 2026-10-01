@@ -1,6 +1,7 @@
 // Synthetic specimens of every G3 Baustein, with the same content as the
 // Paper page `Bausteine · G3` (p-16-0). Used by the golden gallery and the
 // Paper diff harness (tool/g3_review.py). Synthetic data only.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -435,16 +436,6 @@ final Map<String, Widget Function()> g3Specimens = {
     min: -1.5,
     max: 1.5,
   ),
-  'OBMetricCard.default': () => const OBMetricCard(
-    label: 'HRV',
-    value: '48',
-    unit: 'ms',
-    meta: '7 Nächte',
-    spark: [44, 41, 46, 50, 39, 45, 48],
-    sparkMin: 30,
-    sparkMax: 53.6,
-  ),
-  'OBMetricCard.missing': () => const OBMetricCard(label: 'HRV', value: null),
   'OBStatRow': () => const OBStatRow([
     ('Ø 30 Tage', '66', null),
     ('Median', '68', null),
@@ -614,20 +605,6 @@ final Map<String, Widget Function()> g3Specimens = {
     ),
     onLater: _noop,
   ),
-  'OBCheckIn.question': () => const G3CheckInPreview(
-    state: OBCheckInState.question,
-    progress: '1 von 4',
-    question: 'Gestern Abend Alkohol?',
-  ),
-  'OBCheckIn.answered': () => const G3CheckInPreview(
-    state: OBCheckInState.answered,
-    progress: '2 von 4',
-    answered: 'Alkohol gestern: Nein',
-    question: 'Koffein nach 14 Uhr?',
-    onChange: _noop,
-  ),
-  'OBCheckIn.later': () =>
-      const G3CheckInPreview(state: OBCheckInState.later, progress: '4 offen'),
   'OBSegmented.week': () => _paperSegmented(
     const OBSegmented(items: ['Erholung', 'Schlaf', 'Belastung'], selected: 0),
   ),
@@ -678,12 +655,7 @@ final Map<String, Widget Function()> g3Specimens = {
         ('Mo', 445),
         ('Heute', 438),
       ].indexed)
-        OBWeekBar(
-          d,
-          m.toDouble(),
-          label: '${m ~/ 60}h${(m % 60).toString().padLeft(2, '0')}',
-          today: i == 6,
-        ),
+        OBWeekBar(d, m.toDouble(), label: g3Duration(m), today: i == 6),
     ],
     footer: const [
       G3Legend.goal('Ziel 7h45'),
@@ -736,7 +708,7 @@ final Map<String, Widget Function()> g3Specimens = {
     gapNote: '02:01–02:49 ohne Daten · nicht aufgefüllt',
     axis: ('23:10', '03:00', '06:54'),
     totals: const [
-      (OBStage.deep, '0h55'),
+      (OBStage.deep, '55 Min.'),
       (OBStage.light, '3h45'),
       (OBStage.rem, '1h51'),
       (OBStage.wake, '25 Min.'),

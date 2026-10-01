@@ -244,7 +244,7 @@ void main() {
     expect(find.text('HEUTE NACHT'), findsOneWidget);
     expect(find.text('15./16. September'), findsOneWidget);
     expect(find.text('GESCHÄTZTER SCHLAFBEDARF'), findsOneWidget);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Stand 07:42'), findsOneWidget);
     expect(find.text('22:00'), findsOneWidget);
     expect(find.text('07:00'), findsOneWidget);
@@ -257,7 +257,7 @@ void main() {
       matchesGoldenFile('openband_goldens/sleep-plan.png'),
     );
     await mount(tester, brightness: Brightness.dark);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     await expectLater(
       find.byKey(const ValueKey('capture')),
       matchesGoldenFile('openband_goldens/sleep-plan-dark.png'),
@@ -269,7 +269,7 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = null;
     await mount(tester);
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('—'), findsWidgets);
     expect(find.text('Noch keine Schätzung'), findsOneWidget);
     expect(find.text('Laden fehlgeschlagen'), findsNothing);
@@ -297,7 +297,7 @@ void main() {
     await repo.saveSleepGoal('2026-09-16', 480);
     await tester.tap(find.byTooltip('Zurück').last);
     await tester.pumpAndSettle();
-    expect(find.text('8h00'), findsOneWidget);
+    expect(find.text('8h'), findsOneWidget);
     expect(find.text('7h45'), findsNothing);
   });
 
@@ -307,7 +307,7 @@ void main() {
     final scale = tester.widget<OBScale>(find.byType(OBScale));
     expect(scale.max, 12);
     expect(scale.target, 12);
-    expect(find.text('12h00'), findsOneWidget);
+    expect(find.text('12h'), findsOneWidget);
   });
 
   testWidgets('need without times keeps the hero and names the missing clocks', (
@@ -315,7 +315,7 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = _artifact(times: false);
     await mount(tester);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Stand 07:42'), findsOneWidget);
     expect(find.text('22:00'), findsNothing);
     expect(find.text('Zeitplanung unvollständig'), findsOneWidget);
@@ -337,7 +337,7 @@ void main() {
     await mount(tester);
     expect(find.text('Laden fehlgeschlagen'), findsOneWidget);
     expect(find.text('Erneut versuchen'), findsOneWidget);
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('Noch keine Schätzung'), findsNothing);
     await expectLater(
       find.byKey(const ValueKey('capture')),
@@ -352,7 +352,7 @@ void main() {
     repo.failSleepPlanRead = false;
     await tester.tap(find.text('Erneut versuchen'));
     await tester.pumpAndSettle();
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Laden fehlgeschlagen'), findsNothing);
   }, tags: const ['golden']);
 
@@ -360,7 +360,7 @@ void main() {
     tester,
   ) async {
     await mount(tester, width: 375, height: 1200, scale: 2);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(tester.takeException(), isNull);
     final bed = tester.getRect(find.text('INS BETT · GESCHÄTZT'));
     final rise = tester.getRect(find.text('AUFSTEHEN · TYPISCH'));
@@ -421,7 +421,7 @@ void main() {
     );
     expect(
       find.text(
-        'Berücksichtigt: Belastung +3 Min · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
+        'Berücksichtigt: Belastung +3 Min. · Nickerchen 0 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
       ),
       findsOneWidget,
     );
@@ -445,7 +445,7 @@ void main() {
     );
     await tester.tap(find.byTooltip('Schließen'));
     await tester.pumpAndSettle();
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
   }, tags: const ['golden']);
 
   testWidgets('null strain or nap is partial; true zero is not absence', (
@@ -453,7 +453,7 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = _artifact(strain: null, nap: 0);
     await mount(tester);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Belastung fehlt'), findsOneWidget);
     expect(find.text('Nickerchen unvollständig'), findsNothing);
     await tester.tap(find.byTooltip('Zur Schätzung'));
@@ -474,13 +474,13 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = _artifact(nap: 12, strain: 3);
     await mount(tester);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Nickerchen unvollständig'), findsNothing);
     await tester.tap(find.byTooltip('Zur Schätzung'));
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Berücksichtigt: Belastung +3 Min · Nickerchen -12 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
+        'Berücksichtigt: Belastung +3 Min. · Nickerchen −12 Min. Stand 15. September, 07:42 · Modell $kAlgoVersion.',
       ),
       findsOneWidget,
     );
@@ -493,7 +493,7 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = _artifact(includeWake: false);
     await mount(tester);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('22:00'), findsOneWidget);
     expect(find.text('07:00'), findsNothing);
     expect(find.text('Zeitplanung unvollständig'), findsOneWidget);
@@ -514,7 +514,7 @@ void main() {
       ),
     ];
     await mount(tester);
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('22:00'), findsNothing);
     expect(find.text('Schätzung nicht aktuell'), findsOneWidget);
     expect(find.text('Noch keine Schätzung'), findsNothing);
@@ -525,7 +525,7 @@ void main() {
     repo.sleepPlanObservations = const [];
     repo.sleepPlanJobs = const [];
     await mount(tester);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(find.text('Aktualität unbekannt'), findsOneWidget);
     expect(find.text('Stand 07:42'), findsNothing);
   });
@@ -535,7 +535,7 @@ void main() {
   ) async {
     repo.sleepPlanArtifact = _artifact(need: 100);
     await mount(tester);
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('Schätzung nicht lesbar'), findsOneWidget);
     expect(find.text('Noch keine Schätzung'), findsNothing);
 
@@ -553,7 +553,7 @@ void main() {
     expect(find.text('Heute Nacht'), findsNothing);
     expect(find.text('NACHT'), findsOneWidget);
     expect(find.text('14./15. September'), findsOneWidget);
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('Stand 07:42'), findsNothing);
     expect(find.text('Keine gespeicherte Schätzung'), findsOneWidget);
     expect(find.text('Noch keine Schätzung'), findsNothing);
@@ -565,11 +565,11 @@ void main() {
     clock = DateTime(2026, 9, 15, 23, 59, 50);
     await mount(tester);
     expect(find.text('HEUTE NACHT'), findsOneWidget);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     clock = DateTime(2026, 9, 16, 0, 0, 10);
     await tester.pump(const Duration(seconds: 15));
     await tester.pumpAndSettle();
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('Heute Nacht'), findsNothing);
     expect(find.text('NACHT'), findsOneWidget);
     expect(find.text('Keine gespeicherte Schätzung'), findsOneWidget);
@@ -601,7 +601,7 @@ void main() {
     // more; every read is for the selected day.
     expect(repo.days.toSet(), {_day});
     expect(clocksAreCaptured(repo.clocks), isTrue);
-    expect(find.text('8 h 33'), findsOneWidget);
+    expect(find.text('8h33'), findsOneWidget);
     expect(controller.selectedDay, _day);
     await tester.tap(find.text('Eigenes Schlafziel').last);
     await tester.pumpAndSettle();
@@ -715,10 +715,10 @@ void main() {
     await tester.pump();
     first.complete();
     await tester.pump();
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     repo.gate!.complete();
     await tester.pumpAndSettle();
-    expect(find.text('8 h 33'), findsNothing);
+    expect(find.text('8h33'), findsNothing);
     expect(find.text('Heute Nacht'), findsNothing);
 
     repo.gate = Completer<void>();
@@ -748,7 +748,7 @@ void main() {
       '31. Dezember 2026/1. Januar 2027',
     );
     expect(sleepPlanNightRangeLabel('2026-03-28'), '28./29. März');
-    expect(sleepPlanNeedLabel(_needSec), '8 h 33');
+    expect(sleepPlanNeedLabel(_needSec), '8h33');
     expect(sleepPlanClockLabel(_bedtimeMin), '22:00');
     expect(sleepPlanClockLabel(_wakeMin), '07:00');
     expect(sleepPlanWakeDay(_day), '2026-09-16');

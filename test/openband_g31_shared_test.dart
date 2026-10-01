@@ -473,6 +473,24 @@ void main() {
     expect(g3DataThrough(null, now: tuesday), 'Datenstand unbekannt');
   });
 
+  test(
+    'numbers and counts group thousands without changing signs or precision',
+    () {
+      expect(g3Number(6480), '6.480');
+      expect(g3Number(12345.6, digits: 1), '12.345,6');
+      expect(g3Number(-1234), '−1.234');
+      expect(g3Number(1234, signed: true), '+1.234');
+      expect(g3Number(999.6), '1.000');
+      expect(g3Number(0.04, digits: 1, signed: true), '+0,0');
+      expect(g3Number(-0.04, digits: 1, signed: true), '0,0');
+      expect(g3Number(-0.0, digits: 1, signed: true), '0,0');
+      expect(g3Count(-1234567), '−1.234.567');
+      expect(g3Count(0), '0');
+      expect(g3Number(1e21), '1e+21');
+      expect(g3Signed(-1234, unit: 'kg'), '−1.234 kg');
+    },
+  );
+
   test('C-84 uses compact durations, Unicode signs and spaced units', () {
     expect(g3Duration(438), '7h18');
     expect(g3Duration(42), '42 Min.');

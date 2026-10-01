@@ -138,7 +138,7 @@ class OpenBandSession extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text(
                   'Auswertung v${d.algoVersion}'
-                  '${d.hrCoveredSec == null || d.durationSec == null ? '' : ' · Puls ${(d.hrCoveredSec! / 60).round()} von ${(d.durationSec! / 60).round()} Min.'}',
+                  '${d.hrCoveredSec == null || d.durationSec == null ? '' : ' · Puls ${obDuration(d.hrCoveredSec! / 60)} von ${obDuration(d.durationSec! / 60)}'}',
                   style: p.text(12, color: p.muted),
                 ),
               ),

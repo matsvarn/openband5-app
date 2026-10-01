@@ -11,7 +11,8 @@ import '../../controller.dart';
 import '../../day_picker.dart';
 import '../../domain.dart';
 import '../../local_repository.dart';
-import '../../journal_fields.dart' show journalFieldIcon;
+import '../../journal_fields.dart'
+    show journalFieldIcon, journalFieldDisplayValue;
 import '../../tab_bar.dart' show kOBTabBarContentInset;
 import '../chrome.dart'
     show
@@ -341,7 +342,7 @@ class _G3JournalScreenState extends State<G3JournalScreen> {
       final field =
           q.checkIn?.field ??
           snap.fields.where((f) => f.key == q.key).firstOrNull;
-      return field?.formatWithUnit(v) ?? '—';
+      return field == null ? '—' : journalFieldDisplayValue(field, v);
     }
     return v == v.roundToDouble() && v >= 1 && v <= 5
         ? '${v.round()} von 5'
@@ -1168,14 +1169,14 @@ class G3JournalPatternScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          g3Signed(minutes),
+                          '${minutes > 0 ? '+' : ''}${g3Duration(minutes).replaceFirst(' Min.', '')}',
                           style: g.t(72, 72, weight: FontWeight.w700),
                         ),
                         const SizedBox(width: 6),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
-                            'Min.',
+                            minutes.abs() < 60 ? 'Min.' : '',
                             style: g.t(17, 20, color: g.muted),
                           ),
                         ),

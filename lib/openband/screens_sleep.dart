@@ -1178,7 +1178,7 @@ Future<void> _sleepMethod(
               'Ohne Daten',
               night.unobservedMinutes == null
                   ? 'Nicht bestimmt'
-                  : '${obNumber(night.unobservedMinutes)} Min.',
+                  : obDuration(night.unobservedMinutes),
             ),
             if (correction != null && !correction.automatic)
               TextButton(

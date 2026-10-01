@@ -1127,7 +1127,7 @@ class _G3WeightDetailState extends State<G3WeightDetail> {
                 ],
                 footLeft: history.entries.isEmpty && latest != null
                     ? 'Keine Einträge im Zeitraum · letzter Eintrag ${_date(latest.day)}'
-                    : '${history.entries.length} ${g3CountNoun(history.entries.length, 'Eintrag', 'Einträge')} · keine Tageswerte geschätzt',
+                    : '${g3Count(history.entries.length)} ${g3CountNoun(history.entries.length, 'Eintrag', 'Einträge')} · keine Tageswerte geschätzt',
                 footRight: values.isEmpty
                     ? null
                     : '${_number(values.reduce(math.min), G3Metric.respRate)}–${_number(values.reduce(math.max), G3Metric.respRate)} kg',

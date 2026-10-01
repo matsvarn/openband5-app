@@ -351,7 +351,7 @@ class TelemetryService {
         if (context != null) {
           context.forEach((k, v) {
             if (v is num || v is String) {
-              params[k] = v;
+              params[k] = v as Object;
             } else {
               params[k] = v.toString();
             }
