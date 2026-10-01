@@ -242,13 +242,16 @@ request and on push to `main`, in three jobs:
   deals test FILES round-robin (`flutter test --total-shards` splits tests
   inside files, so every shard would still compile everything).
 - `goldens` (`xcode-27`, GitHub's macOS 27 arm64 image): `flutter test --no-pub
-  --tags golden` with the exact-match comparator — every golden-tagged test,
-  its non-pixel assertions included. The `test/openband_goldens/` PNGs were
+  --tags golden $(bash tool/golden_test_files.sh)` with the exact-match
+  comparator — every golden-tagged test, its non-pixel assertions included.
+  The script lists the test files that mention the tag, falls back to every
+  test file if the tag or `matchesGoldenFile` appears in a helper, and fails
+  on a pixel comparison without the tag. The `test/openband_goldens/` PNGs were
   rendered on macOS 27; older macOS rasterizes text sub-1% differently (544
   diffs measured on `macos-latest`) and Ubuntu about 2.4%, so the golden lane
   only runs on macOS 27. Tests that call `matchesGoldenFile` carry
   `tags: const ['golden']`; the tag is on the test, never the file — tag new
-  golden tests the same way, or they run (and fail) on Ubuntu.
+  golden tests the same way.
 
 Locally, `flutter test --no-pub --exclude-tags golden` (default concurrency) and
 `flutter test --no-pub --tags golden` reproduce the two test lanes on macOS 27.

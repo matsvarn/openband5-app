@@ -133,19 +133,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Only the files that mention the tag: loading all ~470 files to find
-      # the ~65 with goldens took longer than the goldens themselves. A file
-      # that compares pixels without mentioning the tag would fall out of both
-      # lanes, so that fails the job instead.
+      # Only the files that can hold golden tests (tool/golden_test_files.sh):
+      # loading all ~470 files to find the ~65 with goldens took longer than
+      # the goldens themselves. The script falls back to every file when the
+      # tag could come from elsewhere, and fails on a pixel comparison without
+      # the tag, so no golden test can drop out of both lanes.
       - name: Test (golden)
         run: |
-          files=$(grep -rlE "['\"]golden['\"]" test --include='*_test.dart' | LC_ALL=C sort)
-          untagged=$(comm -13 <(echo "$files") \
-            <(grep -rl matchesGoldenFile test --include='*_test.dart' | LC_ALL=C sort))
-          if [ -n "$untagged" ]; then
-            echo "::error::matchesGoldenFile without a golden tag in: $untagged"
-            exit 1
-          fi
+          files=$(bash tool/golden_test_files.sh)
           cores=$(sysctl -n hw.ncpu)
           echo "cores: $cores, files: $(echo "$files" | wc -l)"
           # shellcheck disable=SC2086 # one path per word
