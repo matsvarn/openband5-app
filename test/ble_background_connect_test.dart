@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
@@ -68,33 +70,39 @@ void main() {
     }
   });
 
-  test('background iOS app rearms its pending connect after one second', () {
+  test('background iOS app keeps policy delay before any pending attempt', () {
     final e = engine([])..setBackground(true);
-    expect(e.reconnectDelay(5), const Duration(seconds: 1));
+    expect(e.reconnectDelay(5).inSeconds, inInclusiveRange(24, 30));
   });
 
-  test('reconnect gap is minimal only for the background iOS app', () {
-    final policy = ReconnectPolicy(jitterFraction: 0);
-    final policyDelay = policy.delayFor(5);
-    expect(policyDelay, const Duration(seconds: 30));
-    for (final ios in [false, true]) {
-      for (final background in [false, true]) {
-        for (final drainer in [false, true]) {
-          expect(
-            reconnectDelayFor(
-              ios: ios,
-              background: background,
-              backgroundDrainer: drainer,
-              policyDelay: policyDelay,
-            ),
-            ios && background && !drainer
-                ? const Duration(seconds: 1)
-                : const Duration(seconds: 30),
-          );
+  test(
+    'reconnect gap is minimal only after a pending background iOS attempt',
+    () {
+      final policy = ReconnectPolicy(jitterFraction: 0);
+      final policyDelay = policy.delayFor(5);
+      expect(policyDelay, const Duration(seconds: 30));
+      for (final ios in [false, true]) {
+        for (final background in [false, true]) {
+          for (final drainer in [false, true]) {
+            for (final pending in [false, true]) {
+              expect(
+                reconnectDelayFor(
+                  ios: ios,
+                  background: background,
+                  backgroundDrainer: drainer,
+                  lastAttemptPending: pending,
+                  policyDelay: policyDelay,
+                ),
+                ios && background && !drainer && pending
+                    ? const Duration(seconds: 1)
+                    : const Duration(seconds: 30),
+              );
+            }
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   test('foreground, Android and drainer keep the reconnect policy delay', () {
     for (final ios in [false, true]) {
@@ -143,7 +151,7 @@ void main() {
   });
 
   test(
-    'engine selects and logs the long timeout, drainer stays short',
+    'immediate platform error keeps policy delay and never logs pending connect',
     () async {
       for (final drainer in [false, true]) {
         final logs = <String>[];
@@ -151,20 +159,133 @@ void main() {
         final attempts = <Duration>[];
         e.debugDeviceConnectWithTimeout = (timeout) async {
           attempts.add(timeout);
-          throw StateError('synthetic connect failure');
+          throw PlatformException(
+            code: 'connect',
+            message: 'Peripheral not found',
+          );
         };
         expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
         expect(attempts, [const Duration(hours: 24)]);
+        expect(e.reconnectDelay(5).inSeconds, inInclusiveRange(24, 30));
         expect(
           logs.where(
             (line) =>
                 line == '[LINK] background pending connect (up to 20 min)',
           ),
-          hasLength(drainer ? 0 : 1),
+          isEmpty,
         );
       }
     },
   );
+
+  test('pending log waits one second and is emitted only once', () {
+    fakeAsync((async) {
+      final logs = <String>[];
+      final e = engine(logs)..setBackground(true);
+      final pending = Completer<void>();
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
+      unawaited(
+        e.debugConnectAttempt(
+          BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+          kIosBackgroundConnectTimeout,
+        ),
+      );
+      async.flushMicrotasks();
+      expect(logs, isEmpty);
+      async.elapse(const Duration(milliseconds: 999));
+      expect(logs, isEmpty);
+      async.elapse(const Duration(milliseconds: 1));
+      expect(logs, ['[LINK] background pending connect (up to 20 min)']);
+      pending.complete();
+      async.flushMicrotasks();
+      async.elapse(const Duration(seconds: 5));
+      expect(logs, ['[LINK] background pending connect (up to 20 min)']);
+      expect(e.reconnectDelay(5), const Duration(seconds: 1));
+    });
+  });
+
+  testWidgets(
+    'background timer expiry rearms after one second and reports failure',
+    (tester) async {
+      final logs = <String>[];
+      final e = engine(logs)..setBackground(true);
+      final pending = Completer<void>();
+      e.debugDeviceConnectWithTimeout = (_) => pending.future;
+      final connect = e.connectToRemoteId('AA:BB:CC:DD:EE:FF');
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        logs.where(
+          (line) => line == '[LINK] background pending connect (up to 20 min)',
+        ),
+        hasLength(1),
+      );
+      await tester.pump(const Duration(minutes: 20));
+      expect(await finishConnect(tester, connect), isFalse);
+      expect(e.reconnectDelay(5), const Duration(seconds: 1));
+      expect(e.state.lastConnectFailedAt, isNotNull);
+      expect(logs, contains(startsWith('[LINK] unreachable since')));
+      expect(e.holdsBandLink, isFalse);
+      expect(BleEngine.bandClaimed, isFalse);
+      pending.completeError(StateError('late native cancellation'));
+      await tester.pump();
+    },
+  );
+
+  for (final elapsed in [
+    const Duration(milliseconds: 4999),
+    const Duration(seconds: 5),
+  ]) {
+    test(
+      'background failure after ${elapsed.inMilliseconds}ms uses the matching gap',
+      () {
+        fakeAsync((async) {
+          final e = engine([])..setBackground(true);
+          e.debugConnectNow = async.getClock(DateTime(2026, 10, 1)).now;
+          final pending = Completer<void>();
+          e.debugDeviceConnectWithTimeout = (_) => pending.future;
+          var failed = false;
+          unawaited(
+            e
+                .debugConnectAttempt(
+                  BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+                  kIosBackgroundConnectTimeout,
+                )
+                .catchError((Object _) {
+                  failed = true;
+                }),
+          );
+          async.flushMicrotasks();
+          async.elapse(elapsed);
+          pending.completeError(StateError('native connect failed'));
+          async.flushMicrotasks();
+          expect(failed, isTrue);
+          if (elapsed >= const Duration(seconds: 5)) {
+            expect(e.reconnectDelay(5), const Duration(seconds: 1));
+          } else {
+            expect(e.reconnectDelay(5).inSeconds, inInclusiveRange(24, 30));
+          }
+          e.debugDeviceConnectWithTimeout = (_) async =>
+              throw StateError('immediate retry failure');
+          unawaited(
+            e
+                .debugConnectAttempt(
+                  BluetoothDevice.fromId('AA:BB:CC:DD:EE:FF'),
+                  kIosBackgroundConnectTimeout,
+                )
+                .catchError((Object _) {}),
+          );
+          async.flushMicrotasks();
+          expect(
+            e.reconnectDelay(5).inSeconds,
+            inInclusiveRange(24, 30),
+            reason:
+                'the previous pending attempt must not leak into this retry',
+          );
+        });
+      },
+    );
+  }
 
   testWidgets('foreground system-only link completes within five seconds', (
     tester,
@@ -231,6 +352,8 @@ void main() {
         expect(await finishConnect(tester, connect), isFalse);
         expect(e.holdsBandLink, isFalse);
         expect(BleEngine.bandClaimed, isFalse);
+        expect(e.state.lastConnectFailedAt, isNull);
+        expect(logs, isNot(contains(startsWith('[LINK] unreachable since'))));
         expect(logs, isNot(contains(contains('[BOOT gen5]'))));
         var nextAttemptRan = false;
         e.debugDeviceConnectWithTimeout = (_) async {
@@ -282,9 +405,7 @@ void main() {
       expect(logs, isNot(contains(contains('[BOOT gen5]'))));
       expect(
         logs,
-        contains(
-          'connect failed: Bad state: background pending connect cancelled',
-        ),
+        contains('[LINK] background pending connect cancelled (foreground)'),
       );
       expect(e.holdsBandLink, isFalse);
     } finally {
@@ -360,7 +481,7 @@ void main() {
               expect(
                 logs,
                 contains(
-                  'connect failed: Bad state: background pending connect cancelled',
+                  '[LINK] background pending connect cancelled (${foregroundReturn ? "foreground" : "disconnect"})',
                 ),
               );
               expect(e.holdsBandLink, isFalse);
@@ -424,6 +545,14 @@ void main() {
           expect(e.holdsBandLink, isFalse);
           expect(BleEngine.bandClaimed, isFalse);
           expect(e.state.connection, 'disconnected');
+          expect(e.state.lastConnectFailedAt, isNull);
+          expect(logs, isNot(contains(startsWith('[LINK] unreachable since'))));
+          expect(
+            logs,
+            contains(
+              '[LINK] background pending connect cancelled (${foregroundReturn ? "foreground" : "disconnect"})',
+            ),
+          );
           if (foregroundReturn) {
             expect(
               logs,

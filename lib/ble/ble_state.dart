@@ -31,14 +31,15 @@ Duration connectTimeoutFor({
     ? kIosBackgroundConnectTimeout
     : const Duration(seconds: 20);
 
-/// The 20-minute attempt is itself the wait, so the background gap without a
-/// pending connect must stay minimal. Other sessions keep their policy delay.
+/// An attempt that actually stayed pending already did the waiting. Immediate
+/// platform failures and other sessions keep their policy delay.
 Duration reconnectDelayFor({
   required bool ios,
   required bool background,
   required bool backgroundDrainer,
+  required bool lastAttemptPending,
   required Duration policyDelay,
-}) => ios && background && !backgroundDrainer
+}) => ios && background && !backgroundDrainer && lastAttemptPending
     ? const Duration(seconds: 1)
     : policyDelay;
 

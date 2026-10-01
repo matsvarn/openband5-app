@@ -514,6 +514,12 @@ class _SessionGapSummary {
   }
 }
 
+class _BackgroundConnectCancelled implements Exception {
+  const _BackgroundConnectCancelled(this.reason);
+
+  final String reason;
+}
+
 /// Cancellation belongs to one attempt, including while native disconnect
 /// finishes. A later attempt must never inherit its cancellation.
 class _PendingConnect {
@@ -522,6 +528,7 @@ class _PendingConnect {
   final BluetoothDevice device;
   bool cancelled = false;
   bool connected = false;
+  String? cancellationReason;
   late final Future<void> connect;
   final cancellationDone = Completer<void>();
   Future<void>? cancellation;
@@ -1182,12 +1189,14 @@ class BleEngine {
   /// transport; the caller's reconnect loop reads `reconnectDelay(attempt)` so the
   /// schedule lives in one place. Exposed so it's testable + tunable.
   final ReconnectPolicy reconnectPolicy = ReconnectPolicy();
+  bool _lastConnectAttemptPending = false;
 
   /// The delay before reconnect `attempt` (1-based), keeping iOS recovery armed.
   Duration reconnectDelay(int attempt) => reconnectDelayFor(
     ios: debugIsIOS ?? Platform.isIOS,
     background: _backgrounded,
     backgroundDrainer: isBackgroundDrainer,
+    lastAttemptPending: _lastConnectAttemptPending,
     policyDelay: reconnectPolicy.delayFor(attempt),
   );
 
@@ -2400,16 +2409,18 @@ class BleEngine {
     }
   });
 
-  /// Common exit for every failed-connect path: tear the half-built session
+  /// Common exit for failed or cancelled connects: tear the half-built session
   /// down, drop to `idle`, AND RELEASE THE BAND CLAIM.
   ///
   /// [_claimBand] runs BEFORE the link is up, so a connect that threw used to
   /// leave the claim pointing at an engine with no link — and only
   /// `disconnect()` ever released it, which nothing calls on this path. Every
   /// later background drain then saw a non-null owner and yielded forever.
-  Future<void> _failConnect() async {
-    final episode = _linkEpisodes.connectFailed();
-    if (episode != null) _log(episode);
+  Future<void> _failConnect({bool cancelled = false}) async {
+    if (!cancelled) {
+      final episode = _linkEpisodes.connectFailed();
+      if (episode != null) _log(episode);
+    }
     await _teardownSession(intentional: true);
     _releaseBand();
     _setPhase(BleConnState.idle);
@@ -2454,6 +2465,7 @@ class BleEngine {
   void _cancelBackgroundPendingConnect(String reason) {
     final pending = _backgroundPendingConnect;
     if (pending == null || pending.cancellation != null) return;
+    pending.cancellationReason = reason;
     pending.cancellation = () async {
       if (!_ownLinkUp(pending) && await _systemLinkUp(pending.device)) {
         // iOS may report only the restore central's link. Give FBP time to adopt it.
@@ -2484,10 +2496,15 @@ class BleEngine {
     final started = now();
     final pending = _PendingConnect(device);
     final background = timeout == kIosBackgroundConnectTimeout;
+    _lastConnectAttemptPending = false;
     var timerExpired = false;
+    var succeeded = false;
+    Timer? pendingLogTimer;
     if (background) {
       _backgroundPendingConnect = pending;
-      _log('[LINK] background pending connect (up to 20 min)');
+      pendingLogTimer = Timer(const Duration(seconds: 1), () {
+        _log('[LINK] background pending connect (up to 20 min)');
+      });
     }
     try {
       // FBP cancels the peripheral BEFORE throwing its own timeout. Keep that
@@ -2553,28 +2570,33 @@ class BleEngine {
               'Timed out after ${timeout.inSeconds}s',
             );
           }
-          throw StateError('background pending connect cancelled');
+          throw _BackgroundConnectCancelled(pending.cancellationReason!);
         }
         _log(
           '[LINK] background connect completed after cancellation — keeping it',
         );
       }
+      succeeded = true;
     } catch (_) {
       if (pending.cancelled && !timerExpired) {
         // Keep our timeout exception intact for the existing failure classifier.
         // Only a native failure after foreground/disconnect cancellation is a
         // cancellation failure.
         if (pending.cancellation != null) {
-          throw StateError('background pending connect cancelled');
+          throw _BackgroundConnectCancelled(pending.cancellationReason!);
         }
       }
       rethrow;
     } finally {
+      pendingLogTimer?.cancel();
       await pending.cancellation;
       if (identical(_backgroundPendingConnect, pending)) {
         _backgroundPendingConnect = null;
       }
       final elapsed = now().difference(started);
+      _lastConnectAttemptPending =
+          background &&
+          (timerExpired || succeeded || elapsed >= const Duration(seconds: 5));
       if (elapsed > timeout + const Duration(seconds: 5)) {
         _log(
           '[LINK] connect attempt took ${elapsed.inSeconds}s for a '
@@ -2622,6 +2644,11 @@ class BleEngine {
         ),
       );
     } catch (e) {
+      if (e is _BackgroundConnectCancelled) {
+        _log('[LINK] background pending connect cancelled (${e.reason})');
+        await _failConnect(cancelled: true);
+        return false;
+      }
       // Bluetooth revoked mid-life shows up here, on a reconnect, and used to
       // vanish into the reconnect loop as an ordinary failed attempt — retrying
       // silently forever against a stack that will never answer.
