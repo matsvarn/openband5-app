@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 
@@ -158,14 +159,36 @@ class LocalOpenBandRepository implements OpenBandRepository {
   final DateTime Function() _diagnosticsNow;
 
   final Map<String, DayCalculationIdentity?> _dayPins = {};
+  final Map<String, Future<OpenBandDay>> _dayReads = {};
 
-  Future<Map<String, dynamic>?> _dayRow(String day, {DatabaseExecutor? txn}) =>
-      LocalDb.dayResult(
-        day,
-        txn: txn,
-        pinned: _dayPins.containsKey(day),
-        identity: _dayPins[day],
-      );
+  Future<void> _awaitDayRead(String day) async {
+    // Controller listeners start readers BEFORE refresh calls readDay. Let
+    // that synchronous notification finish and register the pending read.
+    await Future<void>.value();
+    while (true) {
+      final read = _dayReads[day];
+      if (read == null) return;
+      try {
+        await read;
+      } catch (_) {
+        // A failed refresh leaves the previous pin's honest gap/refusal.
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _dayRow(
+    String day, {
+    DatabaseExecutor? txn,
+  }) async {
+    // Transaction callers wait before acquiring the database transaction.
+    if (txn == null) await _awaitDayRead(day);
+    return LocalDb.dayResult(
+      day,
+      txn: txn,
+      pinned: _dayPins.containsKey(day),
+      identity: _dayPins[day],
+    );
+  }
 
   bool _lostPin(String day, Map<String, Object?>? row) =>
       _dayPins[day] != null && row == null;
@@ -176,15 +199,18 @@ class LocalOpenBandRepository implements OpenBandRepository {
     String? fromDay,
     int? limitDays,
     DatabaseExecutor? txn,
-  }) => LocalDb.servedDaySeries(
-    key,
-    fromDay: fromDay,
-    throughDay: endDay,
-    limitDays: limitDays,
-    txn: txn,
-    pinnedDay: _dayPins.containsKey(endDay) ? endDay : null,
-    identity: _dayPins[endDay],
-  );
+  }) async {
+    if (txn == null) await _awaitDayRead(endDay);
+    return LocalDb.servedDaySeries(
+      key,
+      fromDay: fromDay,
+      throughDay: endDay,
+      limitDays: limitDays,
+      txn: txn,
+      pinnedDay: _dayPins.containsKey(endDay) ? endDay : null,
+      identity: _dayPins[endDay],
+    );
+  }
 
   Future<bool> _pinIsCurrent(String day, DatabaseExecutor txn) async {
     if (!_dayPins.containsKey(day)) return true;
@@ -198,6 +224,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   Future<Object?> _crossdayForDay(String day) async {
+    await _awaitDayRead(day);
     final db = await LocalDb.instance;
     return db.transaction((txn) async {
       if (!await _pinIsCurrent(day, txn)) return null;
@@ -1043,6 +1070,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<NightSignals> readNightSignals(String day) async {
     _requireDay(day);
+    await _awaitDayRead(day);
     final correction = await LocalDb.openBandSleepCorrection(day);
     final zone = correction?['recording_timezone']?.toString();
     if (correction != null && correction['status'] != 'complete') {
@@ -1322,7 +1350,25 @@ class LocalOpenBandRepository implements OpenBandRepository {
   }
 
   @override
-  Future<OpenBandDay> readDay(String day) async {
+  Future<OpenBandDay> readDay(String day) {
+    final pending = Completer<OpenBandDay>();
+    final read = pending.future;
+    _dayReads[day] = read;
+    Future<void> complete() async {
+      try {
+        pending.complete(await _readDay(day));
+      } catch (error, stack) {
+        pending.completeError(error, stack);
+      } finally {
+        if (identical(_dayReads[day], read)) _dayReads.remove(day);
+      }
+    }
+
+    unawaited(complete());
+    return read;
+  }
+
+  Future<OpenBandDay> _readDay(String day) async {
     _requireDay(day);
     final repository = app.repo;
     if (repository == null) {
@@ -2307,6 +2353,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final days = openBandDaysEnding(endDay, nights + 1);
     final startDay = days.first;
     final daySet = days.toSet();
+    await _awaitDayRead(endDay);
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
       final journalRows = await txn.query(
@@ -2695,6 +2742,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final baselineRoot = metric.baselinePath;
     final seriesKey = metric.series;
     final scalarKey = metric.payloadScalar;
+    await _awaitDayRead(day);
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
       final selected = await _dayRow(day, txn: txn);
@@ -3187,6 +3235,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (day != today) {
       return SleepPlanSnapshot.unavailable(day, today);
     }
+    await _awaitDayRead(day);
     final db = await LocalDb.instance;
     return db.transaction((txn) async {
       if (!await _pinIsCurrent(day, txn)) {
@@ -4511,6 +4560,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (cycleStartDay != null) {
       requireCycleCalendarDay(cycleStartDay, 'cycleStartDay');
     }
+    await _awaitDayRead(asOfDay);
     final settings = await readCycleSettings();
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
@@ -4564,6 +4614,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       anchorEnd: anchorEnd,
       pageOffset: pageOffset,
     );
+    await _awaitDayRead(window.endDay);
     final settings = await readCycleSettings();
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
@@ -4616,6 +4667,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       anchorEnd: anchorEnd,
       pageOffset: pageOffset,
     );
+    await _awaitDayRead(window.endDay);
     final settings = await readCycleSettings();
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {

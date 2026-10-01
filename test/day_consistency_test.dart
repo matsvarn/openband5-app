@@ -9,6 +9,7 @@ import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/openband/domain.dart';
+import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -399,6 +400,89 @@ void main() {
       final day = await repo.readDay(_day);
       final history = await repo.readMetricHistory(MetricKey.hrv, _day, 7);
       expect([day.hrv.value, history.last.value], [40.0, 40.0]);
+    },
+  );
+
+  test('controller refresh listener reads await the new day pin', () async {
+    await _putCalculation(second: false);
+    final controller = OpenBandController(repository: repo, initialDay: _day);
+    addTearDown(controller.dispose);
+    await controller.refresh();
+    await _putCalculation(second: true);
+    var loadedRequest = controller.refreshRequest;
+    late Future<G3WeekStrip> strip;
+    late Future<G3Baseline> range;
+    late Future<G3Trend> hrvTrend;
+    controller.addListener(() {
+      if (loadedRequest == controller.refreshRequest) return;
+      loadedRequest = controller.refreshRequest;
+      strip = repo.readWeekStrip(G3Metric.sleepMinutes, controller.selectedDay);
+      range = repo.readPersonalRange(G3Metric.hrv, controller.selectedDay);
+      hrvTrend = repo.readTrend(G3Metric.hrv, controller.selectedDay, 7);
+    });
+    await controller.refresh();
+    expect(controller.loadError, isNull);
+    expect(controller.day!.sleep.duration.value, 420);
+    expect((await strip).days.last.value, controller.day!.sleep.duration.value);
+    expect((await range).range?.median, controller.day!.hrv.baseline);
+    expect((await range).range?.median, 65);
+    expect((await hrvTrend).points.last.value, controller.day!.hrv.value);
+  });
+
+  test(
+    'night reads started before readDay in the same turn await its pin',
+    () async {
+      await _putCalculation(second: false);
+      await repo.readDay(_day);
+      await _putCalculation(second: true);
+      final signals = repo.readNightSignals(_day);
+      final day = repo.readDay(_day);
+      final range = repo.readPersonalRange(G3Metric.hrv, _day);
+      expect((await day).hrv.value, 70);
+      expect((await signals).processing, isFalse);
+      expect(
+        (await signals).signal(NightSignalKind.pulse).readings.single.value,
+        75,
+      );
+      expect((await range).range?.median, 65);
+    },
+  );
+
+  test(
+    'failed controller day refresh releases dependent readers and can retry',
+    () async {
+      await _putCalculation(second: false);
+      final controller = OpenBandController(repository: repo, initialDay: _day);
+      addTearDown(controller.dispose);
+      await controller.refresh();
+      await _putCalculation(second: true);
+      await (await LocalDb.instance).update(
+        'day_result',
+        {'payload_json': '{'},
+        where: 'day_id = ? AND algo_version = ?',
+        whereArgs: [_day, kAlgoVersion],
+      );
+      var loadedRequest = controller.refreshRequest;
+      late Future<G3WeekStrip> strip;
+      late Future<G3Baseline> range;
+      controller.addListener(() {
+        if (loadedRequest == controller.refreshRequest) return;
+        loadedRequest = controller.refreshRequest;
+        strip = repo.readWeekStrip(
+          G3Metric.sleepMinutes,
+          controller.selectedDay,
+        );
+        range = repo.readPersonalRange(G3Metric.hrv, controller.selectedDay);
+      });
+      await controller.refresh();
+      expect(controller.loadError, isA<FormatException>());
+      expect((await strip).days.last.value, isNull);
+      expect((await range).range, isNull);
+      await _putCalculation(second: true);
+      await controller.refresh();
+      expect(controller.loadError, isNull);
+      expect((await strip).days.last.value, 420);
+      expect((await range).range?.median, 65);
     },
   );
 
