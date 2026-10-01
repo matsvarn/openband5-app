@@ -713,7 +713,7 @@ void main() {
             domain: G3Domain.load,
             samples: [(0, 148), (10, 176)],
             duration: 10,
-            zoneEdges: [],
+
             average: '148',
             peak: '176',
             signalShare: '96 %',
@@ -821,7 +821,7 @@ void main() {
               gaps: [(4, 6)],
               min: 100,
               max: 200,
-              zoneEdges: [],
+
               peak: '190',
             ),
           ),
@@ -846,7 +846,7 @@ void main() {
               gaps: [(4, 6)],
               min: 100,
               max: 200,
-              zoneEdges: [],
+
               peak: '190',
             ),
           ),

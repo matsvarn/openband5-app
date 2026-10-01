@@ -513,9 +513,6 @@ String? glucoseStoredSourceKey(Map<String, dynamic> row) {
   );
 }
 
-GlucoseAttempt glucoseAttemptFromReceipt(Map<String, dynamic>? receipt) =>
-    decodeGlucoseReceipt(receipt).attempt;
-
 ({GlucoseAttempt attempt, int unreadable}) decodeGlucoseReceipt(
   Map<String, dynamic>? receipt,
 ) =>

@@ -148,9 +148,6 @@ double? resolveLoadKgFromStoredJson({
   return resolveStoredLoadKg(input: input, loadKg: loadKg);
 }
 
-void requireOriginalLoad(OriginalLoadInput input) =>
-    _validateOriginalLoad(input, requireKnownBasis: true);
-
 void _validateOriginalLoad(
   OriginalLoadInput input, {
   required bool requireKnownBasis,

@@ -1105,7 +1105,7 @@ class _G3ActivityScreenState extends State<G3ActivityScreen> {
                 gaps: gaps,
                 // The current activity read model has no stored bpm
                 // edges. A max-HR formula would invent the bands.
-                zoneEdges: const [],
+
                 average: a.avgHr?.round().toString(),
                 peak: a.maxHr?.round().toString(),
                 axis: (

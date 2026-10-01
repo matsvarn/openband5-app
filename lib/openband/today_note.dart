@@ -1,5 +1,6 @@
 import '../data/day_label.dart';
 import 'domain.dart' show significantSleepGap;
+import 'g3/g3_format.dart' show g3Clock;
 import 'g3_data.dart';
 
 class TodayNoteAction {
@@ -13,9 +14,6 @@ class TodayNote {
   final String headline, reason;
   final TodayNoteAction? action;
 }
-
-String _clock(DateTime time) =>
-    '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
 String _sleepLength(int minutes) =>
     '${minutes ~/ 60}h${(minutes % 60).toString().padLeft(2, '0')}';
@@ -82,8 +80,8 @@ TodayNote? todayNote({
     );
     final displayedBedtime = _roundedBedtime(suggestedBedtime);
     action = TodayNoteAction(
-      '${_clock(displayedBedtime)} ins Bett',
-      'für ${_sleepLength(sleepNeedMinutes.round())} Schlafbedarf bis ${_clock(suggestedWake)}',
+      '${g3Clock(displayedBedtime)} ins Bett',
+      'für ${_sleepLength(sleepNeedMinutes.round())} Schlafbedarf bis ${g3Clock(suggestedWake)}',
       displayedBedtime.subtract(const Duration(minutes: 15)),
     );
   }

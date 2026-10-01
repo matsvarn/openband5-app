@@ -649,12 +649,9 @@ class OBPatternDotPlot extends StatelessWidget {
     required this.withoutAnswer,
     required this.min,
     required this.max,
-    this.bandLow,
-    this.bandHigh,
   });
   final List<double> withAnswer, withoutAnswer;
   final double min, max;
-  final double? bandLow, bandHigh;
   @override
   Widget build(BuildContext context) {
     final g = G3.of(context);
@@ -665,15 +662,7 @@ class OBPatternDotPlot extends StatelessWidget {
         child: SizedBox(
           height: 112,
           child: CustomPaint(
-            painter: _PatternDots(
-              g,
-              withAnswer,
-              withoutAnswer,
-              min,
-              max,
-              bandLow,
-              bandHigh,
-            ),
+            painter: _PatternDots(g, withAnswer, withoutAnswer, min, max),
           ),
         ),
       ),
@@ -682,35 +671,15 @@ class OBPatternDotPlot extends StatelessWidget {
 }
 
 class _PatternDots extends CustomPainter {
-  const _PatternDots(
-    this.g,
-    this.yes,
-    this.no,
-    this.min,
-    this.max,
-    this.low,
-    this.high,
-  );
+  const _PatternDots(this.g, this.yes, this.no, this.min, this.max);
   final G3 g;
   final List<double> yes, no;
   final double min, max;
-  final double? low, high;
   double _x(double v, double w) => ((v - min) / (max - min)).clamp(0, 1) * w;
   @override
   void paint(Canvas canvas, Size size) {
     if (max <= min) return;
     final w = size.width - 12;
-    if (low != null && high != null && high! > low!) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          6 + _x(low!, w),
-          0,
-          _x(high!, w) - _x(low!, w),
-          size.height,
-        ),
-        Paint()..color = g.band,
-      );
-    }
     final paint = Paint()..color = g.ink;
     for (final (row, values) in [(0, yes), (1, no)]) {
       for (var i = 0; i < values.length; i++) {
@@ -731,9 +700,7 @@ class _PatternDots extends CustomPainter {
       old.yes != yes ||
       old.no != no ||
       old.min != min ||
-      old.max != max ||
-      old.low != low ||
-      old.high != high;
+      old.max != max;
 }
 
 class OBSwitch extends StatelessWidget {
