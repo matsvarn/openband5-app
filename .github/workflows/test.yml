@@ -70,12 +70,18 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-  # Every test not tagged `golden`, split by FILE across three runners.
+  # Every test, split by FILE across three runners.
   #
   # `flutter test --total-shards` shards tests inside each file, so every
   # shard would still compile all ~470 files — and compiling is about half the
   # suite's time. `tool/test_shard.sh` hands each runner a disjoint third of
   # the files instead.
+  #
+  # Golden-tagged tests run here too, with OPENBAND_TEST_LANE=behavior: their
+  # assertions run and their image comparisons accept (Ubuntu renders text
+  # about 2.4% differently from the macOS masters). The `goldens` job compares
+  # the pixels. Running the bodies here means a golden test the macOS job
+  # does not load still runs somewhere.
   #
   # --concurrency=4: each test file runs in its own process, and
   # test/flutter_test_config.dart gives every process its own SQLite
@@ -105,9 +111,11 @@ jobs:
       # beside the repo rather than committed to it, so the derivation-replay
       # tests that need it SKIP here and run locally.
       - name: Test (shard ${{ matrix.shard }} of 3)
+        env:
+          OPENBAND_TEST_LANE: behavior
         run: >-
           bash tool/test_shard.sh ${{ matrix.shard }} 3
-          --concurrency=4 --exclude-tags golden --reporter=expanded
+          --concurrency=4 --reporter=expanded
 
   # Every `golden`-tagged test, pixels and all, on the host the masters were
   # rendered on: macOS 27 on Apple silicon. Text rasterization goes through
@@ -133,11 +141,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Only the files that can hold golden tests (tool/golden_test_files.sh):
+      # Only the files that compare pixels (tool/golden_test_files.sh):
       # loading all ~470 files to find the ~65 with goldens took longer than
-      # the goldens themselves. The script falls back to every file when the
-      # tag could come from elsewhere, and fails on a pixel comparison without
-      # the tag, so no golden test can drop out of both lanes.
+      # the goldens themselves. The script falls back to every file when a
+      # comparison or the tag could come from elsewhere, and fails on a pixel
+      # comparison without the tag.
       - name: Test (golden)
         run: |
           files=$(bash tool/golden_test_files.sh)

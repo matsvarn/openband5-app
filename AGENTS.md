@@ -237,24 +237,27 @@ visual bugs — check whether removed wrapper widgets were load-bearing.
 request and on push to `main`, in three jobs:
 
 - `analyze` (Ubuntu): the sibling-pin guard, then `flutter analyze`.
-- `test` (Ubuntu, three shards): `bash tool/test_shard.sh INDEX 3
-  --concurrency=4 --exclude-tags golden` — every non-golden test. The script
-  deals test FILES round-robin (`flutter test --total-shards` splits tests
-  inside files, so every shard would still compile everything).
+- `test` (Ubuntu, three shards): `OPENBAND_TEST_LANE=behavior bash
+  tool/test_shard.sh INDEX 3 --concurrency=4` — every test, golden-tagged ones
+  included; in this lane image comparisons accept, so golden tests still run
+  all their other assertions here. The script deals test FILES round-robin
+  (`flutter test --total-shards` splits tests inside files, so every shard
+  would still compile everything).
 - `goldens` (`xcode-27`, GitHub's macOS 27 arm64 image): `flutter test --no-pub
   --tags golden $(bash tool/golden_test_files.sh)` with the exact-match
-  comparator — every golden-tagged test, its non-pixel assertions included.
-  The script lists the test files that mention the tag, falls back to every
-  test file if the tag or `matchesGoldenFile` appears in a helper, and fails
-  on a pixel comparison without the tag. The `test/openband_goldens/` PNGs were
+  comparator — the pixel check. The script lists the test files that mention
+  the tag, falls back to every test file if the tag or `matchesGoldenFile`
+  appears in any other tracked Dart file or a `dart_test.yaml` exists, and
+  fails on a pixel comparison in a file without the tag. The `test/openband_goldens/` PNGs were
   rendered on macOS 27; older macOS rasterizes text sub-1% differently (544
   diffs measured on `macos-latest`) and Ubuntu about 2.4%, so the golden lane
   only runs on macOS 27. Tests that call `matchesGoldenFile` carry
   `tags: const ['golden']`; the tag is on the test, never the file — tag new
   golden tests the same way.
 
-Locally, `flutter test --no-pub --exclude-tags golden` (default concurrency) and
-`flutter test --no-pub --tags golden` reproduce the two test lanes on macOS 27.
+Locally on macOS 27, `flutter test --no-pub` (default concurrency) runs
+everything with exact pixels; `flutter test --no-pub --exclude-tags golden` is
+the quicker loop without goldens.
 `test/flutter_test_config.dart` gives every test process its own SQLite
 directory, so files may run in parallel; do not reintroduce a fixed database
 path outside `getDatabasesPath()`.

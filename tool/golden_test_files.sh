@@ -3,16 +3,17 @@
 #
 #   bash tool/golden_test_files.sh
 #
-# The Ubuntu shards drop golden-tagged tests with `--exclude-tags golden`, so
-# this list must contain every file with such a test, or the test runs
-# nowhere. A tag is a string literal, so a test file that mentions neither
-# 'golden' nor matchesGoldenFile cannot carry the tag through its own source.
-# If the literal or a pixel comparison appears in any other Dart file (a
-# shared helper, an imported integration-test part, lib/), a test could get
-# the tag from there, and the list falls back to every test file.
+# The golden lane exists to compare pixels; the Ubuntu shards already run
+# every test body, goldens included, with an image comparator that accepts.
+# So this list must contain every file that compares pixels, or a golden image
+# is never checked. A test file that mentions neither 'golden' nor
+# matchesGoldenFile can still get a pixel comparison or the tag from a shared
+# helper or from dart_test.yaml; if any tracked Dart file other than a test
+# file carries either marker, or a dart_test.yaml exists, the list falls back
+# to every test file.
 #
 # Fails when a test file calls matchesGoldenFile without mentioning the tag:
-# that comparison would run on Ubuntu, where the masters cannot match.
+# that comparison would never run with the exact comparator.
 set -euo pipefail
 export LC_ALL=C
 
@@ -30,10 +31,11 @@ if [[ -n $untagged ]]; then
   exit 1
 fi
 
-elsewhere=$(grep -rlE "$tag|matchesGoldenFile" test integration_test lib \
-  --include='*.dart' | grep -vE '^test/.*_test\.dart$' || true)
+elsewhere=$( (git ls-files '*.dart' | grep -vE '^test/.*_test\.dart$' |
+  xargs grep -lE "$tag|matchesGoldenFile" || true
+  git ls-files '*dart_test.yaml') | sort)
 if [[ -n $elsewhere ]]; then
-  echo "golden tag or comparison outside test files; loading every test file:" >&2
+  echo "golden marker or test config outside test files; loading every test file:" >&2
   echo "$elsewhere" >&2
   echo "$all"
   exit 0
