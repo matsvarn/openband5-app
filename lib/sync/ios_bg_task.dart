@@ -61,6 +61,10 @@ class IosBgTask {
     });
   }
 
+  @visibleForTesting
+  static Future<bool> debugRun({required bool syncOnly}) =>
+      _run(syncOnly: syncOnly);
+
   static Future<bool> _run({required bool syncOnly}) async {
     // ONE shared gate across every headless entry point (BGProcessingTask,
     // BGAppRefreshTask, the BLE-restore wake) — see HeadlessSyncGate. A busy
@@ -83,6 +87,7 @@ class IosBgTask {
           } catch (e) {
             debugPrint('[ios-bgtask] foreground pull failed (ignored): $e');
           }
+          await checkSyncStaleness();
         }
         if (!syncOnly) {
           // Heavy derive pass (full sleep staging + 24h spectra, stale days).

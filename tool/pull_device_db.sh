@@ -25,6 +25,18 @@ xcrun devicectl device copy from \
   --domain-type appDataContainer \
   --domain-identifier "$BUNDLE" >/dev/null
 
+# The iOS field log lives in Library/Application Support (not Documents) since
+# the Documents directory is shared through Files. Missing .1 is normal.
+for f in openstrap_sync.log openstrap_sync.log.1; do
+  xcrun devicectl device copy from \
+    --device "$DEVICE" \
+    --source "Library/Application Support/$f" \
+    --destination "$dest/$f" \
+    --domain-type appDataContainer \
+    --domain-identifier "$BUNDLE" >/dev/null 2>&1 \
+    || echo "note: no $f in Application Support" >&2
+done
+
 db="$dest/Documents/openstrap.db"
 if [[ ! -f "$db" ]]; then
   echo "no openstrap.db in pulled container — app not installed/launched?" >&2

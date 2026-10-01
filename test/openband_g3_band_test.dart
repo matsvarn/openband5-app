@@ -740,6 +740,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Band nicht erreichbar'), findsWidgets);
     expect(find.textContaining('30.09, 00:03 Uhr'), findsOneWidget);
+    // The Bluetooth toggle did not bring back a band that stopped
+    // accepting connections on 29–30.09; a double tap did.
+    expect(find.textContaining('Doppeltippe auf das Band'), findsOneWidget);
+    expect(find.textContaining('aus- und wieder einschalten'), findsNothing);
     expect(find.text('Erneut verbinden'), findsOneWidget);
     expect(find.text('Bluetooth ist ausgeschaltet'), findsNothing);
     updates.dispose();
