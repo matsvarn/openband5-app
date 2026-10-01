@@ -286,7 +286,7 @@ void main() {
     expect(snap.historyAnchor, kAlgoVersion);
   });
 
-  test('corrupt selected on an old algo keeps that generation in history',
+  test('corrupt selected preserves its identity; neighbors use their served rows',
       () async {
     const old = 84;
     await putNight('2026-09-13', rmssd: 41, algo: old);
@@ -308,15 +308,15 @@ void main() {
     expect(snap.historyAnchor, old);
     expect(snap.algoVersion, old);
     expect(snap.history[4].value, 41);
-    expect(snap.history[5].gap, NightScalarGap.version);
-    expect(snap.history[5].value, isNull);
+    expect(snap.history[5].gap, isNull);
+    expect(snap.history[5].value, 99);
     expect(snap.history.last.gap, NightScalarGap.unreadable);
-    expect(snap.counts.compared, 1);
+    expect(snap.counts.compared, 2);
     expect(snap.counts.unreadable, 1);
-    expect(snap.counts.excludedVersion, 1);
+    expect(snap.counts.excludedVersion, 0);
   });
 
-  test('older selected stays readable; mixed versions are excluded counts',
+  test('older partial selected stays readable beside current served neighbors',
       () async {
     const old = kAlgoVersion - 2;
     await putNight('2026-09-13', rmssd: 30, algo: old);
@@ -333,10 +333,11 @@ void main() {
     expect(snap.value, 41);
     expect(snap.historyAnchor, old);
     expect(snap.history[4].value, 30);
-    expect(snap.history[5].gap, NightScalarGap.version);
+    expect(snap.history[5].gap, isNull);
+    expect(snap.history[5].value, 99);
     expect(snap.history.last.value, 41);
-    expect(snap.counts.excludedVersion, 1);
-    expect(snap.counts.compared, 2);
+    expect(snap.counts.excludedVersion, 0);
+    expect(snap.counts.compared, 3);
   });
 
   test('WHOOP and cloud imports remain visible with source labels', () async {
@@ -844,6 +845,15 @@ void main() {
     await LocalDb.putMetricSeriesValue('2026-09-14', 'strain', 11);
     await LocalDb.putMetricSeriesValue('2026-09-15', 'strain', 12);
 
+    final db = await LocalDb.instance;
+    for (final (date, strain) in [('2026-09-14', 11), ('2026-09-15', 12)]) {
+      final row = (await LocalDb.dayResult(date))!;
+      final payload = jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+      (payload['scalars'] as Map)['strain'] = strain;
+      await db.update('day_result', {'payload_json': jsonEncode(payload)},
+        where: 'day_id = ? AND algo_version = ?', whereArgs: [date, kAlgoVersion]);
+    }
+
     Future<void> expectSameAsDetail(OpenBandDay day) async {
       final hrv = await repository.readNightScalarDetail(
         MetricKey.hrv,
@@ -1013,7 +1023,7 @@ void main() {
     expect(spacedDetail.baseline?.status, kNightScalarTrustedBaseline);
   });
 
-  test('unreadable history keeps the stored algo; other keys unchanged',
+  test('unreadable selected history is a gap; neighbors use current served rows',
       () async {
     const old = 84;
     await putNight('2026-09-13', rmssd: 41, algo: old);
@@ -1030,7 +1040,7 @@ void main() {
       7,
     );
     expect(history[4].value, 41);
-    expect(history[5].value, isNull);
+    expect(history[5].value, 99);
     expect(history.last.value, isNull);
   });
 

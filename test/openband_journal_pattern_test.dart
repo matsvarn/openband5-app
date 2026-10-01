@@ -104,6 +104,55 @@ void main() {
     expect(CaffeineSleepPattern.tooFewNights, 'Noch zu wenige Nächte');
   });
 
+  for (final reader in ['readCaffeineSleepPattern', 'readJournalPattern']) {
+    test(
+      '$reader ordinary auto null SOL nights match filtered series',
+      () async {
+        final days = openBandDaysEnding(endDay, nights + 1);
+        final fixture = _paperFixture();
+        await _seedWindow(fixture);
+        for (final day in days.where(
+          (day) => day.compareTo('2026-09-09') >= 0,
+        )) {
+          await _seedWake(day, sleepSource: 'auto');
+        }
+        final oldRows = await LocalDb.metricSeries('sol_min');
+        expect(oldRows.length, 18);
+        expect(oldRows.every((row) => row['value'] != null), isTrue);
+        final byWake = {
+          for (final row in oldRows)
+            row['date'] as String: (row['value'] as num).toDouble(),
+        };
+        final expected = _producerExpected(days, [
+          for (final pair in fixture)
+            if (byWake[pair.wake] case final sol?)
+              _Pair(pair.journal, pair.wake, pair.flag, sol),
+        ]);
+        final actual = reader == 'readCaffeineSleepPattern'
+            ? await repository.readCaffeineSleepPattern(endDay, nights)
+            : (await repository.readJournalPattern(endDay, nights)).pattern;
+        expect(actual.partial, isFalse);
+        expect(actual.kind, CaffeineSleepPatternKind.meaningful);
+        expect(actual.delta, closeTo(expected.delta!, 1e-9));
+        expect(actual.pairedN, expected.n);
+        expect(actual.yesNights, expected.nWith);
+        expect(actual.noNights, expected.nWithout);
+        expect(actual.availableOutcomes, expected.availableOutcomes);
+      },
+    );
+  }
+
+  test('answered auto night without SOL still reports partial', () async {
+    await _seedWindow(_paperFixture());
+    await LocalDb.putJournalMetrics('2026-09-10', {
+      'caffeine_late': const JournalMetricValue(1),
+    });
+    await _seedWake('2026-09-11', sleepSource: 'auto');
+    final actual = await repository.readCaffeineSleepPattern(endDay, nights);
+    expect(actual.partial, isTrue);
+    expect(actual.pairedN, 18);
+  });
+
   test('negative delta retains sign', () async {
     final days = openBandDaysEnding(endDay, nights + 1);
     final fixture = _paperFixture(yesSol: 12, noSol: 24);
@@ -259,30 +308,37 @@ void main() {
     expect(actual.partial, isTrue);
   });
 
-  test('older algo and rolled-back series stamp are excluded', () async {
-    final days = openBandDaysEnding(endDay, nights + 1);
-    final fixture = _paperFixture();
-    await _seedWindow(fixture);
-    await LocalDb.putJournalMetrics('2026-09-10', {
-      'caffeine_late': const JournalMetricValue(1),
-    });
-    await _seedWake('2026-09-11', sol: 30, algo: kAlgoVersion - 1);
-    await LocalDb.putJournalMetrics('2026-09-11', {
-      'caffeine_late': const JournalMetricValue(0),
-    });
-    await _seedWake('2026-09-12', sol: 31);
-    final db = await LocalDb.instance;
-    await db.update(
-      'metric_series_version',
-      {'algo_version': kAlgoVersion - 1},
-      where: 'date = ?',
-      whereArgs: ['2026-09-12'],
-    );
-    final actual = await repository.readCaffeineSleepPattern(endDay, nights);
-    final expected = _producerExpected(days, fixture);
-    expect(actual.pairedN, expected.n);
-    expect(actual.partial, isTrue);
-  });
+  test(
+    'older served SOL and current row ignore the rolled-back series stamp',
+    () async {
+      final days = openBandDaysEnding(endDay, nights + 1);
+      final fixture = _paperFixture();
+      await _seedWindow(fixture);
+      await LocalDb.putJournalMetrics('2026-09-10', {
+        'caffeine_late': const JournalMetricValue(1),
+      });
+      await _seedWake('2026-09-11', sol: 30, algo: kAlgoVersion - 1);
+      await LocalDb.putJournalMetrics('2026-09-11', {
+        'caffeine_late': const JournalMetricValue(0),
+      });
+      await _seedWake('2026-09-12', sol: 31);
+      final db = await LocalDb.instance;
+      await db.update(
+        'metric_series_version',
+        {'algo_version': kAlgoVersion - 1},
+        where: 'date = ?',
+        whereArgs: ['2026-09-12'],
+      );
+      final actual = await repository.readCaffeineSleepPattern(endDay, nights);
+      final expected = _producerExpected(days, [
+        ...fixture,
+        const _Pair('2026-09-10', '2026-09-11', 1, 30),
+        const _Pair('2026-09-11', '2026-09-12', 0, 31),
+      ]);
+      expect(actual.pairedN, expected.n);
+      expect(actual.partial, isFalse);
+    },
+  );
 
   test('skipped current day_result is excluded', () async {
     final days = openBandDaysEnding(endDay, nights + 1);
@@ -422,6 +478,28 @@ void main() {
     expect(actual.yesNights, 6);
   });
 
+  test('non-finite sol_min is rejected with partial metadata', () async {
+    final days = openBandDaysEnding(endDay, nights + 1);
+    final fixture = _paperFixture();
+    await _seedWindow(fixture);
+    final db = await LocalDb.instance;
+    // SQLite JSON accepts this numeric literal as infinity. It is a stored
+    // non-finite value, not an absent optional field or malformed payload.
+    await db.update(
+      'day_result',
+      {'payload_json': '{"sleep_source":"manual","scalars":{"sol_min":1e999}}'},
+      where: 'day_id = ?',
+      whereArgs: ['2026-08-22'],
+    );
+    final gated = fixture.where((row) => row.wake != '2026-08-22').toList();
+    final actual = await repository.readCaffeineSleepPattern(endDay, nights);
+    final expected = _producerExpected(days, gated);
+    expect(actual.partial, isTrue);
+    expect(actual.pairedN, expected.n);
+    expect(actual.yesNights, expected.nWith);
+    expect(actual.yesNights, 6);
+  });
+
   test('unknown sleep_source is rejected with partial metadata', () async {
     final days = openBandDaysEnding(endDay, nights + 1);
     final fixture = _paperFixture();
@@ -455,7 +533,7 @@ void main() {
   });
 
   test(
-    'mixed 18 eligible pairs plus excluded known outcomes is partial',
+    'partial valid SOL joins the pairs while rejected and pending outcomes stay out',
     () async {
       final days = openBandDaysEnding(endDay, nights + 1);
       final fixture = _paperFixture();
@@ -474,13 +552,15 @@ void main() {
       await _seedWake('2026-09-15', sol: 28);
       await _pendingCorrection('2026-09-15');
       final actual = await repository.readCaffeineSleepPattern(endDay, nights);
-      final expected = _producerExpected(days, fixture);
+      final expected = _producerExpected(days, [
+        ...fixture,
+        const _Pair('2026-09-12', '2026-09-13', 0, 30),
+      ]);
       expect(actual.kind, CaffeineSleepPatternKind.meaningful);
       expect(actual.partial, isTrue);
       expect(actual.yesNights, 7);
-      expect(actual.noNights, 11);
-      expect(actual.pairedN, 18);
-      expect(actual.delta, closeTo(12, 1e-9));
+      expect(actual.noNights, 12);
+      expect(actual.pairedN, 19);
       expect(actual.pairedN, expected.n);
       expect(actual.yesNights, expected.nWith);
       expect(actual.noNights, expected.nWithout);
@@ -520,6 +600,7 @@ void main() {
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode({
         'sleep_source': 'manual',
+        'scalars': {'sol_min': 18},
         'series': {
           'hypnogram': [
             {'start': 0, 'end': 600, 'stage': 'unobserved'},
@@ -831,7 +912,10 @@ Future<void> _seedWake(
   return LocalDb.putDayResult(
     dayId: day,
     algoVersion: algo,
-    payloadJson: jsonEncode({'sleep_source': sleepSource}),
+    payloadJson: jsonEncode({
+      'sleep_source': sleepSource,
+      'scalars': {'sol_min': sol},
+    }),
     windowJson: '{}',
     partial: partial,
     skipped: skipped,

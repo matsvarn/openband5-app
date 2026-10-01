@@ -188,17 +188,20 @@ void main() {
   test(
     'trend and week preserve missing days and stored goal absence',
     () async {
-      final db = await LocalDb.instance;
       for (final (date, value) in [
         ('2026-09-21', 66),
         ('2026-09-25', 49),
         ('2026-09-27', 74),
       ]) {
-        await db.insert('metric_series', {
-          'date': date,
-          'key': 'readiness',
-          'value': value,
-        });
+        await LocalDb.putDayResult(
+          dayId: date,
+          algoVersion: kAlgoVersion,
+          payloadJson: jsonEncode({
+            'scalars': {'readiness': value},
+          }),
+          windowJson: '{}',
+          series: {'readiness': value.toDouble()},
+        );
       }
       final trend = await repo.readTrend(G3Metric.recovery, day, 7);
       expect(trend.points.map((p) => p.value), [

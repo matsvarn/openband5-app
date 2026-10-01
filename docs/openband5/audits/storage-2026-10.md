@@ -240,6 +240,51 @@ The comparison with the unmodified original uses a separate read-only copy; the 
 - Reliability (`lib/ble/**`): `raw_blob` batch size follows the sync commit, about 2.1 KB compressed. Two of them do not fit a 4 KB page. Combining two consecutive commits into one blob is not possible without delaying the ACK, so the slack stays unless the page size changes.
 - Code quality (`lib/openband/local_repository.dart:599`): the optical-coverage query reads `signal_quality_logvar` from every row of a day (9 ms per day on the copy). Fine today; it scales with days shown.
 
+## Follow-up: one calculation per day screen, and idempotent derivation
+
+Branch `openband5/audit-storage-2` on top of `b9affc44`. Source: code-quality audit DUP-1/DUP-2 (decision 2 on PR #21) and test-suite audit (#19).
+
+### Reproduced
+
+`test/day_consistency_test.dart` (commit `64ae055a`) failed 5 of 8 tests on `b9affc44`:
+
+| Case | Reproduction | Observed |
+|---|---|---|
+| DUP-1 | A new calculation commits after `readDay`'s snapshot transaction (`lib/openband/local_repository.dart:1258`) and before its later reads `getDaySleep/Heart/Strain/Steps` (`:1398–1408`, each re-selecting the served row through `LocalRepositoryImpl._bundle`, `lib/data/local_repository_impl.dart:100`) | One `OpenBandDay` with duration, onset/wake, recovery, strain, steps and source from calculation B, but segments, HRV, RHR, respiration, temperature and `calculatedAt` from calculation A |
+| DUP-2, partial row | Served row is partial; `putDayResult` writes `metric_series` only for complete rows | Headline 420 min / 80 / 9 / 9,000 steps, history and trend 360 / 60 / 4 / 3,000 |
+| DUP-2, newer build | `metric_series` written with a row above `kAlgoVersion` | Headline from the served row, history from the newer build |
+| DUP-2, series-only writes | A `metric_series` value without a matching `day_result` (import, direct write) | Strain history 12 against headline 4; sleep history and week strip 500 against headline 360 |
+
+Trend readers read unversioned `metric_series`: `readMetricHistory` (`:2617–2642`), `_g3Steps` (`:368–377`), `readDay`'s `tst_min` history (`:1423`), and through them `readTrend`, `readWeekStrip`, `readWeeklyLoad` and the sleep-latency pattern (`:2204`).
+
+### Fixed
+
+- `627280d4`: `readDay` builds every calculation-backed field from its one snapshot transaction, through pure formatters extracted from `getDaySleep/Heart/Strain/Steps` (output formatting unchanged; the public methods remain thin wrappers). History, trend, week-strip and weekly-load points come from `LocalDb.servedDaySeries`, the same served row as the headline (greatest version ≤ `kAlgoVersion`, partial rows included as today, skipped rows a gap). Derivation keeps reading `metric_series`, so its output is unchanged. On the migrated copy of the phone database the served projection equals `metric_series` for all 9 keys on all 16 days (0 differences), so no trend value changes on current data.
+- `627280d4`, `bbfe002c`: separate reader calls on one screen use the calculation `readDay` saw for that day (a per-day pin of algorithm version and `computed_at`). If that row has been replaced, the reader returns processing or a gap, never the newer value. Readers wait for an in-flight `readDay` of the same day, because `OpenBandDayController.refresh` notifies listeners before it reads; without that wait Heute's week strips stayed empty after every sync (reproduced: expected 420, got null).
+- 365 days of served points: 9.3–9.9 ms on the Mac (synthetic 80 KB payloads).
+
+Remaining edge: Verlauf's detail loader reads the trend before its own `readDay` (`lib/openband/g3/screens/verlauf.dart:230–236`). A day pinned earlier and replaced since can show a gap there, not a mix, until the next refresh. Reordering those two calls is a screen change for the code-quality owner.
+
+### Idempotent derivation
+
+`test/derive_idempotence_test.dart` (CI) runs the production derivation twice on a synthetic three-day fixture with 28 baseline days (readiness, sleep, strain and HRV all non-null) and compares 69 tables. Excluded fields: execution clocks (`computed_at`, `updated_at`, `created_at`, `fired_at`, cross-day `built_at_epoch` / `input_read_started_at_ms`) and the cross-day publication fence (`crossday_source_rev.v`, `source_rev`), which `putDayResult` increments on every write and whose documentation calls it orchestration eligibility, not analytics output (`lib/data/db.dart:14269`). `tool/derive_idempotence_test.dart` does the same on a copy of the 30 September database (local only).
+
+| Comparison | Result |
+|---|---|
+| Real copy, full pass twice (16 days) and light pass twice | 69 tables, 0 differing rows (155 s) |
+| Synthetic, light rerun after a full pass | 0 differing rows |
+| Synthetic, first against second full pass | **Differs**: readiness, strain, skin-temperature z (and their baselines, curves, wake features) for the two later days |
+| Synthetic, second against third full pass | **Differs**: Erholung baseline of the last day |
+
+Cause: `DerivationEngine.run` loads `_BaselineHistoryCache` once per pass (`lib/compute/derivation_engine.dart:2483`) and derives the to-do days in up to three parallel lanes. A day derived in a pass never sees the outputs of days derived earlier in the same pass; the next pass does. Already-derived histories (the phone today) are stable, but after an algorithm bump a re-derived day's baselines are built from the previous version's values for the days before it, and a fresh multi-day history needs several passes to settle. Both full-pass tests stay as strict assertions, skipped with that reason, until the decision below.
+
+### Decisions for Mats (follow-up)
+
+| Decision | Options | Cost |
+|---|---|---|
+| Baseline history inside one derivation pass | (a) derive the to-do days in date order and refresh the baseline cache after each day; (b) repeat the pass until no output changes | Either changes derivation output for multi-day passes, so it needs a `kAlgoVersion` bump and a re-derivation. (a) loses the three-lane parallelism of a full re-derivation (measured 37 s for 16 days on the Mac with parallelism); (b) multiplies its run time by the number of passes |
+| 30-day decoded window | Kept for later, as agreed: a few more weeks of measured growth on the schema-69 layout first | — |
+
 ## Not proven
 
 - No iPhone measurement: all timings are macOS FFI on a warm page cache, with unrelated Flutter jobs on the same machine. Phone timings, battery drain and thermal behaviour are not measured.
