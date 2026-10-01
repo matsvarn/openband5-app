@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      update_goldens:
+        description: >-
+          Re-render the golden masters on the xcode-27 runner and upload them
+          as the golden-masters artifact, instead of comparing.
+        type: boolean
+        default: false
 
 concurrency:
   group: test-${{ github.ref }}
@@ -118,12 +125,26 @@ jobs:
           --concurrency=4 --reporter=expanded
 
   # Every test in every file that compares pixels, with the exact comparator,
-  # on the host the masters were rendered on: macOS 27 on Apple silicon. Text rasterization goes through
-  # the host's font stack, so an older macOS lands every golden sub-1% off
-  # (544 diffs, 0.03–0.58%, measured on macos-latest) and Ubuntu lands them a
-  # median 2.4% off. `xcode-27` is GitHub's macOS 27 arm64 image.
+  # on the host the masters were rendered on: macOS 27 on Apple silicon. Text
+  # rasterization goes through the host's font stack, so an older macOS lands
+  # every golden sub-1% off (544 diffs, 0.03–0.58%, measured on macos-latest)
+  # and Ubuntu lands them a median 2.4% off. `xcode-27` is GitHub's macOS 27
+  # arm64 image, still a public preview. Comparison is exact. Failure images
+  # are uploaded for inspection.
   #
-  # Comparison is exact. Failure images are uploaded for inspection.
+  # When GitHub moves the image. The sign is this job failing across many
+  # files with sub-1% diffs on a change that touches no UI, while the
+  # "Runner Image" group at the top of the job log shows a new xcode-27-arm64
+  # version. Confirm in the golden-failures artifact that only text edges
+  # differ, then re-render the masters on the runner itself (a local Mac only
+  # matches if it runs the same macOS build):
+  #
+  #   gh workflow run test.yml --ref BRANCH -f update_goldens=true
+  #   gh run download RUN_ID -n golden-masters -D test/openband_goldens
+  #
+  # Review the changed PNGs before committing them, and name the image
+  # version in the commit message. Without a moved image, a failing golden is
+  # a real change: fix the UI or re-render deliberately.
   goldens:
     runs-on: xcode-27
     timeout-minutes: 30
@@ -154,7 +175,16 @@ jobs:
           echo "cores: $cores, files: $(echo "$files" | wc -l)"
           # shellcheck disable=SC2086 # one path per word
           flutter test --no-pub --concurrency="$cores" \
+            ${{ inputs.update_goldens && '--update-goldens' || '' }} \
             --reporter=expanded $files
+
+      - name: Upload re-rendered masters
+        if: inputs.update_goldens
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-masters
+          path: test/openband_goldens/
+          retention-days: 7
 
       - name: Upload golden failures
         if: failure()
