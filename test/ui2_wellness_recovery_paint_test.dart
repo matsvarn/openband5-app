@@ -42,6 +42,7 @@ import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'support/real_async.dart';
 
 const _day = '2026-08-16';
 
@@ -199,16 +200,15 @@ class _Repo extends LocalRepository {
 /// spinner ever went away; the caller asserts on it, but only once it has put
 /// `FlutterError.onError` back.
 Future<bool> _settleLoad(WidgetTester t) async {
-  for (var i = 0; i < 40; i++) {
+  var loaded = false;
+  await untilReal(() => loaded, () async {
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
-      await _frames(t);
-      return true;
-    }
-  }
-  return false;
+    loaded = find.byType(CircularProgressIndicator).evaluate().isEmpty;
+  });
+  if (loaded) await _frames(t);
+  return loaded;
 }
 
 /// Fake time only — enough for a `setState` and the chip's transition.
