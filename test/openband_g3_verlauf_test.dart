@@ -781,6 +781,31 @@ void main() {
     );
   });
 
+  testWidgets('Messwerte shows a partial night like Heute does', (
+    tester,
+  ) async {
+    // The fixture's own day: the only one the partial scenario affects.
+    const fixtureDay = '2026-09-15';
+    final repo = _repo(SyntheticScenario.partial);
+    final day = await repo.readDay(fixtureDay);
+    await tester.pumpWidget(
+      _app(G3AllMetrics(repository: repo, endDay: fixtureDay)),
+    );
+    await tester.pumpAndSettle();
+    for (final (name, metric, unit) in [
+      ('HRV', day.hrv, 'ms'),
+      ('Ruhepuls', day.restingHr, '/min'),
+    ]) {
+      expect(metric.nightScalar, NightScalarState.partial);
+      expect(
+        find.bySemanticsLabel(
+          '$name ${g3Number(metric.value)} $unit, Unvollständige Nacht',
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
   testWidgets('body values with a building baseline remain recorded', (
     tester,
   ) async {
@@ -788,8 +813,14 @@ void main() {
       _app(G3AllMetrics(repository: _BuildingBodyRepository(), endDay: _day)),
     );
     await tester.pumpAndSettle();
-    expect(find.bySemanticsLabel('HRV 73 ms'), findsOneWidget);
-    expect(find.bySemanticsLabel('Ruhepuls 51 /min'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('HRV 73 ms, Basis: noch 5 Werte'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('Ruhepuls 51 /min, Basis: noch 5 Werte'),
+      findsOneWidget,
+    );
     expect(find.text('nicht erfasst'), findsNothing);
     expect(find.text('Basis: noch 5 Werte'), findsNWidgets(3));
   });

@@ -127,6 +127,7 @@ enum NightScalarState {
 const String kNightScalarPendingLabel = 'Auswertung läuft';
 const String kNightScalarOpenLabel = 'Auswertung offen';
 const String kNightScalarFailedLabel = 'Auswertung fehlgeschlagen';
+const String kNightScalarPartialLabel = 'Unvollständige Nacht';
 const String kNightScalarUnknownUnitLabel = 'Einheit unbekannt';
 const String kNightScalarTrustedBaseline = 'trusted';
 

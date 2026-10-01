@@ -97,13 +97,17 @@ class _TypedCheckInRepo extends _Repo {
   Future<void> answerCheckIn(String day, String key, G3CheckInAnswer answer) async => written.add((day, key, answer));
 }
 
+/// The fixture's own day: the only one the partial and failed scenarios affect.
+const _fixtureDay = '2026-09-15';
+
 class _Harness {
-  _Harness(this.repo, this.band, {MemoryHeuteReminder? reminder}) : reminder = reminder ?? MemoryHeuteReminder();
+  _Harness(this.repo, this.band, {MemoryHeuteReminder? reminder, this.day = _day}) : reminder = reminder ?? MemoryHeuteReminder();
   final _Repo repo;
   final BandSnapshot band;
   final MemoryHeuteReminder reminder;
   DateTime clock = DateTime(2026, 9, 29, 9, 41);
-  late final controller = OpenBandController(repository: repo, initialDay: _day, band: band, now: () => clock);
+  final String day;
+  late final controller = OpenBandController(repository: repo, initialDay: day, band: band, now: () => clock);
   int connects = 0;
   final journalDays = <String>[];
   final opened = <G3Metric>[];
@@ -217,6 +221,19 @@ void main() {
       }
     });
   }
+
+  testWidgets('a failed night calculation is not shown as missing data', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.calculationFailure), _connected, day: _fixtureDay), size: const Size(393, 3000));
+    expect(find.bySemanticsLabel('HRV Auswertung fehlgeschlagen'), findsOneWidget);
+    expect(find.bySemanticsLabel('Ruhepuls Auswertung fehlgeschlagen'), findsOneWidget);
+    expect(find.bySemanticsLabel('HRV nicht erfasst'), findsNothing);
+  });
+
+  testWidgets('a partial night keeps its value and says so, without a range', (tester) async {
+    await _pump(tester, _Harness(_Repo(SyntheticScenario.partial), _connected, day: _fixtureDay), size: const Size(393, 3000));
+    expect(find.bySemanticsLabel(RegExp(r'^HRV \d+ ms, Unvollständige Nacht$')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^Ruhepuls \d+ /min, Unvollständige Nacht$')), findsOneWidget);
+  });
 
   testWidgets('trusted day: lead on the range, note with the sleep-plan bedtime, no °C', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.g3Sample), _connected), size: const Size(393, 3000));

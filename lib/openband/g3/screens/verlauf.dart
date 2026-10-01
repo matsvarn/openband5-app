@@ -102,8 +102,20 @@ metrics.OBBodyRow _bodyRow(
   required bool last,
   required VoidCallback onTap,
 }) {
-  final value = trend.points.isEmpty ? null : _usable(trend.points.last);
-  final range = trend.baseline.status.phase == BaselinePhase.trusted
+  final lastPoint = trend.points.isEmpty ? null : trend.points.last;
+  // A partial night shows its value without a range, as on Heute and in the
+  // detail. Skin temperature stays a deviation and keeps refusing it.
+  final partial =
+      metric != G3Metric.skinTempZ &&
+      lastPoint != null &&
+      lastPoint.partial &&
+      lastPoint.value?.isFinite == true;
+  final value = partial
+      ? lastPoint.value
+      : lastPoint == null
+      ? null
+      : _usable(lastPoint);
+  final range = !partial && trend.baseline.status.phase == BaselinePhase.trusted
       ? trend.baseline.range
       : null;
   final bounds = range == null ? null : _personalBounds(range);
@@ -125,7 +137,7 @@ metrics.OBBodyRow _bodyRow(
     band: range == null ? null : (range.low, range.high),
     minLabel: range == null ? null : _number(range.low, metric),
     maxLabel: range == null ? null : _number(range.high, metric),
-    note: _baselineChip(trend.baseline),
+    note: partial ? kNightScalarPartialLabel : _baselineChip(trend.baseline),
     last: last,
     onTap: onTap,
   );
