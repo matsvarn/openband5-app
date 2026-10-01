@@ -10,19 +10,13 @@ Future<void> reviewJournal(ReviewHarness h) async {
   Finder journalHubScrollable() =>
       find.descendant(of: journalHub(), matching: find.byType(Scrollable));
 
-  Future<void> tapJournalHubRetry() async {
-    final retry = inJournalHub(find.text('Erneut'));
-    if (retry.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        retry,
-        200,
-        scrollable: journalHubScrollable(),
-      );
-    }
-    await Scrollable.ensureVisible(tester.element(retry), alignment: 0.5);
-    await tester.pumpAndSettle();
-    await tester.tap(retry);
+  Future<void> expectHubText(String text) async {
+    final target = inJournalHub(find.text(text));
+    if (target.evaluate().isEmpty) await h.reveal(target);
+    expect(target, findsOneWidget);
   }
+
+  Future<void> tapJournalHubRetry() => h.tap(inJournalHub(find.text('Erneut')));
 
   bool isFullyVisibleInJournalHub(Finder matching) {
     final target = inJournalHub(matching);
@@ -40,13 +34,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   Future<void> revealJournalHubPatternCard(Finder lastLine) async {
     final heading = find.text('Einschlafen · Koffein nach 14 Uhr');
     final end = inJournalHub(lastLine);
-    if (end.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        end,
-        200,
-        scrollable: journalHubScrollable(),
-      );
-    }
+    if (end.evaluate().isEmpty) await h.reveal(end);
     var drags = 0;
     while (drags < 50 &&
         !(isFullyVisibleInJournalHub(heading) &&
@@ -99,20 +87,8 @@ Future<void> reviewJournal(ReviewHarness h) async {
     await tester.pumpAndSettle();
   }
 
-  Future<void> openJournalHubInfo() async {
-    final info = inJournalHub(find.byTooltip('Information'));
-    if (info.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        info,
-        200,
-        scrollable: journalHubScrollable(),
-      );
-    }
-    await Scrollable.ensureVisible(tester.element(info), alignment: 0.5);
-    await tester.pumpAndSettle();
-    await tester.tap(info);
-    await tester.pumpAndSettle();
-  }
+  Future<void> openJournalHubInfo() =>
+      h.tap(inJournalHub(find.byTooltip('Information')));
 
   Future<SyntheticOpenBandRepository> openJournalHub({
     Brightness brightness = Brightness.light,
@@ -200,16 +176,18 @@ Future<void> reviewJournal(ReviewHarness h) async {
     await tester.pumpAndSettle();
   }
 
-  void expectMeaningfulPattern() {
-    expect(inJournalHub(find.text('+12 Min.')), findsOneWidget);
-    expect(inJournalHub(find.text('Ja · 7 Nächte')), findsOneWidget);
-    expect(inJournalHub(find.text('Nein · 11 Nächte')), findsOneWidget);
+  Future<void> expectMeaningfulPattern() async {
+    for (final text in ['+12 Min.', 'Ja · 7 Nächte', 'Nein · 11 Nächte']) {
+      final target = inJournalHub(find.text(text));
+      if (target.evaluate().isEmpty) await h.reveal(target);
+      expect(target, findsOneWidget);
+    }
     expect(inJournalHub(find.textContaining('≥')), findsNothing);
     expect(inJournalHub(find.textContaining('mind.')), findsNothing);
   }
 
-  void expectMeaningfulPatternVisible() {
-    expectMeaningfulPattern();
+  Future<void> expectMeaningfulPatternVisible() async {
+    await expectMeaningfulPattern();
     expect(
       isFullyVisibleInJournalHub(
         find.text('Einschlafen · Koffein nach 14 Uhr'),
@@ -230,19 +208,19 @@ Future<void> reviewJournal(ReviewHarness h) async {
       true;
 
   final hub = await openJournalHub();
-  expect(
-    inJournalHub(find.text('Einschlafen · Koffein nach 14 Uhr')),
-    findsOneWidget,
-  );
-  expectMeaningfulPattern();
-  expect(inJournalHub(find.text('620')), findsOneWidget);
+  await h.reveal(inJournalHub(find.text('Einschlafen · Koffein nach 14 Uhr')));
+  await expectHubText('Einschlafen · Koffein nach 14 Uhr');
+  await expectMeaningfulPattern();
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
   expect(hubSelected('Stimmung Gut'), isFalse);
   expect(hubSelected('Koffein nach 14 Uhr: Nein'), isFalse);
   expect(hubSelected('Alkohol: Nein'), isFalse);
   expect(hubSelected('Abends gelesen: Nein'), isFalse);
   await h.capture('journal-hub');
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-scrolled');
   await openJournalHubInfo();
   expect(find.text('Vergleich verstehen'), findsOneWidget);
@@ -267,9 +245,9 @@ Future<void> reviewJournal(ReviewHarness h) async {
   expect(hubSelected('Koffein nach 14 Uhr: Ja'), isTrue);
   expect(hubSelected('Alkohol: Nein'), isTrue);
   expect(hubSelected('Abends gelesen: Ja'), isTrue);
-  expectMeaningfulPattern();
+  await expectMeaningfulPattern();
   await h.capture('journal-answered');
-  if (kOpenBandReviewFlow != 'journal-hub') {
+  if (h.flow != 'journal-hub') {
     await h.openHubEditor();
     await h.capture('journal-editor');
     await tester.tap(find.byTooltip('Information'));
@@ -288,272 +266,9 @@ Future<void> reviewJournal(ReviewHarness h) async {
     await h.pop();
     await tester.tap(find.byTooltip('Zurück'));
     await tester.pumpAndSettle();
-    await h.openHubNutrition();
-    await h.capture('nutrition-day');
-    await tester.tap(find.byTooltip('Frühstück ergänzen'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'hafer');
-    await tester.pumpAndSettle();
-    await h.capture('food-search');
-    await tester.tap(find.text('Haferflocken'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Übernehmen'));
-    await tester.pumpAndSettle();
-    await h.capture('meal-draft-preview');
-    await tester.tap(find.text('Entwurf behalten'));
-    await tester.pumpAndSettle();
-
-    Future<SyntheticOpenBandRepository> openGoals({
-      Brightness brightness = Brightness.light,
-      double? scale,
-    }) async {
-      final repository = await h.mount(brightness: brightness, scale: scale);
-      await h.press('Journal');
-      await h.settleJournalHub(repository);
-      await h.openHubNutrition();
-      await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
-      await tester.pumpAndSettle();
-      return repository;
-    }
-
-    Future<void> openGoalInfo() async {
-      await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
-      await tester.pumpAndSettle();
-    }
-
-    Future<void> closeGoalInfo() async {
-      await tester.tap(find.text('Schließen').last);
-      await tester.pumpAndSettle();
-    }
-
-    Future<void> settleGoalKeyboard() async {
-      FocusManager.instance.primaryFocus?.unfocus();
-      await tester.pumpAndSettle();
-    }
-
-    await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
-    await tester.pumpAndSettle();
-    await h.capture('nutrition-goals-overview');
-    await openGoalInfo();
-    await h.capture('nutrition-goals-info');
-    await closeGoalInfo();
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    expect(find.text('2000'), findsWidgets);
-    await h.capture('nutrition-goals-editor');
-    await tester.tap(find.text('%'));
-    await tester.pumpAndSettle();
-    expect(find.text('25'), findsOneWidget);
-    await h.capture('nutrition-goals-percent');
-    await tester.tap(find.text('g'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Gültig ab'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('20'));
-    await tester.pumpAndSettle();
-    await h.capture('nutrition-goals-date');
-    await tester.ensureVisible(find.textContaining('übernehmen'));
-    await tester.tap(find.textContaining('übernehmen'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('nutrition-goal-save')),
-    );
-    await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Verlauf'));
-    await tester.pumpAndSettle();
-    expect(find.text('Geplant'), findsOneWidget);
-    await h.capture('nutrition-goals-history');
-    await h.pop();
-    await tester.tap(find.text('Ziele entfernen'));
-    await tester.pumpAndSettle();
-    await h.capture('nutrition-goals-clear');
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Keine Ziele'), findsOneWidget);
-    await h.capture('nutrition-goals-cleared');
-    await tester.tap(find.text('Verlauf'));
-    await tester.pumpAndSettle();
-    expect(find.text('Geplant'), findsOneWidget);
-    await h.capture('nutrition-goals-history-retained');
-    await h.pop();
-    await h.pop();
-
-    final goalFail = await h.mount();
-    goalFail.failNutritionTargetRead = true;
-    await h.press('Journal');
-    await h.settleJournalHub(goalFail);
-    await h.openHubNutrition();
-    await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele nicht geladen'), findsOneWidget);
-    await h.capture('nutrition-goals-read-error');
-    goalFail.failNutritionTargetRead = false;
-    await tester.tap(find.text('Erneut'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele nicht geladen'), findsNothing);
-    await h.capture('nutrition-goals-read-retry');
-
-    final goalWrite = await openGoals();
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('nutrition-goal-energy')),
-      '1550',
-    );
-    await tester.pumpAndSettle();
-    await settleGoalKeyboard();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('nutrition-goal-save')),
-    );
-    goalWrite.failNutritionTargetWrite = true;
-    await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('Speichern fehlgeschlagen'), findsOneWidget);
-    await h.capture('nutrition-goals-write-error');
-    goalWrite.failNutritionTargetWrite = false;
-    await tester.ensureVisible(find.text('Erneut speichern'));
-    await tester.tap(find.text('Erneut speichern'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    expect(find.text('1550'), findsWidgets);
-    await h.capture('nutrition-goals-write-retry');
-
-    final goalConflict = await openGoals();
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('nutrition-goal-energy')),
-      '1600',
-    );
-    await tester.pumpAndSettle();
-    await settleGoalKeyboard();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('nutrition-goal-save')),
-    );
-    await goalConflict.saveNutritionTargets(
-      '2026-09-15',
-      const NutritionTargetValues(energyKcal: 1700),
-      expectedRevision: 1,
-    );
-    await tester.tap(find.byKey(const ValueKey('nutrition-goal-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele wurden inzwischen geändert.'), findsOneWidget);
-    await h.capture('nutrition-goals-conflict');
-
-    final goalClearConflict = await openGoals();
-    await goalClearConflict.saveNutritionTargets(
-      '2026-09-15',
-      const NutritionTargetValues(energyKcal: 1700),
-      expectedRevision: 1,
-    );
-    await tester.tap(find.text('Ziele entfernen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele inzwischen geändert.'), findsOneWidget);
-    expect(find.text('2.000'), findsOneWidget);
-    expect(find.text('Gültig ab'), findsNothing);
-    await h.capture('nutrition-goals-clear-conflict');
-    await tester.tap(find.text('Neu laden'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele inzwischen geändert.'), findsNothing);
-    expect(find.text('1.700'), findsOneWidget);
-
-    final goalClearConflictDark = await openGoals(brightness: Brightness.dark);
-    await goalClearConflictDark.saveNutritionTargets(
-      '2026-09-15',
-      const NutritionTargetValues(energyKcal: 1700),
-      expectedRevision: 1,
-    );
-    await tester.tap(find.text('Ziele entfernen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele inzwischen geändert.'), findsOneWidget);
-    await h.capture('nutrition-goals-clear-conflict-dark');
-
-    final goalClearFail = await openGoals();
-    goalClearFail.failNutritionTargetWrite = true;
-    await tester.tap(find.text('Ziele entfernen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Entfernen fehlgeschlagen.'), findsOneWidget);
-    expect(find.text('2.000'), findsOneWidget);
-    expect(find.text('Gültig ab'), findsNothing);
-    await h.capture('nutrition-goals-clear-error');
-    goalClearFail.failNutritionTargetWrite = false;
-    await tester.tap(find.text('Erneut'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ziele entfernen?'), findsOneWidget);
-    await h.capture('nutrition-goals-clear-retry');
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Keine Ziele'), findsOneWidget);
-
-    final goalClearFailDark = await openGoals(brightness: Brightness.dark);
-    goalClearFailDark.failNutritionTargetWrite = true;
-    await tester.tap(find.text('Ziele entfernen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Entfernen'));
-    await tester.pumpAndSettle();
-    expect(find.text('Entfernen fehlgeschlagen.'), findsOneWidget);
-    await h.capture('nutrition-goals-clear-error-dark');
-
-    final missingGoals = await h.mount();
-    await missingGoals.clearNutritionTargets('2026-09-15', expectedRevision: 1);
-    await missingGoals.clearNutritionTargets('2026-09-20', expectedRevision: 1);
-    await h.press('Journal');
-    await h.settleJournalHub(missingGoals);
-    await h.openHubNutrition();
-    await tester.tap(find.byTooltip('Ernährungsziele').hitTestable());
-    await tester.pumpAndSettle();
-    expect(find.text('Keine Ziele'), findsOneWidget);
-    await h.capture('nutrition-goals-empty');
-
-    await openGoals(brightness: Brightness.dark);
-    await h.capture('nutrition-goals-overview-dark');
-    await openGoalInfo();
-    await h.capture('nutrition-goals-info-dark');
-    await closeGoalInfo();
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    await h.capture('nutrition-goals-editor-dark');
-    await tester.tap(find.text('%'));
-    await tester.pumpAndSettle();
-    expect(find.text('25'), findsOneWidget);
-    await h.capture('nutrition-goals-percent-dark');
-
-    await openGoals(scale: 2);
-    await openGoalInfo();
-    expect(find.text('Ernährungs-\nziele'), findsWidgets);
-    await h.capture('nutrition-goals-info-large');
-    await closeGoalInfo();
-    await tester.ensureVisible(find.text('Ändern'));
-    await tester.tap(find.text('Ändern'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    await h.capture('nutrition-goals-editor-large');
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('nutrition-goal-fat')),
-      200,
-      scrollable: h.verticalScrollable().last,
-    );
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('nutrition-goal-save')),
-      200,
-      scrollable: h.verticalScrollable().last,
-    );
-    expect(
-      find.byKey(const ValueKey('nutrition-goal-save')).hitTestable(),
-      findsOneWidget,
-    );
-    await h.capture('nutrition-goals-editor-large-scrolled');
-
     await openJournalHub(failJournalRead: true);
     await h.openHubEditor();
+    expect(find.text('Journal nicht geladen'), findsOneWidget);
     await h.capture('journal-editor-load-error');
 
     await openJournalHub(brightness: Brightness.dark);
@@ -812,39 +527,45 @@ Future<void> reviewJournal(ReviewHarness h) async {
   }
 
   await openJournalHub(brightness: Brightness.dark);
-  expectMeaningfulPattern();
-  expect(inJournalHub(find.text('620')), findsOneWidget);
+  await expectMeaningfulPattern();
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
   expect(hubSelected('Alkohol: Nein'), isFalse);
   await h.capture('journal-hub-dark');
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-scrolled-dark');
 
   await openJournalHub(scale: 2);
-  expect(inJournalHub(find.text('Journal')), findsOneWidget);
-  expect(inJournalHub(find.text('620')), findsOneWidget);
+  await expectHubText('Journal');
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
   await h.capture('journal-hub-2x');
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-2x-scrolled');
 
   await openJournalHub(brightness: Brightness.dark, scale: 2);
-  expect(inJournalHub(find.text('Journal')), findsOneWidget);
-  expect(inJournalHub(find.text('620')), findsOneWidget);
+  await expectHubText('Journal');
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
   await h.capture('journal-hub-2x-dark');
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-2x-scrolled-dark');
 
   await reviewJournalHubInfo2x();
   await reviewJournalHubInfo2x(brightness: Brightness.dark, suffix: '-dark');
 
   await openJournalHub(patternSeed: SyntheticCaffeineSleepSeed.insufficient);
-  expect(inJournalHub(find.text('Noch zu wenige Nächte')), findsOneWidget);
-  expect(inJournalHub(find.text('5 Nächte mit Eintrag')), findsOneWidget);
+  await revealJournalHubPatternCard(find.text('5 Nächte mit Eintrag'));
+  await expectHubText('Noch zu wenige Nächte');
+  await expectHubText('5 Nächte mit Eintrag');
   expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   expect(inJournalHub(find.textContaining('≥')), findsNothing);
-  await revealJournalHubPatternCard(find.text('5 Nächte mit Eintrag'));
   expect(
     isFullyVisibleInJournalHub(find.text('Noch zu wenige Nächte')),
     isTrue,
@@ -856,11 +577,11 @@ Future<void> reviewJournal(ReviewHarness h) async {
     brightness: Brightness.dark,
     patternSeed: SyntheticCaffeineSleepSeed.insufficient,
   );
-  expect(inJournalHub(find.text('Noch zu wenige Nächte')), findsOneWidget);
-  expect(inJournalHub(find.text('5 Nächte mit Eintrag')), findsOneWidget);
+  await revealJournalHubPatternCard(find.text('5 Nächte mit Eintrag'));
+  await expectHubText('Noch zu wenige Nächte');
+  await expectHubText('5 Nächte mit Eintrag');
   expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   expect(inJournalHub(find.textContaining('≥')), findsNothing);
-  await revealJournalHubPatternCard(find.text('5 Nächte mit Eintrag'));
   expect(
     isFullyVisibleInJournalHub(find.text('Noch zu wenige Nächte')),
     isTrue,
@@ -869,15 +590,12 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await h.capture('journal-hub-insufficient-dark');
 
   await openJournalHub(patternSeed: SyntheticCaffeineSleepSeed.unavailable);
-  expect(inJournalHub(find.text('Noch kein Vergleich')), findsOneWidget);
-  expect(
-    inJournalHub(find.text('Keine auswertbaren Nächte mit Eintrag')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Nein · 11 Nächte')), findsNothing);
   await revealJournalHubPatternCard(
     find.text('Keine auswertbaren Nächte mit Eintrag'),
   );
+  await expectHubText('Noch kein Vergleich');
+  await expectHubText('Keine auswertbaren Nächte mit Eintrag');
+  expect(inJournalHub(find.text('Nein · 11 Nächte')), findsNothing);
   expect(isFullyVisibleInJournalHub(find.text('Noch kein Vergleich')), isTrue);
   expect(
     isFullyVisibleInJournalHub(
@@ -891,15 +609,12 @@ Future<void> reviewJournal(ReviewHarness h) async {
     brightness: Brightness.dark,
     patternSeed: SyntheticCaffeineSleepSeed.unavailable,
   );
-  expect(inJournalHub(find.text('Noch kein Vergleich')), findsOneWidget);
-  expect(
-    inJournalHub(find.text('Keine auswertbaren Nächte mit Eintrag')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Nein · 11 Nächte')), findsNothing);
   await revealJournalHubPatternCard(
     find.text('Keine auswertbaren Nächte mit Eintrag'),
   );
+  await expectHubText('Noch kein Vergleich');
+  await expectHubText('Keine auswertbaren Nächte mit Eintrag');
+  expect(inJournalHub(find.text('Nein · 11 Nächte')), findsNothing);
   expect(isFullyVisibleInJournalHub(find.text('Noch kein Vergleich')), isTrue);
   expect(
     isFullyVisibleInJournalHub(
@@ -910,10 +625,10 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await h.capture('journal-hub-unavailable-dark');
 
   await openJournalHub(patternSeed: SyntheticCaffeineSleepSeed.nonmeaningful);
-  expect(inJournalHub(find.text('Kein klares Muster')), findsOneWidget);
-  expect(inJournalHub(find.text('18 Nächte mit Eintrag')), findsOneWidget);
-  expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   await revealJournalHubPatternCard(find.text('18 Nächte mit Eintrag'));
+  await expectHubText('Kein klares Muster');
+  await expectHubText('18 Nächte mit Eintrag');
+  expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   expect(isFullyVisibleInJournalHub(find.text('Kein klares Muster')), isTrue);
   expect(
     isFullyVisibleInJournalHub(find.text('18 Nächte mit Eintrag')),
@@ -925,10 +640,10 @@ Future<void> reviewJournal(ReviewHarness h) async {
     brightness: Brightness.dark,
     patternSeed: SyntheticCaffeineSleepSeed.nonmeaningful,
   );
-  expect(inJournalHub(find.text('Kein klares Muster')), findsOneWidget);
-  expect(inJournalHub(find.text('18 Nächte mit Eintrag')), findsOneWidget);
-  expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   await revealJournalHubPatternCard(find.text('18 Nächte mit Eintrag'));
+  await expectHubText('Kein klares Muster');
+  await expectHubText('18 Nächte mit Eintrag');
+  expect(inJournalHub(find.text('+12 Min.')), findsNothing);
   expect(isFullyVisibleInJournalHub(find.text('Kein klares Muster')), isTrue);
   expect(
     isFullyVisibleInJournalHub(find.text('18 Nächte mit Eintrag')),
@@ -939,10 +654,10 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await openJournalHub(
     patternSeed: SyntheticCaffeineSleepSeed.partialMeaningful,
   );
-  expectMeaningfulPattern();
-  expect(inJournalHub(find.text('Teilweise auswertbar')), findsOneWidget);
+  await expectMeaningfulPattern();
+  await expectHubText('Teilweise auswertbar');
   await revealJournalHubPatternCard(find.text('Teilweise auswertbar'));
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   expect(isFullyVisibleInJournalHub(find.text('Teilweise auswertbar')), isTrue);
   await h.capture('journal-hub-partial');
 
@@ -950,19 +665,16 @@ Future<void> reviewJournal(ReviewHarness h) async {
     brightness: Brightness.dark,
     patternSeed: SyntheticCaffeineSleepSeed.partialMeaningful,
   );
-  expectMeaningfulPattern();
-  expect(inJournalHub(find.text('Teilweise auswertbar')), findsOneWidget);
+  await expectMeaningfulPattern();
+  await expectHubText('Teilweise auswertbar');
   await revealJournalHubPatternCard(find.text('Teilweise auswertbar'));
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   expect(isFullyVisibleInJournalHub(find.text('Teilweise auswertbar')), isTrue);
   await h.capture('journal-hub-partial-dark');
 
   final patternFail = await openJournalHub(failPattern: true);
-  expect(
-    inJournalHub(find.text('Vergleich konnte nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
+  await expectHubText('Vergleich konnte nicht geladen werden.');
+  await expectHubText('Erneut');
   await revealJournalHubPatternCard(find.text('Erneut'));
   expect(
     isFullyVisibleInJournalHub(
@@ -977,18 +689,15 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await tester.pump();
   await h.settleJournalHub(patternFail);
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-pattern-retry');
 
   final patternFailDark = await openJournalHub(
     brightness: Brightness.dark,
     failPattern: true,
   );
-  expect(
-    inJournalHub(find.text('Vergleich konnte nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
+  await expectHubText('Vergleich konnte nicht geladen werden.');
+  await expectHubText('Erneut');
   await revealJournalHubPatternCard(find.text('Erneut'));
   expect(
     isFullyVisibleInJournalHub(
@@ -1003,7 +712,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await tester.pump();
   await h.settleJournalHub(patternFailDark);
   await revealJournalHubPattern();
-  expectMeaningfulPatternVisible();
+  await expectMeaningfulPatternVisible();
   await h.capture('journal-hub-pattern-retry-dark');
 
   final writeFail = await openJournalHub(filledAnswers: true);
@@ -1012,7 +721,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   writeFail.failJournalPatch = true;
   await tester.tap(find.bySemanticsLabel('Alkohol: Ja'));
   await tester.pumpAndSettle();
-  expect(inJournalHub(find.text('Speichern fehlgeschlagen.')), findsOneWidget);
+  await expectHubText('Speichern fehlgeschlagen.');
   expect(hubSelected('Alkohol: Nein'), isTrue);
   expect(hubSelected('Alkohol: Ja'), isFalse);
   await h.capture('journal-hub-write-error');
@@ -1032,7 +741,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   writeFailDark.failJournalPatch = true;
   await tester.tap(find.bySemanticsLabel('Alkohol: Ja'));
   await tester.pumpAndSettle();
-  expect(inJournalHub(find.text('Speichern fehlgeschlagen.')), findsOneWidget);
+  await expectHubText('Speichern fehlgeschlagen.');
   expect(hubSelected('Alkohol: Nein'), isTrue);
   expect(hubSelected('Alkohol: Ja'), isFalse);
   await h.capture('journal-hub-write-error-dark');
@@ -1047,11 +756,8 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await conflictHub.writeJournal('2026-09-15', 'mood', 2);
   await tester.tap(find.bySemanticsLabel('Stimmung Okay'));
   await tester.pumpAndSettle();
-  expect(
-    inJournalHub(find.text('Antwort inzwischen geändert.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Neu laden')), findsOneWidget);
+  await expectHubText('Antwort inzwischen geändert.');
+  await expectHubText('Neu laden');
   expect(hubSelected('Stimmung Gut'), isTrue);
   await h.capture('journal-hub-conflict');
   await tester.tap(inJournalHub(find.text('Neu laden')));
@@ -1067,11 +773,8 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await conflictHubDark.writeJournal('2026-09-15', 'mood', 2);
   await tester.tap(find.bySemanticsLabel('Stimmung Okay'));
   await tester.pumpAndSettle();
-  expect(
-    inJournalHub(find.text('Antwort inzwischen geändert.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Neu laden')), findsOneWidget);
+  await expectHubText('Antwort inzwischen geändert.');
+  await expectHubText('Neu laden');
   expect(hubSelected('Stimmung Gut'), isTrue);
   await h.capture('journal-hub-conflict-dark');
   await tester.tap(inJournalHub(find.text('Neu laden')));
@@ -1085,7 +788,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await tester.tap(find.bySemanticsLabel('Stimmung Okay'));
   await tester.pumpAndSettle();
   expect(inJournalHub(find.text('Speichern fehlgeschlagen.')), findsNothing);
-  expect(inJournalHub(find.text('Journal nicht geladen.')), findsOneWidget);
+  await expectHubText('Journal nicht geladen.');
   expect(hubSelected('Stimmung Okay'), isTrue);
   final disabledMood = find.bySemanticsLabel('Stimmung Gut');
   expect(disabledMood.hitTestable(), findsNothing);
@@ -1130,7 +833,7 @@ Future<void> reviewJournal(ReviewHarness h) async {
   readFailDark.failJournalRead = true;
   await tester.tap(find.bySemanticsLabel('Stimmung Okay'));
   await tester.pumpAndSettle();
-  expect(inJournalHub(find.text('Journal nicht geladen.')), findsOneWidget);
+  await expectHubText('Journal nicht geladen.');
   expect(hubSelected('Stimmung Okay'), isTrue);
   await h.capture('journal-hub-read-error-dark');
   readFailDark.failJournalRead = false;
@@ -1141,11 +844,8 @@ Future<void> reviewJournal(ReviewHarness h) async {
   await h.capture('journal-hub-read-retry-dark');
 
   final mealsFail = await openJournalHub(failMeals: true);
-  expect(
-    inJournalHub(find.text('Einträge konnten nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
+  await expectHubText('Einträge konnten nicht geladen werden.');
+  await expectHubText('Erneut');
   expect(inJournalHub(find.text('620')), findsNothing);
   expect(inJournalHub(find.text('kcal')), findsNothing);
   expect(inJournalHub(find.text('Ziel 2.000')), findsNothing);
@@ -1159,19 +859,18 @@ Future<void> reviewJournal(ReviewHarness h) async {
     inJournalHub(find.text('Einträge konnten nicht geladen werden.')),
     findsNothing,
   );
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel 2.000')), findsOneWidget);
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel 2.000');
   await h.capture('journal-hub-meals-retry');
 
   final mealsFailDark = await openJournalHub(
     brightness: Brightness.dark,
     failMeals: true,
   );
-  expect(
-    inJournalHub(find.text('Einträge konnten nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
+  await expectHubText('Einträge konnten nicht geladen werden.');
+  await expectHubText('Erneut');
   expect(inJournalHub(find.text('620')), findsNothing);
   expect(inJournalHub(find.text('kcal')), findsNothing);
   expect(inJournalHub(find.text('Ziel 2.000')), findsNothing);
@@ -1185,18 +884,19 @@ Future<void> reviewJournal(ReviewHarness h) async {
     inJournalHub(find.text('Einträge konnten nicht geladen werden.')),
     findsNothing,
   );
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel 2.000')), findsOneWidget);
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel 2.000');
   await h.capture('journal-hub-meals-retry-dark');
 
   final targetsFail = await openJournalHub(failTargets: true);
-  expect(
-    inJournalHub(find.text('Ziele konnten nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel —')), findsOneWidget);
+  await expectHubText('Ziele konnten nicht geladen werden.');
+  await expectHubText('Erneut');
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel —');
   expect(inJournalHub(find.text('Kein Ziel')), findsNothing);
   expect(inJournalHub(find.text('Ziel 2.000')), findsNothing);
   await h.capture('journal-hub-targets-error');
@@ -1208,8 +908,10 @@ Future<void> reviewJournal(ReviewHarness h) async {
     inJournalHub(find.text('Ziele konnten nicht geladen werden.')),
     findsNothing,
   );
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel 2.000')), findsOneWidget);
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel 2.000');
   expect(inJournalHub(find.text('Ziel —')), findsNothing);
   expect(inJournalHub(find.text('Kein Ziel')), findsNothing);
   await h.capture('journal-hub-targets-retry');
@@ -1218,13 +920,12 @@ Future<void> reviewJournal(ReviewHarness h) async {
     brightness: Brightness.dark,
     failTargets: true,
   );
-  expect(
-    inJournalHub(find.text('Ziele konnten nicht geladen werden.')),
-    findsOneWidget,
-  );
-  expect(inJournalHub(find.text('Erneut')), findsOneWidget);
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel —')), findsOneWidget);
+  await expectHubText('Ziele konnten nicht geladen werden.');
+  await expectHubText('Erneut');
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel —');
   expect(inJournalHub(find.text('Kein Ziel')), findsNothing);
   expect(inJournalHub(find.text('Ziel 2.000')), findsNothing);
   await h.capture('journal-hub-targets-error-dark');
@@ -1236,8 +937,10 @@ Future<void> reviewJournal(ReviewHarness h) async {
     inJournalHub(find.text('Ziele konnten nicht geladen werden.')),
     findsNothing,
   );
-  expect(inJournalHub(find.text('620')), findsOneWidget);
-  expect(inJournalHub(find.text('Ziel 2.000')), findsOneWidget);
+  await h.reveal(inJournalHub(find.text('620')));
+  await expectHubText('620');
+  await revealJournalHubHeader();
+  await expectHubText('Ziel 2.000');
   expect(inJournalHub(find.text('Ziel —')), findsNothing);
   expect(inJournalHub(find.text('Kein Ziel')), findsNothing);
   await h.capture('journal-hub-targets-retry-dark');

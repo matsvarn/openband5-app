@@ -253,7 +253,10 @@ request and on push to `main`, in three jobs:
   test file: a shared helper's callers cannot be found by name. Tag tests
   that call `matchesGoldenFile` with `tags: const ['golden']` (on the test,
   never the file) so `--exclude-tags golden` skips them in the quick local
-  loop.
+  loop. When GitHub moves the `xcode-27` image, re-render the masters on the
+  runner with a manual run (`gh workflow run test.yml --ref BRANCH -f
+  update_goldens=true`) and commit the reviewed `golden-masters` artifact;
+  the comment above the job in `test.yml` has the steps.
 
 Locally on macOS 27, `flutter test --no-pub` (default concurrency) runs
 everything with exact pixels; `flutter test --no-pub --exclude-tags golden` is
@@ -297,7 +300,10 @@ opens the personal database or Bluetooth session.
 - Fast behavior/render regression: `flutter test --no-pub test/openband_flow_test.dart`.
   Inspect changed PNGs; do not accept a visual change just by updating goldens.
 - Native simulator review: `python3 tool/ui_review.py capture` (iPhone 15 Pro),
-  or add `--small` for iPhone 13 mini. Read the generated `index.html`, PNGs,
+  or add `--small` for iPhone 13 mini. `--flow all` runs every review flow.
+  The same flows run headless in `test/review_flows_15pro_test.dart` and
+  `test/review_flows_13mini_test.dart` (nothing captured), so a flow that no longer matches the UI fails in
+  CI; keep both green when a screen changes. Read the generated `index.html`, PNGs,
   `frames.json` and `run.json` under `build/ui-review/`. This runner only targets
   its dedicated simulators and cannot overwrite the owner's phone installation.
 - Iteration with hot reload: `python3 tool/ui_review.py gallery`, or the

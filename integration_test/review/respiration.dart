@@ -13,13 +13,7 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   );
 
   Future<SyntheticOpenBandRepository> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     return SyntheticOpenBandRepository.fromMaps(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -110,9 +104,14 @@ Future<void> reviewRespiration(ReviewHarness h) async {
 
   bool nightScalarLoaded() =>
       find.byKey(const ValueKey('night-scalar-detail')).evaluate().isNotEmpty &&
-      (find.textContaining('von ').evaluate().isNotEmpty ||
-          find.text('Erneut').evaluate().isNotEmpty ||
-          find.text('Noch kein Nachtwert').evaluate().isNotEmpty);
+      find
+          .textContaining(
+            RegExp(
+              r'Basis|Nachtwert|Unvollständige Nacht|Auswertung|Ältere Berechnung|Erneut',
+            ),
+          )
+          .evaluate()
+          .isNotEmpty;
 
   Finder detailText(String text) => find.descendant(
     of: find.byKey(const ValueKey('night-scalar-detail')),
@@ -162,14 +161,20 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   var repo = await loadRepo();
   seedPaper(repo);
   await mountDetail(repository: repo);
-  expect(detailText('Atmung'), findsOneWidget);
-  expect(detailText('16,0'), findsOneWidget);
-  expect(detailText('15 von 30 Nächten'), findsOneWidget);
+  expect(find.bySemanticsLabel('Atmung'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
+  expect(detailText('15/30'), findsOneWidget);
   expect(detailText('Basis noch offen'), findsOneWidget);
   expect(detailText('HRV'), findsNothing);
   expect(detailText('Ruhepuls'), findsNothing);
   await h.capture('resp');
-  await tester.tap(find.text('Nachtverlauf'));
+  await h.press('Nachtverlauf');
   await reviewPumpPageTransitions(tester);
   await pumpUntil(
     () =>
@@ -191,11 +196,22 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   await pumpUntil(
     () =>
         find.byType(OpenBandNightSignals).evaluate().isEmpty &&
-        detailText('16,0').evaluate().isNotEmpty &&
         nightScalarLoaded(),
     'Respiration detail did not return.',
   );
-  expect(detailText('16,0'), findsOneWidget);
+  await h.reveal(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+  );
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await tester.tap(find.byTooltip('Information'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
@@ -209,21 +225,27 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   await tester.tap(find.text('Schließen'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.text('7 Nächte'));
+  await h.press('7 Nächte');
   await tester.pumpAndSettle();
-  expect(find.textContaining('von 7 Nächten'), findsOneWidget);
+  expect(find.text('7/7'), findsOneWidget);
   await h.capture('resp-seven');
-  await tester.tap(find.text('90 Nächte'));
+  await h.press('90 Nächte');
   await tester.pumpAndSettle();
-  expect(find.text('15 von 90 Nächten'), findsOneWidget);
+  expect(find.text('15/90'), findsOneWidget);
   await h.capture('resp-ninety');
 
   repo = await loadRepo();
   seedPaper(repo);
   await mountDetail(repository: repo, brightness: Brightness.dark);
-  expect(detailText('16,0'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await h.capture('resp-dark');
-  await tester.tap(find.text('7 Nächte'));
+  await h.press('7 Nächte');
   await tester.pumpAndSettle();
   await h.capture('resp-seven-dark');
 
@@ -236,7 +258,7 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   );
   await mountDetail(repository: repo);
   expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-  expect(find.text('0 von 30 Nächten'), findsOneWidget);
+  expect(find.text('0/30'), findsOneWidget);
   await h.capture('resp-missing');
   repo = await loadRepo();
   repo.seedNightScalarDetail(
@@ -256,8 +278,14 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   );
   await mountDetail(repository: repo);
   expect(find.text('Unvollständige Nacht'), findsOneWidget);
-  expect(detailText('16,0'), findsOneWidget);
-  expect(find.textContaining('teils unvollständig'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
+  expect(find.text('teils unvollständig'), findsOneWidget);
   await h.capture('resp-partial');
   repo = await loadRepo();
   seedPaper(
@@ -277,7 +305,13 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   repo.failNightScalarRead = false;
   await tester.tap(find.text('Erneut'));
   await tester.pumpAndSettle();
-  expect(detailText('16,0'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await h.capture('resp-error-retry');
   repo = await loadRepo();
   seedPaper(repo);
@@ -320,7 +354,13 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   repo = await loadRepo();
   seedPaper(repo);
   await mountDetail(repository: repo, scale: 2);
-  expect(detailText('16,0'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await h.capture('resp-2x');
   await tester.drag(find.byType(ListView), const Offset(0, -520));
   await tester.pumpAndSettle();
@@ -329,7 +369,13 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   repo = await loadRepo();
   seedPaper(repo);
   await mountDetail(repository: repo, brightness: Brightness.dark, scale: 2);
-  expect(detailText('16,0'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await h.capture('resp-2x-dark');
   await tester.drag(find.byType(ListView), const Offset(0, -520));
   await tester.pumpAndSettle();
@@ -368,8 +414,14 @@ Future<void> reviewRespiration(ReviewHarness h) async {
   await tester.tap(find.text('Atemfrequenz'));
   await reviewPumpPageTransitions(tester);
   await pumpUntil(nightScalarLoaded, 'Health did not open respiration detail.');
-  expect(detailText('Atmung'), findsOneWidget);
-  expect(detailText('16,0'), findsOneWidget);
+  expect(find.bySemanticsLabel('Atmung'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('night-scalar-hero')),
+      matching: find.text('16,0'),
+    ),
+    findsOneWidget,
+  );
   await h.capture('resp-health-detail');
   await reviewTapHeaderBack(tester);
   await pumpUntil(

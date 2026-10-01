@@ -35,7 +35,7 @@ Future<void> reviewUnits(ReviewHarness h) async {
   }
 
   await mountUnits(brightness: Brightness.light);
-  expect(find.text('Einheiten'), findsOneWidget);
+  expect(find.bySemanticsLabel('Einheiten'), findsOneWidget);
   expect(find.text('Metrisch'), findsOneWidget);
   expect(find.text('5,00 km'), findsOneWidget);
   await h.capture('units-light');

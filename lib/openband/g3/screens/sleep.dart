@@ -727,8 +727,9 @@ class _G3SleepScreenState extends State<G3SleepScreen>
               ),
             ]),
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: 12,
               children: [
                 chrome.OBLink('Zeiten ändern', onTap: _editSleep),
                 chrome.OBLink(

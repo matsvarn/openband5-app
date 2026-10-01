@@ -18,7 +18,7 @@ Future<void> reviewTrainingTemplates(ReviewHarness h) async {
   await tester.tap(find.text('Laufen').last);
   await tester.pumpAndSettle();
   await h.capture('session-run');
-  await h.pop();
+  await reviewTapHeaderBack(tester);
   // Das Quick-Start-Tile liegt über der Liste; erst ganz nach oben
   // flingen (die Liste lädt Zeilen lazy — 'Laufen' allein trifft
   // sonst wieder die Zuletzt-Zeile).
@@ -33,7 +33,7 @@ Future<void> reviewTrainingTemplates(ReviewHarness h) async {
   await tester.tap(find.text('Laufen').first);
   await tester.pumpAndSettle();
   await h.capture('run-live');
-  await tester.tap(find.byTooltip('Einklappen'));
+  await tester.tap(find.bySemanticsLabel('Einheit einklappen'));
   await tester.pumpAndSettle();
   await tester.tap(find.byTooltip('Vorlagen'));
   await tester.pumpAndSettle();
@@ -48,15 +48,16 @@ Future<void> reviewTrainingTemplates(ReviewHarness h) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('Bearbeiten'));
   await tester.pumpAndSettle();
+  expect(find.byType(OpenBandTemplateEditor).hitTestable(), findsOneWidget);
   await h.capture('template-editor');
-  await h.pop();
+  await reviewTapHeaderBack(tester);
   await tester.pumpAndSettle();
   await tester.tap(find.byTooltip('Neue Vorlage'));
   await tester.pumpAndSettle();
   await h.capture('template-editor-create');
-  await h.pop();
+  await reviewTapHeaderBack(tester);
   await tester.pumpAndSettle();
-  await h.pop();
+  await reviewTapHeaderBack(tester);
   await tester.pumpAndSettle();
   await h.capture('templates-hub');
 
@@ -68,7 +69,7 @@ Future<void> reviewTrainingTemplates(ReviewHarness h) async {
   await tester.tap(find.byTooltip('Aktionen').first);
   await tester.pumpAndSettle();
   await h.capture('templates-menu-dark');
-  await h.pop();
+  await tester.tapAt(const Offset(10, 100));
   await tester.pumpAndSettle();
 
   final emptyTemplates = await h.mount();

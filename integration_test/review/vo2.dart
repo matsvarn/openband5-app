@@ -26,7 +26,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
     bool seed = true,
     bool readError = false,
   }) async {
-    final mounted = repository ?? await _loadVo2ReviewRepo();
+    final mounted = repository ?? await _loadVo2ReviewRepo(h);
     if (seed) mounted.seedVo2Paper();
     mounted.failVo2Read = readError;
     await tester.pumpWidget(
@@ -103,7 +103,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
     await tester.pumpAndSettle();
   }
 
-  final healthRepository = await _loadVo2ReviewRepo();
+  final healthRepository = await _loadVo2ReviewRepo(h);
   healthRepository.seedVo2Paper();
   final healthController = OpenBandController(
     repository: healthRepository,
@@ -248,7 +248,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
     find.byKey(const ValueKey('vo2-method-input')),
     kSyntheticVo2PaperMethod,
   );
-  await tester.tap(find.byKey(const ValueKey('vo2-date-input')));
+  await h.tap(find.byKey(const ValueKey('vo2-date-input')));
   await tester.pumpAndSettle();
   expect(find.byKey(const ValueKey('vo2-calendar')), findsOneWidget);
   expect(find.byType(DatePickerDialog), findsNothing);
@@ -290,7 +290,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
   expect(saved.head?.id, savedId);
   await h.capture('vo2-saved');
 
-  final history = await _vo2HistoryFixture();
+  final history = await _vo2HistoryFixture(h);
   await mountVo2(repository: history, seed: false);
   await openEditor();
   final changes = find.byKey(const ValueKey('vo2-history'));
@@ -375,7 +375,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
   expect(heroText(), paperValue);
   await h.capture('vo2-read-retry');
 
-  final partial = await _loadVo2ReviewRepo();
+  final partial = await _loadVo2ReviewRepo(h);
   final live = await partial.createVo2Entry(
     id: 'vo2-live',
     measuredOn: measured,
@@ -395,7 +395,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
   expect(find.text(paperValue), findsNWidgets(2));
   await h.capture('vo2-partial');
 
-  final unreadable = await _loadVo2ReviewRepo();
+  final unreadable = await _loadVo2ReviewRepo(h);
   unreadable.seedVo2Paper(corruptHead: true);
   await mountVo2(repository: unreadable, seed: false);
   expect(heroText(), '\u2014');
@@ -532,7 +532,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
     return controller;
   }
 
-  final unreadableHealth = await _loadVo2ReviewRepo();
+  final unreadableHealth = await _loadVo2ReviewRepo(h);
   unreadableHealth.seedVo2Paper(corruptHead: true);
   final unreadableHealthController = await mountHealth(unreadableHealth);
   expect(
@@ -562,7 +562,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
   await h.capture('vo2-health-unreadable');
   unreadableHealthController.dispose();
 
-  final partialHealth = await _loadVo2ReviewRepo();
+  final partialHealth = await _loadVo2ReviewRepo(h);
   final partialLive = await partialHealth.createVo2Entry(
     id: 'vo2-live',
     measuredOn: measured,
@@ -705,7 +705,7 @@ Future<void> reviewVo2(ReviewHarness h) async {
 
   void expectReceiptChrome({bool source = true}) {
     expect(find.byType(SafeArea), findsOneWidget);
-    expect(find.text('Datenimport'), findsOneWidget);
+    expect(find.bySemanticsLabel('Datenimport'), findsOneWidget);
     expect(find.byTooltip('Zurück'), findsOneWidget);
     expect(
       find.text('OpenBand-Sicherung'),

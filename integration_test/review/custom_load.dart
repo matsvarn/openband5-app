@@ -6,13 +6,7 @@ Future<void> reviewCustomLoad(ReviewHarness h) async {
   const holdId = 'custom-hold';
 
   Future<_CustomExerciseReviewRepo> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     final repo = _CustomExerciseReviewRepo(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -201,11 +195,9 @@ Future<void> reviewCustomLoad(ReviewHarness h) async {
     var pumped = 0;
     while (pumped < 60) {
       await tester.pump(const Duration(milliseconds: 16));
-      if (tester.binding is LiveTestWidgetsFlutterBinding) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 16)),
+      );
       final inset = keyboardInset();
       final reached = open ? inset > 0 : inset == 0;
       if (reached && (inset - last).abs() < 0.5) {
@@ -691,7 +683,7 @@ Future<void> reviewCustomLoad(ReviewHarness h) async {
     await addCurlFromLibrary();
     await fillPlanFields();
     final save = saveTemplateAction();
-    await expectInSafeViewport(find.text('Neue Vorlage'));
+    await expectInSafeViewport(find.bySemanticsLabel('Neue Vorlage'));
     await expectInSafeViewport(save);
     if (scrolled) {
       await ensureFullyInSafeViewport(

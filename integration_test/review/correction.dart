@@ -39,43 +39,50 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
         SyntheticScenario.missing,
         SyntheticScenario.processing,
       ].contains(scenario)) {
-        await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
-        await tester.pumpAndSettle();
+        await h.openSleep();
         await h.capture('sleep-${scenario.name}-${brightness.name}');
       }
     }
   }
 
   await h.mount();
-  await tester.tap(find.text(obDayTitle('2026-09-15')));
+  await tester.tap(find.bySemanticsLabel('Kalender'));
   await tester.pumpAndSettle();
   await h.capture('date-selection');
-  await tester.tap(find.byTooltip('Abbrechen'));
+  await h.tap(find.bySemanticsLabel('Schließen'));
   await tester.pumpAndSettle();
   await h.edit(captureEntry: true);
   await h.capture('correction-edit');
-  await h.press('Schlafzeiten speichern');
-  expect(find.text('Schlaf aktualisiert'), findsWidgets);
+  await h.press('Speichern');
+  expect(find.text('Zeiten korrigiert'), findsWidgets);
   await h.capture('correction-complete');
   await h.press('Zur Übersicht');
-  expect(find.bySemanticsLabel('Schlaf, 7h08 '), findsOneWidget);
+  await h.openSleep();
+  expect(
+    find.descendant(
+      of: find.byType(g3sleep.OBSleepLead),
+      matching: find.text('7h08'),
+    ),
+    findsOneWidget,
+  );
+  await h.press('Heute');
   await h.capture('overview-corrected');
 
   final failing = await h.mount(scenario: SyntheticScenario.saveFailure);
   await h.edit(variant: '-save-failure');
-  await h.press('Schlafzeiten speichern');
+  await h.press('Speichern');
   expect(await failing.readDraft('2026-09-15'), isNotNull);
   await h.capture('save-failure');
   failing.scenario = SyntheticScenario.complete;
   await h.press('Erneut speichern');
-  expect(find.text('Schlaf aktualisiert'), findsWidgets);
+  expect(find.text('Zeiten korrigiert'), findsWidgets);
   await h.capture('save-retry-complete');
 
   final calculationFailure = await h.mount(
     scenario: SyntheticScenario.calculationFailure,
   );
   await h.edit(variant: '-calculation-failure');
-  await h.press('Schlafzeiten speichern');
+  await h.press('Speichern');
   expect(find.text('Auswertung erneut starten'), findsOneWidget);
   await h.capture('calculation-failure');
   calculationFailure.scenario = SyntheticScenario.complete;
@@ -83,12 +90,12 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   await h.capture('calculation-retry-complete');
   await h.press('Nacht ansehen');
   await tester.scrollUntilVisible(
-    find.byTooltip('Schlafzeiten ändern'),
+    find.widgetWithText(g3chrome.OBLink, 'Zeiten ändern'),
     200,
     scrollable: find.byType(Scrollable).last,
   );
   await tester.pumpAndSettle();
-  expect(find.byTooltip('Schlafzeiten ändern'), findsOneWidget);
+  expect(find.widgetWithText(g3chrome.OBLink, 'Zeiten ändern'), findsOneWidget);
   await h.capture('sleep-corrected');
 
   final pending = await h.mount(brightness: Brightness.dark);
@@ -96,7 +103,13 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   pending.calculationBarrier = calculation.future;
   await h.edit(variant: '-dark', captureEntry: true);
   await h.capture('correction-edit-dark');
-  await h.press('Schlafzeiten speichern');
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(
+    find.widgetWithText(g3chrome.OBActionPrimary, 'Speichern'),
+  );
+  await tester.tap(find.widgetWithText(g3chrome.OBActionPrimary, 'Speichern'));
+  await reviewPumpPageTransitions(tester);
   expect(find.text('Zeiten gespeichert'), findsWidgets);
   await h.capture('correction-pending-dark');
   calculation.complete();
@@ -106,20 +119,35 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   await h.capture('restore-confirmation-dark');
   await h.press('Wiederherstellen');
   expect((await pending.readDay('2026-09-15')).sleep.duration.value, 438);
-  expect(find.text('7h18'), findsNWidgets(2));
+  expect(
+    find.descendant(
+      of: find.byType(g3sleep.OBSleepLead),
+      matching: find.text('7h18'),
+    ),
+    findsOneWidget,
+  );
 
   await h.mount();
-  await tester.tap(find.text(obDayTitle('2026-09-15')));
+  await tester.tap(find.bySemanticsLabel('Kalender'));
   await tester.pumpAndSettle();
-  await h.press('14');
+  await h.tap(
+    find.descendant(of: find.byType(BottomSheet), matching: find.text('14')),
+  );
   await h.capture('date-selected-night');
-  await h.press('14. September ansehen');
-  expect(find.bySemanticsLabel('Schlaf, 7h02 '), findsOneWidget);
+  await h.press('Ansehen');
+  await h.openSleep();
+  expect(
+    find.descendant(
+      of: find.byType(g3sleep.OBSleepLead),
+      matching: find.text('7h02'),
+    ),
+    findsOneWidget,
+  );
+  await h.press('Heute');
   await h.capture('overview-historical');
 
   final draftFailure = await h.mount(scenario: SyntheticScenario.draftFailure);
-  await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
-  await tester.pumpAndSettle();
+  await h.openSleep();
   await h.pressSleepEditor();
   await tester.pumpAndSettle();
   await tester.enterText(find.byKey(const ValueKey('sleep-onset')), '23:25');
@@ -131,20 +159,22 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   expect((await draftFailure.readDraft('2026-09-15'))?.onset.minute, 25);
 
   await h.mount(scenario: SyntheticScenario.partial);
-  await tester.tap(find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first);
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.bySemanticsLabel(RegExp('02:10 bis 02:34: Keine Daten')).first,
+  await h.openSleep();
+  await tester.scrollUntilVisible(
+    find.text('02:10–02:34 ohne Daten · nicht aufgefüllt'),
+    200,
+    scrollable: h.verticalScrollable().last,
   );
   await tester.pumpAndSettle();
-  await h.capture('sleep-phases');
-  await tester.tap(find.byTooltip('Schließen'));
-  await tester.pumpAndSettle();
+  expect(
+    find.text('02:10–02:34 ohne Daten · nicht aufgefüllt'),
+    findsOneWidget,
+  );
+  await h.capture('sleep-phases-gap');
 
   final cancelled = await h.mount();
   await h.edit(variant: '-cancel');
-  await h.press('Weiter bearbeiten');
-  await tester.tap(find.byTooltip('Zurück').first);
+  await reviewTapHeaderBack(tester);
   await tester.pumpAndSettle();
   await h.capture('draft-leave-confirmation');
   await h.press('Entwurf behalten');
@@ -160,12 +190,17 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   await h.press('Änderung verwerfen');
   expect(await cancelled.readDraft('2026-09-15'), isNull);
   expect((await cancelled.readDay('2026-09-15')).sleep.duration.value, 438);
-  expect(find.text('7h18'), findsNWidgets(2));
+  expect(
+    find.descendant(
+      of: find.byType(g3sleep.OBSleepLead),
+      matching: find.text('7h18'),
+    ),
+    findsOneWidget,
+  );
 
   await h.mount(scale: 2);
   await h.capture('overview-large-text');
-  await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
-  await tester.pumpAndSettle();
+  await h.openSleep();
   await h.capture('sleep-large-text');
   await h.pressSleepEditor();
   await tester.pumpAndSettle();
@@ -179,13 +214,24 @@ Future<void> reviewOverviewCorrection(ReviewHarness h) async {
   FocusManager.instance.primaryFocus?.unfocus();
   await tester.pumpAndSettle();
   await h.capture('correction-large-edit');
-  await h.press('Schlafzeiten speichern');
+  await h.press('Speichern');
   await h.capture('correction-large-complete');
   await h.press('Zur Übersicht');
-  await tester.tap(find.text(obDayTitle('2026-09-15')));
+  await h.press('Heute');
+  await tester.tap(find.bySemanticsLabel('Kalender'));
   await tester.pumpAndSettle();
   await h.capture('date-large-text');
-  await h.press('14');
-  await h.press('14. September ansehen');
-  expect(find.bySemanticsLabel('Schlaf, 7h02 '), findsOneWidget);
+  await h.tap(
+    find.descendant(of: find.byType(BottomSheet), matching: find.text('14')),
+  );
+  await h.press('Ansehen');
+  await h.openSleep();
+  expect(
+    find.descendant(
+      of: find.byType(g3sleep.OBSleepLead),
+      matching: find.text('7h02'),
+    ),
+    findsOneWidget,
+  );
+  await h.press('Heute');
 }

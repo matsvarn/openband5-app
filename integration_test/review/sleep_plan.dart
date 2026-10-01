@@ -82,13 +82,7 @@ Future<void> reviewSleepPlan(ReviewHarness h) async {
   }
 
   Future<_SleepPlanReviewRepo> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     final repo = _SleepPlanReviewRepo(
       await load('day-summary'),
       await load('sleep-detail'),
