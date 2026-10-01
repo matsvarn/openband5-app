@@ -301,8 +301,8 @@ opens the personal database or Bluetooth session.
   Inspect changed PNGs; do not accept a visual change just by updating goldens.
 - Native simulator review: `python3 tool/ui_review.py capture` (iPhone 15 Pro),
   or add `--small` for iPhone 13 mini. `--flow all` runs every review flow.
-  The same flows run headless in `test/review_flows_test.dart` (both phone
-  sizes, nothing captured), so a flow that no longer matches the UI fails in
+  The same flows run headless in `test/review_flows_15pro_test.dart` and
+  `test/review_flows_13mini_test.dart` (nothing captured), so a flow that no longer matches the UI fails in
   CI; keep both green when a screen changes. Read the generated `index.html`, PNGs,
   `frames.json` and `run.json` under `build/ui-review/`. This runner only targets
   its dedicated simulators and cannot overwrite the owner's phone installation.

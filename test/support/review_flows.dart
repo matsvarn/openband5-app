@@ -1,7 +1,8 @@
 // Runs every native review flow headless under `flutter test`, so a flow that
-// no longer matches the UI fails here instead of rotting until someone opens
+// no longer matches the UI fails in CI instead of rotting until someone opens
 // a simulator. Nothing is captured; tool/ui_review.py still takes the
-// screenshots.
+// screenshots. One test file per phone size, so CI shards run them in
+// parallel.
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-import '../integration_test/openband_review_test.dart';
+import '../../integration_test/openband_review_test.dart';
 
 Future<void> _loadFonts() async {
   ByteData file(String path) =>
@@ -30,23 +31,20 @@ Future<void> _loadFonts() async {
       .load();
 }
 
-void main() {
+/// Defines one test per review flow at the given phone size, in physical
+/// pixels at 3x, with that phone's safe area. Without the safe area, lazy
+/// lists build rows the phone does not.
+void defineReviewFlowTests(
+  String device,
+  Size size,
+  FakeViewPadding padding,
+) {
   setUpAll(_loadFonts);
 
-  for (final (device, size, padding) in [
-    (
-      '15 Pro',
-      const Size(1179, 2556),
-      const FakeViewPadding(top: 177, bottom: 102),
-    ),
-    (
-      '13 mini',
-      const Size(1125, 2436),
-      const FakeViewPadding(top: 150, bottom: 102),
-    ),
-  ]) {
-    for (final MapEntry(key: name, value: flow) in reviewFlows.entries) {
-      testWidgets('review flow $name ($device)', (tester) async {
+  for (final MapEntry(key: name, value: flow) in reviewFlows.entries) {
+    testWidgets(
+      'review flow $name ($device)',
+      (tester) async {
         debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 3;
@@ -93,7 +91,9 @@ void main() {
           semantics.dispose();
           debugDefaultTargetPlatformOverride = null;
         }
-      }, timeout: const Timeout(Duration(minutes: 2)));
-    }
+      },
+      // `all` walks every flow in sequence: about 80 s on a hosted runner.
+      timeout: Timeout(Duration(minutes: name == 'all' ? 5 : 2)),
+    );
   }
 }
