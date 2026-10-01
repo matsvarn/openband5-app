@@ -95,6 +95,7 @@ class Proof {
   Future<Directory> copy(String name) async {
     await LocalDb.close();
     final dir = Directory('${root.path}/$name')..createSync(recursive: true);
+    await chmod(dir.path, '700');
     File(sourcePath).copySync('${dir.path}/openstrap.db');
     await chmod('${dir.path}/openstrap.db', '600');
     return dir;
@@ -458,6 +459,7 @@ class Proof {
 
   Future<void> run() async {
     root.createSync(recursive: true);
+    await chmod(root.path, '700');
     final baselinePath = Platform.environment['OB5_BASELINE_RESULTS'];
     if (baselinePath == null) throw StateError('OB5_BASELINE_RESULTS required');
     lines.add(
