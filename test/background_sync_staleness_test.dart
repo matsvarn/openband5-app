@@ -242,7 +242,7 @@ void main() {
     // takes, without depending on the wall clock the test happens to run at.
     SharedPreferences.setMockInitialValues({'notif_device': false});
     // Four days since the last record: well past the notify tier.
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final nowSec = now.millisecondsSinceEpoch ~/ 1000;
     await LocalDb.setCursor('rec_ts_hw', '${nowSec - 4 * 24 * 3600}');
 
     await checkSyncStaleness();
