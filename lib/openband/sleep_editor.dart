@@ -131,11 +131,21 @@ class _G3WindowAxis extends StatelessWidget {
   const _G3WindowAxis();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      // Tick labels grow with Dynamic Type up to 1.3x, then stay on one line
+      // instead of wrapping into the text below.
+      MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.3,
+        child: Builder(builder: _axis),
+      );
+
+  Widget _axis(BuildContext context) {
     final g = G3.of(context);
+    final scale = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final labelWidth = 34 * scale;
     return LayoutBuilder(
       builder: (context, box) => SizedBox(
-        height: 22,
+        height: 8 + 14 * scale,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
@@ -152,13 +162,17 @@ class _G3WindowAxis extends StatelessWidget {
               ),
               if (hour != 8)
                 Positioned(
-                  left: (_windowScaleX(hour * 60, box.maxWidth, g3: true) - 17)
-                      .clamp(0.0, box.maxWidth - 34),
+                  left:
+                      (_windowScaleX(hour * 60, box.maxWidth, g3: true) -
+                              labelWidth / 2)
+                          .clamp(0.0, box.maxWidth - labelWidth),
                   top: 8,
-                  width: 34,
+                  width: labelWidth,
                   child: Text(
                     '${hour.toString().padLeft(2, '0')}:00',
                     textAlign: TextAlign.center,
+                    maxLines: 1,
+                    softWrap: false,
                     style: g.t(10, 14, color: g.muted),
                   ),
                 ),
@@ -1227,8 +1241,8 @@ class _SleepEditorState extends State<SleepEditor> {
       children: [
         InkWell(
           onTap: enabled ? () => _date(start) : null,
-          child: SizedBox(
-            height: 28,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 28),
             child: Text(
               '${start ? 'BEGINN' : 'ENDE'} · $weekday',
               style: g.caps(color: g.muted),
@@ -1237,30 +1251,34 @@ class _SleepEditorState extends State<SleepEditor> {
         ),
         Semantics(
           label: start ? 'Beginn der Nacht' : 'Ende der Nacht',
-          child: TextField(
-            key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
-            controller: text,
-            focusNode: start ? null : endFocus,
-            enabled: enabled,
-            keyboardType: TextInputType.datetime,
-            textInputAction: start
-                ? TextInputAction.next
-                : TextInputAction.done,
-            style: g.t(32, 38, weight: FontWeight.w700),
-            decoration: const InputDecoration(
-              isDense: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+          // 32 pt digits beyond 1.3x no longer fit half a 375 pt screen.
+          child: MediaQuery.withClampedTextScaling(
+            maxScaleFactor: 1.3,
+            child: TextField(
+              key: ValueKey(start ? 'sleep-onset' : 'sleep-wake'),
+              controller: text,
+              focusNode: start ? null : endFocus,
+              enabled: enabled,
+              keyboardType: TextInputType.datetime,
+              textInputAction: start
+                  ? TextInputAction.next
+                  : TextInputAction.done,
+              style: g.t(32, 38, weight: FontWeight.w700),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (_) => _update(),
+              onSubmitted: (_) {
+                _update();
+                if (start) {
+                  endFocus.requestFocus();
+                } else {
+                  FocusScope.of(context).unfocus();
+                }
+              },
             ),
-            onChanged: (_) => _update(),
-            onSubmitted: (_) {
-              _update();
-              if (start) {
-                endFocus.requestFocus();
-              } else {
-                FocusScope.of(context).unfocus();
-              }
-            },
           ),
         ),
         const SizedBox(height: 8),

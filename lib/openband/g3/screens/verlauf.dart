@@ -100,10 +100,19 @@ metrics.OBBodyRow _bodyRow(
   G3Metric metric,
   G3Trend trend, {
   required bool last,
+  String? reason,
   required VoidCallback onTap,
 }) {
-  final value = trend.points.isEmpty ? null : _usable(trend.points.last);
-  final range = trend.baseline.status.phase == BaselinePhase.trusted
+  final lastPoint = trend.points.isEmpty ? null : trend.points.last;
+  // A partial night shows its value without a range, as on Heute and in the
+  // detail. Skin temperature stays a deviation and keeps refusing it.
+  final partial = _finitePartialNight(metric, lastPoint);
+  final value = partial
+      ? lastPoint!.value
+      : lastPoint == null
+      ? null
+      : _usable(lastPoint);
+  final range = !partial && trend.baseline.status.phase == BaselinePhase.trusted
       ? trend.baseline.range
       : null;
   final bounds = range == null ? null : _personalBounds(range);
@@ -117,6 +126,7 @@ metrics.OBBodyRow _bodyRow(
         ? metrics.OBBodyState.building
         : metrics.OBBodyState.range,
     name: g3MetricName(metric),
+    reason: value == null ? reason : null,
     value: value == null ? null : _number(value, metric),
     unit: _unit(metric).isEmpty ? null : _unit(metric),
     at: value,
@@ -125,11 +135,18 @@ metrics.OBBodyRow _bodyRow(
     band: range == null ? null : (range.low, range.high),
     minLabel: range == null ? null : _number(range.low, metric),
     maxLabel: range == null ? null : _number(range.high, metric),
-    note: _baselineChip(trend.baseline),
+    note: partial ? kNightScalarPartialLabel : _baselineChip(trend.baseline),
     last: last,
     onTap: onTap,
   );
 }
+
+bool _finitePartialNight(G3Metric metric, MetricPoint? point) =>
+    (metric == G3Metric.hrv ||
+        metric == G3Metric.rhr ||
+        metric == G3Metric.respRate) &&
+    point?.partial == true &&
+    point?.value?.isFinite == true;
 
 double? _usable(MetricPoint point) =>
     point.partial || point.value?.isFinite != true ? null : point.value;
@@ -280,7 +297,13 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
     };
     final nights = _bodyMetrics.contains(metric);
     final points = trend?.points ?? const <MetricPoint>[];
-    final value = points.isEmpty ? null : _usable(points.last);
+    final selected = points.isEmpty ? null : points.last;
+    final partial = _finitePartialNight(metric, selected);
+    final value = partial
+        ? selected!.value
+        : selected == null
+        ? null
+        : _usable(selected);
     final valueCount = points.where((p) => _usable(p) != null).length;
     final range =
         metric != G3Metric.skinTempZ &&
@@ -395,7 +418,9 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     },
                     state: value == null
                         ? metrics.OBLeadState.missing
-                        : metric == G3Metric.skinTempZ || range == null
+                        : partial ||
+                              metric == G3Metric.skinTempZ ||
+                              range == null
                         ? metrics.OBLeadState.plain
                         : mark == null
                         ? metrics.OBLeadState.normal
@@ -411,23 +436,29 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                     digits: _digits(metric),
                     unit: null,
                     signed: metric == G3Metric.skinTempZ,
-                    note: metric == G3Metric.skinTempZ
+                    note: partial
+                        ? null
+                        : metric == G3Metric.skinTempZ
                         ? g3NightOf(DateTime.parse(widget.endDay))
                         : range == null
                         ? _baseline?.status.phase == BaselinePhase.building
                               ? 'Basis im Aufbau'
                               : 'kein Normalbereich'
                         : 'normal ${_number(range.low, metric)}–${_number(range.high, metric)} ${_unit(metric)}',
-                    basisChip: metric == G3Metric.skinTempZ
+                    basisChip: partial
+                        ? null
+                        : metric == G3Metric.skinTempZ
                         ? 'keine Wertung'
                         : _baselineChip(_baseline),
-                    delta: value == null || range == null
+                    delta: partial || value == null || range == null
                         ? null
                         : _number((value - range.median).abs(), metric),
                     deltaUp:
                         value == null || range == null || value >= range.median,
                     deltaChipOnPage: false,
-                    caption: metric == G3Metric.skinTempZ
+                    caption: partial
+                        ? kNightScalarPartialLabel
+                        : metric == G3Metric.skinTempZ
                         ? 'Relative Abweichung von deiner Basis'
                         : range == null
                         ? _baseline?.status.nightsHave == null ||
@@ -437,7 +468,9 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                         : value == null
                         ? null
                         : '${value >= range.median ? 'über' : 'unter'} deinem Median ${_number(range.median, metric)}',
-                    scale: value == null ? null : _scale(metric, range),
+                    scale: partial || value == null
+                        ? null
+                        : _scale(metric, range),
                     title: 'Kein Messwert',
                     reason: 'Für diesen Tag liegt kein verlässlicher Wert vor.',
                   ),
@@ -557,7 +590,10 @@ class _G3MetricDetailState extends State<G3MetricDetail> {
                               ),
                             ),
                             date: _date(p.$2.day),
-                            value: p.$2.partial || p.$2.value == null
+                            value:
+                                p.$2.value == null ||
+                                    (p.$2.partial &&
+                                        !_finitePartialNight(metric, p.$2))
                                 ? null
                                 : _number(p.$2.value, metric),
                             note: p.$2.partial
@@ -638,7 +674,7 @@ List<(String, String, int)> _gaps(List<MetricPoint> points) {
   String? start, end;
   var count = 0;
   for (final point in points) {
-    if (_usable(point) == null) {
+    if (_usable(point) == null && !_finitePartialNight(G3Metric.rhr, point)) {
       start ??= point.day;
       end = point.day;
       count++;
@@ -858,6 +894,7 @@ class G3AllMetrics extends StatefulWidget {
 
 class _G3AllMetricsState extends State<G3AllMetrics> {
   Map<G3Metric, G3Trend>? _trends;
+  OpenBandDay? _day;
   G3Weight? _weight;
   bool _error = false;
   int _request = 0;
@@ -888,10 +925,17 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
           7,
         );
       }
+      OpenBandDay? day;
+      try {
+        day = await widget.repository.readDay(widget.endDay);
+      } catch (_) {
+        // Trend rows still render when the optional withheld reason is unreadable.
+      }
       final weight = await widget.repository.readG3Weight(widget.endDay, 7);
       if (!mounted || request != _request) return;
       setState(() {
         _trends = trends;
+        _day = day;
         _weight = weight;
       });
     } catch (_) {
@@ -950,6 +994,14 @@ class _G3AllMetricsState extends State<G3AllMetrics> {
                         metric,
                         trends[metric]!,
                         last: metric == _bodyMetrics.last,
+                        reason: nightScalarEvaluationLabel(switch (metric) {
+                          G3Metric.hrv => _day?.hrv.nightScalar,
+                          G3Metric.rhr => _day?.restingHr.nightScalar,
+                          G3Metric.respRate => _day?.respiration.nightScalar,
+                          G3Metric.skinTempZ =>
+                            _day?.skinTemperature.nightScalar,
+                          _ => null,
+                        }),
                         onTap: () => openG3MetricDetail(
                           context,
                           metric,

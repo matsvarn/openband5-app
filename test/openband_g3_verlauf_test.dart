@@ -23,7 +23,8 @@ import 'package:openstrap_edge/openband/g3/metrics.dart'
         OBChip,
         OBLeadMetric,
         OBLeadState,
-        OBSecondaryMetric;
+        OBSecondaryMetric,
+        OBDayValueRow;
 import 'package:openstrap_edge/openband/g3/screens/heute_routes.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart'
     show G3ActivityScreen, G3LoadScreen;
@@ -492,47 +493,78 @@ void main() {
     expect(decoration.border, isNull);
   });
 
-  testWidgets('partial values stay absent for every wave-1 trend', (
-    tester,
-  ) async {
-    final repo = _ControlledTrendRepository(partial: true);
-    for (final metric in [
-      G3Metric.recovery,
-      G3Metric.hrv,
-      G3Metric.rhr,
-      G3Metric.respRate,
-      G3Metric.skinTempZ,
-      G3Metric.sleepMinutes,
-      G3Metric.steps,
-    ]) {
-      await tester.pumpWidget(
-        _app(
-          G3MetricDetail(
-            key: ValueKey(metric),
-            metric: metric,
-            repository: repo,
-            endDay: _day,
+  testWidgets(
+    'partial values stay out of trends while night leads keep numbers',
+    (tester) async {
+      final repo = _ControlledTrendRepository(partial: true);
+      for (final metric in [
+        G3Metric.recovery,
+        G3Metric.hrv,
+        G3Metric.rhr,
+        G3Metric.respRate,
+        G3Metric.skinTempZ,
+        G3Metric.sleepMinutes,
+        G3Metric.steps,
+      ]) {
+        await tester.pumpWidget(
+          _app(
+            G3MetricDetail(
+              key: ValueKey(metric),
+              metric: metric,
+              repository: repo,
+              endDay: _day,
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.text(
-          metric == G3Metric.recovery
-              ? 'Keine Werte in diesem Zeitraum'
-              : 'Kein Messwert',
-        ),
-        findsOneWidget,
-        reason: '$metric',
-      );
-      expect(find.text('99'), findsNothing, reason: '$metric');
-      expect(
-        find.text('0 Werte · Verlauf ab 7'),
-        findsOneWidget,
-        reason: '$metric',
-      );
-    }
-  });
+        );
+        await tester.pumpAndSettle();
+        final finiteNight =
+            metric == G3Metric.hrv ||
+            metric == G3Metric.rhr ||
+            metric == G3Metric.respRate;
+        if (finiteNight) {
+          final lead = find.byType(OBLeadMetric);
+          expect(
+            find.descendant(
+              of: lead,
+              matching: find.text(
+                g3Number(99, digits: metric == G3Metric.respRate ? 1 : 0),
+              ),
+            ),
+            findsOneWidget,
+            reason: '$metric',
+          );
+          expect(
+            find.descendant(
+              of: lead,
+              matching: find.text('Unvollständige Nacht'),
+            ),
+            findsOneWidget,
+            reason: '$metric',
+          );
+          expect(find.text('Kein Messwert'), findsNothing, reason: '$metric');
+        } else {
+          expect(
+            find.text(
+              metric == G3Metric.recovery
+                  ? 'Keine Werte in diesem Zeitraum'
+                  : 'Kein Messwert',
+            ),
+            findsOneWidget,
+            reason: '$metric',
+          );
+          expect(find.text('99'), findsNothing, reason: '$metric');
+        }
+        final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
+        expect(chart.values, everyElement(isNull), reason: '$metric');
+        expect(chart.marks, everyElement(OBTrendMark.none), reason: '$metric');
+        expect(
+          find.text('0 Werte · Verlauf ab 7'),
+          findsOneWidget,
+          reason: '$metric',
+        );
+      }
+    },
+  );
 
   testWidgets(
     'recovery range uses stored values and leaves missing days open',
@@ -781,6 +813,156 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Messwerte names failed night calculations and tolerates a failed day read',
+    (tester) async {
+      const fixtureDay = '2026-09-15';
+      final repo = _repo(SyntheticScenario.calculationFailure);
+      await tester.pumpWidget(
+        _app(G3AllMetrics(repository: repo, endDay: fixtureDay)),
+      );
+      await tester.pumpAndSettle();
+      for (final name in [
+        'HRV',
+        'Ruhepuls',
+        'Atemfrequenz',
+        'Hauttemperatur',
+      ]) {
+        expect(
+          find.bySemanticsLabel('$name Auswertung fehlgeschlagen'),
+          findsOneWidget,
+        );
+      }
+      // Isolate the day-read failure from the synthetic baseline read, which
+      // also calls readDay in the failed-night scenario.
+      final unreadableDay = _ValuesRepository(
+        48,
+        const G3Baseline(BaselineStatus(BaselinePhase.none)),
+        presentDays: 0,
+      )..failDayRead = true;
+      await tester.pumpWidget(
+        _app(
+          G3AllMetrics(
+            key: const ValueKey('unreadable day'),
+            repository: unreadableDay,
+            endDay: fixtureDay,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('HRV nicht erfasst'), findsOneWidget);
+      expect(find.text('Messwerte konnten nicht geladen werden'), findsNothing);
+    },
+  );
+
+  for (final metric in [G3Metric.hrv, G3Metric.rhr, G3Metric.respRate]) {
+    testWidgets(
+      'partial night detail keeps the $metric number without comparison',
+      (tester) async {
+        const fixtureDay = '2026-09-15';
+        final repo = _repo(SyntheticScenario.partial);
+        final trend = await repo.readTrend(metric, fixtureDay, 7);
+        final value = trend.points.last.value!;
+        final digits = metric == G3Metric.respRate ? 1 : 0;
+        await tester.pumpWidget(
+          _app(G3AllMetrics(repository: repo, endDay: fixtureDay)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(g3MetricName(metric)).first);
+        await tester.pumpAndSettle();
+        final leadFinder = find.byType(OBLeadMetric);
+        expect(
+          find.descendant(
+            of: leadFinder,
+            matching: find.text(g3Number(value, digits: digits)),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: leadFinder,
+            matching: find.text('Unvollständige Nacht'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Kein Messwert'), findsNothing);
+        expect(
+          find.descendant(of: leadFinder, matching: find.byType(G3Scale)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: leadFinder, matching: find.byType(OBChip)),
+          findsNothing,
+        );
+        final chart = tester.widget<OBTrendChart>(find.byType(OBTrendChart));
+        expect(chart.values.last, isNull);
+        expect(chart.marks!.last, OBTrendMark.none);
+        await tester.scrollUntilVisible(find.text('teilweise erfasst'), 200);
+        // The row with the existing partial marker is the selected night.
+        final partialRow = find.ancestor(
+          of: find.text('teilweise erfasst'),
+          matching: find.byType(OBDayValueRow),
+        );
+        expect(
+          find.descendant(
+            of: partialRow,
+            matching: find.text(g3Number(value, digits: digits)),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
+
+  testWidgets('partial Ruhepuls night is not listed as a missing measurement', (
+    tester,
+  ) async {
+    const fixtureDay = '2026-09-15';
+    await tester.pumpWidget(
+      _app(
+        G3MetricDetail(
+          metric: G3Metric.rhr,
+          repository: _repo(SyntheticScenario.partial),
+          endDay: fixtureDay,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(
+        '${g3DateShort(DateTime.parse(fixtureDay))} · 1 Tag ohne Messwert',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Messwerte shows a partial night like Heute does', (
+    tester,
+  ) async {
+    // The fixture's own day: the only one the partial scenario affects.
+    const fixtureDay = '2026-09-15';
+    final repo = _repo(SyntheticScenario.partial);
+    final day = await repo.readDay(fixtureDay);
+    await tester.pumpWidget(
+      _app(G3AllMetrics(repository: repo, endDay: fixtureDay)),
+    );
+    await tester.pumpAndSettle();
+    for (final (name, metric, unit) in [
+      ('HRV', day.hrv, 'ms'),
+      ('Ruhepuls', day.restingHr, '/min'),
+    ]) {
+      expect(metric.nightScalar, NightScalarState.partial);
+      expect(
+        find.bySemanticsLabel(
+          '$name ${g3Number(metric.value)} $unit, Unvollständige Nacht',
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
   testWidgets('body values with a building baseline remain recorded', (
     tester,
   ) async {
@@ -788,8 +970,14 @@ void main() {
       _app(G3AllMetrics(repository: _BuildingBodyRepository(), endDay: _day)),
     );
     await tester.pumpAndSettle();
-    expect(find.bySemanticsLabel('HRV 73 ms'), findsOneWidget);
-    expect(find.bySemanticsLabel('Ruhepuls 51 /min'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('HRV 73 ms, Basis: noch 5 Werte'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel('Ruhepuls 51 /min, Basis: noch 5 Werte'),
+      findsOneWidget,
+    );
     expect(find.text('nicht erfasst'), findsNothing);
     expect(find.text('Basis: noch 5 Werte'), findsNWidgets(3));
   });

@@ -1591,10 +1591,24 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           domain: G3Domain.recovery,
           state: OBBodyState.missing,
           name: name,
+          reason: nightScalarEvaluationLabel(v.nightScalar),
           onTap: tap,
         );
       }
       final text = g3Number(value, digits: digits);
+      // A partial night keeps its value but makes no range claim, the same
+      // as its detail and Messwerte.
+      if (v.nightScalar == NightScalarState.partial) {
+        return OBBodyRow(
+          domain: G3Domain.recovery,
+          state: OBBodyState.building,
+          name: name,
+          value: text,
+          unit: unit,
+          note: kNightScalarPartialLabel,
+          onTap: tap,
+        );
+      }
       if (range != null) {
         final pad = (range.high - range.low) * .6;
         return OBBodyRow(
@@ -1649,6 +1663,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               domain: G3Domain.recovery,
               state: OBBodyState.missing,
               name: 'Hauttemperatur',
+              reason: nightScalarEvaluationLabel(
+                day.skinTemperature.nightScalar,
+              ),
               last: true,
               onTap: widget.onOpenMetric == null
                   ? null
