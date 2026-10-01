@@ -2491,6 +2491,13 @@ class BleEngine {
   Future<void> debugConnectAttempt(BluetoothDevice device, Duration timeout) =>
       _connectAttempt(device, timeout);
 
+  // FBP's Dart timeout cancels the peripheral before throwing. A shorter
+  // deadline can cancel a landed link before our probe finishes after an iOS
+  // suspension. The residual risk is that iOS dropping a connect without a
+  // callback during a Bluetooth reset holds FBP's mutex until app relaunch
+  // or this 24h deadline.
+  static const Duration _platformConnectTimeout = Duration(hours: 24);
+
   Future<void> _connectAttempt(BluetoothDevice device, Duration timeout) async {
     final now = debugConnectNow ?? DateTime.now;
     final started = now();
@@ -2507,16 +2514,13 @@ class BleEngine {
       });
     }
     try {
-      // FBP cancels before throwing and holds its global mutex until completion.
-      // Probe first, but bound that mutex hold if native cancellation emits nothing.
-      final platformTimeout = timeout + const Duration(seconds: 10);
       final connect = pending.connect =
           (debugDeviceConnectWithTimeout != null
-                  ? debugDeviceConnectWithTimeout!(platformTimeout)
+                  ? debugDeviceConnectWithTimeout!(_platformConnectTimeout)
                   : debugDeviceConnect != null
                   ? debugDeviceConnect!()
                   : device.connect(
-                      timeout: platformTimeout,
+                      timeout: _platformConnectTimeout,
                       autoConnect: false,
                     ))
               .then((_) {
@@ -2596,7 +2600,7 @@ class BleEngine {
       _lastConnectAttemptPending =
           background &&
           (timerExpired || succeeded || elapsed >= const Duration(seconds: 5));
-      if (elapsed > timeout + const Duration(seconds: 5)) {
+      if (elapsed > timeout + const Duration(seconds: 30)) {
         _log(
           '[LINK] connect attempt took ${elapsed.inSeconds}s for a '
           '${timeout.inSeconds}s timeout — the process was suspended during it',

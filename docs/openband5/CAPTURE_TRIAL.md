@@ -82,12 +82,15 @@ sqlite3 /tmp/trial-post.db ".param set :T0 $T0" ".param set :T1 $T1" ".read zero
 
 ```sql
 -- Z1 Zero loss: every second the band counted between T0 and T1 is stored.
---    Gen5 counters are contiguous per charge epoch; a hole is a lost second.
-WITH w AS (SELECT counter, LAG(counter) OVER (ORDER BY counter) pc
+--    Walk in time order. Within one counter epoch the counter rises by 1 per
+--    stored second, so a forward jump is lost seconds. A counter that goes
+--    backwards starts a new epoch (band reboot) and is counted, not treated as loss.
+WITH w AS (SELECT counter, LAG(counter) OVER (ORDER BY rec_ts) pc
            FROM decoded_onehz WHERE rec_ts BETWEEN :T0 AND :T1)
 SELECT COUNT(*) AS seconds,
        COALESCE(SUM(CASE WHEN counter - pc > 1 THEN counter - pc - 1 END), 0) AS missing,
-       COALESCE(SUM(counter - pc > 1), 0) AS holes
+       COALESCE(SUM(counter - pc > 1), 0) AS holes,
+       COALESCE(SUM(counter < pc), 0) AS epoch_resets
 FROM w;                                                     -- missing = 0
 
 -- Z2 No duplicates inside the window.
