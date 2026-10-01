@@ -2775,7 +2775,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
           'SELECT r.day_id, r.skipped, r.partial, r.algo_version, '
           'r.computed_at, ${sqlColumn == null ? "" : "r.$sqlColumn,"} '
           'r.payload_json, r.source FROM day_result r '
-          'WHERE r.day_id >= ? AND r.day_id <= ? AND r.algo_version = '
+          // The selected day comes only from _dayRow's pinned snapshot.
+          'WHERE r.day_id >= ? AND r.day_id < ? AND r.algo_version = '
           '(SELECT MAX(v.algo_version) FROM day_result v '
           'WHERE v.day_id = r.day_id AND v.algo_version <= ?) '
           'ORDER BY r.day_id ASC LIMIT ? OFFSET ?',
@@ -2915,7 +2916,6 @@ class LocalOpenBandRepository implements OpenBandRepository {
             projected: r['projected'] as Map<String, Object?>?,
           ),
     };
-    matching.remove(day);
     if (selected != null) matching[day] = selected;
     final matchingDays = matching.keys.toSet();
     final otherVersionDays = {
@@ -2931,6 +2931,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
             !otherVersionDays.contains(r['date']))
           r['date'] as String,
     };
+    if (snapshot.lostPin) {
+      // A replaced calculation is pending, not a new unversioned/version gap.
+      otherVersionDays.remove(day);
+      seriesOnlyDays.remove(day);
+    }
     final sleepJobs = <String, NightScalarJob>{
       for (final r in snapshot.sleep)
         if (r['day_id'] is String)
@@ -2973,7 +2978,13 @@ class LocalOpenBandRepository implements OpenBandRepository {
       nights: nights,
       currentAlgo: kAlgoVersion,
       state: NightScalarState.pending,
-      history: detail.history,
+      history: [
+        for (final night in detail.history)
+          if (night.day == day)
+            NightScalarHistoryNight(day: day, gap: NightScalarGap.withheld)
+          else
+            night,
+      ],
       counts: detail.counts,
       recordingTimezone: recordingTimezone,
     );

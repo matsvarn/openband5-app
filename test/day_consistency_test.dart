@@ -23,7 +23,9 @@ Future<void> _putCalculation({
   int algo = kAlgoVersion,
   bool partial = false,
   bool skipped = false,
+  String? source,
 }) async {
+  final calculationSource = source ?? (second ? 'whoop_export' : 'band');
   final onset = second ? _onsetB : _onsetA;
   final minutes = second ? 420 : 360;
   final wake = onset + minutes * 60000;
@@ -31,7 +33,7 @@ Future<void> _putCalculation({
     dayId: _day,
     algoVersion: algo,
     payloadJson: jsonEncode({
-      'source': second ? 'whoop_export' : 'band',
+      'source': calculationSource,
       'sleep_source': 'auto',
       'scalars': {
         'readiness': second ? 80 : 60,
@@ -79,7 +81,7 @@ Future<void> _putCalculation({
     rmssd: second ? 70 : 40,
     rhr: second ? 55 : 50,
     readiness: second ? 80 : 60,
-    source: second ? 'whoop_export' : 'band',
+    source: calculationSource,
     series: {
       'tst_min': minutes.toDouble(),
       'readiness': second ? 80 : 60,
@@ -96,6 +98,13 @@ Future<void> _putCalculation({
     where: 'day_id = ? AND algo_version = ?',
     whereArgs: [_day, algo],
   );
+}
+
+class _DerivingAppState extends AppState {
+  _DerivingAppState() : super.forTesting();
+
+  @override
+  bool get deriving => true;
 }
 
 // readDay starts all four reads with Future.wait. Hold each at the same
@@ -286,8 +295,7 @@ Future<List<MetricPoint>> _legacyCalendarPoints(String key, int nights) async {
       row['date'] as String: (row['value'] as num).toDouble(),
   };
   return [
-    for (final day in g3DaysEnding(_day, nights))
-      MetricPoint(day, byDay[day]),
+    for (final day in g3DaysEnding(_day, nights)) MetricPoint(day, byDay[day]),
   ];
 }
 
@@ -764,6 +772,68 @@ void main() {
         expect(
           (await repo.readPersonalRange(G3Metric.hrv, _day)).range!.median,
           65,
+        );
+      },
+    );
+  }
+
+  for (final metric in [
+    (MetricKey.hrv, G3Metric.hrv, 40.0, 70.0),
+    (MetricKey.restingHr, G3Metric.rhr, 50.0, 55.0),
+    (MetricKey.respiration, G3Metric.respRate, 14.0, 16.0),
+    (MetricKey.skinTemperature, G3Metric.skinTempZ, .5, 1.5),
+  ]) {
+    test(
+      'lost ${metric.$1.name} pin gaps detail and Verlauf until repinned',
+      () async {
+        app.dispose();
+        app = _DerivingAppState();
+        app.repo = LocalRepositoryImpl(getProfileMap: () => app.user);
+        repo = LocalOpenBandRepository(app);
+        await _putCalculation(second: false);
+        await repo.readDay(_day);
+        expect(
+          (await repo.readNightScalarDetail(
+            metric.$1,
+            _day,
+            7,
+          )).history.last.value,
+          metric.$3,
+        );
+        expect(app.deriving, isTrue);
+        // Keep both rows in band units, so a unit mismatch cannot hide the leak.
+        await _putCalculation(second: true, source: 'band');
+        final detail = await repo.readNightScalarDetail(metric.$1, _day, 7);
+        expect(detail.state, NightScalarState.pending);
+        expect(detail.value, isNull);
+        expect(detail.baseline, isNull);
+        expect(detail.history.last.day, _day);
+        expect(detail.history.last.value, isNull);
+        expect(detail.history.last.gap, NightScalarGap.withheld);
+        expect(detail.counts.excludedUnversioned, 0);
+        expect(detail.counts.excludedVersion, 0);
+        expect(detail.counts.compared, 0);
+        expect(
+          (await repo.readMetricHistory(metric.$1, _day, 7)).last.value,
+          isNull,
+        );
+        expect(
+          (await repo.readTrend(metric.$2, _day, 7)).points.last.value,
+          isNull,
+        );
+        expect((await repo.readPersonalRange(metric.$2, _day)).range, isNull);
+        await repo.readDay(_day);
+        final fresh = await repo.readNightScalarDetail(metric.$1, _day, 7);
+        expect(fresh.state, NightScalarState.current);
+        expect(fresh.history.last.value, metric.$4);
+        expect(fresh.counts.compared, 1);
+        expect(
+          (await repo.readMetricHistory(metric.$1, _day, 7)).last.value,
+          metric.$4,
+        );
+        expect(
+          (await repo.readTrend(metric.$2, _day, 7)).points.last.value,
+          metric.$4,
         );
       },
     );
