@@ -28,6 +28,7 @@ import 'package:openstrap_edge/ui2/profile/pair_sensor.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'support/real_async.dart';
 
 BandCandidate _cand(String id, {String? label, int rssi = -60}) => (
       device: BluetoothDevice.fromId(id),
@@ -167,11 +168,12 @@ void main() {
       ));
       // `_load()`'s own real DB read (fired from `initState`, unawaited)
       // needs the same real-async escape to ever resolve under this zone.
-      for (var i = 0; i < 60 && find.text('Paired').evaluate().isEmpty; i++) {
+      await untilReal(() => find.text('Paired').evaluate().isNotEmpty,
+          () async {
         await t.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)));
         await t.pump();
-      }
+      });
 
       expect(find.text('Paired'), findsOneWidget);
       expect(find.text('R02_1234'), findsOneWidget);

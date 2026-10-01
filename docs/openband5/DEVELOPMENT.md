@@ -133,7 +133,8 @@ flutter pub get
 flutter gen-l10n
 bash .github/scripts/check_sibling_pins.sh
 flutter analyze
-flutter test --concurrency=1 --reporter=expanded
+flutter test --no-pub --exclude-tags golden
+flutter test --no-pub --tags golden
 flutter build ios --release --no-codesign --dart-define-from-file=.env
 ```
 

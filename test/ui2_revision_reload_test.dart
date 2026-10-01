@@ -32,6 +32,7 @@ import 'package:openstrap_edge/openband/nutrition_route.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'support/real_async.dart';
 
 /// The rows an import would have written, behind the repo the screen reads.
 class _JournalRepo extends LocalRepository {
@@ -99,14 +100,15 @@ class _RepoSpy implements OpenBandRepository {
       throw UnimplementedError('${invocation.memberName}');
 }
 
-Future<void> _until(WidgetTester t, Finder f, {int n = 60}) async {
-  for (var i = 0; i < n && f.evaluate().isEmpty; i++) {
+Future<void> _until(WidgetTester t, Finder f) => untilReal(
+  () => f.evaluate().isNotEmpty,
+  () async {
     await t.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await t.pump();
-  }
-}
+  },
+);
 
 SyntheticOpenBandRepository _galleryRepo() =>
     SyntheticOpenBandRepository.fromMaps(

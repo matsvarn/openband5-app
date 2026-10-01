@@ -21,6 +21,7 @@ import 'package:openstrap_edge/openband/journal_editor.dart';
 import 'package:openstrap_edge/openband/local_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'support/real_async.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -975,14 +976,13 @@ void main() {
     }
 
     Future<void> settle(WidgetTester tester) async {
-      for (var i = 0; i < 40; i++) {
+      var settled = false;
+      await untilReal(() => settled, () async {
         await flushSqlite(tester);
-        if (find.byType(CircularProgressIndicator).evaluate().isEmpty &&
+        settled = find.byType(CircularProgressIndicator).evaluate().isEmpty &&
             (find.text('Tagesjournal').evaluate().isNotEmpty ||
-                find.text('Journal nicht geladen').evaluate().isNotEmpty)) {
-          return;
-        }
-      }
+                find.text('Journal nicht geladen').evaluate().isNotEmpty);
+      });
     }
 
     Future<void> pumpEditor(WidgetTester tester, {required String date}) async {
@@ -1055,10 +1055,11 @@ void main() {
       await tester.tap(find.bySemanticsLabel('Stimmung Sehr gut'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('journal-save')));
-      for (var i = 0; i < 40; i++) {
+      var closed = false;
+      await untilReal(() => closed, () async {
         await flushSqlite(tester);
-        if (find.text('Tagesjournal').evaluate().isEmpty) break;
-      }
+        closed = find.text('Tagesjournal').evaluate().isEmpty;
+      });
       late Map<String, JournalMetricValue> written;
       late JournalDaySnapshot after;
       await tester.runAsync(() async {
@@ -1101,12 +1102,14 @@ void main() {
         );
       });
       await tester.tap(find.byKey(const ValueKey('journal-save')));
-      for (var i = 0; i < 40; i++) {
+      var conflict = false;
+      await untilReal(() => conflict, () async {
         await flushSqlite(tester);
-        if (find.text('Eintrag wurde inzwischen geändert.').evaluate().isNotEmpty) {
-          break;
-        }
-      }
+        conflict = find
+            .text('Eintrag wurde inzwischen geändert.')
+            .evaluate()
+            .isNotEmpty;
+      });
       expect(find.text('Eintrag wurde inzwischen geändert.'), findsOneWidget);
       expect(find.byType(OpenBandJournalEditor), findsOneWidget);
       late Map<String, JournalMetricValue> written;

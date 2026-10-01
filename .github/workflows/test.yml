@@ -10,19 +10,20 @@ concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only: this job only builds and tests. Nothing here needs write access,
-# and it executes code from pull requests.
+# Read-only: these jobs only build and test. Nothing here needs write access,
+# and they execute code from pull requests.
 permissions:
   contents: read
 
 jobs:
-  test:
+  analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           # Don't leave GITHUB_TOKEN in .git/config where PR-authored test code
-          # could read it. Nothing in this job pushes back to the repo.
+          # could read it. Nothing in this workflow pushes back to the repo.
           persist-credentials: false
 
       # PINNED, not `channel: stable`. Two reasons, both found the hard way when
@@ -41,7 +42,8 @@ jobs:
       # A floating channel means the toolchain changes underneath an already
       # reviewed commit — the same reasoning as the commit-SHA pins for sibling
       # packages in pubspec.yaml. Bump this deliberately, with the phosphor
-      # dependency sorted out in the same change.
+      # dependency sorted out in the same change. Every job below uses the
+      # same pin.
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.41.6
@@ -54,8 +56,8 @@ jobs:
       # actually tested. It is easy to do by accident — any local `flutter
       # build` or `flutter test` triggers it — and it has reached main before.
       # This runs BEFORE `pub get` so it inspects the committed file. Shared
-      # with build.yml's `preflight` — a tag push never runs this job, so the
-      # guard has to live there too to actually protect a release.
+      # with build.yml's `preflight` — a tag push never runs this workflow, so
+      # the guard has to live there too to actually protect a release.
       - name: Guard — the lock pins sibling commits, and the pins aren't stale
         run: bash .github/scripts/check_sibling_pins.sh
 
@@ -68,34 +70,29 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      # --concurrency=1: the suite uses sqflite_common_ffi against real database
-      # files, and parallel workers race on them.
-      #
-      # The ~600 committed golden PNGs were rendered by the macOS Skia engine.
-      # The behavioral lane accepts the image comparison but runs every test
-      # body, including assertions after a screenshot. Pixel equality remains
-      # strict in the local golden lane described below.
-      # For a shorter local edit loop, --exclude-tags golden still skips those
-      # complete tests; this hosted lane keeps their behavioral assertions.
-      #
-      # The golden capture (whoop_hist.jsonl) is a real band recording kept
-      # beside the repo rather than committed to it, so the two derivation-replay
-      # tests SKIP here and run locally.
-      - name: Test (behavioral)
-        env:
-          OPENBAND_TEST_LANE: behavior
-        run: flutter test --no-pub --concurrency=1 --reporter=expanded
-
-  # Visual lane — manual dispatch only. The committed masters were rendered
-  # on macOS 27; variable-font text rasterization goes through the host's
-  # font stack, so every golden lands sub-1% off on the older hosted runners
-  # (measured: 544 diffs, 0.03–0.58%, on macos-latest). Until GitHub ships a
-  # matching runner, the golden lane runs locally on the baking platform:
-  #   flutter test --no-pub --concurrency=1 --tags golden
-  # The job stays defined so it can run once a runner matches the masters.
-  goldens:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: macos-latest
+  # Every test, split by FILE across three runners.
+  #
+  # `flutter test --total-shards` shards tests inside each file, so every
+  # shard would still compile all ~470 files — and compiling is about half the
+  # suite's time. `tool/test_shard.sh` hands each runner a disjoint third of
+  # the files instead.
+  #
+  # Golden-tagged tests run here too, with OPENBAND_TEST_LANE=behavior: their
+  # assertions run and their image comparisons accept (Ubuntu renders text
+  # about 2.4% differently from the macOS masters). The `goldens` job compares
+  # the pixels. Running the bodies here means a golden test the macOS job
+  # does not load still runs somewhere.
+  #
+  # --concurrency=4: each test file runs in its own process, and
+  # test/flutter_test_config.dart gives every process its own SQLite
+  # directory, so parallel files cannot share a database file.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -110,5 +107,60 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # The golden capture (whoop_hist.jsonl) is a real band recording kept
+      # beside the repo rather than committed to it, so the derivation-replay
+      # tests that need it SKIP here and run locally.
+      - name: Test (shard ${{ matrix.shard }} of 3)
+        env:
+          OPENBAND_TEST_LANE: behavior
+        run: >-
+          bash tool/test_shard.sh ${{ matrix.shard }} 3
+          --concurrency=4 --reporter=expanded
+
+  # Every test in every file that compares pixels, with the exact comparator,
+  # on the host the masters were rendered on: macOS 27 on Apple silicon. Text rasterization goes through
+  # the host's font stack, so an older macOS lands every golden sub-1% off
+  # (544 diffs, 0.03–0.58%, measured on macos-latest) and Ubuntu lands them a
+  # median 2.4% off. `xcode-27` is GitHub's macOS 27 arm64 image.
+  #
+  # Comparison is exact. Failure images are uploaded for inspection.
+  goldens:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.6
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Only the files that call matchesGoldenFile (tool/golden_test_files.sh):
+      # loading all ~470 files took longer than the goldens themselves. Every
+      # test in them runs, not just the golden-tagged ones, so a comparison is
+      # checked however its test is tagged. The script fails if a helper
+      # outside the test files compares pixels, since it could not find the
+      # callers.
       - name: Test (golden)
-        run: flutter test --no-pub --concurrency=1 --tags golden --reporter=expanded
+        run: |
+          files=$(bash tool/golden_test_files.sh)
+          cores=$(sysctl -n hw.ncpu)
+          echo "cores: $cores, files: $(echo "$files" | wc -l)"
+          # shellcheck disable=SC2086 # one path per word
+          flutter test --no-pub --concurrency="$cores" \
+            --reporter=expanded $files
+
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: test/**/failures/
+          if-no-files-found: ignore
+          retention-days: 7

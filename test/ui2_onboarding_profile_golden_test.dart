@@ -1,16 +1,8 @@
-// Goldens for onboarding and profile.
+// Onboarding and profile screens: absent-value rendering and the boot splash.
 //
-// These are whole screens rather than single components, because the bugs
-// this flow produces are layout bugs: a form that overflows at accessibility
-// text size, a failure state whose escape hatch falls below the fold, a
-// settings row whose value column eats its own label.
-//
-// Every screen is captured light and dark, at 1.0x and 2.0x text scale. The
-// 2.0x pass is the whole point.
-//
-//     flutter test --update-goldens test/ui2_onboarding_profile_golden_test.dart
-//
-// Regenerate deliberately and look at the diff.
+// The whole-screen goldens that used to live here compared against
+// test/goldens/, whose masters were purged from history; that group had been
+// permanently skipped since.
 
 import 'dart:io';
 
@@ -186,17 +178,6 @@ Future<void> _loadType() async {
   }
 }
 
-/// The golden PNGs are NOT in the repo. They are machine-specific — two Flutter
-/// SDKs disagree on antialiasing — and 27 MB of them was purged from history,
-/// so this group can only pass on a machine that has them.
-///
-/// Skipped with a stated reason rather than filtered out by a CI flag: the run
-/// then says out loud that nobody checked the pixels, which is the honest
-/// report. Drop the images back into test/goldens/ and it runs again.
-final Object _noGoldens = Directory('test/goldens').existsSync()
-    ? false
-    : 'golden images are not committed — run this suite locally';
-
 void main() {
   final cases = _cases();
 
@@ -205,32 +186,6 @@ void main() {
     await initializeDateFormatting();
     await _loadType();
   });
-
-  for (final scale in const [1.0, 2.0]) {
-    final tag = scale == 1.0 ? '1x' : '2x';
-    for (final brightness in Brightness.values) {
-      final theme = brightness.name;
-      group('$theme · $tag text', () {
-        cases.forEach((name, widget) {
-          testWidgets(name, (tester) async {
-            // A real phone viewport: these are full screens, so what is below
-            // the fold is part of what the golden records.
-            tester.view.physicalSize = const Size(390 * 3, 844 * 3);
-            tester.view.devicePixelRatio = 3;
-            addTearDown(tester.view.reset);
-
-            await tester.pumpWidget(_frame(widget, brightness, scale));
-            await tester.pumpAndSettle();
-
-            await expectLater(
-              find.byKey(_shot),
-              matchesGoldenFile('goldens/${name}_${theme}_$tag.png'),
-            );
-          }, tags: const ['golden']);
-        });
-      }, skip: _noGoldens);
-    }
-  }
 
   testWidgets('the splash uncovers the app once it is ready', (tester) async {
     await tester.pumpWidget(const MediaQuery(

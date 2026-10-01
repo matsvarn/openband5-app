@@ -1,24 +1,8 @@
-// Goldens for the grammar.
+// Shell structure, tap targets and overflow sweeps for the ui2 grammar.
 //
-// The repo had ZERO goldens across forty screens, which is the mechanical
-// reason every visual fix regressed something else: nothing recorded what the
-// components were supposed to look like, so "it looks right on my screen" was
-// the whole acceptance test.
-//
-// Each component is captured in four states — light and dark, at 1.0× and
-// 2.0× text scale. The 2.0× pass is not decoration: accessibility text sizes
-// are where cards overflow, and a golden is the only cheap way to notice.
-//
-// Regenerate deliberately, never reflexively:
-//     flutter test --update-goldens test/ui2_golden_test.dart
-// and look at the diff. A golden updated without looking is a golden that
-// records the bug.
-//
-// These were baked on Flutter 3.44.9 (the `flutter` on PATH). An older SDK
-// anti-aliases hairlines differently and fails a handful of them on nothing
-// but sub-pixel blend — that is an SDK mismatch, not a regression. The iOS
-// build uses ~/flutter-sdks/flutter (3.41.6) for an unrelated reason; do not
-// run goldens with it.
+// The component goldens that used to live here compared against test/goldens/,
+// whose masters were purged from history; the group had been permanently
+// skipped since. The sweeps below still render every gallery case.
 
 import 'dart:io';
 
@@ -109,55 +93,14 @@ Future<void> _loadType() async {
       .load();
 }
 
-/// The golden PNGs are NOT in the repo. They are machine-specific — two Flutter
-/// SDKs disagree on antialiasing — and 27 MB of them was purged from history,
-/// so this group can only pass on a machine that has them.
-///
-/// Skipped with a stated reason rather than filtered out by a CI flag: the run
-/// then says out loud that nobody checked the pixels, which is the honest
-/// report. Drop the images back into test/goldens/ and it runs again.
-final Object _noGoldens = Directory('test/goldens').existsSync()
-    ? false
-    : 'golden images are not committed — run this suite locally';
-
 void main() {
-  // Photographed: the vocabulary. Swept for overflow and tap size below:
-  // everything, painters included. A PNG is a file somebody has to review, and
-  // an unreviewed golden records the bug — the sweeps cost nothing to add.
-  final cases = goldenCases();
+  // Swept for overflow and tap size below: everything, painters included.
   final all = galleryCases();
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     await _loadType();
   });
-
-  for (final scale in const [1.0, 2.0]) {
-    final tag = scale == 1.0 ? '1x' : '2x';
-    for (final brightness in Brightness.values) {
-      final theme = brightness.name;
-      group('$theme · $tag text', () {
-        cases.forEach((name, widget) {
-          testWidgets(name, (tester) async {
-            // Phone width, generous height — the width is what components are
-            // designed against; the height only has to be enough that 2x text
-            // is not artificially clipped.
-            tester.view.physicalSize = const Size(390 * 3, 1800 * 3);
-            tester.view.devicePixelRatio = 3;
-            addTearDown(tester.view.reset);
-
-            await tester.pumpWidget(_frame(widget, brightness, scale));
-            await tester.pumpAndSettle();
-
-            await expectLater(
-              find.byKey(_shot),
-              matchesGoldenFile('goldens/${name}_${theme}_$tag.png'),
-            );
-          }, tags: const ['golden']);
-        });
-      }, skip: _noGoldens);
-    }
-  }
 
   testWidgets('development shell retains all five domains',
       (tester) async {
