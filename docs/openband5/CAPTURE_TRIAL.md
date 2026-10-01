@@ -87,7 +87,9 @@ sqlite3 /tmp/trial-post.db ".param set :T0 $T0" ".param set :T1 $T1" ".read zero
 --    The sequence includes the last stored second before T0 and the first after
 --    T1, so a hole at either edge of the window is seen too. Walk in time order:
 --    within one counter epoch the counter rises by 1 per stored second, so a
---    forward jump is lost seconds; a counter that goes backwards starts a new
+--    forward jump is lost seconds. The lost seconds are taken to follow the
+--    previous stored second one per second (the counter only advances while worn),
+--    and only those inside [T0, T1] count. A counter that goes backwards starts a new
 --    epoch (band reboot) and is counted, not treated as loss. `bracketed` must
 --    be 1: a stored second after T1 exists, so the end of the window was checked.
 WITH e AS (
@@ -96,10 +98,11 @@ WITH e AS (
                            WHERE rec_ts < :T0 ORDER BY rec_ts DESC LIMIT 1)
   UNION ALL SELECT * FROM (SELECT rec_ts, counter FROM decoded_onehz
                            WHERE rec_ts > :T1 ORDER BY rec_ts LIMIT 1)),
-w AS (SELECT rec_ts, counter, LAG(counter) OVER (ORDER BY rec_ts) pc FROM e)
+w AS (SELECT rec_ts, counter, LAG(counter) OVER (ORDER BY rec_ts) pc,
+             LAG(rec_ts) OVER (ORDER BY rec_ts) p FROM e)
 SELECT SUM(rec_ts BETWEEN :T0 AND :T1) AS seconds,
-       COALESCE(SUM(CASE WHEN counter - pc > 1 THEN counter - pc - 1 END), 0) AS missing,
-       COALESCE(SUM(counter - pc > 1), 0) AS holes,
+       COALESCE(SUM(MAX(0, MIN(p + counter - pc - 1, :T1) - MAX(p + 1, :T0) + 1)), 0) AS missing,
+       COALESCE(SUM(MAX(0, MIN(p + counter - pc - 1, :T1) - MAX(p + 1, :T0) + 1) > 0), 0) AS holes,
        COALESCE(SUM(counter < pc), 0) AS epoch_resets,
        (SELECT COUNT(*) > 0 FROM decoded_onehz WHERE rec_ts > :T1) AS bracketed
 FROM w;                                                     -- missing = 0, bracketed = 1
@@ -128,7 +131,8 @@ SELECT datetime(ts,'unixepoch','localtime'), event_id, name FROM band_events
  WHERE ts BETWEEN :T0 AND :T1 AND event_id IN (9,10,11,12,14) ORDER BY ts;
 
 -- Z6 Coverage honesty: gaps over 60 s. Each must start at a band WRIST_OFF
---    (Z5) or lie inside a recorded interruption window; nothing fills them.
+--    (Z5). A gap inside an interruption window is loss, not an excuse: the
+--    band stores to flash, and the reconnect drain must fill that time.
 WITH g AS (SELECT rec_ts, LAG(rec_ts) OVER (ORDER BY rec_ts) p FROM decoded_onehz
            WHERE rec_ts BETWEEN :T0 AND :T1)
 SELECT datetime(p,'unixepoch','localtime'), datetime(rec_ts,'unixepoch','localtime'), rec_ts - p
