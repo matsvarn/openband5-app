@@ -2507,9 +2507,9 @@ class BleEngine {
       });
     }
     try {
-      // FBP cancels the peripheral BEFORE throwing its own timeout. Keep that
-      // deadline out of the way; our timer must probe before any cancellation.
-      const platformTimeout = Duration(hours: 24);
+      // FBP cancels before throwing and holds its global mutex until completion.
+      // Probe first, but bound that mutex hold if native cancellation emits nothing.
+      final platformTimeout = timeout + const Duration(seconds: 10);
       final connect = pending.connect =
           (debugDeviceConnectWithTimeout != null
                   ? debugDeviceConnectWithTimeout!(platformTimeout)
@@ -2522,6 +2522,8 @@ class BleEngine {
               .then((_) {
                 pending.connected = true;
               });
+      // Keep observing late errors after any path abandons this future.
+      unawaited(connect.catchError((Object _) {}));
       // Cancellation must end this attempt even if the native future never settles.
       await Future.any([connect, pending.cancellationDone.future]).timeout(
         timeout,
@@ -2553,9 +2555,6 @@ class BleEngine {
           }
           if (_ownLinkUp(pending)) return;
           await _cancelConnect(pending);
-          // Consume late errors without waiting indefinitely for connect. The
-          // post-cancel probe below decides whether the attempt can still succeed.
-          unawaited(connect.catchError((Object _) {}));
         },
       );
       await pending.cancellation;

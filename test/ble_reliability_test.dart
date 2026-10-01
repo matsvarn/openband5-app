@@ -102,7 +102,7 @@ void main() {
             isEmpty,
             reason: 'probe must precede any cancel',
           );
-          expect(attempts, [const Duration(hours: 24)]);
+          expect(attempts, [const Duration(seconds: 30)]);
           if (linkUp) {
             expect(disconnects, isEmpty);
             pending.complete();
@@ -134,6 +134,77 @@ void main() {
           }
           async.elapse(const Duration(seconds: 6));
           expect(disconnects, linkUp ? isEmpty : [false]);
+        });
+      },
+    );
+  }
+
+  for (final engineTimeout in [
+    const Duration(seconds: 20),
+    const Duration(minutes: 20),
+  ]) {
+    test(
+      'silent native connect releases the FBP mutex within ${engineTimeout.inSeconds + 10}s and observes its late error',
+      () {
+        fakeAsync((async) {
+          final e = engine([]);
+          final platformTimeouts = <Duration>[];
+          Future<void> mutex = Future.value();
+          var started = 0;
+          Object? firstFailure;
+          var nextCompleted = false;
+          e.debugSystemConnected = (_, _) async => false;
+          // Native reset loses the pending connect. Disconnect returns without
+          // an event, leaving only FBP's timer to release its global mutex.
+          e.debugDeviceDisconnect = ({bool queue = true}) async {};
+          e.debugDeviceConnectWithTimeout = (platformTimeout) {
+            platformTimeouts.add(platformTimeout);
+            final previous = mutex;
+            final released = Completer<void>();
+            mutex = released.future;
+            return () async {
+              await previous;
+              started++;
+              try {
+                if (started == 1) {
+                  await Completer<void>().future.timeout(
+                    platformTimeout,
+                    onTimeout: () => throw timeout(),
+                  );
+                }
+              } finally {
+                released.complete();
+              }
+            }();
+          };
+          unawaited(
+            e.debugConnectAttempt(device, engineTimeout).catchError(
+              (Object error) {
+                firstFailure = error;
+              },
+            ),
+          );
+          async.flushMicrotasks();
+          async.elapse(engineTimeout);
+          expect(firstFailure, isA<FlutterBluePlusException>());
+          unawaited(
+            e.debugConnectAttempt(device, engineTimeout).then(
+              (_) => nextCompleted = true,
+            ),
+          );
+          async.flushMicrotasks();
+          async.elapse(const Duration(seconds: 9));
+          expect(started, 1);
+          expect(nextCompleted, isFalse);
+          async.elapse(const Duration(seconds: 1));
+          // The abandoned first future now throws. An unhandled error here
+          // fails the test even though the successor has acquired the mutex.
+          expect(started, 2);
+          expect(nextCompleted, isTrue);
+          expect(platformTimeouts, [
+            engineTimeout + const Duration(seconds: 10),
+            engineTimeout + const Duration(seconds: 10),
+          ]);
         });
       },
     );

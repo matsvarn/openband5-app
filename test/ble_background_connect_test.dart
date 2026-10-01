@@ -165,7 +165,11 @@ void main() {
           );
         };
         expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
-        expect(attempts, [const Duration(hours: 24)]);
+        expect(attempts, [
+          drainer
+              ? const Duration(seconds: 30)
+              : const Duration(minutes: 20, seconds: 10),
+        ]);
         expect(e.reconnectDelay(5).inSeconds, inInclusiveRange(24, 30));
         expect(
           logs.where(
@@ -561,7 +565,7 @@ void main() {
               ),
             );
             e.debugDeviceConnectWithTimeout = (timeout) async {
-              expect(timeout, const Duration(hours: 24));
+              expect(timeout, const Duration(seconds: 30));
               throw StateError('next foreground attempt');
             };
             expect(await e.connectToRemoteId('AA:BB:CC:DD:EE:FF'), isFalse);
