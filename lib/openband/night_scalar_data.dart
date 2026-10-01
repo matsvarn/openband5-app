@@ -131,6 +131,14 @@ const String kNightScalarPartialLabel = 'Unvollständige Nacht';
 const String kNightScalarUnknownUnitLabel = 'Einheit unbekannt';
 const String kNightScalarTrustedBaseline = 'trusted';
 
+String? nightScalarEvaluationLabel(NightScalarState? state) => switch (state) {
+  NightScalarState.pending => kNightScalarPendingLabel,
+  NightScalarState.failed => kNightScalarFailedLabel,
+  NightScalarState.unknown ||
+  NightScalarState.outdated => kNightScalarOpenLabel,
+  _ => null,
+};
+
 const Set<String> kNightScalarOverrideSources = {'manual', 'confirmed'};
 
 enum NightScalarGap {
@@ -474,13 +482,7 @@ class NightScalarDetail {
       state == NightScalarState.unknown ||
       state == NightScalarState.outdated;
 
-  String? get evaluationLabel => switch (state) {
-    NightScalarState.pending => kNightScalarPendingLabel,
-    NightScalarState.failed => kNightScalarFailedLabel,
-    NightScalarState.unknown ||
-    NightScalarState.outdated => kNightScalarOpenLabel,
-    _ => null,
-  };
+  String? get evaluationLabel => nightScalarEvaluationLabel(state);
 
   String get series => key.series;
   String get baselinePath => key.baselinePath;

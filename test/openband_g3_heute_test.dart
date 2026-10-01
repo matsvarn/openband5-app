@@ -226,8 +226,40 @@ void main() {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.calculationFailure), _connected, day: _fixtureDay), size: const Size(393, 3000));
     expect(find.bySemanticsLabel('HRV Auswertung fehlgeschlagen'), findsOneWidget);
     expect(find.bySemanticsLabel('Ruhepuls Auswertung fehlgeschlagen'), findsOneWidget);
+    expect(find.bySemanticsLabel('Hauttemperatur Auswertung fehlgeschlagen'), findsOneWidget);
     expect(find.bySemanticsLabel('HRV nicht erfasst'), findsNothing);
   });
+
+  testWidgets(
+    'a pending night calculation names processing on every body row',
+    (tester) async {
+      final repo = _Repo(SyntheticScenario.processing);
+      final day = await repo.readDay(_fixtureDay);
+      for (final metric in [
+        day.hrv,
+        day.restingHr,
+        day.respiration,
+        day.skinTemperature,
+      ]) {
+        expect(metric.nightScalar, NightScalarState.pending);
+        expect(metric.value, isNull);
+      }
+      await _pump(
+        tester,
+        _Harness(repo, _connected, day: _fixtureDay),
+        size: const Size(393, 3000),
+      );
+      for (final name in [
+        'HRV',
+        'Ruhepuls',
+        'Atemfrequenz',
+        'Hauttemperatur',
+      ]) {
+        expect(find.bySemanticsLabel('$name Auswertung läuft'), findsOneWidget);
+        expect(find.bySemanticsLabel('$name nicht erfasst'), findsNothing);
+      }
+    },
+  );
 
   testWidgets('a partial night keeps its value and says so, without a range', (tester) async {
     await _pump(tester, _Harness(_Repo(SyntheticScenario.partial), _connected, day: _fixtureDay), size: const Size(393, 3000));

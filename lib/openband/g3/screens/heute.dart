@@ -1591,9 +1591,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           domain: G3Domain.recovery,
           state: OBBodyState.missing,
           name: name,
-          reason: v.nightScalar == NightScalarState.failed
-              ? kNightScalarFailedLabel
-              : null,
+          reason: nightScalarEvaluationLabel(v.nightScalar),
           onTap: tap,
         );
       }
@@ -1665,6 +1663,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               domain: G3Domain.recovery,
               state: OBBodyState.missing,
               name: 'Hauttemperatur',
+              reason: nightScalarEvaluationLabel(
+                day.skinTemperature.nightScalar,
+              ),
               last: true,
               onTap: widget.onOpenMetric == null
                   ? null
