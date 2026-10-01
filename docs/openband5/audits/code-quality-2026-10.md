@@ -228,6 +228,17 @@ Enabled in this branch: `cancel_subscriptions` and `close_sinks`, which cost not
 7. **Large-file splits beyond this branch.** `local_repository.dart` (5,024) and `synthetic_repository.dart` (5,702) are one class each. Shrinking them means splitting the `OpenBandRepository` interface by feature, which is an API redesign.
 8. **Test-only helpers (DC-5 last bullet).** Delete each helper together with the tests that only exercise it, or keep them as seams.
 
+### Outcome (1 October)
+
+Mats decided:
+1. Retire the registry-only widgets that G3.1 replaces. Done on `openband5/audit-quality-2`: `OBCheckInAsk`, `G3CheckInPreview`, the G3 `OBMetricCard`, `MetricRing`, `NightChart` and `OpenBandRunLive` are gone with their ten blocks (manifest 197 blocks, 155 screens), five Paper registry entries and `flutter_map`. `OBPatternDotPlot` stays: no G3.1 component shows a distribution, and the journal Paper screen still uses it.
+2. Day-screen consistency goes to the storage audit.
+3. Check-in card and stat cells stay as they are for now.
+4. Durations under an hour read `30 Min.`, from an hour `1h05` (whole hours `1h`, as the G3.1 tests already pin `g3Duration(600) == '10h'`), and thousands take a dot (`6.480`). Done on `openband5/audit-quality-2` through `g3_format.dart` for all of `lib/openband`; `lib/ui2` keeps its own copy.
+5. Dependency majors come later, one per change with a phone check; `flutter_blue_plus` 2 waits for the reliability work.
+6. Splitting the two repository files comes later, as its own work.
+7. `strict-casts`: the app side is ready (`telemetry_service.dart:354`); enable it once the test-suite branch's cast at `tool/g3_review_test.dart:165` is merged.
+
 ## For other owners
 
 - Storage (`lib/data`, `lib/compute`): DUP-1 and DUP-2 need a coherent served-row projection and a policy for versioned `metric_series`. `putMetricSeriesValue` (`data/db.dart:13419`) has no caller. Large files: `data/db.dart` 16,071, `compute/derivation_engine.dart` 9,073, `data/local_repository_impl.dart` 4,531, `compute/onehz_pipeline.dart` 1,955, `compute/substrate.dart` 1,513.
