@@ -118,5 +118,5 @@ void main(List<String> args) async {
     print('   !! $e');
   }
   await db.close();
-  exit(absentInStore > 0 || hrDiff > 0 || tempDiff > 0 ? 1 : 0);
+  exit(absentInStore > 0 || hrDiff > 0 || tempDiff > 0 || stepDiff > 0 ? 1 : 0);
 }

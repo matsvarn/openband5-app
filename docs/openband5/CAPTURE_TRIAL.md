@@ -1,6 +1,6 @@
 # Interruption trial — the controlled zero-loss proof
 
-The capture claim is "a night of data that survives disconnection and app relaunch". This runbook is its scripted proof. Run it against a signed release build installed in place on the owner's iPhone. Pulled databases, logs and screenshots go to `~/Library/Application Support/OpenBand5Lab/trial-<date>/` and never into Git. No band command beyond the app's normal sync is sent: no firmware, R22, force-trim or pointer command.
+The capture claim is "a night of data that survives disconnection and app relaunch". This runbook is its scripted proof. Run it against a signed release build installed in place on the owner's iPhone. `times.txt` and the verifier outputs go to `~/Library/Application Support/OpenBand5Lab/trial-<YYYYMMDD>/`; `tool/pull_device_db.sh` writes each pull to its own `OpenBand5Lab/device-<stamp>-<label>/` and prints the path (`pulled → …`). None of it goes into Git. No band command beyond the app's normal sync is sent: no firmware, R22, force-trim or pointer command.
 
 Record every result, including a failure, as a finding. Do not retest until it passes.
 
@@ -25,15 +25,16 @@ The operator (Mac) runs every command. Mats does the physical steps. The four in
 ```sh
 cd <edge worktree>
 LAB="$HOME/Library/Application Support/OpenBand5Lab"
+TRIAL="$LAB/trial-$(date +%Y%m%d)"; mkdir -p "$TRIAL"   # set TRIAL to this same path again in any later shell
 DEVICE="iPhone von Mats"; BUNDLE=dev.matsvarn.openband5
 git rev-parse HEAD                      # the build commit, recorded with the result
 xcrun devicectl device info processes --device "$DEVICE" | grep -i openband   # OpenBand PID only
 ```
 
 1. Stop **only** the OpenBand process (`xcrun devicectl device process terminate --device "$DEVICE" --pid <pid>`), then pull the before copy: `tool/pull_device_db.sh trial-pre`. The script copies Documents (db, -wal, -shm) plus the field log from `Library/Application Support`.
-2. `sqlite3 "<pre>/Documents/openstrap.db" "PRAGMA integrity_check"` must print `ok`.
-3. Relaunch: `xcrun devicectl device process launch --device "$DEVICE" $BUNDLE`. Wait until the Band screen shows connected, then record the trial start: `echo "T0=$(date +%s)" >> "$LAB/trial-<date>/times.txt"`.
-4. Write each interruption's start and end (`date +%s`) into `trial-<date>/times.txt` while Mats performs it.
+2. `sqlite3 "<pulled → path of trial-pre>" "PRAGMA integrity_check"` must print `ok` (the `openstrap.db` path the pull printed).
+3. Relaunch: `xcrun devicectl device process launch --device "$DEVICE" $BUNDLE`. Wait until the Band screen shows connected, then record the trial start: `echo "T0=$(date +%s)" >> "$TRIAL/times.txt"`.
+4. Write each interruption's start and end (`date +%s`) into `$TRIAL/times.txt` while Mats performs it (e.g. `echo "I1_start=$(date +%s)" >> "$TRIAL/times.txt"`).
 
 ## What the field log must show
 
@@ -61,11 +62,11 @@ This applies during the trial or at any other time, whenever reconnects keep fai
 
 ## After the trial — verify, don't eyeball
 
-After the night, record the window end first: `echo "T1=$(( $(date +%s) - 900 ))" >> "$LAB/trial-<date>/times.txt"`. The 15 minutes keep seconds still waiting in band flash out of the loss check. Then stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
+After the night, record the window end first: `echo "T1=$(( $(date +%s) - 900 ))" >> "$TRIAL/times.txt"`. The 15 minutes keep seconds still waiting in band flash out of the loss check. Then stop only the OpenBand process and pull `tool/pull_device_db.sh trial-post`. Then:
 
 ```sh
-PRE="<pre>/Documents/openstrap.db"; POST="<post>/Documents/openstrap.db"
-T0=$(sed -n 's/^T0=//p' "$LAB/trial-<date>/times.txt"); T1=$(sed -n 's/^T1=//p' "$LAB/trial-<date>/times.txt")
+PRE="<pulled → path of trial-pre>"; POST="<pulled → path of trial-post>"   # the openstrap.db paths the two pulls printed
+T0=$(sed -n 's/^T0=//p' "$TRIAL/times.txt"); T1=$(sed -n 's/^T1=//p' "$TRIAL/times.txt")
 : "${T0:?T0 not recorded}" "${T1:?T1 not recorded}"   # stop here rather than query an empty window
 sqlite3 "$POST" "PRAGMA integrity_check"                  # ok
 python3 tool/key_retention.py "$PRE" "$POST"               # RETAINED, exit 0
@@ -87,7 +88,9 @@ sqlite3 /tmp/trial-post.db ".param set :T0 $T0" ".param set :T1 $T1" ".read zero
 --    The sequence includes the last stored second before T0 and the first after
 --    T1, so a hole at either edge of the window is seen too. Walk in time order:
 --    within one counter epoch the counter rises by 1 per stored second, so a
---    forward jump is lost seconds; a counter that goes backwards starts a new
+--    forward jump is lost seconds. The lost seconds are taken to follow the
+--    previous stored second one per second (the counter only advances while worn),
+--    and only those inside [T0, T1] count. A counter that goes backwards starts a new
 --    epoch (band reboot) and is counted, not treated as loss. `bracketed` must
 --    be 1: a stored second after T1 exists, so the end of the window was checked.
 WITH e AS (
@@ -96,10 +99,11 @@ WITH e AS (
                            WHERE rec_ts < :T0 ORDER BY rec_ts DESC LIMIT 1)
   UNION ALL SELECT * FROM (SELECT rec_ts, counter FROM decoded_onehz
                            WHERE rec_ts > :T1 ORDER BY rec_ts LIMIT 1)),
-w AS (SELECT rec_ts, counter, LAG(counter) OVER (ORDER BY rec_ts) pc FROM e)
+w AS (SELECT rec_ts, counter, LAG(counter) OVER (ORDER BY rec_ts) pc,
+             LAG(rec_ts) OVER (ORDER BY rec_ts) p FROM e)
 SELECT SUM(rec_ts BETWEEN :T0 AND :T1) AS seconds,
-       COALESCE(SUM(CASE WHEN counter - pc > 1 THEN counter - pc - 1 END), 0) AS missing,
-       COALESCE(SUM(counter - pc > 1), 0) AS holes,
+       COALESCE(SUM(MAX(0, MIN(p + counter - pc - 1, :T1) - MAX(p + 1, :T0) + 1)), 0) AS missing,
+       COALESCE(SUM(MAX(0, MIN(p + counter - pc - 1, :T1) - MAX(p + 1, :T0) + 1) > 0), 0) AS holes,
        COALESCE(SUM(counter < pc), 0) AS epoch_resets,
        (SELECT COUNT(*) > 0 FROM decoded_onehz WHERE rec_ts > :T1) AS bracketed
 FROM w;                                                     -- missing = 0, bracketed = 1
@@ -128,7 +132,8 @@ SELECT datetime(ts,'unixepoch','localtime'), event_id, name FROM band_events
  WHERE ts BETWEEN :T0 AND :T1 AND event_id IN (9,10,11,12,14) ORDER BY ts;
 
 -- Z6 Coverage honesty: gaps over 60 s. Each must start at a band WRIST_OFF
---    (Z5) or lie inside a recorded interruption window; nothing fills them.
+--    (Z5). A gap inside an interruption window is loss, not an excuse: the
+--    band stores to flash, and the reconnect drain must fill that time.
 WITH g AS (SELECT rec_ts, LAG(rec_ts) OVER (ORDER BY rec_ts) p FROM decoded_onehz
            WHERE rec_ts BETWEEN :T0 AND :T1)
 SELECT datetime(p,'unixepoch','localtime'), datetime(rec_ts,'unixepoch','localtime'), rec_ts - p
@@ -145,4 +150,4 @@ Pass criteria, all of them:
 
 ## What to record
 
-In `IMPLEMENTATION_VERIFICATION.md`, record the trial date, build commit, each interruption's start and end time, the reconnect time observed in the log (`reachable again after …`), the verifier outputs verbatim, the Z1–Z6 results, and every failure as a finding. Keep `times.txt`, both pulls and the outputs under `OpenBand5Lab/trial-<date>/`.
+In `IMPLEMENTATION_VERIFICATION.md`, record the trial date, build commit, each interruption's start and end time, the reconnect time observed in the log (`reachable again after …`), the verifier outputs verbatim, the Z1–Z6 results, and every failure as a finding. Keep `times.txt` and the outputs in `$TRIAL`, and note the two pull directories there.
