@@ -414,7 +414,7 @@ Future<void> reviewRelease(ReviewHarness h) async {
     Brightness brightness = Brightness.light,
     double scale = 1,
   }) async {
-    final repository = await loadGalleryRepository();
+    final repository = await h.loadRepository();
     final controller = OpenBandController(
       repository: repository,
       initialDay: '2026-09-15',

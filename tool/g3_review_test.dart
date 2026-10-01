@@ -162,7 +162,9 @@ void main() {
       }
     }
   }
-  final screens = <String, dynamic>{...(reg['screens'] as Map? ?? {})};
+  final screens = <String, dynamic>{
+    ...(reg['screens'] as Map<String, dynamic>? ?? const {}),
+  };
   final areas = Directory('docs/openband5/design/paper-g3/screens').listSync().whereType<File>().where((f) => f.path.endsWith('.json')).toList()
     ..sort((a, b) => a.path.compareTo(b.path));
   for (final file in areas) {

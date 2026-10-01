@@ -8,27 +8,21 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
     double? scale,
   }) async {
     await h.mount(scenario: scenario, brightness: brightness, scale: scale);
-    final sleep = find.bySemanticsLabel(RegExp(r'^Schlaf, ')).first;
-    await tester.tap(sleep);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('openband-sleep')), findsOneWidget);
+    await h.openSleep();
   }
 
-  Finder sleepHeroText(String text) {
-    final sleepCards = find.descendant(
-      of: find.byKey(const ValueKey('openband-sleep')),
-      matching: find.byType(OBCard),
-    );
-    return find.descendant(of: sleepCards.first, matching: find.text(text));
-  }
+  Finder sleepHeroText(String text) => find.descendant(
+    of: find.byType(g3sleep.OBSleepLead),
+    matching: find.text(text),
+  );
 
   Finder stageLegendText(String text) => find.descendant(
-    of: find.byKey(const ValueKey('sleep-stage-legend')),
+    of: find.byType(g3day.OBStageLegend),
     matching: find.text(text),
   );
 
   Future<void> showLegend() async {
-    final target = find.byKey(const ValueKey('sleep-stage-legend'));
+    final target = find.byType(g3day.OBStageLegend);
     await tester.scrollUntilVisible(
       target,
       160,
@@ -36,7 +30,7 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
     );
     await tester.pumpAndSettle();
     expect(target, findsOneWidget);
-    expect(find.byType(OBStageLegend), findsOneWidget);
+    expect(find.byType(g3day.OBStageLegend), findsOneWidget);
     expect(
       find.byKey(const ValueKey('sleep-stage-swatch-Im Bett')),
       findsNothing,
@@ -44,16 +38,17 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
   }
 
   Future<void> closeSleep() async {
-    final back = find.byTooltip('Zurück');
-    await tester.scrollUntilVisible(
-      back,
-      -160,
-      scrollable: h.verticalScrollable().last,
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.button == true &&
+            widget.properties.label == 'Heute' &&
+            widget.child is Pressable,
+      ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(back);
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('openband-sleep')), findsNothing);
+    expect(find.byKey(const ValueKey('g3-sleep')), findsNothing);
   }
 
   await openSleep();
@@ -64,12 +59,12 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
   expect(stageLegendText('Leicht'), findsOneWidget);
   expect(stageLegendText('REM'), findsOneWidget);
   expect(stageLegendText('Wach'), findsOneWidget);
-  expect(stageLegendText('Im Bett'), findsOneWidget);
+  expect(find.text('7h44 im Bett'), findsOneWidget);
   expect(stageLegendText('1h08'), findsOneWidget);
   expect(stageLegendText('4h07'), findsOneWidget);
   expect(stageLegendText('2h03'), findsOneWidget);
   expect(stageLegendText('26 Min.'), findsOneWidget);
-  expect(stageLegendText('7h44'), findsOneWidget);
+  expect(stageLegendText('Im Bett'), findsNothing);
   await h.capture('sleep-legend-light');
   await closeSleep();
 
@@ -83,7 +78,7 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
   await showLegend();
   expect(
     find.descendant(
-      of: find.byKey(const ValueKey('sleep-stage-legend')),
+      of: find.byType(g3day.OBStageLegend),
       matching: find.text('—'),
     ),
     findsNothing,
@@ -92,11 +87,8 @@ Future<void> reviewSleepLegend(ReviewHarness h) async {
   await closeSleep();
 
   await openSleep(scenario: SyntheticScenario.missing);
-  expect(
-    find.text('Für diese Nacht liegt noch kein Schlafwert vor.'),
-    findsOneWidget,
-  );
-  expect(find.byKey(const ValueKey('sleep-stage-legend')), findsNothing);
+  expect(sleepHeroText('Keine Nacht erkannt'), findsOneWidget);
+  expect(find.byType(g3day.OBStageLegend), findsNothing);
   await h.capture('sleep-legend-missing');
   await closeSleep();
 

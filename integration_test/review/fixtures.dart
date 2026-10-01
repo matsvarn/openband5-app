@@ -57,7 +57,13 @@ Future<void> reviewPumpPageTransitions(WidgetTester tester) async {
 /// scrollable, so the finder is scrolled on-screen before the tap.
 Future<void> reviewTapHeaderBack(WidgetTester tester) async {
   await reviewPumpPageTransitions(tester);
-  final back = find.byTooltip('Zurück');
+  final back = find.byWidgetPredicate(
+    (widget) =>
+        widget is Tooltip && widget.message == 'Zurück' ||
+        widget is Semantics &&
+            widget.properties.button == true &&
+            (widget.properties.label ?? '').startsWith('Zurück zu '),
+  );
   if (back.evaluate().isEmpty) {
     final scrollable = find.byWidgetPredicate(
       (widget) =>
@@ -66,7 +72,7 @@ Future<void> reviewTapHeaderBack(WidgetTester tester) async {
     );
     await tester.scrollUntilVisible(back, -300, scrollable: scrollable.last);
   }
-  await tester.ensureVisible(back.last);
+  await Scrollable.ensureVisible(tester.element(back.last), alignment: 0.5);
   await tester.pump();
   await tester.tap(back.last);
   await reviewPumpPageTransitions(tester);
@@ -160,63 +166,6 @@ Future<void> reviewPumpPresentedFrame(WidgetTester tester) async {
   } finally {
     tester.binding.removeTimingsCallback(listener);
   }
-}
-
-class _NutritionReviewRepo extends SyntheticOpenBandRepository {
-  int commits = 0;
-  int draftReads = 0;
-  int restores = 0;
-  bool failDraftRead = false;
-
-  _NutritionReviewRepo(super.summary, super.detail, {super.activity, super.run})
-    : super.fromMaps();
-
-  @override
-  Future<OpenBandDay> readDay(String day) {
-    if (failDayRead) {
-      return Future.error(StateError('synthetic day read failure'));
-    }
-    return super.readDay(day);
-  }
-
-  @override
-  Future<MealDraft?> readMealDraft(String day, String meal) async {
-    draftReads++;
-    if (failDraftRead) {
-      throw StateError('synthetic meal draft read failure');
-    }
-    return super.readMealDraft(day, meal);
-  }
-
-  @override
-  Future<MealDraftCommitResult> commitMealDraft(MealDraft draft) async {
-    commits++;
-    return super.commitMealDraft(draft);
-  }
-
-  @override
-  Future<FoodSnapshotResult> restoreFoodEntry(FoodEntry snapshot) async {
-    restores++;
-    return super.restoreFoodEntry(snapshot);
-  }
-}
-
-Future<_NutritionReviewRepo> _loadNutritionReviewRepo() async {
-  Future<Map> load(String name) async =>
-      jsonDecode(
-            await rootBundle.loadString(
-              'docs/openband5/assets/fixtures/$name.json',
-            ),
-          )
-          as Map;
-  final repo = _NutritionReviewRepo(
-    await load('day-summary'),
-    await load('sleep-detail'),
-    activity: await load('additional-flows'),
-    run: await load('run-detail'),
-  );
-  await repo.seedNutritionGoals();
-  return repo;
 }
 
 /// One-shot read failure after a committed VO2 write, and one-shot loss of a
@@ -333,14 +282,8 @@ class _Vo2ReviewRepo extends SyntheticOpenBandRepository {
   }
 }
 
-Future<_Vo2ReviewRepo> _loadVo2ReviewRepo() async {
-  Future<Map> load(String name) async =>
-      jsonDecode(
-            await rootBundle.loadString(
-              'docs/openband5/assets/fixtures/$name.json',
-            ),
-          )
-          as Map;
+Future<_Vo2ReviewRepo> _loadVo2ReviewRepo(ReviewHarness h) async {
+  Future<Map> load(String name) => h.fixture(name);
   final repo = _Vo2ReviewRepo(
     await load('day-summary'),
     await load('sleep-detail'),
@@ -354,8 +297,8 @@ Future<_Vo2ReviewRepo> _loadVo2ReviewRepo() async {
 
 /// Paper history: 42.0 on 14 Sept, created at 09:40 with no method, then the
 /// same id edited at 09:41 to Spiroergometrie.
-Future<_Vo2ReviewRepo> _vo2HistoryFixture() async {
-  final repo = await _loadVo2ReviewRepo();
+Future<_Vo2ReviewRepo> _vo2HistoryFixture(ReviewHarness h) async {
+  final repo = await _loadVo2ReviewRepo(h);
   repo.clock = DateTime(2026, 9, 15, 9, 40);
   final created = await repo.createVo2Entry(
     id: kSyntheticVo2PaperId,
@@ -383,105 +326,6 @@ Future<_Vo2ReviewRepo> _vo2HistoryFixture() async {
       edited.revision.declaredMethod != kSyntheticVo2PaperMethod) {
     throw StateError('VO2 history edit did not store revision 2.');
   }
-  return repo;
-}
-
-class _NutritionParentReviewRepo extends _NutritionReviewRepo {
-  bool failWeekRead = false;
-  bool failRecentRead = false;
-  bool failWaterWrite = false;
-  bool conflictWaterWrite = false;
-  bool failDraftWrite = false;
-  int? failJournalReadAfter;
-  int waterAdjusts = 0;
-  int journalReads = 0;
-  int weekReads = 0;
-  int recentReads = 0;
-
-  _NutritionParentReviewRepo(
-    super.summary,
-    super.detail, {
-    super.activity,
-    super.run,
-  });
-
-  @override
-  Future<JournalDaySnapshot> readJournalDay(String day) async {
-    journalReads++;
-    if (failJournalReadAfter != null && journalReads > failJournalReadAfter!) {
-      throw StateError('synthetic journal refresh failure');
-    }
-    return super.readJournalDay(day);
-  }
-
-  @override
-  Future<double?> adjustWater(String day, double deltaMl) async {
-    waterAdjusts++;
-    if (failWaterWrite) {
-      throw StateError('synthetic water adjust failure');
-    }
-    return super.adjustWater(day, deltaMl);
-  }
-
-  @override
-  Future<void> patchJournalDay(JournalDayPatch patch) async {
-    if (conflictWaterWrite) {
-      throw JournalConflict(patch.day, fields: const ['water_ml']);
-    }
-    if (failWaterWrite) {
-      throw StateError('synthetic water patch failure');
-    }
-    return super.patchJournalDay(patch);
-  }
-
-  @override
-  Future<NutritionWindow> readNutritionWindow(
-    String endDay, {
-    int days = 7,
-  }) async {
-    weekReads++;
-    if (failWeekRead) {
-      throw StateError('synthetic week read failure');
-    }
-    return super.readNutritionWindow(endDay, days: days);
-  }
-
-  @override
-  Future<List<FoodEntry>> readRecentFoods({int limit = 12}) async {
-    recentReads++;
-    if (failRecentRead) {
-      throw StateError('synthetic recent read failure');
-    }
-    return super.readRecentFoods(limit: limit);
-  }
-
-  @override
-  Future<MealDraftSaveResult> compareAndSaveMealDraft({
-    required MealDraft? expected,
-    required MealDraft draft,
-  }) async {
-    if (failDraftWrite) {
-      throw StateError('synthetic meal draft write failure');
-    }
-    return super.compareAndSaveMealDraft(expected: expected, draft: draft);
-  }
-}
-
-Future<_NutritionParentReviewRepo> _loadNutritionParentReviewRepo() async {
-  Future<Map> load(String name) async =>
-      jsonDecode(
-            await rootBundle.loadString(
-              'docs/openband5/assets/fixtures/$name.json',
-            ),
-          )
-          as Map;
-  final repo = _NutritionParentReviewRepo(
-    await load('day-summary'),
-    await load('sleep-detail'),
-    activity: await load('additional-flows'),
-    run: await load('run-detail'),
-  );
-  await repo.seedNutritionGoals();
   return repo;
 }
 
@@ -621,186 +465,5 @@ class _CustomExerciseReviewRepo extends SyntheticOpenBandRepository {
   Future<WorkoutTemplate> saveTemplate(WorkoutTemplate template) async {
     templateSaves++;
     return super.saveTemplate(template);
-  }
-}
-
-class _GlucoseReviewRepo extends SyntheticOpenBandRepository {
-  _GlucoseReviewRepo(super.summary, super.detail, {super.activity, super.run})
-    : super.fromMaps();
-
-  bool partialGlucose = false;
-
-  @override
-  Future<GlucoseSnapshot> readGlucose({String? sourceKey, int? limit}) async {
-    final snap = await super.readGlucose(sourceKey: sourceKey, limit: limit);
-    if (!partialGlucose) return snap;
-    return GlucoseSnapshot(
-      selected: snap.selected,
-      selectedExcluded: snap.selectedExcluded,
-      sources: snap.sources,
-      history: snap.history,
-      series: snap.series,
-      attempt: GlucoseAttempt(
-        status: HealthMeasurementImportStatus.partial,
-        attemptedAt: snap.attempt.attemptedAt,
-        storedCount: snap.attempt.storedCount,
-        writtenCount: snap.attempt.writtenCount,
-        invalidCount: 2,
-        ignoredCount: 1,
-      ),
-      lastMeasuredAt: snap.lastMeasuredAt,
-      lastImportedAt: snap.lastImportedAt,
-      truncated: snap.truncated,
-      unreadableCount: snap.unreadableCount,
-    );
-  }
-}
-
-class _MedicationReviewRepo extends SyntheticOpenBandRepository {
-  _MedicationReviewRepo(
-    super.summary,
-    super.detail, {
-    super.activity,
-    super.run,
-  }) : super.fromMaps();
-
-  MedicationDay Function(MedicationDay)? transformDay;
-  MedicationHistory Function(MedicationHistory)? transformHistory;
-  List<MedicationPlan> Function(List<MedicationPlan>)? transformPlans;
-  bool failHistoryAfterFirst = false;
-  int historyReads = 0;
-  int entrySaves = 0;
-  int reminderRefreshes = 0;
-
-  @override
-  Future<MedicationDay> readMedicationDay(String day, {DateTime? now}) async {
-    final snap = await super.readMedicationDay(day, now: now);
-    return transformDay?.call(snap) ?? snap;
-  }
-
-  @override
-  Future<List<MedicationPlan>> readMedicationPlans({
-    bool activeOnly = true,
-  }) async {
-    final plans = await super.readMedicationPlans(activeOnly: activeOnly);
-    return transformPlans?.call(plans) ?? plans;
-  }
-
-  @override
-  Future<MedicationHistory> readMedicationHistory(
-    String fromDay,
-    String toDay, {
-    DateTime? now,
-  }) async {
-    historyReads++;
-    if (failHistoryAfterFirst && historyReads > 1) {
-      throw StateError('synthetic medication history paging failure');
-    }
-    final hist = await super.readMedicationHistory(fromDay, toDay, now: now);
-    return transformHistory?.call(hist) ?? hist;
-  }
-
-  @override
-  Future<MedicationMutationResult> saveMedicationEntry(
-    MedicationEntryDraft draft, {
-    DateTime? now,
-  }) async {
-    entrySaves++;
-    return super.saveMedicationEntry(draft, now: now);
-  }
-
-  @override
-  Future<void> refreshMedicationReminders() async {
-    reminderRefreshes++;
-    return super.refreshMedicationReminders();
-  }
-}
-
-class _CycleReviewRepo extends SyntheticOpenBandRepository {
-  _CycleReviewRepo(super.summary, super.detail, {super.activity, super.run})
-    : super.fromMaps();
-
-  int startWrites = 0;
-  int observationWrites = 0;
-  int settingsWrites = 0;
-  int settingsReads = 0;
-  int startRemoves = 0;
-  int startRestores = 0;
-  int contextRefreshes = 0;
-  int measurementsReads = 0;
-  bool failCycleSettingsRead = false;
-  bool failCycleLogRead = false;
-
-  @override
-  Future<CycleSettings> readCycleSettings() async {
-    settingsReads++;
-    if (failCycleSettingsRead) {
-      throw StateError('synthetic cycle settings read failure');
-    }
-    return super.readCycleSettings();
-  }
-
-  @override
-  Future<CycleSnapshot> readCycle(String day, {DateTime? now}) async {
-    if (failCycleLogRead) {
-      throw StateError('synthetic cycle log read failure');
-    }
-    return super.readCycle(day, now: now);
-  }
-
-  @override
-  Future<CycleMeasurementsSnapshot> readCycleMeasurements(
-    String asOfDay, {
-    String? cycleStartDay,
-  }) async {
-    measurementsReads++;
-    return super.readCycleMeasurements(asOfDay, cycleStartDay: cycleStartDay);
-  }
-
-  @override
-  Future<CycleWriteResult> saveCycleSettings(CycleSettings settings) async {
-    settingsWrites++;
-    return super.saveCycleSettings(settings);
-  }
-
-  @override
-  Future<CycleWriteResult> saveCycleStart(
-    CycleStart desired, {
-    CycleStart? expected,
-    DateTime? now,
-  }) async {
-    startWrites++;
-    return super.saveCycleStart(desired, expected: expected, now: now);
-  }
-
-  @override
-  Future<CycleWriteResult> removeCycleStart(CycleStart expected) async {
-    startRemoves++;
-    return super.removeCycleStart(expected);
-  }
-
-  @override
-  Future<CycleWriteResult> restoreCycleStart(
-    CycleStart removed, {
-    DateTime? now,
-  }) async {
-    startRestores++;
-    return super.restoreCycleStart(removed, now: now);
-  }
-
-  @override
-  Future<CycleWriteResult> saveCycleObservation(
-    CycleObservation desired, {
-    CycleObservation? expected,
-    DateTime? now,
-  }) async {
-    observationWrites++;
-    return super.saveCycleObservation(desired, expected: expected, now: now);
-  }
-
-  @override
-  Future<void> refreshCycleContext() async {
-    contextRefreshes++;
-    return super.refreshCycleContext();
   }
 }

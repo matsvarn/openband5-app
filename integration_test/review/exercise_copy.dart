@@ -6,13 +6,7 @@ Future<void> reviewExerciseCopy(ReviewHarness h) async {
   const shortCurlId = 'custom-curl-short';
 
   Future<_CustomExerciseReviewRepo> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     final repo = _CustomExerciseReviewRepo(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -278,11 +272,9 @@ Future<void> reviewExerciseCopy(ReviewHarness h) async {
     var pumped = 0;
     while (pumped < 60) {
       await tester.pump(const Duration(milliseconds: 16));
-      if (tester.binding is LiveTestWidgetsFlutterBinding) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 16)),
+      );
       final inset = keyboardInset();
       final reached = open ? inset > 0 : inset == 0;
       if (reached && (inset - last).abs() < 0.5) {
@@ -402,7 +394,7 @@ Future<void> reviewExerciseCopy(ReviewHarness h) async {
     await reviewPumpPageTransitions(tester);
     await tester.pump();
     expect(definitionEditor(), findsOneWidget);
-    expect(find.text('Eigene Übung'), findsWidgets);
+    expect(find.bySemanticsLabel('Eigene Übung'), findsWidgets);
   }
 
   Future<void> fillPresetRemainder() async {
@@ -627,7 +619,7 @@ Future<void> reviewExerciseCopy(ReviewHarness h) async {
     expect(find.text('Curl · Kopie'), findsOneWidget);
     final editor = definitionEditor();
     final save = saveDefinition();
-    await expectInSafeViewport(find.text('Eigene Übung'));
+    await expectInSafeViewport(find.bySemanticsLabel('Eigene Übung'));
     await expectInSafeViewport(save);
     expect(tester.widget<OBAction>(save).onPressed, isNotNull);
     if (scrolled) {

@@ -5,13 +5,7 @@ Future<void> reviewTemperature(ReviewHarness h) async {
   final now = DateTime(2026, 9, 18, 9, 41);
 
   Future<SyntheticOpenBandRepository> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     return SyntheticOpenBandRepository.fromMaps(
       await load('day-summary'),
       await load('sleep-detail'),

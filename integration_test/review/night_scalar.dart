@@ -7,13 +7,7 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   final wakeMs = DateTime(2026, 9, 15, 6, 54).millisecondsSinceEpoch;
 
   Future<SyntheticOpenBandRepository> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     return SyntheticOpenBandRepository.fromMaps(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -168,8 +162,14 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
 
   bool nightScalarLoaded() =>
       find.byKey(const ValueKey('night-scalar-detail')).evaluate().isNotEmpty &&
-      (find.textContaining('von ').evaluate().isNotEmpty ||
-          find.text('Erneut').evaluate().isNotEmpty);
+      find
+          .textContaining(
+            RegExp(
+              r'Basis|Nachtwert|Unvollständige Nacht|Auswertung|Ältere Berechnung|Erneut',
+            ),
+          )
+          .evaluate()
+          .isNotEmpty;
 
   Future<OpenBandController> mountDetail({
     required SyntheticOpenBandRepository repository,
@@ -208,13 +208,18 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
     return controller;
   }
 
+  Finder heroText(String text) => find.descendant(
+    of: find.byKey(const ValueKey('night-scalar-hero')),
+    matching: find.text(text),
+  );
+
   var repo = await loadRepo();
   seedTrusted(repo);
   await mountDetail(repository: repo);
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('15 von 30 Nächten'), findsOneWidget);
+  expect(heroText('48'), findsOneWidget);
+  expect(find.text('15/30'), findsOneWidget);
   await h.capture('night-scalar-hrv');
-  await tester.tap(find.text('Nachtverlauf'));
+  await h.press('Nachtverlauf');
   await reviewPumpPageTransitions(tester);
   await pumpUntil(
     () =>
@@ -237,11 +242,11 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   await pumpUntil(
     () =>
         find.byType(OpenBandNightSignals).evaluate().isEmpty &&
-        find.text('48').evaluate().isNotEmpty &&
         nightScalarLoaded(),
     'Night scalar detail did not return.',
   );
-  expect(find.text('48'), findsOneWidget);
+  await h.reveal(heroText('48'));
+  expect(heroText('48'), findsOneWidget);
   await tester.tap(find.byTooltip('Information'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
@@ -249,17 +254,17 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   await tester.tap(find.text('Schließen'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.text('Persönliche Basis'));
+  await h.press('Persönliche Basis');
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
   await h.capture('night-scalar-baseline');
   await tester.tap(find.text('Schließen'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 400));
-  await tester.tap(find.text('7 Nächte'));
+  await h.press('7 Nächte');
   await tester.pumpAndSettle();
   await h.capture('night-scalar-seven');
-  await tester.tap(find.text('90 Nächte'));
+  await h.press('90 Nächte');
   await tester.pumpAndSettle();
   await h.capture('night-scalar-ninety');
 
@@ -267,14 +272,14 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   seedTrusted(repo);
   await mountDetail(repository: repo, brightness: Brightness.dark);
   await h.capture('night-scalar-hrv-dark');
-  await tester.tap(find.text('7 Nächte'));
+  await h.press('7 Nächte');
   await tester.pumpAndSettle();
   await h.capture('night-scalar-seven-dark');
 
   repo = await loadRepo();
   seedTrusted(repo, hrv: false);
   await mountDetail(repository: repo, key: MetricKey.restingHr);
-  expect(find.text('54'), findsOneWidget);
+  expect(heroText('54'), findsOneWidget);
   await h.capture('night-scalar-rhr');
   repo = await loadRepo();
   seedTrusted(repo, hrv: false);
@@ -289,7 +294,7 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   repo.scenario = SyntheticScenario.missing;
   await mountDetail(repository: repo);
   expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-  expect(find.text('14 von 30 Nächten'), findsOneWidget);
+  expect(find.text('14/30'), findsOneWidget);
   await h.capture('night-scalar-selected-missing');
 
   repo = await loadRepo();
@@ -300,18 +305,18 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   );
   await mountDetail(repository: repo);
   expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-  expect(find.text('0 von 30 Nächten'), findsOneWidget);
-  expect(find.text('14 von 30 Nächten'), findsNothing);
+  expect(find.text('0/30'), findsOneWidget);
+  expect(find.text('14/30'), findsNothing);
   await h.capture('night-scalar-full-missing');
 
   repo = await loadRepo();
   seedSelectedPartial(repo);
   await mountDetail(repository: repo);
   expect(find.text('Unvollständige Nacht'), findsOneWidget);
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('15 von 30 · teils unvollständig'), findsOneWidget);
+  expect(heroText('48'), findsOneWidget);
+  expect(find.text('teils unvollständig'), findsOneWidget);
   expect(find.textContaining('Basis 40'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsNothing);
+  expect(find.text('+8 über deiner Basis (40 ms)'), findsNothing);
   await h.capture('night-scalar-partial');
 
   repo = await loadRepo();
@@ -324,8 +329,8 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   seedFailedReceipt(repo);
   await mountDetail(repository: repo);
   expect(find.text('Auswertung fehlgeschlagen'), findsOneWidget);
-  expect(find.text('48'), findsNothing);
-  expect(find.text('14 von 30 Nächten'), findsOneWidget);
+  expect(heroText('48'), findsNothing);
+  expect(find.text('14/30'), findsOneWidget);
   await h.capture('night-scalar-failed');
   await tester.tap(find.byTooltip('Information'));
   await tester.pump();
@@ -343,14 +348,14 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   expect(find.textContaining('Vorherige Basis 40 ms'), findsOneWidget);
   expect(find.textContaining('30 gültige Nächte'), findsOneWidget);
   expect(find.textContaining('Vorheriger Status: Verlässlich'), findsOneWidget);
-  expect(find.textContaining('Algorithmus 90'), findsOneWidget);
+  expect(find.textContaining('Algorithmus $kAlgoVersion'), findsOneWidget);
   await h.capture('night-scalar-failed-info');
   await tester.tap(find.text('Schlaf ansehen'));
   await reviewPumpPageTransitions(tester);
   await pumpUntil(
     () =>
         find.byType(SleepEditor).evaluate().isNotEmpty &&
-        find.text('Schlafzeiten ändern').evaluate().isNotEmpty,
+        find.byKey(const ValueKey('sleep-onset')).evaluate().isNotEmpty,
     'Sleep editor did not open from failed info.',
   );
   await h.capture('night-scalar-correction-route');
@@ -415,8 +420,8 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   );
   await mountDetail(repository: repo);
   expect(find.text('Nachtwert nicht lesbar'), findsOneWidget);
-  expect(find.text('14 von 30 Nächten'), findsOneWidget);
-  expect(find.text('15 von 30 Nächten'), findsNothing);
+  expect(find.text('14/30'), findsOneWidget);
+  expect(find.text('15/30'), findsNothing);
   await h.capture('night-scalar-unreadable');
 
   repo = await loadRepo();
@@ -439,9 +444,9 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
     currentAlgo: kAlgoVersion,
   );
   await mountDetail(repository: repo);
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('3 von 30 Nächten'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsOneWidget);
+  expect(heroText('48'), findsOneWidget);
+  expect(find.text('3/30'), findsOneWidget);
+  expect(find.text('+8 über deiner Basis (40 ms)'), findsOneWidget);
   await h.capture('night-scalar-sparse');
 
   repo = await loadRepo();
@@ -458,7 +463,7 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
   repo = await loadRepo();
   repo.scenario = SyntheticScenario.missing;
   await mountDetail(repository: repo, brightness: Brightness.dark);
-  expect(find.text('14 von 30 Nächten'), findsOneWidget);
+  expect(find.text('14/30'), findsOneWidget);
   await h.capture('night-scalar-selected-missing-dark');
 
   repo = await loadRepo();
@@ -468,14 +473,14 @@ Future<void> reviewNightScalar(ReviewHarness h) async {
     currentAlgo: kAlgoVersion,
   );
   await mountDetail(repository: repo, brightness: Brightness.dark);
-  expect(find.text('0 von 30 Nächten'), findsOneWidget);
+  expect(find.text('0/30'), findsOneWidget);
   await h.capture('night-scalar-full-missing-dark');
 
   repo = await loadRepo();
   seedSelectedPartial(repo);
   await mountDetail(repository: repo, brightness: Brightness.dark);
   expect(find.text('Unvollständige Nacht'), findsOneWidget);
-  expect(find.text('15 von 30 · teils unvollständig'), findsOneWidget);
+  expect(find.text('teils unvollständig'), findsOneWidget);
   expect(find.textContaining('Basis 40'), findsOneWidget);
   await h.capture('night-scalar-partial-dark');
 
