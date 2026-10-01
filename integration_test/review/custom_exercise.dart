@@ -3,13 +3,7 @@ part of 'harness.dart';
 Future<void> reviewCustomExercise(ReviewHarness h) async {
   final tester = h.tester;
   Future<_CustomExerciseReviewRepo> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     final repo = _CustomExerciseReviewRepo(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -256,7 +250,7 @@ Future<void> reviewCustomExercise(ReviewHarness h) async {
     await tester.tap(add.hitTestable());
     await pumpSheet();
     expect(find.text('Bibliothek'), findsOneWidget);
-    expect(find.text('Eigene Übung'), findsOneWidget);
+    expect(find.bySemanticsLabel('Eigene Übung'), findsOneWidget);
     expect(find.text('Eigene Zeitübung'), findsOneWidget);
   }
 
@@ -281,11 +275,9 @@ Future<void> reviewCustomExercise(ReviewHarness h) async {
     var pumped = 0;
     while (pumped < 60) {
       await tester.pump(const Duration(milliseconds: 16));
-      if (tester.binding is LiveTestWidgetsFlutterBinding) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 16)),
+      );
       final inset = keyboardInset();
       final reached = open ? inset > 0 : inset == 0;
       if (reached && (inset - last).abs() < 0.5) {
@@ -574,7 +566,7 @@ Future<void> reviewCustomExercise(ReviewHarness h) async {
 
   Future<void> expectEmptyDefinition() async {
     expect(definitionEditor(), findsOneWidget);
-    expect(find.text('Eigene Übung'), findsWidgets);
+    expect(find.bySemanticsLabel('Eigene Übung'), findsWidgets);
     final nameField = tester.widget<TextField>(
       find.byKey(const ValueKey('custom-exercise-name')),
     );
@@ -853,7 +845,7 @@ Future<void> reviewCustomExercise(ReviewHarness h) async {
     await fillKurzhantelCurl();
     final editor = definitionEditor();
     final save = saveDefinition();
-    await expectInSafeViewport(find.text('Eigene Übung'));
+    await expectInSafeViewport(find.bySemanticsLabel('Eigene Übung'));
     await expectInSafeViewport(save);
     expect(tester.widget<OBAction>(save).onPressed, isNotNull);
     if (scrolled) {

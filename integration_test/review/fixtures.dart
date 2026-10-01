@@ -57,7 +57,13 @@ Future<void> reviewPumpPageTransitions(WidgetTester tester) async {
 /// scrollable, so the finder is scrolled on-screen before the tap.
 Future<void> reviewTapHeaderBack(WidgetTester tester) async {
   await reviewPumpPageTransitions(tester);
-  final back = find.byTooltip('Zurück');
+  final back = find.byWidgetPredicate(
+    (widget) =>
+        widget is Tooltip && widget.message == 'Zurück' ||
+        widget is Semantics &&
+            widget.properties.button == true &&
+            (widget.properties.label ?? '').startsWith('Zurück zu '),
+  );
   if (back.evaluate().isEmpty) {
     final scrollable = find.byWidgetPredicate(
       (widget) =>
@@ -66,7 +72,7 @@ Future<void> reviewTapHeaderBack(WidgetTester tester) async {
     );
     await tester.scrollUntilVisible(back, -300, scrollable: scrollable.last);
   }
-  await tester.ensureVisible(back.last);
+  await Scrollable.ensureVisible(tester.element(back.last), alignment: 0.5);
   await tester.pump();
   await tester.tap(back.last);
   await reviewPumpPageTransitions(tester);
@@ -276,14 +282,8 @@ class _Vo2ReviewRepo extends SyntheticOpenBandRepository {
   }
 }
 
-Future<_Vo2ReviewRepo> _loadVo2ReviewRepo() async {
-  Future<Map> load(String name) async =>
-      jsonDecode(
-            await rootBundle.loadString(
-              'docs/openband5/assets/fixtures/$name.json',
-            ),
-          )
-          as Map;
+Future<_Vo2ReviewRepo> _loadVo2ReviewRepo(ReviewHarness h) async {
+  Future<Map> load(String name) => h.fixture(name);
   final repo = _Vo2ReviewRepo(
     await load('day-summary'),
     await load('sleep-detail'),
@@ -297,8 +297,8 @@ Future<_Vo2ReviewRepo> _loadVo2ReviewRepo() async {
 
 /// Paper history: 42.0 on 14 Sept, created at 09:40 with no method, then the
 /// same id edited at 09:41 to Spiroergometrie.
-Future<_Vo2ReviewRepo> _vo2HistoryFixture() async {
-  final repo = await _loadVo2ReviewRepo();
+Future<_Vo2ReviewRepo> _vo2HistoryFixture(ReviewHarness h) async {
+  final repo = await _loadVo2ReviewRepo(h);
   repo.clock = DateTime(2026, 9, 15, 9, 40);
   final created = await repo.createVo2Entry(
     id: kSyntheticVo2PaperId,

@@ -12,7 +12,7 @@ Future<void> reviewWeight(ReviewHarness h) async {
     bool readError = false,
     SyntheticOpenBandRepository? repository,
   }) async {
-    final mountedRepository = repository ?? await loadGalleryRepository();
+    final mountedRepository = repository ?? await h.loadRepository();
     if (seeded) mountedRepository.seedWeightHistory();
     mountedRepository.failJournalRead = readError;
     await tester.pumpWidget(
@@ -46,7 +46,7 @@ Future<void> reviewWeight(ReviewHarness h) async {
     expect(find.byKey(const ValueKey('journal-value-sheet')), findsOneWidget);
   }
 
-  final healthRepository = await loadGalleryRepository();
+  final healthRepository = await h.loadRepository();
   healthRepository.seedWeightHistory();
   final healthController = OpenBandController(
     repository: healthRepository,
@@ -202,7 +202,7 @@ Future<void> reviewWeight(ReviewHarness h) async {
   await tester.pumpAndSettle();
   await h.capture('weight-2x-entries-dark');
 
-  final partialRepository = await loadGalleryRepository();
+  final partialRepository = await h.loadRepository();
   partialRepository.seedWeightHistory(
     dates: const [day],
     enteredKg: const [401],
@@ -211,7 +211,7 @@ Future<void> reviewWeight(ReviewHarness h) async {
   expect(find.text('1 Wert ausgeschlossen'), findsOneWidget);
   await h.capture('weight-partial');
 
-  final mixedPartialRepository = await loadGalleryRepository();
+  final mixedPartialRepository = await h.loadRepository();
   mixedPartialRepository.seedWeightHistory();
   mixedPartialRepository.seedWeightHistory(
     dates: const ['2026-09-08'],
@@ -232,7 +232,7 @@ Future<void> reviewWeight(ReviewHarness h) async {
   );
   await h.capture('weight-partial-history');
 
-  final unreadableRepository = await loadGalleryRepository();
+  final unreadableRepository = await h.loadRepository();
   unreadableRepository.seedWeightHistory(
     dates: const [day],
     enteredKg: const [double.nan],

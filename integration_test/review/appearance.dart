@@ -35,7 +35,7 @@ Future<void> reviewAppearance(ReviewHarness h) async {
   }
 
   await mountAppearance(brightness: Brightness.light);
-  expect(find.text('Darstellung'), findsOneWidget);
+  expect(find.bySemanticsLabel('Darstellung'), findsOneWidget);
   expect(find.text('System'), findsOneWidget);
   await h.capture('appearance-light');
   await mountAppearance(

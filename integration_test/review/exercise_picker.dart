@@ -15,13 +15,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
   ]);
 
   Future<_ExercisePickerReviewRepo> loadRepo() async {
-    Future<Map> load(String name) async =>
-        jsonDecode(
-              await rootBundle.loadString(
-                'docs/openband5/assets/fixtures/$name.json',
-              ),
-            )
-            as Map;
+    Future<Map> load(String name) => h.fixture(name);
     final repo = _ExercisePickerReviewRepo(
       await load('day-summary'),
       await load('sleep-detail'),
@@ -111,6 +105,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
   Future<void> revealIn(Finder ancestor, Finder target) async {
     final scrollable = downScrollable(ancestor).first;
     var scrolls = 0;
+    var searchUp = true;
     while (target.evaluate().isEmpty ||
         target.hitTestable().evaluate().isEmpty) {
       if (scrolls >= 32) {
@@ -122,11 +117,8 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
         final position = tester.state<ScrollableState>(scrollable).position;
         final atMin = position.pixels <= position.minScrollExtent + 0.5;
         final atMax = position.pixels >= position.maxScrollExtent - 0.5;
-        final dy = !atMin
-            ? 64.0
-            : !atMax
-            ? -64.0
-            : 0.0;
+        if (searchUp && atMin) searchUp = false;
+        final dy = searchUp ? (atMin ? 0.0 : 64.0) : (atMax ? 0.0 : -64.0);
         if (dy == 0) {
           throw FlutterError(
             'Control is not hit-testable after production scrolling.',
@@ -314,7 +306,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     await tester.tap(add.hitTestable());
     await pumpSheet();
     expect(find.text('Bibliothek'), findsOneWidget);
-    expect(find.text('Eigene Übung'), findsOneWidget);
+    expect(find.bySemanticsLabel('Eigene Übung'), findsOneWidget);
     expect(find.text('Eigene Zeitübung'), findsOneWidget);
   }
 
@@ -357,7 +349,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
   Future<void> tapFilterChip(Key key) async {
     final chip = find.byKey(key);
     final page = find.ancestor(
-      of: find.text('Filter'),
+      of: find.bySemanticsLabel('Filter'),
       matching: find.byType(Scaffold),
     );
     await ensureFullyInSafeViewport(page, chip);
@@ -372,7 +364,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     await tester.tap(trigger.hitTestable());
     await reviewPumpPageTransitions(tester);
     await tester.pump();
-    expect(find.text('Filter'), findsOneWidget);
+    expect(find.bySemanticsLabel('Filter'), findsOneWidget);
   }
 
   Future<void> selectChestAndBarbell() async {
@@ -427,11 +419,9 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     var pumped = 0;
     while (pumped < 60) {
       await tester.pump(const Duration(milliseconds: 16));
-      if (tester.binding is LiveTestWidgetsFlutterBinding) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 16)),
+      );
       final inset = keyboardInset();
       final reached = open ? inset > 0 : inset == 0;
       if (reached && (inset - last).abs() < 0.5) {
@@ -593,7 +583,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
 
   await openFilterPage();
   await selectChestAndBarbell();
-  expect(find.text('Filter'), findsOneWidget);
+  expect(find.bySemanticsLabel('Filter'), findsOneWidget);
   await h.capture('exercise-picker-filter');
   await applyFilter();
   expectBankOnlyWithHiddenSelection();
@@ -607,7 +597,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
   await tester.tap(openOf(bench.id));
   await reviewPumpPageTransitions(tester);
   await tester.pump();
-  expect(find.text('Übung'), findsOneWidget);
+  expect(find.bySemanticsLabel('Übung'), findsOneWidget);
   expect(find.text(bench.labelDe), findsWidgets);
   expect(find.text('Gerät'), findsOneWidget);
   expect(
@@ -792,7 +782,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     await openPicker();
     await selectBenchAndPlank();
     final picker = find.byType(OpenBandExercisePicker);
-    await expectInSafeViewport(inPicker(find.text('Übungen')));
+    await expectInSafeViewport(inPicker(find.bySemanticsLabel('Übungen')));
     await expectInSafeViewport(
       find.byKey(const ValueKey('exercise-search')),
       contentOf: picker,
@@ -858,7 +848,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     final editor = find.byType(OpenBandTemplateEditor);
     final save = saveAction();
     expect(tester.widget<OBAction>(save).onPressed, isNotNull);
-    await expectInSafeViewport(find.text('Neue Vorlage'));
+    await expectInSafeViewport(find.bySemanticsLabel('Neue Vorlage'));
     await expectInSafeViewport(save);
     if (scrolled) {
       final add = find.widgetWithText(OBAction, 'Übung hinzufügen');
@@ -872,12 +862,12 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
       await tester.tap(add.hitTestable());
       await pumpSheet();
       expect(find.text('Bibliothek'), findsOneWidget);
-      expect(find.text('Eigene Übung'), findsOneWidget);
+      expect(find.bySemanticsLabel('Eigene Übung'), findsOneWidget);
       expect(find.text('Eigene Zeitübung'), findsOneWidget);
       Navigator.of(tester.element(find.text('Bibliothek'))).pop();
       await pumpSheet();
       expect(find.text('Bibliothek'), findsNothing);
-      expect(find.text('Eigene Übung'), findsNothing);
+      expect(find.bySemanticsLabel('Eigene Übung'), findsNothing);
       expect(find.text('Eigene Zeitübung'), findsNothing);
       await ensureFullyInSafeViewport(editor, add);
       await expectInSafeViewport(save);
@@ -914,7 +904,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
     brightness: Brightness.dark,
     name: 'Kurztraining',
   );
-  expect(find.text('Neue Vorlage'), findsOneWidget);
+  expect(find.bySemanticsLabel('Neue Vorlage'), findsOneWidget);
   expect(tester.widget<OBAction>(saveAction()).onPressed, isNotNull);
   await h.capture('exercise-picker-draft-dark');
 
@@ -985,7 +975,7 @@ Future<void> reviewExercisePicker(ReviewHarness h) async {
       template: original,
       brightness: brightness,
     );
-    expect(find.text('Vorlage bearbeiten'), findsOneWidget);
+    expect(find.bySemanticsLabel('Vorlage bearbeiten'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Altbestand'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Halten'), findsOneWidget);
     final sek = hintedField('Sek.');

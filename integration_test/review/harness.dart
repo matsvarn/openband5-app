@@ -29,8 +29,11 @@ import 'package:openstrap_edge/openband/exercise_definition_editor.dart';
 import 'package:openstrap_edge/openband/exercise_picker.dart';
 import 'package:openstrap_edge/openband/g3/chrome.dart' as g3chrome;
 import 'package:openstrap_edge/openband/g3/journal_parts.dart';
+import 'package:openstrap_edge/openband/g3/day.dart' as g3day;
+import 'package:openstrap_edge/openband/g3/sleep_parts.dart' as g3sleep;
 import 'package:openstrap_edge/openband/g3/screens/band.dart';
 import 'package:openstrap_edge/openband/g3/screens/sleep.dart';
+import 'package:openstrap_edge/openband/g3/screens/sleep_night.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_live.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_manual.dart';
 import 'package:openstrap_edge/openband/g3/screens/training_screen.dart';
@@ -52,6 +55,8 @@ import 'package:openstrap_edge/openband/theme.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/ui2/app_shell.dart';
+import 'package:openstrap_edge/ui2/grammar.dart' show Pressable;
+import 'package:openstrap_edge/openband/g3/metrics.dart' as g3metrics;
 import 'package:openstrap_edge/ui2/onboarding/welcome.dart';
 import 'package:openstrap_edge/ui2/onboarding/pairing.dart';
 import 'package:openstrap_edge/ui2/onboarding/first_sync.dart';
@@ -152,35 +157,36 @@ class ReviewHarness {
         widget is Scrollable && widget.axisDirection == AxisDirection.down,
   );
 
-  Future<void> press(String text) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pumpAndSettle();
-    final target = find.text(text);
+  Future<void> press(String text) => tap(find.text(text));
+
+  Future<void> reveal(Finder target) async {
     if (target.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        target,
-        200,
-        scrollable: verticalScrollable().last,
-      );
-    } else {
-      await tester.ensureVisible(target);
+      final scrollable = verticalScrollable().last;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(position.minScrollExtent);
+      await tester.pumpAndSettle();
+      for (var step = 0; step < 50 && target.evaluate().isEmpty; step++) {
+        await tester.drag(scrollable, const Offset(0, -200));
+        await tester.pump(const Duration(milliseconds: 50));
+        // Lazy FutureBuilders can subscribe to cached Zone.root futures.
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+      }
     }
-    await tester.pumpAndSettle();
-    await tester.tap(target);
+    await Scrollable.ensureVisible(tester.element(target), alignment: 0.5);
     await tester.pumpAndSettle();
   }
 
-  Future<void> pressSleepEditor() async {
-    final target = find.byTooltip('Schlafzeiten ändern');
-    await tester.scrollUntilVisible(
-      target,
-      200,
-      scrollable: verticalScrollable().last,
-    );
+  Future<void> tap(Finder target) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
-    await tester.tap(target);
+    await reveal(target);
+    await tester.tap(target.hitTestable());
     await tester.pumpAndSettle();
   }
+
+  Future<void> pressSleepEditor() =>
+      tap(find.widgetWithText(g3chrome.OBLink, 'Zeiten ändern'));
 
   Future<SyntheticOpenBandRepository> mount({
     SyntheticScenario scenario = SyntheticScenario.complete,
@@ -190,29 +196,8 @@ class ReviewHarness {
     bool failRead = false,
     bool showControls = false,
   }) async {
-    final g3 =
-        scenario == SyntheticScenario.g3Sample ||
-        scenario == SyntheticScenario.g3Building;
-    final SyntheticOpenBandRepository repository;
-    if (g3) {
-      Future<Map> fixture(String name) async =>
-          jsonDecode(
-                await rootBundle.loadString(
-                  'docs/openband5/assets/fixtures/$name.json',
-                ),
-              )
-              as Map;
-      repository = SyntheticOpenBandRepository.fromMaps(
-        await fixture('day-summary'),
-        await fixture('sleep-detail'),
-        scenario: scenario,
-        activity: await fixture('additional-flows'),
-        run: await fixture('run-detail'),
-      );
-    } else {
-      repository = await loadGalleryRepository();
-      repository.scenario = scenario;
-    }
+    final repository = await loadRepository();
+    repository.scenario = scenario;
     repository.failDayRead = failRead;
     await tester.pumpWidget(
       OpenBandGallery(
@@ -226,6 +211,36 @@ class ReviewHarness {
     );
     await tester.pumpAndSettle();
     return repository;
+  }
+
+  Future<Map> fixture(String name) async => (await tester.runAsync(
+    () async =>
+        jsonDecode(
+              await rootBundle.loadString(
+                'docs/openband5/assets/fixtures/$name.json',
+              ),
+            )
+            as Map,
+  ))!;
+
+  Future<SyntheticOpenBandRepository> loadRepository() async =>
+      (await tester.runAsync(loadGalleryRepository))!;
+
+  Future<void> openSleep() async {
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.button == true &&
+            (widget.child is Pressable ||
+                widget.properties.label?.contains(', Tab,') == true) &&
+            RegExp(
+              r'^Schlaf(?:, Tab, 2 von 4)?$',
+            ).hasMatch(widget.properties.label ?? ''),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('g3-sleep')), findsOneWidget);
   }
 
   Future<void> pop() async {
@@ -316,45 +331,11 @@ class ReviewHarness {
     await tester.pumpAndSettle();
   }
 
-  Future<void> openHubEditor() async {
-    final edit = find.byKey(const ValueKey('journal-edit'));
-    await tester.ensureVisible(edit);
-    await tester.pumpAndSettle();
-    await tester.tap(edit);
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> openHubNutrition() async {
-    final journal = find.byKey(const PageStorageKey('openband.journal'));
-    final nutrition = find.descendant(
-      of: journal,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is Semantics &&
-            widget.properties.button == true &&
-            widget.properties.label == 'Ernährung',
-      ),
-    );
-    final journalScroll = find.descendant(
-      of: journal,
-      matching: find.byType(Scrollable),
-    );
-    if (nutrition.evaluate().isEmpty) {
-      await tester.scrollUntilVisible(
-        nutrition,
-        200,
-        scrollable: journalScroll,
-      );
-    }
-    await Scrollable.ensureVisible(tester.element(nutrition), alignment: 0.5);
-    await tester.pumpAndSettle();
-    await tester.tap(nutrition);
-    await tester.pumpAndSettle();
-  }
+  Future<void> openHubEditor() =>
+      tap(find.byKey(const ValueKey('journal-edit')));
 
   Future<void> edit({String variant = '', bool captureEntry = false}) async {
-    await tester.tap(find.bySemanticsLabel('Schlaf, 7h18 '));
-    await tester.pumpAndSettle();
+    await openSleep();
     await pressSleepEditor();
     await tester.pumpAndSettle();
     if (captureEntry) await capture('correction-entry$variant');

@@ -15,4 +15,17 @@ Future<void> reviewAll(ReviewHarness h) async {
   await reviewAppearance(h);
   await reviewUnits(h);
   await reviewWeight(h);
+  await reviewCorrection(h);
+  await reviewRelease(h);
+  await reviewSleepPlan(h);
+  await reviewExercisePicker(h);
+  await reviewCustomExercise(h);
+  await reviewExerciseCopy(h);
+  await reviewCustomLoad(h);
+  await reviewNightScalar(h);
+  await reviewNightCards(h);
+  await reviewSleepLegend(h);
+  await reviewRespiration(h);
+  await reviewTemperature(h);
+  await reviewVo2(h);
 }

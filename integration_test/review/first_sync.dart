@@ -38,7 +38,7 @@ Future<void> reviewFirstSync(ReviewHarness h) async {
   expect(find.text('Auswertung heute'), findsOneWidget);
   expect(find.text('bis 06:54'), findsOneWidget);
   await h.capture('first-sync-light');
-  await tester.tap(find.byTooltip('Information'));
+  await tester.tap(find.bySemanticsLabel('Information'));
   await tester.pumpAndSettle();
   await h.capture('first-sync-info');
   await tester.tap(find.text('Schließen'));
@@ -59,13 +59,21 @@ Future<void> reviewFirstSync(ReviewHarness h) async {
   await mountFirstSync(evalError: true);
   expect(find.text('Auswertung nicht geladen'), findsOneWidget);
   await h.capture('first-sync-read-error');
-  await tester.tap(find.text('Erneut'));
+  await tester.tap(find.text('Erneut versuchen'));
   await tester.pumpAndSettle();
   expect(find.text('Auswertung nicht geladen'), findsOneWidget);
   await h.capture('first-sync-read-error-retry');
   await mountFirstSync(scale: 2);
-  expect(find.text('Auswertung heute'), findsOneWidget);
   await h.capture('first-sync-2x');
+  // At 2× text the status card starts below the fold of a lazy list.
+  final evaluation = find.text('Auswertung heute');
+  await tester.scrollUntilVisible(
+    evaluation,
+    200,
+    scrollable: h.verticalScrollable().last,
+  );
+  expect(evaluation, findsOneWidget);
+  await h.capture('first-sync-2x-status');
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpAndSettle();
 }

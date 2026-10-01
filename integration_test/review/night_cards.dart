@@ -118,284 +118,212 @@ Future<void> reviewNightCards(ReviewHarness h) async {
     Brightness brightness = Brightness.light,
     double? scale,
     void Function(SyntheticOpenBandRepository)? seed,
+    bool health = false,
   }) async {
-    final repository = await loadGalleryRepository();
+    final repository = await h.loadRepository();
     repository.scenario = scenario;
     seed?.call(repository);
-    await tester.pumpWidget(
-      OpenBandGallery(
-        key: UniqueKey(),
+    if (health) {
+      final controller = OpenBandController(
         repository: repository,
-        showControls: false,
-        initialBrightness: brightness,
-        initialTextScale: scale,
-      ),
-    );
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> tapCard(int index) async {
-    final cards = find.byType(G2MetricCard);
-    await tester.ensureVisible(cards.at(index));
-    await tester.pumpAndSettle();
-    await tester.tap(cards.at(index));
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> openStrainDetail() async {
-    await tester.tap(find.bySemanticsLabel(RegExp(r'^Belastung, ')));
-    await tester.pumpAndSettle();
-    expect(find.text('Belastung'), findsWidgets);
-    expect(find.text('Tag für Tag'), findsOneWidget);
-    expect(find.textContaining('von 30 Tagen'), findsOneWidget);
-    expect(find.text('Verlauf in der Nacht'), findsNothing);
-    expect(find.text('So entsteht die Basis'), findsNothing);
-  }
-
-  Future<void> backFromStrain() async {
-    await reviewTapHeaderBack(tester);
-    expect(find.text('Tag für Tag'), findsNothing);
-  }
-
-  Future<void> expectDetailLoaded() async {
-    await tester.pump();
-    var waited = 0;
-    while (find
-            .byKey(const ValueKey('night-scalar-detail'))
-            .evaluate()
-            .isEmpty ||
-        (find.textContaining('von ').evaluate().isEmpty &&
-            find.text('Erneut').evaluate().isEmpty &&
-            find.text('Noch kein Nachtwert').evaluate().isEmpty &&
-            find.text(kNightScalarFailedLabel).evaluate().isEmpty)) {
-      if (++waited > 80) {
-        throw FlutterError('Night scalar detail did not finish loading.');
-      }
-      await tester.pump(const Duration(milliseconds: 16));
+        initialDay: kNightScalarPaperDay,
+        band: repository.band,
+        now: () => DateTime(2026, 9, 18, 9, 41),
+      );
+      await controller.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          key: UniqueKey(),
+          theme: openBandTheme(brightness),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale ?? 1)),
+            child: child!,
+          ),
+          home: OpenBandHealth(controller: controller, bandMetricsOnly: true),
+        ),
+      );
+    } else {
+      await tester.pumpWidget(
+        OpenBandGallery(
+          key: UniqueKey(),
+          repository: repository,
+          showControls: false,
+          releaseReduced: true,
+          initialBrightness: brightness,
+          initialTextScale: scale,
+        ),
+      );
     }
-    await reviewPumpPageTransitions(tester);
+    await tester.pumpAndSettle();
   }
 
-  Future<void> backFromDetail() async {
+  Finder bodyRow(String name) => find.byWidgetPredicate(
+    (widget) => widget is g3metrics.OBBodyRow && widget.name == name,
+  );
+  Future<void> reveal(Finder target) async {
+    await tester.scrollUntilVisible(
+      target,
+      180,
+      scrollable: h.verticalScrollable().last,
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> expectToday(String hrv, String rhr) async {
+    await reveal(bodyRow('HRV'));
+    for (final (name, value, unit) in [
+      ('HRV', hrv, 'ms'),
+      ('Ruhepuls', rhr, '/min'),
+    ]) {
+      final row = bodyRow(name);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(
+            value == '—' ? value : '$value $unit',
+            findRichText: true,
+          ),
+        ),
+        findsOneWidget,
+      );
+    }
+  }
+
+  Future<void> expectHealth(String hrv, String rhr) => expectToday(hrv, rhr);
+
+  Future<void> openHealthDetail(
+    String name,
+    G3Metric metric, {
+    String? capture,
+  }) async {
+    await reveal(bodyRow(name));
+    await tester.tap(bodyRow(name));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<G3MetricDetail>(find.byType(G3MetricDetail)).metric,
+      metric,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(g3chrome.OBPageHeader),
+        matching: find.text(name.toUpperCase()),
+      ),
+      findsOneWidget,
+    );
+    if (capture != null) await h.capture(capture);
     await reviewTapHeaderBack(tester);
-    expect(find.byKey(const ValueKey('night-scalar-detail')), findsNothing);
-  }
-
-  Future<void> backFromSleep() async {
-    expect(find.byType(OpenBandSleep), findsOneWidget);
-    await reviewTapHeaderBack(tester);
-    expect(find.byType(OpenBandSleep), findsNothing);
-  }
-
-  void expectCardValues({
-    required String hrv,
-    required String rhr,
-    required String hrvStatus,
-    required String rhrStatus,
-    required bool units,
-  }) {
-    final cards = find.byWidgetPredicate(
-      (widget) =>
-          widget is G2MetricCard &&
-          (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
-    );
-    expect(cards, findsNWidgets(2));
-    expect(
-      find.descendant(of: cards.at(0), matching: find.text(hrv)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: cards.at(1), matching: find.text(rhr)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: cards.at(0), matching: find.text(hrvStatus)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: cards.at(1), matching: find.text(rhrStatus)),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: cards.at(0), matching: find.text('ms')),
-      units ? findsOneWidget : findsNothing,
-    );
-    expect(
-      find.descendant(of: cards.at(1), matching: find.text('/min')),
-      units ? findsOneWidget : findsNothing,
-    );
   }
 
   await openGallery(seed: seedPair);
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: '+8 über Basis',
-    rhrStatus: '−2 unter Basis',
-    units: true,
-  );
+  await expectToday('48', '54');
   await h.capture('night-cards-overview-light');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsOneWidget);
-  await h.capture('night-cards-overview-hrv-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text('54'), findsOneWidget);
-  expect(find.text('−2 unter Basis'), findsOneWidget);
-  await h.capture('night-cards-overview-rhr-detail');
-  await backFromDetail();
-  await openStrainDetail();
+  for (final (name, metric, capture) in [
+    ('HRV', G3Metric.hrv, 'night-cards-heute-hrv-verlauf'),
+    ('Ruhepuls', G3Metric.rhr, 'night-cards-heute-rhr-verlauf'),
+  ]) {
+    await reveal(bodyRow(name));
+    await tester.tap(bodyRow(name));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<G3MetricDetail>(find.byType(G3MetricDetail)).metric,
+      metric,
+    );
+    await h.capture(capture);
+    await reviewTapHeaderBack(tester);
+  }
+  final strain = find.byWidgetPredicate(
+    (widget) =>
+        widget is g3metrics.OBSecondaryMetric && widget.label == 'BELASTUNG',
+  );
+  await tester.scrollUntilVisible(
+    strain,
+    -200,
+    scrollable: h.verticalScrollable().last,
+  );
+  await h.tap(strain);
+  expect(find.byType(G3LoadScreen), findsOneWidget);
   await h.capture('night-cards-overview-strain-detail');
-  await backFromStrain();
-
-  await tester.tap(find.text('Gesundheit'));
-  await tester.pumpAndSettle();
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: '+8 über Basis',
-    rhrStatus: '−2 unter Basis',
-    units: true,
-  );
-  await h.capture('night-cards-health-light');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsOneWidget);
-  await h.capture('night-cards-health-hrv-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text('54'), findsOneWidget);
-  expect(find.text('−2 unter Basis'), findsOneWidget);
-  await backFromDetail();
-
-  await tester.tap(find.text('Übersicht'));
-  await tester.pumpAndSettle();
-  final sleepRing = find.bySemanticsLabel(RegExp(r'^Schlaf, '));
-  await tester.scrollUntilVisible(
-    sleepRing,
-    -300,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(sleepRing);
-  await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(
-    find.byWidgetPredicate(
-      (widget) => widget is G2MetricCard && widget.label == 'HRV',
-    ),
-    200,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: '+8 über Basis',
-    rhrStatus: '−2 unter Basis',
-    units: true,
-  );
+  await reviewTapHeaderBack(tester);
+  await h.openSleep();
+  await h.press('IN DER NACHT');
+  expect(find.text('HRV · ms'), findsOneWidget);
+  expect(find.text('RUHEPULS'), findsOneWidget);
+  expect(find.text('48', findRichText: true), findsOneWidget);
+  expect(find.text('54 /min', findRichText: true), findsOneWidget);
   await h.capture('night-cards-sleep-light');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsOneWidget);
-  await h.capture('night-cards-sleep-hrv-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text('54'), findsOneWidget);
-  expect(find.text('−2 unter Basis'), findsOneWidget);
-  await h.capture('night-cards-sleep-rhr-detail');
-  await backFromDetail();
-  await backFromSleep();
 
-  await openGallery(brightness: Brightness.dark, seed: seedPair);
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: '+8 über Basis',
-    rhrStatus: '−2 unter Basis',
-    units: true,
-  );
+  for (final brightness in Brightness.values) {
+    await openGallery(seed: seedPair, health: true, brightness: brightness);
+    await expectHealth('48', '54');
+    await h.capture('night-cards-messwerte-${brightness.name}');
+    await openHealthDetail(
+      'HRV',
+      G3Metric.hrv,
+      capture: brightness == Brightness.light
+          ? 'night-cards-messwerte-hrv-verlauf'
+          : null,
+    );
+    await openHealthDetail('Ruhepuls', G3Metric.rhr);
+  }
+  await openGallery(seed: seedPair, brightness: Brightness.dark);
+  await expectToday('48', '54');
   await h.capture('night-cards-overview-dark');
-  await openStrainDetail();
+  await tester.scrollUntilVisible(
+    strain,
+    -200,
+    scrollable: h.verticalScrollable().last,
+  );
+  await h.tap(strain);
+  expect(find.byType(G3LoadScreen), findsOneWidget);
   await h.capture('night-cards-overview-strain-detail-dark');
-  await backFromStrain();
-  await tester.tap(find.text('Gesundheit'));
-  await tester.pumpAndSettle();
-  await h.capture('night-cards-health-dark');
+  await reviewTapHeaderBack(tester);
 
-  await openGallery(
-    scenario: SyntheticScenario.missing,
-    seed: (repo) => seedPair(repo, missing: true),
-  );
-  expectCardValues(
-    hrv: '—',
-    rhr: '—',
-    hrvStatus: 'Kein Nachtwert',
-    rhrStatus: 'Kein Nachtwert',
-    units: false,
-  );
-  expect(find.text('48'), findsNothing);
-  expect(find.text('54'), findsNothing);
-  await h.capture('night-cards-overview-missing');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-  expect(find.text('48'), findsNothing);
-  expect(find.text(kNightScalarFailedLabel), findsNothing);
-  await h.capture('night-cards-overview-missing-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text('Noch kein Nachtwert'), findsOneWidget);
-  expect(find.text('54'), findsNothing);
-  expect(find.text(kNightScalarFailedLabel), findsNothing);
-  await backFromDetail();
-
-  await openGallery(
-    scenario: SyntheticScenario.partial,
-    seed: (repo) => seedPair(
-      repo,
-      hrv: selectedHrv(partial: true),
-      rhr: selectedRhr(partial: true),
+  for (final (scenario, seed, hrv, rhr, suffix) in [
+    (
+      SyntheticScenario.missing,
+      (SyntheticOpenBandRepository repo) => seedPair(repo, missing: true),
+      '—',
+      '—',
+      'missing',
     ),
-  );
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: 'Unvollständig',
-    rhrStatus: 'Unvollständig',
-    units: true,
-  );
-  expect(find.textContaining('Basis'), findsNothing);
-  await h.capture('night-cards-overview-partial');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text('48'), findsOneWidget);
-  expect(find.text('Unvollständige Nacht'), findsOneWidget);
-  expect(find.text('+8 über Basis'), findsNothing);
-  await h.capture('night-cards-overview-partial-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text('54'), findsOneWidget);
-  expect(find.text('Unvollständige Nacht'), findsOneWidget);
-  expect(find.text('−2 unter Basis'), findsNothing);
-  await backFromDetail();
-  await tester.tap(find.text('Gesundheit'));
-  await tester.pumpAndSettle();
-  expect(find.text('7 von 7 Nächten · teilweise'), findsWidgets);
-  expect(find.textContaining('Basis'), findsNothing);
-  await h.capture('night-cards-health-partial');
-
+    (
+      SyntheticScenario.partial,
+      (SyntheticOpenBandRepository repo) => seedPair(
+        repo,
+        hrv: selectedHrv(partial: true),
+        rhr: selectedRhr(partial: true),
+      ),
+      '48',
+      '54',
+      'partial',
+    ),
+    (
+      SyntheticScenario.complete,
+      (SyntheticOpenBandRepository repo) =>
+          seedPair(repo, sleepJobs: failedJobs(), napJobs: failedJobs()),
+      '—',
+      '—',
+      'error',
+    ),
+  ]) {
+    await openGallery(scenario: scenario, seed: seed);
+    await expectToday(hrv, rhr);
+    await h.capture('night-cards-overview-$suffix');
+    await openGallery(scenario: scenario, seed: seed, health: true);
+    await expectHealth('—', '—');
+    await h.capture('night-cards-messwerte-$suffix');
+    await openHealthDetail(
+      'HRV',
+      G3Metric.hrv,
+      capture: 'night-cards-messwerte-$suffix-verlauf',
+    );
+    await openHealthDetail('Ruhepuls', G3Metric.rhr);
+  }
   await openGallery(
     scenario: SyntheticScenario.partial,
+    health: true,
     brightness: Brightness.dark,
     seed: (repo) => seedPair(
       repo,
@@ -403,98 +331,19 @@ Future<void> reviewNightCards(ReviewHarness h) async {
       rhr: selectedRhr(partial: true),
     ),
   );
-  await tester.tap(find.text('Gesundheit'));
-  await tester.pumpAndSettle();
-  expect(find.text('7 von 7 Nächten · teilweise'), findsWidgets);
-  await h.capture('night-cards-health-partial-dark');
-
-  await openGallery(
-    seed: (repo) =>
-        seedPair(repo, sleepJobs: failedJobs(), napJobs: failedJobs()),
-  );
-  expectCardValues(
-    hrv: '—',
-    rhr: '—',
-    hrvStatus: kNightScalarFailedLabel,
-    rhrStatus: kNightScalarFailedLabel,
-    units: false,
-  );
-  expect(find.text('48'), findsNothing);
-  expect(find.text('Kein Nachtwert'), findsNothing);
-  await h.capture('night-cards-overview-error');
-  await tapCard(0);
-  await expectDetailLoaded();
-  expect(find.text(kNightScalarFailedLabel), findsWidgets);
-  expect(find.text('48'), findsNothing);
-  expect(find.text('Noch kein Nachtwert'), findsNothing);
-  await h.capture('night-cards-overview-error-detail');
-  await backFromDetail();
-  await tapCard(1);
-  await expectDetailLoaded();
-  expect(find.text(kNightScalarFailedLabel), findsWidgets);
-  expect(find.text('54'), findsNothing);
-  expect(find.text('Noch kein Nachtwert'), findsNothing);
-  await backFromDetail();
+  await expectHealth('—', '—');
+  await h.capture('night-cards-messwerte-partial-dark');
 
   await openGallery(scale: 2, seed: seedPair);
-  await tester.scrollUntilVisible(
-    find.byWidgetPredicate(
-      (widget) => widget is G2MetricCard && widget.label == 'HRV',
-    ),
-    200,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  expect(find.byType(G2MetricCard), findsNWidgets(2));
+  await expectToday('48', '54');
   await h.capture('night-cards-overview-2x');
-  await tester.tap(find.text('Gesundheit'));
-  await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(
-    find.byWidgetPredicate(
-      (widget) => widget is G2MetricCard && widget.label == 'HRV',
-    ),
-    200,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  expect(
-    find.byWidgetPredicate(
-      (widget) =>
-          widget is G2MetricCard &&
-          (widget.label == 'HRV' || widget.label == 'Ruhepuls'),
-    ),
-    findsNWidgets(2),
-  );
-  await h.capture('night-cards-health-2x');
-  await tester.tap(find.text('Übersicht'));
-  await tester.pumpAndSettle();
-  final largeSleepRing = find.bySemanticsLabel(RegExp(r'^Schlaf, '));
-  await tester.scrollUntilVisible(
-    largeSleepRing,
-    -300,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(largeSleepRing);
-  await tester.pumpAndSettle();
-  await tester.scrollUntilVisible(
-    find.byWidgetPredicate(
-      (widget) => widget is G2MetricCard && widget.label == 'HRV',
-    ),
-    200,
-    scrollable: h.verticalScrollable().last,
-  );
-  await tester.pumpAndSettle();
-  await tester.ensureVisible(find.byType(G2MetricCard).at(1));
-  await tester.pumpAndSettle();
-  expect(find.byType(G2MetricCard), findsNWidgets(2));
-  expectCardValues(
-    hrv: '48',
-    rhr: '54',
-    hrvStatus: '+8 über Basis',
-    rhrStatus: '−2 unter Basis',
-    units: true,
-  );
+  await h.openSleep();
+  await h.press('IN DER NACHT');
+  expect(find.text('48', findRichText: true), findsOneWidget);
+  expect(find.text('54 /min', findRichText: true), findsOneWidget);
   await h.capture('night-cards-sleep-2x');
+  await openGallery(scale: 2, seed: seedPair, health: true);
+  await expectHealth('48', '54');
+  await h.capture('night-cards-messwerte-2x');
   expect(tester.takeException(), isNull);
 }
