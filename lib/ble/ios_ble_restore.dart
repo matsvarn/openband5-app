@@ -4,7 +4,8 @@
 // pending connect to the paired band so iOS relaunches the app when the band reappears —
 // even from terminated. When that fires, native invokes `wake` here and we run the same
 // headless drain the periodic task uses, then tell native we're done so it goes idle.
-// An unacknowledged wake is released by native's watchdog and re-arms recovery.
+// Only a completed takeover may leave restoration idle; every other handoff end
+// cancels and re-arms a pending connect.
 //
 // No-op on Android (the Edge Tracking foreground service keeps the process + live
 // connection alive there — no restore central needed).
@@ -62,15 +63,21 @@ class IosBleRestore {
       if (call.method != 'wake') return null;
       if (foregroundActive || BandOwnership.foregroundIntent) {
         await _ackWake();
-        await _waitForForegroundLink();
-        await _done();
+        if (await _waitForForegroundLink()) {
+          await _done();
+        } else {
+          await logSink('[ble-restore] handoffExpired — re-arming recovery');
+          try {
+            await _ch.invokeMethod('handoffExpired');
+          } catch (_) {}
+        }
         return null;
       }
       // Shared gate with the BGProcessingTask/BGAppRefreshTask entry points
       // (HeadlessSyncGate): if another headless sync is mid-flight, skip this
-      // wake without wakeAck or syncDone. Native's 60-second watchdog releases
-      // this unaccepted handoff, including a connected restore peripheral, and
-      // re-arms recovery.
+      // wake without wakeAck or syncDone. Native's background-task expiration
+      // handler or 60-second watchdog releases this unaccepted handoff, including
+      // a connected restore peripheral, and re-arms recovery.
       await HeadlessSyncGate.tryRun<void>('ble_restore_wake', () async {
         await _ackWake();
         try {
@@ -173,19 +180,21 @@ class IosBleRestore {
     } catch (_) {}
   }
 
-  static Future<void> _waitForForegroundLink() async {
+  static Future<bool> _waitForForegroundLink() async {
     bool held() => debugBandLinkHeld?.call() ?? BleEngine.anyBandLinkHeld;
-    if (held()) return;
+    if (held()) return true;
     var polls = 0;
     while (!held() && polls < handoffMaxPolls) {
       await Future<void>.delayed(handoffPoll);
       polls++;
     }
+    final takenOver = held();
     await logSink(
-      held()
+      takenOver
           ? '[ble-restore] foreground link taken over after $polls polls'
           : '[ble-restore] foreground link not taken over after $polls polls',
     );
+    return takenOver;
   }
 
   static Future<void> _ackWake() async {

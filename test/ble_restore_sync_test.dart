@@ -82,23 +82,28 @@ void main() {
       },
     );
   }
-  testWidgets('wake releases native at bound when never taken over', (
-    tester,
-  ) async {
-    IosBleRestore.foregroundActive = true;
-    IosBleRestore.handoffMaxPolls = 4;
-    final wake = nativeCall('wake');
-    await tester.pump();
-    expect(calls, ['wakeAck']);
-    for (var i = 0; i < 3; i++) {
-      await tester.pump(const Duration(milliseconds: 500));
-    }
-    expect(calls, ['wakeAck']);
-    await tester.pump(const Duration(milliseconds: 500));
-    await wake;
-    expect(calls, ['wakeAck', 'syncDone']);
-    expect(logs, contains(contains('not taken over after 4 polls')));
-  });
+  for (final intentOnly in [false, true]) {
+    testWidgets(
+      'wake expires at bound with foreground ${intentOnly ? "intent" : "active"}',
+      (tester) async {
+        IosBleRestore.foregroundActive = !intentOnly;
+        BandOwnership.markForegroundIntent(intentOnly);
+        IosBleRestore.handoffMaxPolls = 4;
+        final wake = nativeCall('wake');
+        await tester.pump();
+        expect(calls, ['wakeAck']);
+        for (var i = 0; i < 3; i++) {
+          await tester.pump(const Duration(milliseconds: 500));
+        }
+        expect(calls, ['wakeAck']);
+        await tester.pump(const Duration(milliseconds: 500));
+        await wake;
+        expect(calls, ['wakeAck', 'handoffExpired']);
+        expect(logs, contains(contains('not taken over after 4 polls')));
+        expect(logs, contains(contains('handoffExpired')));
+      },
+    );
+  }
   test('suspension does not spend the awake poll budget', () {
     fakeAsync((async) {
       IosBleRestore.foregroundActive = true;
@@ -113,7 +118,7 @@ void main() {
         async.elapse(Duration.zero);
         expect(
           calls,
-          isNot(contains('syncDone')),
+          ['wakeAck'],
           reason: 'only ${i + 1} awake polls ran',
         );
         expect(completed, isFalse);
@@ -121,7 +126,7 @@ void main() {
       async.elapseBlocking(const Duration(hours: 3));
       async.elapse(Duration.zero);
       expect(completed, isTrue);
-      expect(calls, ['wakeAck', 'syncDone']);
+      expect(calls, ['wakeAck', 'handoffExpired']);
       expect(logs, contains(contains('not taken over after 4 polls')));
     });
   });
