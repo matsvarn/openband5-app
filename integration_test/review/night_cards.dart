@@ -211,6 +211,7 @@ Future<void> reviewNightCards(ReviewHarness h) async {
     String name,
     G3Metric metric, {
     String? capture,
+    String? leadCaption,
   }) async {
     await reveal(bodyRow(name));
     await tester.tap(bodyRow(name));
@@ -226,6 +227,16 @@ Future<void> reviewNightCards(ReviewHarness h) async {
       ),
       findsOneWidget,
     );
+    if (leadCaption != null) {
+      // Inside the open detail, not the list behind it.
+      expect(
+        find.descendant(
+          of: find.byType(G3MetricDetail),
+          matching: find.text(leadCaption, findRichText: true),
+        ),
+        findsOneWidget,
+      );
+    }
     if (capture != null) await h.capture(capture);
     await reviewTapHeaderBack(tester);
   }
@@ -333,16 +344,15 @@ Future<void> reviewNightCards(ReviewHarness h) async {
     await openGallery(scenario: scenario, seed: seed, health: true);
     await expectHealth(hrv, rhr, note: note);
     await h.capture('night-cards-messwerte-$suffix');
+    // A partial night's detail leads with the same value, captioned.
+    final caption = suffix == 'partial' ? note : null;
     await openHealthDetail(
       'HRV',
       G3Metric.hrv,
       capture: 'night-cards-messwerte-$suffix-verlauf',
+      leadCaption: caption,
     );
-    if (suffix == 'partial') {
-      // The detail leads with the same partial value, captioned, not hidden.
-      expect(find.text('Unvollständige Nacht'), findsWidgets);
-    }
-    await openHealthDetail('Ruhepuls', G3Metric.rhr);
+    await openHealthDetail('Ruhepuls', G3Metric.rhr, leadCaption: caption);
   }
   await openGallery(
     scenario: SyntheticScenario.partial,
