@@ -94,9 +94,12 @@ FROM w;                                                     -- missing = 0
 SELECT COUNT(*) - COUNT(DISTINCT rec_ts) FROM decoded_onehz
  WHERE rec_ts BETWEEN :T0 AND :T1;                         -- 0
 
--- Z3 Commit-before-ACK: no batch acknowledged before it was committed.
-SELECT COUNT(*) FROM sync_ledger
- WHERE created_at >= :T0 * 1000 AND acked_at < created_at; -- 0
+-- Z3 Ledger state of the trial's batches (informational). The ledger has no
+--    commit timestamp, so it cannot show commit-before-ACK; that order is pinned
+--    by test/ble_safe_trim_test.dart, and a violation would show up as loss in Z1.
+--    Expect only 'acked'; anything else names a batch that is still stuck.
+SELECT status, COUNT(*) FROM sync_ledger
+ WHERE created_at >= :T0 * 1000 GROUP BY status;
 
 -- Z4 The band handed everything over: newest cursor at the live edge,
 --    flash never wrapped during the trial.
@@ -121,7 +124,7 @@ FROM g WHERE rec_ts - p > 60 ORDER BY p;
 Pass criteria, all of them:
 
 - integrity `ok` on both copies; `key_retention.py` RETAINED; `verify_capture.py` CLEAN; `replay_check.dart` exit 0.
-- Z1 `seconds > 0` and `missing = 0` (zero seconds means the window was not bound or not read), Z2 `0`, Z3 `0`, Z4 at least one row and as described.
+- Z1 `seconds > 0` and `missing = 0` (zero seconds means the window was not bound or not read), Z2 `0`, Z3 only `acked`, Z4 at least one row and as described.
 - Z6: every gap is explained by a WRIST_OFF or is absent. An interruption normally leaves **no** gap, because the band stores to flash and the backlog fills the time on reconnect. A gap that a later drain did not fill is loss, and Z1 must show it.
 - Every required log line above is present.
 - Strain, recovery and sleep for the trial days show real values or honest absence, never a value bridging a gap.
