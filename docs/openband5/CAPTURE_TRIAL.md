@@ -41,13 +41,13 @@ xcrun devicectl device info processes --device "$DEVICE" | grep -i openband   # 
 
 | Interruption | Required lines |
 | --- | --- |
-| I1 | `[LINK] down reason=…`, `[LINK] unreachable since <I1 start ±1 min>`, `[ble-restore] armed pending connect …` or `Backgrounded — no live connection; armed iOS restore recovery`, later `[LINK] reachable again after …`, then `Backlog drained`/`Reconnect backlog drained` |
+| I1 | Always: `[LINK] down reason=…` near the I1 start, later `[LINK] reachable again after …, <n> failed attempts` (n may be 0 when one pending connect simply completed), then `Backlog drained`/`Reconnect backlog drained`. If n > 0: also `[LINK] unreachable since <near the I1 start>`. If the phone locked or the app went to the background while the band was away: also `[LINK] background pending connect (up to 20 min)` or one of the arm lines (`[ble-restore] armed pending connect …`, `Backgrounded — no live connection; armed iOS restore recovery`). |
 | I2 | `[LINK] down …` at the toggle, a reconnect within about 1 min of Bluetooth on, backlog drained; no `Session start failed` loop |
 | I3 | `===== SESSION START =====` after relaunch, `[BACKLOG] … current_read=` continuing from the last committed second, backlog drained |
 | I4 | Either `[bgsync]`/`[ble-restore]` lines with a completed or skipped headless drain, or the live link held (`Backgrounded — holding live connection`). On unlock a sync resumes; no lease stays held without a session. |
 | All | No `[LINK] connect attempt took …` without a later `reachable again`; no `syncDone watchdog fired` unless followed by a successful reconnect |
 
-A missing required line is a finding, even if the data checks pass.
+A missing required line is a finding, even if the data checks pass. A conditional line is required only when its condition happened; note which conditions applied.
 
 ## If the band stops connecting
 
