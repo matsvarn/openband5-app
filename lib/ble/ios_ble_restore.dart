@@ -3,7 +3,8 @@
 // The native BleRestoreManager (ios/Runner/BleRestoreManager.swift) holds a no-timeout
 // pending connect to the paired band so iOS relaunches the app when the band reappears —
 // even from terminated. When that fires, native invokes `wake` here and we run the same
-// headless drain the periodic task uses, then tell native we're done so it re-arms.
+// headless drain the periodic task uses, then tell native we're done so it goes idle.
+// An unacknowledged wake is released by native's watchdog and re-arms recovery.
 //
 // No-op on Android (the Edge Tracking foreground service keeps the process + live
 // connection alive there — no restore central needed).
@@ -68,7 +69,8 @@ class IosBleRestore {
       // Shared gate with the BGProcessingTask/BGAppRefreshTask entry points
       // (HeadlessSyncGate): if another headless sync is mid-flight, skip this
       // wake without wakeAck or syncDone. Native's 60-second watchdog releases
-      // this unaccepted handoff, including a connected restore peripheral.
+      // this unaccepted handoff, including a connected restore peripheral, and
+      // re-arms recovery.
       await HeadlessSyncGate.tryRun<void>('ble_restore_wake', () async {
         await _ackWake();
         try {
