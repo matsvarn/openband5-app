@@ -363,7 +363,10 @@ void main() {
       // after a restart.
       final failing = _ThrowingSink();
       final a = DeviceAlerts(sink: failing, store: store);
-      a.onDeviceState(charging: true, chargingTs: tsAged(3));
+      // One timestamp for both deliveries: they are the same strap event, and
+      // two wall-clock reads can straddle a second boundary.
+      final chargeTs = tsAged(3);
+      a.onDeviceState(charging: true, chargingTs: chargeTs);
       await a.settled;
       expect(failing.attempts, 1);
       expect(store.values[DeviceAlerts.debugLastChargeWallKey], isNotNull);
@@ -371,7 +374,7 @@ void main() {
 
       // A restart therefore knows the session was already announced.
       final restarted = DeviceAlerts(sink: sink, store: store);
-      restarted.onDeviceState(charging: true, chargingTs: tsAged(3));
+      restarted.onDeviceState(charging: true, chargingTs: chargeTs);
       await restarted.settled;
       expect(sink.countOf(NotificationService.idCharging), 0);
     });
