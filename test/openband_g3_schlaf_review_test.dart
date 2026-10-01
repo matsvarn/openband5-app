@@ -596,7 +596,7 @@ void main() {
     expect(find.text('Belastung, angerechnet'), findsOneWidget);
     expect(find.text('Nickerchen, angerechnet'), findsOneWidget);
     final floor = find.ancestor(
-      of: find.text('Untergrenze 6h00 angewendet'),
+      of: find.text('Untergrenze 6h angewendet'),
       matching: find.byType(Row),
     );
     expect(
@@ -619,7 +619,7 @@ void main() {
       ),
     );
     final ceiling = find.ancestor(
-      of: find.text('Obergrenze 11h00 angewendet'),
+      of: find.text('Obergrenze 11h angewendet'),
       matching: find.byType(Row),
     );
     expect(
@@ -946,10 +946,10 @@ void main() {
 
   testWidgets('sleep debt formats positive, negative and zero', (tester) async {
     await _card(tester, const OBSleepDebtLead(minutes: -47));
-    expect(find.text('0h47'), findsOneWidget);
+    expect(find.text('47 Min.'), findsOneWidget);
     expect(find.text('mehr als in freien Nächten'), findsOneWidget);
     await _card(tester, const OBSleepDebt(minutes: 0));
-    expect(find.text('0h00'), findsOneWidget);
+    expect(find.text('0 Min.'), findsOneWidget);
     expect(find.text('gleich lang wie in freien Nächten'), findsOneWidget);
     await _card(tester, const OBSleepDebt(minutes: 47));
     expect(find.text('weniger als in freien Nächten'), findsOneWidget);
@@ -964,7 +964,7 @@ void main() {
         lastOnset: DateTime(2026, 9, 29, 0, 40),
       ),
     );
-    expect(find.textContaining('140 Min. früher'), findsOneWidget);
+    expect(find.textContaining('2h20 früher'), findsOneWidget);
   });
 
   testWidgets('clock axis labels follow the bar time mapping', (tester) async {

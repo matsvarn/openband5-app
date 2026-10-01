@@ -187,11 +187,9 @@ class _OpenBandJournalEditorState extends State<OpenBandJournalEditor> {
       return '${spec.format(metric.value)} / ${spec.max.round()}';
     }
     if (spec.kind == JournalFieldKind.duration) {
-      return '${spec.format(metric.value)} Min.';
+      return journalFieldDisplayValue(spec, metric.value);
     }
-    var text = spec.unit.isEmpty
-        ? spec.format(metric.value)
-        : '${spec.format(metric.value)} ${journalFieldUnitLabel(spec)}';
+    var text = journalFieldDisplayValue(spec, metric.value);
     if (spec.hasTime && metric.atMinuteOfDay != null) {
       text = '$text · ${journalMinuteLabel(metric.atMinuteOfDay!)}';
     }

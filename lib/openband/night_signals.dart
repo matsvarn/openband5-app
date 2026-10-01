@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'domain.dart';
 import 'health.dart' show G2Segmented;
 import 'theme.dart';
+import 'g3/g3_format.dart';
 import 'time.dart';
 
 extension on NightSignalKind {
@@ -301,7 +302,7 @@ class _OBNightSignalChartState extends State<OBNightSignalChart> {
                       );
                       return Semantics(
                         label:
-                            '${kind.label}, ${points.length} gespeicherte Zeitpunkte. Messpunkte mit den Pfeiltasten auswählen.',
+                            '${kind.label}, ${g3Count(points.length)} gespeicherte Zeitpunkte. Messpunkte mit den Pfeiltasten auswählen.',
                         child: GestureDetector(
                           onTapDown: (d) => select(
                             plot.nearest(

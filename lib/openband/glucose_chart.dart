@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
+import 'g3/g3_format.dart';
 
 /// Isolated OpenBand glucose history plot.
 ///
@@ -223,7 +224,7 @@ class OBGlucoseChart extends StatelessWidget {
     if (readings.isEmpty) return 'Verlauf, keine Messpunkte, $unit';
     final (start, end) = _span(readings);
     final n = readings.length;
-    final count = n == 1 ? '1 Messpunkt' : '$n Messpunkte';
+    final count = n == 1 ? '1 Messpunkt' : '${g3Count(n)} Messpunkte';
     final range = start == end
         ? obTime(start)
         : '${obTime(start)} bis ${obTime(end)}';

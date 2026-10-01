@@ -156,7 +156,7 @@ void main() {
       matchesSemantics(
         label: 'Schlafziel',
         value: '7h45',
-        increasedValue: '8h00',
+        increasedValue: '8h',
         decreasedValue: '7h30',
         isSlider: true,
         hasIncreaseAction: true,
@@ -216,7 +216,7 @@ void main() {
     await mountGoal(tester);
     await tester.tap(find.text('+ 15 Min.'));
     await tester.pump();
-    expect(shown(tester), '8h00');
+    expect(shown(tester), '8h');
     expect(action(tester, 'Speichern').onPressed, isNotNull);
     await tester.tap(find.text('– 15 Min.'));
     await tester.pump();
@@ -229,10 +229,10 @@ void main() {
     );
     await tester.tapAt(scale.centerRight - const Offset(1, 0));
     await tester.pump();
-    expect(shown(tester), '10h00');
+    expect(shown(tester), '10h');
     await tester.tapAt(scale.centerLeft + const Offset(1, 0));
     await tester.pump();
-    expect(shown(tester), '5h00');
+    expect(shown(tester), '5h');
     expect((await repo.readSleepGoal('2026-09-15')).targetMinutes, 465);
   });
 
@@ -428,7 +428,7 @@ void main() {
     await tester.tap(find.byTooltip('Zurück').last);
     await tester.pumpAndSettle();
     // Schlaf re-reads the goal it cached for the day.
-    expect(find.text('10h00'), findsOneWidget);
+    expect(find.text('10h'), findsOneWidget);
   });
 
   testWidgets('Heute updates its Schlaf goal after returning from Schlaf', (

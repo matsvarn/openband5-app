@@ -241,27 +241,6 @@ class G3 {
         ];
 }
 
-/// German number: 7,5 · −31 · +0,4. Presentation only; never rounds a
-/// missing value to zero — callers pass null and get "—".
-String g3Number(double? v, {int digits = 0, bool signed = false}) {
-  if (v == null || !v.isFinite) return '—';
-  final s = v.abs().toStringAsFixed(digits).replaceAll('.', ',');
-  if (v < 0 && s.replaceAll(RegExp('[0,]'), '').isNotEmpty) return '−$s';
-  return signed && v > 0 ? '+$s' : s;
-}
-
-/// Thousands with a dot: 6.480.
-String g3Count(int? v) {
-  if (v == null) return '—';
-  final s = v.abs().toString();
-  final b = StringBuffer(v < 0 ? '−' : '');
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
-    b.write(s[i]);
-  }
-  return b.toString();
-}
-
 /// Hollow, dashed rounded rectangle: an honest empty slot ("keine Daten",
 /// a night still missing from the baseline). Never filled.
 class G3Dashed extends StatelessWidget {

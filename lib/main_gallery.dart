@@ -439,7 +439,9 @@ class _OpenBandGalleryState extends State<OpenBandGallery> {
   }
 
   Future<void> _openTemplateEditor(BuildContext c, WorkoutTemplate? t) async {
-    await Navigator.of(c).push(
+    // Above the template list, which is itself pushed on the root navigator.
+    await pushFullScreen(
+      c,
       MaterialPageRoute<WorkoutTemplate>(
         builder: (_) =>
             OpenBandTemplateEditor(repository: widget.repository, template: t),

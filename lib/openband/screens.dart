@@ -949,7 +949,7 @@ String _signed(int d) => d == 0 ? '±0' : '${d > 0 ? '+' : '−'}${d.abs()}';
 ) {
   if (minutes == null || goal == null) return (text: null, verdict: null);
   final d = (minutes - goal).round();
-  final size = d.abs() < 60 ? '${d.abs()} Min.' : obDuration(d.abs());
+  final size = obDuration(d.abs());
   return (
     text: d == 0 ? '±0' : '${d > 0 ? '+' : '−'}$size',
     verdict: d >= 0 ? MetricVerdict.better : MetricVerdict.normal,
@@ -1306,7 +1306,7 @@ class OBStageLegend extends StatelessWidget {
         swatch: p.wake,
         value: night.awakeMinutes == null
             ? '—'
-            : '${obNumber(night.awakeMinutes)} Min.',
+            : obDuration(night.awakeMinutes),
       ),
     if (!onlyStored || night.bedMinutes != null)
       (label: 'Im Bett', swatch: null, value: obDuration(night.bedMinutes)),

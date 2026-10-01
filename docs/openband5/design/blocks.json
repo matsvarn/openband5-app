@@ -252,18 +252,6 @@
       "notes": "Overview and OBPageHeader use OBKey for the raised header controls."
     },
     {
-      "name": "OBRingTrio",
-      "paperNode": "3EV6-0",
-      "widget": "MetricRing",
-      "file": "charts.dart",
-      "replaces": "MetricRing ×3 inside OpenBandOverview",
-      "usedIn": [
-        "55CK-0",
-        "55IW-0"
-      ],
-      "implemented": "screens.dart + charts.dart (MetricRing)"
-    },
-    {
       "name": "OBMetricCard",
       "paperNode": "3ESH-0",
       "widget": "G2MetricCard",
@@ -358,32 +346,6 @@
       ],
       "notes": "Today = dashed outline bar.",
       "implemented": "training.dart"
-    },
-    {
-      "name": "OBNightChart",
-      "paperNode": "3EWD-0",
-      "widget": "NightChart",
-      "file": "charts.dart",
-      "usedIn": [
-        "55CK-0",
-        "55IW-0"
-      ],
-      "children": [
-        "OBHypnogram",
-        "OBStageLegend"
-      ]
-    },
-    {
-      "name": "OBHypnogram",
-      "paperNode": "3EWE-0",
-      "widget": "_NightPainter",
-      "file": "charts.dart",
-      "usedIn": [
-        "3G8S-0",
-        "55CK-0",
-        "55IW-0"
-      ],
-      "notes": "Drawn by NightChart._NightPainter; no OBHypnogram class."
     },
     {
       "name": "OBStageLegend",
@@ -508,15 +470,6 @@
       "widget": "OpenBandOverview",
       "file": "screens.dart",
       "notes": "Status pill is inline in OpenBandOverview; no OBChip class.",
-      "usedIn": []
-    },
-    {
-      "name": "OBLiveChip",
-      "paperNode": "3FUT-0",
-      "widget": "OpenBandRunLive",
-      "file": "run_live.dart",
-      "notes": "White pill, strain dot, timer in strain colour. Never alp-ink surface. GPS chip is inline in the OpenBandRunLive AppBar; no OBLiveChip class.",
-      "implemented": "run_live.dart (GPS chip)",
       "usedIn": []
     },
     {
@@ -1165,39 +1118,6 @@
       "file": "g3/chrome.dart"
     },
     {
-      "name": "OBCheckIn.answered",
-      "design": "G3",
-      "paperNode": "5LZD-0",
-      "paperNodeDark": "5M33-0",
-      "usedIn": [],
-      "widget": "G3CheckInPreview",
-      "file": "g3/day.dart",
-      "variant": "OBCheckInState.answered"
-    },
-    {
-      "name": "OBCheckIn.later",
-      "design": "G3",
-      "paperNode": "5M07-0",
-      "paperNodeDark": "5M3X-0",
-      "usedIn": [],
-      "widget": "G3CheckInPreview",
-      "file": "g3/day.dart",
-      "variant": "OBCheckInState.later"
-    },
-    {
-      "name": "OBCheckIn.question",
-      "design": "G3",
-      "paperNode": "5LYP-0",
-      "paperNodeDark": "5M2F-0",
-      "usedIn": [
-        "5OST-0",
-        "5Q4B-0"
-      ],
-      "widget": "G3CheckInPreview",
-      "file": "g3/day.dart",
-      "variant": "OBCheckInState.question"
-    },
-    {
       "name": "OBChip.basis",
       "design": "G3",
       "paperNode": "5MY7-0",
@@ -1566,26 +1486,6 @@
       "widget": "OBListRow",
       "file": "g3/chrome.dart",
       "variant": "value given"
-    },
-    {
-      "name": "OBMetricCard.default",
-      "design": "G3",
-      "paperNode": "5MP8-0",
-      "paperNodeDark": "5MRZ-0",
-      "usedIn": [],
-      "widget": "OBMetricCard",
-      "file": "g3/metrics.dart",
-      "variant": "value given"
-    },
-    {
-      "name": "OBMetricCard.missing",
-      "design": "G3",
-      "paperNode": "5MPS-0",
-      "paperNodeDark": "5MSJ-0",
-      "usedIn": [],
-      "widget": "OBMetricCard",
-      "file": "g3/metrics.dart",
-      "variant": "value: null"
     },
     {
       "name": "OBNightCard.full",
@@ -2139,18 +2039,6 @@
       "usedIn": [],
       "widget": "OBZoneRows",
       "file": "g3/charts.dart"
-    },
-    {
-      "name": "OBCheckInAsk",
-      "design": "G3",
-      "paperNode": "none:OBCheckInAsk",
-      "widget": "OBCheckInAsk",
-      "file": "g3/heute_parts.dart",
-      "usedIn": [
-        "5OST-0",
-        "5Q4B-0"
-      ],
-      "notes": "Heute check-in for the typed G3 questions: yes/no (OBYesNoKeys), 1–5 rating (OBRatingKeys), count with explicit Keins (OBCountAnswer) and note (OBNoteAnswer), with a 'zu gestern' line when the answer belongs to the previous day. Paper's OBCheckIn has no slot for the answer's day, so this has no Paper node; requested as a Baustein variant on Bausteine · G3. Count and note controls swap to the Journal's parts at integration."
     },
     {
       "name": "OBCheckIn",

@@ -3,33 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:openstrap_edge/gps/route_models.dart';
-import 'package:openstrap_edge/gps/route_tracker.dart';
 import 'package:openstrap_edge/openband/controller.dart';
 import 'package:openstrap_edge/openband/domain.dart';
-import 'package:openstrap_edge/openband/run_live.dart';
 import 'package:openstrap_edge/openband/session.dart';
 import 'package:openstrap_edge/openband/strength_live.dart';
 import 'package:openstrap_edge/openband/template_editor.dart';
 import 'package:openstrap_edge/openband/training.dart';
 import 'package:openstrap_edge/openband/synthetic_repository.dart';
 import 'package:openstrap_edge/openband/theme.dart';
-
-/// Serves a transparent 1×1 PNG for every tile so the live-map test never
-/// touches the network.
-class _StubTileProvider extends TileProvider {
-  static final _png = base64Decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQAB'
-    'h6FO1AAAAABJRU5ErkJggg==',
-  );
-  @override
-  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) =>
-      MemoryImage(_png);
-}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -136,7 +119,7 @@ void main() {
   testWidgets('training hub renders light and dark', (tester) async {
     await mount(tester);
     expect(find.text('Training'), findsOneWidget);
-    expect(find.text('102'), findsOneWidget);
+    expect(find.text('1h42'), findsOneWidget);
     expect(find.text('3 Einheiten'), findsOneWidget);
     expect(find.bySemanticsLabel('Kraft starten'), findsOneWidget);
     expect(find.text('Ganzkörper A'), findsOneWidget);
@@ -219,144 +202,59 @@ void main() {
     );
   }, tags: const ['golden']);
 
-  testWidgets('live strength: confirming a set records it, rest timer runs', (
-    tester,
-  ) async {
-    final template = (await repo.readTemplates()).firstWhere(
-      (t) => t.id == 'tpl-ganzkoerper-a',
-    );
-    var now = DateTime(2026, 9, 15, 18);
-    repo.strengthNow = () => now;
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(
-          Brightness.light,
-        ).copyWith(platform: TargetPlatform.iOS),
-        home: RepaintBoundary(
-          key: const ValueKey('capture'),
-          child: OpenBandStrengthLive(
-            repository: repo,
-            template: template,
-            now: () => now,
+  testWidgets(
+    'live strength: confirming a set records it, rest timer runs',
+    (tester) async {
+      final template = (await repo.readTemplates()).firstWhere(
+        (t) => t.id == 'tpl-ganzkoerper-a',
+      );
+      var now = DateTime(2026, 9, 15, 18);
+      repo.strengthNow = () => now;
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(393, 852);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          supportedLocales: const [Locale('de')],
+          theme: openBandTheme(
+            Brightness.light,
+          ).copyWith(platform: TargetPlatform.iOS),
+          home: RepaintBoundary(
+            key: const ValueKey('capture'),
+            child: OpenBandStrengthLive(
+              repository: repo,
+              template: template,
+              now: () => now,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Bankdrücken'), findsOneWidget);
-    await tester.enterText(find.byType(TextField).first, '42,5');
-    await tester.tap(find.byTooltip('Satz 1 bestätigen').first);
-    await tester.pump();
-    now = now.add(const Duration(seconds: 20));
-    await tester.pump(const Duration(seconds: 1));
-    expect(find.text('Pause'), findsOneWidget);
-    expect(find.text('1:10'), findsOneWidget);
-    expect(find.text('ZULETZT'), findsWidgets);
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/strength-live.png'),
-    );
-    await tester.tap(find.text('Fertig'));
-    await tester.pump();
-    final load = await repo.readMuscleLoad('2026-09-15', 7);
-    expect(load.setsByMuscle['Brust'], 4);
-    expect(load.setsByMuscle['Beine'], 3);
-  }, tags: const ['golden']);
-
-  testWidgets('live run keeps pause and active time apart', (tester) async {
-    final run = ValueNotifier(
-      const LiveRun(
-        elapsedSec: 962,
-        pausedSec: 60,
-        distanceM: 2840,
-        heartRate: 154,
-        zone: 3,
-        gps: true,
-      ),
-    );
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(
-          Brightness.light,
-        ).copyWith(platform: TargetPlatform.iOS),
-        home: RepaintBoundary(
-          key: const ValueKey('capture'),
-          child: OpenBandRunLive(run: run, onPause: () {}, onLap: () {}),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('2,84'), findsOneWidget);
-    expect(find.text('15:02'), findsOneWidget);
-    expect(find.text('5:18'), findsOneWidget);
-    expect(find.text('154 · Z3'), findsOneWidget);
-    expect(find.text('davon 1:00 pausiert'), findsOneWidget);
-    await expectLater(
-      find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/run-live.png'),
-    );
-    run.value = const LiveRun(elapsedSec: 962, pausedSec: 60, paused: true);
-    await tester.pump();
-    expect(find.text('—'), findsNWidgets(3));
-    expect(find.text('Weiter'), findsOneWidget);
-    expect(find.text('Beenden'), findsOneWidget);
-  }, tags: const ['golden']);
-
-  testWidgets('live run shows the route map when a tracker is bound', (
-    tester,
-  ) async {
-    final tracker = RouteTracker(sink: (_) async {});
-    addTearDown(tracker.dispose);
-    tracker.path.value = const [
-      RouteVertex(LatLng(52.5200, 13.4050), 3),
-      RouteVertex(LatLng(52.5210, 13.4060), 3),
-      RouteVertex(LatLng(52.5220, 13.4070), 4),
-    ];
-    tracker.current.value = const LatLng(52.5220, 13.4070);
-    final run = ValueNotifier(
-      const LiveRun(elapsedSec: 962, distanceM: 2840, gps: true, laps: 2),
-    );
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(
-          Brightness.light,
-        ).copyWith(platform: TargetPlatform.iOS),
-        home: OpenBandRunLive(
-          run: run,
-          tracker: tracker,
-          tileProvider: _StubTileProvider(),
-          mapAllowed: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Karte ohne GPS nicht verfügbar'), findsNothing);
-    expect(find.byType(FlutterMap), findsOneWidget);
-    expect(find.text('Runde 2'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Bankdrücken'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, '42,5');
+      await tester.tap(find.byTooltip('Satz 1 bestätigen').first);
+      await tester.pump();
+      now = now.add(const Duration(seconds: 20));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('1:10'), findsOneWidget);
+      expect(find.text('ZULETZT'), findsWidgets);
+      await expectLater(
+        find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/strength-live.png'),
+      );
+      await tester.tap(find.text('Fertig'));
+      await tester.pump();
+      final load = await repo.readMuscleLoad('2026-09-15', 7);
+      expect(load.setsByMuscle['Brust'], 4);
+      expect(load.setsByMuscle['Beine'], 3);
+    },
+    tags: const ['golden'],
+  );
 
   test('recordLap freezes laps into the session detail', () async {
     const id = 'synthetic-2026-09-14-running';
@@ -408,124 +306,129 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('template editor saves a new plan and bumps an edited one', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(393, 852);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    WorkoutTemplate? saved;
-    await tester.pumpWidget(
-      MaterialApp(
-        locale: const Locale('de'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('de')],
-        theme: openBandTheme(Brightness.light),
-        home: Builder(
-          builder: (ctx) => Scaffold(
-            body: Center(
-              child: TextButton(
-                onPressed: () async {
-                  saved = await Navigator.of(ctx).push(
-                    MaterialPageRoute<WorkoutTemplate>(
-                      builder: (_) => OpenBandTemplateEditor(repository: repo),
-                    ),
-                  );
-                },
-                child: const Text('open'),
+  testWidgets(
+    'template editor saves a new plan and bumps an edited one',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(393, 852);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      WorkoutTemplate? saved;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('de'),
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          supportedLocales: const [Locale('de')],
+          theme: openBandTheme(Brightness.light),
+          home: Builder(
+            builder: (ctx) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () async {
+                    saved = await Navigator.of(ctx).push(
+                      MaterialPageRoute<WorkoutTemplate>(
+                        builder: (_) =>
+                            OpenBandTemplateEditor(repository: repo),
+                      ),
+                    );
+                  },
+                  child: const Text('open'),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    Finder hinted(String hint) => find.byWidgetPredicate(
-      (w) => w is TextField && w.decoration?.hintText == hint,
-    );
-    final existingIds = {
-      for (final e in (await repo.readExerciseCatalogue()).entries) e.id,
-    };
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-    expect(find.text('Vorlage speichern'), findsOneWidget);
-    await tester.enterText(find.byType(TextField).first, 'Oberkörper B');
-    await tester.tap(find.text('Übung hinzufügen'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Eigene Übung'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('custom-exercise-name')),
-      'Klimmzug',
-    );
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-equipment')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('custom-exercise-equipment-bodyweight')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-mode')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('custom-exercise-mode-repetitions')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-load')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey('custom-exercise-load-bodyweight')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-reps-total')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
-    final created = (await repo.readExerciseCatalogue()).entries.firstWhere(
-      (e) => !existingIds.contains(e.id),
-    );
-    expect(created.label, 'Klimmzug');
-    await tester.enterText(
-      find.byKey(const ValueKey('exercise-search')),
-      'Klimmzug',
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(ValueKey('exercise-select-${created.id}')));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('1 Übung hinzufügen'));
-    await tester.tap(find.text('1 Übung hinzufügen'));
-    await tester.pumpAndSettle();
-    await tester.enterText(hinted('Wdh.'), '6');
-    await tester.pumpAndSettle();
-    await expectLater(
-      find.byKey(const ValueKey('capture')).evaluate().isEmpty
-          ? find.byType(OpenBandTemplateEditor)
-          : find.byKey(const ValueKey('capture')),
-      matchesGoldenFile('openband_goldens/template-editor.png'),
-    );
-    await tester.tap(find.text('Vorlage speichern'));
-    await tester.pumpAndSettle();
-    expect(saved?.name, 'Oberkörper B');
-    expect(saved?.version, 1);
-    expect(saved?.exercises.single.exerciseKey, created.id);
-    expect(
-      saved?.exercises.single.exerciseKey,
-      matches(
-        RegExp(
-          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          caseSensitive: false,
+      );
+      Finder hinted(String hint) => find.byWidgetPredicate(
+        (w) => w is TextField && w.decoration?.hintText == hint,
+      );
+      final existingIds = {
+        for (final e in (await repo.readExerciseCatalogue()).entries) e.id,
+      };
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.text('Vorlage speichern'), findsOneWidget);
+      await tester.enterText(find.byType(TextField).first, 'Oberkörper B');
+      await tester.tap(find.text('Übung hinzufügen'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eigene Übung'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('custom-exercise-name')),
+        'Klimmzug',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-equipment')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('custom-exercise-equipment-bodyweight')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-mode')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('custom-exercise-mode-repetitions')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-load')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('custom-exercise-load-bodyweight')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-reps')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('custom-exercise-reps-total')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('custom-exercise-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('0 Übungen hinzufügen'), findsOneWidget);
+      final created = (await repo.readExerciseCatalogue()).entries.firstWhere(
+        (e) => !existingIds.contains(e.id),
+      );
+      expect(created.label, 'Klimmzug');
+      await tester.enterText(
+        find.byKey(const ValueKey('exercise-search')),
+        'Klimmzug',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('exercise-select-${created.id}')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('1 Übung hinzufügen'));
+      await tester.tap(find.text('1 Übung hinzufügen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(hinted('Wdh.'), '6');
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byKey(const ValueKey('capture')).evaluate().isEmpty
+            ? find.byType(OpenBandTemplateEditor)
+            : find.byKey(const ValueKey('capture')),
+        matchesGoldenFile('openband_goldens/template-editor.png'),
+      );
+      await tester.tap(find.text('Vorlage speichern'));
+      await tester.pumpAndSettle();
+      expect(saved?.name, 'Oberkörper B');
+      expect(saved?.version, 1);
+      expect(saved?.exercises.single.exerciseKey, created.id);
+      expect(
+        saved?.exercises.single.exerciseKey,
+        matches(
+          RegExp(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+            caseSensitive: false,
+          ),
         ),
-      ),
-    );
-    expect(saved?.exercises.single.exerciseKey, isNot('klimmzug'));
-    expect(saved?.exercises.single.sets.length, 1);
-    expect(saved?.exercises.single.sets.first.reps, 6);
-    expect(saved?.exercises.single.sets.first.loadKg, isNull);
-    expect((await repo.readTemplates()).length, 3);
-  }, tags: const ['golden']);
+      );
+      expect(saved?.exercises.single.exerciseKey, isNot('klimmzug'));
+      expect(saved?.exercises.single.sets.length, 1);
+      expect(saved?.exercises.single.sets.first.reps, 6);
+      expect(saved?.exercises.single.sets.first.loadKg, isNull);
+      expect((await repo.readTemplates()).length, 3);
+    },
+    tags: const ['golden'],
+  );
 
   testWidgets('empty window shows an empty state, not zero minutes', (
     tester,

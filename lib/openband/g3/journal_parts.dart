@@ -8,6 +8,7 @@ export 'check_in.dart' show OBCheckIn, OBInlineError;
 import 'band_parts.dart' show OBToggle;
 import 'chrome.dart' show OBIconButton, OBPillButton;
 import 'g3_theme.dart';
+import 'g3_format.dart';
 import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind, OBMissingValue;
 
 class OBCheckInDone extends StatelessWidget {
@@ -162,7 +163,7 @@ class OBStepper extends StatelessWidget {
                   const OBMissingValue(size: 24, lineHeight: 28)
                 else
                   Text(
-                    value == 0 ? 'Keins' : '$value',
+                    value == 0 ? 'Keins' : g3Count(value),
                     style: g.t(24, 28, weight: FontWeight.w700),
                   ),
                 if (value != null && value! > 0 && unit != null) ...[

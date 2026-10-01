@@ -3,6 +3,7 @@
 //
 // Painters sit behind RepaintBoundary. Gaps stay gaps: a null value or a
 // listed gap is drawn hollow and dashed, never interpolated.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -474,7 +475,7 @@ class OBZoneRows extends StatelessWidget {
                           SizedBox(
                             width: 52,
                             child: Text(
-                              z.minutes == null ? '—' : '${z.minutes} Min.',
+                              g3Duration(z.minutes),
                               textAlign: TextAlign.right,
                               style: g.t(
                                 14,
