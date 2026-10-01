@@ -31,6 +31,7 @@ import 'db.dart';
 import '../health/health_export.dart';
 import 'journal_fields.dart';
 import 'local_repository.dart';
+import 'live_coverage_policy.dart' show ResolvedDaySteps;
 import 'series_codec.dart';
 import '../gps/route_models.dart';
 import '../gps/route_math.dart' as rmath;
@@ -191,7 +192,7 @@ class LocalRepositoryImpl extends LocalRepository {
       SeriesCodec.decodePayloadJson(json);
 
   /// Pull a sub-map by dotted path (e.g. 'clinical.hrv_time').
-  Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
+  static Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
     var cur = b;
     for (final part in path.split('.')) {
       final next = cur?[part];
@@ -201,7 +202,7 @@ class LocalRepositoryImpl extends LocalRepository {
     return cur;
   }
 
-  num? _scalar(Map<String, dynamic>? b, String key) {
+  static num? _scalar(Map<String, dynamic>? b, String key) {
     final s = _sub(b, 'scalars');
     final v = s?[key];
     return v is num ? v : null;
@@ -210,7 +211,8 @@ class LocalRepositoryImpl extends LocalRepository {
   /// Round a display value to 2dp without upgrading an int to a double —
   /// used where a raw analytics metric (e.g. round6()'d lf_hf) would
   /// otherwise render with far more precision than its sibling scalars.
-  num? _round2(num? v) => v == null ? null : num.parse(v.toStringAsFixed(2));
+  static num? _round2(num? v) =>
+      v == null ? null : num.parse(v.toStringAsFixed(2));
 
   /// A bare metric from a scalar (used where a screen reads a number directly).
   /// An optional [note] (e.g. a `need_baseline:…` string) is carried through so
@@ -218,7 +220,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// [note] is attached ONLY when there is no value — a note on a number that
   /// arrived is an explanation of an absence that did not happen, and callers
   /// that pass one unconditionally would otherwise ship it.
-  Map<String, dynamic> _scalarMetric(
+  static Map<String, dynamic> _scalarMetric(
     num? v,
     String tier, {
     String? unit,
@@ -252,7 +254,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// was written was onto `daytime_hrv` and `hr_ceiling`, which no screen that
   /// renders these reads. The screens guessed instead, and the guesses were
   /// wrong. This is the route back.
-  String? _absentNote(Map<String, dynamic>? b, String key) {
+  static String? _absentNote(Map<String, dynamic>? b, String key) {
     final n = _sub(b, 'absent_notes')?[key];
     if (n is String && n.isNotEmpty) return n;
     // An IMPORTED day carries only what the export file carried, and no gate in
@@ -270,7 +272,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// absent — for a payload whose value key is a bare scalar the UI already
   /// reads. `Metric.parse` reads this shape directly, so a screen gets
   /// `isEmpty == true` plus a `note` it can render instead of guessing.
-  Map<String, dynamic>? _absentMetric(String? note, String tier) =>
+  static Map<String, dynamic>? _absentMetric(String? note, String tier) =>
       note == null ? null : _scalarMetric(null, tier, note: note);
 
   // ── profile ─────────────────────────────────────────────────────────────────
@@ -668,7 +670,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// metric until enough of them exist — there is no 8 h default anywhere on
   /// the compute side, deliberately. The 480 that used to stand in for it here
   /// reached the home widget, the Watch and the Sleep screen as a denominator.
-  int? _sleepNeedMin(Map<String, dynamic>? crossDay) {
+  static int? _sleepNeedMin(Map<String, dynamic>? crossDay) {
     final sec = _sub(crossDay, 'sleep_coach.need.value')?['need_sec'] as num?;
     return sec == null ? null : (sec / 60).round();
   }
@@ -699,7 +701,10 @@ class LocalRepositoryImpl extends LocalRepository {
     };
   }
 
-  Map<String, dynamic> _nocturnal(Map<String, dynamic> b, {num? baselineRhr}) {
+  static Map<String, dynamic> _nocturnal(
+    Map<String, dynamic> b, {
+    num? baselineRhr,
+  }) {
     final rhr = _scalar(b, 'rhr'); // sleeping-HR avg (low30 mean)
     final dip = _scalar(b, 'dip_pct');
     final nadir = _scalar(b, 'sleeping_hr_nadir'); // lowest sleeping HR
@@ -742,7 +747,7 @@ class LocalRepositoryImpl extends LocalRepository {
   ///
   /// Carrying the note through costs nothing and is the difference between
   /// telling someone why their night produced no number and guessing at it.
-  Map<String, dynamic>? _respObj(Map<String, dynamic> b) {
+  static Map<String, dynamic>? _respObj(Map<String, dynamic> b) {
     final rr = _scalar(b, 'resp_rate');
     final env = _sub(b, 'respiration.rsa');
     if (rr == null) {
@@ -789,9 +794,26 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getDayHeart(String date) async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
+    return projectDayHeart(
+      b,
+      crossDay: await _crossDay(),
+      baselineHrv: await _seriesMean('rmssd'),
+      baselineRhr: await _seriesMean('rhr'),
+      skinTemperature: await _skinTempBlock(b),
+    );
+  }
+
+  static Map<String, dynamic> projectDayHeart(
+    Map<String, dynamic>? b, {
+    Map<String, dynamic>? crossDay,
+    num? baselineHrv,
+    num? baselineRhr,
+    Map<String, dynamic>? skinTemperature,
+  }) {
+    if (b == null) return const {};
     final hrCurve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
     final rmssd = _scalar(b, 'rmssd');
-    final cd = await _crossDay();
+    final cd = crossDay;
     return {
       'hr': hrCurve, // [{t, v}] — detail_cards reads e['v']
       'resting_hr': _scalar(b, 'rhr')?.round(),
@@ -801,7 +823,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'hrv': {
         if (rmssd != null) 'rmssd': rmssd.round(),
         'sdnn': _scalar(b, 'sdnn')?.round(),
-        'baseline': (await _seriesMean('rmssd'))?.round(),
+        'baseline': baselineHrv?.round(),
         // HRV stability (CV %) + LF/HF — both now computed.
         'cv': _sub(b, 'clinical')?['cv'],
         // Rounded to 2dp for display — the raw clinical metric is round6()'d
@@ -824,7 +846,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'baselines': b['baselines'],
       // Waking ultradian HRV timeline (RMSSD over the day, outside sleep).
       'daytime_hrv': b['daytime_hrv'],
-      'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
+      'nocturnal': _nocturnal(b, baselineRhr: baselineRhr),
       'resp': _respObj(b),
       // 'spo2' (oxygen dips) moved to _daySleep()/getDaySleep — it's an
       // overnight signal, grouped with the Sleep tab's nocturnal numbers now,
@@ -832,7 +854,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // Illness watch (CUSUM/NightSignal) — carries `note` (need_baseline) while
       // baseline is short, so the card can say "Need N more nights".
       'illness': cd?['illness'],
-      'skin_temp': await _skinTempBlock(b),
+      'skin_temp': skinTemperature,
     };
   }
 
@@ -928,6 +950,19 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> _daySleep(String date) async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
+    return projectDaySleep(
+      b,
+      crossDay: await _crossDay(),
+      baselineRhr: await _seriesMean('rhr'),
+    );
+  }
+
+  static Map<String, dynamic> projectDaySleep(
+    Map<String, dynamic>? b, {
+    Map<String, dynamic>? crossDay,
+    num? baselineRhr,
+  }) {
+    if (b == null) return const {};
     // Each is a Metric envelope — read the inner `.value` where the fields live.
     final acct = _sub(b, 'sleep.accounting.value');
     final win = _sub(b, 'sleep.window.value');
@@ -972,7 +1007,7 @@ class LocalRepositoryImpl extends LocalRepository {
       return v == null ? null : (v / 60).round();
     }
 
-    final needMin = _sleepNeedMin(await _crossDay());
+    final needMin = _sleepNeedMin(crossDay);
     final sleepConf = _sub(b, 'sleep.accounting')?['confidence'] as num?;
     // Sleep periods (main + naps) for the periods screen. The main period is
     // enriched HERE with the hypnogram + stage minutes: derivation builds the
@@ -1031,7 +1066,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // screen can say so. The night is published normally and the caveat rides
       // with it; see `sleepChargingBlock` for why it has no confidence penalty.
       'charging': b['sleep_charging'],
-      'nocturnal': _nocturnal(b, baselineRhr: await _seriesMean('rhr')),
+      'nocturnal': _nocturnal(b, baselineRhr: baselineRhr),
       'resp': _respObj(b),
       // Oxygen dips (SpO2/ODI) — moved here from getDayHeart's payload: an
       // overnight signal belongs with the rest of this night's numbers, not
@@ -1101,7 +1136,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// classified. Absent stage minutes are dropped rather than zeroed for the
   /// same reason — `StageBars` renders 0 as an invisible gap, which reads as
   /// "no deep sleep" instead of "not measured".
-  List<Map<String, dynamic>> _periodsWithMainStages(
+  static List<Map<String, dynamic>> _periodsWithMainStages(
     Map<String, dynamic> b,
     Map<String, int?> stageMin, {
     num? mainConfidence,
@@ -1141,7 +1176,7 @@ class LocalRepositoryImpl extends LocalRepository {
   ///
   /// Translating on READ (rather than migrating on write) also means this and
   /// the parallel fix at the other end of the seam are order-independent.
-  Map<String, dynamic> _canonicalPeriod(Map p) {
+  static Map<String, dynamic> _canonicalPeriod(Map p) {
     final m = p.cast<String, dynamic>();
     // Fill only keys that are genuinely ABSENT — `containsKey`, never a null
     // check. A current-schema key present with an explicit null is an honest
@@ -1173,7 +1208,7 @@ class LocalRepositoryImpl extends LocalRepository {
   ///
   /// Returns null for a period with no usable window at all, so the caller can
   /// drop it rather than render a zero-length card.
-  Map<String, dynamic>? _boundedPeriod(Map<String, dynamic> m) {
+  static Map<String, dynamic>? _boundedPeriod(Map<String, dynamic> m) {
     final onset = (m['onset_ts'] as num?)?.toInt();
     final wake = (m['wake_ts'] as num?)?.toInt();
     if (onset == null || wake == null || wake <= onset) {
@@ -1209,7 +1244,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// and the stored sum would then be stale — leaving the hero disagreeing with
   /// the cards a user can add up. A period whose own duration is unknown makes
   /// the sum unknown again, for the same reason it does at the writer.
-  num? _totalAsleepMin(
+  static num? _totalAsleepMin(
     Map<String, dynamic> b,
     List<Map<String, dynamic>> periods,
   ) {
@@ -1225,7 +1260,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   /// Mean completed-cycle length (min), or null when no cycles.
-  num? _cyclesMeanMin(Map<String, dynamic> b) {
+  static num? _cyclesMeanMin(Map<String, dynamic> b) {
     final cyc = _sub(b, 'sleep')?['cycles'];
     if (cyc is! List || cyc.isEmpty) return null;
     var sum = 0.0;
@@ -1238,7 +1273,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// The bundle stores the hypnogram as segments {start,end,stage} (epoch sec);
   /// the detail screen wants per-point {t,stage} and re-merges them. Emit one
   /// point per segment boundary plus a closing point so the last stage has width.
-  List<Map<String, dynamic>> _hypnoPoints(Map<String, dynamic> b) {
+  static List<Map<String, dynamic>> _hypnoPoints(Map<String, dynamic> b) {
     final segs = (_sub(b, 'series')?['hypnogram'] as List?) ?? const [];
     final out = <Map<String, dynamic>>[];
     for (final s in segs) {
@@ -1369,10 +1404,15 @@ class LocalRepositoryImpl extends LocalRepository {
             _localMidnightSec(date),
             _localDayEndSec(date),
           );
-    // THE EXACT DAY, never `_bundleForDate`'s latest-complete fallback: the
-    // spans come from this date's coverage rows, and pairing them with another
-    // day's published total is the one mismatch this screen must not show.
-    final st = _sub(await _bundle(date), 'steps');
+    return projectDaySteps(await _bundle(date), r, sessions: sessions);
+  }
+
+  static Map<String, dynamic> projectDaySteps(
+    Map<String, dynamic>? b,
+    ResolvedDaySteps r, {
+    List<Map<String, dynamic>> sessions = const [],
+  }) {
+    final st = _sub(b, 'steps');
     return {
       'total': r.total,
       'strap': r.strap,
@@ -1400,7 +1440,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// HALF THE SPAN OR MORE has to fall inside the session. Naming one is a
   /// claim about where those steps came from, and a walk that merely touches
   /// the end of a workout did not happen during it.
-  String? _sessionOver(
+  static String? _sessionOver(
     List<Map<String, dynamic>> sessions,
     int startTs,
     int endTs,
@@ -1492,30 +1532,27 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getDayStrain(String date) async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
+    final useWake = _isTodayLabel(date) && await _bundle(date) == null;
+    final wf = useWake ? await _wakeFeatures(date) : null;
+    return projectDayStrain(
+      b,
+      crossDay: await _crossDay(),
+      stepsBase: useWake ? (wf?['steps'] as num?) : _scalar(b, 'steps'),
+    );
+  }
+
+  static Map<String, dynamic> projectDayStrain(
+    Map<String, dynamic>? b, {
+    Map<String, dynamic>? crossDay,
+    num? stepsBase,
+  }) {
+    if (b == null) return const {};
     final zones = _sub(b, 'zones');
     final hrStats = _sub(b, 'hr_stats');
     final series = _sub(b, 'series');
     final curve = (series?['strain_curve'] as List?) ?? const [];
     final zoneTimeline = (series?['zone_timeline'] as List?) ?? const [];
-    // EWMA-ACWR training load lives in the cross-day rollup (acute/chronic over a
-    // history window); the strain detail's "Training load (ACWR)" row reads it.
-    final cd = await _crossDay();
-    // STEPS is a live-accumulating count, not a "show last settled day" metric —
-    // unlike strain/zones/HR/curve above (where falling back to yesterday's
-    // finished bundle via _bundleForDate is the correct "still settling" UX),
-    // showing yesterday's step count as "today's steps" is actively wrong, not
-    // just stale. When today's own row hasn't been derived yet, use today's
-    // interim wake_day_features estimate instead of whatever _bundleForDate
-    // fell back to (same source getToday() uses for the Today screen). This is
-    // the settled BASE only — a caller showing live steps folds AppState.liveSteps
-    // on top, the way Today composes base+live.
-    num? stepsBase;
-    if (_isTodayLabel(date) && await _bundle(date) == null) {
-      final wf = await _wakeFeatures(date);
-      stepsBase = wf?['steps'] as num?;
-    } else {
-      stepsBase = _scalar(b, 'steps');
-    }
+    final cd = crossDay;
     // The five bare-valued figures, resolved once so the reason block below can
     // key off what this payload IS ABOUT TO SAY rather than re-deriving it.
     final strain = _scalar(b, 'strain');
@@ -4087,7 +4124,7 @@ class LocalRepositoryImpl extends LocalRepository {
     return vs.reduce((a, b) => a + b) / vs.length;
   }
 
-  num? _avgHr(List hrCurve) {
+  static num? _avgHr(List hrCurve) {
     final vs = [
       for (final e in hrCurve)
         if (e is Map && e['v'] is num && (e['v'] as num) > 0) (e['v'] as num),
@@ -4096,7 +4133,7 @@ class LocalRepositoryImpl extends LocalRepository {
     return (vs.reduce((a, b) => a + b) / vs.length).round();
   }
 
-  num? _maxHr(List hrCurve) {
+  static num? _maxHr(List hrCurve) {
     num mx = 0;
     for (final e in hrCurve) {
       if (e is Map && e['v'] is num && (e['v'] as num) > mx) mx = e['v'] as num;

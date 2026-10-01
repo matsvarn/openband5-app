@@ -9,7 +9,8 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 
 import '../data/cycle_store.dart';
 import '../data/db.dart';
-import '../data/local_repository_impl.dart' show sessionHrTimeline;
+import '../data/local_repository_impl.dart'
+    show sessionHrTimeline, LocalRepositoryImpl;
 import '../data/journal_fields.dart';
 import '../data/lab_catalogue.dart';
 import '../data/med_store.dart';
@@ -115,6 +116,18 @@ import 'time.dart';
   return null;
 }
 
+Future<List<Map<String, Object?>?>> _projectNightScalarPayloadsOffThread(
+  List<Object?> payloads,
+  String baselineRoot,
+  String? scalarKey,
+) => Isolate.run(
+  () => projectNightScalarPayloads(payloads, baselineRoot, scalarKey),
+);
+
+Future<Map<String, Object?>> _caffeineSleepCorrelateOffThread(
+  Map<String, Object?> input,
+) => Isolate.run(() => _caffeineSleepCorrelate(input));
+
 /// SQLite-backed boundary for the first OpenBand daily/sleep-correction flow.
 /// All legacy Map payloads are decoded here; callers only see typed values.
 class LocalOpenBandRepository implements OpenBandRepository {
@@ -143,6 +156,60 @@ class LocalOpenBandRepository implements OpenBandRepository {
   final Future<void> Function(CycleSettings)? _cycleSettingsSave;
   final Future<void> Function()? _cycleContextRefresh;
   final DateTime Function() _diagnosticsNow;
+
+  final Map<String, DayCalculationIdentity?> _dayPins = {};
+
+  Future<Map<String, dynamic>?> _dayRow(String day, {DatabaseExecutor? txn}) =>
+      LocalDb.dayResult(
+        day,
+        txn: txn,
+        pinned: _dayPins.containsKey(day),
+        identity: _dayPins[day],
+      );
+
+  bool _lostPin(String day, Map<String, Object?>? row) =>
+      _dayPins[day] != null && row == null;
+
+  Future<List<Map<String, dynamic>>> _daySeries(
+    String key,
+    String endDay, {
+    String? fromDay,
+    int? limitDays,
+    DatabaseExecutor? txn,
+  }) => LocalDb.servedDaySeries(
+    key,
+    fromDay: fromDay,
+    throughDay: endDay,
+    limitDays: limitDays,
+    txn: txn,
+    pinnedDay: _dayPins.containsKey(endDay) ? endDay : null,
+    identity: _dayPins[endDay],
+  );
+
+  Future<bool> _pinIsCurrent(String day, DatabaseExecutor txn) async {
+    if (!_dayPins.containsKey(day)) return true;
+    final pin = _dayPins[day];
+    final row = await LocalDb.dayResult(day, txn: txn);
+    return pin != null &&
+        row != null &&
+        row['skipped'] != 1 &&
+        row['algo_version'] == pin.algoVersion &&
+        row['computed_at'] == pin.computedAt;
+  }
+
+  Future<Object?> _crossdayForDay(String day) async {
+    final db = await LocalDb.instance;
+    return db.transaction((txn) async {
+      if (!await _pinIsCurrent(day, txn)) return null;
+      final rows = await txn.query(
+        'baselines',
+        where: 'key = ?',
+        whereArgs: ['crossday'],
+        limit: 1,
+      );
+      return rows.isEmpty ? null : rows.first['payload_json'];
+    });
+  }
 
   static int? _pageSpan(Object? from, Object? to, Object? capacity) {
     if (from is! num || to is! num || capacity is! num) return null;
@@ -290,7 +357,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     if (root == null) {
       return const G3Baseline(BaselineStatus(BaselinePhase.none));
     }
-    final row = await LocalDb.dayResult(day);
+    final row = await _dayRow(day);
     if (row == null ||
         row['skipped'] == 1 ||
         row['partial'] == 1 ||
@@ -367,7 +434,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
 
   Future<List<MetricPoint>> _g3Steps(String endDay, int days) async {
     final labels = g3DaysEnding(endDay, days);
-    final rows = await LocalDb.metricSeries('steps');
+    final rows = await _daySeries('steps', endDay, fromDay: labels.first);
     final values = <String, double>{
       for (final r in rows)
         if (r['date'] is String && r['value'] is num)
@@ -409,7 +476,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       where: 'date = ? AND dismissed = 0',
       whereArgs: [day],
     );
-    final derived = await LocalDb.dayResult(day);
+    final derived = await _dayRow(day);
     final derivedPayload =
         derived?['algo_version'] == kAlgoVersion &&
             derived?['skipped'] != 1 &&
@@ -677,7 +744,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<G3WeeklyLoad> readWeeklyLoad(String endDay) async {
     final days = (await readTrend(G3Metric.strain, endDay, 7)).points;
-    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    final raw = await _crossdayForDay(endDay);
     final artifact = _payload(raw);
     final value =
         artifact?['built_for_day'] == endDay &&
@@ -795,7 +862,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   Future<G3SleepPlus> readSleepPlus(String day, {DateTime? now}) async {
     _requireDay(day);
     final clock = now ?? DateTime.now();
-    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    final raw = await _crossdayForDay(day);
     final artifact = _payload(raw);
     final current =
         artifact != null &&
@@ -985,11 +1052,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
         processing: correction['status'] != 'failed',
       );
     }
-    final row = await LocalDb.dayResult(day);
+    final row = await _dayRow(day);
     if (row == null ||
         row['skipped'] == 1 ||
         row['algo_version'] != kAlgoVersion) {
-      return NightSignals(day: day, recordingTimezone: zone);
+      return NightSignals(
+        day: day,
+        recordingTimezone: zone,
+        processing: _lostPin(day, row),
+      );
     }
     final payload = _payload(row['payload_json']);
     if (payload == null) {
@@ -1012,7 +1083,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final pulseSources = [_curveReadings(payload, 'hr_curve', start, end)];
     final respSources = [_curveReadings(payload, 'resp_day', start, end)];
     if (neighborDays.isNotEmpty) {
-      final neighborRows = await LocalDb.servedDayResultsForDays(neighborDays);
+      final neighborRows = <String, Map<String, dynamic>>{};
+      for (final id in neighborDays) {
+        final neighbor = await _dayRow(id);
+        if (neighbor != null) neighborRows[id] = neighbor;
+      }
       final neighborCorrections = await LocalDb.openBandSleepCorrectionsForDays(
         neighborDays,
       );
@@ -1293,7 +1368,33 @@ class LocalOpenBandRepository implements OpenBandRepository {
         whereArgs: [day],
         limit: 1,
       );
+      final history = await LocalDb.servedDaySeries(
+        'tst_min',
+        throughDay: day,
+        limitDays: 8,
+        txn: txn,
+      );
+      final provenance = await txn.query(
+        'metric_series_version',
+        where: 'date = ?',
+        whereArgs: [day],
+        limit: 1,
+      );
+      final coverage = await LocalDb.resolvedStepsForDay(day, txn: txn);
+      final sessions = await LocalDb.sessionsInRange(
+        localDayStartSec(day)!,
+        localDayEndSec(day)!,
+        txn: txn,
+      );
+      final food = await NutritionDb.entriesForDay(txn, day);
+      final journal = await LocalDb.journalMetricsForDay(day, txn: txn);
       return (
+        history: history,
+        provenance: provenance.isEmpty ? null : provenance.first,
+        coverage: coverage,
+        sessions: sessions,
+        food: food,
+        journal: journal,
         selected: selectedRows.isEmpty
             ? null
             : Map<String, Object?>.from(selectedRows.first),
@@ -1302,10 +1403,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     });
     final row = snapshot.selected;
-    final payload = _payload(row?['payload_json']);
+    final decoded = _payload(row?['payload_json']);
+    final payload = row?['skipped'] == 1 ? null : decoded;
     // Unreadable payload fails the whole day. Cards never see
     // NightScalarState.unreadable; typed detail still reports that gap.
-    if (row != null && payload == null) {
+    if (row != null && decoded == null) {
       throw const FormatException('Stored day result is unreadable.');
     }
     NightScalarJob? sleepJob;
@@ -1392,43 +1494,26 @@ class LocalOpenBandRepository implements OpenBandRepository {
         ? storedRecovery
         : null;
 
-    // Legacy day readers stay outside the snapshot. Cards already have SQL
-    // rmssd/rhr from the selected row; getDayHrv/getDayHeart envelopes are
-    // a different source and are not consulted for those scalars.
-    final values = await Future.wait<Map<String, dynamic>>([
-      row == null ? Future.value({}) : repository.getDaySleep(day),
-      row == null ? Future.value({}) : repository.getDayHeart(day),
-      row == null ? Future.value({}) : repository.getDayStrain(day),
-      repository.getDaySteps(day),
-    ]);
-    final sleepMap = values[0],
-        heart = values[1],
-        strainMap = values[2],
-        stepsMap = values[3];
-    final nutrition = rollupDay(
-      day,
-      await NutritionDb.entriesForDay(db, day),
-      today: todayLabel(),
+    final sleepMap = LocalRepositoryImpl.projectDaySleep(payload);
+    final heart = LocalRepositoryImpl.projectDayHeart(payload);
+    final strainMap = LocalRepositoryImpl.projectDayStrain(payload);
+    final stepsMap = LocalRepositoryImpl.projectDaySteps(
+      payload,
+      snapshot.coverage,
+      sessions: snapshot.sessions,
     );
-    final journal = await repository.getJournalMetrics(day);
-    final provenanceRows = await LocalDb.metricSeriesVersions();
-    String? source;
-    for (final candidate in provenanceRows) {
-      if (candidate['date'] == day) {
-        source = candidate['source']?.toString();
-        break;
-      }
-    }
-
-    final historyRows = await LocalDb.metricSeries('tst_min');
-    final throughDay = [
-      for (final r in historyRows)
-        if ((r['date'] as String?) case final d? when d.compareTo(day) <= 0)
-          (day: d, minutes: (r['value'] as num?)?.toDouble()),
+    final nutrition = rollupDay(day, snapshot.food, today: todayLabel());
+    final journal = snapshot.journal;
+    final source =
+        nightScalarLabel(row?['source']) ??
+        nightScalarLabel(payload?['source']) ??
+        (snapshot.provenance?['algo_version'] == row?['algo_version']
+            ? nightScalarLabel(snapshot.provenance?['source'])
+            : null);
+    final history = [
+      for (final r in snapshot.history)
+        (day: r['date'] as String, minutes: (r['value'] as num?)?.toDouble()),
     ];
-    final history = throughDay.length <= 8
-        ? throughDay
-        : throughDay.sublist(throughDay.length - 8);
 
     final onset = _epochSeconds(sleepMap['onset_ts']);
     final wake = _epochSeconds(sleepMap['wake_ts']);
@@ -1446,7 +1531,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
       recordingTimezone = nightScalarLabel(correctionRow['recording_timezone']);
     }
 
-    return OpenBandDay(
+    final result = OpenBandDay(
       day: day,
       sleep: SleepNight(
         onset: onset == null ? null : recordedTime(onset, recordingTimezone),
@@ -1503,7 +1588,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
       ),
       stepIntervals: [
         for (final span
-            in stepsMap['spans'] is List ? stepsMap['spans'] as List : const [])
+            in row?['skipped'] != 1 && stepsMap['spans'] is List
+                ? stepsMap['spans'] as List
+                : const [])
           if (span is Map &&
               span['start_ts'] is num &&
               span['end_ts'] is num &&
@@ -1527,6 +1614,14 @@ class LocalOpenBandRepository implements OpenBandRepository {
       correction: _correction(correctionRow),
       synthetic: payload?['synthetic'] == true,
     );
+    _dayPins.remove(day);
+    _dayPins[day] = row == null
+        ? null
+        : (
+            algoVersion: (row['algo_version'] as num).toInt(),
+            computedAt: (row['computed_at'] as num).toInt(),
+          );
+    return result;
   }
 
   /// Live connection/receive state is intentionally separate from durable
@@ -2220,51 +2315,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
         where: 'field = ? AND date >= ? AND date <= ?',
         whereArgs: [CaffeineSleepPattern.field, startDay, endDay],
       );
-      final solRows = await txn.rawQuery(
-        'SELECT date, value FROM metric_series '
-        'WHERE key = ? AND value IS NOT NULL '
-        'AND date >= ? AND date <= ? '
-        'AND date NOT IN ('
-        'SELECT date FROM metric_series_version '
-        'WHERE date >= ? AND date <= ? '
-        "AND date IS NOT NULL AND source <> 'band' "
-        'UNION '
-        'SELECT r.day_id FROM day_result r '
-        'JOIN (SELECT day_id, MAX(algo_version) AS v FROM day_result '
-        'WHERE algo_version <= ? AND day_id >= ? AND day_id <= ? '
-        'GROUP BY day_id) m '
-        'ON r.day_id = m.day_id AND r.algo_version = m.v '
-        'WHERE r.day_id >= ? AND r.day_id <= ? '
-        "AND r.day_id IS NOT NULL AND r.payload_json LIKE '%\"imported\":true%'"
-        ')',
-        [
-          CaffeineSleepPattern.outcome,
-          startDay,
-          endDay,
-          startDay,
-          endDay,
-          kAlgoVersion,
-          startDay,
-          endDay,
-          startDay,
-          endDay,
-        ],
-      );
-      final versionRows = await txn.query(
-        'metric_series_version',
-        columns: ['date', 'algo_version'],
-        where: 'date >= ? AND date <= ?',
-        whereArgs: [startDay, endDay],
-      );
-      final dayRows = await txn.rawQuery(
-        'SELECT day_id, skipped, partial, '
-        'json_valid(payload_json) AS payload_valid, '
-        'CASE WHEN json_valid(payload_json) = 1 '
-        "THEN json_extract(payload_json, '\$.sleep_source') END "
-        'AS sleep_source '
-        'FROM day_result '
-        'WHERE day_id >= ? AND day_id <= ? AND algo_version = ?',
-        [startDay, endDay, kAlgoVersion],
+      final solRows = await _daySeries(
+        CaffeineSleepPattern.outcome,
+        endDay,
+        fromDay: startDay,
+        txn: txn,
       );
       final correctionRows = await txn.rawQuery(
         'SELECT c.day_id AS day_id, '
@@ -2286,20 +2341,10 @@ class LocalOpenBandRepository implements OpenBandRepository {
       return (
         journalRows: journalRows,
         solRows: solRows,
-        versionRows: versionRows,
-        dayRows: dayRows,
         correctionRows: correctionRows,
       );
     });
 
-    final stampAlgo = <String, int>{};
-    for (final r in snapshot.versionRows) {
-      final date = r['date'];
-      final version = (r['algo_version'] as num?)?.toInt();
-      if (date is String && version != null && daySet.contains(date)) {
-        stampAlgo[date] = version;
-      }
-    }
     final blockedJob = <String>{};
     for (final r in snapshot.correctionRows) {
       final date = r['day_id'];
@@ -2320,8 +2365,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
           ({bool skipped, bool partial, bool corrupt, String? source})
         >{};
     var partial = false;
-    for (final r in snapshot.dayRows) {
-      final date = r['day_id'];
+    for (final r in snapshot.solRows) {
+      final date = r['date'];
       if (date is! String || !daySet.contains(date)) continue;
       final valid = r['payload_valid'] == 1;
       final source = r['sleep_source']?.toString();
@@ -2350,6 +2395,9 @@ class LocalOpenBandRepository implements OpenBandRepository {
       final date = r['date'];
       final value = (r['value'] as num?)?.toDouble();
       if (date is! String || !daySet.contains(date)) continue;
+      if (r['source'] != null && r['source'] != 'band' || r['imported'] == 1) {
+        continue;
+      }
       if (value == null || !value.isFinite || value < 0) {
         partial = true;
         continue;
@@ -2358,9 +2406,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
 
     bool eligible(String day) {
-      if (stampAlgo[day] != kAlgoVersion) return false;
       final row = currentDays[day];
-      if (row == null || row.skipped || row.partial || row.corrupt) {
+      if (row == null || row.skipped || row.corrupt) {
         return false;
       }
       if (row.source != 'manual' && row.source != 'confirmed') return false;
@@ -2391,10 +2438,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
       }
       final wake = days[i + 1];
       final row = currentDays[wake];
-      final stamp = stampAlgo[wake];
       final gated =
           blockedJob.contains(wake) ||
-          (stamp != null && stamp != kAlgoVersion) ||
           (row != null &&
               (row.skipped ||
                   row.partial ||
@@ -2434,13 +2479,11 @@ class LocalOpenBandRepository implements OpenBandRepository {
       );
     }
 
-    final produced = await Isolate.run(
-      () => _caffeineSleepCorrelate({
-        'dates': days,
-        'journal': pairedJournal,
-        'sol': outcomes,
-      }),
-    );
+    final produced = await _caffeineSleepCorrelateOffThread({
+      'dates': days,
+      'journal': pairedJournal,
+      'sol': outcomes,
+    });
     var yesNights = 0;
     var noNights = 0;
     for (final row in pairedJournal) {
@@ -2629,7 +2672,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
     _requireDay(endDay);
     final days = openBandDaysEnding(endDay, nights);
-    final rows = await LocalDb.metricSeries(key.series);
+    final rows = await _daySeries(key.series, endDay, fromDay: days.first);
     final byDay = {
       for (final r in rows)
         r['date'] as String: (r['value'] as num?)?.toDouble(),
@@ -2654,26 +2697,17 @@ class LocalOpenBandRepository implements OpenBandRepository {
     final scalarKey = metric.payloadScalar;
     final db = await LocalDb.instance;
     final snapshot = await db.transaction((txn) async {
-      final selectedRows = await txn.rawQuery(
-        'SELECT day_id, skipped, partial, algo_version, computed_at, '
-        'rhr, rmssd, payload_json, source '
-        'FROM day_result '
-        'WHERE day_id = ? AND algo_version <= ? '
-        'ORDER BY algo_version DESC LIMIT 1',
-        [day, kAlgoVersion],
-      );
-      final selectedMap = selectedRows.isEmpty
+      final selected = await _dayRow(day, txn: txn);
+      final selectedMap = selected == null
           ? null
-          : Map<String, Object?>.from(selectedRows.first);
+          : Map<String, Object?>.from(selected);
       Map<String, Object?>? selectedProjected;
       if (selectedMap != null) {
         final selectedRaw = selectedMap['payload_json'];
-        final projected = await Isolate.run(
-          () => projectNightScalarPayloads(
-            [selectedRaw],
-            baselineRoot,
-            scalarKey,
-          ),
+        final projected = await _projectNightScalarPayloadsOffThread(
+          [selectedRaw],
+          baselineRoot,
+          scalarKey,
         );
         final first = projected.first;
         selectedProjected = first == null
@@ -2681,34 +2715,26 @@ class LocalOpenBandRepository implements OpenBandRepository {
             : Map<String, Object?>.from(first);
         selectedMap.remove('payload_json');
       }
-      final selectedAlgo = (selectedMap?['algo_version'] as num?)?.toInt();
-      final historyAnchor = selectedAlgo ?? kAlgoVersion;
+
       final matchingRows = <Map<String, Object?>>[];
       var offset = 0;
       while (true) {
-        final batch = await txn.query(
-          'day_result',
-          columns: [
-            'day_id',
-            'skipped',
-            'partial',
-            'algo_version',
-            'computed_at',
-            ?sqlColumn,
-            'payload_json',
-            'source',
-          ],
-          where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
-          whereArgs: [startDay, day, historyAnchor],
-          orderBy: 'day_id ASC',
-          limit: kNightScalarPayloadBatchSize,
-          offset: offset,
+        final batch = await txn.rawQuery(
+          'SELECT r.day_id, r.skipped, r.partial, r.algo_version, '
+          'r.computed_at, ${sqlColumn == null ? "" : "r.$sqlColumn,"} '
+          'r.payload_json, r.source FROM day_result r '
+          'WHERE r.day_id >= ? AND r.day_id <= ? AND r.algo_version = '
+          '(SELECT MAX(v.algo_version) FROM day_result v '
+          'WHERE v.day_id = r.day_id AND v.algo_version <= ?) '
+          'ORDER BY r.day_id ASC LIMIT ? OFFSET ?',
+          [startDay, day, kAlgoVersion, kNightScalarPayloadBatchSize, offset],
         );
         if (batch.isEmpty) break;
         final rawPayloads = [for (final r in batch) r['payload_json']];
-        final payloads = await Isolate.run(
-          () =>
-              projectNightScalarPayloads(rawPayloads, baselineRoot, scalarKey),
+        final payloads = await _projectNightScalarPayloadsOffThread(
+          rawPayloads,
+          baselineRoot,
+          scalarKey,
         );
         for (var i = 0; i < batch.length; i++) {
           final r = Map<String, Object?>.from(batch[i])..remove('payload_json');
@@ -2723,8 +2749,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
       }
       final otherRows = await txn.rawQuery(
         'SELECT DISTINCT day_id FROM day_result '
-        'WHERE day_id >= ? AND day_id <= ? AND algo_version != ?',
-        [startDay, day, historyAnchor],
+        'WHERE day_id >= ? AND day_id <= ? AND algo_version > ?',
+        [startDay, day, kAlgoVersion],
       );
       final seriesRows = await txn.rawQuery(
         'SELECT date, value FROM metric_series '
@@ -2760,6 +2786,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         [startDay, day],
       );
       return (
+        lostPin: _lostPin(day, selectedMap),
         selected: selectedMap,
         selectedProjected: selectedProjected,
         matching: matchingRows,
@@ -2836,6 +2863,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
             projected: r['projected'] as Map<String, Object?>?,
           ),
     };
+    matching.remove(day);
+    if (selected != null) matching[day] = selected;
     final matchingDays = matching.keys.toSet();
     final otherVersionDays = {
       for (final r in snapshot.other)
@@ -2871,7 +2900,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
         break;
       }
     }
-    return buildNightScalarDetail(
+    final detail = buildNightScalarDetail(
       day: day,
       key: metric,
       nights: nights,
@@ -2885,19 +2914,32 @@ class LocalOpenBandRepository implements OpenBandRepository {
       napJobs: napJobs,
       recordingTimezone: recordingTimezone,
     );
+    if (!snapshot.lostPin) return detail;
+    return NightScalarDetail(
+      day: day,
+      key: metric,
+      nights: nights,
+      currentAlgo: kAlgoVersion,
+      state: NightScalarState.pending,
+      history: detail.history,
+      counts: detail.counts,
+      recordingTimezone: recordingTimezone,
+    );
   }
 
   @override
   Future<SetupEvaluation> readSetupEvaluation(String day) async {
     _requireDay(day);
-    final row = await LocalDb.dayResult(day);
+    final row = await _dayRow(day);
     final sleepJob = await LocalDb.openBandSleepCorrection(day);
     final napJob = await LocalDb.napRecalcJob(day);
     final storedAlgo = (row?['algo_version'] as num?)?.toInt();
     final computedAtMs = (row?['computed_at'] as num?)?.toInt();
     final computedAt = _computedAt(computedAtMs);
 
-    var state = SetupEvalState.missing;
+    var state = _lostPin(day, row)
+        ? SetupEvalState.pending
+        : SetupEvalState.missing;
     if (row != null) {
       if (storedAlgo == null) {
         throw const FormatException('Stored day result is unreadable.');
@@ -3082,7 +3124,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   Future<SleepGoalSnapshot> readSleepGoal(String day) async {
     _requireDay(day);
     final row = await LocalDb.sleepGoalPeriodAsOf(day);
-    final raw = (await LocalDb.baseline('crossday'))?['payload_json'];
+    final raw = await _crossdayForDay(day);
     Map<String, dynamic>? artifact;
     if (raw is String && raw.isNotEmpty) {
       try {
@@ -3147,6 +3189,15 @@ class LocalOpenBandRepository implements OpenBandRepository {
     }
     final db = await LocalDb.instance;
     return db.transaction((txn) async {
+      if (!await _pinIsCurrent(day, txn)) {
+        return SleepPlanSnapshot(
+          requestedDay: day,
+          today: today,
+          status: SleepPlanStatus.stale,
+          issue: SleepPlanIssue.staleInputs,
+        );
+      }
+
       final rows = await txn.query(
         'baselines',
         where: 'key = ?',
@@ -3441,7 +3492,7 @@ class LocalOpenBandRepository implements OpenBandRepository {
   @override
   Future<NapDay> readNaps(String day) async {
     _requireDay(day);
-    final row = await LocalDb.dayResult(day);
+    final row = await _dayRow(day);
     final rawPayload = row?['payload_json'];
     final payload = _payload(rawPayload);
     // Unreadable derived output must not hide the durable ledger.
@@ -4478,6 +4529,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
               txn,
               startDay: visibleStart,
               endDay: periodEnd,
+              pinnedDay: _dayPins.containsKey(asOfDay) ? asOfDay : null,
+              identity: _dayPins[asOfDay],
             );
       return (parsed: parsed, rows: rows);
     });
@@ -4530,6 +4583,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
           txn,
           startDay: window.startDay,
           endDay: window.endDay,
+          pinnedDay: _dayPins.containsKey(window.endDay) ? window.endDay : null,
+          identity: _dayPins[window.endDay],
         ),
       );
     });
@@ -4574,6 +4629,8 @@ class LocalOpenBandRepository implements OpenBandRepository {
           txn,
           startDay: cycleComparisonQueryStart(window),
           endDay: window.endDay,
+          pinnedDay: _dayPins.containsKey(window.endDay) ? window.endDay : null,
+          identity: _dayPins[window.endDay],
         ),
       );
     });
@@ -4869,6 +4926,8 @@ Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
   DatabaseExecutor txn, {
   required String startDay,
   required String endDay,
+  String? pinnedDay,
+  DayCalculationIdentity? identity,
 }) async {
   final correctionRows = await txn.rawQuery(
     'SELECT c.day_id AS day_id, '
@@ -4908,8 +4967,23 @@ Future<List<CycleNightSourceRow>> _readExactAlgoCycleNights(
     final dayRows = await txn.query(
       'day_result',
       columns: ['day_id', 'skipped', 'partial', 'payload_json', 'computed_at'],
-      where: 'day_id >= ? AND day_id <= ? AND algo_version = ?',
-      whereArgs: [startDay, endDay, kAlgoVersion],
+      where:
+          'day_id >= ? AND day_id <= ? AND algo_version = ?'
+          '${pinnedDay == null
+              ? ""
+              : identity == null
+              ? " AND day_id != ?"
+              : " AND (day_id != ? OR (algo_version = ? AND computed_at = ?))"}',
+      whereArgs: [
+        startDay,
+        endDay,
+        kAlgoVersion,
+        ?pinnedDay,
+        if (pinnedDay != null && identity != null) ...[
+          identity.algoVersion,
+          identity.computedAt,
+        ],
+      ],
       orderBy: 'day_id ASC',
       limit: kCycleNightPayloadBatchSize,
       offset: offset,

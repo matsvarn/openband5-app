@@ -3,8 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart'
-    show kAlgoVersion;
+    show DerivationEngine, kAlgoVersion;
 import 'package:openstrap_edge/compute/strain_backfill.dart';
+import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/openband/domain.dart';
@@ -20,6 +21,7 @@ Future<void> _putCalculation({
   required bool second,
   int algo = kAlgoVersion,
   bool partial = false,
+  bool skipped = false,
 }) async {
   final onset = second ? _onsetB : _onsetA;
   final minutes = second ? 420 : 360;
@@ -37,8 +39,12 @@ Future<void> _putCalculation({
         'rhr': second ? 55 : 50,
         'resp_rate': second ? 16 : 14,
         'skin_temp_z': second ? 1.5 : .5,
+        'sol_min': second ? 20 : 10,
       },
       'steps': {'value': second ? 9000 : 3000},
+      'baselines': {
+        'hrv': {'baseline': second ? 65 : 35, 'spread': 5, 'status': 'trusted'},
+      },
       'sleep': {
         'window': {
           'value': {
@@ -58,6 +64,9 @@ Future<void> _putCalculation({
         },
       },
       'series': {
+        'hr_curve': [
+          {'t': onset ~/ 1000, 'v': second ? 75 : 60},
+        ],
         'hypnogram': [
           {'start': onset ~/ 1000, 'end': wake ~/ 1000, 'stage': 'light'},
         ],
@@ -65,6 +74,7 @@ Future<void> _putCalculation({
     }),
     windowJson: '{}',
     partial: partial,
+    skipped: skipped,
     rmssd: second ? 70 : 40,
     rhr: second ? 55 : 50,
     readiness: second ? 80 : 60,
@@ -212,11 +222,11 @@ const _completeA = {
   'strain headline/history': [4.0, 4.0],
   'steps headline/readTrend': [3000.0, 3000.0],
 };
-const _processing = {
-  'sleep headline/history': [null, null],
-  'recovery headline/history': [null, null],
-  'strain headline/history': [null, null],
-  'steps headline/readTrend': [null, null],
+const _completeB = {
+  'sleep headline/history': [420.0, 420.0],
+  'recovery headline/history': [80.0, 80.0],
+  'strain headline/history': [9.0, 9.0],
+  'steps headline/readTrend': [9000.0, 9000.0],
 };
 
 void main() {
@@ -283,15 +293,14 @@ void main() {
   );
 
   test(
-    'DUP-2 partial row keeps readDay and public history/trend on one complete result',
+    'DUP-2 partial row supplies its valid scalars to readDay and history/trend',
     () async {
       await _putCalculation(second: false, algo: kAlgoVersion - 1);
       await _putCalculation(second: true, partial: true);
       expect(
         await _screenValues(repo),
-        anyOf(_completeA, _processing),
-        reason:
-            'Partial recalculation must show the previous complete result or explicit gaps throughout.',
+        _completeB,
+        reason: 'A finished partial row publishes its own scalars throughout.',
       );
     },
   );
@@ -392,4 +401,380 @@ void main() {
       expect([day.hrv.value, history.last.value], [40.0, 40.0]);
     },
   );
+
+  for (final retained in [true, false]) {
+    test(
+      'cross-call ${retained ? "retained" : "replaced"} pin protects week/trend/history/signals/range until readDay',
+      () async {
+        await _putCalculation(
+          second: false,
+          algo: retained ? kAlgoVersion - 1 : kAlgoVersion,
+        );
+        await repo.readDay(_day);
+        await _putCalculation(second: true);
+        final oldOrGap = retained ? 360.0 : null;
+        expect(
+          (await repo.readWeekStrip(
+            G3Metric.sleepMinutes,
+            _day,
+          )).days.last.value,
+          oldOrGap,
+        );
+        expect(
+          (await repo.readTrend(G3Metric.steps, _day, 7)).points.last.value,
+          retained ? 3000 : null,
+        );
+        expect(
+          (await repo.readMetricHistory(MetricKey.strain, _day, 7)).last.value,
+          retained ? 4 : null,
+        );
+        expect(
+          (await repo.readMetricHistory(MetricKey.hrv, _day, 7)).last.value,
+          retained ? 40 : null,
+        );
+        final signals = await repo.readNightSignals(_day);
+        expect(signals.signal(NightSignalKind.pulse).readings, isEmpty);
+        if (!retained) expect(signals.processing, isTrue);
+        expect(
+          (await repo.readPersonalRange(G3Metric.hrv, _day)).range,
+          isNull,
+        );
+        expect(
+          _fingerprint(await repo.readDay(_day)),
+          _expectedCalculation(true),
+        );
+        expect(
+          (await repo.readWeekStrip(
+            G3Metric.sleepMinutes,
+            _day,
+          )).days.last.value,
+          420,
+        );
+        expect(
+          (await repo.readTrend(G3Metric.steps, _day, 7)).points.last.value,
+          9000,
+        );
+        expect(
+          (await repo.readMetricHistory(MetricKey.strain, _day, 7)).last.value,
+          9,
+        );
+        expect(
+          (await repo.readMetricHistory(MetricKey.hrv, _day, 7)).last.value,
+          70,
+        );
+        expect(
+          (await repo.readNightSignals(
+            _day,
+          )).signal(NightSignalKind.pulse).readings.single.value,
+          75,
+        );
+        expect(
+          (await repo.readPersonalRange(G3Metric.hrv, _day)).range!.median,
+          65,
+        );
+      },
+    );
+  }
+
+  test('a missing pinned day remains a gap until the next readDay', () async {
+    await repo.readDay(_day);
+    await _putCalculation(second: true);
+    expect(
+      (await repo.readMetricHistory(MetricKey.recovery, _day, 7)).last.value,
+      isNull,
+    );
+    expect(
+      (await repo.readMetricHistory(MetricKey.hrv, _day, 7)).last.value,
+      isNull,
+    );
+    expect((await repo.readNightSignals(_day)).window, isNull);
+    await repo.readDay(_day);
+    expect(
+      (await repo.readMetricHistory(MetricKey.recovery, _day, 7)).last.value,
+      80,
+    );
+  });
+
+  test(
+    'failed readDay does not re-pin a still-visible older calculation',
+    () async {
+      await _putCalculation(second: false);
+      await repo.readDay(_day);
+      await _putCalculation(second: true);
+      final db = await LocalDb.instance;
+      final row = (await LocalDb.dayResult(_day))!;
+      final payload =
+          jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+      payload['steps'] = {'value': 'unreadable'};
+      await db.update(
+        'day_result',
+        {'payload_json': jsonEncode(payload)},
+        where: 'day_id = ?',
+        whereArgs: [_day],
+      );
+      await expectLater(repo.readDay(_day), throwsA(isA<TypeError>()));
+      expect(
+        (await repo.readMetricHistory(MetricKey.strain, _day, 7)).last.value,
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'other trend days use current served rows, independent of older pins',
+    () async {
+      await _putCalculation(second: false);
+      await repo.readDay(_day);
+      await _putCalculation(second: true);
+      final points = await repo.readMetricHistory(
+        MetricKey.strain,
+        '2026-09-16',
+        7,
+      );
+      expect(points.singleWhere((p) => p.day == _day).value, 9);
+    },
+  );
+
+  test(
+    'skipped served rows suppress all calculated headlines and series',
+    () async {
+      await _putCalculation(second: false, algo: kAlgoVersion - 1);
+      await _putCalculation(second: true, skipped: true);
+      final values = await _screenValues(repo);
+      expect(values.values.expand((v) => v), everyElement(isNull));
+      for (final key in LocalDb.servedDaySeriesSources.keys) {
+        expect(
+          (await LocalDb.servedDaySeries(key)).single['value'],
+          isNull,
+          reason: key,
+        );
+      }
+      expect(
+        (await repo.readMetricHistory(MetricKey.hrv, _day, 7)).last.value,
+        isNull,
+      );
+      expect((await repo.sleepDays()), isNot(contains(_day)));
+      expect((await repo.readNightSignals(_day)).window, isNull);
+    },
+  );
+
+  test(
+    'partial missing fields are gaps, never the previous series values',
+    () async {
+      await _putCalculation(second: false, algo: kAlgoVersion - 1);
+      await LocalDb.putDayResult(
+        dayId: _day,
+        algoVersion: kAlgoVersion,
+        payloadJson: '{"scalars":{"readiness":81}}',
+        windowJson: '{}',
+        partial: true,
+      );
+      final values = await _screenValues(repo);
+      expect(values['recovery headline/history'], [81.0, 81.0]);
+      for (final key in [
+        'sleep headline/history',
+        'strain headline/history',
+        'steps headline/readTrend',
+      ]) {
+        expect(values[key], [null, null], reason: key);
+      }
+    },
+  );
+
+  test(
+    'served projection preserves every explicit source, rounding and identity',
+    () async {
+      await _putCalculation(second: false);
+      final db = await LocalDb.instance;
+      final row = (await LocalDb.dayResult(_day))!;
+      final payload =
+          jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+      ((payload['sleep'] as Map)['accounting']['value'] as Map)['tst_sec'] =
+          21630;
+      await db.update(
+        'day_result',
+        {'payload_json': jsonEncode(payload)},
+        where: 'day_id = ?',
+        whereArgs: [_day],
+      );
+      const values = {
+        'readiness': 60,
+        'strain': 4,
+        'steps': 3000,
+        'tst_min': 361,
+        'rmssd': 40,
+        'rhr': 50,
+        'resp_rate': 14,
+        'skin_temp_z': .5,
+        'sol_min': 10,
+      };
+      for (final e in values.entries) {
+        final point = (await LocalDb.servedDaySeries(e.key)).single;
+        expect(point['value'], e.value, reason: e.key);
+        expect(point['date'], _day);
+        expect(point['algo_version'], kAlgoVersion);
+        expect(point['computed_at'], 1000);
+      }
+      expect((await repo.readDay(_day)).sleep.duration.value, 361);
+    },
+  );
+
+  test(
+    'new crossday artifacts cannot be attached to an older pinned day',
+    () async {
+      await _putCalculation(second: false);
+      await repo.saveSleepGoal(_day, 450);
+      await repo.readDay(_day);
+      await _putCalculation(second: true);
+      await LocalDb.putBaseline(
+        'crossday',
+        jsonEncode({
+          'built_for_day': _day,
+          'algo_version': kAlgoVersion,
+          'load': {
+            'value': {'ctl': 8, 'atl': 10},
+          },
+          'regularity': {
+            'value': {'sri': 75, 'days': 14},
+          },
+          'sleep_debt': {
+            'value': {'osd_hours': 8, 'has_free_night': true},
+          },
+        }),
+      );
+      expect((await repo.readWeeklyLoad(_day)).ctl, isNull);
+      expect((await repo.readSleepPlus(_day)).regularity.value, isNull);
+      expect((await repo.readSleepGoal(_day)).weekendEstimate, isNull);
+      expect((await repo.readSleepGoal(_day)).targetMinutes, 450);
+      expect(
+        (await repo.readSleepPlan(_day, now: DateTime(2026, 9, 15, 12))).status,
+        SleepPlanStatus.stale,
+      );
+      await repo.readDay(_day);
+      expect((await repo.readWeeklyLoad(_day)).ctl, 8);
+      expect((await repo.readSleepPlus(_day)).regularity.value, 75);
+    },
+  );
+
+  test(
+    'sleep source falls back to a series stamp only at the served version',
+    () async {
+      await _putCalculation(second: false);
+      final db = await LocalDb.instance;
+      final row = (await LocalDb.dayResult(_day))!;
+      final payload =
+          jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+      payload.remove('source');
+      await db.update(
+        'day_result',
+        {'source': null, 'payload_json': jsonEncode(payload)},
+        where: 'day_id = ?',
+        whereArgs: [_day],
+      );
+      await db.update(
+        'metric_series_version',
+        {'algo_version': kAlgoVersion + 1, 'source': 'foreign'},
+        where: 'date = ?',
+        whereArgs: [_day],
+      );
+      expect((await repo.readDay(_day)).sleep.source, 'unknown');
+      await db.update(
+        'metric_series_version',
+        {'algo_version': kAlgoVersion, 'source': 'band'},
+        where: 'date = ?',
+        whereArgs: [_day],
+      );
+      expect((await repo.readDay(_day)).sleep.source, 'band');
+    },
+  );
+
+  test(
+    'normally derived complete day has servedDaySeries == metric_series for every UI key',
+    () async {
+      final db = await LocalDb.instance;
+      final start = DateTime(2026, 9, 15).millisecondsSinceEpoch ~/ 1000;
+      final batch = db.batch();
+      for (var i = 0; i < 12 * 3600; i++) {
+        batch.insert('decoded_onehz', {
+          'device_id': '',
+          'ts_ms': (start + i) * 1000,
+          'rec_ts': start + i,
+          'counter': i,
+          'hr': 60 + i % 3,
+          'ax': 0.0,
+          'ay': 0.0,
+          'az': 1.0,
+          'device_family': 'gen4',
+        });
+      }
+      await batch.commit(noResult: true);
+      expect(
+        await DerivationEngine().run(const PersonalProfile()),
+        greaterThanOrEqualTo(1),
+      );
+      final row = (await LocalDb.dayResult(_day))!;
+      expect(row['partial'], 0);
+      expect(row['skipped'], 0);
+      for (final key in LocalDb.servedDaySeriesSources.keys) {
+        final served = (await LocalDb.servedDaySeries(
+          key,
+          fromDay: _day,
+          throughDay: _day,
+        )).single;
+        final series = (await db.query(
+          'metric_series',
+          where: 'date = ? AND key = ?',
+          whereArgs: [_day, key],
+        )).single;
+        expect(served['value'], series['value'], reason: key);
+      }
+    },
+  );
+
+  test('servedDaySeries 365-day benchmark and primary-key lookup plan', () async {
+    await _putCalculation(second: false);
+    final db = await LocalDb.instance;
+    final row = (await LocalDb.dayResult(_day))!..remove('date');
+    final payload =
+        jsonDecode(row['payload_json'] as String) as Map<String, dynamic>;
+    payload['benchmark_padding'] = List.filled(80000, 'x').join();
+    row['payload_json'] = jsonEncode(payload);
+    await db.update(
+      'day_result',
+      {'payload_json': row['payload_json']},
+      where: 'day_id = ?',
+      whereArgs: [_day],
+    );
+    final batch = db.batch();
+    for (var i = 1; i < 365; i++) {
+      final date = DateTime.utc(
+        2026,
+        9,
+        15,
+      ).subtract(Duration(days: i)).toIso8601String().substring(0, 10);
+      batch.insert('day_result', {...row, 'day_id': date});
+    }
+    await batch.commit(noResult: true);
+    final watch = Stopwatch()..start();
+    final points = await LocalDb.servedDaySeries(
+      'strain',
+      throughDay: _day,
+      limitDays: 365,
+    );
+    watch.stop();
+    expect(points, hasLength(365));
+    // Informational only: no machine-dependent timing threshold.
+    // ignore: avoid_print
+    print(
+      'servedDaySeries: ${points.length} rows (~80 KB payload each) x ${watch.elapsedMicroseconds / 1000} ms',
+    );
+    final plan = await db.rawQuery(
+      'EXPLAIN QUERY PLAN SELECT r.day_id FROM day_result r WHERE r.day_id <= ? AND r.algo_version = (SELECT MAX(v.algo_version) FROM day_result v WHERE v.day_id = r.day_id AND v.algo_version <= ?)',
+      [_day, kAlgoVersion],
+    );
+    expect(
+      plan.map((r) => r['detail']).join(' '),
+      contains('sqlite_autoindex_day_result_1'),
+    );
+  });
 }
