@@ -9,6 +9,7 @@ import 'domain.dart';
 import 'theme.dart';
 import 'time.dart';
 import 'g3/chrome.dart' as g3_chrome;
+import 'g3/g3_format.dart' show g3Duration;
 import 'g3/g3_theme.dart';
 
 class OpenBandNaps extends StatefulWidget {
@@ -751,7 +752,7 @@ class _OpenBandNapEditorState extends State<OpenBandNapEditor> {
 
   String get _durationLabel {
     if (start == null || end == null || !end!.isAfter(start!)) return '—';
-    return '${end!.difference(start!).inMinutes} Minuten';
+    return g3Duration(end!.difference(start!).inMinutes);
   }
 
   Future<void> _save() async {
