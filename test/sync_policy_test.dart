@@ -608,21 +608,21 @@ void main() {
   group('stalenessTierFor (meta-layer: staleness escalation)', () {
     test('recently synced is fresh', () {
       expect(stalenessTierFor(0), StalenessTier.fresh);
-      expect(stalenessTierFor(3600), StalenessTier.fresh);
+      expect(stalenessTierFor(3599), StalenessTier.fresh);
       expect(stalenessTierFor(kStalenessQuietSeconds - 1), StalenessTier.fresh);
     });
 
-    test('12h-48h is the quiet in-app tier', () {
-      expect(stalenessTierFor(kStalenessQuietSeconds), StalenessTier.quiet);
-      expect(stalenessTierFor(24 * 3600), StalenessTier.quiet);
+    test('1h-3h is the quiet in-app tier', () {
+      expect(stalenessTierFor(3600), StalenessTier.quiet);
+      expect(stalenessTierFor(2 * 3600), StalenessTier.quiet);
       expect(
         stalenessTierFor(kStalenessNotifySeconds - 1),
         StalenessTier.quiet,
       );
     });
 
-    test('48h+ escalates to an OS notification', () {
-      expect(stalenessTierFor(kStalenessNotifySeconds), StalenessTier.notify);
+    test('3h+ escalates to an OS notification', () {
+      expect(stalenessTierFor(3 * 3600), StalenessTier.notify);
       expect(stalenessTierFor(7 * 86400), StalenessTier.notify); // a week gone
     });
   });
@@ -635,12 +635,12 @@ void main() {
     });
 
     test('within the cooldown window → does not re-fire', () {
-      final last = now.subtract(const Duration(hours: 1));
+      final last = now.subtract(const Duration(hours: 12) - const Duration(seconds: 1));
       expect(shouldRenotifyStaleness(last, now), isFalse);
     });
 
     test('past the cooldown window → fires again', () {
-      final last = now.subtract(const Duration(hours: 49));
+      final last = now.subtract(const Duration(hours: 12));
       expect(shouldRenotifyStaleness(last, now), isTrue);
     });
 

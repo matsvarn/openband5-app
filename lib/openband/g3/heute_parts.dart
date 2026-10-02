@@ -1,159 +1,12 @@
-// Heute-only parts. The typed G3 check-in asks yes/no, 1–5 ratings, counts
-// (with an explicit "Keins") and a free note, some about yesterday. The
-// The shared OBCheckIn is ready for both tabs. Heute still uses OBCheckInAsk
-// until its area pass migrates the answer controls.
+// Heute answer controls for the shared OBCheckIn.
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import 'chrome.dart' show OBActionSecondary;
-import 'check_in.dart' show g3CheckInCopy;
 import 'g3_theme.dart';
 import 'sport.dart';
 
 String heuteSportLabel(String sport) => g3SportLabel(sport);
-final kHeuteSports = g3QuickSportIds;
-
-/// Question copy for a check-in key; the day it belongs to is shown apart
-/// ("zu gestern"), so questions do not say "gestern" themselves.
-String heuteCheckInQuestion(String key, String title) =>
-    g3CheckInCopy(key, title).question;
-
-/// Question and end labels for a check-in rating key.
-({String question, String low, String high}) heuteRatingCopy(String key) {
-  final copy = g3CheckInCopy(key, key);
-  return (question: copy.question, low: copy.low, high: copy.high);
-}
-
-/// One check-in question in the Heute card: header with progress (and the
-/// answer's day when it is not the selected day), the last answer with its
-/// change action, the question, an answer control and "Später", which never
-/// penalises.
-class OBCheckInAsk extends StatelessWidget {
-  final String progress, question;
-
-  /// The answer's day when it is not the selected day ("zu gestern").
-  final String? target;
-
-  /// The previous answer ("Stimmung: 4 von 5"), with its change action.
-  final String? answered;
-  final VoidCallback? onChange;
-  final Widget answer;
-  final VoidCallback? onLater;
-  const OBCheckInAsk({
-    super.key,
-    required this.progress,
-    required this.question,
-    required this.answer,
-    this.target,
-    this.answered,
-    this.onChange,
-    this.onLater,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 14, 12),
-      decoration: g.pressed(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(LucideIcons.notebookPen, size: 16, color: g.ink),
-              const SizedBox(width: 8),
-              Text('CHECK-IN', style: g.caps()),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  progress,
-                  textAlign: TextAlign.right,
-                  style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (answered != null) ...[
-            Row(
-              children: [
-                Icon(LucideIcons.check, size: 16, color: g.ink),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    answered!,
-                    style: g.t(14, 18, weight: FontWeight.w500, color: g.ink2),
-                  ),
-                ),
-                if (onChange != null)
-                  Semantics(
-                    button: true,
-                    label: 'Antwort ändern',
-                    excludeSemantics: true,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onChange,
-                      child: SizedBox(
-                        height: 44,
-                        child: Center(
-                          child: Text(
-                            'Ändern',
-                            style: g.t(13, 16, weight: FontWeight.w700),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 2),
-          ],
-          Text(
-            question,
-            style: g.t(19, 24, weight: FontWeight.w700, tracking: -.015),
-          ),
-          if (target != null) ...[
-            const SizedBox(height: 2),
-            Text(
-              target!,
-              style: g.t(13, 17, weight: FontWeight.w500, color: g.ink2),
-            ),
-          ],
-          const SizedBox(height: 10),
-          answer,
-          Align(
-            alignment: Alignment.centerRight,
-            child: Semantics(
-              button: true,
-              label: 'Später',
-              excludeSemantics: true,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onLater,
-                child: SizedBox(
-                  width: 80,
-                  height: 44,
-                  child: Center(
-                    child: Text(
-                      'Später',
-                      style: g.t(
-                        14,
-                        18,
-                        weight: FontWeight.w500,
-                        color: g.ink2,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 /// Nein / Ja, the keys of the shared OBCheckIn Baustein.
 class OBYesNoKeys extends StatelessWidget {
@@ -184,25 +37,20 @@ class OBYesNoKeys extends StatelessWidget {
   );
 }
 
-/// 1…[max] keys with the end labels under them.
+/// 1…[max] keys for the named question.
 class OBRatingKeys extends StatelessWidget {
-  final String question, low, high;
+  final String question;
   final int max;
-  final bool showLegend;
   final ValueChanged<int>? onRate;
   const OBRatingKeys({
     super.key,
     required this.question,
-    required this.low,
-    required this.high,
     this.max = 5,
-    this.showLegend = true,
     this.onRate,
   });
 
   @override
   Widget build(BuildContext context) {
-    final g = G3.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -226,14 +74,6 @@ class OBRatingKeys extends StatelessWidget {
             ],
           ],
         ),
-        if (showLegend)
-          Row(
-            children: [
-              Text(low, style: g.t(12, 16, color: g.muted)),
-              const Spacer(),
-              Text(high, style: g.t(12, 16, color: g.muted)),
-            ],
-          ),
       ],
     );
   }

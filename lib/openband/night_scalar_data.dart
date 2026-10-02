@@ -59,7 +59,6 @@ const List<double?> kNightScalarPaperSkinTempC = [
 
 const double kNightScalarPaperSkinTempSdSelected = 0.4;
 const double kNightScalarPaperSkinTempCSelected = 33.2;
-const double kNightScalarPaperSkinTempCOffset = 32.8;
 
 const String kNightScalarPaperDay = '2026-09-15';
 
@@ -128,8 +127,17 @@ enum NightScalarState {
 const String kNightScalarPendingLabel = 'Auswertung läuft';
 const String kNightScalarOpenLabel = 'Auswertung offen';
 const String kNightScalarFailedLabel = 'Auswertung fehlgeschlagen';
+const String kNightScalarPartialLabel = 'Unvollständige Nacht';
 const String kNightScalarUnknownUnitLabel = 'Einheit unbekannt';
 const String kNightScalarTrustedBaseline = 'trusted';
+
+String? nightScalarEvaluationLabel(NightScalarState? state) => switch (state) {
+  NightScalarState.pending => kNightScalarPendingLabel,
+  NightScalarState.failed => kNightScalarFailedLabel,
+  NightScalarState.unknown ||
+  NightScalarState.outdated => kNightScalarOpenLabel,
+  _ => null,
+};
 
 const Set<String> kNightScalarOverrideSources = {'manual', 'confirmed'};
 
@@ -474,13 +482,7 @@ class NightScalarDetail {
       state == NightScalarState.unknown ||
       state == NightScalarState.outdated;
 
-  String? get evaluationLabel => switch (state) {
-    NightScalarState.pending => kNightScalarPendingLabel,
-    NightScalarState.failed => kNightScalarFailedLabel,
-    NightScalarState.unknown ||
-    NightScalarState.outdated => kNightScalarOpenLabel,
-    _ => null,
-  };
+  String? get evaluationLabel => nightScalarEvaluationLabel(state);
 
   String get series => key.series;
   String get baselinePath => key.baselinePath;

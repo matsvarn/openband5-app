@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'cycle.dart';
 import 'cycle_observations_data.dart';
 import 'domain.dart';
+import 'g3/count_copy.dart';
 import 'journal_controls.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
@@ -411,13 +412,13 @@ String _weekLabel(CycleObservationsWeek week) =>
     'Tag ${week.fromCycleDay}–${week.toCycleDay}';
 
 String _daysTitle(int n) =>
-    n == 1 ? '1 Tag mit Beobachtungen' : '$n Tage mit Beobachtungen';
+    '$n ${g3CountNoun(n, 'Tag', 'Tage')} mit Beobachtungen';
 
 String _tagLabel(String tag) => kCycleObservationLabels[tag] ?? tag;
 
 String _countSemantic(String label, int count, int taggedDays) {
-  final counted = count == 1 ? '1 Tag' : '$count Tage';
-  final denom = taggedDays == 1 ? '1 Tag' : '$taggedDays Tagen';
+  final counted = '$count ${g3CountNoun(count, 'Tag', 'Tage')}';
+  final denom = '$taggedDays ${g3CountNoun(taggedDays, 'Tag', 'Tagen')}';
   return '$label, $counted von $denom';
 }
 

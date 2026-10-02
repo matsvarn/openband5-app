@@ -524,13 +524,12 @@ class OuraLink {
         anchor: _parseAnchor(_anchor),
         nowSeconds: _now,
         replyTimeout: timeouts,
-        confirmTimeout: timeouts,
+        // The adapter's default, not [timeouts]: `confirm()` only arrives
+        // after the host's real SQLite commit, and a 50 ms race against that
+        // commit dropped the cursor advance on slow hosts.
       ),
     );
     _host = host;
-    // `host.run` does not resolve until the session ends, but this loop has
-    // to react to each write WHILE the session is still open — so track
-    // completion alongside it rather than awaiting it here.
     // Replies come out of the link's own write hook — request→reply order is
     // exact and nothing depends on how much event-loop time this method buys.
     link.onWrite = (writeIndex, value) {
@@ -538,14 +537,16 @@ class OuraLink {
         link.feed(kOuraNotifyChar, f, atSec: _now());
       }
     };
-    var finished = false;
-    final done = host.run(link).whenComplete(() => finished = true);
-    for (var spin = 0; spin < 800 && !finished; spin++) {
-      await Future<void>.delayed(Duration.zero);
-    }
+    // The session ends on its own: every scripted request is answered, and
+    // the adapter returns on a drained summary or after [timeouts] without a
+    // reply. Awaited rather than spun on, because a fixed number of
+    // event-loop turns could close the link while a batch still waited on
+    // its commit.
+    await host.run(link).timeout(const Duration(seconds: 30), onTimeout: () {});
     await link.close();
-    await done.timeout(const Duration(seconds: 2), onTimeout: () {});
     await host.stop();
+    // As in [stop]: a queued cursor write reads [_deviceId] when it runs.
+    await _cursorWrites;
     _host = null;
     _anchor = null;
     _deviceId = null;

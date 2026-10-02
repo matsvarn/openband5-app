@@ -4,6 +4,7 @@
 // Pure presentation. Every value is nullable and renders as "—" when absent;
 // the state (normal/better/worse/plain/building/missing) and any deviation
 // come from the caller — no widget decides a baseline or computes a metric.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -819,8 +820,12 @@ class OBBodyRow extends StatelessWidget {
   final (double, double)? band;
   final String? minLabel, maxLabel;
 
-  /// Building / missing reason under the empty track.
+  /// Building reason under the empty track.
   final String note;
+
+  /// Why a missing value is missing, e.g. a failed calculation. Defaults to
+  /// "nicht erfasst".
+  final String? reason;
   final bool last;
   final VoidCallback? onTap;
   const OBBodyRow({
@@ -837,6 +842,7 @@ class OBBodyRow extends StatelessWidget {
     this.minLabel,
     this.maxLabel,
     this.note = 'nicht erfasst',
+    this.reason,
     this.last = false,
     this.onTap,
   });
@@ -845,6 +851,7 @@ class OBBodyRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = G3.of(context);
     final missing = state == OBBodyState.missing || value == null;
+    final absent = reason ?? 'nicht erfasst';
     const w = 128.0;
     final Widget picture;
     if (missing || state == OBBodyState.building) {
@@ -855,7 +862,7 @@ class OBBodyRow extends StatelessWidget {
           const G3Dashed(height: 8, width: w, radius: 4),
           const SizedBox(height: 5),
           Text(
-            missing ? 'nicht erfasst' : note,
+            missing ? absent : note,
             style: g.t(11, 13, weight: FontWeight.w500, color: g.ink2),
           ),
         ],
@@ -938,8 +945,12 @@ class OBBodyRow extends StatelessWidget {
     }
     return Semantics(
       button: onTap != null,
-      label: '$name ${missing ? 'nicht erfasst' : '$value ${unit ?? ''}'}'
-          .trim(),
+      label: missing
+          ? '$name $absent'
+          : [
+              '$name $value ${unit ?? ''}'.trim(),
+              if (state == OBBodyState.building) note,
+            ].join(', '),
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -999,143 +1010,6 @@ class OBBodyRow extends StatelessWidget {
                 const SizedBox(width: 12),
                 OBChevron(size: 14, color: g.gap),
               ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Small metric card
-
-class OBMetricCard extends StatelessWidget {
-  final String label;
-  final String? value;
-  final String? unit;
-  final String? meta;
-
-  /// Recent values for the mini bars; null bars are left out, not zeroed.
-  final List<double?> spark;
-  final double sparkMin, sparkMax;
-  final VoidCallback? onTap;
-  const OBMetricCard({
-    super.key,
-    required this.label,
-    required this.value,
-    this.unit,
-    this.meta,
-    this.spark = const [],
-    this.sparkMin = 0,
-    this.sparkMax = 1,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    final v = value;
-    return Semantics(
-      button: onTap != null,
-      label: '$label ${v ?? 'nicht erfasst'} ${unit ?? ''}'.trim(),
-      excludeSemantics: true,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: kG3CardPadding,
-          decoration: g.raised(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: Text(label, style: g.caps())),
-                  if (v != null && meta != null)
-                    Text(meta!, style: g.t(11, 14, color: g.muted)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (v == null)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const OBMissingValue(size: 34, lineHeight: 38),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          'nicht erfasst',
-                          style: g.t(13, 16, color: g.ink2),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Flexible(
-                      child: MediaQuery.withClampedTextScaling(
-                        maxScaleFactor: 1.3,
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: v,
-                                style: g.t(
-                                  34,
-                                  38,
-                                  weight: FontWeight.w700,
-                                  tracking: -.035,
-                                ),
-                              ),
-                              if (unit != null)
-                                TextSpan(
-                                  text: ' $unit',
-                                  style: g.t(13, 16, color: g.muted),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 26,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          for (var i = 0; i < spark.length; i++) ...[
-                            if (i > 0) const SizedBox(width: 3),
-                            if (spark[i] case final s?
-                                when s.isFinite &&
-                                    sparkMin.isFinite &&
-                                    sparkMax.isFinite &&
-                                    sparkMax > sparkMin)
-                              Container(
-                                width: 6,
-                                height:
-                                    (26 *
-                                            ((s - sparkMin) /
-                                                (sparkMax - sparkMin)))
-                                        .clamp(2.0, 26.0),
-                                decoration: BoxDecoration(
-                                  color: i == spark.length - 1 ? g.ink : g.bar,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              )
-                            else
-                              const SizedBox(width: 6),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
             ],
           ),
         ),

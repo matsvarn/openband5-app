@@ -3,12 +3,13 @@
 //
 // Pure presentation: strings come from the note engine / repository, values
 // are nullable, deviations are decided by the caller.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../alp_tokens.dart';
 import '../theme.dart' show OBChevron;
-import 'chrome.dart' show OBActionSecondary, OBPillButton;
+import 'chrome.dart' show OBPillButton;
 import 'g3_theme.dart';
 import 'metrics.dart'
     show G3LabelRow, G3ValueLine, OBChip, OBChipKind, OBMissingValue;
@@ -425,171 +426,6 @@ class OBActivityRow extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Check-in
-
-enum OBCheckInState { question, answered, later }
-
-/// One journal question at a time. "Später" never penalises.
-class G3CheckInPreview extends StatelessWidget {
-  final OBCheckInState state;
-  final String progress;
-  final String? question, answered;
-  final String laterText;
-  final VoidCallback? onYes, onNo, onLater, onChange, onResume;
-  const G3CheckInPreview({
-    super.key,
-    required this.state,
-    required this.progress,
-    this.question,
-    this.answered,
-    this.laterText = 'Für später gemerkt. Kein Nachteil, wenn du es auslässt.',
-    this.onYes,
-    this.onNo,
-    this.onLater,
-    this.onChange,
-    this.onResume,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final g = G3.of(context);
-    Widget buttons() => Row(
-      children: [
-        Expanded(
-          child: OBActionSecondary(
-            'Nein',
-            onPressed: onNo,
-            height: 40,
-            expand: true,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: OBActionSecondary(
-            'Ja',
-            onPressed: onYes,
-            height: 40,
-            expand: true,
-          ),
-        ),
-        Semantics(
-          button: true,
-          label: 'Später',
-          excludeSemantics: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onLater,
-            child: SizedBox(
-              width: 80,
-              height: 44,
-              child: Center(
-                child: Text(
-                  'Später',
-                  style: g.t(14, 18, weight: FontWeight.w500, color: g.ink2),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        14,
-        14,
-        state == OBCheckInState.later ? 9 : 12,
-      ),
-      decoration: g.pressed(),
-      child: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(LucideIcons.notebookPen, size: 16, color: g.ink),
-                  const SizedBox(width: 8),
-                  Text('CHECK-IN', style: g.caps()),
-                  const Spacer(),
-                  Text(
-                    progress,
-                    style: g.t(12, 16, weight: FontWeight.w500, color: g.ink2),
-                  ),
-                ],
-              ),
-              SizedBox(height: state == OBCheckInState.later ? 7 : 12),
-              if (state == OBCheckInState.later)
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(laterText, style: g.t(13, 17, color: g.ink2)),
-                    ),
-                    const SizedBox(width: 10),
-                    OBActionSecondary('Jetzt', onPressed: onResume, height: 34),
-                  ],
-                )
-              else ...[
-                if (state == OBCheckInState.answered && answered != null) ...[
-                  Row(
-                    children: [
-                      Icon(LucideIcons.check, size: 16, color: g.ink),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          answered!,
-                          style: g.t(
-                            14,
-                            18,
-                            weight: FontWeight.w500,
-                            color: g.ink2,
-                          ),
-                        ),
-                      ),
-                      if (onChange != null)
-                        ExcludeSemantics(
-                          child: Text(
-                            'Ändern',
-                            style: g.t(13, 16, weight: FontWeight.w700),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                Text(
-                  question ?? '',
-                  style: g.t(19, 24, weight: FontWeight.w700, tracking: -.015),
-                ),
-                const SizedBox(height: 10),
-                buttons(),
-              ],
-            ],
-          ),
-          if (state == OBCheckInState.answered &&
-              answered != null &&
-              onChange != null)
-            Positioned(
-              top: 15,
-              right: 0,
-              width: 60,
-              height: 44,
-              child: Semantics(
-                button: true,
-                label: 'Antwort ändern',
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onChange,
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

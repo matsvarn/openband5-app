@@ -69,21 +69,6 @@
       "dark": "5OB3-0",
       "background": "canvas"
     },
-    "OBCheckIn.answered": {
-      "light": "5LZD-0",
-      "dark": "5M33-0",
-      "background": "page"
-    },
-    "OBCheckIn.later": {
-      "light": "5M07-0",
-      "dark": "5M3X-0",
-      "background": "page"
-    },
-    "OBCheckIn.question": {
-      "light": "5LYP-0",
-      "dark": "5M2F-0",
-      "background": "page"
-    },
     "OBChip.basis": {
       "light": "5MY7-0",
       "dark": "5N0G-0",
@@ -212,16 +197,6 @@
     "OBListRow.value": {
       "light": "5MTZ-0",
       "dark": "5MVH-0",
-      "background": "page"
-    },
-    "OBMetricCard.default": {
-      "light": "5MP8-0",
-      "dark": "5MRZ-0",
-      "background": "page"
-    },
-    "OBMetricCard.missing": {
-      "light": "5MPS-0",
-      "dark": "5MSJ-0",
       "background": "page"
     },
     "OBNightCard.full": {

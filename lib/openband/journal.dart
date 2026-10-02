@@ -13,6 +13,7 @@ import 'cycle.dart';
 import 'medication.dart';
 import 'nutrition.dart';
 import 'theme.dart';
+import 'g3/g3_format.dart';
 import 'tab_bar.dart';
 import '../ui2/profile/profile.dart' show SetRow;
 
@@ -986,11 +987,8 @@ class OBPatternCard extends StatelessWidget {
 
 String _patternDeltaLabel(double? delta) {
   if (delta == null || !delta.isFinite) return '—';
-  final digits = delta == delta.roundToDouble() ? 0 : 1;
-  final magnitude = obNumber(delta.abs(), digits: digits);
-  if (delta > 0) return '+$magnitude Min.';
-  if (delta < 0) return '−$magnitude Min.';
-  return '$magnitude Min.';
+  final rounded = delta.round();
+  return '${rounded > 0 ? '+' : ''}${g3Duration(rounded)}';
 }
 
 String _patternInfoBody(CaffeineSleepPattern s) {

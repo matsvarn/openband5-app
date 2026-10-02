@@ -500,7 +500,7 @@ class _G3LiveRunState extends State<G3LiveRun> {
                     _stat(
                       context,
                       'DAUER',
-                      '${(run.activeSec / 60).round()} Min.',
+                      g3Duration((run.activeSec / 60).round()),
                       '',
                     ),
                     _stat(

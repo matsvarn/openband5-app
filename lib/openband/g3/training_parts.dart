@@ -4,7 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../domain.dart';
 import 'chrome.dart' show OBLink, OBPanel;
 import 'count_copy.dart';
-import 'g3_format.dart' show g3Signed;
+import 'g3_format.dart' show g3Signed, g3Number;
 import 'g3_theme.dart';
 import 'sport.dart';
 import 'metrics.dart' show G3LabelRow, OBChip, OBChipKind, OBMissingValue;

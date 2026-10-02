@@ -352,57 +352,6 @@ class RespData {
   double get confidence => (_r['confidence'] as num?)?.toDouble() ?? 0;
 }
 
-/// ── /records — your body over time (PRs + streaks + baseline drift) ───────────
-class RecordsData {
-  final Map<String, dynamic> _r;
-  RecordsData(this._r);
-
-  factory RecordsData.fromJson(Object? json) =>
-      RecordsData(json is Map ? json.cast<String, dynamic>() : const {});
-
-  int get daysTracked => (_r['days_tracked'] as num?)?.toInt() ?? 0;
-  int get nightsTracked => (_r['nights_tracked'] as num?)?.toInt() ?? 0;
-  int get workoutsTracked => (_r['workouts_tracked'] as num?)?.toInt() ?? 0;
-
-  Map<String, dynamic> get _records =>
-      (_r['records'] is Map) ? (_r['records'] as Map).cast() : const {};
-
-  /// A record = {value, date} (+ optional type). null when never set.
-  ({num value, String date, String? type})? record(String key) {
-    final m = _records[key];
-    if (m is! Map) return null;
-    final v = _num(m['value']);
-    final d = m['date']?.toString();
-    if (v == null || d == null) return null;
-    return (value: v, date: d, type: m['type']?.toString());
-  }
-
-  /// streak {current, label} for wear/sleep/strain_target.
-  ({int current, String label})? streak(String key) {
-    final s = (_r['streaks'] is Map) ? (_r['streaks'] as Map)[key] : null;
-    if (s is! Map) return null;
-    return (
-      current: (_num(s['current'])?.toInt()) ?? 0,
-      label: (s['label'] ?? '').toString(),
-    );
-  }
-
-  ({double now, double then, double delta, String direction, int days})?
-  get rhrDrift {
-    final d = _r['rhr_drift'];
-    if (d is! Map) return null;
-    return (
-      now: _num(d['now'])?.toDouble() ?? 0,
-      then: _num(d['then'])?.toDouble() ?? 0,
-      delta: _num(d['delta'])?.toDouble() ?? 0,
-      direction: (d['direction'] ?? '').toString(),
-      days: _num(d['days'])?.toInt() ?? 0,
-    );
-  }
-
-  bool get isEmpty => daysTracked == 0 && nightsTracked == 0;
-}
-
 /// ── /sleep (a row, newest first) ──────────────────────────────────────────────
 class SleepData {
   final Map<String, dynamic> _row;
@@ -436,43 +385,6 @@ class SleepData {
   int? get onsetEpoch => _num(_row['onset'] ?? _row['onset_ts'])?.toInt();
   int? get wakeEpoch => _num(_row['wake'] ?? _row['wake_ts'])?.toInt();
 
-  /// Stages are ESTIMATE/beta per CONFIDENCE.
-  bool get stagesBeta => true;
-
-  bool get isEmpty => _row.isEmpty;
-}
-
-/// ── /strain (daily, newest first) ────────────────────────────────────────────
-class StrainData {
-  final Map<String, dynamic> _row;
-  final Map<String, dynamic> _flags;
-  StrainData(this._row) : _flags = decodeFlags(_row['flags']);
-
-  factory StrainData.fromRows(List<Map<String, dynamic>> rows) =>
-      StrainData(rows.isNotEmpty ? rows.first : {});
-
-  // Daily row scalars + a `flags` blob. Note the flag keys differ from the
-  // column names: acwr→`load`.
-  Metric get dailyStrain => metricOf(_row, 'strain', flags: _flags);
-  Metric get acwr =>
-      Metric.parse(_num(_row['acwr']), flag: flagFor(_flags, 'load'));
-  // steps + active/sedentary REMOVED in v0. calories = ACTIVE calories (est.).
-  Metric get calories => metricOf(_row, 'calories', flags: _flags);
-  Metric get steps => metricOf(_row, 'steps', flags: _flags); // detected (est.)
-
-  /// HR zone minutes z1..z5 (may live as a nested object or a JSON string).
-  List<int> get zoneMinutes {
-    final z = _row['hr_zones'];
-    final map = decodeFlags(z);
-    return [
-      _num(map['zone1_min'])?.toInt() ?? 0,
-      _num(map['zone2_min'])?.toInt() ?? 0,
-      _num(map['zone3_min'])?.toInt() ?? 0,
-      _num(map['zone4_min'])?.toInt() ?? 0,
-      _num(map['zone5_min'])?.toInt() ?? 0,
-    ];
-  }
-
   bool get isEmpty => _row.isEmpty;
 }
 
@@ -502,61 +414,6 @@ class Session {
       _num(map['zone5_min'])?.toInt() ?? 0,
     ];
   }
-}
-
-/// ── /trends ──────────────────────────────────────────────────────────────────
-class TrendsData {
-  final Map<String, dynamic> _row;
-  TrendsData(this._row);
-
-  factory TrendsData.fromJson(Object? json) =>
-      TrendsData(json is Map ? json.cast<String, dynamic>() : {});
-
-  /// A named time series → list of (epochSec, value).
-  List<TrendPoint> series(String key) {
-    final raw =
-        _row[key] ?? (_row['series'] is Map ? _row['series'][key] : null);
-    if (raw is! List) return const [];
-    final out = <TrendPoint>[];
-    for (final e in raw) {
-      if (e is Map) {
-        final t = _num(e['t'] ?? e['ts'] ?? e['date'])?.toInt();
-        final v = _num(e['v'] ?? e['value']);
-        if (t != null && v != null) out.add(TrendPoint(t, v.toDouble()));
-      } else if (e is List && e.length >= 2) {
-        final t = _num(e[0])?.toInt();
-        final v = _num(e[1]);
-        if (t != null && v != null) out.add(TrendPoint(t, v.toDouble()));
-      }
-    }
-    return out;
-  }
-
-  Map<String, dynamic> get baseline =>
-      (_row['baseline'] is Map) ? (_row['baseline'] as Map).cast() : const {};
-
-  double? get rhrBaseline => _num(baseline['resting_hr'])?.toDouble();
-
-  /// Fitness direction: 'improving' | 'flat' | 'declining'.
-  String? get fitnessDirection => _row['fitness_direction']?.toString();
-  double? get rhrSlope => _num(_row['rhr_slope'])?.toDouble();
-  double? get hrrSlope => _num(_row['hrr_slope'])?.toDouble();
-
-  /// Anomaly / illness signal (ESTIMATE). null when not fired. Backend shape is
-  /// `{signal:bool, message:string}` — only surface when signal is true AND the
-  /// message is non-empty.
-  String? get anomalyMessage {
-    final a = _row['anomaly'] ?? _row['illness_signal'];
-    if (a is Map) {
-      if (a['signal'] == false) return null;
-      final m = a['message']?.toString();
-      return (m != null && m.isNotEmpty) ? m : null;
-    }
-    if (a is String && a.isNotEmpty) return a;
-    return null;
-  }
-
-  bool get isEmpty => _row.isEmpty;
 }
 
 class TrendPoint {

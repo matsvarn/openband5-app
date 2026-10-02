@@ -12,6 +12,7 @@ import 'journal_controls.dart';
 import 'journal_value_editor.dart';
 import 'settings_controls.dart';
 import 'theme.dart';
+import 'g3/g3_format.dart';
 
 /// Dated, manually entered Journal weight. This screen never reads profile
 /// weight and never manufactures values for missing calendar days.
@@ -452,7 +453,7 @@ class _OpenBandWeightState extends State<OpenBandWeight> {
       style: p.text(13, weight: FontWeight.w600, color: p.muted),
     );
     final count = Text(
-      '${entries.where((e) => e.usableForTrend).length} Einträge',
+      '${g3Count(entries.where((e) => e.usableForTrend).length)} Einträge',
       style: p.text(13, weight: FontWeight.w500, color: p.muted),
     );
     if (MediaQuery.textScalerOf(context).scale(13) > 20) {

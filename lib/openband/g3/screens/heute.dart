@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../data/day_label.dart';
+import '../../../data/journal_fields.dart' show JournalFieldKind;
 import '../../../notify/notification_center.dart';
 import '../../../state/prefs.dart';
 import '../../controller.dart';
@@ -1018,7 +1019,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         end == null
             ? 'seit ${g3Clock(a.start)}'
             : '${g3Clock(a.start)}–${g3Clock(end)}',
-        if (minutes != null) '$minutes Min.',
+        if (minutes != null) g3Duration(minutes),
       ].join(' · '),
       unconfirmed: unconfirmed,
       strain: a.strain == null
@@ -1066,7 +1067,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               a.end == null
                   ? 'seit ${g3Clock(a.start)}'
                   : '${g3Clock(a.start)}–${g3Clock(a.end!)}',
-              if (a.duration != null) '${a.duration!.inMinutes} Min.',
+              if (a.duration != null) g3Duration(a.duration!.inMinutes),
             ].join(' · '),
             cancelLabel: 'Ändern',
             confirmLabel: 'Stimmt',
@@ -1229,9 +1230,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
         G3CheckInKind.rating => ask(
           OBRatingKeys(
             question: question,
-            showLegend: false,
-            low: copy.low,
-            high: copy.high,
             max: (field?.max ?? 5).round(),
             onRate: (v) => _answer(q, G3RatingAnswer(v)),
           ),
@@ -1274,6 +1272,8 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       G3QuantityAnswer(:final value) =>
         value == 0
             ? 'Keins'
+            : field?.kind == JournalFieldKind.duration
+            ? g3Duration(value.round())
             : '${g3Number(value)} ${field == null ? '' : journalFieldUnitLabel(field)}'
                   .trim(),
       G3FreeNoteAnswer() => 'gespeichert',
@@ -1475,8 +1475,6 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       }
     }
     String? m(double? v) => v == null ? null : _hm(v);
-    String? wakeText(double? v) =>
-        v == null ? null : (v < 60 ? '${v.round()} Min.' : _hm(v));
     final mid = onset != null && wake != null
         ? onset.add(wake.difference(onset) ~/ 2)
         : null;
@@ -1486,7 +1484,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
       (OBStage.deep, m(s.deepMinutes)),
       (OBStage.light, m(s.lightMinutes)),
       (OBStage.rem, m(s.remMinutes)),
-      (OBStage.wake, wakeText(s.awakeMinutes)),
+      (OBStage.wake, m(s.awakeMinutes)),
     ];
     if (segments.isEmpty) {
       // No stored timeline: totals only, never empty lanes that read as data.
@@ -1495,7 +1493,7 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
     return OBNightCard(
       domain: G3Domain.sleep,
       state: gap != null ? OBNightState.gap : OBNightState.full,
-      note: gap != null ? '${gap.round()} Min. Lücke' : null,
+      note: gap != null ? '${g3Duration(gap.round())} Lücke' : null,
       asleep: _hm(asleep),
       subtitle: bed == null
           ? null
@@ -1593,10 +1591,24 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
           domain: G3Domain.recovery,
           state: OBBodyState.missing,
           name: name,
+          reason: nightScalarEvaluationLabel(v.nightScalar),
           onTap: tap,
         );
       }
       final text = g3Number(value, digits: digits);
+      // A partial night keeps its value but makes no range claim, the same
+      // as its detail and Messwerte.
+      if (v.nightScalar == NightScalarState.partial) {
+        return OBBodyRow(
+          domain: G3Domain.recovery,
+          state: OBBodyState.building,
+          name: name,
+          value: text,
+          unit: unit,
+          note: kNightScalarPartialLabel,
+          onTap: tap,
+        );
+      }
       if (range != null) {
         final pad = (range.high - range.low) * .6;
         return OBBodyRow(
@@ -1651,6 +1663,9 @@ class _OpenBandHeuteState extends State<OpenBandHeute>
               domain: G3Domain.recovery,
               state: OBBodyState.missing,
               name: 'Hauttemperatur',
+              reason: nightScalarEvaluationLabel(
+                day.skinTemperature.nightScalar,
+              ),
               last: true,
               onTap: widget.onOpenMetric == null
                   ? null

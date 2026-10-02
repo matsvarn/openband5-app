@@ -9,6 +9,7 @@ import 'journal_controls.dart';
 import 'settings_controls.dart';
 import 'synthetic_repository.dart';
 import 'theme.dart';
+import 'g3/g3_format.dart';
 
 String journalFieldTitle(JournalFieldSpec spec) => switch (spec.key) {
   'mood' => 'Stimmung',
@@ -40,6 +41,16 @@ String journalFieldUnitLabel(JournalFieldSpec spec) {
     return 'Min.';
   }
   return spec.unit;
+}
+
+String journalFieldDisplayValue(JournalFieldSpec spec, double value) {
+  if (spec.kind == JournalFieldKind.duration) return g3Duration(value.round());
+  final number = g3Number(
+    value,
+    digits: value == value.roundToDouble() ? 0 : 1,
+  );
+  final unit = journalFieldUnitLabel(spec);
+  return unit.isEmpty ? number : '$number $unit';
 }
 
 String journalFieldKindMeta(JournalFieldSpec spec) {

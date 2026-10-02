@@ -79,10 +79,37 @@ String g3Duration(int? minutes) {
 
 String g3Signed(num? value, {int digits = 0, String? unit}) {
   if (value == null || !value.isFinite) return '—';
-  final magnitude = value.abs().toStringAsFixed(digits).replaceAll('.', ',');
-  final roundedZero = magnitude.replaceAll(RegExp('[0,]'), '').isEmpty;
+  final magnitude = g3Number(value.abs().toDouble(), digits: digits);
+  final roundedZero = magnitude.replaceAll(RegExp('[0.,]'), '').isEmpty;
   final sign = roundedZero ? '' : (value < 0 ? '−' : '+');
   return '$sign$magnitude${unit == null ? '' : ' $unit'}';
 }
 
 const g3BandScanningLabel = 'Sucht …';
+
+/// German number: 7,5 · −31 · +0,4. Presentation only; never rounds a
+/// missing value to zero — callers pass null and get "—".
+String g3Number(double? v, {int digits = 0, bool signed = false}) {
+  if (v == null || !v.isFinite) return '—';
+  final parts = v.abs().toStringAsFixed(digits).split('.');
+  final s =
+      '${_groupThousands(parts[0])}${parts.length == 1 ? '' : ',${parts[1]}'}';
+  if (v < 0 && s.replaceAll(RegExp('[0.,]'), '').isNotEmpty) return '−$s';
+  return signed && v > 0 ? '+$s' : s;
+}
+
+/// Thousands with a dot: 6.480.
+String g3Count(int? v) {
+  if (v == null) return '—';
+  return '${v < 0 ? '−' : ''}${_groupThousands(v.abs().toString())}';
+}
+
+String _groupThousands(String s) {
+  if (s.contains('e')) return s;
+  final b = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
+    b.write(s[i]);
+  }
+  return b.toString();
+}

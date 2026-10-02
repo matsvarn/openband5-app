@@ -268,15 +268,14 @@ const _notComponents = {
   // asserts the copy is not truncated and nothing overflows.
   'StartCard',
   // tabs and drill-downs
-  'HomeScreen', 'HealthScreen', 'WorkoutScreen',
-  'WellnessScreen', 'MetricDetail', 'ReadinessDetail',
-  'SleepDetail', 'CircadianDetail', 'DayStrainDetail', 'DayStepsDetail',
+  'WorkoutScreen',
+
+  'DayStrainDetail',
   'ZonesDetail',
+
   // Reads the day bundle AND the raw beat store to draw one night's Poincaré
   // cloud — a gallery case would have to mock 27 000 beat intervals.
-  'Beats',
-  'Investigate',
-  'JournalCompose', 'JournalFindings',
+  'JournalCompose',
   'LogFoodSheet', 'CalmBreathing',
   // Where the hydration notification lands: a Scaffold route that reads and
   // writes the day's journal metrics. The one control on it — FieldStepper —

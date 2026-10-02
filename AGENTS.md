@@ -233,19 +233,37 @@ visual bugs — check whether removed wrapper widgets were load-bearing.
 
 ## 5. How to review this repo
 
-**CI does run on PRs.** `.github/workflows/test.yml` runs `flutter analyze` +
-`flutter test` on every pull request and on push to `main`. Two lanes:
+**CI does run on PRs.** `.github/workflows/test.yml` runs on every pull
+request and on push to `main`, in three jobs:
 
-- `test` (Ubuntu): `flutter test --no-pub --concurrency=1 --exclude-tags golden`
-  — every non-golden assertion, including inside files that also carry goldens.
-- `goldens` (local macOS 27, manual CI dispatch): `flutter test --no-pub
-  --concurrency=1 --tags golden` — the ~600 `test/openband_goldens/` PNGs were
-  rendered on this machine's font stack and the comparator is exact-match.
-  Hosted `macos-latest` runners rasterize text sub-1% differently (544 diffs
-  measured), so the golden lane runs locally on the baking platform until a
-  matching runner exists; the CI job is gated to `workflow_dispatch`. Tests
-  that call `matchesGoldenFile` carry `tags: const ['golden']`; the tag is on
-  the test, never the file — tag new golden tests the same way.
+- `analyze` (Ubuntu): the sibling-pin guard, then `flutter analyze`.
+- `test` (Ubuntu, three shards): `OPENBAND_TEST_LANE=behavior bash
+  tool/test_shard.sh INDEX 3 --concurrency=4` — every test, golden-tagged ones
+  included; in this lane image comparisons accept, so golden tests still run
+  all their other assertions here. The script deals test FILES round-robin
+  (`flutter test --total-shards` splits tests inside files, so every shard
+  would still compile everything).
+- `goldens` (`xcode-27`, GitHub's macOS 27 arm64 image): `flutter test --no-pub
+  $(bash tool/golden_test_files.sh)` with the exact-match comparator — every
+  test in every file that calls `matchesGoldenFile`, tagged or not. The
+  `test/openband_goldens/` PNGs were rendered on macOS 27; older macOS
+  rasterizes text sub-1% differently (544 diffs measured on `macos-latest`)
+  and Ubuntu about 2.4%, so pixels are only compared on macOS 27. The script
+  fails if `matchesGoldenFile` appears in a tracked Dart file that is not a
+  test file: a shared helper's callers cannot be found by name. Tag tests
+  that call `matchesGoldenFile` with `tags: const ['golden']` (on the test,
+  never the file) so `--exclude-tags golden` skips them in the quick local
+  loop. When GitHub moves the `xcode-27` image, re-render the masters on the
+  runner with a manual run (`gh workflow run test.yml --ref BRANCH -f
+  update_goldens=true`) and commit the reviewed `golden-masters` artifact;
+  the comment above the job in `test.yml` has the steps.
+
+Locally on macOS 27, `flutter test --no-pub` (default concurrency) runs
+everything with exact pixels; `flutter test --no-pub --exclude-tags golden` is
+the quicker loop without goldens.
+`test/flutter_test_config.dart` gives every test process its own SQLite
+directory, so files may run in parallel; do not reintroduce a fixed database
+path outside `getDatabasesPath()`.
 
 `test/flutter_test_config.dart` pins the process timezone to Europe/Berlin for
 every file (libc `setenv`/`tzset`); the fixtures and goldens model a Berlin
@@ -282,7 +300,10 @@ opens the personal database or Bluetooth session.
 - Fast behavior/render regression: `flutter test --no-pub test/openband_flow_test.dart`.
   Inspect changed PNGs; do not accept a visual change just by updating goldens.
 - Native simulator review: `python3 tool/ui_review.py capture` (iPhone 15 Pro),
-  or add `--small` for iPhone 13 mini. Read the generated `index.html`, PNGs,
+  or add `--small` for iPhone 13 mini. `--flow all` runs every review flow.
+  The same flows run headless in `test/review_flows_15pro_test.dart` and
+  `test/review_flows_13mini_test.dart` (nothing captured), so a flow that no longer matches the UI fails in
+  CI; keep both green when a screen changes. Read the generated `index.html`, PNGs,
   `frames.json` and `run.json` under `build/ui-review/`. This runner only targets
   its dedicated simulators and cannot overwrite the owner's phone installation.
 - Iteration with hot reload: `python3 tool/ui_review.py gallery`, or the

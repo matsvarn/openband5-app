@@ -545,7 +545,10 @@ class NutritionDb {
   static Future<void> delete(Database db, String id) =>
       db.delete('food_entry', where: 'id = ?', whereArgs: [id]);
 
-  static Future<List<FoodEntry>> entriesForDay(Database db, String date) async {
+  static Future<List<FoodEntry>> entriesForDay(
+    DatabaseExecutor db,
+    String date,
+  ) async {
     final rows = await db.query(
       'food_entry',
       where: 'date = ?',

@@ -3,6 +3,7 @@
 //
 // Painters sit behind RepaintBoundary. Gaps stay gaps: a null value or a
 // listed gap is drawn hollow and dashed, never interpolated.
+import 'g3_format.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -43,7 +44,6 @@ class OBHrTrace extends StatelessWidget {
   final G3Domain domain;
   final IconData? glyph;
   final double plotHeight;
-  final bool showSignalStrip, showExplanation, showZoneBands, showZoneLabels;
 
   /// (minute since start, bpm) samples.
   final List<(double, double)> samples;
@@ -52,10 +52,8 @@ class OBHrTrace extends StatelessWidget {
   /// Minutes without a trusted optical signal.
   final List<(double, double)> gaps;
 
-  /// Plot range in bpm and the six zone edges Z1…Z5 in bpm (from the stored
-  /// zone source; the widget draws them, it does not derive them).
+  /// Plot range in bpm.
   final double min, max;
-  final List<double> zoneEdges;
   final String? average, peak;
   final (String, String, String) axis;
   final String gapLabel;
@@ -69,16 +67,11 @@ class OBHrTrace extends StatelessWidget {
     this.domain = G3Domain.neutral,
     this.glyph,
     this.plotHeight = 120,
-    this.showSignalStrip = false,
-    this.showExplanation = false,
-    this.showZoneBands = false,
-    this.showZoneLabels = false,
     required this.samples,
     required this.duration,
     this.gaps = const [],
     this.min = 100,
     this.max = 180,
-    required this.zoneEdges,
     this.average,
     this.peak,
     this.axis = ('', '', ''),
@@ -117,7 +110,7 @@ class OBHrTrace extends StatelessWidget {
       decoration: g.raised(),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final w = constraints.maxWidth - (showZoneLabels ? 24 : 0);
+          final w = constraints.maxWidth;
           double x(double t) => t / duration * w;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -166,30 +159,13 @@ class OBHrTrace extends StatelessWidget {
                             gaps,
                             min,
                             max,
-                            zoneEdges,
                             peakAt,
                             g,
                             domain,
-                            showZoneBands,
                           ),
                         ),
                       ),
                     ),
-                    if (showZoneLabels)
-                      for (var i = 0; i < zoneEdges.length - 1; i++)
-                        if (zoneEdges[i + 1] > min && zoneEdges[i] < max)
-                          Positioned(
-                            left: w + 8,
-                            top:
-                                (y(zoneEdges[i + 1].clamp(min, max)) +
-                                        y(zoneEdges[i].clamp(min, max))) /
-                                    2 -
-                                7,
-                            child: Text(
-                              'Z${i + 1}',
-                              style: g.t(11, 14, color: g.muted),
-                            ),
-                          ),
                     for (final (_, g1) in gaps)
                       Positioned(
                         left: x(g1) + 5,
@@ -258,44 +234,6 @@ class OBHrTrace extends StatelessWidget {
                           ),
                       ],
                     ),
-                    if (showSignalStrip && signalSegments.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      SizedBox(
-                        height: 6,
-                        child: Row(
-                          children: [
-                            for (final (i, (flex, gap))
-                                in signalSegments.indexed) ...[
-                              if (i > 0) const SizedBox(width: 2),
-                              Expanded(
-                                flex: flex,
-                                child: gap
-                                    ? const G3Dashed(radius: 0)
-                                    : Container(
-                                        decoration: BoxDecoration(
-                                          color: g.ink,
-                                          borderRadius: BorderRadius.horizontal(
-                                            left: Radius.circular(
-                                              i == 0 ? 3 : 0,
-                                            ),
-                                            right: Radius.circular(
-                                              i == signalSegments.length - 1
-                                                  ? 3
-                                                  : 0,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (showExplanation && signalNote.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Text(signalNote, style: g.t(12, 16, color: g.muted)),
-                    ],
                   ],
                 ),
               ),
@@ -348,45 +286,29 @@ class _HrPainter extends CustomPainter {
   final double duration;
   final List<(double, double)> gaps;
   final double min, max;
-  final List<double> edges;
   final (double, double)? peak;
   final G3 g;
-  final bool showZoneBands;
   _HrPainter(
     this.samples,
     this.duration,
     this.gaps,
     this.min,
     this.max,
-    this.edges,
     this.peak,
     this.g,
     this.domain,
-    this.showZoneBands,
   );
 
   @override
   void paint(Canvas canvas, Size size) {
     double x(double t) => t / duration * size.width;
     double y(double v) => size.height * (max - v) / (max - min);
-    if (showZoneBands) {
-      for (var i = 0; i < edges.length - 1 && i < 5; i++) {
-        final lo = edges[i].clamp(min, max), hi = edges[i + 1].clamp(min, max);
-        if (hi <= lo) continue;
-        canvas.drawRect(
-          Rect.fromLTRB(0, y(hi), size.width, y(lo)),
-          Paint()..color = g.zoneTintsFor(domain)[i],
-        );
-      }
-    }
-    if (!showZoneBands) {
-      for (final level in [0.0, size.height / 2, size.height]) {
-        canvas.drawLine(
-          Offset(0, level),
-          Offset(size.width, level),
-          Paint()..color = g.line,
-        );
-      }
+    for (final level in [0.0, size.height / 2, size.height]) {
+      canvas.drawLine(
+        Offset(0, level),
+        Offset(size.width, level),
+        Paint()..color = g.line,
+      );
     }
     for (final (g0, g1) in gaps) {
       canvas.drawRect(
@@ -442,8 +364,7 @@ class _HrPainter extends CustomPainter {
       old.samples != samples ||
       old.gaps != gaps ||
       old.g.dark != g.dark ||
-      old.domain != domain ||
-      old.showZoneBands != showZoneBands;
+      old.domain != domain;
 }
 
 // ---------------------------------------------------------------------------
@@ -554,7 +475,7 @@ class OBZoneRows extends StatelessWidget {
                           SizedBox(
                             width: 52,
                             child: Text(
-                              z.minutes == null ? '—' : '${z.minutes} Min.',
+                              g3Duration(z.minutes),
                               textAlign: TextAlign.right,
                               style: g.t(
                                 14,

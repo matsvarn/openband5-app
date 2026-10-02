@@ -382,12 +382,14 @@ class OBWeekBars extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                count == 0 ? '—' : '${unknown ? 'mind. ' : ''}$total',
+                count == 0
+                    ? '—'
+                    : '${unknown ? 'mind. ' : ''}${obDuration(total).replaceFirst(' Min.', '')}',
                 style: p.text(28, weight: FontWeight.w800, display: true),
               ),
               const SizedBox(width: 4),
               Text(
-                'Min.',
+                count == 0 || total < 60 ? 'Min.' : '',
                 style: p.text(14, weight: FontWeight.w500, color: p.muted),
               ),
               if (unknown) ...[
@@ -401,7 +403,7 @@ class OBWeekBars extends StatelessWidget {
           ),
           Semantics(
             label:
-                'Trainingsminuten je Tag: ${days.map((d) => '${DateFormat('EEE', 'de_DE').format(DateTime.parse(d))} ${minutes[d]}').join(', ')}',
+                'Trainingsdauer je Tag: ${days.map((d) => '${DateFormat('EEE', 'de_DE').format(DateTime.parse(d))} ${obDuration(minutes[d])}').join(', ')}',
             child: ExcludeSemantics(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 80),
@@ -466,7 +468,7 @@ class _SessionRow extends StatelessWidget {
       if (session.live)
         'läuft'
       else if (session.durationMin case final m?)
-        '$m Min.',
+        obDuration(m),
       if (session.strain case final s?) 'Belastung ${obNumber(s, digits: 1)}',
     ];
     return InkWell(

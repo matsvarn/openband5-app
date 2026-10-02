@@ -243,6 +243,8 @@ class _SleepImportInterrupted implements Exception {
   final Object cause;
 }
 
+typedef DayCalculationIdentity = ({int algoVersion, int computedAt});
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -508,7 +510,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 68;
+  static const int schemaVersion = 69;
 
   /// OpenBand keeps original sensor inputs by default so a correction or later
   /// algorithm can be replayed. This is intentionally non-destructive and has
@@ -566,6 +568,8 @@ class LocalDb {
   static Future<Database> _open() async {
     final dir = await getDatabasesPath();
     final path = p.join(dir, dbName);
+    // No onDowngrade: an older build cannot open this live schema. Exports
+    // decode compact sensor values so older builds can safely import them.
     return openDatabase(
       path,
       onConfigure: (db) async {
@@ -590,6 +594,11 @@ class LocalDb {
           await db.rawQuery('PRAGMA journal_mode=WAL');
         } catch (_) {
           /* keep the default journal — this is a perf tweak, not a requirement */
+        }
+        try {
+          await db.rawQuery('PRAGMA journal_size_limit=16777216');
+        } catch (_) {
+          /* non-fatal */
         }
         try {
           await db.execute('PRAGMA synchronous=NORMAL');
@@ -1293,6 +1302,11 @@ class LocalDb {
           // blobs inflated) and before the next derive, which has to see them.
           await repairBoundaryCollisions(db);
         }
+        if (oldV < 69) {
+          await _ensureOneHzEncoding(db);
+          await _ensureBandEventDeviceIndex(db);
+          await _dropUnusedStorageIndexes(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1388,6 +1402,7 @@ class LocalDb {
     // Self-skipping (one PRAGMA) unless the table really is still NOT NULL —
     // the same-version merged-build case this whole method exists for.
     await _relaxDecodedHrNull(db);
+    await _ensureOneHzEncoding(db);
     await _ensureDayResultSkippedColumn(db);
     await _ensureDayResultPartialColumn(db);
     await _ensureDayResultSourceColumn(db);
@@ -1405,6 +1420,15 @@ class LocalDb {
     // answer, not a thing to invent), so it rides the same-version self-heal
     // path rather than a schema number.
     await _createRawBlob(db);
+    await _dropUnusedStorageIndexes(db);
+  }
+
+  static Future<void> _dropUnusedStorageIndexes(Database db) async {
+    // The day-result index duplicates its PK. Replay reads use device/counter
+    // keys, which raw_blob's PK already serves; none range on first_ts.
+    for (final index in const ['idx_day_result_day', 'idx_raw_blob_ts']) {
+      await db.execute('DROP INDEX IF EXISTS $index');
+    }
   }
 
   /// The column names [table] currently has (empty if the table is absent).
@@ -5270,8 +5294,11 @@ class LocalDb {
   /// is documented emitting 22-27 false steps/min during dishes, reaching and
   /// driving while missing slow walking — O'Connell 2017,
   /// doi:10.1371/journal.pone.0169616).
-  static Future<ResolvedDaySteps> resolvedStepsForDay(String day) async {
-    final db = await instance;
+  static Future<ResolvedDaySteps> resolvedStepsForDay(
+    String day, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     final rows = await db.query(
       'live_coverage',
       columns: ['start_ts', 'end_ts', 'steps', 'source', 'device_id'],
@@ -6085,9 +6112,6 @@ class LocalDb {
         PRIMARY KEY (day_id, algo_version)
       )
     ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_day_result_day ON day_result(day_id, algo_version)',
-    );
   }
 
   /// journal_metric — the numeric half of a journal entry.
@@ -7365,6 +7389,7 @@ class LocalDb {
         temp_ch3_c REAL,
         signal_quality_logvar REAL,
         dyn_accel_g REAL,
+        onehz_enc INTEGER,
         PRIMARY KEY (device_id, ts_ms)
       )
     ''');
@@ -8001,9 +8026,6 @@ class LocalDb {
         PRIMARY KEY (device_id, first_counter, last_counter, first_ts, n)
       )
     ''');
-    await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_raw_blob_ts ON raw_blob(device_id, first_ts)',
-    );
   }
 
   /// One compressed batch for [commitSyncBatch]: every record in [raws],
@@ -8156,6 +8178,7 @@ class LocalDb {
           batch,
           r,
           null,
+          legacyEncoding: true, // schema-68 recovery precedes the v69 column
           deviceFamily: c['fam'] as String?,
           deviceId: deviceId,
           beatClock: beatClock,
@@ -8435,6 +8458,28 @@ class LocalDb {
     return null;
   }
 
+  static const _compactOneHzColumns = [
+    'ax', 'ay', 'az', 'temp_ch2_c', 'temp_ch3_c', 'dyn_accel_g',
+  ];
+
+  static Future<void> _ensureOneHzEncoding(Database db) =>
+      _addColumnIfMissing(db, 'decoded_onehz', 'onehz_enc', 'INTEGER');
+
+  /// Decode the per-row storage representation at the SQL read boundary.
+  static String get decodedOneHzProjection => _compactOneHzColumns.map((c) =>
+      'CASE WHEN onehz_enc = 1 THEN $c / 10000.0 ELSE $c END AS $c'
+  ).join(', ');
+
+  // REAL affinity returns the scaled integer as a double, so it must fit
+  // exactly in the double mantissa as well as in SQLite's integer range.
+  static bool _canCompactOneHz(double? value) {
+    if (value == null) return true;
+    if (!value.isFinite || (value * 10000).abs() > 9007199254740991) {
+      return false;
+    }
+    return (value * 10000).round() / 10000.0 == value;
+  }
+
   /// Queues the decoded_onehz + decoded_rr writes for one raw onto [batch].
   /// Returns the number of batch operations added, so a caller committing a
   /// large offload can chunk the batch to bound the native argument-list size
@@ -8458,6 +8503,7 @@ class LocalDb {
     // opposite default would let a forgotten argument write every row at
     // ('', 0), where REPLACE collapses the entire store to ONE row.
     bool preDeviceKey = false,
+    bool legacyEncoding = false,
     BeatClock? beatClock,
   }) {
     final decoded = _decodeOneHzSample(raw, preferred: sample);
@@ -8482,6 +8528,12 @@ class LocalDb {
       }
       return 0;
     }
+    final compact = !preDeviceKey && !legacyEncoding && [
+      decoded.ax, decoded.ay, decoded.az,
+      decoded.tempCh2C, decoded.tempCh3C, decoded.dynAccelG,
+    ].every(_canCompactOneHz);
+    num? stored(double? value) => compact && value != null
+        ? (value * 10000).round() : value;
     final recTs = _recTsFrom(raw, decoded);
     final ambient = decoded.ambientRaw == 0 ? null : decoded.ambientRaw;
     // This record was already moved back a second by its successor
@@ -8535,9 +8587,9 @@ class LocalDb {
       // nullable): a null must land in the DB as NULL. Zeroing invented a real
       // 0 g gravity vector, a real ADC count of 0, a 0-step second and a 0 °C
       // skin temperature for every record that simply did not carry the field.
-      'ax': decoded.ax,
-      'ay': decoded.ay,
-      'az': decoded.az,
+      'ax': stored(decoded.ax),
+      'ay': stored(decoded.ay),
+      'az': stored(decoded.az),
       'spo2_red_raw': decoded.spo2RedRaw,
       'spo2_ir_raw': decoded.spo2IrRaw,
       'skin_temp_raw': decoded.skinTempRaw,
@@ -8550,8 +8602,8 @@ class LocalDb {
       'hr_alt': decoded.hrAlt,
       // MT-12 — gen5's second/third temperature channels and its own
       // signal-quality figure. Stored, unnamed, unread. See Sample.tempCh2C.
-      'temp_ch2_c': decoded.tempCh2C,
-      'temp_ch3_c': decoded.tempCh3C,
+      'temp_ch2_c': stored(decoded.tempCh2C),
+      'temp_ch3_c': stored(decoded.tempCh3C),
       'signal_quality_logvar': decoded.signalQualityLogVar,
       // OMITTED when null, unlike the three above: this column is newer than
       // the mid-ladder `_backfillDecodedStore`, which writes through this map
@@ -8560,7 +8612,8 @@ class LocalDb {
       // onUpgrade's single transaction and quarantines the database. Only a
       // gen5 record carries a value, and no gen5 record is in a pre-v11
       // `raw_records`, so omitting-when-null loses nothing.
-      'dyn_accel_g': ?decoded.dynAccelG,
+      'dyn_accel_g': ?stored(decoded.dynAccelG),
+      'onehz_enc': ?(compact ? 1 : null),
       // The record's own sub-second. Omitted-when-null for the same
       // mid-ladder-backfill reason as `dyn_accel_g` directly above.
       'ts_subsec': ?decoded.tsSubsec,
@@ -8927,6 +8980,15 @@ class LocalDb {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)');
   }
 
+  static Future<void> _ensureBandEventDeviceIndex(Database db) async {
+    // Mid-ladder creators can still see the pre-device-key table. Rung 69 and
+    // the every-open repair also run this after the device column exists.
+    if ((await _columnsOf(db, 'band_events')).contains('device_id')) {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_band_events_device_ts '
+          'ON band_events(device_id, ts)');
+    }
+  }
+
   // band_events / band_battery — structured local history for device-state
   // signals that were previously only ephemeral or raw-only. Additive beside
   // the upload-queue `events` table.
@@ -8946,6 +9008,7 @@ class LocalDb {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_band_events_ts ON band_events(ts, event_id)',
     );
+    await _ensureBandEventDeviceIndex(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS band_battery (
         device_id TEXT NOT NULL DEFAULT '$kPrimaryDeviceId',
@@ -10138,18 +10201,26 @@ class LocalDb {
   /// is gone.)
   static Future<(int?, int?)> firstAndLastRecordTs() async {
     final db = await instance;
-    final rows = await db.rawQuery(
-      // rec_ts > 0, matching rawStats()/lastDecodedRecTs() — a stray rec_ts=0
-      // row (e.g. via _queueDecodedOneHz's `raw.recTs ?? decoded.tsEpoch`,
-      // which only substitutes on null, not on an explicit 0) would otherwise
-      // make MIN(rec_ts) return 0 and render "Data from Jan 1" (1970 epoch).
-      'SELECT MIN(rec_ts) AS lo, MAX(rec_ts) AS hi FROM decoded_onehz '
-      'WHERE rec_ts > 0 AND ${derivableSourceSql()}',
-    );
-    if (rows.isEmpty) return (null, null);
-    final lo = (rows.first['lo'] as num?)?.toInt();
-    final hi = (rows.first['hi'] as num?)?.toInt();
-    return (lo, hi);
+    return _decodedRecordSpan(db,
+        where: 'rec_ts > 0 AND ${derivableSourceSql()}');
+  }
+
+  /// Separate ordered seeks let SQLite stop at each admitted edge instead of
+  /// visiting every table row to evaluate a combined MIN/MAX aggregate.
+  static Future<(int?, int?)> _decodedRecordSpan(
+    Database db, {
+    required String where,
+    List<Object?> args = const [],
+  }) async {
+    // Both seeks share a statement snapshot if ingestion is writing meanwhile.
+    final row = (await db.rawQuery(
+      'SELECT (SELECT rec_ts FROM decoded_onehz WHERE $where '
+      'ORDER BY rec_ts ASC LIMIT 1) AS lo, '
+      '(SELECT rec_ts FROM decoded_onehz WHERE $where '
+      'ORDER BY rec_ts DESC LIMIT 1) AS hi',
+      [...args, ...args],
+    )).single;
+    return ((row['lo'] as num?)?.toInt(), (row['hi'] as num?)?.toInt());
   }
 
   /// `{localDayLabel -> MAX(rec_ts)}` over canonical decoded 1 Hz rows, grouped
@@ -10160,9 +10231,9 @@ class LocalDb {
   /// is a function of the column, so SQLite could use no index for it: it was a
   /// full scan of every retained second plus a temp b-tree — 91 ms on a 3-day
   /// (259 k row) table on desktop, and the derive calls this up to three times
-  /// a pass. `rec_ts` is the INTEGER PRIMARY KEY (the rowid), so a bounded
-  /// `MAX(rec_ts) WHERE rec_ts >= a AND rec_ts < b` is a single index seek, and
-  /// the span is bounded by `rawRetentionDays` in any healthy install.
+  /// a pass. Since v47 the primary key is `(device_id, ts_ms)`;
+  /// `idx_decoded_onehz_rects` serves bounded `rec_ts` reads. SQLite can seek
+  /// from the high end of each day and stop at its first admitted row.
   ///
   /// The day walk goes through [localDayEndSec] rather than `+ 86400` for the
   /// reason that helper documents: a local calendar day is 23 h on a
@@ -10211,7 +10282,7 @@ class LocalDb {
     final db = await instance;
     if (afterRecTs == null || afterCounter == null) {
       return db.rawQuery(
-        'SELECT counter, rec_ts, hr, ax, ay, az, '
+        'SELECT counter, rec_ts, hr, $decodedOneHzProjection, '
         'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
         'step_count, step_cadence, activity_class, skin_temp_c, '
         'on_wrist, hr_valid, hr_alt, device_family, device_id, '
@@ -10223,7 +10294,7 @@ class LocalDb {
       );
     }
     return db.rawQuery(
-      'SELECT counter, rec_ts, hr, ax, ay, az, '
+      'SELECT counter, rec_ts, hr, $decodedOneHzProjection, '
       'spo2_red_raw, spo2_ir_raw, skin_temp_raw, '
       'step_count, step_cadence, activity_class, skin_temp_c, '
       'on_wrist, hr_valid, hr_alt, device_family, device_id, '
@@ -10618,16 +10689,93 @@ class LocalDb {
   /// The result row for one day_id at the highest version this build serves
   /// (see [_servedAlgoCeiling]), with a normalized `date` alias for callers.
   /// Null if absent.
-  static Future<Map<String, dynamic>?> dayResult(String dayId) async {
-    final db = await instance;
+  static Future<Map<String, dynamic>?> dayResult(
+    String dayId, {
+    DatabaseExecutor? txn,
+    bool pinned = false,
+    DayCalculationIdentity? identity,
+  }) async {
+    if (pinned && identity == null) return null;
+    final db = txn ?? await instance;
     final rows = await db.query(
       'day_result',
-      where: 'day_id = ? AND algo_version <= ?',
-      whereArgs: [dayId, _servedAlgoCeiling],
+      where: pinned
+          ? 'day_id = ? AND algo_version = ? AND computed_at = ?'
+          : 'day_id = ? AND algo_version <= ?',
+      whereArgs: pinned
+          ? [dayId, identity!.algoVersion, identity.computedAt]
+          : [dayId, _servedAlgoCeiling],
       orderBy: 'algo_version DESC',
       limit: 1,
     );
     return rows.isEmpty ? null : _withDate(rows.first);
+  }
+
+  static const servedDaySeriesSources = <String, String>{
+    'readiness': "json_extract(r.payload_json, '\$.scalars.readiness')",
+    'strain': "json_extract(r.payload_json, '\$.scalars.strain')",
+    'steps': "json_extract(r.payload_json, '\$.steps.value')",
+    'tst_min':
+        "ROUND(json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') / 60.0)",
+    'rmssd': 'r.rmssd',
+    'rhr': 'r.rhr',
+    'resp_rate': "json_extract(r.payload_json, '\$.scalars.resp_rate')",
+    'skin_temp_z': "json_extract(r.payload_json, '\$.scalars.skin_temp_z')",
+    'sol_min': "json_extract(r.payload_json, '\$.scalars.sol_min')",
+  };
+
+  /// UI points only. Derivation inputs continue to use metric_series.
+  /// A pin selects the exact PK and timestamp, or omits that day's point.
+  /// [omitAbsentComplete] omits optional-field absences before [limitDays],
+  /// Missing fields on partial, skipped or unreadable rows remain gaps.
+  static Future<List<Map<String, dynamic>>> servedDaySeries(
+    String key, {
+    String? fromDay,
+    String? throughDay,
+    int? limitDays,
+    bool omitAbsentComplete = false,
+    DatabaseExecutor? txn,
+    String? pinnedDay,
+    DayCalculationIdentity? identity,
+  }) async {
+    final source = servedDaySeriesSources[key];
+    if (source == null) throw ArgumentError.value(key, 'key');
+    if (limitDays != null && limitDays <= 0) {
+      throw ArgumentError.value(limitDays, 'limitDays');
+    }
+    final db = txn ?? await instance;
+    final where = <String>[
+      if (fromDay != null) 'r.day_id >= ?',
+      if (throughDay != null) 'r.day_id <= ?',
+      if (pinnedDay != null) 'r.day_id != ?',
+      'r.algo_version = (SELECT MAX(v.algo_version) FROM day_result v '
+          'WHERE v.day_id = r.day_id AND v.algo_version <= $_servedAlgoCeiling)',
+    ];
+    final args = <Object?>[?fromDay, ?throughDay, ?pinnedDay];
+    final selected =
+        'SELECT r.* FROM day_result r WHERE ${where.join(' AND ')}';
+    final pin = pinnedDay != null && identity != null
+        ? ' UNION ALL SELECT r.* FROM day_result r '
+              'WHERE r.day_id = ? AND r.algo_version = ? AND r.computed_at = ?'
+        : '';
+    if (pin.isNotEmpty) {
+      args.addAll([pinnedDay, identity!.algoVersion, identity.computedAt]);
+    }
+    final rows = await db.rawQuery(
+      'WITH selected AS ($selected$pin), points AS ('
+      'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.partial, r.skipped, '
+      'json_valid(r.payload_json) AS payload_valid, '
+      'CASE WHEN r.skipped = 0 AND json_valid(r.payload_json) '
+      'THEN $source END AS value, r.source, '
+      "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.imported') END AS imported, "
+      "CASE WHEN json_valid(r.payload_json) THEN json_extract(r.payload_json, '\$.sleep_source') END AS sleep_source "
+      'FROM selected r) SELECT * FROM points '
+      '${omitAbsentComplete ? 'WHERE value IS NOT NULL OR partial != 0 OR skipped != 0 OR payload_valid != 1 ' : ''}'
+      'ORDER BY date DESC'
+      '${limitDays == null ? '' : ' LIMIT ?'}',
+      [...args, ?limitDays],
+    );
+    return rows.reversed.toList();
   }
 
   static List<String> _boundedDayIds(Iterable<String> dayIds) {
@@ -10778,7 +10926,7 @@ class LocalDb {
       // json_valid() first: json_extract() ERRORS on a malformed payload, and a
       // corrupt bundle must degrade to "no sleep that day", never take out the
       // whole Records screen.
-      'WHERE json_valid(r.payload_json) '
+      'WHERE r.skipped = 0 AND json_valid(r.payload_json) '
       "AND json_extract(r.payload_json, '\$.sleep.accounting.value.tst_sec') "
       'IS NOT NULL',
     );
@@ -10863,8 +11011,29 @@ class LocalDb {
     final dest = p.join(tmp.path, 'openstrap_export_$stamp.db');
     final f = File(dest);
     if (await f.exists()) await f.delete(); // VACUUM INTO requires a fresh path
-    await db.execute('VACUUM INTO ?', [dest]);
-    return dest;
+    try {
+      await db.execute('VACUUM INTO ?', [dest]);
+      final out = await openDatabase(dest);
+      try {
+        await _decodeExportOneHz(out);
+      } finally {
+        await out.close();
+      }
+      return dest;
+    } catch (_) {
+      await deleteDatabase(dest);
+      rethrow;
+    }
+  }
+
+  /// Exports carry physical units even when an older importer drops the marker.
+  /// Decode only the destination, atomically, before publishing its path.
+  static Future<void> _decodeExportOneHz(Database out) async {
+    final values = _compactOneHzColumns.map((c) => '$c = $c / 10000.0').join(', ');
+    await out.transaction((txn) async {
+      await txn.rawUpdate('UPDATE decoded_onehz SET $values, onehz_enc = NULL '
+          'WHERE onehz_enc = 1');
+    });
   }
 
   static Future<int> databaseFileBytes() async {
@@ -10879,9 +11048,7 @@ class LocalDb {
     final db = await instance;
     final rawRows = await db.rawQuery(
       "SELECT strftime('%Y-%m-%d', rec_ts, 'unixepoch', 'localtime') AS day_id, "
-      'COUNT(*) AS raw_count, '
-      'MIN(rec_ts) AS min_rec_ts, '
-      'MAX(rec_ts) AS max_rec_ts '
+      'COUNT(*) AS raw_count '
       'FROM decoded_onehz WHERE rec_ts > 0 AND ${derivableSourceSql()} '
       'GROUP BY day_id ORDER BY day_id DESC',
     );
@@ -10921,8 +11088,12 @@ class LocalDb {
       if (dayId == null || dayId.isEmpty) continue;
       final m = ensure(dayId);
       m['raw_count'] = (row['raw_count'] as num?)?.toInt() ?? 0;
-      m['min_rec_ts'] = (row['min_rec_ts'] as num?)?.toInt();
-      m['max_rec_ts'] = (row['max_rec_ts'] as num?)?.toInt();
+      final (lo, hi) = await _decodedRecordSpan(db,
+          where: 'rec_ts > 0 AND ${derivableSourceSql()} '
+              'AND rec_ts >= ? AND rec_ts < ?',
+          args: [localDayStartSec(dayId), localDayEndSec(dayId)]);
+      m['min_rec_ts'] = lo;
+      m['max_rec_ts'] = hi;
     }
     for (final row in derivedRows) {
       final dayId = row['day_id']?.toString();
@@ -10980,31 +11151,37 @@ class LocalDb {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final dest = p.join(tmp.path, 'openstrap_days_$stamp.db');
     await deleteDatabase(dest);
-    final out = await openDatabase(
-      dest,
-      // `version:` is MANDATORY here. Without it sqflite throws
-      // ArgumentError('onCreate must be null if no version is specified')
-      // before opening anything — so this whole export path (Profile → Data
-      // history → Export) had never once produced a file.
-      version: schemaVersion,
-      onCreate: (db, _) async {
-        await _createSamples(db);
-        await _createDecodedStore(db);
-        await db.execute('CREATE INDEX idx_samples_ts ON samples(ts)');
-        await _createEvents(db);
-        await _createBandSignals(db);
-        await _createDerived(db);
-        await _createDayResult(db);
-        await _createUserTables(db);
-        await _createSyncState(db);
-        await _createSyncCursor(db);
-        await _createComputeState(db);
-        await _createPrimitiveArtifacts(db);
-        await _createLiveCoverage(db);
-        await _createOpenBandStrengthRuntime(db);
-        await _ensureStrengthSetIdentity(db);
-      },
-    );
+    late final Database out;
+    try {
+      out = await openDatabase(
+        dest,
+        // `version:` is MANDATORY here. Without it sqflite throws
+        // ArgumentError('onCreate must be null if no version is specified')
+        // before opening anything — so this whole export path (Profile → Data
+        // history → Export) had never once produced a file.
+        version: schemaVersion,
+        onCreate: (db, _) async {
+          await _createSamples(db);
+          await _createDecodedStore(db);
+          await db.execute('CREATE INDEX idx_samples_ts ON samples(ts)');
+          await _createEvents(db);
+          await _createBandSignals(db);
+          await _createDerived(db);
+          await _createDayResult(db);
+          await _createUserTables(db);
+          await _createSyncState(db);
+          await _createSyncCursor(db);
+          await _createComputeState(db);
+          await _createPrimitiveArtifacts(db);
+          await _createLiveCoverage(db);
+          await _createOpenBandStrengthRuntime(db);
+          await _ensureStrengthSetIdentity(db);
+        },
+      );
+    } catch (_) {
+      await deleteDatabase(dest);
+      rethrow;
+    }
 
     // Every source read on the export path is PAGED on rowid. A day-ranged
     // `SELECT *` over `decoded_onehz` is 86,400 rows, and sqflite materialises
@@ -11163,48 +11340,55 @@ class LocalDb {
       );
     }
 
-    for (final dayId in sorted) {
-      final (startSec, endSec) = _localDayWindow(dayId);
-      await copyRawRange(startSec, endSec);
-      await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
-      await copyRows('metric_series', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows(
-        'metric_series_version',
-        where: 'date = ?',
-        whereArgs: [dayId],
-      );
-      await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
-      await copyRows(
-        'sleep_session_candidates',
-        where: 'day_id = ?',
-        whereArgs: [dayId],
-      );
-      await copyRows(
-        'wake_day_features',
-        where: 'day_id = ?',
-        whereArgs: [dayId],
-      );
+    try {
+      for (final dayId in sorted) {
+        final (startSec, endSec) = _localDayWindow(dayId);
+        await copyRawRange(startSec, endSec);
+        await copyRows('day_result', where: 'day_id = ?', whereArgs: [dayId]);
+        await copyRows('metric_series', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'metric_series_version',
+          where: 'date = ?',
+          whereArgs: [dayId],
+        );
+        await copyRows('journal', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('journal_metric', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('cycle_log', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows('notifications', where: 'date = ?', whereArgs: [dayId]);
+        await copyRows(
+          'sleep_session_candidates',
+          where: 'day_id = ?',
+          whereArgs: [dayId],
+        );
+        await copyRows(
+          'wake_day_features',
+          where: 'day_id = ?',
+          whereArgs: [dayId],
+        );
+      }
+      // Custom journal field definitions are not day-scoped, so they ride along
+      // whole. Without them an exported day carries numbers under keys like
+      // `custom_magnesium` with no label, no unit and no idea what scale they
+      // are on — the values survive the export and their meaning does not.
+      await copyRows('journal_field_def');
+      // Plans are not day-scoped; definitions and revision history ride along
+      // so exported dose rows keep their identity. Per-day dose rows follow.
+      for (final dayId in sorted) {
+        await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
+      }
+      await copyRows('med_def');
+      await copyRows('med_plan_revision');
+      // Head measurement date selects the id. Every revision of that id is
+      // copied, including a deleted head, so a later restore still has the removal.
+      await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
+      await _decodeExportOneHz(out);
+      await out.close();
+      return dest;
+    } catch (_) {
+      await out.close();
+      await deleteDatabase(dest);
+      rethrow;
     }
-    // Custom journal field definitions are not day-scoped, so they ride along
-    // whole. Without them an exported day carries numbers under keys like
-    // `custom_magnesium` with no label, no unit and no idea what scale they
-    // are on — the values survive the export and their meaning does not.
-    await copyRows('journal_field_def');
-    // Plans are not day-scoped; definitions and revision history ride along
-    // so exported dose rows keep their identity. Per-day dose rows follow.
-    for (final dayId in sorted) {
-      await copyRows('med_dose', where: 'date = ?', whereArgs: [dayId]);
-    }
-    await copyRows('med_def');
-    await copyRows('med_plan_revision');
-    // Head measurement date selects the id. Every revision of that id is
-    // copied, including a deleted head, so a later restore still has the removal.
-    await Vo2Store.copyChainsForHeadDays(src: src, out: out, dayIds: sorted);
-    await out.close();
-    return dest;
   }
 
   static Future<int> deleteDays(Set<String> dayIds) async {
@@ -12959,9 +13143,7 @@ class LocalDb {
           await db.rawQuery('SELECT COUNT(*) FROM decoded_onehz'),
         ) ??
         0;
-    final tsRow = (await db.rawQuery(
-      'SELECT MIN(rec_ts) AS lo, MAX(rec_ts) AS hi FROM decoded_onehz WHERE rec_ts > 0',
-    )).first;
+    final (lo, hi) = await _decodedRecordSpan(db, where: 'rec_ts > 0');
     final decodedOneHz =
         Sqflite.firstIntValue(
           await db.rawQuery('SELECT COUNT(*) FROM decoded_onehz'),
@@ -12979,8 +13161,8 @@ class LocalDb {
         0;
     return {
       'count': count,
-      'min_rec_ts': (tsRow['lo'] as num?)?.toInt(),
-      'max_rec_ts': (tsRow['hi'] as num?)?.toInt(),
+      'min_rec_ts': lo,
+      'max_rec_ts': hi,
       'by_type': const <String, int>{},
       'min_captured_ms': null,
       'max_captured_ms': null,
@@ -13070,7 +13252,7 @@ class LocalDb {
     }
   }
 
-  static Future<Map<String, dynamic>> schemaHealth() async {
+  static Future<Map<String, dynamic>> schemaHealth({DateTime? now}) async {
     final db = await instance;
     Future<bool> hasTable(String name) async {
       final rows = await db.rawQuery(
@@ -13236,9 +13418,10 @@ class LocalDb {
       'hidden',
     ]);
 
-    final integrity = await db.rawQuery('PRAGMA integrity_check');
-    final integrityOk =
-        integrity.isNotEmpty && integrity.first.values.first == 'ok';
+    final integrityOk = await _integrityHealth(
+      db, (now ?? DateTime.now()).millisecondsSinceEpoch,
+      cacheAvailable: !missingTables.contains('compute_freshness'),
+    );
 
     return {
       'ok': missingTables.isEmpty && missingColumns.isEmpty && integrityOk,
@@ -13246,6 +13429,68 @@ class LocalDb {
       'missing_columns': missingColumns,
       'integrity_ok': integrityOk,
     };
+  }
+
+  static const kIntegrityHealthKey = 'schema_integrity';
+
+  /// Test seam for PRAGMA results and scheduled-check observations.
+  @visibleForTesting
+  static Future<List<String>> Function(String pragma)? debugIntegrityCheck;
+
+  static Future<bool> _integrityHealth(Database db, int nowMs, {
+    required bool cacheAvailable,
+  }) async {
+    Future<List<String>> check(DatabaseExecutor executor, String pragma) async {
+      final seam = debugIntegrityCheck;
+      if (seam != null) return seam(pragma);
+      return (await executor.rawQuery(pragma))
+          .expand((row) => row.values).map((value) => value.toString()).toList();
+    }
+    bool isOk(List<String> result) => result.isNotEmpty && result.every((v) => v == 'ok');
+    // A broken schema cannot persist bookkeeping; still report both checks.
+    if (!cacheAvailable) return isOk(await check(db, 'PRAGMA integrity_check'));
+    // Serialize the cache read and update so simultaneous callers cannot both
+    // start a large check against the same expired timestamp.
+    return db.transaction((txn) async {
+      final rows = await txn.query('compute_freshness',
+          where: 'key = ?', whereArgs: [kIntegrityHealthKey]);
+      Map<String, dynamic> cached = const {};
+      if (rows.isNotEmpty) {
+        try {
+          cached = (jsonDecode(rows.single['payload_json'] as String) as Map)
+              .cast<String, dynamic>();
+        } catch (_) { /* unreadable bookkeeping requires a fresh check */ }
+      }
+      final checkedAt = (cached['checked_at_ms'] as num?)?.toInt();
+      final fullCheckedAt = (cached['full_checked_at_ms'] as num?)?.toInt();
+      final fullDue = fullCheckedAt == null ||
+          nowMs - fullCheckedAt >= const Duration(days: 7).inMilliseconds;
+      final quickDue = checkedAt == null ||
+          nowMs - checkedAt >= const Duration(hours: 24).inMilliseconds;
+      if (!fullDue && !quickDue && cached['integrity_ok'] is bool) {
+        return cached['integrity_ok'] as bool;
+      }
+      final pragma = fullDue ? 'PRAGMA integrity_check' : 'PRAGMA quick_check';
+      final result = await check(txn, pragma);
+      final checkOk = isOk(result);
+      // quick_check omits index validation, so it cannot clear a known failure
+      // from the last full check. A later full success can clear that failure.
+      final fullOk = fullDue ? checkOk : cached['full_integrity_ok'] as bool?;
+      final verdict = checkOk && fullOk != false;
+      await txn.insert('compute_freshness', {
+        'key': kIntegrityHealthKey,
+        'payload_json': jsonEncode({
+          'checked_at_ms': nowMs,
+          'full_checked_at_ms': fullDue ? nowMs : fullCheckedAt,
+          'integrity_ok': verdict,
+          'full_integrity_ok': fullOk,
+          'result': result,
+          'full_result': fullDue ? result : cached['full_result'],
+        }),
+        'updated_at': nowMs,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return verdict;
+    });
   }
 
   static Future<Map<String, dynamic>?> syncLedgerSummary([
@@ -13807,12 +14052,14 @@ class LocalDb {
   static String localDayLabelNow() => todayLabel();
 
   static Future<void> refreshComputeFreshness() async {
-    final raw = await rawStats();
+    final db = await instance;
+    final latestRawTs = Sqflite.firstIntValue(await db.rawQuery(
+      'SELECT MAX(rec_ts) FROM decoded_onehz WHERE rec_ts > 0',
+    ));
     final recent = await recentDayResults(30);
     final rolling = await baseline('rolling');
     final cross = await baseline('crossday');
     final today = localDayLabelNow();
-    final latestRawTs = (raw['max_rec_ts'] as num?)?.toInt();
     final todayWake = await wakeDayFeatures(today);
     String? latestOvernightDay;
     int? latestOvernightComputedAt;
@@ -13870,8 +14117,6 @@ class LocalDb {
         'latest_raw_day': latestRawTs == null
             ? null
             : _localDayLabelFromEpoch(latestRawTs),
-        'decoded_onehz': raw['decoded_onehz'],
-        'decoded_rr': raw['decoded_rr'],
       }),
     );
     await putComputeFreshness(
@@ -14635,9 +14880,10 @@ class LocalDb {
 
   /// One day's numeric fields, or an empty map when nothing was recorded.
   static Future<Map<String, JournalMetricValue>> journalMetricsForDay(
-    String date,
-  ) async {
-    final db = await instance;
+    String date, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     final rows = await db.query(
       'journal_metric',
       where: 'date = ?',
@@ -15499,9 +15745,10 @@ class LocalDb {
 
   static Future<List<Map<String, dynamic>>> sessionsInRange(
     int fromTs,
-    int toTs,
-  ) async {
-    final db = await instance;
+    int toTs, {
+    DatabaseExecutor? txn,
+  }) async {
+    final db = txn ?? await instance;
     return db.query(
       'sessions',
       where: 'start_ts >= ? AND start_ts <= ?',
@@ -15942,18 +16189,152 @@ class LocalDb {
   /// the caller's job — see `AppState._maybeReclaimDiskSpace`, which runs it
   /// only on a foreground heavy derive with nothing else in flight.
   static Future<int> vacuumIfBloated({int minFreeBytes = 64 << 20}) async {
-    final free = await freelistBytes();
-    if (free < minFreeBytes) return 0;
+    try {
+      final free = await freelistBytes();
+      final requested = await computeFreshness(kOneHzVacuumKey);
+      if (free < minFreeBytes && requested == null) return 0;
+      final db = await instance;
+      await db.execute('VACUUM');
+      // VACUUM may renumber rowids in tables without an INTEGER PRIMARY KEY.
+      // Restart unfinished walks so no unvisited row falls behind their cursor.
+      await db.transaction((txn) async {
+        final states = await txn.query('compute_freshness',
+            where: 'key IN (?, ?)',
+            whereArgs: [kOneHzCompactCursorKey, kSamplePruneCursorKey]);
+        for (final state in states) {
+          final payload = jsonDecode(state['payload_json'] as String)
+              as Map<String, dynamic>;
+          if (payload['done'] == true) continue;
+          payload['cursor'] = 0;
+          await txn.update('compute_freshness', {
+            'payload_json': jsonEncode(payload),
+            'updated_at': DateTime.now().millisecondsSinceEpoch,
+          }, where: 'key = ?', whereArgs: [state['key']]);
+        }
+        await txn.delete('compute_freshness', where: 'key = ?',
+            whereArgs: [kOneHzVacuumKey]);
+      });
+      // Root pages move; invalidate the coach's cached allow-list.
+      await CoachDb.close();
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      return free;
+    } catch (_) {
+      return 0; // Housekeeping cannot fail a successful derive.
+    }
+  }
+
+  static const kOneHzCompactCursorKey = 'onehz_compact';
+  static const kOneHzVacuumKey = 'onehz_compact_vacuum';
+
+  /// Walk a bounded slice of the ledger, committing values and progress together.
+  /// Rowid includes NULL record timestamps and late-arriving historical seconds.
+  /// Non-exact rows advance the cursor too, but remain in their legacy encoding.
+  static Future<int> compactLegacyOneHz({
+    int batchSize = 2000,
+    int maxBatches = 100,
+    Duration timeBudget = const Duration(seconds: 1),
+  }) async {
+    if (batchSize < 1 || maxBatches < 1) return 0;
     final db = await instance;
-    await db.execute('VACUUM');
-    // VACUUM rewrites the file and renumbers every btree root page. CoachDb
-    // caches the root pages of its allow-listed views to decide what a coach
-    // query is allowed to touch, and nothing else calls CoachDb.close() — so
-    // after this ran, every valid coach query started failing its own guard
-    // ("Query reaches storage outside the coach views") for the rest of the
-    // process. The invariant belongs to whoever moves the pages.
-    await CoachDb.close();
-    return free;
+    final clock = Stopwatch()..start();
+    var converted = 0;
+    for (var batch = 0; batch < maxBatches; batch++) {
+      if (clock.elapsed >= timeBudget) break;
+      final count = await db.transaction((txn) async {
+        final state = await txn.query('compute_freshness',
+            where: 'key = ?', whereArgs: [kOneHzCompactCursorKey]);
+        final payload = state.isEmpty ? <String, dynamic>{} :
+            jsonDecode(state.first['payload_json'] as String) as Map<String, dynamic>;
+        if (payload['done'] == true) return null;
+        final cursor = (payload['cursor'] as num?)?.toInt() ?? 0;
+        final rows = await txn.rawQuery(
+          'SELECT rowid AS id FROM decoded_onehz WHERE rowid > ? '
+          'ORDER BY rowid LIMIT ?', [cursor, batchSize]);
+        final last = rows.isEmpty ? cursor : rows.last['id'] as int;
+        var changed = 0;
+        if (rows.isNotEmpty) {
+          final exact = _compactOneHzColumns.map((c) =>
+              '($c IS NULL OR (ABS($c * 10000) <= 9007199254740991 '
+              'AND $c = CAST(ROUND($c * 10000) AS INTEGER) / 10000.0))'
+          ).join(' AND ');
+          final values = _compactOneHzColumns.map((c) =>
+              '$c = CAST(ROUND($c * 10000) AS INTEGER)').join(', ');
+          changed = await txn.rawUpdate(
+            'UPDATE decoded_onehz SET $values, onehz_enc = 1 '
+            'WHERE rowid > ? AND rowid <= ? AND onehz_enc IS NULL AND $exact',
+            [cursor, last]);
+        }
+        final done = rows.length < batchSize;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        await txn.insert('compute_freshness', {
+          'key': kOneHzCompactCursorKey,
+          'payload_json': jsonEncode({'cursor': last, 'done': done}),
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        if (done) {
+          await txn.insert('compute_freshness', {
+            'key': kOneHzVacuumKey, 'payload_json': '{"requested":true}',
+            'updated_at': now,
+          }, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        return changed;
+      });
+      if (count == null) break;
+      converted += count;
+    }
+    return converted;
+  }
+
+  static const kSamplePruneCursorKey = 'samples_deduplicate';
+
+  /// Retire legacy dual-writes without removing the fallback's only copy.
+  /// Each small transaction commits deletions and the scan position together.
+  static Future<int> pruneDuplicateSamples({int batchSize = 2000}) async {
+    if (batchSize < 1) return 0;
+    final db = await instance;
+    return db.transaction((txn) async {
+      final state = await txn.query('compute_freshness',
+          where: 'key = ?', whereArgs: [kSamplePruneCursorKey]);
+      final payload = state.isEmpty ? <String, dynamic>{} :
+          jsonDecode(state.first['payload_json'] as String) as Map<String, dynamic>;
+      final cursor = (payload['cursor'] as num?)?.toInt() ?? 0;
+      final rows = await txn.rawQuery(
+        'SELECT rowid AS id FROM samples WHERE rowid > ? ORDER BY rowid LIMIT ?',
+        [cursor, batchSize]);
+      final last = rows.isEmpty ? cursor : rows.last['id'] as int;
+      final deleted = await txn.rawDelete(
+        'DELETE FROM samples WHERE rowid > ? AND rowid <= ? '
+        'AND EXISTS (SELECT 1 FROM decoded_onehz d '
+        'WHERE d.device_id = samples.device_id AND d.ts_ms = samples.ts_ms '
+        'AND d.rec_ts = samples.ts AND $kPrimaryBandSourceSql)',
+        [cursor, last]);
+      await txn.insert('compute_freshness', {
+        'key': kSamplePruneCursorKey,
+        'payload_json': jsonEncode({'cursor': rows.length < batchSize ? 0 : last}),
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      return deleted;
+    });
+  }
+
+  /// Keep the served generation, one predecessor, and the latest complete
+  /// result per day. Future-build rows are outside this build's ownership.
+  /// The bounded delete is atomic; another pass removes any remaining excess.
+  static Future<int> pruneSupersededDayResults({int limit = 200}) async {
+    if (limit < 1) return 0;
+    final db = await instance;
+    return db.transaction((txn) async {
+      return txn.rawDelete(
+        'DELETE FROM day_result WHERE rowid IN ('
+        'SELECT r.rowid FROM day_result r WHERE r.algo_version <= ? '
+        'AND (SELECT COUNT(*) FROM day_result n WHERE n.day_id = r.day_id '
+        'AND n.algo_version <= ? AND n.algo_version > r.algo_version) >= 2 '
+        'AND r.algo_version != COALESCE((SELECT MAX(g.algo_version) '
+        'FROM day_result g WHERE g.day_id = r.day_id AND g.algo_version <= ? '
+        'AND g.skipped = 0 AND g.partial = 0), -1) LIMIT ?)',
+        [kAlgoVersion, kAlgoVersion, kAlgoVersion, limit],
+      );
+    });
   }
 
   /// Drop recomputable per-day intermediates left behind by superseded
@@ -15991,7 +16372,8 @@ class LocalDb {
       'wake_day_features',
     ]) {
       final rows = await db.rawQuery(
-        'SELECT DISTINCT day_id, algo_version FROM $table',
+        'SELECT DISTINCT day_id, algo_version FROM $table WHERE algo_version <= ?',
+        [kAlgoVersion],
       );
       final versionsByDay = <String, List<int>>{};
       for (final r in rows) {

@@ -30,7 +30,8 @@ String obSleepDuration(num? minutes) => g3Duration(minutes?.round());
 
 String _sleepAdjustment(num? minutes) {
   if (minutes == null) return '—';
-  return g3Signed(minutes.round(), unit: 'Min.');
+  final rounded = minutes.round();
+  return '${rounded > 0 ? '+' : ''}${g3Duration(rounded)}';
 }
 
 String obSleepClock(DateTime? time) => time == null ? '—' : g3Clock(time);
@@ -46,10 +47,7 @@ DateTime? roundedSleepBedtime(DateTime? value) {
   );
 }
 
-String sleepDebtDuration(double minutes) {
-  final value = minutes.abs().round();
-  return '${value ~/ 60}h${(value % 60).toString().padLeft(2, '0')}';
-}
+String sleepDebtDuration(double minutes) => g3Duration(minutes.abs().round());
 
 String sleepDebtDirection(double minutes) => minutes > 0
     ? 'weniger als in freien Nächten'
@@ -248,7 +246,7 @@ class OBBedtimeLead extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 9),
                     child: Text(
-                      'bis ${obSleepClock(wake)}${earlier == null ? '' : '\n${earlier.abs()} Min. ${earlier >= 0 ? 'früher' : 'später'}'}',
+                      'bis ${obSleepClock(wake)}${earlier == null ? '' : '\n${g3Duration(earlier.abs())} ${earlier >= 0 ? 'früher' : 'später'}'}',
                       style: g.t(13, 18, color: g.ink2),
                     ),
                   ),
@@ -1071,8 +1069,8 @@ class OBPlanBreakdown extends StatelessWidget {
             Divider(height: 1, color: g.line),
             row(
               needClamp!.limitMinutes == 360
-                  ? 'Untergrenze 6h00 angewendet'
-                  : 'Obergrenze 11h00 angewendet',
+                  ? 'Untergrenze ${g3Duration(360)} angewendet'
+                  : 'Obergrenze ${g3Duration(660)} angewendet',
               '—',
             ),
           ],
@@ -1211,7 +1209,7 @@ class OBNightTrace extends StatelessWidget {
       children: [
         Semantics(
           label:
-              'Nachtverlauf mit $readingCount ${g3CountNoun(readingCount, 'gespeichertem Messpunkt', 'gespeicherten Messpunkten')}. Lücken bleiben leer.',
+              'Nachtverlauf mit ${g3Count(readingCount)} ${g3CountNoun(readingCount, 'gespeichertem Messpunkt', 'gespeicherten Messpunkten')}. Lücken bleiben leer.',
           child: RepaintBoundary(
             child: SizedBox(
               height: 136,
@@ -1326,7 +1324,8 @@ class _NightTracePainter extends CustomPainter {
       }
       final text = TextPainter(
         text: TextSpan(
-          text: '${gap.end.difference(gap.start).inMinutes} Min. ohne Signal',
+          text:
+              '${g3Duration(gap.end.difference(gap.start).inMinutes)} ohne Signal',
           style: caption,
         ),
         textDirection: TextDirection.ltr,

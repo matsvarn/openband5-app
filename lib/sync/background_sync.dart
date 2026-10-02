@@ -13,6 +13,7 @@
 // the next reconnect catches up from the non-destructive cursor.
 
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,15 +51,44 @@ import '../ble/zetime_link.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/profile.dart';
 import '../data/db.dart';
+import '../data/day_label.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import 'headless_gate.dart';
+import 'file_log.dart';
 import '../state/alarm_cancel.dart';
 import '../state/alarm_schedule.dart';
 import 'band_ownership.dart';
 import 'high_freq_wake_window.dart';
 import 'paired_device.dart';
 import 'sync_policy.dart';
+
+@visibleForTesting
+Future<void> Function(String) backgroundSyncLogSink = FileLog.write;
+
+@visibleForTesting
+DateTime Function() syncStalenessNow = DateTime.now;
+
+@visibleForTesting
+Future<List<List<int>>> Function(
+  int loSec,
+  int hiSec, {
+  required String deviceId,
+})
+syncWristOffSpans = LocalDb.wristOffSpans;
+
+@visibleForTesting
+Future<List<List<int>>> Function(
+  int loSec,
+  int hiSec, {
+  required String deviceId,
+})
+syncChargingSpans = LocalDb.chargingSpans;
+
+void _log(String line) {
+  debugPrint(line);
+  unawaited(backgroundSyncLogSink(line));
+}
 
 /// Load the local profile (no Provider in the headless isolate).
 Future<PersonalProfile> _loadProfile() async {
@@ -80,20 +110,21 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
   WidgetsFlutterBinding.ensureInitialized();
   final ownedLease = lease ?? BandOwnership.tryAcquireHeadless();
   if (ownedLease == null) {
-    debugPrint(
+    _log(
       '[bgsync] skipped — foreground or another headless session owns the band '
       '(${BandOwnership.debugState}).',
     );
+    await checkSyncStaleness();
     return true;
   }
-  debugPrint(
+  _log(
     '[bgsync] acquired headless lease=${ownedLease.token} '
     '(${BandOwnership.debugState})',
   );
   try {
     final paired = await PairedDevice.load();
     if (paired == null) {
-      debugPrint('[bgsync] not paired — nothing to do.');
+      _log('[bgsync] not paired — nothing to do.');
       return true;
     }
 
@@ -109,7 +140,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       // so kPrimaryDeviceId is the correct value here, not a placeholder.
       onEvent: (id, ts, hex) =>
           LocalDb.insertEvent(id, ts, hex, deviceId: LocalDb.kPrimaryDeviceId),
-      log: (l) => debugPrint('[bgsync] $l'),
+      log: (l) => _log('[bgsync] $l'),
       onRecordsBatch: LocalDb.insertRecordsBatch,
       // Routed through BandHost (M1a) rather than calling
       // LocalDb.commitSyncBatch directly — same durable commit, same
@@ -131,7 +162,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     bandHost = BandHost(
       adapter: WhoopFramedAdapter(engine, kWhoopGen4),
       deviceId: LocalDb.kPrimaryDeviceId,
-      onLog: (msg) => debugPrint('[bgsync][COMMIT] $msg'),
+      onLog: (msg) => _log('[bgsync][COMMIT] $msg'),
     );
 
     // connect() subscribes → SET_CLOCK → INIT, so the historical offload is already
@@ -139,7 +170,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     final connected = await engine.connectToRemoteId(paired.remoteId,
         generationHint: paired.generation);
     if (!connected) {
-      debugPrint(
+      _log(
         '[bgsync] strap not reachable this cycle — will catch up next time.',
       );
       await checkSyncStaleness();
@@ -162,7 +193,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
 
         reason: plan.source,
       );
-      debugPrint(
+      _log(
         '[bgsync] HighFreq wake window: source=${plan.source} '
         'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
         'target=${plan.targetWake?.toIso8601String()}',
@@ -184,7 +215,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
         await AlarmOwner.initialize(schedule);
         await AlarmOwner.reconcile(engine);
       } catch (e) {
-        debugPrint('[bgsync] alarm re-arm skipped: $e');
+        _log('[bgsync] alarm re-arm skipped: $e');
       }
     } finally {
       await engine.disconnect();
@@ -195,20 +226,20 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     // light pass on the next drain or the foreground finalize catches up.
     try {
       await DerivationEngine(
-        log: (l) => debugPrint('[bgsync-derive] $l'),
+        log: (l) => _log('[bgsync-derive] $l'),
         background: true,
       ).run(await _loadProfile());
     } catch (e) {
-      debugPrint('[bgsync] derive skipped: $e');
+      _log('[bgsync] derive skipped: $e');
     }
-    debugPrint('[bgsync] done (local drain + light derive).');
+    _log('[bgsync] done (local drain + light derive).');
     await checkSyncStaleness();
     return true;
   } catch (e) {
-    debugPrint('[bgsync] error (ignored): $e');
+    _log('[bgsync] error (ignored): $e');
     return true;
   } finally {
-    debugPrint(
+    _log(
       '[bgsync] releasing headless lease=${ownedLease.token} '
       '(${BandOwnership.debugState})',
     );
@@ -223,13 +254,13 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await OuraLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] oura sync skipped: $e');
+      _log('[bgsync] oura sync skipped: $e');
     }
     // Same piggyback, same reasoning, for a paired ring11m sensor.
     try {
       await Ring11mLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] ring11m sync skipped: $e');
+      _log('[bgsync] ring11m sync skipped: $e');
     }
     // Same piggyback, same reasoning: CorosLink.sync() no-ops when nothing is
     // paired and never throws, but this is the one shared headless entry
@@ -237,7 +268,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await CorosLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] coros sync skipped: $e');
+      _log('[bgsync] coros sync skipped: $e');
     }
     // Same piggyback, same reasoning: GarminLink.sync() no-ops when nothing
     // is paired and never throws, but this is the one shared headless entry
@@ -245,7 +276,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await GarminLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] garmin sync skipped: $e');
+      _log('[bgsync] garmin sync skipped: $e');
     }
     // Same piggyback, same reasoning: UltrahumanLink.sync() no-ops when
     // nothing is paired and never throws, but this call must not be allowed
@@ -253,14 +284,14 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await UltrahumanLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] ultrahuman sync skipped: $e');
+      _log('[bgsync] ultrahuman sync skipped: $e');
     }
     // Same reasoning, same wake window: a paired Withings row otherwise never
     // gets a second connection past pairing, since nothing else calls this.
     try {
       await WithingsSteelHrLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] withings sync skipped: $e');
+      _log('[bgsync] withings sync skipped: $e');
     }
     // Same reasoning, same slot, for a paired Mi Band: MiBand234Link.sync()
     // also no-ops when nothing is paired and never throws, but guard it
@@ -269,7 +300,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await MiBand234Link.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] miband234 sync skipped: $e');
+      _log('[bgsync] miband234 sync skipped: $e');
     }
     // Same piggyback, same reasoning: a bounded connect-drain window that
     // no-ops when nothing is paired and must never mark the WHOOP cycle
@@ -277,7 +308,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await PebbleLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] pebble sync skipped: $e');
+      _log('[bgsync] pebble sync skipped: $e');
     }
     // Same piggyback, same reasoning: MakibesHr3Link.sync() already no-ops
     // when nothing is paired and never throws, but a failure here still
@@ -285,7 +316,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await MakibesHr3Link.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] makibeshr3 sync skipped: $e');
+      _log('[bgsync] makibeshr3 sync skipped: $e');
     }
     // Same piggyback, same reasoning: Id115Link.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -293,7 +324,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await Id115Link.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] id115 sync skipped: $e');
+      _log('[bgsync] id115 sync skipped: $e');
     }
     // Same piggyback, same reasoning: Smaq2ossLink.sync() already no-ops
     // when nothing is paired and never throws, but a failure here still must
@@ -301,7 +332,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await Smaq2ossLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] smaq2oss sync skipped: $e');
+      _log('[bgsync] smaq2oss sync skipped: $e');
     }
     // Same piggyback, same reasoning: XWatchLink.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -309,7 +340,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await XWatchLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] xwatch sync skipped: $e');
+      _log('[bgsync] xwatch sync skipped: $e');
     }
     // Same piggyback, same reasoning: Tlw64Link.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -317,7 +348,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await Tlw64Link.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] tlw64 sync skipped: $e');
+      _log('[bgsync] tlw64 sync skipped: $e');
     }
     // Same piggyback, same reasoning: DafitLink.sync() no-ops when nothing is
     // paired and never throws, but this is the one shared headless entry
@@ -325,14 +356,14 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await DafitLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] dafit sync skipped: $e');
+      _log('[bgsync] dafit sync skipped: $e');
     }
     // Same reasoning as the Oura piggyback just above: no-ops when nothing is
     // paired, never allowed to mark the WHOOP cycle as errored.
     try {
       await O2RingLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] o2ring sync skipped: $e');
+      _log('[bgsync] o2ring sync skipped: $e');
     }
     // Same piggyback, same reasoning, for the ZeTime: one-shot notify-class
     // link, no-ops when nothing is paired, must never mark the WHOOP cycle
@@ -340,7 +371,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await ZeTimeLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] zetime sync skipped: $e');
+      _log('[bgsync] zetime sync skipped: $e');
     }
     // Same piggyback, same reasoning: WearFitLink.sync() no-ops when nothing
     // is paired and never throws, so a failure here must not escape and mark
@@ -348,7 +379,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await WearFitLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] wearfit sync skipped: $e');
+      _log('[bgsync] wearfit sync skipped: $e');
     }
     // Same piggyback, same reasoning: RingConnLink.sync() no-ops when nothing
     // is paired and never throws, but this is still the one shared headless
@@ -357,7 +388,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await RingConnLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] ringconn sync skipped: $e');
+      _log('[bgsync] ringconn sync skipped: $e');
     }
     // Same piggyback, same reasoning: LefunLink.sync() no-ops when nothing is
     // paired and never throws, but this is still the one shared headless
@@ -366,7 +397,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await LefunLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] lefun sync skipped: $e');
+      _log('[bgsync] lefun sync skipped: $e');
     }
     // Same piggyback, same reasoning: PineTimeLink.sync() no-ops when
     // nothing is paired and never throws, but the shared entry point must
@@ -374,7 +405,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await PineTimeLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] pinetime sync skipped: $e');
+      _log('[bgsync] pinetime sync skipped: $e');
     }
     // Same piggyback, same reasoning: QHybridLink.sync() no-ops when nothing
     // is paired and never throws, but this is the one shared headless entry
@@ -382,14 +413,14 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await QHybridLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] qhybrid sync skipped: $e');
+      _log('[bgsync] qhybrid sync skipped: $e');
     }
     // Same piggyback, same reasoning: no-ops when unpaired, must never let a
     // failure here mark the WHOOP cycle as errored.
     try {
       await ColmiLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] colmi sync skipped: $e');
+      _log('[bgsync] colmi sync skipped: $e');
     }
     // Same piggyback, same reasoning: CasioLink.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -397,7 +428,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await CasioLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] casio sync skipped: $e');
+      _log('[bgsync] casio sync skipped: $e');
     }
     // Same piggyback, same reasoning: JyouLink.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -405,7 +436,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await JyouLink.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] jyou sync skipped: $e');
+      _log('[bgsync] jyou sync skipped: $e');
     }
     // Same piggyback, same reasoning: Watch9Link.sync() already no-ops when
     // nothing is paired and never throws, but a failure here still must not
@@ -413,7 +444,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     try {
       await Watch9Link.instance.sync();
     } catch (e) {
-      debugPrint('[bgsync] watch9 sync skipped: $e');
+      _log('[bgsync] watch9 sync skipped: $e');
     }
     // Same reasoning as the ring above: no-ops when unpaired, must never
     // escape and mark the WHOOP cycle as errored. Unlike Oura's cursor-drain
@@ -434,7 +465,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
         await BangleJsLink.instance.sync();
       }
     } catch (e) {
-      debugPrint('[bgsync] banglejs sync skipped: $e');
+      _log('[bgsync] banglejs sync skipped: $e');
     }
   }
 }
@@ -473,7 +504,8 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
     // nothing to escalate; that's a distinct, already-visible onboarding
     // state, not silent staleness.
     if (recTsHw == null || recTsHw <= 0) return;
-    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final now = syncStalenessNow();
+    final nowSec = now.millisecondsSinceEpoch ~/ 1000;
     final tier = stalenessTierFor(nowSec - recTsHw);
     if (tier != StalenessTier.notify) return;
 
@@ -481,40 +513,68 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
     final lastMs = prefs.getInt(_kLastStalenessNotifiedMs);
     final lastAt =
         lastMs == null ? null : DateTime.fromMillisecondsSinceEpoch(lastMs);
-    final now = DateTime.now();
     if (!shouldRenotifyStaleness(lastAt, now)) return;
+
+    final wristOff = await syncWristOffSpans(
+      recTsHw,
+      nowSec,
+      deviceId: LocalDb.kPrimaryDeviceId,
+    );
+    if (wristOff.any((span) => span[1] >= nowSec)) {
+      _log(
+        '[bgsync] staleness notification skipped: band last known off wrist.',
+      );
+      return;
+    }
+    final charging = await syncChargingSpans(
+      recTsHw,
+      nowSec,
+      deviceId: LocalDb.kPrimaryDeviceId,
+    );
+    if (charging.any((span) => span[1] >= nowSec)) {
+      _log(
+        '[bgsync] staleness notification skipped: band last known charging.',
+      );
+      return;
+    }
+
+    final lastRecord = DateTime.fromMillisecondsSinceEpoch(recTsHw * 1000);
+    String two(int value) => value.toString().padLeft(2, '0');
+    final time = '${two(lastRecord.hour)}:${two(lastRecord.minute)}';
+    final since = dayLabelOf(lastRecord) == dayLabelOf(now)
+        ? time
+        : '${two(lastRecord.day)}.${two(lastRecord.month)}., $time';
 
     final hoursStale = (nowSec - recTsHw) ~/ 3600;
     final shown = await NotificationCenter.instance.emit(
       NotificationEvent(
-        // Date-bucketed so a legitimate re-fire after the cooldown isn't
-        // blocked by putNotification's INSERT-OR-IGNORE dedupe.
-        dedupeKey: '${now.toIso8601String().substring(0, 10)}:sync_stale',
+        dedupeKey: 'sync_stale:$recTsHw:${nowSec ~/ kStalenessRenotifySeconds}',
         category: NotifCategory.device,
         // Quiet hours DROP a normal-priority event; nothing queues it for the
-        // morning. The 48-hour cooldown below is therefore only spent when the
+        // morning. The 12-hour cooldown below is therefore only spent when the
         // event was actually presented.
         priority: NotifPriority.normal,
-        title: "Your band hasn't synced in a while",
-        body: 'No new data for about $hoursStale hours. Open OpenStrap to '
-            'reconnect — background sync may have stalled.',
-        date: now.toIso8601String().substring(0, 10),
+        title: 'Keine neuen Banddaten',
+        body:
+            'Seit $since Uhr kam nichts mehr an. '
+            'Doppeltippe auf das Band und öffne OpenBand.',
+        date: dayLabelOf(now),
         route: '/today',
       ),
       allowPermissionPrompt: allowPermissionPrompt,
     );
     if (!shown) {
       // The gate refused it (quiet hours on an overnight wake is the common
-      // case). Burning the cooldown here silenced the backstop for another 48
+      // case). Burning the cooldown here silenced the backstop for another 12
       // hours over a notification nobody ever saw.
-      debugPrint('[bgsync] staleness notification dropped by the gate.');
+      _log('[bgsync] staleness notification dropped by the gate.');
       return;
     }
     await prefs.setInt(_kLastStalenessNotifiedMs, now.millisecondsSinceEpoch);
-    debugPrint(
+    _log(
       '[bgsync] staleness notification fired (hours_stale=$hoursStale).',
     );
   } catch (e) {
-    debugPrint('[bgsync] staleness check skipped: $e');
+    _log('[bgsync] staleness check skipped: $e');
   }
 }

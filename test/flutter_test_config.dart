@@ -25,6 +25,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 typedef _SetenvNative = Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32);
 typedef _SetenvDart = int Function(Pointer<Utf8>, Pointer<Utf8>, int);
@@ -75,5 +76,13 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   if (Platform.environment['OPENBAND_TEST_LANE'] == 'behavior') {
     goldenFileComparator = _BehavioralGoldenComparator();
   }
+  // Every test file runs in its own process. A fresh databases directory per
+  // process means two files running concurrently can never open the same
+  // SQLite file, whatever `LocalDb.dbName` they pick, and a later run never
+  // sees an earlier run's leftovers. Tests reach the FFI factory through this
+  // same singleton, and `LocalDb` joins its name onto `getDatabasesPath()`.
+  final databases = Directory.systemTemp.createTempSync('openband_test_db_');
+  await databaseFactoryFfi.setDatabasesPath(databases.path);
+  tearDownAll(() => databases.delete(recursive: true));
   await testMain();
 }

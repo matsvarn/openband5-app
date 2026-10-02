@@ -162,40 +162,6 @@ class G3 {
           AlpColor.zone4,
           AlpColor.zone5,
         ];
-  List<Color> zoneTintsFor(G3Domain domain) => domain == G3Domain.load
-      ? loadZoneTints
-      : dark
-      ? const [
-          Color(0xFF262624),
-          Color(0xFF2B2B28),
-          Color(0xFF31312E),
-          Color(0xFF393935),
-          Color(0xFF44443F),
-        ]
-      : const [
-          Color(0xFFEEEEEA),
-          Color(0xFFE8E8E3),
-          Color(0xFFE1E1DB),
-          Color(0xFFD8D8D2),
-          Color(0xFFCDCDC7),
-        ];
-
-  List<Color> get zoneTints => zoneTintsFor(G3Domain.neutral);
-  List<Color> get loadZoneTints => dark
-      ? const [
-          AlpColor.darkZoneTint1,
-          AlpColor.darkZoneTint2,
-          AlpColor.darkZoneTint3,
-          AlpColor.darkZoneTint4,
-          AlpColor.darkZoneTint5,
-        ]
-      : const [
-          AlpColor.zoneTint1,
-          AlpColor.zoneTint2,
-          AlpColor.zoneTint3,
-          AlpColor.zoneTint4,
-          AlpColor.zoneTint5,
-        ];
 
   /// Mark (pointer, bar, dot) for a deviation; null keeps it neutral.
   Color? mark(G3Deviation d) => switch (d) {
@@ -273,27 +239,6 @@ class G3 {
             blurRadius: 12,
           ),
         ];
-}
-
-/// German number: 7,5 · −31 · +0,4. Presentation only; never rounds a
-/// missing value to zero — callers pass null and get "—".
-String g3Number(double? v, {int digits = 0, bool signed = false}) {
-  if (v == null || !v.isFinite) return '—';
-  final s = v.abs().toStringAsFixed(digits).replaceAll('.', ',');
-  if (v < 0 && s.replaceAll(RegExp('[0,]'), '').isNotEmpty) return '−$s';
-  return signed && v > 0 ? '+$s' : s;
-}
-
-/// Thousands with a dot: 6.480.
-String g3Count(int? v) {
-  if (v == null) return '—';
-  final s = v.abs().toString();
-  final b = StringBuffer(v < 0 ? '−' : '');
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
-    b.write(s[i]);
-  }
-  return b.toString();
 }
 
 /// Hollow, dashed rounded rectangle: an honest empty slot ("keine Daten",

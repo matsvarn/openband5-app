@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-import 'package:provider/provider.dart';
 
 import '../data/day_label.dart';
-import '../state/app_state.dart';
 import 'calendar.dart';
 import 'confirm_sheet.dart';
 import 'domain.dart';
 import 'health.dart' show G2Segmented;
 import 'journal_controls.dart';
-import 'local_repository.dart';
 import 'theme.dart';
 
 const kNutritionProteinKcal = 4.0;
@@ -133,20 +130,6 @@ Future<void> openOpenBandNutritionGoals(
       ),
     ),
   );
-}
-
-class OpenBandNutritionGoalsRoute extends StatelessWidget {
-  final String? date;
-  const OpenBandNutritionGoalsRoute({super.key, this.date});
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    return OpenBandNutritionGoals(
-      repository: LocalOpenBandRepository(app),
-      day: date ?? todayLabel(),
-    );
-  }
 }
 
 class OpenBandNutritionGoals extends StatefulWidget {

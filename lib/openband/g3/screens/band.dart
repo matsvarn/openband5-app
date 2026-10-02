@@ -273,7 +273,7 @@ class _G3BandScreenState extends State<G3BandScreen> {
         : scanning
         ? 'Suche nach dem Band läuft.'
         : unreachable
-        ? '${failedAt == null ? 'Letzter Versuch fehlgeschlagen.' : 'Letzter Versuch: ${g3DateShort(failedAt)}, ${g3Clock(failedAt)} Uhr.'}\nBand in Reichweite und am Handgelenk? Bluetooth in den iPhone-Einstellungen aus- und wieder einschalten. Band kurz auf das Ladegerät legen.'
+        ? '${failedAt == null ? 'Letzter Versuch fehlgeschlagen.' : 'Letzter Versuch: ${g3DateShort(failedAt)}, ${g3Clock(failedAt)} Uhr.'}\nBand in Reichweite und am Handgelenk? Doppeltippe auf das Band. Hilft das nicht, leg es kurz aufs Ladegerät.'
         : localizedFault == null
         ? switch (issue) {
             OBBandIssue.bluetoothOff =>
