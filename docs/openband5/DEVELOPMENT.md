@@ -4,7 +4,7 @@ Use Flutter 3.41.6 and Dart 3.11.4. These versions match the app's checked-in CI
 
 ## Fast UI development and native review
 
-Run from `edge`, using the pinned SDK. These commands target dedicated **OpenBand Review** simulators, never the physical phone. They reuse the production OpenBand widgets with the clearly labelled synthetic repository.
+Run from `openband5-app`, using the pinned SDK. These commands target dedicated **OpenBand Review** simulators, never the physical phone. They reuse the production OpenBand widgets with the clearly labelled synthetic repository.
 
 ```sh
 # Keep this process attached; press r after a Dart edit for hot reload.
@@ -63,17 +63,18 @@ The Device Hub automation timeout remains a limitation for direct Mac-driven exp
 
 ## Open the local workspace
 
-Open `/Users/matsvarnskuhler/Projects/Personal/openstrap/openband5.code-workspace` in Cursor or VS Code. Install the recommended Dart and Flutter editor extensions when prompted. The workspace selects the installed SDK and adds it to new integrated terminals.
+Open `~/Projects/Personal/openband5-workspace/openband5.code-workspace` in Cursor or VS Code. Install the recommended Dart and Flutter editor extensions when prompted. The workspace selects the installed SDK and adds it to new integrated terminals.
 
 For a normal terminal session:
 
 ```sh
 export PATH="$HOME/.local/share/flutter/3.41.6/bin:$PATH"
-cd /Users/matsvarnskuhler/Projects/Personal/openstrap/edge
+cd "$HOME/Projects/Personal/openband5-app"
 flutter --version
 ```
 
-The workspace root contains sibling repositories. `origin` is Mats's fork. `upstream` is OpenStrap and has a disabled push URL. Bootstrap work is preserved on `openband5/bootstrap`; `main` holds the published setup. No global shell settings were changed.
+The workspace points at the four canonical sibling repositories under
+`Projects/Personal/openband5-{app,protocol,analytics,research}`. `origin` is Mats's fork. `upstream` is OpenStrap and has a disabled push URL. Bootstrap work is preserved on `openband5/bootstrap`; `main` holds the published setup. No global shell settings were changed.
 
 ## Current Xcode setup
 
@@ -110,6 +111,45 @@ Open the workspace:
 open ios/Runner.xcworkspace
 ```
 
+## Repeatable clones and T3 worktrees
+
+Install Flutter 3.41.6 once on each host using the official SDK installation
+instructions at https://docs.flutter.dev/install/manual. Put it at
+`~/.local/share/flutter/3.41.6`, or set `FLUTTER_HOME` to its directory. Setup
+also accepts a matching SDK on PATH. It checks the version and never installs
+or upgrades the host toolchain.
+
+```sh
+bash scripts/setup.sh
+bash scripts/check.sh
+```
+
+Setup enforces `pubspec.lock`, keeps both sibling Git pins, and generates
+localization output. It leaves `.env`, signing files, personal data and services
+alone. It refuses a `pubspec_overrides.yaml` before dependency resolution; keep
+sibling experiments in their own worktree and never commit a path-resolved lock.
+The existing `.agents/setup` is a Linux Amp-host bootstrap with privileged host
+changes. Use `scripts/setup.sh` for ordinary T3 worktrees.
+
+In T3 Settings, select this project and machine, then Project > Actions > Import
+scripts. Import the checked-in `t3.json` without removing unrelated actions.
+Setup must run automatically on worktree creation and wait before the agent
+starts. Check remains manual. Prove the hook with a fresh T3 worktree after import.
+
+macOS and Linux can resolve dependencies, analyze Dart and run the published
+CI test lane. Linux needs Flutter's documented host libraries and SQLite for
+FFI tests. Xcode, CocoaPods, iOS builds and native simulator review require a
+Mac. The full existing lane includes host-specific golden and platform tests;
+its result must distinguish those limitations from portable behavioral checks.
+Real-data replay fixtures remain outside Git and are not copied to codingbox.
+
+Use separate worktrees for concurrent tasks and keep test workers at one.
+Do not share generated output or mutable fixture databases. The native review
+runner reuses dedicated simulator names, so run it serially unless separate
+simulators are explicitly assigned. There is no automatic mobile app or phone
+installation in Setup or Check. Device, Bluetooth and physiological acceptance
+need their own agreed session.
+
 ## Resolve dependencies and check the build
 
 The app uses full commit pins from Mats's protocol and analytics forks. Keep `pubspec_overrides.yaml` absent for baseline and release checks.
@@ -137,17 +177,32 @@ Replace `DEVICE_ID` with the ID returned by `flutter devices`. On a new develope
 
 Keep the Dart package names `openstrap_protocol` and `openstrap_analytics`. They are internal import names, not product branding.
 
-For a temporary local protocol/analytics experiment, the upstream-supported override is:
+For a temporary local protocol/analytics experiment from the canonical
+`openband5-app` checkout beside both sibling folders, use:
 
 ```yaml
 dependency_overrides:
   openstrap_protocol:
-    path: ../protocol
+    path: ../openband5-protocol
   openstrap_analytics:
-    path: ../analytics
+    path: ../openband5-analytics
 ```
 
 Put it in the app's ignored `pubspec_overrides.yaml` only for that experiment. It makes the app consume sibling checkouts, including analytics changes beyond the pinned version. Remove it and run `flutter pub get` before a release or CI comparison. Never commit a path-resolved `pubspec.lock`.
+
+Linked worktrees live under `Projects/Worktrees/openband5-app/`, so these
+relative paths do not apply there. Use the actual sibling checkout paths in an
+ignored override. For the read-only analytics pin reachability test, select the
+canonical checkout explicitly:
+
+```sh
+OPENBAND_ANALYTICS_REPO="$HOME/Projects/Personal/openband5-analytics" \
+  flutter test --no-pub test/analytics_pin_dispersion_guard_test.dart
+```
+
+This variable selects only the Git repository inspected by that test. It does
+not redirect application dependencies or change their locked pins. A checkout
+without the sibling repository still skips the optional local history check.
 
 When promoting a package change, commit and push that package first, then pin the exact commit in the app and regenerate the lock. Update the algorithm version if output changes. Keep upstream fixes in focused commits that can be reviewed independently of app styling.
 
