@@ -110,6 +110,45 @@ Open the workspace:
 open ios/Runner.xcworkspace
 ```
 
+## Repeatable clones and T3 worktrees
+
+Install Flutter 3.41.6 once on each host using the official SDK installation
+instructions at https://docs.flutter.dev/install/manual. Put it at
+`~/.local/share/flutter/3.41.6`, or set `FLUTTER_HOME` to its directory. Setup
+also accepts a matching SDK on PATH. It checks the version and never installs
+or upgrades the host toolchain.
+
+```sh
+bash scripts/setup.sh
+bash scripts/check.sh
+```
+
+Setup enforces `pubspec.lock`, keeps both sibling Git pins, and generates
+localization output. It leaves `.env`, signing files, personal data and services
+alone. It refuses a `pubspec_overrides.yaml` before dependency resolution; keep
+sibling experiments in their own worktree and never commit a path-resolved lock.
+The existing `.agents/setup` is a Linux Amp-host bootstrap with privileged host
+changes. Use `scripts/setup.sh` for ordinary T3 worktrees.
+
+In T3 Settings, select this project and machine, then Project > Actions > Import
+scripts. Import the checked-in `t3.json` without removing unrelated actions.
+Setup must run automatically on worktree creation and wait before the agent
+starts. Check remains manual. Prove the hook with a fresh T3 worktree after import.
+
+macOS and Linux can resolve dependencies, analyze Dart and run the published
+CI test lane. Linux needs Flutter's documented host libraries and SQLite for
+FFI tests. Xcode, CocoaPods, iOS builds and native simulator review require a
+Mac. The full existing lane includes host-specific golden and platform tests;
+its result must distinguish those limitations from portable behavioral checks.
+Real-data replay fixtures remain outside Git and are not copied to codingbox.
+
+Use separate worktrees for concurrent tasks and keep test workers at one.
+Do not share generated output or mutable fixture databases. The native review
+runner reuses dedicated simulator names, so run it serially unless separate
+simulators are explicitly assigned. There is no automatic mobile app or phone
+installation in Setup or Check. Device, Bluetooth and physiological acceptance
+need their own agreed session.
+
 ## Resolve dependencies and check the build
 
 The app uses full commit pins from Mats's protocol and analytics forks. Keep `pubspec_overrides.yaml` absent for baseline and release checks.

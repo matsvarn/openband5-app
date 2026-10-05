@@ -278,3 +278,25 @@ opens the personal database or Bluetooth session.
 Native fixtures, actual phone UI, Bluetooth recovery and physiological validity
 remain different proof classes. See `docs/openband5/DEVELOPMENT.md` for the loop
 and current toolchain limitations. No firmware or band command is part of UI review.
+
+## T3 checkout setup and parallel work
+
+Run `bash scripts/setup.sh` from any directory. It uses Flutter 3.41.6 from
+`FLUTTER_HOME`, the machine's pinned SDK directory, or PATH, and resolves the
+committed lockfile without local sibling overrides. `bash scripts/check.sh`
+runs the pin guard, analyzer and full serial test lane used by published CI.
+Read `docs/openband5/DEVELOPMENT.md` for host prerequisites and proof limits.
+
+Import the `t3.json` actions for each project/environment in T3. Setup runs on
+worktree creation and waits before the agent starts. A committed file alone
+does not enable that hook.
+
+Use separate branches and worktrees for independent tasks. Each owns its
+`.dart_tool`, build output and synthetic fixtures. Keep `flutter test`
+concurrency at one. Native review uses named shared OpenBand Review simulators;
+serialize simulator runs or choose explicitly separate simulators. Avoid
+parallel changes to the same phone, personal database or signing settings.
+Transfer committed branches through Git; grouping projects across machines
+in T3 does not copy files. Promote sibling changes before deliberately updating
+this app's full Git pins. Setup never installs SDKs, copies credentials, opens
+Bluetooth or creates a health database.
