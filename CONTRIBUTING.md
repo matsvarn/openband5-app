@@ -61,14 +61,16 @@ Quit the official WHOOP app before pairing — Bluetooth only lets one app own t
 band at a time.
 
 For local work across all three packages at once, create a `pubspec_overrides.yaml`
-(it's gitignored) pointing at your sibling checkouts:
+(it's gitignored) pointing at your sibling checkouts. This example assumes the
+canonical `openband5-*` folders share a parent; use explicit paths from linked
+worktrees:
 
 ```yaml
 dependency_overrides:
   openstrap_protocol:
-    path: ../protocol
+    path: ../openband5-protocol
   openstrap_analytics:
-    path: ../analytics
+    path: ../openband5-analytics
 ```
 
 ## Tests

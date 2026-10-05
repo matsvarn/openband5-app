@@ -4,7 +4,7 @@ Use Flutter 3.41.6 and Dart 3.11.4. These versions match the app's checked-in CI
 
 ## Fast UI development and native review
 
-Run from `edge`, using the pinned SDK. These commands target dedicated **OpenBand Review** simulators, never the physical phone. They reuse the production OpenBand widgets with the clearly labelled synthetic repository.
+Run from `openband5-app`, using the pinned SDK. These commands target dedicated **OpenBand Review** simulators, never the physical phone. They reuse the production OpenBand widgets with the clearly labelled synthetic repository.
 
 ```sh
 # Keep this process attached; press r after a Dart edit for hot reload.
@@ -63,17 +63,18 @@ The Device Hub automation timeout remains a limitation for direct Mac-driven exp
 
 ## Open the local workspace
 
-Open `/Users/matsvarnskuhler/Projects/Personal/openstrap/openband5.code-workspace` in Cursor or VS Code. Install the recommended Dart and Flutter editor extensions when prompted. The workspace selects the installed SDK and adds it to new integrated terminals.
+Open `~/Projects/Personal/openband5-workspace/openband5.code-workspace` in Cursor or VS Code. Install the recommended Dart and Flutter editor extensions when prompted. The workspace selects the installed SDK and adds it to new integrated terminals.
 
 For a normal terminal session:
 
 ```sh
 export PATH="$HOME/.local/share/flutter/3.41.6/bin:$PATH"
-cd /Users/matsvarnskuhler/Projects/Personal/openstrap/edge
+cd "$HOME/Projects/Personal/openband5-app"
 flutter --version
 ```
 
-The workspace root contains sibling repositories. `origin` is Mats's fork. `upstream` is OpenStrap and has a disabled push URL. Bootstrap work is preserved on `openband5/bootstrap`; `main` holds the published setup. No global shell settings were changed.
+The workspace points at the four canonical sibling repositories under
+`Projects/Personal/openband5-{app,protocol,analytics,research}`. `origin` is Mats's fork. `upstream` is OpenStrap and has a disabled push URL. Bootstrap work is preserved on `openband5/bootstrap`; `main` holds the published setup. No global shell settings were changed.
 
 ## Current Xcode setup
 
@@ -176,17 +177,32 @@ Replace `DEVICE_ID` with the ID returned by `flutter devices`. On a new develope
 
 Keep the Dart package names `openstrap_protocol` and `openstrap_analytics`. They are internal import names, not product branding.
 
-For a temporary local protocol/analytics experiment, the upstream-supported override is:
+For a temporary local protocol/analytics experiment from the canonical
+`openband5-app` checkout beside both sibling folders, use:
 
 ```yaml
 dependency_overrides:
   openstrap_protocol:
-    path: ../protocol
+    path: ../openband5-protocol
   openstrap_analytics:
-    path: ../analytics
+    path: ../openband5-analytics
 ```
 
 Put it in the app's ignored `pubspec_overrides.yaml` only for that experiment. It makes the app consume sibling checkouts, including analytics changes beyond the pinned version. Remove it and run `flutter pub get` before a release or CI comparison. Never commit a path-resolved `pubspec.lock`.
+
+Linked worktrees live under `Projects/Worktrees/openband5-app/`, so these
+relative paths do not apply there. Use the actual sibling checkout paths in an
+ignored override. For the read-only analytics pin reachability test, select the
+canonical checkout explicitly:
+
+```sh
+OPENBAND_ANALYTICS_REPO="$HOME/Projects/Personal/openband5-analytics" \
+  flutter test --no-pub test/analytics_pin_dispersion_guard_test.dart
+```
+
+This variable selects only the Git repository inspected by that test. It does
+not redirect application dependencies or change their locked pins. A checkout
+without the sibling repository still skips the optional local history check.
 
 When promoting a package change, commit and push that package first, then pin the exact commit in the app and regenerate the lock. Update the algorithm version if output changes. Keep upstream fixes in focused commits that can be reviewed independently of app styling.
 

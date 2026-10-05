@@ -7,7 +7,8 @@
 // name, mirrored here as a runnable check rather than a one-off manual grep.
 //
 // Skips (not fails) when the sibling analytics checkout is not present at
-// `../analytics` — this asserts something about THAT repo's history, not
+// `../openband5-analytics`. Set OPENBAND_ANALYTICS_REPO in a linked worktree.
+// This asserts something about THAT repo's history, not
 // about this one, and a CI runner that only checks out edge has no way to
 // answer it.
 
@@ -19,9 +20,12 @@ import 'package:openstrap_edge/compute/derivation_engine.dart' show kAnalyticsPi
 void main() {
   test('kAnalyticsPin SHA contains the baseline-dispersion-below-quantum '
       'guard in readiness_composite.dart', () async {
-    final analyticsRepo = Directory('../analytics');
+    final analyticsRepo = Directory(
+      Platform.environment['OPENBAND_ANALYTICS_REPO'] ??
+          '../openband5-analytics',
+    );
     if (!analyticsRepo.existsSync()) {
-      markTestSkipped('no sibling analytics checkout at ../analytics');
+      markTestSkipped('no sibling analytics checkout at ${analyticsRepo.path}');
       return;
     }
     final result = await Process.run(
