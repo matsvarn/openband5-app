@@ -131,10 +131,9 @@ sibling experiments in their own worktree and never commit a path-resolved lock.
 The existing `.agents/setup` is a Linux Amp-host bootstrap with privileged host
 changes. Use `scripts/setup.sh` for ordinary T3 worktrees.
 
-In T3 Settings, select this project and machine, then Project > Actions > Import
-scripts. Import the checked-in `t3.json` without removing unrelated actions.
-Setup must run automatically on worktree creation and wait before the agent
-starts. Check remains manual. Prove the hook with a fresh T3 worktree after import.
+Once `t3.json` is on the default branch, T3 runs Setup automatically on worktree
+creation and waits before the agent starts. Check remains manual. Verify the
+hook in a fresh T3 worktree after merging.
 
 macOS and Linux can resolve dependencies, analyze Dart and run the published
 CI test lane. Linux needs Flutter's documented host libraries and SQLite for
@@ -192,17 +191,8 @@ Put it in the app's ignored `pubspec_overrides.yaml` only for that experiment. I
 
 Linked worktrees live under `Projects/Worktrees/openband5-app/`, so these
 relative paths do not apply there. Use the actual sibling checkout paths in an
-ignored override. For the read-only analytics pin reachability test, select the
-canonical checkout explicitly:
-
-```sh
-OPENBAND_ANALYTICS_REPO="$HOME/Projects/Personal/openband5-analytics" \
-  flutter test --no-pub test/analytics_pin_dispersion_guard_test.dart
-```
-
-This variable selects only the Git repository inspected by that test. It does
-not redirect application dependencies or change their locked pins. A checkout
-without the sibling repository still skips the optional local history check.
+ignored override. The optional analytics pin reachability test still uses its existing sibling
+checkout convention.
 
 When promoting a package change, commit and push that package first, then pin the exact commit in the app and regenerate the lock. Update the algorithm version if output changes. Keep upstream fixes in focused commits that can be reviewed independently of app styling.
 

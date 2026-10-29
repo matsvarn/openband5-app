@@ -287,9 +287,8 @@ committed lockfile without local sibling overrides. `bash scripts/check.sh`
 runs the pin guard, analyzer and full serial test lane used by published CI.
 Read `docs/openband5/DEVELOPMENT.md` for host prerequisites and proof limits.
 
-Import the `t3.json` actions for each project/environment in T3. Setup runs on
-worktree creation and waits before the agent starts. A committed file alone
-does not enable that hook.
+Once `t3.json` is on the default branch, T3 runs Setup automatically on worktree
+creation and waits before the agent starts. Run Check manually.
 
 Use separate branches and worktrees for independent tasks. Each owns its
 `.dart_tool`, build output and synthetic fixtures. Keep `flutter test`
